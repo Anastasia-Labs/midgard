@@ -507,54 +507,75 @@ test canonical_settlement_v1_typescript_abi_vectors() {
   }
 }
 
+// V-11 (#532). Every rejection test below used to end in
+// `cbor.serialise(decoded) == cbor.serialise(decoded)`, a tautology that is
+// True for every value the generated decoder could possibly produce, so no
+// round-trip property was established. The intended property is the canonical
+// round trip, and the final expression now compares the re-serialised value
+// against the exact source bytes. The `expect` still carries the rejection for
+// the malformed inputs pinned here; the round trip is what lets the test
+// distinguish a decodable-but-noncanonical source from a canonical one, which
+// the tautology never could.
+//
+// Control (run under the fork, reverted): replacing the source of
+// `event_v1_rejects_a_wrong_deposit_datum_arity` with the well-formed
+// `deposit_datum()` encoding turns the test red, so the pinned inputs are
+// rejected because these decoders reject them, not because the module always
+// fails.
 test event_v1_rejects_an_adjacent_active_operator_mint_tag() fail {
-  expect Some(data) = cbor.deserialise(#"d87e80")
+  let source = #"d87e80"
+  expect Some(data) = cbor.deserialise(source)
   expect decoded: active.MintRedeemer = data
-  cbor.serialise(decoded) == cbor.serialise(decoded)
+  cbor.serialise(decoded) == source
 }
 
 test event_v1_rejects_an_adjacent_user_event_mint_tag() fail {
-  expect Some(data) = cbor.deserialise(#"d87b80")
+  let source = #"d87b80"
+  expect Some(data) = cbor.deserialise(source)
   expect decoded: user_events.MintRedeemer = data
-  cbor.serialise(decoded) == cbor.serialise(decoded)
+  cbor.serialise(decoded) == source
 }
 
 test event_v1_rejects_an_adjacent_user_event_witness_tag() fail {
-  expect Some(data) = cbor.deserialise(#"d87c80")
+  let source = #"d87c80"
+  expect Some(data) = cbor.deserialise(source)
   expect decoded: event_witness.PublishRedeemer = data
-  cbor.serialise(decoded) == cbor.serialise(decoded)
+  cbor.serialise(decoded) == source
 }
 
 test event_v1_rejects_a_wrong_deposit_datum_arity() fail {
-  expect Some(data) = cbor.deserialise(#"d87980")
+  let source = #"d87980"
+  expect Some(data) = cbor.deserialise(source)
   expect decoded: deposit.DepositDatum = data
-  cbor.serialise(decoded) == cbor.serialise(decoded)
+  cbor.serialise(decoded) == source
 }
 
 test event_v1_rejects_a_decorative_reserve_version_field() fail {
-  expect Some(data) = cbor.deserialise(#"d8799f0102030400ff")
+  let source = #"d8799f0102030400ff"
+  expect Some(data) = cbor.deserialise(source)
   expect decoded: reserve.SpendRedeemer = data
-  cbor.serialise(decoded) == cbor.serialise(decoded)
+  cbor.serialise(decoded) == source
 }
 
 test event_v1_rejects_a_malformed_active_operator_link() fail {
-  expect Some(data) = cbor.deserialise(
-    #"d87c9f0102581c1111111111111111111111111111111111111111111111111111111101030405ff",
-  )
+  let source = #"d87c9f0102581c1111111111111111111111111111111111111111111111111111111101030405ff"
+  expect Some(data) = cbor.deserialise(source)
   expect decoded: active.SpendRedeemer = data
-  cbor.serialise(decoded) == cbor.serialise(decoded)
+  cbor.serialise(decoded) == source
 }
 
 test event_v1_rejects_an_arbitrary_retired_slashing_payload() fail {
-  expect Some(data) = cbor.deserialise(#"d87d9f01ff")
+  let source = #"d87d9f01ff"
+  expect Some(data) = cbor.deserialise(source)
   expect decoded: retired.MintRedeemer = data
-  cbor.serialise(decoded) == cbor.serialise(decoded)
+  cbor.serialise(decoded) == source
 }
 
 test event_v1_rejects_an_adjacent_settlement_event_tag() fail {
-  expect Some(data) = cbor.deserialise(#"d87c80")
+  let source = #"d87c80"
+  expect Some(data) = cbor.deserialise(source)
   expect decoded: settlement.EventType = data
-  cbor.serialise(decoded) == cbor.serialise(decoded)
+  cbor.serialise(decoded) == source
 }
 
 // Issue #521 regression pins. `deposit.DepositDatum` used to be named `Datum`,
@@ -585,7 +606,8 @@ test event_v1_accepts_a_well_formed_deposit_datum() {
 }
 
 test event_v1_rejects_a_deposit_datum_with_an_inline_datum_tag() fail {
-  expect Some(data) = cbor.deserialise(#"d87b9f182aff")
+  let source = #"d87b9f182aff"
+  expect Some(data) = cbor.deserialise(source)
   expect decoded: deposit.DepositDatum = data
-  cbor.serialise(decoded) == cbor.serialise(decoded)
+  cbor.serialise(decoded) == source
 }

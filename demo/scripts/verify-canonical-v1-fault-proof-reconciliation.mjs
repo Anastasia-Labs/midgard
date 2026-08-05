@@ -1291,11 +1291,29 @@ const semanticDocUnits = (source) =>
     .flatMap((unit) => unit.split(/[;:]/u))
     .map((unit) => unit.trim())
     .filter(Boolean);
+// #532 (residual of #519). Two defects were measured in this block:
+//
+//   1. The assertion below was `assert.ok(!/\bQ13\b/.test(unit), ...)`, but
+//      reaching it already required `currentTaskBlocker.test(unit)` to be true,
+//      and that regex can only match a unit that contains `\b<taskId>\b`. The
+//      negated condition was therefore guaranteed false whenever evaluated, so
+//      `assert.ok` executed 0 times in every green run — 33 lines contributing
+//      no positive evidence. It is now the unconditional `assert.fail` it
+//      always meant.
+//   2. Nothing counted how much was inspected, so a shrunk
+//      `documentationAnchorScope`, a `semanticDocUnits` that stopped splitting,
+//      or a `currentBlockerWord` that stopped matching would all leave the gate
+//      exiting 0 in silence. The scan now fails closed on an empty corpus, in
+//      the shape already used by verify-canonical-v1-structural-na-q47.mjs.
+let inspectedDocUnits = 0;
+let inspectedBlockerUnits = 0;
 for (const path of documentationAnchorScope) {
   const source = await readFile(resolve(repositoryRoot, path), "utf8");
   for (const unit of semanticDocUnits(source)) {
+    inspectedDocUnits += 1;
     if (historicalStatement.test(unit) || !currentBlockerWord.test(unit))
       continue;
+    inspectedBlockerUnits += 1;
     for (const taskId of completedDocTaskIds) {
       const gapWithoutAnotherTask =
         "(?:(?!\\bQ[A-Z0-9][A-Z0-9-]*\\b)[\\s\\S]){0,120}";
@@ -1317,13 +1335,20 @@ for (const path of documentationAnchorScope) {
         explicitlyExcludesCompletedTask.test(unit)
       )
         continue;
-      assert.ok(
-        !new RegExp(`\\b${taskId}\\b`, "u").test(unit),
+      assert.fail(
         `${path} presents completed ${taskId} as a current blocker/open residue: ${unit}`,
       );
     }
   }
 }
+assert.ok(
+  inspectedDocUnits > 0,
+  "the completed-task blocker scan inspected zero documentation units, so it proves nothing",
+);
+assert.ok(
+  inspectedBlockerUnits > 0,
+  "the completed-task blocker scan found zero current-blocker units to screen, so its task-id screen proves nothing",
+);
 
 const [
   goalProgressSource,

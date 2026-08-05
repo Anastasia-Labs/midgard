@@ -386,24 +386,65 @@ test mk_cons_rejects_an_incongruent_element_type() {
   )
 }
 
-test arbitrary_control_branch_values_are_not_type_failures() fail {
-  let arguments = [
-    runtime_constant(#"9f04ff", #"d87a80"),
-    cek_builtin_v1.RuntimeDelayValue {
-      body: #"1111111111111111111111111111111111111111111111111111111111111111",
-      environment: cek_proof_v1.empty_environment_root_v1,
-    },
-    cek_builtin_v1.RuntimeConstrValue {
-      tag: 0,
-      values_count: 0,
-      values_root: cek_proof_v1.empty_sequence_root_v1,
-    },
-  ]
-  cek_builtin_v1.verify_builtin_type_failure_v1(
-    26,
-    runtime_builtin_root(26, arguments),
+// V-9 (#532). This was `test ... fail` over a single call to
+// `verify_builtin_type_failure_v1`, a three-conjunct production `and {}`, so it
+// went green as soon as ANY conjunct was false and the name could not establish
+// which guard fired. Single-conjunct mutation controls (each conjunct
+// neutralized to `True` in turn, aiken-fork v1.1.23, this exact selector):
+//
+//   conjunct 1  arguments_count == builtin_argument_count_v1(tag)   -> pass
+//   conjunct 2  builtin_value_root == hash_builtin_value_v1(...)    -> pass
+//   conjunct 3  !builtin_arguments_are_well_typed_v1(tag, args)     -> FAIL
+//
+// Only conjunct 3 flips the test, so conjuncts 1 and 2 are TRUE here and the
+// well-typedness guard is the sole falsifier. Each disposition is now pinned in
+// its own non-`fail` conjunct below, and the ill-typed differential shows the
+// same arity and the same authenticated argument root DO produce a type failure
+// once the ifThenElse Boolean slot stops being a Boolean — which isolates
+// conjunct 3 as the only thing this vector exercises.
+test arbitrary_control_branch_values_are_not_type_failures() {
+  let delay = cek_builtin_v1.RuntimeDelayValue {
+    body: #"1111111111111111111111111111111111111111111111111111111111111111",
+    environment: cek_proof_v1.empty_environment_root_v1,
+  }
+  let constr = cek_builtin_v1.RuntimeConstrValue {
+    tag: 0,
+    values_count: 0,
+    values_root: cek_proof_v1.empty_sequence_root_v1,
+  }
+  let arguments = [runtime_constant(#"9f04ff", #"d87a80"), delay, constr]
+  let builtin_value_root = runtime_builtin_root(26, arguments)
+  let Pair(arguments_root, arguments_count) = cek_builtin_v1.runtime_arguments_root_v1(
     arguments,
   )
+  // Same arity, same shape, but the ifThenElse Boolean slot carries an Integer.
+  let ill_typed = [runtime_constant(#"9f00ff", #"00"), delay, constr]
+  and {
+    // Conjunct 1 (argument arity) holds.
+    arguments_count == cek_cost_v1.builtin_argument_count_v1(26),
+    // Conjunct 2 (authenticated argument root) holds.
+    builtin_value_root == cek_proof_v1.hash_builtin_value_v1(
+      26,
+      0,
+      arguments_count,
+      arguments_root,
+    ),
+    // Conjunct 3 (`!well_typed`) is the sole falsifier: a delayed term and a
+    // constructor value are legal ifThenElse branches, so this is not a type
+    // failure.
+    !cek_builtin_v1.verify_builtin_type_failure_v1(
+      26,
+      builtin_value_root,
+      arguments,
+    ),
+    // Differential: only the branch-value typing changed, and the same
+    // production call now authenticates a type failure.
+    cek_builtin_v1.verify_builtin_type_failure_v1(
+      26,
+      runtime_builtin_root(26, ill_typed),
+      ill_typed,
+    ),
+  }
 }
 
 test append_bytearray_direct_step_is_authenticated() {

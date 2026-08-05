@@ -2370,7 +2370,30 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
   }
 }
 
-test canonical_decode_rejects_a_wrong_claimed_successor() fail {
+// V-9 (#532). This was `test ... fail` over a single call to
+// `verify_canonical_decode_one_step_v1`, so it went green as soon as any guard
+// anywhere under that call was false and the name could not establish that the
+// claimed successor is what fired. Single-conjunct mutation controls (each
+// conjunct neutralized to `True` in turn, aiken-fork v1.1.23, this exact
+// selector):
+//
+//   verify_canonical_decode_one_step_v1
+//     1  pre.phase == CanonicalDecode                       -> pass
+//     2  structural_transition_is_valid(pre, transition)    -> pass
+//     3  verify_canonical_decode(pre, transition, aux)      -> FAIL
+//
+//   verify_canonical_decode_chunk (reached through conjunct 3)
+//     1..13  control binding, non-empty field commitment, first/continuing
+//            chunk, positive item count, the six collection/chunk proof index
+//            and length equalities, verify_item, verify_chunk  -> all pass
+//     14     the claimed-successor exactness branch                -> FAIL
+//
+// So the structural transition IS valid here — the vector differs from the
+// passing sibling `canonical_decode_authenticates_one_bounded_script_item` in
+// nothing but the claimed successor, and conjunct 14 of the chunk arm is the
+// sole falsifier. The dispositions are now pinned individually below, with that
+// sibling's correct successor as the differential.
+test canonical_decode_rejects_a_wrong_claimed_successor() {
   let base = empty_v1_transaction()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
@@ -2459,37 +2482,100 @@ test canonical_decode_rejects_a_wrong_claimed_successor() fail {
     verdict: validation_trace_v1.Rejected,
     rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
   }
-  validation_machine_v1.verify_canonical_decode_one_step_v1(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: terminal,
+  // The exact successor the sibling positive test claims for this same pre,
+  // work witness, and auxiliary: the field-6 scan advancing to field 7.
+  let correct_successor = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    phase: validation_trace_v1.CanonicalDecode,
+    program_counter: 8,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.CanonicalDecode,
+      8,
+      validation_machine_v1.encode_transaction_field_scan_witness(
+        proof_source.compact_cbor,
+        proof_source.witness_set_compact_cbor,
+        proof_source.field_preimage_lengths_cbor,
+        validation_context_cbor,
+        7,
+        0,
+        0,
+        -1,
+        0,
+      ),
+    ),
+  }
+  let collection_proof = bounded_collection_v1.ItemProofV1 {
+    version: bounded_collection_v1.version,
+    field_index: 6,
+    item_count: 1,
+    item_index: 0,
+    item_length: bytearray.length(item_cbor),
+    item_commitment,
+    frontier: collection_frontier,
+    siblings: [],
+  }
+  let chunk_proof = bounded_item_v1.ChunkProofV1 {
+    version: bounded_item_v1.version,
+    field_index: 6,
+    item_index: 0,
+    total_length: bytearray.length(item_cbor),
+    chunk_index: 0,
+    chunk: item_cbor,
+    frontier: chunk_frontier,
+    siblings: [],
+  }
+  let auxiliary = validation_machine_v1.TransactionFieldChunkWitness {
+    collection_proof,
+    chunk_proof,
+  }
+  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: terminal,
+  }
+  let correct_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: correct_successor,
+  }
+  and {
+    // Conjunct 1 of the one-step guard holds.
+    pre.phase == validation_trace_v1.CanonicalDecode,
+    // Conjunct 2 holds: the rejected successor is a structurally valid
+    // successor state, so nothing about well-formedness, the work-root
+    // binding, the program counter, the immutable context, the phase
+    // succession, or the budget is what rejects it.
+    validation_machine_v1.structural_transition_is_valid(pre, transition),
+    // Conjunct 3 is the sole falsifier, and it falsifies through the chunk arm.
+    !validation_machine_v1.verify_canonical_decode_semantics_v1(
+      pre,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition,
+        auxiliary,
       },
-      auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
-        collection_proof: bounded_collection_v1.ItemProofV1 {
-          version: bounded_collection_v1.version,
-          field_index: 6,
-          item_count: 1,
-          item_index: 0,
-          item_length: bytearray.length(item_cbor),
-          item_commitment,
-          frontier: collection_frontier,
-          siblings: [],
-        },
-        chunk_proof: bounded_item_v1.ChunkProofV1 {
-          version: bounded_item_v1.version,
-          field_index: 6,
-          item_index: 0,
-          total_length: bytearray.length(item_cbor),
-          chunk_index: 0,
-          chunk: item_cbor,
-          frontier: chunk_frontier,
-          siblings: [],
-        },
+    ),
+    !validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
+      pre,
+      transition,
+      collection_proof,
+      chunk_proof,
+    ),
+    !validation_machine_v1.verify_canonical_decode_one_step_v1(
+      pre,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition,
+        auxiliary,
       },
-    },
-  )
+    ),
+    // Differential: the identical pre, work witness, collection proof, and
+    // chunk proof authenticate once the claimed successor is the exact one, so
+    // the claimed successor is the only thing this vector rejects.
+    validation_machine_v1.verify_canonical_decode_one_step_v1(
+      pre,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition: correct_transition,
+        auxiliary,
+      },
+    ),
+  }
 }
 
 test compact_binding_is_independently_verified_on_l1() {

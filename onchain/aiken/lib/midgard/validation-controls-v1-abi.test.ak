@@ -259,16 +259,33 @@ test canonical_validation_controls_v1_typescript_abi_vectors() {
   }
 }
 
+// V-10 (#532). Both rejection tests below used to assert against
+// `auxiliary_constructor_is_exact`, a test-local reimplementation of the ABI.
+// `ValidationAuxiliaryWitnessV1` has exactly 40 constructors (tags 0..39), so
+// `auxiliary_fixture.auxiliary_arity(40)` hits the generated catch-all `_ ->
+// -1` and `list.length([]) == -1` is False — the sentinel proved a sentinel is
+// a sentinel and the production decoder was never invoked at all. They now
+// invoke the generated `ValidationAuxiliaryWitnessV1` decoder directly,
+// copying the sound sibling in validation-tail-controls-v1-abi.test.ak.
 test validation_auxiliary_v1_rejects_adjacent_tag_40() fail {
   expect Some(data) = cbor.deserialise(#"d9052180")
-  expect auxiliary_constructor_is_exact(data, 40)
+  expect _: validation_machine_v1.ValidationAuxiliaryWitnessV1 = data
   True
 }
 
 test validation_auxiliary_v1_rejects_wrong_constructor_arity() fail {
   expect Some(data) = cbor.deserialise(#"d8799f00ff")
-  expect auxiliary_constructor_is_exact(data, 0)
+  expect _: validation_machine_v1.ValidationAuxiliaryWitnessV1 = data
   True
+}
+
+/// Positive control for the two rejections above: the production decoder does
+/// accept the canonical `NoAuxiliaryWitness` encoding, so the rejections are
+/// not an artefact of the decoder refusing everything.
+test validation_auxiliary_v1_accepts_the_canonical_constructor_zero() {
+  expect Some(data) = cbor.deserialise(#"d87980")
+  expect decoded: validation_machine_v1.ValidationAuxiliaryWitnessV1 = data
+  decoded == validation_machine_v1.NoAuxiliaryWitness
 }
 
 test resolve_inputs_v1_rejects_malformed_accumulator() fail {

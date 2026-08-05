@@ -752,12 +752,19 @@ const verifyReferences = (references, label, contentField) => {
     }
   }
 };
+// `.rs` was missing, so the P05 absence scan over `demo/midgard-node/native`
+// collected none of that crate's four Rust sources. `target` was missing from
+// the ignore list, so the same scan descended into the cargo build directory
+// and read 117 `.json` fingerprint artifacts instead — 117 files scanned, 0 of
+// them the files P05 is about. On a clean checkout (no `target/`) the same leg
+// collected 0 files and still exited 0. (#532, residual of #519.)
 const activeSourceExtensions = new Set([
   ".ak",
   ".cjs",
   ".js",
   ".json",
   ".mjs",
+  ".rs",
   ".sql",
   ".ts",
   ".tsx",
@@ -768,6 +775,7 @@ const ignoredDirectoryNames = new Set([
   "dist",
   "logs",
   "node_modules",
+  "target",
 ]);
 const collectActiveFiles = (relativePath, label) => {
   if (
@@ -842,6 +850,14 @@ const verifyAbsenceScans = (scans) => {
     const files = scan.paths.flatMap((path, pathIndex) =>
       collectActiveFiles(path, `${label}.paths[${pathIndex}]`),
     );
+    // Fail closed on an empty corpus: an absence scan that reads no files
+    // reports success without having looked at anything. (#532)
+    if (files.length === 0) {
+      fail(
+        `${scan.id} collected 0 scannable files from ${scan.paths.join(", ")}, so it proves nothing`,
+      );
+      continue;
+    }
     let scanPassed = true;
     for (const [patternIndex, pattern] of scan.patterns.entries()) {
       requireNonEmptyString(pattern, `${label}.patterns[${patternIndex}]`);

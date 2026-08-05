@@ -814,6 +814,46 @@ test v1_c20_7_full_preimage_reveals_exact_signer_identities() {
   }
 }
 
+/// A second PlutusV3 script whose encoded length matches
+/// `c20_script_equal_length` exactly, used as the shape-compatible field-6
+/// substitution below.
+fn c20_script_equal_length_variant() -> MidgardVersionedScript {
+  MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: #"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+  }
+}
+
+// V-9 (#532), C20-6 / C20-7. The two cross-substitution tests below were
+// `test ... fail` over a single call to the production
+// `verify_midgard_transaction_field_preimage_v1` conjunction, so the names
+// could not establish which guard fired. Mutation controls (aiken-fork
+// v1.1.23, each mutation applied alone and reverted, both selectors run each
+// time):
+//
+//   neutralize `expect length(preimage) == field_lengths.address_witnesses`
+//   neutralize `expect length(preimage) == field_lengths.script_witnesses`
+//   neutralize the field-commitment `expect from_items(..) == expected_hash`
+//     inside decode_midgard_tx_address_witnesses_preimage
+//   ... the same inside decode_midgard_tx_script_witnesses_preimage
+//   neutralize the canonical re-encode equality of branch 7
+//   neutralize the canonical re-encode equality of branch 6
+//
+// None of the six flips either test. The runner traces name the firing guard
+// directly instead: `expect tag == 90` for C20-6 (the address-witness
+// constructor tag) and `expect byte_at(bytes, offset) == expected` for C20-7
+// (the script-witness array header). Both fire in the canonical CBOR item
+// decoder of the target field, upstream of the committed length, the
+// field-commitment binding, and the re-encode. The equal-length construction
+// keeps the length gate out of the way; the shape incompatibility is what
+// actually rejects, so on its own this pair does not establish that field 6 and
+// field 7 are separately committed.
+//
+// The two `..._binds_the_field_commitment` tests that follow close that gap:
+// they present a well-shaped, equal-length preimage of the WRONG content at the
+// correct field index, which clears every shape guard and can only be rejected
+// by the field-index-bound commitment. Neutralizing that commitment `expect`
+// alone turns them red, which the cross-substitution pair cannot detect.
 test v1_c20_6_script_preimage_presented_as_field_7_rejects() fail {
   let script_preimage = encode_script_witness_preimage(
     [c20_script_equal_length()],
@@ -858,6 +898,110 @@ test v1_c20_7_address_preimage_presented_as_field_6_rejects() fail {
     6,
     addr_preimage,
   )
+}
+
+/// C20-7 commitment binding. The revealed field-7 preimage is a canonically
+/// shaped, equal-length address-witness list, so every decoder shape guard is
+/// satisfied; only the field-7 commitment separates it from the authenticated
+/// content.
+test v1_c20_7_field_seven_substitution_binds_the_field_commitment() fail {
+  let committed = encode_address_witness_preimage([c20_addr_witness_1()])
+  let substituted = encode_address_witness_preimage([c20_addr_witness_2()])
+  expect bytearray.length(committed) == bytearray.length(substituted)
+  expect committed != substituted
+  let (tx_id, commitment, compact_cbor, witness_set_cbor, lengths_cbor) = c20_witness_proof_source(
+    [c20_addr_witness_1()],
+    [],
+    1,
+    bytearray.length(committed),
+  )
+  transaction.verify_midgard_transaction_field_preimage_v1(
+    tx_id,
+    commitment,
+    compact_cbor,
+    witness_set_cbor,
+    lengths_cbor,
+    7,
+    substituted,
+  )
+}
+
+/// C20-6 commitment binding. Same construction on the script-witness field:
+/// the substituted preimage is a canonically shaped, equal-length one-item
+/// script-witness list of the same language, so only the field-6 commitment
+/// can reject it.
+test v1_c20_6_field_six_substitution_binds_the_field_commitment() fail {
+  let committed = encode_script_witness_preimage([c20_script_equal_length()])
+  let substituted = encode_script_witness_preimage(
+    [c20_script_equal_length_variant()],
+  )
+  expect bytearray.length(committed) == bytearray.length(substituted)
+  expect committed != substituted
+  let (tx_id, commitment, compact_cbor, witness_set_cbor, lengths_cbor) = c20_witness_proof_source(
+    [],
+    [c20_script_equal_length()],
+    bytearray.length(committed),
+    1,
+  )
+  transaction.verify_midgard_transaction_field_preimage_v1(
+    tx_id,
+    commitment,
+    compact_cbor,
+    witness_set_cbor,
+    lengths_cbor,
+    6,
+    substituted,
+  )
+}
+
+/// Positive control for the two commitment-binding rejections above: the
+/// committed preimages themselves verify at the same field indices under the
+/// same proof sources.
+test v1_c20_6_c20_7_committed_field_preimages_verify() {
+  let addr_preimage = encode_address_witness_preimage([c20_addr_witness_1()])
+  let script_preimage = encode_script_witness_preimage(
+    [c20_script_equal_length()],
+  )
+  let (addr_tx_id, addr_commitment, addr_compact, addr_wits, addr_lengths) = c20_witness_proof_source(
+    [c20_addr_witness_1()],
+    [],
+    1,
+    bytearray.length(addr_preimage),
+  )
+  let
+      (
+        script_tx_id,
+        script_commitment,
+        script_compact,
+        script_wits,
+        script_lengths,
+      )
+    = c20_witness_proof_source(
+    [],
+    [c20_script_equal_length()],
+    bytearray.length(script_preimage),
+    1,
+  )
+  and {
+    transaction.verify_midgard_transaction_field_preimage_v1(
+      addr_tx_id,
+      addr_commitment,
+      addr_compact,
+      addr_wits,
+      addr_lengths,
+      7,
+      addr_preimage,
+    ),
+    transaction.verify_midgard_transaction_field_preimage_v1(
+      script_tx_id,
+      script_commitment,
+      script_compact,
+      script_wits,
+      script_lengths,
+      6,
+      script_preimage,
+    ),
+  }
 }
 
 test v1_c20_6_c20_7_bundle_reveals_all_nine_fields_exactly() {

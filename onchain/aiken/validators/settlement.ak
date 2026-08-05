@@ -554,32 +554,66 @@ test settlement_mint_redeemer_parser_preserves_remove_field_order() {
   settlement_id == #"bb" && input_index == 4 && spend_redeemer_index == 5
 }
 
+// V-21 (#532). The three rejection tests below were written as
+// `expect _ = decode_mint_redeemer(...)`. `_` is irrefutable, so the `expect`
+// itself could never reject anything; the rejection has always come from inside
+// `decode_mint_redeemer` (the `_ -> fail` arm for an unknown tag, and the
+// arity/type `expect`s inside the Spawn and Remove arms). That was sound but
+// assertion-shaped: nothing in the test forced the decode except a binding form
+// whose only job was to look like an assertion.
+//
+// They now scrutinise the decoded value in a `when`, which structurally forces
+// the decode and is exhaustively True for every value `MintRedeemer` can hold.
+// A `fail` test is green only when its body is False or crashes, so the body
+// being unconditionally True on any successful decode means these tests can be
+// green for exactly one reason: `decode_mint_redeemer` rejected the input. The
+// two `..._preserves_..._field_order` tests above are the positive controls
+// showing the same decoder accepts the well-formed Spawn and Remove encodings.
+fn decoded_mint_redeemer_is_total(redeemer: MintRedeemer) -> Bool {
+  when redeemer is {
+    Spawn { .. } -> True
+    Remove { .. } -> True
+  }
+}
+
 test settlement_mint_redeemer_parser_rejects_unknown_tag() fail {
-  expect _ = decode_mint_redeemer(builtin.constr_data(2, []))
-  True
+  decoded_mint_redeemer_is_total(
+    decode_mint_redeemer(builtin.constr_data(2, [])),
+  )
 }
 
 test settlement_mint_redeemer_parser_rejects_spawn_wrong_arity() fail {
-  expect _ = decode_mint_redeemer(
-    builtin.constr_data(
-      0,
-      [builtin.b_data(#"aa"), builtin.i_data(1), builtin.i_data(2)],
+  decoded_mint_redeemer_is_total(
+    decode_mint_redeemer(
+      builtin.constr_data(
+        0,
+        [builtin.b_data(#"aa"), builtin.i_data(1), builtin.i_data(2)],
+      ),
     ),
   )
-  True
 }
 
 test settlement_mint_redeemer_parser_rejects_remove_wrong_type() fail {
-  expect _ = decode_mint_redeemer(
-    builtin.constr_data(
-      1,
-      [builtin.b_data(#"bb"), builtin.b_data(#"04"), builtin.i_data(5)],
+  decoded_mint_redeemer_is_total(
+    decode_mint_redeemer(
+      builtin.constr_data(
+        1,
+        [builtin.b_data(#"bb"), builtin.b_data(#"04"), builtin.i_data(5)],
+      ),
     ),
   )
-  True
 }
 
-test exact_settlement_policy_mint_accepts_only_settlement_nft() {
+// V-22 (#532). The four tests below were named `exact_settlement_policy_mint_*`
+// but execute no settlement code at all — they build a `Value` with
+// `assets.from_asset`/`assets.merge` and assert properties of the Aiken stdlib
+// `assets`/`dict` modules. The "exactly one settlement NFT" invariant they
+// appeared to cover lives inside the `mint` handler at the top of this file,
+// which no test in this repository invokes. They are renamed to state what they
+// actually pin (the stdlib token-shape restatement the handler relies on); the
+// settlement `mint`/`spend` handler coverage gap is reported separately and is
+// NOT closed by these tests.
+test stdlib_token_shape_yields_only_the_settlement_nft() {
   let mint = assets.from_asset(test_settlement_policy, test_settlement_id, 1)
   expect [Pair(minted_settlement_id, 1)] = mint
     |> assets.tokens(test_settlement_policy)
@@ -587,7 +621,7 @@ test exact_settlement_policy_mint_accepts_only_settlement_nft() {
   minted_settlement_id == test_settlement_id
 }
 
-test exact_settlement_policy_mint_rejects_extra_same_policy_token() fail {
+test stdlib_token_shape_rejects_an_extra_same_policy_token() fail {
   let mint = assets.merge(
     assets.from_asset(test_settlement_policy, test_settlement_id, 1),
     assets.from_asset(test_settlement_policy, #"bb", 1),
@@ -598,7 +632,7 @@ test exact_settlement_policy_mint_rejects_extra_same_policy_token() fail {
   minted_settlement_id == test_settlement_id
 }
 
-test exact_settlement_policy_mint_rejects_wrong_same_policy_token() fail {
+test stdlib_token_shape_rejects_a_wrong_same_policy_token() fail {
   let mint = assets.from_asset(test_settlement_policy, #"bb", 1)
   expect [Pair(minted_settlement_id, 1)] = mint
     |> assets.tokens(test_settlement_policy)
@@ -606,7 +640,7 @@ test exact_settlement_policy_mint_rejects_wrong_same_policy_token() fail {
   minted_settlement_id == test_settlement_id
 }
 
-test exact_settlement_policy_mint_allows_other_policy_mints() {
+test stdlib_token_shape_ignores_other_policy_mints() {
   let mint = assets.merge(
     assets.from_asset(test_settlement_policy, test_settlement_id, 1),
     assets.from_asset(
