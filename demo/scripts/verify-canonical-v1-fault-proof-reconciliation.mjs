@@ -296,6 +296,116 @@ if (fixtureArgument !== undefined) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Documentation-anchor scope closure (F20 V-6, issue #530)
+//
+// `evidence.documentationAnchors` used to be both the anchor map and the
+// definition of which documents were audited at all: three loops iterated its
+// keys, so publishing `"documentationAnchors": {}` deleted every anchor
+// assertion, every stale-pattern scan and the entire completed-task residue
+// scan (64 assertions) while the gate still exited 0. The artifact under audit
+// supplied its own audit scope.
+//
+// The scope is derived from the repository instead: the reconciled
+// documentation set is every top-level Markdown file under `docs/fault-proofs`
+// (the `decisions/` subdirectory holds dated ADRs, which are historical by
+// construction and deliberately outside the reconciliation scope). The anchor
+// map must cover that derived set exactly — no missing path, no invented path,
+// no blank anchor — before any anchor loop runs.
+// ---------------------------------------------------------------------------
+
+const reconciledDocumentationDirectory = "docs/fault-proofs";
+
+class DocumentationAnchorError extends Error {
+  constructor(code, detail) {
+    super(`${code}: ${detail}`);
+    this.name = "DocumentationAnchorError";
+    this.code = code;
+  }
+}
+
+const deriveReconciledDocumentationPaths = async () =>
+  (
+    await readdir(resolve(repositoryRoot, reconciledDocumentationDirectory), {
+      withFileTypes: true,
+    })
+  )
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => `${reconciledDocumentationDirectory}/${entry.name}`)
+    .sort();
+
+// Pure: takes the published anchor map plus the repository-derived scope and
+// returns the audited path list, or throws with the exact reason the map may
+// not be used as an audit scope.
+const deriveDocumentationAnchorScope = ({ anchors, requiredPaths }) => {
+  if (anchors === null || typeof anchors !== "object" || Array.isArray(anchors))
+    throw new DocumentationAnchorError(
+      "ERR_DOC_ANCHOR_SCOPE_MALFORMED",
+      "documentationAnchors must be an object mapping repository paths to anchor text",
+    );
+  const publishedPaths = Object.keys(anchors).sort();
+  if (publishedPaths.length === 0)
+    throw new DocumentationAnchorError(
+      "ERR_DOC_ANCHOR_SCOPE_EMPTY",
+      `documentationAnchors is empty, so no reconciled document would be audited; ${String(
+        requiredPaths.length,
+      )} are required: ${requiredPaths.join(", ")}`,
+    );
+  const missing = requiredPaths.filter((path) => !(path in anchors));
+  if (missing.length > 0)
+    throw new DocumentationAnchorError(
+      "ERR_DOC_ANCHOR_SCOPE_INCOMPLETE",
+      `documentationAnchors omits reconciled documentation and would silently drop its assertions: ${missing.join(
+        ", ",
+      )}`,
+    );
+  const unknown = publishedPaths.filter(
+    (path) => !requiredPaths.includes(path),
+  );
+  if (unknown.length > 0)
+    throw new DocumentationAnchorError(
+      "ERR_DOC_ANCHOR_SCOPE_UNKNOWN_PATH",
+      `documentationAnchors names paths outside the reconciled documentation set under ${reconciledDocumentationDirectory}: ${unknown.join(
+        ", ",
+      )}`,
+    );
+  const blank = publishedPaths.filter(
+    (path) =>
+      typeof anchors[path] !== "string" || anchors[path].trim().length === 0,
+  );
+  if (blank.length > 0)
+    throw new DocumentationAnchorError(
+      "ERR_DOC_ANCHOR_EMPTY_TEXT",
+      `documentationAnchors carries blank anchor text, which every source trivially contains: ${blank.join(
+        ", ",
+      )}`,
+    );
+  return publishedPaths;
+};
+
+// Seeded-defect fixtures for the scope closure. Each mutates the published
+// anchor map exactly the way a future edit could, so the negative self-tests
+// measure the gate rather than describing it.
+const documentationAnchorFixtures = {
+  emptied: () => ({}),
+  "one-missing": (anchors) =>
+    Object.fromEntries(
+      Object.entries(anchors).filter(
+        ([path]) => path !== "docs/fault-proofs/coverage-matrix.md",
+      ),
+    ),
+  "unknown-path": (anchors) => ({
+    ...anchors,
+    "docs/fault-proofs/not-a-reconciled-document.md": "anything",
+  }),
+  "blank-anchor": (anchors) => ({
+    ...anchors,
+    "docs/fault-proofs/README.md": "   ",
+  }),
+  malformed: () => [],
+  published: (anchors) => anchors,
+};
+
 const evidencePath = resolve(
   repositoryRoot,
   "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json",
@@ -661,6 +771,39 @@ if (coverageFixtureArgument !== undefined) {
       )} open, ${String(counts.locallyComplete)} locally complete, ${String(
         counts.structuralOrNA,
       )} structural/N/A\n`,
+    );
+    process.exit(0);
+  } catch (error) {
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    process.exit(1);
+  }
+}
+
+// Fixture mode: evaluate one seeded anchor-scope mutation and nothing else, so
+// the negative self-tests below can spawn this very gate and observe its exit.
+const documentationAnchorFixtureArgument = process.argv
+  .slice(2)
+  .find((argument) => argument.startsWith("--doc-anchor-fixture="));
+if (documentationAnchorFixtureArgument !== undefined) {
+  const fixtureName = documentationAnchorFixtureArgument.slice(
+    "--doc-anchor-fixture=".length,
+  );
+  const mutate = documentationAnchorFixtures[fixtureName];
+  if (mutate === undefined) {
+    process.stderr.write(`unknown doc-anchor fixture ${fixtureName}\n`);
+    process.exit(1);
+  }
+  try {
+    const scope = deriveDocumentationAnchorScope({
+      anchors: mutate(
+        JSON.parse(await readFile(evidencePath, "utf8")).documentationAnchors,
+      ),
+      requiredPaths: await deriveReconciledDocumentationPaths(),
+    });
+    process.stdout.write(
+      `doc-anchor fixture ${fixtureName}: ${String(scope.length)} documents in scope\n`,
     );
     process.exit(0);
   } catch (error) {
@@ -1118,7 +1261,14 @@ for (const anchor of [
     `testing status lost direct-test inventory anchor ${anchor}`,
   );
 }
-for (const [path, anchor] of Object.entries(evidence.documentationAnchors)) {
+// The audited documentation set is the repository's, not the artifact's: the
+// anchor map is rejected before use unless it covers the derived scope exactly.
+const documentationAnchorScope = deriveDocumentationAnchorScope({
+  anchors: evidence.documentationAnchors,
+  requiredPaths: await deriveReconciledDocumentationPaths(),
+});
+for (const path of documentationAnchorScope) {
+  const anchor = evidence.documentationAnchors[path];
   const source = await readFile(resolve(repositoryRoot, path), "utf8");
   assert.ok(source.includes(anchor), `${path} lost reconciliation anchor`);
 }
@@ -1141,7 +1291,7 @@ const semanticDocUnits = (source) =>
     .flatMap((unit) => unit.split(/[;:]/u))
     .map((unit) => unit.trim())
     .filter(Boolean);
-for (const path of Object.keys(evidence.documentationAnchors)) {
+for (const path of documentationAnchorScope) {
   const source = await readFile(resolve(repositoryRoot, path), "utf8");
   for (const unit of semanticDocUnits(source)) {
     if (historicalStatement.test(unit) || !currentBlockerWord.test(unit))
@@ -1589,6 +1739,51 @@ assert.match(
     "u",
   ),
 );
+
+// Negative self-tests for the documentation-anchor scope closure: the artifact
+// must not be able to shrink its own audit scope. Each mutation is spawned
+// through this gate's fixture mode and must exit non-zero with its diagnostic.
+const documentationAnchorSelfTests = [
+  ["emptied", /ERR_DOC_ANCHOR_SCOPE_EMPTY: .*no reconciled document/su],
+  ["one-missing", /ERR_DOC_ANCHOR_SCOPE_INCOMPLETE: .*coverage-matrix\.md/su],
+  [
+    "unknown-path",
+    /ERR_DOC_ANCHOR_SCOPE_UNKNOWN_PATH: .*not-a-reconciled-document\.md/su,
+  ],
+  ["blank-anchor", /ERR_DOC_ANCHOR_EMPTY_TEXT: .*README\.md/su],
+  ["malformed", /ERR_DOC_ANCHOR_SCOPE_MALFORMED: .*must be an object/su],
+];
+const runDocumentationAnchorSelfTest = (fixtureName) =>
+  spawnSync(
+    process.execPath,
+    [fileURLToPath(import.meta.url), `--doc-anchor-fixture=${fixtureName}`],
+    { cwd: repositoryRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+  );
+for (const [fixtureName, expectedDiagnostic] of documentationAnchorSelfTests) {
+  const selfTest = runDocumentationAnchorSelfTest(fixtureName);
+  assert.notEqual(
+    selfTest.status,
+    0,
+    `documentation-anchor scope gate accepted the seeded ${fixtureName} defect`,
+  );
+  assert.match(
+    selfTest.stderr,
+    expectedDiagnostic,
+    `documentation-anchor scope gate rejected the seeded ${fixtureName} defect without its specific diagnostic`,
+  );
+}
+// Positive control: the published anchor map must still be accepted, so the
+// five rejections above cannot be a check that rejects everything.
+const documentationAnchorControl = runDocumentationAnchorSelfTest("published");
+assert.equal(
+  documentationAnchorControl.status,
+  0,
+  `documentation-anchor scope gate rejected the published map: ${documentationAnchorControl.stderr}`,
+);
+assert.match(
+  documentationAnchorControl.stdout,
+  /published: \d+ documents in scope/u,
+);
 const parsedCliCategoryNames = [
   ...binSource
     .slice(
@@ -1698,7 +1893,7 @@ for (const stalePattern of [
   /Witness-set encoding split in the shipped signature proofs/u,
   /DA hash-preimage proofs/u,
 ]) {
-  for (const path of Object.keys(evidence.documentationAnchors)) {
+  for (const path of documentationAnchorScope) {
     const source = await readFile(resolve(repositoryRoot, path), "utf8");
     assert.doesNotMatch(
       source,

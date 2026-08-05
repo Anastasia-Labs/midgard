@@ -63,6 +63,12 @@ jobs:
       # invoked here directly rather than weakening a plan phase.
       - name: Verify incomplete canonical V1 format registry structure
         run: node demo/scripts/verify-canonical-v1-format-registry.mjs --allow-incomplete
+      # #519 V-6: the registry's cross-language "not applicable" excuses were
+      # free text, so an excuse could not be wrong. The self-test drives the
+      # real gate against seeded excuses and layout mutations and requires each
+      # to be rejected with its specific diagnostic.
+      - name: Self-test the format-registry N/A bounds and exact-field pins
+        run: node demo/scripts/verify-canonical-v1-format-registry-self-test.mjs
       - name: Verify canonical watcher dependency map
         run: node demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs
       - name: Verify canonical watcher focused-test evidence

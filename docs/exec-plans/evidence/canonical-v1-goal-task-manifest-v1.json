@@ -138,17 +138,19 @@
         "demo/scripts/verify-canonical-v1-format-registry.mjs strict 132-row source/schema/evidence audit and obsolete-identity scans"
       ],
       "evidenceOutputs": [
-        "Strict format-registry transcript binding all 132 canonical rows to exact source/symbol, canonical forms/tags/arities, parser/encoder, positive/rejection, cross-language or justified N/A, and obsolete-branch evidence",
+        "Strict format-registry transcript binding all 132 canonical rows to exact source/symbol, canonical forms/tags/arities, parser/encoder, positive/rejection, cross-language evidence or a gate-checked N/A category, and obsolete-branch evidence",
         "Current-truth closure: the live strict verifier passes exactly 132 rows with 0 UNVERIFIED after the #476 freshness reconciliation promoted the remaining 72 rows (N, L02-L19, S01, K, V, P) with current-tree source/symbol/test evidence and executed test transcripts",
-        "Forbidden-active-pattern scan covering exactly 29 retired/obsolete identity classes with zero live matches at closure"
+        "Forbidden-active-pattern scan covering exactly 29 retired/obsolete identity classes with zero live matches at closure",
+        "Behavioral self-test transcript: 12 seeded registry defects rejected with their specific diagnostic and 2 control runs accepted, covering uncategorised and unrecognised N/A excuses, an N/A excuse contradicted by the Aiken corpus, deleted/retained category mismatches, tests-plus-excuse duplication, the unconditional N05 layout pin under a demoted auditStatus, positional-pin gaps and arity mismatches, unpinned cross-language forms, a stale pin-deficit register entry, and an overstated cross-language split"
       ],
       "focusedCommands": [
         "node demo/scripts/verify-canonical-v1-format-registry.mjs --allow-incomplete",
         "node demo/scripts/verify-canonical-v1-format-registry.mjs",
-        "pnpm --dir demo exec prettier --check ../docs/exec-plans/evidence/canonical-v1-format-registry-v1.json scripts/verify-canonical-v1-format-registry.mjs",
-        "git diff --check -- docs/exec-plans/evidence/canonical-v1-format-registry-v1.json demo/scripts/verify-canonical-v1-format-registry.mjs"
+        "node demo/scripts/verify-canonical-v1-format-registry-self-test.mjs",
+        "pnpm --dir demo exec prettier --check ../docs/exec-plans/evidence/canonical-v1-format-registry-v1.json scripts/verify-canonical-v1-format-registry.mjs scripts/verify-canonical-v1-format-registry-self-test.mjs",
+        "git diff --check -- docs/exec-plans/evidence/canonical-v1-format-registry-v1.json demo/scripts/verify-canonical-v1-format-registry.mjs demo/scripts/verify-canonical-v1-format-registry-self-test.mjs"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-format-registry.mjs. The source-derived registry contains exactly 132 unique format IDs and 29 forbidden-active-pattern scans; strict closure requires exactly 132 PASS and 0 UNVERIFIED rows, with all 132 crossLanguageEvidence statuses PASS and exactly 0 obsolete-pattern matches. Current state is exactly 132 PASS and 0 UNVERIFIED.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-format-registry.mjs, verify-canonical-v1-format-registry-self-test.mjs. The source-derived registry contains exactly 132 unique format IDs and 29 forbidden-active-pattern scans; strict closure requires exactly 132 PASS and 0 UNVERIFIED rows, with all 132 crossLanguageEvidence statuses PASS and exactly 0 obsolete-pattern matches. Current state is exactly 132 PASS and 0 UNVERIFIED. The cross-language split is re-derived by the gate and published in crossLanguageSummary: exactly 66 of 132 rows carry counterpart tests and exactly 66 carry a checked N/A category (10 deleted-identity, 56 no-onchain-counterpart, 0 free-text-only). Exactly 7 of 76 canonical forms in counterpart-tested rows are still unpinned and are named in the verifier-owned exact-field pin register, which the gate re-derives for equality. The self-test rejects exactly 12 seeded defects and accepts exactly 2 control runs.",
       "invalidationTriggers": [
         "F00 is recaptured or any serialized/authenticated schema, constructor tag, field order/arity, parser, encoder, catalogue index, blueprint identity, or cross-language evidence path changes",
         "A retired identity reappears, a canonical row becomes missing/duplicate/UNVERIFIED, or a source-bound registry family changes cardinality",

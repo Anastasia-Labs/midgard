@@ -166,6 +166,27 @@ mustReject(
   },
 );
 
+// Audit scope must come from the repository, never from the artifact under
+// audit (V-6, issue #530). The gate derives its expected task set from the
+// authoritative Goal specification, so emptying or trimming the manifest may
+// not shrink the audit: it must fail closed on cardinality and on every task
+// identity the specification requires.
+mustReject(
+  "the manifest publishes no tasks at all",
+  "taskCardinality",
+  (candidate) => {
+    candidate.tasks = [];
+  },
+);
+
+mustReject(
+  "the manifest drops a single authoritative task",
+  "missingAuthoritativeTaskId",
+  (candidate) => {
+    candidate.tasks = candidate.tasks.filter((task) => task.id !== "C30");
+  },
+);
+
 rmSync(workspace, { recursive: true, force: true });
 process.stdout.write(
   `goal:tasks:quality:self-test: PASS\ncontrol runs accepted: 1; hostile mutations rejected: ${rejectedMutations}\n`,

@@ -17,10 +17,21 @@ const canonicalAuthority = {
   sourceRevision: canonicalSourceRevision,
 };
 const markdownPath = resolve(repoRoot, canonicalSourcePath);
-const registryPath = resolve(
-  repoRoot,
-  "docs/exec-plans/evidence/canonical-v1-format-registry-v1.json",
-);
+// `--registry-under-test=` lets the behavioral self-test drive this exact gate
+// against a mutated copy of the registry. Only the artifact is redirected: the
+// canonical Markdown, the Aiken corpus and every repository source the gate
+// checks against stay the real ones, so a seeded excuse is judged against
+// reality rather than against a fixture of its own choosing.
+const registryUnderTestArgument = process.argv
+  .slice(2)
+  .find((argument) => argument.startsWith("--registry-under-test="));
+const registryPath =
+  registryUnderTestArgument === undefined
+    ? resolve(
+        repoRoot,
+        "docs/exec-plans/evidence/canonical-v1-format-registry-v1.json",
+      )
+    : resolve(registryUnderTestArgument.slice("--registry-under-test=".length));
 const allowIncomplete = process.argv.includes("--allow-incomplete");
 const printBootstrap = process.argv.includes("--print-bootstrap");
 
@@ -824,6 +835,281 @@ const verifyAbsenceEvidence = (references, label) => {
     }
   }
 };
+// ---------------------------------------------------------------------------
+// Bounded cross-language "not applicable" excuses (V-6, issue #530)
+//
+// A row used to discharge its cross-language obligation with any non-empty
+// prose in `notApplicableReason`, and 66 of 132 rows did. Free text is not
+// checkable, so the excuse could not be wrong: a row with a real Aiken
+// counterpart could publish "Aiken never decodes this" and pass.
+//
+// Every N/A row now declares a category from a closed set, and the gate checks
+// that category against reality rather than reading the prose:
+//
+//   deleted-identity        the format is gone, so there is nothing to keep in
+//                           agreement. Checked against the row's own
+//                           disposition and its passing absence scans.
+//   no-onchain-counterpart  no Aiken code names this format. Checked by
+//                           deriving the row's identity symbols from its own
+//                           sourceEvidence — the artifact does not get to
+//                           choose which symbols are examined — and requiring
+//                           every one of them to be absent from the Aiken
+//                           corpus in both its literal and snake_case forms.
+//
+// The prose is retained as the human explanation but is no longer the evidence.
+// ---------------------------------------------------------------------------
+
+const aikenCorpusRoots = [
+  "onchain/aiken/lib",
+  "onchain/aiken/validators",
+  "onchain/aiken/env",
+];
+const readAikenCorpus = () => {
+  const sources = [];
+  const walk = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const full = resolve(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (!ignoredDirectoryNames.has(entry.name)) walk(full);
+      } else if (entry.name.endsWith(".ak")) {
+        sources.push(readFileSync(full, "utf8"));
+      }
+    }
+  };
+  for (const root of aikenCorpusRoots) walk(resolve(repoRoot, root));
+  return sources.join("\n");
+};
+const aikenCorpus = readAikenCorpus();
+const toSnakeCase = (symbol) =>
+  symbol
+    .replace(/([a-z0-9])([A-Z])/gu, "$1_$2")
+    .replace(/([A-Z]+)([A-Z][a-z])/gu, "$1_$2")
+    .toLowerCase();
+// Aiken spells types in PascalCase and functions/constants in snake_case, so a
+// TypeScript identity that crossed the boundary appears in one of those two
+// forms. Both are searched before an absence claim is accepted.
+const namedInAiken = (symbol) =>
+  aikenCorpus.includes(symbol) || aikenCorpus.includes(toSnakeCase(symbol));
+// An identity symbol is an exported name, not an English word: it must be at
+// least four characters and carry a capital or an underscore. This keeps bare
+// enum strings such as `legacy` out of the derived absence set while every
+// `MidgardNativeTxV1`-shaped identity stays in it.
+const isIdentitySymbol = (symbol) =>
+  typeof symbol === "string" &&
+  /^[A-Za-z_][A-Za-z0-9_]*$/u.test(symbol) &&
+  symbol.length >= 4 &&
+  /[A-Z_]/u.test(symbol);
+const deriveIdentitySymbols = (row) => [
+  ...new Set(
+    (Array.isArray(row.sourceEvidence) ? row.sourceEvidence : []).flatMap(
+      (reference) =>
+        (Array.isArray(reference?.symbols) ? reference.symbols : []).filter(
+          isIdentitySymbol,
+        ),
+    ),
+  ),
+];
+const crossLanguageNotApplicableCategories = new Set([
+  "deleted-identity",
+  "no-onchain-counterpart",
+]);
+const crossLanguageTestedIds = new Set();
+const crossLanguageNotApplicableIds = new Set();
+const crossLanguageNotApplicableByCategory = new Map();
+const observedExactFieldPinDeficits = new Set();
+const verifyCrossLanguageNotApplicable = (row, label) => {
+  const crossLanguage = row.crossLanguageEvidence;
+  const category = crossLanguage.notApplicableCategory;
+  if (!isNonEmptyString(crossLanguage.notApplicableReason)) {
+    fail(
+      `${label}.crossLanguageEvidence needs tests or a non-empty notApplicableReason`,
+    );
+    return;
+  }
+  if (!isNonEmptyString(category)) {
+    fail(
+      `${label}.crossLanguageEvidence: free-text notApplicableReason is not evidence; a notApplicableCategory from {${[
+        ...crossLanguageNotApplicableCategories,
+      ].join(", ")}} is required`,
+    );
+    return;
+  }
+  if (!crossLanguageNotApplicableCategories.has(category)) {
+    fail(
+      `${label}.crossLanguageEvidence.notApplicableCategory ${JSON.stringify(
+        category,
+      )} is not one of {${[...crossLanguageNotApplicableCategories].join(", ")}}`,
+    );
+    return;
+  }
+  crossLanguageNotApplicableByCategory.set(
+    category,
+    (crossLanguageNotApplicableByCategory.get(category) ?? 0) + 1,
+  );
+  if (category === "deleted-identity") {
+    if (row.disposition !== "delete") {
+      fail(
+        `${label}.crossLanguageEvidence claims deleted-identity but the row disposition is ${JSON.stringify(
+          row.disposition,
+        )}`,
+      );
+    }
+    if (
+      !Array.isArray(row.obsoleteBranchEvidence) ||
+      row.obsoleteBranchEvidence.length === 0
+    ) {
+      fail(
+        `${label}.crossLanguageEvidence claims deleted-identity without a passing absence scan proving the identity is gone`,
+      );
+    }
+    return;
+  }
+  if (row.disposition === "delete") {
+    fail(
+      `${label}.crossLanguageEvidence claims no-onchain-counterpart for a deleted format; use deleted-identity`,
+    );
+    return;
+  }
+  const identitySymbols = deriveIdentitySymbols(row);
+  if (identitySymbols.length === 0) {
+    fail(
+      `${label}.crossLanguageEvidence claims no-onchain-counterpart but the row publishes no identity symbol the claim could be checked against`,
+    );
+    return;
+  }
+  const counterparts = identitySymbols.filter(namedInAiken).sort();
+  if (counterparts.length > 0) {
+    fail(
+      `${label}.crossLanguageEvidence claims no-onchain-counterpart, but the Aiken corpus names ${String(
+        counterparts.length,
+      )} of this row's ${String(identitySymbols.length)} identity symbols: ${counterparts.join(
+        ", ",
+      )}`,
+    );
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Exact-field pins (V-6, issue #530)
+//
+// `exactFields` used to be unvalidated prose everywhere except N05 and N08,
+// and even those two pins were guarded by `isPass(id)` — so demoting a row's
+// own `auditStatus` switched off the check that its wire layout had not moved.
+// The guards are gone, and two unconditional structural rules now apply to
+// every row:
+//
+//   1. Positional pins must be exact. A field list that indexes its entries
+//      (`0:`, `1:`, `3..5:`) must cover a dense range from 0 with no gap,
+//      overlap or reordering, and must total the declared `arrayArity`.
+//   2. A row with a cross-language counterpart that declares an integer
+//      `arrayArity` must pin its fields positionally, so the two languages are
+//      compared against an ordered layout rather than a bag of labels.
+//
+// Rule 2 is not yet satisfiable for seven forms whose published field lists
+// are prose summaries rather than per-index pins. Those forms are named in the
+// verifier-owned register below, and the register is checked for equality
+// against the derived set: a new prose form fails the gate, and a form that is
+// fixed but left in the register fails it too.
+// ---------------------------------------------------------------------------
+
+const exactFieldPinDeficits = new Map([
+  [
+    "D16/DaAttestationsByHeaderRequestV1 / DaAttestationsByHeaderResponseV1",
+    "one form carries the request and response layouts together, so its eight labels cannot index a single four-member arity",
+  ],
+  [
+    "K13/MidgardCekProgramUplcVersionV1",
+    "the published list carries a fourth encoding-rule label beyond the three version members",
+  ],
+  [
+    "V12/ScriptSourcesControlV1 family",
+    "the thirty ordered control fields are published as a two-line prose summary",
+  ],
+  [
+    "V13/NativeScriptsControlV1",
+    "the twenty-six ordered fold/control fields are published as a three-line prose summary",
+  ],
+  [
+    "V14/CEK context control family V1",
+    "the twenty-four ordered context fields are published as a two-line prose summary",
+  ],
+  [
+    "V15/Value-and-mint controls V1",
+    "the twelve ordered value-and-mint fields are published as a three-line prose summary",
+  ],
+  [
+    "V16/Ledger delta controls and operations V1",
+    "eleven labels are published for fourteen ordered control fields",
+  ],
+]);
+// Pure: expands `0:`/`3..5:` prefixes into the index span each entry pins, or
+// null when the entry is not a positional pin at all.
+const parsePositionalPin = (entry) => {
+  const match = /^(\d+)(?:\s*\.\.\s*(\d+))?\s*:/u.exec(entry);
+  if (match === null) return null;
+  const start = Number(match[1]);
+  const end = match[2] === undefined ? start : Number(match[2]);
+  return end < start ? null : { start, end };
+};
+const verifyExactFieldPins = (row, form, formLabel, hasCrossLanguageTests) => {
+  const fields = Array.isArray(form.exactFields) ? form.exactFields : [];
+  const pins = fields.map(parsePositionalPin);
+  const positional = fields.length > 0 && pins.some((pin) => pin !== null);
+  const deficitKey = `${row.id}/${form.name}`;
+  if (positional) {
+    let next = 0;
+    let dense = true;
+    for (const [index, pin] of pins.entries()) {
+      if (pin === null) {
+        fail(
+          `${formLabel}.exactFields mixes positional pins with an unpinned entry at ${String(
+            index,
+          )}: ${JSON.stringify(fields[index])}`,
+        );
+        dense = false;
+        break;
+      }
+      if (pin.start !== next) {
+        fail(
+          `${formLabel}.exactFields pins index ${String(pin.start)} where index ${String(
+            next,
+          )} was required, so the layout has a gap, overlap, or reordering`,
+        );
+        dense = false;
+        break;
+      }
+      next = pin.end + 1;
+    }
+    if (
+      dense &&
+      Number.isInteger(form.arrayArity) &&
+      next !== form.arrayArity
+    ) {
+      fail(
+        `${formLabel}.exactFields pins ${String(next)} members for declared arrayArity ${String(
+          form.arrayArity,
+        )}`,
+      );
+    }
+    return { deficitKey, deficient: false };
+  }
+  if (
+    hasCrossLanguageTests &&
+    Number.isInteger(form.arrayArity) &&
+    form.arrayArity > 0
+  ) {
+    if (!exactFieldPinDeficits.has(deficitKey)) {
+      fail(
+        `${formLabel} has a cross-language counterpart and a declared arrayArity ${String(
+          form.arrayArity,
+        )}, so its exactFields must pin each member by index`,
+      );
+    }
+    return { deficitKey, deficient: true };
+  }
+  return { deficitKey, deficient: false };
+};
+
 const verifyUnverifiedRow = (row, label) => {
   if (row.auditStatus !== "UNVERIFIED") {
     fail(`${label}.auditStatus must be UNVERIFIED for an incomplete row`);
@@ -867,6 +1153,11 @@ const verifyUnverifiedRow = (row, label) => {
   if (crossLanguage.notApplicableReason !== null) {
     fail(
       `${label}.crossLanguageEvidence.notApplicableReason must be null for an incomplete row`,
+    );
+  }
+  if (crossLanguage.notApplicableCategory !== undefined) {
+    fail(
+      `${label}.crossLanguageEvidence.notApplicableCategory must be absent for an incomplete row`,
     );
   }
 };
@@ -937,6 +1228,9 @@ if (registry !== undefined) {
 
     for (const [rowIndex, row] of registry.formats.entries()) {
       const label = row?.id ?? `<row-${rowIndex}>`;
+      const hasCrossLanguageTests =
+        Array.isArray(row?.crossLanguageEvidence?.tests) &&
+        row.crossLanguageEvidence.tests.length > 0;
       if (row === null || typeof row !== "object" || Array.isArray(row)) {
         fail(`${label} must be an object`);
         continue;
@@ -1073,6 +1367,14 @@ if (registry !== undefined) {
                 `${formLabel} requires integer arrayArity or arrayArityNotApplicable`,
               );
             }
+            const pinOutcome = verifyExactFieldPins(
+              row,
+              form,
+              formLabel,
+              hasCrossLanguageTests,
+            );
+            if (pinOutcome.deficient)
+              observedExactFieldPinDeficits.add(pinOutcome.deficitKey);
             verifyReferences(form.encoders, `${formLabel}.encoders`, "symbols");
             verifyReferences(form.parsers, `${formLabel}.parsers`, "symbols");
           }
@@ -1099,15 +1401,20 @@ if (registry !== undefined) {
         Array.isArray(crossLanguage.tests) &&
         crossLanguage.tests.length > 0
       ) {
+        crossLanguageTestedIds.add(row.id);
         verifyReferences(
           crossLanguage.tests,
           `${label}.crossLanguageEvidence.tests`,
           "testNames",
         );
-      } else if (!isNonEmptyString(crossLanguage.notApplicableReason)) {
-        fail(
-          `${label}.crossLanguageEvidence needs tests or a non-empty notApplicableReason`,
-        );
+        if (crossLanguage.notApplicableCategory !== undefined) {
+          fail(
+            `${label}.crossLanguageEvidence carries cross-language tests and must not also claim a not-applicable category`,
+          );
+        }
+      } else {
+        crossLanguageNotApplicableIds.add(row.id);
+        verifyCrossLanguageNotApplicable(row, label);
       }
     }
 
@@ -1126,8 +1433,6 @@ if (registry !== undefined) {
     const canonicalFieldsFor = (id) =>
       registry.formats.find((row) => row.id === id)?.canonicalForms?.[0]
         ?.exactFields;
-    const isPass = (id) =>
-      registry.formats.find((row) => row.id === id)?.auditStatus === "PASS";
     const expectedN05Fields = [
       "0: canonical address-witness collection commitment hash32",
       "1: canonical script-witness collection commitment hash32",
@@ -1144,22 +1449,60 @@ if (registry !== undefined) {
       "7: vkey-witnesses preimage byte length",
       "8: redeemers preimage byte length",
     ];
+    // Unconditional: a row may not switch off its own layout pin by demoting
+    // its auditStatus, which the previous `isPass(id) && ...` guards allowed.
     if (
-      isPass("N05") &&
       JSON.stringify(canonicalFieldsFor("N05")) !==
-        JSON.stringify(expectedN05Fields)
+      JSON.stringify(expectedN05Fields)
     ) {
       fail(
         "N05 must preserve the stable compact witness tuple [address, script, redeemer]",
       );
     }
     if (
-      isPass("N08") &&
       JSON.stringify(canonicalFieldsFor("N08")) !==
-        JSON.stringify(expectedN08Fields)
+      JSON.stringify(expectedN08Fields)
     ) {
       fail(
         "N08 must preserve transaction field order [spend, reference, outputs, observers, signers, mint, script, vkey, redeemer]",
+      );
+    }
+
+    // The exact-field pin register is verifier-owned and must equal the set the
+    // gate just derived: a newly prose-only form fails, and a form that has
+    // been pinned but left in the register fails too.
+    const staleDeficits = [...exactFieldPinDeficits.keys()]
+      .filter((key) => !observedExactFieldPinDeficits.has(key))
+      .sort();
+    if (staleDeficits.length > 0) {
+      fail(
+        `exact-field pin register lists forms that now pin their members and must be removed from it: ${staleDeficits.join(
+          "; ",
+        )}`,
+      );
+    }
+
+    // The cross-language split is re-derived here rather than trusted, and the
+    // artifact's published summary must equal the derivation.
+    const derivedCrossLanguageSummary = {
+      rows: registry.formats.length,
+      withCounterpartTests: crossLanguageTestedIds.size,
+      notApplicable: crossLanguageNotApplicableIds.size,
+      notApplicableByCategory: Object.fromEntries(
+        [...crossLanguageNotApplicableByCategory.entries()].sort(([a], [b]) =>
+          a < b ? -1 : 1,
+        ),
+      ),
+      exactFieldPinDeficits: [...observedExactFieldPinDeficits].sort(),
+    };
+    if (
+      JSON.stringify(registry.crossLanguageSummary) !==
+      JSON.stringify(derivedCrossLanguageSummary)
+    ) {
+      fail(
+        `registry.crossLanguageSummary does not equal the derived split; derived: ${JSON.stringify(
+          derivedCrossLanguageSummary,
+        )}`,
       );
     }
   }

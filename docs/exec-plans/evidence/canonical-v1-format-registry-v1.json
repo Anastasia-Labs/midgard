@@ -7,6 +7,24 @@
     "sourceRevision": "7a87a5402ea79d814d6a7a822d93b56dd4f92214"
   },
   "unknownFormatPolicy": "reject",
+  "crossLanguageSummary": {
+    "rows": 132,
+    "withCounterpartTests": 66,
+    "notApplicable": 66,
+    "notApplicableByCategory": {
+      "deleted-identity": 10,
+      "no-onchain-counterpart": 56
+    },
+    "exactFieldPinDeficits": [
+      "D16/DaAttestationsByHeaderRequestV1 / DaAttestationsByHeaderResponseV1",
+      "K13/MidgardCekProgramUplcVersionV1",
+      "V12/ScriptSourcesControlV1 family",
+      "V13/NativeScriptsControlV1",
+      "V14/CEK context control family V1",
+      "V15/Value-and-mint controls V1",
+      "V16/Ledger delta controls and operations V1"
+    ]
+  },
   "forbiddenActivePatterns": [
     {
       "id": "A01-retired-da-runtime-manifest-identities",
@@ -512,6 +530,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "deleted-identity",
         "notApplicableReason": "Deleted pre-launch profile selectors have no canonical wire value or cross-language counterpart."
       },
       "obsoleteBranchEvidence": [
@@ -622,6 +641,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "Aiken does not decode the off-chain stable-JSON profile object; its individual on-chain constants and encoded datums are independently audited by C03 and their format-family rows."
       },
       "obsoleteBranchEvidence": [
@@ -877,6 +897,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "Aiken does not parse the off-chain JSON artifact; the manifest authenticates freshly compiled Aiken validator bytes and hashes, whose concrete ABI rows are audited separately."
       },
       "obsoleteBranchEvidence": [],
@@ -967,6 +988,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The public HTTP JSON payload is node-to-SDK and is not decoded by Aiken; embedded consensus and native format values are audited by C02/C03 and N01-N14."
       },
       "obsoleteBranchEvidence": [],
@@ -1096,6 +1118,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The deployment marker is an off-chain durable and HTTP identity that Aiken never decodes; the on-chain validator bytes and hashes it authenticates are audited by C04 and their own format-family rows."
       },
       "obsoleteBranchEvidence": [],
@@ -1207,6 +1230,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The Cardano protocol-parameter snapshot is an off-chain JSON manifest field that Aiken never decodes; no on-chain decoder or equivalence vector exists for it."
       },
       "obsoleteBranchEvidence": [],
@@ -1222,7 +1246,7 @@
       "classification": "sentinel",
       "canonicalResult": "Preserve authenticated genesis sentinel 0 and transition every first ordinary header to protocol version 1",
       "boundaryBindingAndPersistence": "State-queue root NFT datum at initialization, first-header construction/validation, and first merge to confirmed state",
-      "requiredEvidence": "Exact six-field genesis constructor, mutation rejection, distinct ordinary V1 state, first-header 0\u21921 transition, production consumer wiring, and same-vector TypeScript/Aiken tests",
+      "requiredEvidence": "Exact six-field genesis constructor, mutation rejection, distinct ordinary V1 state, first-header 0→1 transition, production consumer wiring, and same-vector TypeScript/Aiken tests",
       "disposition": "sentinel",
       "auditStatus": "PASS",
       "sourceEvidence": [
@@ -2862,6 +2886,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The partial-signature transport bundle is a Lucid client boundary and has no Aiken datum/redeemer or on-chain decoder; embedded vkey witnesses use canonical Cardano CBOR and are verified against the native body hash before assembly."
       },
       "obsoleteBranchEvidence": [
@@ -3507,7 +3532,7 @@
       },
       "obsoleteBranchEvidence": [],
       "notes": [
-        "The exact shared vector is 0\u21920, 1\u21921, 2\u21923, 3\u21926. TypeScript also checks the reverse mapping; both sides reject purpose -1/4, adjacent unsupported tags, and every canonical tag with a mismatched pointer index.",
+        "The exact shared vector is 0→0, 1→1, 2→3, 3→6. TypeScript also checks the reverse mapping; both sides reject purpose -1/4, adjacent unsupported tags, and every canonical tag with a mismatched pointer index.",
         "Pinned Aiken v1.1.21 focused check collected exactly one passing test for the exhaustive Aiken vector."
       ]
     },
@@ -3539,6 +3564,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "deleted-identity",
         "notApplicableReason": "The retired raw payload identity has no canonical wire value and no Aiken counterpart; the sole retained DA payload body is audited by D03/D04."
       },
       "obsoleteBranchEvidence": [
@@ -3585,6 +3611,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "deleted-identity",
         "notApplicableReason": "The retired envelope payload identity has no canonical wire value and no Aiken counterpart; the sole retained envelope is audited by D05."
       },
       "obsoleteBranchEvidence": [
@@ -3781,6 +3808,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The DA payload is an off-chain availability object that Aiken never decodes; its embedded HeaderV1 has the cross-language ABI row L01, and its committed member roots are audited by the L16/L17 commitment and proof rows."
       },
       "obsoleteBranchEvidence": [
@@ -3947,6 +3975,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "These nested bodies are off-chain DA containers that Aiken never decodes; the embedded HeaderV1 is the cross-language surface and is audited by L01."
       },
       "obsoleteBranchEvidence": [
@@ -4113,6 +4142,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The envelope is an off-chain storage and transport frame that Aiken never decodes; the inner payload and its embedded header are audited by D03/D04 and L01."
       },
       "obsoleteBranchEvidence": [
@@ -4273,6 +4303,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "libp2p protocol identifiers and gossip topics are host-to-host transport strings; Aiken has no transport surface."
       },
       "obsoleteBranchEvidence": [],
@@ -4398,6 +4429,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "A libp2p gossip frame is never decoded by Aiken; the payload and root values it announces are audited by D03/D04 and the L-family root rows."
       },
       "obsoleteBranchEvidence": [],
@@ -4574,6 +4606,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "Producer-to-committee stream frames are never decoded by Aiken; the submitted payload bytes are audited by D03/D04/D05."
       },
       "obsoleteBranchEvidence": [],
@@ -4728,6 +4761,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "Capability negotiation is a libp2p handshake with no Aiken counterpart; the advertised payload schema version is the D03 identity."
       },
       "obsoleteBranchEvidence": [
@@ -4915,6 +4949,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "Retrieval stream frames are never decoded by Aiken; the retrieved envelope and payload are audited by D05 and D03/D04."
       },
       "obsoleteBranchEvidence": [],
@@ -5106,6 +5141,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "Chunked retrieval frames are never decoded by Aiken; the reassembled envelope is audited by D05."
       },
       "obsoleteBranchEvidence": [],
@@ -5233,6 +5269,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "Retrieval metadata is a libp2p response frame with no Aiken counterpart; the roots it reports are audited by the L-family commitment rows."
       },
       "obsoleteBranchEvidence": [],
@@ -5394,6 +5431,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The retrieval frame is never decoded by Aiken; the proof members it carries are audited by the L17 MPF proof row and the V-family validation rows."
       },
       "obsoleteBranchEvidence": [],
@@ -5548,6 +5586,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The retrieval frame is never decoded by Aiken; the transition step and membership proof it carries are audited by the L-family transition-trace and L17 proof rows."
       },
       "obsoleteBranchEvidence": [],
@@ -5706,6 +5745,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The retrieval frame is never decoded by Aiken; the event-to-step entry and its membership or non-membership proof are audited by the L-family event-to-step and L17 proof rows."
       },
       "obsoleteBranchEvidence": [],
@@ -6153,6 +6193,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "Conflict evidence is committee-internal gossip and persistence; Aiken never decodes it. The attestation witnesses it embeds share the D16 preimage, whose cross-language agreement is proved there."
       },
       "obsoleteBranchEvidence": [
@@ -6308,6 +6349,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The runtime manifest is a host startup artifact that Aiken never reads; the deployment identity it binds is audited by the A-family deployment-manifest rows."
       },
       "obsoleteBranchEvidence": [
@@ -6416,6 +6458,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "This is a committee service storage record, not an Aiken datum; its embedded D03 payload bytes and roots have their own cross-language rows."
       },
       "obsoleteBranchEvidence": [],
@@ -6543,6 +6586,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "This is service persistence/provenance metadata, not an Aiken datum; the embedded signature witness and D16 attestation preimage are audited separately."
       },
       "obsoleteBranchEvidence": [],
@@ -7284,6 +7328,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "deleted-identity",
         "notApplicableReason": "Deleted launch profile has no surviving wire format in either language."
       },
       "obsoleteBranchEvidence": [
@@ -7424,6 +7469,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "deleted-identity",
         "notApplicableReason": "Deleted V2 launch language has no surviving TypeScript or Aiken format."
       },
       "obsoleteBranchEvidence": [
@@ -8101,6 +8147,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "ForcedTransactionJournalMemberV1 is a private Node/Postgres recovery wrapper. Aiken never decodes this wrapper; its contents are converted into separately registered canonical DA and proof formats before crossing the on-chain boundary."
       },
       "obsoleteBranchEvidence": [
@@ -8208,6 +8255,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "PendingBlockFinalizationV1 is a private Node/Postgres recovery wrapper. Its embedded headers, roots, native ledger outputs, and DA/proof material use separately registered cross-language formats."
       },
       "obsoleteBranchEvidence": [
@@ -8277,6 +8325,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "deleted-identity",
         "notApplicableReason": "The recovery chain is private Node/Postgres state. Its native output bytes and MPF roots are separately registered TS/Aiken formats."
       },
       "obsoleteBranchEvidence": [
@@ -8402,6 +8451,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "ForeignTipReconciliationV1 is a private Node/Postgres recovery wrapper. Its retained HeaderV1 and DaPayloadV1 bytes use separately registered cross-language formats."
       },
       "obsoleteBranchEvidence": [
@@ -8455,22 +8505,22 @@
           "wireRepresentation": "definite CBOR array of arity 16; the complete canonical output CBOR remains in DA/persistence and is authenticated as bounded-item field 2 rather than copied into the MPF leaf",
           "versionPolicy": "Descriptor version is exactly 1; output index is uint16; canonical CBOR re-encoding is mandatory; reference-script language is exactly absent=-1, native=0, PlutusV3=3, or MidgardV1=128.",
           "exactFields": [
-            "version=1",
-            "output_index:uint16",
-            "total_length:nonnegative safe integer",
-            "item_commitment:bytes32",
-            "address:canonical Cardano address bytes",
-            "lovelace:uint64",
-            "asset_count:0..16384 and within the validation-Merkle leaf bound",
-            "asset_frontier_commitment:bytes32",
-            "cardano_value_size:0..5000",
-            "reference_script_language:-1|0|3|128",
-            "reference_script_hash:empty iff absent, otherwise bytes28",
-            "reference_script_total_length:zero iff absent, otherwise positive",
-            "reference_script_item_commitment:empty iff absent, otherwise bytes32",
-            "cardano_tx_out:[root32,cbor_length:uint64,memory:uint64]",
-            "midgard_tx_out:[root32,cbor_length:uint64,memory:uint64]",
-            "cardano_spend_datum:[root32,cbor_length:uint64,memory:uint64]"
+            "0: version=1",
+            "1: output_index:uint16",
+            "2: total_length:nonnegative safe integer",
+            "3: item_commitment:bytes32",
+            "4: address:canonical Cardano address bytes",
+            "5: lovelace:uint64",
+            "6: asset_count:0..16384 and within the validation-Merkle leaf bound",
+            "7: asset_frontier_commitment:bytes32",
+            "8: cardano_value_size:0..5000",
+            "9: reference_script_language:-1|0|3|128",
+            "10: reference_script_hash:empty iff absent, otherwise bytes28",
+            "11: reference_script_total_length:zero iff absent, otherwise positive",
+            "12: reference_script_item_commitment:empty iff absent, otherwise bytes32",
+            "13: cardano_tx_out:[root32,cbor_length:uint64,memory:uint64]",
+            "14: midgard_tx_out:[root32,cbor_length:uint64,memory:uint64]",
+            "15: cardano_spend_datum:[root32,cbor_length:uint64,memory:uint64]"
           ],
           "constructorTagsNotApplicable": "This format is a definite CBOR array, not Plutus constructor Data.",
           "arrayArity": 16,
@@ -10440,7 +10490,7 @@
         }
       ],
       "notes": [
-        "The shared envelope hash is e9d2696e\u2026fdefa. Both parsers reject non-minimal CBOR, adjacent wrapper/UPLC versions, zero and over-bound counts, malformed roots, trailing bytes, and envelopes above 50 bytes."
+        "The shared envelope hash is e9d2696e…fdefa. Both parsers reject non-minimal CBOR, adjacent wrapper/UPLC versions, zero and over-bound counts, malformed roots, trailing bytes, and envelopes above 50 bytes."
       ]
     },
     {
@@ -10565,7 +10615,7 @@
         }
       ],
       "notes": [
-        "The shared compute-state hash is 8a475241\u202688d1; case-apply and semantic-builtin state hashes are independently pinned on both sides."
+        "The shared compute-state hash is 8a475241…88d1; case-apply and semantic-builtin state hashes are independently pinned on both sides."
       ]
     },
     {
@@ -10982,7 +11032,7 @@
         }
       ],
       "notes": [
-        "The shared nested Data root is 9ce9a6db\u202669de and the ordered map root is 96cf66f3\u2026bb51. Aiken v1.1.22 is required because v1.1.21 mis-reified the canonical negative bignum immediately below -2^64 in tests."
+        "The shared nested Data root is 9ce9a6db…69de and the ordered map root is 96cf66f3…bb51. Aiken v1.1.22 is required because v1.1.21 mis-reified the canonical negative bignum immediately below -2^64 in tests."
       ]
     },
     {
@@ -11123,7 +11173,7 @@
         }
       ],
       "notes": [
-        "The exact shared initial/terminal control hashes are 6b5258f7\u202607e4 and 865b9c51\u2026538fa. TypeScript validation now mirrors every Aiken control/frame/hash precondition before emitting evidence."
+        "The exact shared initial/terminal control hashes are 6b5258f7…07e4 and 865b9c51…538fa. TypeScript validation now mirrors every Aiken control/frame/hash precondition before emitting evidence."
       ]
     },
     {
@@ -11519,6 +11569,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The compact root-keyed DA value is an off-chain transport/storage wrapper. Aiken verifies the underlying typed K03-K08 preimages and roots when they are revealed by the fault-proof path; those cross-language node ABIs are audited in their own rows."
       },
       "obsoleteBranchEvidence": [
@@ -11614,6 +11665,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The sidecar is an off-chain admission/persistence/DA envelope and is not parsed by Aiken; each embedded typed root/preimage uses the separately audited cross-language K03-K08 ABI."
       },
       "obsoleteBranchEvidence": [
@@ -11707,6 +11759,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "This is an off-chain CLI/HTTP admission wrapper and is not parsed by Aiken. Its transaction CBOR and each embedded CEK material ABI are independently audited at their native and K-family boundaries."
       },
       "obsoleteBranchEvidence": [
@@ -12025,21 +12078,21 @@
           "wireRepresentation": "definite array/constructor 0 with 15 ordered fields",
           "versionPolicy": "field 0 machine version is exactly 1; version 9 and adjacent values reject",
           "exactFields": [
-            "version",
-            "eventKeyHash",
-            "txId",
-            "txCommitment",
-            "contextHash",
-            "sourceKind",
-            "priorRoot",
-            "phase",
-            "pc",
-            "workRoot",
-            "cpu",
-            "memory",
-            "verdict",
-            "rejectionHash",
-            "deltaRoot"
+            "0: version",
+            "1: eventKeyHash",
+            "2: txId",
+            "3: txCommitment",
+            "4: contextHash",
+            "5: sourceKind",
+            "6: priorRoot",
+            "7: phase",
+            "8: pc",
+            "9: workRoot",
+            "10: cpu",
+            "11: memory",
+            "12: verdict",
+            "13: rejectionHash",
+            "14: deltaRoot"
           ],
           "constructorTags": [
             {
@@ -12148,14 +12201,14 @@
           "wireRepresentation": "definite array/Plutus constructor 0 with eight ordered fields",
           "versionPolicy": "schemaVersion and machineVersion are both exactly 1",
           "exactFields": [
-            "schemaVersion",
-            "machineVersion",
-            "traceRoot",
-            "stepCount",
-            "initialHash",
-            "terminalHash",
-            "verdict",
-            "rejectionHash"
+            "0: schemaVersion",
+            "1: machineVersion",
+            "2: traceRoot",
+            "3: stepCount",
+            "4: initialHash",
+            "5: terminalHash",
+            "6: verdict",
+            "7: rejectionHash"
           ],
           "constructorTags": [
             {
@@ -12415,6 +12468,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "Aiken consumes the same V1 frontier/membership shapes through validation controls and trace-proof vectors; this row's canonical compact frontier builder is TypeScript-owned while V03 records the direct cross-language trace membership."
       },
       "obsoleteBranchEvidence": [
@@ -13224,17 +13278,17 @@
           "wireRepresentation": "definite raw-CBOR array/11",
           "versionPolicy": "exact V1 control only; malformed accumulators and schedules reject",
           "exactFields": [
-            "compact_cbor",
-            "witness_set_compact_cbor",
-            "field_preimage_lengths_cbor",
-            "context_cbor",
-            "cursor",
-            "accumulator",
-            "remaining_schedule_hash",
-            "signer_count",
-            "signer_frontier_commitment",
-            "pending",
-            "resolution_schedule_hash"
+            "0: compact_cbor",
+            "1: witness_set_compact_cbor",
+            "2: field_preimage_lengths_cbor",
+            "3: context_cbor",
+            "4: cursor",
+            "5: accumulator",
+            "6: remaining_schedule_hash",
+            "7: signer_count",
+            "8: signer_frontier_commitment",
+            "9: pending",
+            "10: resolution_schedule_hash"
           ],
           "constructorTagsNotApplicable": "Canonical raw-CBOR control array",
           "arrayArity": 11,
@@ -13912,10 +13966,10 @@
           "wireRepresentation": "array/4 [outcome,code,ledgerRoot,deltaEvidence]",
           "versionPolicy": "only exact V1 accepted/rejected classification",
           "exactFields": [
-            "outcome 1 accepted or 2 rejected",
-            "accepted code empty and delta frontier encoded",
-            "rejected code nonempty and deltaEvidence exactly 0x80",
-            "ledgerRoot 32 bytes"
+            "0: outcome 1 accepted or 2 rejected",
+            "1: accepted code empty and delta frontier encoded",
+            "2: rejected code nonempty and deltaEvidence exactly 0x80",
+            "3: ledgerRoot 32 bytes"
           ],
           "constructorTagsNotApplicable": "Raw-CBOR outcome integer, not a Plutus constructor",
           "arrayArity": 4,
@@ -14222,6 +14276,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "This is an off-chain PostgreSQL lifecycle boundary; Aiken never parses SQL or the migration ledger."
       },
       "obsoleteBranchEvidence": [],
@@ -14252,6 +14307,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "deleted-identity",
         "notApplicableReason": "The retired runtime PostgreSQL column migration was off-chain only and has no Aiken format."
       },
       "obsoleteBranchEvidence": [
@@ -14289,6 +14345,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "deleted-identity",
         "notApplicableReason": "P03 deletes an off-chain database/API compatibility alias; the surviving ForcedInclusionTxV1 datum is independently audited under L08."
       },
       "obsoleteBranchEvidence": [
@@ -14418,6 +14475,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "ParkedMpfOverlayV1 is an off-chain TypeScript worker/Level lifecycle artifact; Aiken never parses it."
       },
       "obsoleteBranchEvidence": [],
@@ -14569,6 +14627,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The event-flat park/resume record is an off-chain TypeScript worker artifact; Aiken never parses it."
       },
       "obsoleteBranchEvidence": [
@@ -14954,6 +15013,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "WirePhaseACandidateV1 is an off-chain worker_threads transport record. Its embedded protocol encodings are independently governed by their native/ledger/script ABI rows."
       },
       "obsoleteBranchEvidence": [
@@ -15050,6 +15110,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The engine identifier is an off-chain node/runtime choice; Aiken never parses or branches on it. Architecture G's TypeScript/Rust wire language is independently proven under P06."
       },
       "obsoleteBranchEvidence": [],
@@ -15251,6 +15312,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The DA libp2p runtime manifest is a local process-configuration JSON file consumed only by the TypeScript node and DA committee node; libp2p peer identity, multiaddrs, gossip flags and transport limits never cross an on-chain boundary, so no Aiken type, Plutus datum, or redeemer encodes this format. The on-chain DA surface is limited to the attestation preimage domain and committee signer hash, which are separate audited formats."
       },
       "obsoleteBranchEvidence": [
@@ -15540,6 +15602,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The deployment manifest is an off-chain operational JSON artifact: no Aiken type, Plutus datum, or redeemer encodes it, and its `manifestId` is a SHA-256 over canonical stable JSON rather than an on-chain hash. The values it authenticates that do cross to L1 (validator script bytes and hashes, reference-script UTxO outrefs, role unit token names, the fraud-proof catalogue MPF root and membership proofs, the DA committee blake2b signers hash) are individually recomputed here from Cardano/MPF primitives, and each of those on-chain encodings is a separate audited format rather than part of this artifact's wire language."
       },
       "obsoleteBranchEvidence": [
@@ -15624,7 +15687,7 @@
         {
           "name": "DeploymentRunStateV1",
           "kind": "exact persisted JSON deployment run-state artifact",
-          "wireRepresentation": "JSON object serialized as 2-space-indented UTF-8 with a trailing newline; every value is a canonical trimmed non-empty string, non-negative safe integer, plain-object map, or array \u2014 no bigint and no non-plain-object value is accepted at any depth",
+          "wireRepresentation": "JSON object serialized as 2-space-indented UTF-8 with a trailing newline; every value is a canonical trimmed non-empty string, non-negative safe integer, plain-object map, or array — no bigint and no non-plain-object value is accepted at any depth",
           "versionPolicy": "schemaVersion is required and must equal exactly \"midgard-deployment-run-state-v1\"; any other or missing value fails with \"Unsupported run-state schemaVersion\" before any field is trusted, and no historical or defaulted version is accepted",
           "exactFields": [
             "required: schemaVersion",
@@ -15742,6 +15805,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The deployment run state is a node-local operator JSON file describing CLI progress (runId, mode, per-step status, event log). No Aiken validator, Plutus datum, or redeemer encodes run/step/event evidence: the only identity it shares with on-chain data is the deployment marker manifestId, which is itself audited under the deployment-manifest row, so there is no Aiken counterpart to cross-check for this format."
       },
       "obsoleteBranchEvidence": [
@@ -15811,7 +15875,7 @@
         {
           "name": "E2EStepV1",
           "kind": "exact E2E step-summary JSON record",
-          "wireRepresentation": "JSON object; every root value is a canonical string, safe integer, boolean, null, or array, and parsedJson is an arbitrary but strictly JSON-validated value (assertJsonValue rejects non-finite numbers and non-plain objects) \u2014 no bigint appears anywhere",
+          "wireRepresentation": "JSON object; every root value is a canonical string, safe integer, boolean, null, or array, and parsedJson is an arbitrary but strictly JSON-validated value (assertJsonValue rejects non-finite numbers and non-plain objects) — no bigint appears anywhere",
           "versionPolicy": "schemaVersion is required and must equal exactly \"midgard-e2e-step-v1\"; \"midgard-e2e-step-v0\" and every other value are rejected before any field is trusted, and there is no defaulted or historical version path",
           "exactFields": [
             "required: schemaVersion",
@@ -15950,6 +16014,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The V1 step summary records local child-process execution: pid, exit code, POSIX signal name, redacted argv/env provenance, raw log path, and process-group cleanup evidence. None of those members exist in the on-chain protocol; no Aiken validator or Plutus datum/redeemer encodes an E2E step, so there is no cross-language encoding of this format to compare against."
       },
       "obsoleteBranchEvidence": [
@@ -16016,7 +16081,7 @@
         {
           "name": "E2ERunSummaryV1",
           "kind": "exact persisted JSON run-summary artifact with a derived Markdown projection",
-          "wireRepresentation": "JSON object serialized as 2-space-indented UTF-8 with a trailing newline, plus a deterministic Markdown rendering of the same record; all values are canonical strings, safe integers, arrays, or nested exact records, and gate/db `details` maps are open-keyed but strictly string-valued \u2014 no bigint appears anywhere",
+          "wireRepresentation": "JSON object serialized as 2-space-indented UTF-8 with a trailing newline, plus a deterministic Markdown rendering of the same record; all values are canonical strings, safe integers, arrays, or nested exact records, and gate/db `details` maps are open-keyed but strictly string-valued — no bigint appears anywhere",
           "versionPolicy": "schemaVersion is required and must equal exactly \"midgard-e2e-summary-v1\"; \"midgard-e2e-summary-v0\" and every other value are rejected, and no code path emits or accepts a post-V1 summary identity (the registry's historical v2 naming has no reader or writer left)",
           "exactFields": [
             "required: schemaVersion",
@@ -16161,6 +16226,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The run summary is a local operator report over off-chain evidence (HTTP endpoint probes, Postgres counts, child-process step outcomes, operator verdicts and next-action advice). No Aiken validator or Plutus datum/redeemer encodes verdicts, gates, or retry summaries, so this format has no on-chain or Aiken counterpart to cross-check; the only shared values are 32-byte transaction hashes, which are audited where they are produced."
       },
       "obsoleteBranchEvidence": [
@@ -16340,6 +16406,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The DA gate result is local E2E harness evidence about libp2p publication progress (peer ids, signer indexes, announcement recipients, wait attempts). No Plutus datum or redeemer and no Aiken type encodes a gate probe or bounded-wait observation; the on-chain DA attestation marker it waits for is a separate, separately audited format."
       },
       "obsoleteBranchEvidence": [
@@ -16582,6 +16649,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "Both L2 stress artifacts are off-chain load-generator evidence: client submission timing, Postgres-derived stage windows, observer bookkeeping and retained file paths. Nothing in either artifact is hashed into a datum, signed, or decoded by an Aiken validator, so there is no Plutus or Aiken counterpart to cross-check."
       },
       "obsoleteBranchEvidence": [
@@ -16877,6 +16945,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "All three artifacts describe local Linux process facts - PID, PGID, boot id, /proc start ticks, cmdline digest, pid files and HTTP readiness probes. No on-chain script consumes process ownership, so there is no Plutus datum, redeemer, or Aiken type that encodes a managed-service, supervisor, or process-group record to cross-check."
       },
       "obsoleteBranchEvidence": [
@@ -17026,6 +17095,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The reconciliation verdict is operator-facing CLI JSON that summarizes Cardano and Postgres queries. The L1 objects it points at (state-queue nodes, DA attestation markers, PHAS registration) have their own audited on-chain formats, but the reconciliation envelope itself is never encoded in a datum or redeemer and no Aiken type mirrors it."
       },
       "obsoleteBranchEvidence": [
@@ -17143,6 +17213,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "Local-devnet operational attestation produced by a bash reset script and consumed by the TypeScript acceptance controller; no Plutus datum, redeemer, or Aiken type encodes a reset attestation, so there is no on-chain counterpart to cross-check."
       },
       "obsoleteBranchEvidence": [
@@ -17261,6 +17332,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The matched snapshot identity names Docker images, host artifact digests, and a local devnet ledger checkpoint; nothing in it is serialized to the chain, so no Aiken type or Plutus datum encodes this document and there is no cross-language counterpart to compare."
       },
       "obsoleteBranchEvidence": [
@@ -17837,6 +17909,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "Every retained identity in this family is host-local operational JSON: a captured container/CPU environment fingerprint, a Postgres genesis-ledger report, T1 probe/advance/attestation evidence about the local devnet, a cardano-cli registration proof, and a process-acceptance summary. The only chain-facing bytes they reference (the PHAS stake-registration CBOR) are re-derived with CML rather than encoded by any Aiken type, so no Plutus datum or redeemer carries these formats."
       },
       "obsoleteBranchEvidence": [
@@ -18145,6 +18218,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The consolidation journal, result, report, and readiness evidence are local operator-side JSON/NDJSON files under the node's .stress-wallets directory; no Plutus datum, redeemer, or Aiken type encodes them, and the only on-chain-shaped value they carry (the signed Midgard native V1 transaction CBOR) is cross-checked against the shared midgard-core codec rather than against a separate Aiken encoding."
       },
       "obsoleteBranchEvidence": [
@@ -18752,6 +18826,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The wallet record, create/prepare/fanout results, fanout report, and terminal-drain journal/result/report are local operator-side JSON files under the node's .stress-wallets directory; there is no Aiken type, Plutus datum, or Plutus redeemer that encodes any of them. The only cross-language surface they touch is the signed Midgard native V1 transaction CBOR, and the journals validate that by re-deriving the transaction id through the shared midgard-core codec rather than through a second on-chain encoding."
       },
       "obsoleteBranchEvidence": [
@@ -19273,6 +19348,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The corpus manifest, generation result, verification artifact, prefix evidence, index rows, and corpus rows are offline benchmark-input files on the operator's filesystem; no Aiken type or Plutus datum/redeemer encodes any of them. The cross-language concern they do carry - that every corpus row's bytes really are a canonical Midgard native V1 transaction - is discharged by decoding each row through the shared midgard-core codec and recomputing its transaction id, so the on-chain-relevant encoding is checked against the single canonical implementation rather than against a parallel Aiken definition."
       },
       "obsoleteBranchEvidence": [
@@ -19311,6 +19387,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "deleted-identity",
         "notApplicableReason": "The deleted historical stress-corpus extension and historical binding members were offline benchmark-input fields with no Aiken type, Plutus datum, or protocol ABI counterpart, so there is nothing to keep in agreement across languages."
       },
       "obsoleteBranchEvidence": [
@@ -19474,6 +19551,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The Phase 1 live corpus binding is a host-local benchmark input file consumed only by Node.js scripts (create-phase1-formal-binding, the formal scenario builder, and the Architecture-G/Phase-3 closure capture); no Aiken validator, Plutus datum, or redeemer encodes deployment/corpus/harness binding identity, so there is no on-chain counterpart to cross-check."
       },
       "obsoleteBranchEvidence": [
@@ -19673,6 +19751,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "Both documents describe host Linux facts (/proc identities, cgroup-v2 limits, CPU affinity, boot ID, Docker socket dev/ino, published loopback ports) that exist only on the machine running the soak; nothing in the Aiken on-chain code or any Plutus datum/redeemer encodes load-generator isolation, so there is no cross-language encoding to compare."
       },
       "obsoleteBranchEvidence": [
@@ -19885,6 +19964,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The clean-live E2E report is local operational evidence about a Docker/Postgres devnet run (driver exit codes, retained log digests, secret scans, host process restarts, database row counts); the L1 transactions it references are identified only by hash, and no Aiken validator or Plutus datum/redeemer encodes this report, so there is no on-chain counterpart to cross-check."
       },
       "obsoleteBranchEvidence": [
@@ -20066,6 +20146,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "The soak report is a host-local 24-hour operational measurement (Prometheus counter snapshots, Postgres MPF audit state, /proc RSS and start ticks, Docker isolation identity, submit-record NDJSON digests). No Aiken validator or Plutus datum/redeemer encodes soak sampling, duration, or drain evidence, so there is no on-chain or cross-language encoding of this format to compare against."
       },
       "obsoleteBranchEvidence": [
@@ -20955,6 +21036,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "All twelve Architecture G identities are process-local benchmark evidence produced by demo/midgard-node scripts and workers and persisted as JSON files or stdout lines on the measurement host. No Aiken validator, Plutus datum, or redeemer encodes a root-gate summary, corpus-preparation artifact, funding map, candidate seed/input, seed result, probe result, or candidate gate summary, so there is no on-chain or Aiken counterpart to cross-check."
       },
       "obsoleteBranchEvidence": [
@@ -20974,7 +21056,7 @@
       "family": "A",
       "sourceOwnerAndCurrentIdentity": "Phase-5 DA measurement/distribution/fixture/strict-chain artifacts v1",
       "classification": "artifact",
-      "canonicalResult": "Invalidate/remove; regenerate only after \u00a72.5 follow-up can produce complete V1 bytes within bounded publication",
+      "canonicalResult": "Invalidate/remove; regenerate only after §2.5 follow-up can produce complete V1 bytes within bounded publication",
       "boundaryBindingAndPersistence": "No active reader, writer, package command, or evidence boundary remains; future bounded-publication evidence must use a newly audited canonical format.",
       "requiredEvidence": "Zero active matches for the retired package command, large-envelope/report inputs, and both Phase-5 evidence schema identities.",
       "disposition": "delete",
@@ -20986,6 +21068,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "deleted-identity",
         "notApplicableReason": "Deleted local operational evidence had no Aiken encoding or protocol ABI counterpart."
       },
       "obsoleteBranchEvidence": [
@@ -21224,6 +21307,7 @@
       "crossLanguageEvidence": {
         "status": "PASS",
         "tests": [],
+        "notApplicableCategory": "no-onchain-counterpart",
         "notApplicableReason": "Both identities are host-side operational diagnostics of the Architecture G benchmark run: a redacted driver-log scan record embedded in a local JSON report, and a Docker load-container supervision NDJSON stream written on the benchmark host. Neither is ever submitted to a chain, and no Aiken validator, Plutus datum, or redeemer encodes or reads a secret-scan result or a watchdog event, so there is no cross-language counterpart."
       },
       "obsoleteBranchEvidence": [
