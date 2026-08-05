@@ -74,6 +74,61 @@ jobs:
       - name: Verify canonical watcher focused-test evidence
         run: node demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs
 
+  # #519 V-8: `verify-canonical-v1-header-v1-abi.mjs` holds the only comparison
+  # of the format registry's L01 contract against BOTH real projections — the
+  # blueprint the Aiken compiler generates and the Data schema the built SDK
+  # exports at runtime — and its `run()` was invoked by nothing, so the row's
+  # cross-language claim rested on that script's own success message. This job
+  # exists because that comparison needs artifacts the `verify` job does not
+  # produce: a compiled blueprint (no compiler there) and a built SDK. It is a
+  # separate job rather than more steps in `verify` so the compiler setup and
+  # `aiken build` do not lengthen the critical path of the pure-node gates,
+  # and it is in THIS workflow, not `aiken-ci`, because that workflow is
+  # path-filtered to `onchain/aiken/**` and would not run when the registry or
+  # the SDK schema moves — which is exactly the drift this gate is for.
+  header-v1-abi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aiken-lang/setup-aiken@v1.0.3
+        with:
+          # The released authority compiler, matching `aiken-ci`'s `aiken
+          # build` and every applied validator hash in release evidence. The
+          # patched fork is for executing tests only and must not produce the
+          # blueprint an ABI claim is measured against.
+          version: v1.1.22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: demo/.nvmrc
+          cache: pnpm
+          cache-dependency-path: demo/pnpm-lock.yaml
+      - name: Install workspace dependencies
+        run: pnpm --dir demo install --frozen-lockfile --ignore-scripts
+      - name: Build the SDK whose runtime schema is compared
+        run: >-
+          pnpm --dir demo/midgard-core run build &&
+          pnpm --dir demo/midgard-sdk run build
+      - name: Generate the Aiken blueprint the ABI gate compares against
+        working-directory: onchain/aiken
+        run: aiken build
+      # The real three-way comparison. Both artifacts above are inputs it did
+      # not synthesize; the gate fails closed if either is missing.
+      - name: Verify HeaderV1 ABI against the real blueprint and SDK schema
+        run: node demo/scripts/verify-canonical-v1-header-v1-abi.mjs
+      # The registry's L01 cross-language row cites this suite's real-projection
+      # case by name, so the row's evidence is only as good as this run.
+      - name: Run the HeaderV1 ABI contract test suite
+        run: node --test demo/scripts/verify-canonical-v1-header-v1-abi.test.mjs
+      # An uninvoked gate and a gate that cannot fail are the same defect. The
+      # self-test seeds a mismatch into exactly one of the three inputs at a
+      # time — leaving the other two real — and requires each run to exit
+      # non-zero with its specific diagnostic.
+      - name: Self-test the HeaderV1 ABI gate against seeded mismatches
+        run: node demo/scripts/verify-canonical-v1-header-v1-abi-self-test.mjs
+
   # GOAL_SPEC.md §7 F40: "wires `goal:verify:static` into repository CI for the
   # Goal branch so drift is caught between checkpoints." This job runs the
   # static phase exactly as the plan defines it — no extra commands, no removed

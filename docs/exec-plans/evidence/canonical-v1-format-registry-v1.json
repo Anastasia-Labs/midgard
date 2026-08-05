@@ -6946,9 +6946,9 @@
             "testNames": ["matches %s to %s recursively"]
           },
           {
-            "path": "demo/scripts/verify-canonical-v1-header-v1-abi.mjs",
+            "path": "demo/scripts/verify-canonical-v1-header-v1-abi.test.mjs",
             "testNames": [
-              "HeaderV1 ABI verified: registry, SDK runtime schema, and Aiken blueprint agree"
+              "agrees with the real Aiken blueprint and the real SDK runtime schema"
             ]
           }
         ],

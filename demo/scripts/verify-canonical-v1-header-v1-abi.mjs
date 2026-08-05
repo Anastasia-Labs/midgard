@@ -5,17 +5,38 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const registryPath = resolve(
+const defaultRegistryPath = resolve(
   repoRoot,
   "docs/exec-plans/evidence/canonical-v1-format-registry-v1.json",
 );
 const defaultBlueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
-const defaultSdkModulePath = resolve(repoRoot, "demo/midgard-sdk/dist/index.js");
+const defaultSdkModulePath = resolve(
+  repoRoot,
+  "demo/midgard-sdk/dist/index.js",
+);
+
+// Redirection hooks for the behavioral self-test. Each names ONE input; the
+// self-test seeds a mismatch into exactly one of them and leaves the other two
+// real, so a run that passed only because two synthesized projections agreed
+// with each other cannot happen here. Precedence is flag, then environment
+// variable, then the real repository path.
+const underTestArgument = (flag) => {
+  const match = process.argv
+    .slice(2)
+    .find((argument) => argument.startsWith(`--${flag}=`));
+  return match === undefined ? null : resolve(match.slice(flag.length + 3));
+};
+const inputPath = (flag, environmentVariable, fallback) =>
+  underTestArgument(flag) ??
+  (process.env[environmentVariable] === undefined
+    ? fallback
+    : resolve(process.env[environmentVariable]));
 
 const isRecord = (value) =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
-const contractError = (message) => new Error(`HeaderV1 ABI contract: ${message}`);
+const contractError = (message) =>
+  new Error(`HeaderV1 ABI contract: ${message}`);
 
 const requireRecord = (value, label) => {
   if (!isRecord(value)) throw contractError(`${label} must be an object`);
@@ -30,7 +51,10 @@ const requireString = (value, label) => {
 };
 
 const requireArray = (value, label, length) => {
-  if (!Array.isArray(value) || (length !== undefined && value.length !== length)) {
+  if (
+    !Array.isArray(value) ||
+    (length !== undefined && value.length !== length)
+  ) {
     const expected =
       length === undefined ? "an array" : `an array of length ${length}`;
     throw contractError(`${label} must be ${expected}`);
@@ -105,7 +129,9 @@ export const assertHeaderV1AbiContract = (value) => {
     FIELD_COUNT,
   );
   if (JSON.stringify(exactFields) !== JSON.stringify(names)) {
-    throw contractError("contract.exactFields must equal the indexed field names");
+    throw contractError(
+      "contract.exactFields must equal the indexed field names",
+    );
   }
   if (new Set(names).size !== names.length) {
     throw contractError("contract field names must be unique");
@@ -124,11 +150,7 @@ export const assertHeaderV1AbiContract = (value) => {
     );
   }
 
-  const contractGroups = requireArray(
-    contract.groups,
-    "contract.groups",
-    3,
-  );
+  const contractGroups = requireArray(contract.groups, "contract.groups", 3);
   const groupNames = new Set();
   let coveredFields = 0;
   for (const [groupIndex, groupValue] of contractGroups.entries()) {
@@ -154,7 +176,11 @@ export const assertHeaderV1AbiContract = (value) => {
         `contract.groups[${groupIndex.toString()}].count must be a positive integer`,
       );
     }
-    for (let index = group.start; index < group.start + group.count; index += 1) {
+    for (
+      let index = group.start;
+      index < group.start + group.count;
+      index += 1
+    ) {
       if (index >= FIELD_COUNT || groups[index] !== name) {
         throw contractError(
           `contract.fields[${index.toString()}].group must be ${name}`,
@@ -215,7 +241,9 @@ const blueprintSchemaKind = (schema, definitions, resolving = new Set()) => {
   if (value.dataType === "list") return "list";
   if (value.dataType === "map") return "map";
   if (value.dataType === "constructor") return "constructor";
-  throw new Error(`unsupported blueprint schema kind ${String(value.dataType)}`);
+  throw new Error(
+    `unsupported blueprint schema kind ${String(value.dataType)}`,
+  );
 };
 
 /** Extract HeaderV1's constructor shape from the generated Aiken blueprint. */
@@ -226,7 +254,10 @@ export const extractHeaderV1Blueprint = (blueprint) => {
     definitions["midgard/ledger_state/HeaderV1"],
     "blueprint HeaderV1 definition",
   );
-  const variants = requireArray(definition.anyOf, "blueprint HeaderV1 variants");
+  const variants = requireArray(
+    definition.anyOf,
+    "blueprint HeaderV1 variants",
+  );
   const constructor = variants.find((candidate) => candidate?.index === 0);
   if (constructor === undefined) {
     throw new Error("blueprint HeaderV1 constructor 0 is missing");
@@ -248,7 +279,9 @@ export const extractHeaderV1Blueprint = (blueprint) => {
           `blueprint HeaderV1 field ${index.toString()}.title`,
         ),
         aikenRef:
-          entry.$ref === undefined ? null : decodeJsonPointerReference(entry.$ref),
+          entry.$ref === undefined
+            ? null
+            : decodeJsonPointerReference(entry.$ref),
         type: blueprintSchemaKind(entry, definitions),
       };
     }),
@@ -287,7 +320,10 @@ export const extractHeaderV1SdkSchema = (schema) => {
       constructorArity: entries.length,
       fields: entries.map(([name, field], index) => ({
         index,
-        name: requireString(name, `SDK HeaderV1 field ${index.toString()}.name`),
+        name: requireString(
+          name,
+          `SDK HeaderV1 field ${index.toString()}.name`,
+        ),
         type: schemaKind(field),
       })),
     };
@@ -405,29 +441,59 @@ const loadJson = (path, label) => {
   }
 };
 
-const run = async () => {
+/**
+ * The only path that compares the registry-owned contract against BOTH real
+ * projections: the blueprint the Aiken compiler generated and the Data schema
+ * the built SDK exports at runtime.  Nothing here is synthesized from the
+ * contract under test.
+ */
+export const run = async () => {
+  const registryPath = inputPath(
+    "registry-under-test",
+    "MIDGARD_FORMAT_REGISTRY_PATH",
+    defaultRegistryPath,
+  );
   const registry = loadJson(registryPath, "format registry");
   const row = registry.formats?.find((candidate) => candidate?.id === "L01");
   if (!row?.canonicalForms?.[0]) {
     throw new Error("format registry L01 must provide canonicalForms[0]");
   }
   const contract = row.canonicalForms[0];
-  const blueprintPath = process.env.MIDGARD_REAL_BLUEPRINT_PATH ?? defaultBlueprintPath;
-  const sdkModulePath = process.env.MIDGARD_SDK_MODULE_PATH ?? defaultSdkModulePath;
+  const blueprintPath = inputPath(
+    "blueprint-under-test",
+    "MIDGARD_REAL_BLUEPRINT_PATH",
+    defaultBlueprintPath,
+  );
+  const sdkModulePath = inputPath(
+    "sdk-module-under-test",
+    "MIDGARD_SDK_MODULE_PATH",
+    defaultSdkModulePath,
+  );
   if (!existsSync(sdkModulePath)) {
     throw new Error(
       `SDK runtime module does not exist: ${sdkModulePath}; build @al-ft/midgard-sdk first`,
     );
   }
   const sdk = await import(pathToFileURL(sdkModulePath).href);
-  verifyHeaderV1Abi({
+  const normalized = verifyHeaderV1Abi({
     contract,
     blueprint: loadJson(blueprintPath, "Aiken blueprint"),
     sdkSchema: sdk.HeaderV1Schema,
   });
+  // Provenance, not evidence: this line names the three inputs that were
+  // actually read so a passing run can be attributed. It is not a test name
+  // and must never be cited as one — the format-registry gate rejects any row
+  // that cites an output literal of a script it names.
   process.stdout.write(
-    "HeaderV1 ABI verified: registry, SDK runtime schema, and Aiken blueprint agree (constructor 0, arity 25).\n",
+    [
+      `header-v1-abi: PASS constructor ${normalized.constructorTag} arity ${normalized.constructorArity}`,
+      `  registry:  ${registryPath}`,
+      `  blueprint: ${blueprintPath}`,
+      `  sdk:       ${sdkModulePath}`,
+      "",
+    ].join("\n"),
   );
+  return normalized;
 };
 
 const invokedDirectly =
@@ -437,7 +503,9 @@ if (invokedDirectly) {
   try {
     await run();
   } catch (error) {
-    process.stderr.write(`HeaderV1 ABI verification failed: ${error.message}\n`);
+    process.stderr.write(
+      `HeaderV1 ABI verification failed: ${error.message}\n`,
+    );
     process.exitCode = 1;
   }
 }

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 // Negative self-test for the canonical V1 format-registry gate's bounded
-// not-applicable excuses and its exact-field pins (V-6, issue #530). The gate
+// not-applicable excuses, its exact-field pins (V-6, issue #530) and its
+// refusal to accept a verifier's own output string as a test (V-8, #531). The
+// gate
 // is tested by behavior, not by reading its source: each hostile mutation is
 // written to a throwaway copy of the registry, the real gate is invoked against
 // that copy through its `--registry-under-test=` hook, and the run must exit
@@ -144,6 +146,36 @@ mustReject(
   (candidate) => {
     rowOf(candidate, "L01").crossLanguageEvidence.notApplicableCategory =
       "no-onchain-counterpart";
+  },
+);
+
+// --- Verifier output strings are not tests ---------------------------------
+
+// The exact defect V-8 found (issue #531): L01's cross-language claim cited, as
+// a test name, the literal argument of a `process.stdout.write` in the very
+// verifier it named, so the claim was satisfied by that verifier's own success
+// message in its own source. Restoring that shape must be rejected.
+mustReject(
+  "L01 cites the ABI verifier's own success message as a cross-language test",
+  /cites "header-v1-abi: PASS[^"]*" as a test name, but demo\/scripts\/verify-canonical-v1-header-v1-abi\.mjs only ever writes it as output/u,
+  (candidate) => {
+    rowOf(candidate, "L01").crossLanguageEvidence.tests[1] = {
+      path: "demo/scripts/verify-canonical-v1-header-v1-abi.mjs",
+      testNames: ["header-v1-abi: PASS constructor "],
+    };
+  },
+);
+
+// The same mechanism in a positive-evidence slot is rejected too, so the rule
+// is not a special case for one row's cross-language field.
+mustReject(
+  "L01 cites a verifier output string as positive evidence",
+  /cites "header-v1-abi: PASS[^"]*" as a test name, but demo\/scripts\/verify-canonical-v1-header-v1-abi\.mjs only ever writes it as output/u,
+  (candidate) => {
+    rowOf(candidate, "L01").positiveEvidence[2] = {
+      path: "demo/scripts/verify-canonical-v1-header-v1-abi.mjs",
+      testNames: ["header-v1-abi: PASS constructor "],
+    };
   },
 );
 

@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { dirname, extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { assertHeaderV1AbiContract } from "./verify-canonical-v1-header-v1-abi.mjs";
@@ -667,6 +667,53 @@ const loadRepoText = (relativePath, label) => {
     return null;
   }
 };
+// #519 V-8: `text.includes(name)` accepted a row that cited, as a test name,
+// the literal argument of a `process.stdout.write` in the very script it named
+// — the cross-language claim was satisfied by a verifier's own success message
+// in its own source. Textual containment cannot tell a declared test from a
+// printed sentence, so the printed sentences are located explicitly and a
+// citation that only ever matches inside one is rejected.
+const OUTPUT_CALL =
+  /(?:process\.(?:stdout|stderr)\.write|console\.(?:log|error|warn|info|debug))\s*\(/gu;
+const outputLiteralExtensions = new Set([".cjs", ".js", ".mjs", ".ts", ".tsx"]);
+/** Byte ranges of every argument list passed to an output-writing call. */
+const outputCallRanges = (text) => {
+  const ranges = [];
+  OUTPUT_CALL.lastIndex = 0;
+  let match;
+  while ((match = OUTPUT_CALL.exec(text)) !== null) {
+    const start = match.index + match[0].length;
+    let depth = 1;
+    let index = start;
+    while (index < text.length && depth > 0) {
+      const character = text[index];
+      if (character === "(") depth += 1;
+      else if (character === ")") depth -= 1;
+      index += 1;
+    }
+    ranges.push([start, index]);
+    OUTPUT_CALL.lastIndex = index;
+  }
+  return ranges;
+};
+const citesOnlyOutputLiterals = (text, path, name) => {
+  if (!outputLiteralExtensions.has(extname(path))) return false;
+  const ranges = outputCallRanges(text);
+  if (ranges.length === 0) return false;
+  let occurrences = 0;
+  let inside = 0;
+  for (
+    let index = text.indexOf(name);
+    index !== -1;
+    index = text.indexOf(name, index + 1)
+  ) {
+    occurrences += 1;
+    if (ranges.some(([start, end]) => index >= start && index < end)) {
+      inside += 1;
+    }
+  }
+  return occurrences > 0 && occurrences === inside;
+};
 const verifyReferences = (references, label, contentField) => {
   if (!Array.isArray(references)) {
     fail(`${label} must be an array`);
@@ -691,6 +738,15 @@ const verifyReferences = (references, label, contentField) => {
       if (text !== null && isNonEmptyString(name) && !text.includes(name)) {
         fail(
           `${label}[${index}] does not contain ${contentField} entry ${JSON.stringify(name)}: ${reference.path}`,
+        );
+      } else if (
+        text !== null &&
+        contentField === "testNames" &&
+        isNonEmptyString(name) &&
+        citesOnlyOutputLiterals(text, reference.path, name)
+      ) {
+        fail(
+          `${label}[${index}] cites ${JSON.stringify(name)} as a test name, but ${reference.path} only ever writes it as output: a verifier's own success message is not a test`,
         );
       }
     }
