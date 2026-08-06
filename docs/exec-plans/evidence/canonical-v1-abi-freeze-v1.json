@@ -1,0 +1,1056 @@
+{
+  "schemaVersion": "midgard-canonical-v1-abi-freeze-v1",
+  "goalIds": ["IG1", "IG2"],
+  "goalSpecAnchors": [
+    "GOAL_SPEC.md 11 IG1 — ABI gate",
+    "GOAL_SPEC.md 11 IG2 — Proof-family gate",
+    "GOAL_SPEC.md 11 IG4 — Release gate (this freeze is an input to it, never a substitute)"
+  ],
+  "sourceRevision": "1a94c00a11b6f3ad8ca04d655dbe5e74a3e6c007",
+  "freezeStatus": "BLOCKED",
+  "waivers": [],
+  "reviewNote": "This is the single consolidated IG1 + IG2 ABI review required by the B34 acceptance criteria. It is a binding layer, not a re-pinning: F02 owns the 132-row format registry, the HeaderV1 gate owns the three-way HeaderV1 contract, sdk-abi-fixtures owns the 86 golden encodings and F20 owns the coverage reconciliation, and this artifact binds those surfaces by number instead of copying their contents. Everything published here is re-derived from source by demo/scripts/verify-canonical-v1-abi-freeze.mjs; nothing in this file is its own authority. IG1's structural half is closed: the seven deployment-ABI identities agree across midgard-core, midgard-node and midgard-sdk, the frozen catalogue order is a bijection onto the validator tree, and the blueprint comes from the compiler aiken.toml declares. Two observations are recorded rather than hidden. ABI-04 carries declarationOrder DIVERGENT: midgard-core and midgard-sdk declare the same 38-role token mapping in different key orders. That is not an ABI break because every consumer reads the map by key and midgard-node compares it with requireExactKeys, but it is measured and published so the divergence cannot grow into one unseen. IG2 is BLOCKED: 11 families are registered in the frozen catalogue while none of them carries valid-block rejection, maximum proof-fit or correction evidence, so under GOAL_SPEC 11 IG2 none of them may be integrated on this evidence.",
+  "crossPackageIdentities": [
+    {
+      "id": "ABI-01",
+      "title": "Deployment contract-name vector",
+      "kind": "vector",
+      "cardinality": 55,
+      "declaredBy": [
+        "demo/midgard-core/src/deployment-manifest-identity-v1.ts:DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES",
+        "demo/midgard-node/src/deployment-manifest-v1.ts:DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES"
+      ],
+      "digest": "695a3f1df53b0a06ba839d415bfab0039f866eb65c0951ecf9abc26cbc19c1c0",
+      "agreement": "EXACT",
+      "declarationOrder": "IDENTICAL"
+    },
+    {
+      "id": "ABI-02",
+      "title": "Fraud-proof catalogue category order",
+      "kind": "vector",
+      "cardinality": 11,
+      "declaredBy": [
+        "demo/midgard-core/src/deployment-manifest-identity-v1.ts:DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER",
+        "demo/midgard-sdk/src/fraud-proof/catalogue.ts:FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER"
+      ],
+      "digest": "7b60219b9229ed930bf249eba29b55f96e5e97925269dc585d24fee718fc0684",
+      "agreement": "EXACT",
+      "declarationOrder": "IDENTICAL"
+    },
+    {
+      "id": "ABI-03",
+      "title": "Reference-script role to contract map",
+      "kind": "record",
+      "cardinality": 37,
+      "declaredBy": [
+        "demo/midgard-core/src/deployment-manifest-identity-v1.ts:DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE",
+        "demo/midgard-node/src/deployment-manifest-v1.ts:DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE"
+      ],
+      "digest": "612e348aec800e0aa6ee4b4b81f07e342658e2159e305b7dfaa89fb04471473a",
+      "agreement": "EXACT",
+      "declarationOrder": "IDENTICAL"
+    },
+    {
+      "id": "ABI-04",
+      "title": "Reference-script auth token names",
+      "kind": "record",
+      "cardinality": 38,
+      "declaredBy": [
+        "demo/midgard-core/src/deployment-manifest-identity-v1.ts:DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES",
+        "demo/midgard-sdk/src/reference-scripts.ts:REFERENCE_SCRIPT_AUTH_TOKEN_NAMES"
+      ],
+      "digest": "4a15705ea7a3cedee9d580891b7facbd899e9d5ff4ce75674de8d27b7456e711",
+      "agreement": "EXACT",
+      "declarationOrder": "DIVERGENT"
+    },
+    {
+      "id": "ABI-05",
+      "title": "Deployment manifest root keys",
+      "kind": "vector",
+      "cardinality": 18,
+      "declaredBy": [
+        "demo/midgard-core/src/deployment-manifest-identity-v1.ts:DEPLOYMENT_MANIFEST_V1_ROOT_KEYS"
+      ],
+      "digest": "f3ab76c3705f07ca10fb339c225dff4d28463682dee4eb612eaec2d20ef06923",
+      "agreement": "EXACT",
+      "declarationOrder": "IDENTICAL"
+    },
+    {
+      "id": "ABI-06",
+      "title": "Deployment step names",
+      "kind": "vector",
+      "cardinality": 6,
+      "declaredBy": [
+        "demo/midgard-core/src/deployment-manifest-identity-v1.ts:DEPLOYMENT_MANIFEST_V1_STEP_NAMES",
+        "demo/midgard-node/src/deployment-manifest-v1.ts:DEPLOYMENT_MANIFEST_V1_STEP_NAMES"
+      ],
+      "digest": "f1986cb08c70bc6ca6d90ac878095ff33c52a6fb752c9d20adb4fa732bea3ded",
+      "agreement": "EXACT",
+      "declarationOrder": "IDENTICAL"
+    },
+    {
+      "id": "ABI-07",
+      "title": "Required transaction-order contracts",
+      "kind": "vector",
+      "cardinality": 12,
+      "declaredBy": [
+        "demo/midgard-node/src/deployment-manifest-v1.ts:REQUIRED_TRANSACTION_ORDER_CONTRACTS"
+      ],
+      "digest": "90ca7f0459bbf077aea5ab486ac6b055dbb29a30714bff092beccadc1d1c7fb4",
+      "agreement": "EXACT",
+      "declarationOrder": "IDENTICAL"
+    }
+  ],
+  "derivedRelations": [
+    {
+      "id": "every-reference-script-role-targets-a-frozen-contract",
+      "status": "PASS",
+      "violations": []
+    },
+    {
+      "id": "token-map-covers-every-reference-script-role",
+      "status": "PASS",
+      "violations": []
+    },
+    {
+      "id": "transaction-order-contracts-are-frozen-contracts",
+      "status": "PASS",
+      "violations": []
+    },
+    {
+      "id": "catalogue-order-covers-the-validator-tree",
+      "status": "PASS",
+      "violations": []
+    },
+    {
+      "id": "validator-tree-is-covered-by-the-catalogue-or-declared-uncategorised",
+      "status": "PASS",
+      "violations": []
+    },
+    {
+      "id": "declared-directories-still-exist",
+      "status": "PASS",
+      "violations": []
+    }
+  ],
+  "tokenMapExtraRoles": ["V1 validation-trace CEK direct resolver"],
+  "catalogueBinding": {
+    "categoryOrder": [
+      "doubleSpend",
+      "nonExistentInput",
+      "nonExistentInputNoIndex",
+      "invalidRange",
+      "transitionTrace",
+      "zeroInput",
+      "validationTraceDispute",
+      "daHashPreimage",
+      "noReferenceInput",
+      "referenceInputNoIdx",
+      "invalidSignature"
+    ],
+    "categoryIds": [
+      "00000000",
+      "00000001",
+      "00000002",
+      "00000003",
+      "00000004",
+      "00000005",
+      "00000006",
+      "00000007",
+      "00000008",
+      "00000009",
+      "0000000a"
+    ],
+    "validatorDirectories": [
+      "da-hash-preimage",
+      "double-spend",
+      "input-no-idx",
+      "invalid-range",
+      "invalid-signature",
+      "min-fee",
+      "missing-native-script-tx",
+      "missing-signature",
+      "mpf-chunked-proof",
+      "no-input",
+      "no-reference-input",
+      "reference-input-no-idx",
+      "transition-trace",
+      "validation-trace",
+      "withdrawn-reference-input",
+      "zero-input"
+    ],
+    "categoryByValidatorDirectory": {
+      "double-spend": "doubleSpend",
+      "no-input": "nonExistentInput",
+      "input-no-idx": "nonExistentInputNoIndex",
+      "invalid-range": "invalidRange",
+      "transition-trace": "transitionTrace",
+      "zero-input": "zeroInput",
+      "validation-trace": "validationTraceDispute",
+      "da-hash-preimage": "daHashPreimage",
+      "no-reference-input": "noReferenceInput",
+      "reference-input-no-idx": "referenceInputNoIdx",
+      "invalid-signature": "invalidSignature"
+    },
+    "uncategorisedValidatorDirectories": [
+      "min-fee",
+      "missing-native-script-tx",
+      "missing-signature",
+      "mpf-chunked-proof",
+      "withdrawn-reference-input"
+    ]
+  },
+  "blueprintIdentity": {
+    "path": "onchain/aiken/plutus.json",
+    "validatorCount": 393,
+    "uniqueValidatorTitles": 393,
+    "validatorTitleDigest": "0136d350c5866e559e58706b113f6a29ded750ad390cc486a45c57b35c726698",
+    "compilerVersion": "v1.1.22+39d6b04",
+    "plutusVersion": "v3",
+    "declaredCompiler": "v1.1.22",
+    "measuredSha256": "2b5973fe2832bac0d60961d24a2a66c31516fc3f045e517d30e4a4a08382befb",
+    "measuredEnv": "testnet"
+  },
+  "boundGates": [
+    {
+      "id": "format-registry",
+      "script": "demo/scripts/verify-canonical-v1-format-registry.mjs",
+      "artifact": "docs/exec-plans/evidence/canonical-v1-format-registry-v1.json",
+      "counts": {
+        "rows": 132,
+        "forbiddenActivePatterns": 29,
+        "withCounterpartTests": 66,
+        "notApplicable": 66,
+        "unverified": 0
+      }
+    },
+    {
+      "id": "header-v1-abi",
+      "script": "demo/scripts/verify-canonical-v1-header-v1-abi.mjs",
+      "artifact": "docs/exec-plans/evidence/canonical-v1-format-registry-v1.json",
+      "counts": {
+        "constructorTag": 0,
+        "constructorArity": 25
+      }
+    },
+    {
+      "id": "sdk-abi-fixtures",
+      "script": "demo/midgard-node/tests/sdk-abi-fixtures.test.ts",
+      "artifact": "demo/midgard-node/tests/fixtures/transition-trace-abi.json",
+      "counts": {
+        "goldenFixtures": 86,
+        "goldenVersion": 1
+      }
+    }
+  ],
+  "ig2ProofFamilies": {
+    "dimensions": [
+      "reachability",
+      "tooling",
+      "valid_block_rejection",
+      "maximum_proof_fit",
+      "correction",
+      "matrix_evidence"
+    ],
+    "derivedDimensions": ["reachability", "tooling", "matrix_evidence"],
+    "status": "BLOCKED",
+    "integrableFamilies": 0,
+    "violations": 11,
+    "families": [
+      {
+        "directory": "da-hash-preimage",
+        "category": "daHashPreimage",
+        "integrated": true,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "PASS",
+            "evidence": "category daHashPreimage holds index 7 (id 00000007) in the frozen catalogue order and the directory carries 2 validator modules",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/da-hash-preimage/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/prepare-da-hash-preimage.ts",
+            "paths": [
+              "demo/midgard-fault-proofs/src/prepare-da-hash-preimage.ts"
+            ]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names da-hash-preimage",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        },
+        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+      },
+      {
+        "directory": "double-spend",
+        "category": "doubleSpend",
+        "integrated": true,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "PASS",
+            "evidence": "category doubleSpend holds index 0 (id 00000000) in the frozen catalogue order and the directory carries 4 validator modules",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/double-spend/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/prepare-double-spend.ts",
+            "paths": ["demo/midgard-fault-proofs/src/prepare-double-spend.ts"]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names double-spend",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        },
+        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+      },
+      {
+        "directory": "input-no-idx",
+        "category": "nonExistentInputNoIndex",
+        "integrated": true,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "PASS",
+            "evidence": "category nonExistentInputNoIndex holds index 2 (id 00000002) in the frozen catalogue order and the directory carries 4 validator modules",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/input-no-idx/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/prepare-input-no-idx.ts",
+            "paths": ["demo/midgard-fault-proofs/src/prepare-input-no-idx.ts"]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names input-no-idx",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        },
+        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+      },
+      {
+        "directory": "invalid-range",
+        "category": "invalidRange",
+        "integrated": true,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "PASS",
+            "evidence": "category invalidRange holds index 3 (id 00000003) in the frozen catalogue order and the directory carries 2 validator modules",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/invalid-range/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/prepare-invalid-range.ts",
+            "paths": ["demo/midgard-fault-proofs/src/prepare-invalid-range.ts"]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names invalid-range",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        },
+        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+      },
+      {
+        "directory": "invalid-signature",
+        "category": "invalidSignature",
+        "integrated": true,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "PASS",
+            "evidence": "category invalidSignature holds index 10 (id 0000000a) in the frozen catalogue order and the directory carries 2 validator modules",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/invalid-signature/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/prepare-invalid-signature.ts",
+            "paths": [
+              "demo/midgard-fault-proofs/src/prepare-invalid-signature.ts"
+            ]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names invalid-signature",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        },
+        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+      },
+      {
+        "directory": "min-fee",
+        "category": null,
+        "integrated": false,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "BLOCKED",
+            "evidence": "the directory carries 2 validator modules but no catalogue category registers it, so no proof of this family is reachable through the deployed catalogue",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/min-fee/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "BLOCKED",
+            "evidence": "no offchain builder or submitter for this family exists in demo/midgard-fault-proofs/src, so a proof cannot be constructed off-chain",
+            "paths": []
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names min-fee",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        }
+      },
+      {
+        "directory": "missing-native-script-tx",
+        "category": null,
+        "integrated": false,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "BLOCKED",
+            "evidence": "the directory carries 6 validator modules but no catalogue category registers it, so no proof of this family is reachable through the deployed catalogue",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/missing-native-script-tx/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "BLOCKED",
+            "evidence": "no offchain builder or submitter for this family exists in demo/midgard-fault-proofs/src, so a proof cannot be constructed off-chain",
+            "paths": []
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names missing-native-script-tx",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        }
+      },
+      {
+        "directory": "missing-signature",
+        "category": null,
+        "integrated": false,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "BLOCKED",
+            "evidence": "the directory carries 4 validator modules but no catalogue category registers it, so no proof of this family is reachable through the deployed catalogue",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/missing-signature/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "BLOCKED",
+            "evidence": "no offchain builder or submitter for this family exists in demo/midgard-fault-proofs/src, so a proof cannot be constructed off-chain",
+            "paths": []
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names missing-signature",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        }
+      },
+      {
+        "directory": "mpf-chunked-proof",
+        "category": null,
+        "integrated": false,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "BLOCKED",
+            "evidence": "the directory carries 1 validator modules but no catalogue category registers it, so no proof of this family is reachable through the deployed catalogue",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/mpf-chunked-proof/challenge.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/publish-proof-chunks.ts",
+            "paths": ["demo/midgard-fault-proofs/src/publish-proof-chunks.ts"]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "BLOCKED",
+            "evidence": "docs/fault-proofs/coverage-matrix.md does not name mpf-chunked-proof, so this family has no matrix row of its own",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        }
+      },
+      {
+        "directory": "no-input",
+        "category": "nonExistentInput",
+        "integrated": true,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "PASS",
+            "evidence": "category nonExistentInput holds index 1 (id 00000001) in the frozen catalogue order and the directory carries 4 validator modules",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/no-input/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/prepare-non-existent-input.ts",
+            "paths": [
+              "demo/midgard-fault-proofs/src/prepare-non-existent-input.ts"
+            ]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names no-input",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        },
+        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+      },
+      {
+        "directory": "no-reference-input",
+        "category": "noReferenceInput",
+        "integrated": true,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "PASS",
+            "evidence": "category noReferenceInput holds index 8 (id 00000008) in the frozen catalogue order and the directory carries 4 validator modules",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/no-reference-input/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/prepare-no-reference-input.ts",
+            "paths": [
+              "demo/midgard-fault-proofs/src/prepare-no-reference-input.ts"
+            ]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names no-reference-input",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        },
+        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+      },
+      {
+        "directory": "reference-input-no-idx",
+        "category": "referenceInputNoIdx",
+        "integrated": true,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "PASS",
+            "evidence": "category referenceInputNoIdx holds index 9 (id 00000009) in the frozen catalogue order and the directory carries 4 validator modules",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/reference-input-no-idx/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/prepare-reference-input-no-idx.ts",
+            "paths": [
+              "demo/midgard-fault-proofs/src/prepare-reference-input-no-idx.ts"
+            ]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names reference-input-no-idx",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        },
+        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+      },
+      {
+        "directory": "transition-trace",
+        "category": "transitionTrace",
+        "integrated": true,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "PASS",
+            "evidence": "category transitionTrace holds index 4 (id 00000004) in the frozen catalogue order and the directory carries 9 validator modules",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/transition-trace/accepted-transaction-v1.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/transition-trace/detect.ts",
+            "paths": [
+              "demo/midgard-fault-proofs/src/transition-trace/detect.ts"
+            ]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names transition-trace",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        },
+        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+      },
+      {
+        "directory": "validation-trace",
+        "category": "validationTraceDispute",
+        "integrated": true,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "PASS",
+            "evidence": "category validationTraceDispute holds index 6 (id 00000006) in the frozen catalogue order and the directory carries 106 validator modules",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/validation-trace/award-v1.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/validation-dispute/submit.ts",
+            "paths": [
+              "demo/midgard-fault-proofs/src/validation-dispute/submit.ts"
+            ]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "BLOCKED",
+            "evidence": "docs/fault-proofs/coverage-matrix.md does not name validation-trace, so this family has no matrix row of its own",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        },
+        "violates": [
+          "valid_block_rejection",
+          "maximum_proof_fit",
+          "correction",
+          "matrix_evidence"
+        ]
+      },
+      {
+        "directory": "withdrawn-reference-input",
+        "category": null,
+        "integrated": false,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "BLOCKED",
+            "evidence": "the directory carries 3 validator modules but no catalogue category registers it, so no proof of this family is reachable through the deployed catalogue",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/withdrawn-reference-input/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "BLOCKED",
+            "evidence": "no offchain builder or submitter for this family exists in demo/midgard-fault-proofs/src, so a proof cannot be constructed off-chain",
+            "paths": []
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names withdrawn-reference-input",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        }
+      },
+      {
+        "directory": "zero-input",
+        "category": "zeroInput",
+        "integrated": true,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "PASS",
+            "evidence": "category zeroInput holds index 5 (id 00000005) in the frozen catalogue order and the directory carries 2 validator modules",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/zero-input/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/prepare-zero-input.ts",
+            "paths": ["demo/midgard-fault-proofs/src/prepare-zero-input.ts"]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names zero-input",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+          }
+        },
+        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+      }
+    ]
+  },
+  "driftFindings": [
+    {
+      "id": "f20-registered-categories-behind-the-frozen-catalogue",
+      "surface": "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json:bindingInventory.registeredCategoryNames",
+      "measured": "reconciliation records 8 registered categories; the frozen catalogue order is 11",
+      "owner": "F20"
+    },
+    {
+      "id": "f20-validator-directories-behind-the-index",
+      "surface": "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json:bindingInventory.deployedValidatorDirectories",
+      "measured": "reconciliation records 14 validator directories; the index carries 16",
+      "owner": "F20"
+    }
+  ],
+  "focusedCommands": [
+    "node demo/scripts/verify-canonical-v1-abi-freeze.mjs",
+    "node demo/scripts/verify-canonical-v1-abi-freeze-self-test.mjs",
+    "node demo/scripts/verify-canonical-v1-format-registry.mjs",
+    "node demo/scripts/verify-canonical-v1-header-v1-abi.mjs",
+    "pnpm --dir demo/midgard-node exec vitest run tests/sdk-abi-fixtures.test.ts"
+  ],
+  "nextActions": [
+    "F20 recapture: the reconciliation inventory records 8 registered catalogue categories and 14 validator directories where the tree now carries 11 and 16.",
+    "Q10-Q50 per-family valid-block rejection evidence, which every integrated family currently lacks.",
+    "C53 and the per-family maximum proof-fit measurements, which CG3 gates.",
+    "C60-C68 correction lifecycles, which CG4 gates.",
+    "Re-run this gate after any of the above: a family becomes integrable only when all six IG2 dimensions measure PASS."
+  ]
+}
