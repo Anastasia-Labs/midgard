@@ -35,8 +35,14 @@ const Q13_APPLIED_STEP_HASHES = [
   "e22e2b38df904c51090c66a7eebb20a78d5b9b60a0c55b833cd80abb",
   "9984b16ce9b35df88905e1eb732a65febb21a624c56d915a16fcd355",
 ] as const;
+// Re-pinned 2026-08-05 (#544): the original-epoch root d88f9829…bcca394
+// (blueprint f5ae651e…, 380 validators) moved with the #521 renames — the
+// catalogue root folds every category's applied step-01 hash, and #521
+// moved foundational-family step scripts while this family's four applied
+// hashes (above) are measured unchanged. Current value measured by this
+// suite's own derivation under blueprint 605c8b8d… (391 validators).
 const Q13_CATALOGUE_ROOT =
-  "d88f9829ae8856b0fcd1023c0f6377e76319d46d69f0940444a193241bcca394";
+  "d1a70a1bd5b024d41c9f1279d564cf81f85304eeca8dec1767de3763702e24aa";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,

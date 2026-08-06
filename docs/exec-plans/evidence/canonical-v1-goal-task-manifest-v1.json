@@ -5719,8 +5719,8 @@
         "onchain/aiken/validators/fraud-proofs/input-no-idx/step-01.ak is the exact implementation/current-tree anchor for Q13."
       ],
       "evidenceOutputs": [
-        "Blueprint SHA f5ae651e34cf3e1175d928634c002580c4f2af4659a229952007c458945b866b and applied step hashes 5c79063d6b56296f23f7df24380efb980fb43ae1462ee1c01989334f, a562f6b3f7b1337f0f764aa0d94fc85390dfa74b9c06682e1fcb55e2, e22e2b38df904c51090c66a7eebb20a78d5b9b60a0c55b833cd80abb, and 9984b16ce9b35df88905e1eb732a65febb21a624c56d915a16fcd355.",
-        "Catalogue ID 00000002 and root d88f9829ae8856b0fcd1023c0f6377e76319d46d69f0940444a193241bcca394.",
+        "Blueprint SHA f5ae651e34cf3e1175d928634c002580c4f2af4659a229952007c458945b866b (original 380-validator measurement epoch) and applied step hashes 5c79063d6b56296f23f7df24380efb980fb43ae1462ee1c01989334f, a562f6b3f7b1337f0f764aa0d94fc85390dfa74b9c06682e1fcb55e2, e22e2b38df904c51090c66a7eebb20a78d5b9b60a0c55b833cd80abb, and 9984b16ce9b35df88905e1eb732a65febb21a624c56d915a16fcd355; the four applied hashes were re-verified byte-identical under the current committed blueprint 605c8b8dca1f01e2cde5219138a1f81e69214f9a182c10b73c20341187ddc2dc (391 validators) on 2026-08-05 (#544).",
+        "Catalogue ID 00000002 and root d1a70a1bd5b024d41c9f1279d564cf81f85304eeca8dec1767de3763702e24aa, re-pinned 2026-08-05 under blueprint 605c8b8d... by the producing inspection (#544); the original-epoch root d88f9829ae8856b0fcd1023c0f6377e76319d46d69f0940444a193241bcca394 moved with the #521 renames (other categories' step-01 leaves), while this category's ID, script hash, and membership proof are measured unchanged.",
         "Exact measured gates: Aiken 53/53, SDK 20/20, fault-proof and inspection 16/16, applied hashes 1/1, and emulator lifecycle 4/4."
       ],
       "focusedCommands": [

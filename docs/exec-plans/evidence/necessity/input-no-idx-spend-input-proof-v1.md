@@ -69,7 +69,12 @@ With `network=Preprod`, `hubOraclePolicyId="11" × 28`, and
 
 The Q13 catalogue binding is category ID `00000002`, category script hash
 `5c79063d6b56296f23f7df24380efb980fb43ae1462ee1c01989334f`, and catalogue
-root `d88f9829ae8856b0fcd1023c0f6377e76319d46d69f0940444a193241bcca394`.
+root `d88f9829ae8856b0fcd1023c0f6377e76319d46d69f0940444a193241bcca394`
+(original measurement epoch; re-pinned 2026-08-05 to
+`d1a70a1bd5b024d41c9f1279d564cf81f85304eeca8dec1767de3763702e24aa` under
+blueprint `605c8b8d…` — the #521 renames moved other categories' step-01
+leaves while this category's ID, script hash, and membership stay
+unchanged; see #544).
 The inspection gate pins the applied step hashes and root, re-derives the root
 and membership proof, cross-checks the embedded deployed script bytes, and
 requires the category to be ready.
