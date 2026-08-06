@@ -6049,3 +6049,68 @@ Five standing decisions resolved by the owner in session; dispositions:
 5. **PRs #469/#473/#474** — factual harvest-record comments posted; the
    PRs stay open for their author's disposition (the on-chain halves of
    #469/#474 are superseded at HEAD and must not be merged as-is).
+
+## #545 family wiring and C49 closure (2026-08-06)
+
+- **#545** `d0e94c89`+`1a23d8b4`+`9435403f`+`e1bd5eff` — all four
+  foundational families (double-spend 01/02, no-input 01/03/04,
+  invalid-range 01, zero-input 01) accept proof carriage as a
+  prover-chosen sum: `RedeemerCarried*` (the pre-#545 route, byte for
+  byte) or `PublishedChunk*` (ordered reference-input indices), with the
+  shared binding in `midgard/fraud_proofs/common` so a carriage cannot
+  change WHAT is proved. **Load-bearing mid-course correction:** inlining
+  the MPF walk into the steps cost ~3,700 spending-script bytes on BOTH
+  routes and collapsed the direct route's ceiling from level 21-23 to 8-9
+  (2^32) — remediating one route by degrading the other was rejected; the
+  walk lives in the new merkelized withdraw validator
+  `validators/mpf-chunked-verify.ak` (hash `cb5a7ec4…` pinned in
+  env/{default,testnet}.ak, rebuild-stable), residual direct-route cost
+  ~700 bytes, ceilings re-pinned honestly 22/22/21/23 → 20/20/19/20 and
+  the work floor 2^80 → 2^72. **Chunked-route measurements (emulator,
+  depth 22, 2 chunks):** Q14 step-01 13,045 bytes / margin 3,339; Q12
+  13,335 / 3,049; all stages inside the 20% execution reserve; **depth
+  invariance measured at exactly 0 bytes/level** (depth-32 step-01
+  byte-identical at 13,045; proof 3,060 → 4,450 bytes rides in chunks).
+  Q1x re-decision: **Q12 and Q14 LOCAL_PASS** on measured chunked
+  evidence; **Q10/Q11 stay OPEN on Q1X-F6 alone** (wired on-chain with
+  depth-22 selectors, not yet emulator-proven end-to-end — recorded in
+  `unmeasuredFamilies`). Q1X-F5 restated `remediated-by-carriage` with
+  every original measurement retained; the verifier now derives cells
+  from axis/remediation blocks and 5 seeded mutations still reject.
+  Owner-directed datum change landed: `challenged_root_domain` added to
+  `ProofChallengeDatum`, authenticated at init against the domain the
+  counted-root commitment was reproduced under (challenge module 23
+  tests). Q1X-F6 measurement was declined by the lane — ticketed.
+  Input-no-idx CompletePublished pins re-derived once more (the shared
+  binding recompiled every applied step): ex-units back to 521,130 /
+  209,629,043, fee 542,885, layout unchanged at 7,771 bytes, new CBOR sha
+  `2eae6308…` — provenance chain kept in the test header.
+- **C49** `28d90b84` — the four prescribed selectors exist and pass:
+  min-fee boundary at the C70 snapshot (exact floor, one-lovelace
+  adjacent reject, canonical-size fixed point); min-ada — **the rule did
+  not exist in the Aiken tree**; the target-network formula
+  (`min_ada_lovelace_v1`, 160-byte overhead, slope 4,310/byte) is now
+  production code with boundary/adjacent/linearity pins, deliberately NOT
+  yet wired to a rejection code (existing zero-lovelace descriptor tests
+  would fail; wiring is the recorded follow-up with E_MIN_ADA and
+  friends); ADA+multi-asset conservation pinned to the exact TS twin
+  vectors through real machine steps; mint/burn authorization attributed
+  to the membership guard alone via witness substitution. Focused command
+  10/10 and module 164/164 — **fork-measured**, per the owner rule below.
+- **Owner rule (2026-08-06), incident-derived:** test execution NEVER
+  runs under stock aiken — not full suites, not targeted selectors (a
+  "targeted" stock run on validation_machine_v1 burned 48+ CPU-minutes
+  before being killed; aiken#1389). Stock's roles are exactly: `aiken
+  check --skip-tests`, `aiken build`, and the dual-compiler equality
+  guard, which carries stock agreement byte-for-byte.
+  `run-focused-check.mjs` defaults to stock — always set
+  `MIDGARD_AIKEN_BIN` to the fork for execution.
+
+Verification for this push (validators changed): dual-compiler guard
+**393 validators (+2 for mpf-chunked-verify), byte-identical, definitions
+identical**; fresh stock testnet blueprint `2b5973fe…` installed; SDK dist
+rebuilt; input-no-idx 4/4 (pin arbitration on the integrated tree);
+max-proof-fit 6/6; Q1x verifier PASS (18 LOCAL_PASS / 2 OPEN, worst
+margins 5,365 minimal / 3,983 maximum); §4.4 journey selector **PASSES
+1/1** on fresh isolated database `midgard_test_545`; manifest quality
+186/186 with 0 defects + self-test 13 mutations.
