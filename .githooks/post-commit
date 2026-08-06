@@ -8,14 +8,9 @@ fi
 
 repo_root="$(git rev-parse --show-toplevel)"
 graphify_state_root="${MIDGARD_GRAPHIFY_STATE_ROOT:-/home/gumbo/.local/state/graphify/midgard-current}"
-
-# A post-commit hook can run after a partial commit. Refuse to publish a graph
-# from a mixture of HEAD and unrelated working-tree changes.
-if [[ -n "$(git -C "$repo_root" status --porcelain --untracked-files=normal)" ]]; then
-  echo "[midgard graphify] skipped: the post-commit checkout is not a coherent checkpoint" >&2
-  echo "[midgard graphify] commit or stash the remaining changes, then run 'make refresh-graphify-graph'" >&2
-  exit 0
-fi
+out_dir="$graphify_state_root/graphify-out"
+lock_file="$graphify_state_root/.refresh.lock"
+log_file="$graphify_state_root/refresh.log"
 
 if ! command -v graphify >/dev/null 2>&1; then
   echo "[midgard graphify] graphify is not available on PATH; graph refresh skipped" >&2
@@ -24,18 +19,49 @@ fi
 
 mkdir -p "$graphify_state_root"
 
-echo "[midgard graphify] refreshing the external code graph for $(git -C "$repo_root" rev-parse --short HEAD)"
-graphify extract "$repo_root" \
-  --out "$graphify_state_root" \
-  --code-only \
-  --force \
-  --max-workers 2 \
-  --max-concurrency 1
+# The worker indexes a coherent snapshot of HEAD taken with `git archive`
+# (tracked bytes only), so a dirty checkout never blocks the refresh and the
+# published graph always corresponds to exactly one commit. The graph stores
+# repo-relative source paths, so extracting from the snapshot directory and
+# from a clean checkout are byte-equivalent.
+refresh_worker() {
+  exec 9>"$lock_file"
+  flock 9
 
-indexed_commit="$(git -C "$repo_root" rev-parse HEAD)"
-indexed_commit_file="$graphify_state_root/graphify-out/indexed-commit"
-indexed_commit_tmp="$indexed_commit_file.tmp"
-printf '%s\n' "$indexed_commit" >"$indexed_commit_tmp"
-mv "$indexed_commit_tmp" "$indexed_commit_file"
+  local target
+  target="$(git -C "$repo_root" rev-parse HEAD)"
+  local stamp="$out_dir/indexed-commit"
+  if [[ -f "$stamp" && "$(cat "$stamp")" == "$target" ]]; then
+    echo "[midgard graphify] graph already indexes $target; nothing to do"
+    return 0
+  fi
 
-echo "[midgard graphify] refreshed $graphify_state_root/graphify-out/graph.json at $indexed_commit"
+  local snapshot="$graphify_state_root/snapshot"
+  rm -rf "$snapshot"
+  mkdir -p "$snapshot"
+  git -C "$repo_root" archive "$target" | tar -x -C "$snapshot"
+
+  echo "[midgard graphify] refreshing the external code graph for ${target:0:12} ($(date -u +%FT%TZ))"
+  graphify extract "$snapshot" \
+    --out "$graphify_state_root" \
+    --code-only \
+    --force \
+    --max-workers 2 \
+    --max-concurrency 1
+
+  printf '%s\n' "$target" >"$stamp.tmp"
+  mv "$stamp.tmp" "$stamp"
+  rm -rf "$snapshot"
+  echo "[midgard graphify] graph now indexes $target"
+}
+
+if [[ "${1:-}" == "--worker" || "${1:-}" == "--foreground" ]]; then
+  refresh_worker
+  exit 0
+fi
+
+# Post-commit dispatch: detach the worker so the commit returns immediately.
+# The lock serializes concurrent workers; the indexed-commit stamp collapses a
+# queue of rapid commits into one refresh of the newest HEAD.
+setsid "$0" --worker </dev/null >>"$log_file" 2>&1 &
+echo "[midgard graphify] refresh dispatched for $(git -C "$repo_root" rev-parse --short HEAD) (log: $log_file)" >&2

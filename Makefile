@@ -29,7 +29,7 @@ enable-graphify-post-commit:
 
 .PHONY: refresh-graphify-graph
 refresh-graphify-graph:
-	.githooks/post-commit
+	.githooks/post-commit --foreground
 
 .PHONY: spec
 spec:
