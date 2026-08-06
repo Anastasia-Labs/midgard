@@ -628,6 +628,38 @@
         "cborHex": "525101010023259800a518a4d136564004ae69"
       },
       "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofDaHashPreimage": {
+      "refScriptUTxO": null,
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofNoReferenceInput": {
+      "refScriptUTxO": null,
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofReferenceInputNoIdx": {
+      "refScriptUTxO": null,
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofInvalidSignature": {
+      "refScriptUTxO": null,
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
     }
   }
 }

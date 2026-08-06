@@ -227,6 +227,21 @@ export type FraudProofs = {
    * not the canonical native-V1 transaction id of its own value.
    */
   daHashPreimage: SpendingValidator;
+  /**
+   * Q18 `no-reference-input`: a committed transaction reads an input that
+   * never existed in the block's prev ledger and was not produced in-block.
+   */
+  noReferenceInput: SpendingValidator;
+  /**
+   * Q31 `reference-input-no-idx`: a committed transaction reads an output
+   * index its in-block producing transaction never created.
+   */
+  referenceInputNoIdx: SpendingValidator;
+  /**
+   * Q15 `invalid-signature`: a committed transaction's address-witness set
+   * does not authorize one of the inputs it spends.
+   */
+  invalidSignature: SpendingValidator;
 };
 
 export type MidgardValidators = {

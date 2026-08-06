@@ -108,6 +108,9 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeTimeout",
   "validationTraceDisputeAward",
   "fraudProofDaHashPreimage",
+  "fraudProofNoReferenceInput",
+  "fraudProofReferenceInputNoIdx",
+  "fraudProofInvalidSignature",
 ] as const);
 
 export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
@@ -612,6 +615,9 @@ const validateFraudProofCatalogue = (
     zeroInput: "fraudProofZeroInput",
     validationTraceDispute: "validationTraceDispute",
     daHashPreimage: "fraudProofDaHashPreimage",
+    noReferenceInput: "fraudProofNoReferenceInput",
+    referenceInputNoIdx: "fraudProofReferenceInputNoIdx",
+    invalidSignature: "fraudProofInvalidSignature",
   } as const;
   const parsedCategories = {} as Record<
     DeploymentManifestV1FraudProofCatalogueCategory,

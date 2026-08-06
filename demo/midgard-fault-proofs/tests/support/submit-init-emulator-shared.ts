@@ -41,8 +41,11 @@ import {
   buildDoubleSpendFaultProofContracts,
   buildInputNoIdxFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
+  buildInvalidSignatureFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
+  buildNoReferenceInputFaultProofContracts,
   buildPhasMembershipRewardRegistrationTxProgram,
+  buildReferenceInputNoIdxFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
   buildZeroInputFaultProofContracts,
@@ -489,6 +492,24 @@ export const makeAlwaysSucceedsContracts = (
     daHashPreimage: makeSpendingValidator(
       alwaysScript(blueprint, "fraud_proofs", "zero_input", "spend"),
     ),
+    // Same aliasing for the three families registered by #547: the
+    // always-succeeds devnet blueprint carries no `no_reference_input`,
+    // `reference_input_no_idx`, or `invalid_signature` stub, so each reuses
+    // the stub of the family it mirrors on-chain.
+    noReferenceInput: makeSpendingValidator(
+      alwaysScript(blueprint, "fraud_proofs", "non_existent_input", "spend"),
+    ),
+    referenceInputNoIdx: makeSpendingValidator(
+      alwaysScript(
+        blueprint,
+        "fraud_proofs",
+        "non_existent_input_no_index",
+        "spend",
+      ),
+    ),
+    invalidSignature: makeSpendingValidator(
+      alwaysScript(blueprint, "fraud_proofs", "invalid_range", "spend"),
+    ),
   };
   const fieldPreimageV1 = makeSpendingValidator(
     alwaysScript(blueprint, "midgard", "state_queue", "spend"),
@@ -549,6 +570,9 @@ export const buildMinimalFaultProofContracts = async (
     realZeroInput = false,
     realDaHashPreimage = false,
     realInputNoIdx = false,
+    realNoReferenceInput = false,
+    realReferenceInputNoIdx = false,
+    realInvalidSignature = false,
     realValidationTraceDispute = false,
     alwaysFraudProofCatalogue = false,
   }: {
@@ -558,6 +582,9 @@ export const buildMinimalFaultProofContracts = async (
     readonly realZeroInput?: boolean;
     readonly realDaHashPreimage?: boolean;
     readonly realInputNoIdx?: boolean;
+    readonly realNoReferenceInput?: boolean;
+    readonly realReferenceInputNoIdx?: boolean;
+    readonly realInvalidSignature?: boolean;
     readonly realValidationTraceDispute?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
@@ -750,6 +777,51 @@ export const buildMinimalFaultProofContracts = async (
       doubleSpendContracts.fraudProof.policyId,
     );
   }
+  const noReferenceInputContracts = realNoReferenceInput
+    ? await Effect.runPromise(
+        buildNoReferenceInputFaultProofContracts({
+          blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+          network,
+          hubOraclePolicyId: hubOracle.policyId,
+          fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+        }),
+      )
+    : undefined;
+  if (noReferenceInputContracts !== undefined) {
+    expect(noReferenceInputContracts.fraudProof.policyId).toBe(
+      doubleSpendContracts.fraudProof.policyId,
+    );
+  }
+  const referenceInputNoIdxContracts = realReferenceInputNoIdx
+    ? await Effect.runPromise(
+        buildReferenceInputNoIdxFaultProofContracts({
+          blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+          network,
+          hubOraclePolicyId: hubOracle.policyId,
+          fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+        }),
+      )
+    : undefined;
+  if (referenceInputNoIdxContracts !== undefined) {
+    expect(referenceInputNoIdxContracts.fraudProof.policyId).toBe(
+      doubleSpendContracts.fraudProof.policyId,
+    );
+  }
+  const invalidSignatureContracts = realInvalidSignature
+    ? await Effect.runPromise(
+        buildInvalidSignatureFaultProofContracts({
+          blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+          network,
+          hubOraclePolicyId: hubOracle.policyId,
+          fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+        }),
+      )
+    : undefined;
+  if (invalidSignatureContracts !== undefined) {
+    expect(invalidSignatureContracts.fraudProof.policyId).toBe(
+      doubleSpendContracts.fraudProof.policyId,
+    );
+  }
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
       withActiveOperators.activeOperators.spendingScriptAddress,
@@ -840,6 +912,15 @@ export const buildMinimalFaultProofContracts = async (
       nonExistentInputNoIndex:
         inputNoIdxContracts?.nonExistentInputNoIndex.firstStep ??
         withActiveOperators.fraudProofs.nonExistentInputNoIndex,
+      noReferenceInput:
+        noReferenceInputContracts?.noReferenceInput.firstStep ??
+        withActiveOperators.fraudProofs.noReferenceInput,
+      referenceInputNoIdx:
+        referenceInputNoIdxContracts?.referenceInputNoIdx.firstStep ??
+        withActiveOperators.fraudProofs.referenceInputNoIdx,
+      invalidSignature:
+        invalidSignatureContracts?.invalidSignature.firstStep ??
+        withActiveOperators.fraudProofs.invalidSignature,
       validationTraceDispute:
         validationTraceDisputeContracts === undefined
           ? withActiveOperators.fraudProofs.validationTraceDispute
@@ -3045,6 +3126,16 @@ export const buildRemovalDeploymentInfo = (
       },
       fraudProofDaHashPreimage: {
         scriptHash: contracts.fraudProofs.daHashPreimage.spendingScriptHash,
+      },
+      fraudProofNoReferenceInput: {
+        scriptHash: contracts.fraudProofs.noReferenceInput.spendingScriptHash,
+      },
+      fraudProofReferenceInputNoIdx: {
+        scriptHash:
+          contracts.fraudProofs.referenceInputNoIdx.spendingScriptHash,
+      },
+      fraudProofInvalidSignature: {
+        scriptHash: contracts.fraudProofs.invalidSignature.spendingScriptHash,
       },
       fraudProofNonExistentInputNoIndex: {
         scriptHash:

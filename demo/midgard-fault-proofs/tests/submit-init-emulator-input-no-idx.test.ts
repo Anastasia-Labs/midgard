@@ -404,11 +404,20 @@ const HALF_CANONICAL_MATURITY_MS = 302_400_000;
  * 210,521,290 to 209,629,043, fee 543,115 to 542,885, which moves the CBOR
  * sha256. That is the same signature this pin has drifted under before, and it
  * is re-pinned rather than relaxed.
+ *
+ * Re-pinned at issue #547. Registering `noReferenceInput`,
+ * `referenceInputNoIdx` and `invalidSignature` grew the fraud-proof catalogue
+ * from 8 to 11 leaves, so the `nonExistentInputNoIndex` membership proof this
+ * transaction carries in its catalogue redeemer folds a different set of
+ * neighbours. Every measured quantity is bit-for-bit unchanged — same 7,771
+ * signed bytes, same fee, same memory, same cpu, same structural counts — so
+ * the proof is the same length and only its content, and therefore the CBOR
+ * sha256, moves: 2eae6308… to ae89c6c6….
  */
 const COMPLETE_PUBLISHED_CANONICAL_PROOF = {
   signedTxBytes: 7_771,
   signedTxSha256:
-    "2eae63081bd1bb5ab4757fc7e6fa2673e5ead2e3062c4936401c37c1ddaf5270",
+    "ae89c6c6026e038f0bcf4e8f868e077c96f9eb0a71a604da121c93f813533654",
   txByteMargin: 8_613,
   fee: 542_885n,
   executionMemory: 521_130n,

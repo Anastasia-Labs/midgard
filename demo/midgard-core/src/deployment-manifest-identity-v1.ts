@@ -78,6 +78,9 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeTimeout",
   "validationTraceDisputeAward",
   "fraudProofDaHashPreimage",
+  "fraudProofNoReferenceInput",
+  "fraudProofReferenceInputNoIdx",
+  "fraudProofInvalidSignature",
 ] as const);
 
 export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
@@ -90,6 +93,9 @@ export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
     "zeroInput",
     "validationTraceDispute",
     "daHashPreimage",
+    "noReferenceInput",
+    "referenceInputNoIdx",
+    "invalidSignature",
   ] as const);
 
 export type DeploymentManifestV1FraudProofCatalogueCategory =
@@ -995,6 +1001,9 @@ const validateFinalizedContracts = (
     zeroInput: "fraudProofZeroInput",
     validationTraceDispute: "validationTraceDispute",
     daHashPreimage: "fraudProofDaHashPreimage",
+    noReferenceInput: "fraudProofNoReferenceInput",
+    referenceInputNoIdx: "fraudProofReferenceInputNoIdx",
+    invalidSignature: "fraudProofInvalidSignature",
   } as const satisfies Record<
     DeploymentManifestV1FraudProofCatalogueCategory,
     string

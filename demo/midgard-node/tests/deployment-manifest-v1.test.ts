@@ -279,9 +279,19 @@ describe("V1 deployment manifest", () => {
   //     `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE`: its
   //     publication exceeds the L1 envelope and stays a fault-proofs
   //     deployment entry (`validationTraceDisputeCekDirectResolver`).
+  //  6. Issue #547 registered the three harvested families in one change:
+  //     `fraudProofNoReferenceInput`, `fraudProofReferenceInputNoIdx`, and
+  //     `fraudProofInvalidSignature` were appended to
+  //     `DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES` (52 -> 55 `contracts` entries)
+  //     and `noReferenceInput` / `referenceInputNoIdx` / `invalidSignature` to
+  //     `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` as categories 9, 10 and 11
+  //     (`00000008`, `00000009`, `0000000a`), which also moves the derived
+  //     catalogue root and every membership proof. All six additions are
+  //     append-only, so no existing category ID shifts.
+  //     `c9cb35df...` -> `28ac3909...`.
   it("accepts the sole exact authenticated V1 manifest", () => {
     expect(canonicalManifest().manifestId).toBe(
-      "c9cb35dfd464466be640a874f9eb80fcb3cb55e204ded5e18f997c6dc359de1c",
+      "28ac3909dff13b37a817b01071cb30b1c371d53e688c58cee17adfa1ea4697c0",
     );
     expect(parseDeploymentManifestV1Value(canonicalManifest())).toEqual(
       canonicalManifest(),

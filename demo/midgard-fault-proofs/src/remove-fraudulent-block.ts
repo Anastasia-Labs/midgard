@@ -8,7 +8,10 @@ import {
   buildDoubleSpendFaultProofContracts,
   buildInputNoIdxFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
+  buildInvalidSignatureFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
+  buildNoReferenceInputFaultProofContracts,
+  buildReferenceInputNoIdxFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
   buildZeroInputFaultProofContracts,
@@ -26,11 +29,14 @@ import {
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
   type InputNoIdxFaultProofContracts,
   type InvalidRangeFaultProofContracts,
+  type InvalidSignatureFaultProofContracts,
   type LinkedListNodeView,
   type NonExistentInputFaultProofContracts,
+  type NoReferenceInputFaultProofContracts,
   type OutputReference,
   outputReferenceFromUTxO,
   parseFaultProofBlueprint,
+  type ReferenceInputNoIdxFaultProofContracts,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -282,6 +288,9 @@ export type RemoveFraudulentBlockFraudCategory = Extract<
   | "validationTraceDispute"
   | "daHashPreimage"
   | "nonExistentInputNoIndex"
+  | "noReferenceInput"
+  | "referenceInputNoIdx"
+  | "invalidSignature"
 >;
 
 export type StateQueueMutationLease = {
@@ -562,7 +571,10 @@ const buildRemovalContracts = async ({
     | ZeroInputFaultProofContracts
     | ValidationTraceDisputeFaultProofContracts
     | DaHashPreimageFaultProofContracts
-    | InputNoIdxFaultProofContracts;
+    | InputNoIdxFaultProofContracts
+    | NoReferenceInputFaultProofContracts
+    | ReferenceInputNoIdxFaultProofContracts
+    | InvalidSignatureFaultProofContracts;
   let expectedCategoryDeploymentEntry:
     | "fraudProofDoubleSpend"
     | "fraudProofNonExistentInput"
@@ -571,7 +583,10 @@ const buildRemovalContracts = async ({
     | "fraudProofZeroInput"
     | "validationTraceDispute"
     | "fraudProofDaHashPreimage"
-    | "fraudProofNonExistentInputNoIndex";
+    | "fraudProofNonExistentInputNoIndex"
+    | "fraudProofNoReferenceInput"
+    | "fraudProofReferenceInputNoIdx"
+    | "fraudProofInvalidSignature";
   let derivedCategoryFirstStepHash: string;
   if (fraudCategory === "doubleSpend") {
     const doubleSpendContracts = await Effect.runPromise(
@@ -665,6 +680,46 @@ const buildRemovalContracts = async ({
     expectedCategoryDeploymentEntry = "fraudProofDaHashPreimage";
     derivedCategoryFirstStepHash =
       daHashPreimageContracts.daHashPreimage.firstStep.spendingScriptHash;
+  } else if (fraudCategory === "noReferenceInput") {
+    const noReferenceInputContracts = await Effect.runPromise(
+      buildNoReferenceInputFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = noReferenceInputContracts;
+    expectedCategoryDeploymentEntry = "fraudProofNoReferenceInput";
+    derivedCategoryFirstStepHash =
+      noReferenceInputContracts.noReferenceInput.firstStep.spendingScriptHash;
+  } else if (fraudCategory === "referenceInputNoIdx") {
+    const referenceInputNoIdxContracts = await Effect.runPromise(
+      buildReferenceInputNoIdxFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = referenceInputNoIdxContracts;
+    expectedCategoryDeploymentEntry = "fraudProofReferenceInputNoIdx";
+    derivedCategoryFirstStepHash =
+      referenceInputNoIdxContracts.referenceInputNoIdx.firstStep
+        .spendingScriptHash;
+  } else if (fraudCategory === "invalidSignature") {
+    const invalidSignatureContracts = await Effect.runPromise(
+      buildInvalidSignatureFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = invalidSignatureContracts;
+    expectedCategoryDeploymentEntry = "fraudProofInvalidSignature";
+    derivedCategoryFirstStepHash =
+      invalidSignatureContracts.invalidSignature.firstStep.spendingScriptHash;
   } else {
     const zeroInputContracts = await Effect.runPromise(
       buildZeroInputFaultProofContracts({

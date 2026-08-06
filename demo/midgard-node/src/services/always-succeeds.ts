@@ -274,6 +274,15 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     // service builds the real Q44 chain from the Aiken blueprint.
     const daHashPreimage = zeroInput;
 
+    // Same devnet aliasing for the three families registered by #547: the
+    // always-succeeds blueprint carries no `no_reference_input`,
+    // `reference_input_no_idx`, or `invalid_signature` stub, so each reuses
+    // the stub of the family it mirrors on-chain. Devnet only: the production
+    // contracts service builds the real chains from the Aiken blueprint.
+    const noReferenceInput = nonExistentInput;
+    const referenceInputNoIdx = nonExistentInputNoIndex;
+    const invalidSignature = invalidRange;
+
     const fraudProofs: SDK.FraudProofs = {
       doubleSpend,
       nonExistentInput,
@@ -283,6 +292,9 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       zeroInput,
       validationTraceDispute,
       daHashPreimage,
+      noReferenceInput,
+      referenceInputNoIdx,
+      invalidSignature,
     };
 
     return {

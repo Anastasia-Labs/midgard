@@ -737,6 +737,24 @@ export const midgardContractsFromDeploymentManifest = (
         sourcePath,
         "fraudProofDaHashPreimage",
       ),
+      noReferenceInput: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofNoReferenceInput",
+      ),
+      referenceInputNoIdx: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofReferenceInputNoIdx",
+      ),
+      invalidSignature: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofInvalidSignature",
+      ),
       validationTraceDispute: {
         ...spendingValidatorFromManifest(
           network,
@@ -1376,6 +1394,111 @@ const buildRealDaHashPreimageFirstStepValidator = (
     return daHashPreimageContracts.daHashPreimage.firstStep;
   });
 
+const buildRealNoReferenceInputFirstStepValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+  computationThread: SDK.MintingValidator,
+  fraudProof: SDK.AuthenticatedValidator,
+): Effect.Effect<SDK.SpendingValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const noReferenceInputContracts =
+      yield* SDK.buildNoReferenceInputFaultProofContracts({
+        blueprint,
+        network,
+        hubOraclePolicyId: contracts.hubOracle.policyId,
+        fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+      });
+
+    yield* expectDerivedScriptHash(
+      "computation-thread policy",
+      computationThread.policyId,
+      noReferenceInputContracts.computationThread.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof policy",
+      fraudProof.policyId,
+      noReferenceInputContracts.fraudProof.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof spend",
+      fraudProof.spendingScriptHash,
+      noReferenceInputContracts.fraudProof.spendingScriptHash,
+    );
+
+    return noReferenceInputContracts.noReferenceInput.firstStep;
+  });
+
+const buildRealReferenceInputNoIdxFirstStepValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+  computationThread: SDK.MintingValidator,
+  fraudProof: SDK.AuthenticatedValidator,
+): Effect.Effect<SDK.SpendingValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const referenceInputNoIdxContracts =
+      yield* SDK.buildReferenceInputNoIdxFaultProofContracts({
+        blueprint,
+        network,
+        hubOraclePolicyId: contracts.hubOracle.policyId,
+        fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+      });
+
+    yield* expectDerivedScriptHash(
+      "computation-thread policy",
+      computationThread.policyId,
+      referenceInputNoIdxContracts.computationThread.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof policy",
+      fraudProof.policyId,
+      referenceInputNoIdxContracts.fraudProof.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof spend",
+      fraudProof.spendingScriptHash,
+      referenceInputNoIdxContracts.fraudProof.spendingScriptHash,
+    );
+
+    return referenceInputNoIdxContracts.referenceInputNoIdx.firstStep;
+  });
+
+const buildRealInvalidSignatureFirstStepValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+  computationThread: SDK.MintingValidator,
+  fraudProof: SDK.AuthenticatedValidator,
+): Effect.Effect<SDK.SpendingValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const invalidSignatureContracts =
+      yield* SDK.buildInvalidSignatureFaultProofContracts({
+        blueprint,
+        network,
+        hubOraclePolicyId: contracts.hubOracle.policyId,
+        fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+      });
+
+    yield* expectDerivedScriptHash(
+      "computation-thread policy",
+      computationThread.policyId,
+      invalidSignatureContracts.computationThread.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof policy",
+      fraudProof.policyId,
+      invalidSignatureContracts.fraudProof.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof spend",
+      fraudProof.spendingScriptHash,
+      invalidSignatureContracts.fraudProof.spendingScriptHash,
+    );
+
+    return invalidSignatureContracts.invalidSignature.firstStep;
+  });
+
 /**
  * Builds the real state-queue authenticated validator.
  */
@@ -1732,6 +1855,27 @@ export const withRealStateQueueAndOperatorContracts = (
       realComputationThread,
       realFraudProof,
     );
+    const realNoReferenceInput =
+      yield* buildRealNoReferenceInputFirstStepValidator(
+        network,
+        withRealFraudProofCatalogue,
+        realComputationThread,
+        realFraudProof,
+      );
+    const realReferenceInputNoIdx =
+      yield* buildRealReferenceInputNoIdxFirstStepValidator(
+        network,
+        withRealFraudProofCatalogue,
+        realComputationThread,
+        realFraudProof,
+      );
+    const realInvalidSignature =
+      yield* buildRealInvalidSignatureFirstStepValidator(
+        network,
+        withRealFraudProofCatalogue,
+        realComputationThread,
+        realFraudProof,
+      );
     const withRealFraudProof: SDK.MidgardValidators = {
       ...withRealFraudProofCatalogue,
       fraudProof: realFraudProof,
@@ -1743,6 +1887,9 @@ export const withRealStateQueueAndOperatorContracts = (
         nonExistentInput: realNonExistentInput,
         zeroInput: realZeroInput,
         daHashPreimage: realDaHashPreimage,
+        noReferenceInput: realNoReferenceInput,
+        referenceInputNoIdx: realReferenceInputNoIdx,
+        invalidSignature: realInvalidSignature,
       },
     };
 

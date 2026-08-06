@@ -41,8 +41,13 @@ const Q13_APPLIED_STEP_HASHES = [
 // moved foundational-family step scripts while this family's four applied
 // hashes (above) are measured unchanged. Current value measured by this
 // suite's own derivation under blueprint 605c8b8d… (391 validators).
+// Re-pinned 2026-08-06 (#547): the catalogue gained three appended categories
+// (`noReferenceInput` 00000008, `referenceInputNoIdx` 00000009,
+// `invalidSignature` 0000000a), which moves the folded root without shifting
+// any existing category id. Measured by this suite's own derivation under
+// blueprint 2b5973fe… (393 validators): d1a70a1b… -> 32e29b6d….
 const Q13_CATALOGUE_ROOT =
-  "d1a70a1bd5b024d41c9f1279d564cf81f85304eeca8dec1767de3763702e24aa";
+  "32e29b6d07cc4f6c7947e75b1653f03fc840c854b45ce61ec0310c13c7321701";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -144,6 +149,10 @@ const buildInspectionFixture = async () => {
     validationTraceDispute:
       contracts.validationTraceDispute.firstStep.spendingScriptHash,
     daHashPreimage: contracts.daHashPreimage.firstStep.spendingScriptHash,
+    noReferenceInput: contracts.noReferenceInput.firstStep.spendingScriptHash,
+    referenceInputNoIdx:
+      contracts.referenceInputNoIdx.firstStep.spendingScriptHash,
+    invalidSignature: contracts.invalidSignature.firstStep.spendingScriptHash,
   });
   return { blueprintJson, contracts, fraudProofCatalogue };
 };
@@ -199,6 +208,15 @@ const deploymentInfoFor = (
     },
     fraudProofDaHashPreimage: {
       scriptHash: contracts.daHashPreimage.firstStep.spendingScriptHash,
+    },
+    fraudProofNoReferenceInput: {
+      scriptHash: contracts.noReferenceInput.firstStep.spendingScriptHash,
+    },
+    fraudProofReferenceInputNoIdx: {
+      scriptHash: contracts.referenceInputNoIdx.firstStep.spendingScriptHash,
+    },
+    fraudProofInvalidSignature: {
+      scriptHash: contracts.invalidSignature.firstStep.spendingScriptHash,
     },
   },
 });
@@ -351,6 +369,18 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
         category: "nonExistentInputNoIndex",
         step,
       })),
+      ...output.noReferenceInput.steps.map((step) => ({
+        category: "noReferenceInput",
+        step,
+      })),
+      ...output.referenceInputNoIdx.steps.map((step) => ({
+        category: "referenceInputNoIdx",
+        step,
+      })),
+      ...output.invalidSignature.steps.map((step) => ({
+        category: "invalidSignature",
+        step,
+      })),
       ...output.transitionTrace.steps.map((step) => ({
         category: "transitionTrace",
         step,
@@ -367,6 +397,9 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
       ...contracts.zeroInput.steps,
       ...contracts.daHashPreimage.steps,
       ...contracts.nonExistentInputNoIndex.steps,
+      ...contracts.noReferenceInput.steps,
+      ...contracts.referenceInputNoIdx.steps,
+      ...contracts.invalidSignature.steps,
       contracts.transitionTrace.route,
       ...contracts.transitionTrace.finals,
       contracts.validationTraceDispute.opener,

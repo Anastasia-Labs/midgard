@@ -197,6 +197,12 @@ export const buildDaDeploymentFixture = async (
       validationTraceDispute: contracts.validationTraceDispute!
         .scriptHash as string,
       daHashPreimage: contracts.fraudProofDaHashPreimage!.scriptHash as string,
+      noReferenceInput: contracts.fraudProofNoReferenceInput!
+        .scriptHash as string,
+      referenceInputNoIdx: contracts.fraudProofReferenceInputNoIdx!
+        .scriptHash as string,
+      invalidSignature: contracts.fraudProofInvalidSignature!
+        .scriptHash as string,
     }),
   };
   const referenceScripts = Object.fromEntries(

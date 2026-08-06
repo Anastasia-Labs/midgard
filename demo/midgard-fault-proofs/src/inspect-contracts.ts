@@ -95,6 +95,9 @@ export type InspectContractsOutput = {
     readonly transitionTrace: InspectContractsCatalogueCategoryOutput;
     readonly validationTraceDispute: InspectContractsCatalogueCategoryOutput;
     readonly daHashPreimage: InspectContractsCatalogueCategoryOutput;
+    readonly noReferenceInput: InspectContractsCatalogueCategoryOutput;
+    readonly referenceInputNoIdx: InspectContractsCatalogueCategoryOutput;
+    readonly invalidSignature: InspectContractsCatalogueCategoryOutput;
   };
   readonly doubleSpend: {
     readonly categoryFirstStepHash: string;
@@ -140,6 +143,37 @@ export type InspectContractsOutput = {
     readonly categoryFirstStepHash: string;
     readonly deploymentDaHashPreimageScriptHash: string | null;
     readonly deploymentDaHashPreimageMatchesFirstStep: boolean | null;
+    readonly steps: readonly [
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+    ];
+  };
+  readonly noReferenceInput: {
+    readonly categoryFirstStepHash: string;
+    readonly deploymentNoReferenceInputScriptHash: string | null;
+    readonly deploymentNoReferenceInputMatchesFirstStep: boolean | null;
+    readonly steps: readonly [
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+    ];
+  };
+  readonly referenceInputNoIdx: {
+    readonly categoryFirstStepHash: string;
+    readonly deploymentReferenceInputNoIdxScriptHash: string | null;
+    readonly deploymentReferenceInputNoIdxMatchesFirstStep: boolean | null;
+    readonly steps: readonly [
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+    ];
+  };
+  readonly invalidSignature: {
+    readonly categoryFirstStepHash: string;
+    readonly deploymentInvalidSignatureScriptHash: string | null;
+    readonly deploymentInvalidSignatureMatchesFirstStep: boolean | null;
     readonly steps: readonly [
       InspectContractsStepOutput,
       InspectContractsStepOutput,
@@ -226,7 +260,10 @@ export type InspectContractsProofCategory =
   | "transitionTrace"
   | "validationTraceDispute"
   | "daHashPreimage"
-  | "nonExistentInputNoIndex";
+  | "nonExistentInputNoIndex"
+  | "noReferenceInput"
+  | "referenceInputNoIdx"
+  | "invalidSignature";
 
 export type InspectContractsOversizedSpendingScript = {
   readonly category: InspectContractsProofCategory;
@@ -254,7 +291,10 @@ export type ImplementedFraudProofCategoryName =
   | "zeroInput"
   | "transitionTrace"
   | "validationTraceDispute"
-  | "daHashPreimage";
+  | "daHashPreimage"
+  | "noReferenceInput"
+  | "referenceInputNoIdx"
+  | "invalidSignature";
 
 export const expectedFraudProofCategoryId = (
   name: FraudProofCatalogueCategoryName,
@@ -791,6 +831,9 @@ const inspectFraudProofCatalogue = (
       transitionTrace: emptyCatalogueCategoryInspection(),
       validationTraceDispute: emptyCatalogueCategoryInspection(),
       daHashPreimage: emptyCatalogueCategoryInspection(),
+      noReferenceInput: emptyCatalogueCategoryInspection(),
+      referenceInputNoIdx: emptyCatalogueCategoryInspection(),
+      invalidSignature: emptyCatalogueCategoryInspection(),
     });
   }
 
@@ -860,6 +903,9 @@ const inspectFraudProofCatalogue = (
         "validationTraceDispute",
       );
       const daHashPreimage = await inspectCategory("daHashPreimage");
+      const noReferenceInput = await inspectCategory("noReferenceInput");
+      const referenceInputNoIdx = await inspectCategory("referenceInputNoIdx");
+      const invalidSignature = await inspectCategory("invalidSignature");
       const implementedCategories: readonly ImplementedFraudProofCategoryName[] =
         [
           "doubleSpend",
@@ -870,6 +916,9 @@ const inspectFraudProofCatalogue = (
           "transitionTrace",
           "validationTraceDispute",
           "daHashPreimage",
+          "noReferenceInput",
+          "referenceInputNoIdx",
+          "invalidSignature",
         ];
       const implementedCategoriesReady = implementedCategories.every((name) => {
         return {
@@ -881,6 +930,9 @@ const inspectFraudProofCatalogue = (
           transitionTrace,
           validationTraceDispute,
           daHashPreimage,
+          noReferenceInput,
+          referenceInputNoIdx,
+          invalidSignature,
         }[name].ready;
       });
 
@@ -897,6 +949,9 @@ const inspectFraudProofCatalogue = (
         transitionTrace,
         validationTraceDispute,
         daHashPreimage,
+        noReferenceInput,
+        referenceInputNoIdx,
+        invalidSignature,
       };
     },
     catch: (cause) =>
@@ -947,6 +1002,19 @@ export const inspectContracts = ({
     const deploymentInvalidRangeScriptHash = optionalDeploymentScriptHash(
       parsedDeploymentInfo,
       "fraudProofInvalidRange",
+    );
+    const deploymentNoReferenceInputScriptHash = optionalDeploymentScriptHash(
+      parsedDeploymentInfo,
+      "fraudProofNoReferenceInput",
+    );
+    const deploymentReferenceInputNoIdxScriptHash =
+      optionalDeploymentScriptHash(
+        parsedDeploymentInfo,
+        "fraudProofReferenceInputNoIdx",
+      );
+    const deploymentInvalidSignatureScriptHash = optionalDeploymentScriptHash(
+      parsedDeploymentInfo,
+      "fraudProofInvalidSignature",
     );
     const deploymentZeroInputScriptHash = optionalDeploymentScriptHash(
       parsedDeploymentInfo,
@@ -1044,6 +1112,25 @@ export const inspectContracts = ({
         stepOutput("step01", contracts.daHashPreimage.steps[0]),
         stepOutput("step02", contracts.daHashPreimage.steps[1]),
       ];
+    const noReferenceInputSteps: InspectContractsOutput["noReferenceInput"]["steps"] =
+      [
+        stepOutput("step01", contracts.noReferenceInput.steps[0]),
+        stepOutput("step02", contracts.noReferenceInput.steps[1]),
+        stepOutput("step03", contracts.noReferenceInput.steps[2]),
+        stepOutput("step04", contracts.noReferenceInput.steps[3]),
+      ];
+    const referenceInputNoIdxSteps: InspectContractsOutput["referenceInputNoIdx"]["steps"] =
+      [
+        stepOutput("step01", contracts.referenceInputNoIdx.steps[0]),
+        stepOutput("step02", contracts.referenceInputNoIdx.steps[1]),
+        stepOutput("step03", contracts.referenceInputNoIdx.steps[2]),
+        stepOutput("step04", contracts.referenceInputNoIdx.steps[3]),
+      ];
+    const invalidSignatureSteps: InspectContractsOutput["invalidSignature"]["steps"] =
+      [
+        stepOutput("step01", contracts.invalidSignature.steps[0]),
+        stepOutput("step02", contracts.invalidSignature.steps[1]),
+      ];
     const transitionTraceSteps: InspectContractsOutput["transitionTrace"]["steps"] =
       [
         stepOutput("route", contracts.transitionTrace.route),
@@ -1102,6 +1189,18 @@ export const inspectContracts = ({
         category: "nonExistentInputNoIndex" as const,
         step,
       })),
+      ...noReferenceInputSteps.map((step) => ({
+        category: "noReferenceInput" as const,
+        step,
+      })),
+      ...referenceInputNoIdxSteps.map((step) => ({
+        category: "referenceInputNoIdx" as const,
+        step,
+      })),
+      ...invalidSignatureSteps.map((step) => ({
+        category: "invalidSignature" as const,
+        step,
+      })),
       ...transitionTraceSteps.map((step) => ({
         category: "transitionTrace" as const,
         step,
@@ -1136,6 +1235,12 @@ export const inspectContracts = ({
       contracts.daHashPreimage.firstStep.spendingScriptHash;
     const nonExistentInputNoIndexCategoryFirstStepHash =
       contracts.nonExistentInputNoIndex.firstStep.spendingScriptHash;
+    const noReferenceInputCategoryFirstStepHash =
+      contracts.noReferenceInput.firstStep.spendingScriptHash;
+    const referenceInputNoIdxCategoryFirstStepHash =
+      contracts.referenceInputNoIdx.firstStep.spendingScriptHash;
+    const invalidSignatureCategoryFirstStepHash =
+      contracts.invalidSignature.firstStep.spendingScriptHash;
     const transitionTraceCategoryFirstStepHash =
       contracts.transitionTrace.firstStep.spendingScriptHash;
     const validationTraceDisputeCategoryFirstStepHash =
@@ -1168,6 +1273,21 @@ export const inspectContracts = ({
         ? null
         : nonExistentInputNoIndexIdentity.deploymentScriptHash ===
           nonExistentInputNoIndexCategoryFirstStepHash;
+    const deploymentNoReferenceInputMatchesFirstStep =
+      deploymentNoReferenceInputScriptHash === null
+        ? null
+        : deploymentNoReferenceInputScriptHash ===
+          noReferenceInputCategoryFirstStepHash;
+    const deploymentReferenceInputNoIdxMatchesFirstStep =
+      deploymentReferenceInputNoIdxScriptHash === null
+        ? null
+        : deploymentReferenceInputNoIdxScriptHash ===
+          referenceInputNoIdxCategoryFirstStepHash;
+    const deploymentInvalidSignatureMatchesFirstStep =
+      deploymentInvalidSignatureScriptHash === null
+        ? null
+        : deploymentInvalidSignatureScriptHash ===
+          invalidSignatureCategoryFirstStepHash;
     const deploymentTransitionTraceMatchesFirstStep =
       deploymentTransitionTraceScriptHash === null
         ? null
@@ -1189,6 +1309,9 @@ export const inspectContracts = ({
         transitionTrace: transitionTraceCategoryFirstStepHash,
         validationTraceDispute: validationTraceDisputeCategoryFirstStepHash,
         daHashPreimage: daHashPreimageCategoryFirstStepHash,
+        noReferenceInput: noReferenceInputCategoryFirstStepHash,
+        referenceInputNoIdx: referenceInputNoIdxCategoryFirstStepHash,
+        invalidSignature: invalidSignatureCategoryFirstStepHash,
       },
       {
         doubleSpend: deploymentDoubleSpendMatchesFirstStep,
@@ -1201,6 +1324,9 @@ export const inspectContracts = ({
         validationTraceDispute:
           deploymentValidationTraceDisputeMatchesFirstStep,
         daHashPreimage: deploymentDaHashPreimageMatchesFirstStep,
+        noReferenceInput: deploymentNoReferenceInputMatchesFirstStep,
+        referenceInputNoIdx: deploymentReferenceInputNoIdxMatchesFirstStep,
+        invalidSignature: deploymentInvalidSignatureMatchesFirstStep,
       },
     );
 
@@ -1264,6 +1390,24 @@ export const inspectContracts = ({
         deploymentMatchesEmbeddedScriptBytes:
           nonExistentInputNoIndexIdentity.deploymentMatchesScriptBytes,
         steps: nonExistentInputNoIndexSteps,
+      },
+      noReferenceInput: {
+        categoryFirstStepHash: noReferenceInputCategoryFirstStepHash,
+        deploymentNoReferenceInputScriptHash,
+        deploymentNoReferenceInputMatchesFirstStep,
+        steps: noReferenceInputSteps,
+      },
+      referenceInputNoIdx: {
+        categoryFirstStepHash: referenceInputNoIdxCategoryFirstStepHash,
+        deploymentReferenceInputNoIdxScriptHash,
+        deploymentReferenceInputNoIdxMatchesFirstStep,
+        steps: referenceInputNoIdxSteps,
+      },
+      invalidSignature: {
+        categoryFirstStepHash: invalidSignatureCategoryFirstStepHash,
+        deploymentInvalidSignatureScriptHash,
+        deploymentInvalidSignatureMatchesFirstStep,
+        steps: invalidSignatureSteps,
       },
       transitionTrace: {
         categoryFirstStepHash: transitionTraceCategoryFirstStepHash,

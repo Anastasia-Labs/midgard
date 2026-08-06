@@ -43,6 +43,9 @@ const CATALOGUE_CATEGORY_TO_CONTRACT = Object.freeze({
   zeroInput: "fraudProofZeroInput",
   validationTraceDispute: "validationTraceDispute",
   daHashPreimage: "fraudProofDaHashPreimage",
+  noReferenceInput: "fraudProofNoReferenceInput",
+  referenceInputNoIdx: "fraudProofReferenceInputNoIdx",
+  invalidSignature: "fraudProofInvalidSignature",
 } as const);
 
 const REFERENCE_SCRIPT_ROLES = Object.freeze(
