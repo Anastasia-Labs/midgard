@@ -23,6 +23,16 @@
   goal is active and `update_goal` only records terminal status), so the active
   objective remains semantically authoritative while this section is the
   durable execution-policy override. It does not waive §12, §14, or §15.
+- Owner direction on 2026-08-06 sets a 2026-08-20 delivery target and amends
+  execution process for speed:
+  `docs/exec-plans/evidence/owner-decisions-2026-08-06-acceleration.md`
+  (D1 priority order; D2 batched ledger recording; D3 batched registry
+  promotion; D4 pre-authorized decision classes; D5 standing four-lane
+  concurrency through delivery; D6 duplicate-replay reduction; D7 daily
+  checkpoint cadence). It amends recording granularity and coordination
+  only — §3, §12, §14, §15, every fail-closed gate, §5.1 serialization,
+  §4.3 commit discipline, §0.2 release/evidence binding, and the exclusion
+  of the unprovenanced 246-row bulk edit are explicitly not waived.
 
 ## Baseline
 
@@ -5957,3 +5967,46 @@ program-long stale `320ed869` index — graph staleness is now bounded at
 one commit behind HEAD.
 The first detached post-commit dispatch then fired live on the same dirty
 tree for `29d74e52` itself, confirming both modes.
+
+
+## Acceleration amendment and 2026-08-20 delivery target (2026-08-06)
+
+Owner direction (Philip DiSarro, 2026-08-06): streamline execution
+process for delivery speed and deliver by **2026-08-20**. Durable record:
+`docs/exec-plans/evidence/owner-decisions-2026-08-06-acceleration.md`.
+Summary of what changes now:
+
+- Ledger and registry recording move to batch granularity (one evidence
+  entry per coherent integration batch; one focused verification run per
+  registry promotion batch). `PASS` still requires final-tree executable
+  evidence; only recording granularity and prose volume change.
+- Three outcome classes are pre-authorized without owner round-trips:
+  verbatim-passing `focusedCommands` status flips, precedent-matching
+  structural-N/A closures, and batch registry promotions whose evidence
+  commands pass. Soundness/semantics/scope decisions still require their
+  own round.
+- The 2026-08-04 concurrency override becomes standing through
+  2026-08-20: four implementation lanes plus the parent integration lane,
+  path leases and §5.1 serialization intact.
+- Parent full replay narrows to §5.1 surfaces and consensus codecs;
+  other lanes get recorded-evidence acceptance with ≥1-in-5 spot replay,
+  reverting to full replay on any mismatch.
+- Checkpoint freezes become per-batch/daily with delta-only narratives.
+
+Priority order to delivery: in-flight rows (`C21-AUDIT`, `F40`, `F41`,
+`C26` remainder, `NODE-DEPOSIT-DA-OUTBOX`) → §9.3 proof-family fan-out
+across the standing lanes → §8.2–§8.4 remainder → §8.5 release evidence
+and registry batch promotion → §8.6 bounded deployment and §10.4–§10.5
+watcher acceptance under §0.2 binding. Fallback checkpoint: if fewer
+than half of the §9.3 rows are closed by 2026-08-12, request an owner
+scope round on §12 (not pre-authorized here).
+
+The unprovenanced 246-row bulk edit remains excluded from this commit
+and preserved in the working tree, per the standing exclusion rule.
+
+
+## Superseding current next action (2026-08-06)
+
+Launch the standing lanes per the D1 priority order: close `C21-AUDIT`,
+`F40`, `F41`, the `C26` remainder, and `NODE-DEPOSIT-DA-OUTBOX`, and
+assign the first four §9.3 proof-family lanes from the F05 manifest.
