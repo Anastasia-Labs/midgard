@@ -3,7 +3,13 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  buildMidgardBoundedCollectionV1,
+  computeHash32,
+  encodeCbor,
+} from "@al-ft/midgard-core";
+import {
   applyParamsToScript,
+  CML,
   Constr,
   Data,
   type SpendingValidator as LucidSpendingValidator,
@@ -310,6 +316,201 @@ describe("fault-proof ABI", () => {
     ).toMatchObject({
       Continue: [{ fraud_proof_mint_redeemer_index: 1n }],
     });
+  });
+
+  it("detects an invalid address witness and leaves valid ones alone", () => {
+    const txId = "ab".repeat(32);
+    const signingKey = CML.PrivateKey.generate_ed25519();
+    const verificationKey = Buffer.from(
+      signingKey.to_public().to_raw_bytes(),
+    ).toString("hex");
+    const goodSignature = Buffer.from(
+      signingKey.sign(Buffer.from(txId, "hex")).to_raw_bytes(),
+    ).toString("hex");
+
+    const goodWitness = {
+      verification_key: verificationKey,
+      signature: goodSignature,
+    };
+    // Flip the leading byte of the signature: still structurally a 64-byte
+    // Ed25519 signature, but it no longer verifies against the tx id.
+    const badWitness = {
+      verification_key: verificationKey,
+      signature:
+        (goodSignature.startsWith("00") ? "11" : "00") + goodSignature.slice(2),
+    };
+
+    expect(
+      SDK.findInvalidAddressWitnessIndex({ txId, addrTxWits: [goodWitness] }),
+    ).toBeNull();
+    expect(
+      SDK.nativeTxHasInvalidSignatureViolation({
+        txId,
+        addrTxWits: [goodWitness],
+      }),
+    ).toBe(false);
+    expect(
+      SDK.findInvalidAddressWitnessIndex({
+        txId,
+        addrTxWits: [goodWitness, badWitness],
+      }),
+    ).toBe(1);
+    // A witness that verifies against a *different* message is still invalid
+    // for this transaction.
+    expect(
+      SDK.findInvalidAddressWitnessIndex({
+        txId: "cd".repeat(32),
+        addrTxWits: [goodWitness],
+      }),
+    ).toBe(0);
+  });
+
+  it("round-trips the address-witness preimage the node commits to", () => {
+    const witnesses = [
+      { verification_key: "aa".repeat(32), signature: "bb".repeat(64) },
+      { verification_key: "cc".repeat(32), signature: "dd".repeat(64) },
+    ];
+    // The node stores field 7 as a CBOR array of raw per-witness
+    // `[vkey, signature]` encodings; that is what the on-chain
+    // `encode_midgard_address_witness` reproduces per item.
+    const preimageCbor = encodeCbor(
+      witnesses.map((witness) =>
+        encodeCbor([
+          Buffer.from(witness.verification_key, "hex"),
+          Buffer.from(witness.signature, "hex"),
+        ]),
+      ),
+    );
+
+    expect(SDK.decodeAddressWitnessPreimage(preimageCbor)).toEqual(witnesses);
+    expect(SDK.encodeAddressWitnessPreimage(witnesses)).toEqual(preimageCbor);
+    // Malformed witness lengths are rejected, matching the on-chain
+    // `expect bytearray.length(...) == 32 / 64`.
+    expect(() =>
+      SDK.encodeMidgardAddressWitnessCanonicalV1({
+        verification_key: "aa".repeat(31),
+        signature: "bb".repeat(64),
+      }),
+    ).toThrow("must be 32 bytes");
+  });
+
+  it("commits the address witnesses under native field 7", () => {
+    const witnesses = [
+      { verification_key: "aa".repeat(32), signature: "bb".repeat(64) },
+      { verification_key: "cc".repeat(32), signature: "dd".repeat(64) },
+    ];
+    // Twin of `bounded_collection_v1.from_items(7, list.map(..., encode_midgard_address_witness))`.
+    expect(SDK.invalidSignatureAddressWitnessesCommitmentV1(witnesses)).toBe(
+      buildMidgardBoundedCollectionV1({
+        fieldIndex: SDK.INVALID_SIGNATURE_ADDR_TX_WITS_FIELD_INDEX_V1,
+        items: witnesses.map((witness) =>
+          encodeCbor([
+            Buffer.from(witness.verification_key, "hex"),
+            Buffer.from(witness.signature, "hex"),
+          ]),
+        ),
+      }).commitment.toString("hex"),
+    );
+    // The field index is load-bearing: the same items committed under any other
+    // native field produce a different hash, so a spend-inputs preimage can
+    // never open the witness collection.
+    expect(
+      SDK.invalidSignatureAddressWitnessesCommitmentV1(witnesses),
+    ).not.toBe(
+      buildMidgardBoundedCollectionV1({
+        fieldIndex: 0,
+        items: witnesses.map((witness) =>
+          encodeCbor([
+            Buffer.from(witness.verification_key, "hex"),
+            Buffer.from(witness.signature, "hex"),
+          ]),
+        ),
+      }).commitment.toString("hex"),
+    );
+  });
+
+  it("recomputes the witness set hash step 01 opens", () => {
+    const witnessSet = {
+      addr_tx_wits_hash: h32,
+      script_tx_wits_hash: h32b,
+      redeemer_tx_wits_hash: "77".repeat(32),
+    };
+    // Mirrors `blake2b_256(encode_native_tx_witness_set_compact(...))` in the
+    // on-chain `verify_native_tx_witness_set`, in positional order.
+    expect(SDK.invalidSignatureWitnessSetCommitmentV1(witnessSet)).toBe(
+      computeHash32(
+        encodeCbor([
+          Buffer.from(witnessSet.addr_tx_wits_hash, "hex"),
+          Buffer.from(witnessSet.script_tx_wits_hash, "hex"),
+          Buffer.from(witnessSet.redeemer_tx_wits_hash, "hex"),
+        ]),
+      ).toString("hex"),
+    );
+  });
+
+  it("round-trips invalid-signature step datums and redeemers", () => {
+    expect(
+      roundTrip(
+        { fraud_prover: h28, data: null },
+        SDK.InvalidSignatureStep01Datum,
+      ),
+    ).toEqual({ fraud_prover: h28, data: null });
+
+    const witnessSetCompact = {
+      addr_tx_wits_hash: h32,
+      script_tx_wits_hash: h32b,
+      redeemer_tx_wits_hash: "77".repeat(32),
+    };
+    // Step 01 carries the inclusion args *and* the witness-set compact whose
+    // hash the committed transaction pins.
+    const step01Args = {
+      tx_inclusion_args: txInclusionArgs,
+      bad_tx_witness_set_compact: witnessSetCompact,
+    };
+    expect(
+      roundTrip(
+        { Continue: [step01Args] },
+        SDK.InvalidSignatureStep01SpendRedeemer,
+      ),
+    ).toMatchObject({
+      Continue: [
+        {
+          tx_inclusion_args: { native_tx_id: h32 },
+          bad_tx_witness_set_compact: witnessSetCompact,
+        },
+      ],
+    });
+
+    const step02Datum = {
+      fraud_prover: h28,
+      data: { bad_tx_id: h32, bad_addr_tx_wits_hash: h32b },
+    };
+    expect(roundTrip(step02Datum, SDK.InvalidSignatureStep02Datum)).toEqual(
+      step02Datum,
+    );
+    expect(
+      SDK.invalidSignatureStep02StateFromBadTxV1({
+        badTxId: h32.toUpperCase(),
+        badAddrTxWitsHash: h32b.toUpperCase(),
+      }),
+    ).toEqual(step02Datum.data);
+
+    const step02Args = {
+      input_index: 0n,
+      output_index: 0n,
+      addr_tx_wits_preimage: [
+        { verification_key: "aa".repeat(32), signature: "bb".repeat(64) },
+        { verification_key: "cc".repeat(32), signature: "dd".repeat(64) },
+      ],
+      bad_addr_tx_wit_index: 1n,
+      fraud_proof_mint_redeemer_index: 1n,
+    };
+    expect(
+      roundTrip(
+        { Continue: [step02Args] },
+        SDK.InvalidSignatureStep02SpendRedeemer,
+      ),
+    ).toEqual({ Continue: [step02Args] });
   });
 
   it("round-trips zero-input step datums and redeemers", () => {
@@ -1075,6 +1276,10 @@ describe("fault-proof contract builder", () => {
       contracts.invalidRange.steps[0],
     );
     expect(contracts.invalidRange.steps).toHaveLength(2);
+    expect(contracts.invalidSignature.firstStep).toBe(
+      contracts.invalidSignature.steps[0],
+    );
+    expect(contracts.invalidSignature.steps).toHaveLength(2);
     expect(contracts.zeroInput.firstStep).toBe(contracts.zeroInput.steps[0]);
     expect(contracts.zeroInput.steps).toHaveLength(2);
     expect(contracts.transitionTrace.firstStep).toBe(
@@ -1096,6 +1301,7 @@ describe("fault-proof contract builder", () => {
           ...contracts.nonExistentInputNoIndex.steps,
           ...contracts.referenceInputNoIdx.steps,
           ...contracts.invalidRange.steps,
+          ...contracts.invalidSignature.steps,
           ...contracts.zeroInput.steps,
           ...contracts.transitionTrace.steps,
           ...contracts.validationTraceDispute.steps,
@@ -1104,8 +1310,9 @@ describe("fault-proof contract builder", () => {
       // The split stage-one route contributes the envelope resolver plus five
       // internal stage hashes to the applied proof surface; the four
       // `reference_input_no_idx` steps add two more distinct hashes, since its
-      // steps 03-04 are the same UPLC as `input_no_idx`'s.
-    ).toBe(133);
+      // steps 03-04 are the same UPLC as `input_no_idx`'s; the two
+      // `invalid_signature` steps are distinct from every other family.
+    ).toBe(135);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {
@@ -1265,6 +1472,94 @@ describe("fault-proof contract builder", () => {
 
     expect(contracts.zeroInput.firstStep).toBe(contracts.zeroInput.steps[0]);
     expect(contracts.zeroInput.steps).toHaveLength(2);
+  });
+
+  it("builds invalid-signature with the validator parameter order from the blueprint", async () => {
+    const blueprint = loadBlueprint();
+
+    const contracts = await Effect.runPromise(
+      SDK.buildInvalidSignatureFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28b,
+        fraudProofCataloguePolicyId: h28c,
+      }),
+    );
+
+    expect(contracts.invalidSignature.firstStep).toBe(
+      contracts.invalidSignature.steps[0],
+    );
+    expect(contracts.invalidSignature.steps).toHaveLength(2);
+    expect(
+      new Set(
+        contracts.invalidSignature.steps.map((step) => step.spendingScriptHash),
+      ).size,
+    ).toBe(2);
+
+    const fraudProofTokenAddressData = Data.from(
+      Data.to(
+        await Effect.runPromise(
+          addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
+        ),
+        AddressData,
+      ),
+    );
+    // Note the parameter order differs from zero-input/invalid-range: this
+    // chain's final step takes the computation-thread policy first, matching
+    // the aiken `validator main(...)` signature.
+    const expectedStep02Cbor = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        SDK.INVALID_SIGNATURE_FAULT_PROOF_TITLES.step02,
+      ),
+      [
+        contracts.computationThread.policyId,
+        contracts.fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+    );
+    const expectedStep01Cbor = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        SDK.INVALID_SIGNATURE_FAULT_PROOF_TITLES.step01,
+      ),
+      [
+        spendingScriptHash(expectedStep02Cbor),
+        contracts.computationThread.policyId,
+        h28b,
+      ],
+    );
+
+    expect(contracts.invalidSignature.steps[1].spendingScriptCBOR).toBe(
+      expectedStep02Cbor,
+    );
+    expect(contracts.invalidSignature.steps[0].spendingScriptCBOR).toBe(
+      expectedStep01Cbor,
+    );
+    expect(contracts.invalidSignature.steps[0].spendingScriptAddress).toBe(
+      validatorToAddress("Preprod", spendingScript(expectedStep01Cbor)),
+    );
+  });
+
+  it("builds invalid-signature without requiring unrelated category validators", async () => {
+    const blueprint = filterBlueprint(loadBlueprint(), [
+      ...Object.values(FAULT_PROOF_SHARED_TITLES),
+      ...Object.values(SDK.INVALID_SIGNATURE_FAULT_PROOF_TITLES),
+    ]);
+
+    const contracts = await Effect.runPromise(
+      SDK.buildInvalidSignatureFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28b,
+        fraudProofCataloguePolicyId: h28c,
+      }),
+    );
+
+    expect(contracts.invalidSignature.firstStep).toBe(
+      contracts.invalidSignature.steps[0],
+    );
+    expect(contracts.invalidSignature.steps).toHaveLength(2);
   });
 
   it("builds reference-input-no-idx with the validator parameter order from the blueprint", async () => {

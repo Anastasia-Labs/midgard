@@ -49,6 +49,42 @@ export type NativeTxInclusionArgs = Data.Static<
 export const NativeTxInclusionArgs =
   NativeTxInclusionArgsSchema as unknown as NativeTxInclusionArgs;
 
+/**
+ * Per-category witness commitments of a native V1 transaction, the preimage of
+ * the compact transaction's `witness_set_hash`. Positional order mirrors the
+ * aiken `NativeTxWitnessSetCompact` record exactly.
+ */
+export const NativeTxWitnessSetCompactSchema = Data.Object({
+  addr_tx_wits_hash: H32Schema,
+  script_tx_wits_hash: H32Schema,
+  redeemer_tx_wits_hash: H32Schema,
+});
+export type NativeTxWitnessSetCompact = Data.Static<
+  typeof NativeTxWitnessSetCompactSchema
+>;
+export const NativeTxWitnessSetCompact =
+  NativeTxWitnessSetCompactSchema as unknown as NativeTxWitnessSetCompact;
+
+/** One Ed25519 address witness: a verification key and its signature. */
+export const MidgardAddressWitnessSchema = Data.Object({
+  verification_key: Data.Bytes({ minLength: 32, maxLength: 32 }),
+  signature: Data.Bytes({ minLength: 64, maxLength: 64 }),
+});
+export type MidgardAddressWitness = Data.Static<
+  typeof MidgardAddressWitnessSchema
+>;
+export const MidgardAddressWitness =
+  MidgardAddressWitnessSchema as unknown as MidgardAddressWitness;
+
+export const MidgardAddressWitnessListSchema = Data.Array(
+  MidgardAddressWitnessSchema,
+);
+export type MidgardAddressWitnessList = Data.Static<
+  typeof MidgardAddressWitnessListSchema
+>;
+export const MidgardAddressWitnessList =
+  MidgardAddressWitnessListSchema as unknown as MidgardAddressWitnessList;
+
 export const MidgardTxInputSchema = Data.Object({
   tx_id: H32Schema,
   output_index: Data.Integer(),
