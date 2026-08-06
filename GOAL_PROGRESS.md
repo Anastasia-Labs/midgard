@@ -5936,3 +5936,24 @@ exactly the root-pin failure as the drift fingerprint); manifest quality
 186/186 with 0 defects + self-test; scoped ESLint/Prettier clean on the
 three edited files. The unprovenanced 246-row bulk edit remains excluded
 from this checkpoint and preserved in the working tree.
+
+
+## Graphify hook amendment: dirty checkouts no longer block the refresh (2026-08-05)
+
+`29d74e52` amends the `f1287c18` hook at the owner's direction: the
+refresh now snapshots HEAD with `git archive` (tracked bytes only) into
+the state root and extracts from that snapshot, so a dirty working tree —
+the permanent state of this checkout while the unprovenanced 246-row edit
+and untracked `GOAL_ASSIST.md` are preserved — no longer blocks the graph
+refresh, while the published graph still corresponds to exactly one
+commit. The graph's `source_file` paths are repo-relative, so snapshot
+extraction is byte-equivalent to clean-checkout extraction. Post-commit
+dispatch is detached (`setsid` + `flock`; an indexed-commit stamp
+collapses rapid commit bursts into one refresh of the newest HEAD) so
+commits return immediately; `make refresh-graphify-graph` runs the same
+worker in the foreground. Verified on this dirty tree: the foreground run
+indexed `09fd3481` in 41.2 s (29,255 nodes / 85,130 edges, 718 communities), replacing the
+program-long stale `320ed869` index — graph staleness is now bounded at
+one commit behind HEAD.
+The first detached post-commit dispatch then fired live on the same dirty
+tree for `29d74e52` itself, confirming both modes.
