@@ -294,7 +294,7 @@
         "pnpm --dir demo exec prettier --check ../docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json ../docs/exec-plans/templates/README.md ../docs/exec-plans/templates/task-manifest-row.json ../docs/exec-plans/templates/necessity-artifact-template.md ../docs/exec-plans/templates/structural-na-template.md ../docs/exec-plans/templates/subagent-assignment-brief.md scripts/verify-canonical-v1-goal-task-manifest-quality.mjs",
         "git diff --check -- docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json docs/exec-plans/templates/README.md docs/exec-plans/templates/task-manifest-row.json docs/exec-plans/templates/necessity-artifact-template.md docs/exec-plans/templates/structural-na-template.md docs/exec-plans/templates/subagent-assignment-brief.md demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-goal-task-manifest-quality.mjs. Quality closure reports exactly 186 manifest tasks, 186 unique authoritative task IDs, 186 DETAILED rows, 119 authoritative first-queue IDs, and 0 defects; exactly 4 of 4 worked templates validate and blockedOn contains exactly 2 current non-PASS dependencies C26, F41 with 0 stale PASS blockers.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-goal-task-manifest-quality.mjs. Quality closure reports exactly 186 manifest tasks, 186 unique authoritative task IDs, 186 DETAILED rows, 119 authoritative first-queue IDs, and 0 defects; exactly 4 of 4 worked templates validate and blockedOn contains exactly 1 current non-PASS dependency F41 with 0 stale PASS blockers.",
       "invalidationTriggers": [
         "Any F01/F02/F20/F21/F30 inventory/reconciliation finding, F41 closure-schema requirement, GOAL_SPEC §7-§10 task, or authoritative first-queue ID/dependency/status changes",
         "Any manifest row, dependency expansion, lease, anchor, command, count contract, blocker, summary cardinality, template, or quality-verifier rule changes after capture",
@@ -2208,8 +2208,8 @@
         "Any non-PASS dependency in blockedOn changes ABI or status, including the retained C21 Option A ABI or C21-AUDIT remeasurement",
         "Target protocol parameters, maxTxSize, retained payload roots/counts, applied validator hash, or maximum corpus changes"
       ],
-      "blockedOn": ["C21", "C22", "C23", "C24", "C25", "C26", "C29"],
-      "blockedBecause": "C30 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C26, C29; every C20-* ordered-field row is PASS and is deliberately omitted."
+      "blockedOn": ["C21", "C22", "C23", "C24", "C25", "C29"],
+      "blockedBecause": "C30 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C29; every C20-* ordered-field row is PASS and is deliberately omitted."
     },
     {
       "id": "C31",
@@ -2282,8 +2282,8 @@
         "Any non-PASS dependency in blockedOn changes ABI or status, including the retained C21 Option A ABI or C21-AUDIT remeasurement",
         "Forced transaction root/count, verdict/classification, target parameters, applied validator hash, or maximum corpus changes"
       ],
-      "blockedOn": ["C21", "C22", "C23", "C24", "C25", "C26", "C29"],
-      "blockedBecause": "C31 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C26, C29; every C20-* ordered-field row is PASS and is deliberately omitted."
+      "blockedOn": ["C21", "C22", "C23", "C24", "C25", "C29"],
+      "blockedBecause": "C31 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C29; every C20-* ordered-field row is PASS and is deliberately omitted."
     },
     {
       "id": "C32",
@@ -2383,18 +2383,8 @@
         "Any C20-0 through C31 dependency status/ABI changes, C21 Option B-prime is reconsidered, or C21-AUDIT evidence is repinned",
         "Applied validator hash, target protocol parameters, cost model, maxTxSize, min-Ada, or complete-item necessity conclusion changes"
       ],
-      "blockedOn": [
-        "C21",
-        "C22",
-        "C23",
-        "C24",
-        "C25",
-        "C26",
-        "C29",
-        "C30",
-        "C31"
-      ],
-      "blockedBecause": "C32 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C26, C29, C30, C31; every C20-* ordered-field row is PASS and is deliberately omitted."
+      "blockedOn": ["C21", "C22", "C23", "C24", "C25", "C29", "C30", "C31"],
+      "blockedBecause": "C32 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C29, C30, C31; every C20-* ordered-field row is PASS and is deliberately omitted."
     },
     {
       "id": "C33",
@@ -2457,8 +2447,8 @@
         "Any C23 through C28 dependency status/ABI changes, including script/program carriage semantics",
         "CML/emulator version, target protocol parameters, language views, applied validator hash, or signed boundary fixture changes"
       ],
-      "blockedOn": ["C23", "C24", "C25", "C26"],
-      "blockedBecause": "C33 remains dependency-blocked only on current non-PASS queue rows: C23, C24, C25, C26. PASS dependencies are deliberately omitted."
+      "blockedOn": ["C23", "C24", "C25"],
+      "blockedBecause": "C33 remains dependency-blocked only on current non-PASS queue rows: C23, C24, C25. PASS dependencies are deliberately omitted."
     },
     {
       "id": "CG2",
@@ -2539,14 +2529,13 @@
         "C23",
         "C24",
         "C25",
-        "C26",
         "C29",
         "C30",
         "C31",
         "C32",
         "C33"
       ],
-      "blockedBecause": "CG2 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C26, C29, C30, C31, C32, C33; every C20-* ordered-field row is PASS and is deliberately omitted."
+      "blockedBecause": "CG2 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C29, C30, C31, C32, C33; every C20-* ordered-field row is PASS and is deliberately omitted."
     },
     {
       "id": "C40",
@@ -5511,7 +5500,7 @@
         "Any Q03 evidence gate, double-spend rule/state/schema/builder/submitter/test, catalogue deployment/reachability, first-step hash, proof-fit measurement, emulator lifecycle, or Q10 evidence/verifier changes"
       ],
       "detailStatus": "DETAILED",
-      "schedulingNote": "Q10 dependencies Q00-Q03 are recorded PASS and \u00a79.1 output 4 is measured at issue #481: each of the 4 deployed steps now carries exactly 1 positive and 1 valid-block-negative selector and all 8 pass. Q10 still has no PASS queue row and remains OPEN on outputs 5-9 (maximum/adversarial proof-fit fixture, deployment and first-step-hash records, DA-first evidence builder, resumable command, emulator lifecycle) plus the prescribed canonical-v1-proof-family-q10-v1.json and verify-canonical-v1-proof-family-q10.mjs; those surfaces lie outside the #481 proof-family path set and are not claimed here."
+      "schedulingNote": "Q10 dependencies Q00-Q03 are recorded PASS and §9.1 output 4 is measured at issue #481: each of the 4 deployed steps now carries exactly 1 positive and 1 valid-block-negative selector and all 8 pass. Q10 still has no PASS queue row and remains OPEN on outputs 5-9 (maximum/adversarial proof-fit fixture, deployment and first-step-hash records, DA-first evidence builder, resumable command, emulator lifecycle) plus the prescribed canonical-v1-proof-family-q10-v1.json and verify-canonical-v1-proof-family-q10.mjs; those surfaces lie outside the #481 proof-family path set and are not claimed here."
     },
     {
       "id": "Q11",
@@ -5592,7 +5581,7 @@
         "Any Q03 evidence gate/gated builder, no-input rule/state/schema/builder/submitter/test, catalogue deployment/reachability, first-step hash, proof-fit measurement, emulator lifecycle, or Q11 evidence/verifier changes"
       ],
       "detailStatus": "DETAILED",
-      "schedulingNote": "Q11 dependencies Q00-Q03 are recorded PASS, its Q03 gated builder exists, and \u00a79.1 output 4 is measured at issue #481: each of the 4 deployed steps now carries exactly 1 positive and 1 valid-block-negative selector and all 8 pass, including both delegated non-membership checks. Q11 still has no PASS queue row and remains OPEN on outputs 5-9 plus the prescribed canonical-v1-proof-family-q11-v1.json and verify-canonical-v1-proof-family-q11.mjs."
+      "schedulingNote": "Q11 dependencies Q00-Q03 are recorded PASS, its Q03 gated builder exists, and §9.1 output 4 is measured at issue #481: each of the 4 deployed steps now carries exactly 1 positive and 1 valid-block-negative selector and all 8 pass, including both delegated non-membership checks. Q11 still has no PASS queue row and remains OPEN on outputs 5-9 plus the prescribed canonical-v1-proof-family-q11-v1.json and verify-canonical-v1-proof-family-q11.mjs."
     },
     {
       "id": "Q12",
@@ -5665,7 +5654,7 @@
         "Any Q03 evidence gate, validity-range rule/state/schema/builder/submitter/test, adjacent F21 regression, catalogue deployment/reachability, first-step hash, proof-fit measurement, emulator lifecycle, or Q12 evidence/verifier changes"
       ],
       "detailStatus": "DETAILED",
-      "schedulingNote": "Q12 dependencies Q00-Q03 are recorded PASS and \u00a79.1 output 4 is measured at issue #481: step-01 keeps its 3 range-normalization controls and adds exactly 1 positive plus 1 valid-block-negative family selector, step-02 adds exactly 1 of each, and all 7 pass. The step-01 positive also binds an inverted-interval transaction and the step-02 positive finalizes on InvalidRange, which is the executable disposition of F21 physical structural row L302 (Q49-L302). Q12 still has no PASS queue row and remains OPEN on outputs 5-9 plus the prescribed canonical-v1-proof-family-q12-v1.json and verify-canonical-v1-proof-family-q12.mjs."
+      "schedulingNote": "Q12 dependencies Q00-Q03 are recorded PASS and §9.1 output 4 is measured at issue #481: step-01 keeps its 3 range-normalization controls and adds exactly 1 positive plus 1 valid-block-negative family selector, step-02 adds exactly 1 of each, and all 7 pass. The step-01 positive also binds an inverted-interval transaction and the step-02 positive finalizes on InvalidRange, which is the executable disposition of F21 physical structural row L302 (Q49-L302). Q12 still has no PASS queue row and remains OPEN on outputs 5-9 plus the prescribed canonical-v1-proof-family-q12-v1.json and verify-canonical-v1-proof-family-q12.mjs."
     },
     {
       "id": "Q13",
@@ -5810,7 +5799,7 @@
       "detailStatus": "DETAILED",
       "blockedOn": [],
       "blockedBecause": "No dependency blocker: Q00-Q03 are recorded PASS, but Q14 itself has no PASS queue row.",
-      "schedulingNote": "Aiken \u00a79.1 output 4 is re-verified at issue #481 (exactly 9 selectors, 9 of 9 passing); every other candidate output remains NOT_STARTED. Dependency readiness and a passing selector set are not family completion: proof-fit, deployment records, emulator lifecycle and closure evidence are still owed."
+      "schedulingNote": "Aiken §9.1 output 4 is re-verified at issue #481 (exactly 9 selectors, 9 of 9 passing); every other candidate output remains NOT_STARTED. Dependency readiness and a passing selector set are not family completion: proof-fit, deployment records, emulator lifecycle and closure evidence are still owed."
     },
     {
       "id": "Q15",

@@ -94,28 +94,30 @@ const mustReject = (label, category, mutate) => {
   rejectedMutations += 1;
 };
 
-// The exact defect V-7 found: an understated manifest-wide blocked-on claim.
+// The exact defect V-7 found: a stale manifest-wide blocked-on claim. The
+// seed reinstates the pre-promotion wording (C26 went PASS in the 2026-08-06
+// owner round), which the derivation must now reject.
 mustReject(
-  "F05 claims 1 current non-PASS dependency while C26 is PARTIAL",
+  "F05 claims C26 is still a current non-PASS dependency after its promotion",
   "blockedOnClaimMismatch",
   (candidate) => {
     const f05 = rowOf(candidate, "F05");
     f05.expectedNonzeroCounts = f05.expectedNonzeroCounts.replace(
       /blockedOn contains exactly \d+ current non-PASS dependenc(?:y|ies)[^.]*/,
-      "blockedOn contains exactly 1 current non-PASS dependency F41 with 0 stale PASS blockers",
+      "blockedOn contains exactly 2 current non-PASS dependencies C26, F41 with 0 stale PASS blockers",
     );
   },
 );
 
 // Right cardinality, wrong identities: counting alone must not satisfy it.
 mustReject(
-  "F05 claims the right count but names the wrong dependencies",
+  "F05 claims the right count but names the wrong dependency",
   "blockedOnClaimMismatch",
   (candidate) => {
     const f05 = rowOf(candidate, "F05");
     f05.expectedNonzeroCounts = f05.expectedNonzeroCounts.replace(
       /blockedOn contains exactly \d+ current non-PASS dependenc(?:y|ies)[^.]*/,
-      "blockedOn contains exactly 2 current non-PASS dependencies C21, C29 with 0 stale PASS blockers",
+      "blockedOn contains exactly 1 current non-PASS dependency C21 with 0 stale PASS blockers",
     );
   },
 );
@@ -133,25 +135,27 @@ mustReject(
   },
 );
 
-// blockedOn contents themselves must stay complete against the queue.
+// blockedOn contents themselves must stay complete against the queue. F41 is
+// the queue-recorded IN_PROGRESS dependency (post-C26-promotion, the only
+// current non-PASS blocker with a first-queue row).
 mustReject(
-  "C30 drops PARTIAL dependency C26 from blockedOn",
+  "F05 drops queue-recorded non-PASS dependency F41 from blockedOn",
   "omittedCurrentBlocker",
   (candidate) => {
-    const c30 = rowOf(candidate, "C30");
-    c30.blockedOn = c30.blockedOn.filter((dependency) => dependency !== "C26");
+    const f05 = rowOf(candidate, "F05");
+    f05.blockedOn = f05.blockedOn.filter((dependency) => dependency !== "F41");
   },
 );
 
 // The prose form of the same understatement.
 mustReject(
-  "C30 prose omits C26 from its only-current-blockers sentence",
+  "F05 prose omits F41 from its only-current-blockers sentence",
   "blockedOnlyClaimMismatch",
   (candidate) => {
-    const c30 = rowOf(candidate, "C30");
-    c30.blockedBecause = c30.blockedBecause.replace(
-      "C25, C26, C29",
-      "C25, C29",
+    const f05 = rowOf(candidate, "F05");
+    f05.blockedBecause = f05.blockedBecause.replace(
+      "non-PASS queue rows: F41",
+      "non-PASS queue rows: Q02",
     );
   },
 );
