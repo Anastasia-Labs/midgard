@@ -6219,3 +6219,50 @@ truth, not that the work is done):
   truncated issue listing had suggested otherwise), so B34's AC4/AC5 are
   measurably blocked, not deferred by choice; AC1–AC3 are closed for the
   bound surfaces. Issue #510 stays open on those predecessors.
+
+## Tail wave: resolver pins, F20 recapture, Q10/Q11 carriage + the F6 axis (2026-08-06)
+
+- **#548** `297fae4c` — 12 of 29 `script_source_resolvers` applied hashes
+  re-derived programmatically from `buildFaultProofContracts` against the
+  committed-tree blueprint (2b5973fe…, 393 validators); the filed count of
+  9 predated #545's shared-binding recompile. Phase-A pair and the 17
+  stable entries untouched. SDK applied-hash gate 2/2 in both modes;
+  Aiken fixture 18/18 fork-executed; C12 subset 8/8.
+- **#550** — F20's `bindingInventory` recaptured by its own producing
+  derivations: categories 8 → 11, deployed directories 14 → 16,
+  native/standalone families 12 → 13, unregistered residue 6 → 5. One
+  derivation REPAIRED, not just re-run: #545's `_carried` seam was
+  invisible to the native-family regex, which would have silently dropped
+  four families — the regex now accepts the suffix and the seam carries
+  its own exactly-one-definition pin. The ABI-freeze gate's two drift
+  findings cleared to zero structurally (no waiver; the gate rejects
+  non-empty waivers outright); its self-test's deletion mutation inverted
+  to an invented-finding mutation (still 2 controls / 23 rejections).
+  Reconciliation verifier green again (it was red at a0e2058c on the
+  category deepEqual). Residual noted: docs/fault-proofs prose still says
+  "eight categories"/"twelve families" in four files (three are pinned
+  documentationAnchors) — a documentation reconciliation pass is owed.
+- **#549** `7ffa76a3`+`821225c2`+`b5d86b66` — Q10/Q11 now run
+  published-chunk carriage end-to-end in the emulator at depth 22 (full
+  8-stage lifecycles measured, every stage inside the envelope and the
+  20% reserve; Q11 step-04 is the first ABSENCE opening on the chunked
+  route). `unmeasuredFamilies` is empty (26 measured stages, 5
+  lifecycles). One real bug fixed en route (`readFrom([])` broke Q11's
+  minimal direct-route lifecycle). **The Q1X-F6 axis is measured and it
+  is a DEFECT (#551, protocol decision):** admissible spend-input
+  cardinality is 296; Q10 fits the 20% reserve only to 39 inputs, Q11 to
+  40, and at 296 neither proof can be evaluated at all — the ledger
+  memory cap itself is exceeded. Execution memory binds (the step
+  reproduces the whole authenticated collection); the witness publication
+  transaction has 14,522 bytes of margin and does not bind, correcting
+  the #482-era expectation. The axis is FREE to the adversary (vs ~2^76
+  for depth grinding) and carriage cannot remediate it; the recorded
+  remediation shape is item-level openings via
+  `bounded_collection_v1.verify_item`. Q1x cells: Q12/Q14 LOCAL_PASS,
+  Q10/Q11 OPEN for this measured reason (18/2), enforced by a derived
+  `spendInputCardinalityBound` block — six seeded mutations rejected.
+
+Gates on the final tree: reconciliation (70 rows, 49 open), ABI freeze
+(0 drift findings, 0 waivers), Q1x (18 LOCAL_PASS / 2 OPEN), manifest
+quality 186/186 with 0 defects + self-test. No validator changed in this
+wave (no guard/journey required).
