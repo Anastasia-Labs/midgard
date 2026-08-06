@@ -4156,7 +4156,7 @@
       "id": "CG4",
       "section": "8.4 P4 forced execution and classification",
       "title": "P4 gate",
-      "dependsOnRaw": "C60\u2013C68, QG1",
+      "dependsOnRaw": "C60–C68, QG1",
       "acceptance": "No missing or partial fund-safety/classification row for canonical V1.",
       "dependsOn": [
         "C60",
@@ -4175,7 +4175,11 @@
       "detailStatus": "DETAILED",
       "writablePaths": [
         "docs/exec-plans/evidence/canonical-v1-cg4-fund-safety-classification-gate-v1.json",
-        "demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate.mjs"
+        "demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate.mjs",
+        "demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate-self-test.mjs",
+        "docs/exec-plans/evidence/canonical-v1-abi-freeze-v1.json",
+        "demo/scripts/verify-canonical-v1-abi-freeze.mjs",
+        "demo/scripts/verify-canonical-v1-abi-freeze-self-test.mjs"
       ],
       "pathsMustNotTouch": [
         "GOAL_SPEC.md",
@@ -4187,22 +4191,30 @@
       ],
       "sourceAnchors": [
         "GOAL_SPEC.md 8.4 P4 forced execution and classification, row CG4: No missing or partial fund-safety/classification row for canonical V1.",
+        "GOAL_SPEC.md 11 IG1 and IG2: the B34 acceptance requires C60-C68 and QG1 to close CG4 with one consolidated ABI/fund-safety review, so the ABI half is bound into the same gate.",
         "GOAL_SPEC.md dependency graph: C60-C68 and QG1 must close before CG4; C70 trusted/target snapshots begin only afterward",
-        "QG1 is OPEN with the current reconciliation baseline of 70 rows, 8 local-complete, 13 structural/N/A, 49 open, and 0 preprod-complete; C60-C68 remain non-PASS",
-        "demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate.mjs is the exact implementation/current-tree anchor for CG4."
+        "QG1 is OPEN with the current reconciliation baseline of 70 rows, 8 local-complete, 13 structural/N/A, 49 open, and 0 preprod-complete; C60-C68 remain non-PASS and QG1's own local-coverage verifier does not exist in the tree",
+        "demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate.mjs is the exact implementation/current-tree anchor for CG4; demo/scripts/verify-canonical-v1-abi-freeze.mjs is the exact anchor for the IG1/IG2 half it binds."
       ],
       "evidenceOutputs": [
-        "Exact one-to-one reconciliation of all 9 C60-C68 classification rows to executable semantics, evidence, expected terminal, and QG1 local-family route",
-        "Zero-debt report for missing/partial fund-safety, direct-family reroute, unknown classification, stale semantics, unprovable-as-verified, and non-LOCAL_PASS family rows",
-        "Explicit local gate result that neither creates C70 snapshots nor infers deployment/live/readiness status"
+        "Exact one-to-one reconciliation of all 9 C60-C68 classification rows to executable semantics, evidence, expected terminal, and QG1 local-family route, with every row's acceptance, dependency set and prescribed surfaces re-derived from the F05 manifest and the git index rather than restated",
+        "Zero-debt report for missing/partial fund-safety, direct-family reroute, unknown classification, stale semantics, unprovable-as-verified, and non-LOCAL_PASS family rows: measured 6 rows with absent prescribed surfaces, 9 dependency-blocked rows, 9 non-LOCAL_PASS rows, and 0 live/readiness claims",
+        "Consolidated IG1/IG2 ABI freeze bound by digest: 7 cross-package deployment-ABI identities re-derived and agreeing (55 contracts, 11 catalogue categories over 00000000-0000000a, 37 reference-script roles, 38 auth token names, 18 manifest root keys, 6 step names, 12 transaction-order contracts), 6 derived relations with 0 violations, an 11-to-16 catalogue-to-validator-tree binding, and the 393-validator blueprint from the aiken.toml-declared v1.1.22 compiler",
+        "Explicit local gate result that neither creates C70 snapshots nor infers deployment/live/readiness status; both gates refuse PASS on the current tree",
+        "Behavioral self-test transcripts: the CG4 gate rejects 18 seeded promotions and accepts 2 control runs; the ABI freeze gate rejects 23 seeded mutations, including two that seed one package's identity source while the others stay real, and accepts 2 control runs"
       ],
       "focusedCommands": [
-        "node demo/scripts/verify-canonical-v1-qg1-local-coverage-gate.mjs",
-        "node demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate.mjs"
+        "node demo/scripts/verify-canonical-v1-abi-freeze.mjs",
+        "node demo/scripts/verify-canonical-v1-abi-freeze-self-test.mjs",
+        "node demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate.mjs",
+        "node demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate-self-test.mjs",
+        "node demo/scripts/verify-canonical-v1-fault-proof-reconciliation.mjs",
+        "pnpm --dir demo exec prettier --check ../docs/exec-plans/evidence/canonical-v1-abi-freeze-v1.json ../docs/exec-plans/evidence/canonical-v1-cg4-fund-safety-classification-gate-v1.json scripts/verify-canonical-v1-abi-freeze.mjs scripts/verify-canonical-v1-abi-freeze-self-test.mjs scripts/verify-canonical-v1-cg4-fund-safety-classification-gate.mjs scripts/verify-canonical-v1-cg4-fund-safety-classification-gate-self-test.mjs"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-qg1-local-coverage-gate.mjs, verify-canonical-v1-cg4-fund-safety-classification-gate.mjs. Exactly 9 C60-C68 rows and exactly 1 QG1 gate result are reconciled; current evaluation refuses PASS. Final capture has exactly 9 complete unique row bindings and exactly 0 missing, partial, unknown, stale, direct-family-rerouted, unprovable-as-verified, non-LOCAL_PASS, live, or readiness claims.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-abi-freeze.mjs, verify-canonical-v1-abi-freeze-self-test.mjs, verify-canonical-v1-cg4-fund-safety-classification-gate.mjs, verify-canonical-v1-cg4-fund-safety-classification-gate-self-test.mjs, verify-canonical-v1-fault-proof-reconciliation.mjs. Exactly 9 C60-C68 rows and exactly 1 QG1 gate result are reconciled; current evaluation refuses PASS with exactly 0 of 9 rows PASS, exactly 6 rows carrying an absent prescribed surface, exactly 9 rows dependency-blocked, and QG1 unmeasured because its own verifier is absent from the index. The bound ABI freeze re-derives exactly 7 cross-package identities and exactly 6 relations with exactly 0 relation violations, binds exactly 11 catalogue categories onto exactly 16 validator directories, measures exactly 393 blueprint validators, and reports exactly 16 IG2 families with exactly 0 integrable and exactly 11 violations plus exactly 2 measured drift findings against the F20 inventory. The self-tests reject exactly 18 and exactly 23 seeded defects and accept exactly 2 control runs each. Final capture has exactly 9 complete unique row bindings and exactly 0 missing, partial, unknown, stale, direct-family-rerouted, unprovable-as-verified, non-LOCAL_PASS, live, or readiness claims.",
       "invalidationTriggers": [
         "Any C60-C68 semantic/status/evidence or QG1 family/catalogue/reconciliation identity changes",
+        "Any of the 7 frozen cross-package deployment-ABI identities, the catalogue-to-validator-tree bijection, the pinned compiler, or the blueprint validator set changes: the ABI freeze is re-derived from source on every run and a change re-opens the IG1 half",
         "Classification priority, expected terminal, fund-safety inventory, transition/validation route, verifier, or final-tree source inventory changes after capture"
       ],
       "blockedOn": [
