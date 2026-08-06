@@ -6181,3 +6181,41 @@ registered-families lifecycle 3/3; contract-deployment-info 13/13;
 deployment-manifest-identity 9/9; SDK fault-proof 30/30; manifest quality
 186/186 with 0 defects; §4.4 journey selector **PASSES 1/1** on fresh
 isolated database `midgard_test_547`.
+
+## #510 (B34) ABI freeze and CG4 fund-safety gate (2026-08-06)
+
+`impl/510` (4 commits, integrated) + hygiene `5b3e749e` — an honest freeze
+following the WG1/IG3 inversion (the gate decides the artifact tells the
+truth, not that the work is done):
+
+- **ABI freeze** (`canonical-v1-abi-freeze-v1.json` + verifier): a binding
+  layer, not a re-pinning. Closes two holes nothing else could see: the
+  deployment ABI identity was declared THREE times (core/node/sdk) with
+  nothing comparing the copies — seven identities are now re-derived from
+  committed bytes and compared element-wise (55 contracts, 11 categories,
+  37 reference-script roles, 38 auth-token names, 18 root keys, 6 step
+  names, 12 tx-order contracts); and the catalogue order was never bound
+  to the validator tree — an 11↔16 bijection now holds both ways against
+  git ls-files. Blueprint identity pinned as validator set + title digest
+  + compiler (bytes deliberately not pinned: env-dependent, measured).
+  Self-test: 2 controls / 23 mutations, including single-package identity
+  seeds proving the cross-package comparison is not artifact-satisfiable.
+  Measured findings published, not hidden: ABI-04 declarationOrder
+  DIVERGENT (38-role mapping ordered differently in core vs sdk; verified
+  non-load-bearing, keyed lookups everywhere); two F20-artifact drift
+  findings (registeredCategoryNames 8 vs frozen 11;
+  deployedValidatorDirectories 14 vs indexed 16 — post-#545/#547
+  recapture owed, ticketed); **IG2: 0 of 16 families are integrable on
+  current evidence (11 violations — registered but lacking valid-block
+  rejection, maximum proof-fit, or correction evidence)** per §11.
+- **CG4** (`canonical-v1-cg4-fund-safety-classification-gate-v1.json` +
+  verifier): the row's own deliverable closed — nine C60–C68 rows
+  reconciled one-to-one against F05 (0 PASS, 6 with an absent prescribed
+  surface, 9 dependency-blocked on CG3), QG1 UNMEASURED (its verifier is
+  #503's lease) and therefore blocking, zero live/readiness claims, no
+  C70 snapshots; 37/37 + 38/38 executable evidence on the surfaces that
+  exist. Self-test 2/18.
+- Brief correction recorded: #479/#491/#499/#503 remain OPEN (an earlier
+  truncated issue listing had suggested otherwise), so B34's AC4/AC5 are
+  measurably blocked, not deferred by choice; AC1–AC3 are closed for the
+  bound surfaces. Issue #510 stays open on those predecessors.
