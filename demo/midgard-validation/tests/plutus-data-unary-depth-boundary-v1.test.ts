@@ -950,12 +950,11 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     // Field-8 Midgard projection. The depth-one collateral-free parallel
     // candidate is produced by the same CML helper the nested-redeemer boundary
     // uses, so nothing about the Midgard schema shape is invented here.
-    const parallelDepthOne = buildCollateralFreeMidgardSchemaParallelCandidateV1(
-      {
+    const parallelDepthOne =
+      buildCollateralFreeMidgardSchemaParallelCandidateV1({
         collateralizedCardanoCborHex: rawDepthOne.cborHex,
         privateKeyBech32: privateKey.to_bech32(),
-      },
-    );
+      });
     const shallowCanonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
       Buffer.from(parallelDepthOne.cborHex, "hex"),
     );
@@ -1008,9 +1007,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     expect(validateMidgardConsensusV1Tx(native, projected.length)).toBeNull();
     expect(
       Buffer.from(native.witnessSet.redeemerTxWitsPreimageCbor).toString("hex"),
-    ).toBe(
-      redeemerPreimageFor(accepted.redeemerDataCbor).toString("hex"),
-    );
+    ).toBe(redeemerPreimageFor(accepted.redeemerDataCbor).toString("hex"));
     const redeemerField = deriveMidgardV1TxFieldPreimages(projected).find(
       (field) => field.fieldIndex === 8,
     );

@@ -246,9 +246,7 @@ export const buildRawSignedCardanoUnaryCandidateV1 = ({
  * `CML.calc_script_data_hash`, which materializes the redeemer `PlutusData` and
  * therefore traps on maximum-depth unary Data.
  */
-const plutusV3LanguageViewsCborV1 = (
-  costModel: readonly number[],
-): Buffer =>
+const plutusV3LanguageViewsCborV1 = (costModel: readonly number[]): Buffer =>
   encodeCborMapRaw([
     [
       encodeCborUint(2n),
