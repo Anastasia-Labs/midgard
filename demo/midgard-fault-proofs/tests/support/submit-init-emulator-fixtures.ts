@@ -242,6 +242,49 @@ export const tx2InputsPreimage: readonly TestOutputReference[] = [
   tx1InputsPreimage[1]!,
 ];
 
+/**
+ * Distinct filler spend inputs, used to drive the spend-input preimage
+ * cardinality axis (finding Q1X-F6, issue #549). A filler is never the input a
+ * family selects — it is what the step's authenticated preimage must
+ * nevertheless re-hash, item by item, before it can select anything.
+ */
+export const spendInputFiller = (
+  domain: number,
+  index: number,
+): TestOutputReference => {
+  const transactionId = Buffer.alloc(32, 0x00);
+  transactionId.writeUInt32BE(domain >>> 0, 0);
+  transactionId.writeUInt32BE(index >>> 0, 4);
+  return { transactionId: transactionId.toString("hex"), outputIndex: 0n };
+};
+
+/**
+ * `selected` at the LAST position of a `cardinality`-long preimage, which is
+ * the worst case for both costs this axis has: the whole collection is
+ * re-hashed either way, and the selection walk is longest at the last index.
+ */
+export const spendInputsOfCardinality = ({
+  selected,
+  cardinality,
+  domain,
+}: {
+  readonly selected: TestOutputReference;
+  readonly cardinality: number;
+  readonly domain: number;
+}): readonly TestOutputReference[] => {
+  if (!Number.isInteger(cardinality) || cardinality < 1) {
+    throw new Error(
+      `Spend-input cardinality must be a positive integer, got ${String(cardinality)}.`,
+    );
+  }
+  return [
+    ...Array.from({ length: cardinality - 1 }, (_unused, index) =>
+      spendInputFiller(domain, index),
+    ),
+    selected,
+  ];
+};
+
 export const outputReferenceCbor = (outRef: TestOutputReference): Buffer =>
   Buffer.from(
     CML.TransactionInput.new(
@@ -507,8 +550,15 @@ export const membershipProofShape = async ({
 
 export const buildTransactionInclusionFixture = async ({
   adversarialBranchLevels = 0,
+  spendInputCardinality,
 }: {
   readonly adversarialBranchLevels?: number;
+  /**
+   * How many inputs each conflicting transaction spends. The default is the
+   * fixture's minimal two; larger values drive the spend-input preimage
+   * cardinality axis (finding Q1X-F6) with the double-spent input last.
+   */
+  readonly spendInputCardinality?: number;
 } = {}): Promise<{
   readonly transactionsRoot: string;
   readonly l2TransactionCount: bigint;
@@ -521,15 +571,34 @@ export const buildTransactionInclusionFixture = async ({
   readonly tx1MembershipProof: MembershipProofShape;
   readonly tx2MembershipProof: MembershipProofShape;
 }> => {
+  // The double-spent input is the one both transactions carry, and it sits
+  // last so the selection walk is at its longest on both sides.
+  const doubleSpentInput = tx1InputsPreimage[1]!;
+  const tx1Inputs =
+    spendInputCardinality === undefined
+      ? tx1InputsPreimage
+      : spendInputsOfCardinality({
+          selected: doubleSpentInput,
+          cardinality: spendInputCardinality,
+          domain: 0x0a01,
+        });
+  const tx2Inputs =
+    spendInputCardinality === undefined
+      ? tx2InputsPreimage
+      : spendInputsOfCardinality({
+          selected: doubleSpentInput,
+          cardinality: spendInputCardinality,
+          domain: 0x0a02,
+        });
   const tx1Native = makeNativeTx({
-    spendInputCbors: tx1InputsPreimage.map(outputReferenceCbor),
+    spendInputCbors: tx1Inputs.map(outputReferenceCbor),
     fee: 0n,
     referenceByte: "13",
     outputByte: "14",
     witnessByte: "20",
   });
   const tx2Native = makeNativeTx({
-    spendInputCbors: tx2InputsPreimage.map(outputReferenceCbor),
+    spendInputCbors: tx2Inputs.map(outputReferenceCbor),
     fee: 1n,
     referenceByte: "23",
     outputByte: "24",
@@ -583,8 +652,8 @@ export const buildTransactionInclusionFixture = async ({
     l2TransactionCount: BigInt(2 + siblingCount),
     tx1: await withProof(tx1),
     tx2: await withProof(tx2),
-    tx1InputsPreimage,
-    tx2InputsPreimage,
+    tx1InputsPreimage: tx1Inputs,
+    tx2InputsPreimage: tx2Inputs,
     tx1SpendInputCbors: tx1.spendInputCbors,
     tx2SpendInputCbors: tx2.spendInputCbors,
     tx1MembershipProof: await membershipProofShape({
@@ -769,8 +838,15 @@ export const buildZeroInputTransactionInclusionFixture = async ({
 // absent from the block's transactions.
 export const buildNonExistentInputFixture = async ({
   adversarialBranchLevels = 0,
+  spendInputCardinality,
 }: {
   readonly adversarialBranchLevels?: number;
+  /**
+   * How many inputs the challenged transaction spends. The default is the
+   * fixture's minimal one; larger values drive the spend-input preimage
+   * cardinality axis (finding Q1X-F6) with the phantom input last.
+   */
+  readonly spendInputCardinality?: number;
 } = {}): Promise<{
   readonly transactionsRoot: string;
   readonly l2TransactionCount: bigint;
@@ -788,8 +864,18 @@ export const buildNonExistentInputFixture = async ({
     transactionId: h32("de"),
     outputIndex: 0n,
   };
+  // The phantom input sits last, which is the worst case for the selection
+  // walk; the whole preimage is re-hashed either way.
+  const badTxInputs =
+    spendInputCardinality === undefined
+      ? [phantomOutRef]
+      : spendInputsOfCardinality({
+          selected: phantomOutRef,
+          cardinality: spendInputCardinality,
+          domain: 0x0b03,
+        });
   const badTxNative = makeNativeTx({
-    spendInputCbors: [outputReferenceCbor(phantomOutRef)],
+    spendInputCbors: badTxInputs.map(outputReferenceCbor),
     fee: 0n,
     referenceByte: "e3",
     outputByte: "e4",
@@ -891,10 +977,11 @@ export const buildNonExistentInputFixture = async ({
       transactionsPhasRoot: transactionsRoot,
       txMembershipProofCbor: membershipProof.toCBOR().toString("hex"),
     }),
-    inputsPreimage: [
-      { txId: phantomOutRef.transactionId, index: phantomOutRef.outputIndex },
-    ],
-    badInputIndex: 0n,
+    inputsPreimage: badTxInputs.map((input) => ({
+      txId: input.transactionId,
+      index: input.outputIndex,
+    })),
+    badInputIndex: BigInt(badTxInputs.length - 1),
     ledgerNonMembershipProofCbor,
     txsNonMembershipProofCbor,
     missingInputTxId: phantomOutRef.transactionId,

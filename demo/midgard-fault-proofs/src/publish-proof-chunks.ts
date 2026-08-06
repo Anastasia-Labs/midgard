@@ -11,21 +11,19 @@
  * across bounded, inert UTxOs whose inline datum carries nothing but steps, and
  * the step transaction references them and names their order.
  *
- * This module is the off-chain half. It splits a proof, publishes the chunks,
- * and hands back UTxOs a step builder can `readFrom`. Publication needs no
- * validator, no token and no ordering claim: a chunk is data, the step trusts
- * its content and never its provenance, and a chunk whose steps do not
- * reconstruct the challenged root simply fails verification.
+ * This module is the off-chain publication half. It splits a proof, publishes
+ * the chunks, and hands back UTxOs a step builder can `readFrom`. Publication
+ * needs no validator, no token and no ordering claim: a chunk is data, the step
+ * trusts its content and never its provenance, and a chunk whose steps do not
+ * reconstruct the challenged root simply fails verification. The carriage half
+ * the step builders reach for lives in `proof-chunk-carriage.ts` and is
+ * re-exported here.
  */
 
-import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
-  ChunkedProofClaim,
   MAXIMUM_CHUNK_PROOF_STEP_COUNT,
   MAXIMUM_PROOF_CHUNK_COUNT,
-  MPF_CHUNKED_VERIFY_WITHDRAW_TITLE,
-  Proof,
   ProofChunkDatum,
 } from "@al-ft/midgard-sdk";
 import {
@@ -33,14 +31,16 @@ import {
   Data,
   type LucidEvolution,
   type Network,
-  type Script,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
 import {
+  type PublishedProofChunkV1,
+  splitProofIntoChunkDatums,
+} from "./proof-chunk-carriage.js";
+import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
-  getCompiledScript,
   outRefLabel,
   type ResolvedProverSigner,
 } from "./runtime.js";
@@ -50,57 +50,14 @@ import {
 } from "./spend-input-witness.js";
 import { selectFeeInput } from "./submit-step-01.js";
 
+export * from "./proof-chunk-carriage.js";
 export { MAXIMUM_CHUNK_PROOF_STEP_COUNT, MAXIMUM_PROOF_CHUNK_COUNT };
-
-/** One published proof chunk, as the step builder needs to see it. */
-export type PublishedProofChunkV1 = {
-  readonly utxo: UTxO;
-  readonly outRef: string;
-  readonly datumCbor: string;
-  readonly stepCount: number;
-};
 
 export type PublishedProofV1 = {
   readonly txHash: string;
   readonly chunks: readonly PublishedProofChunkV1[];
   readonly proofStepCount: number;
   readonly spentFeeInput: UTxO;
-};
-
-/**
- * Splits a proof's steps into publication chunks of at most
- * `MAXIMUM_CHUNK_PROOF_STEP_COUNT` steps, in proof order.
- *
- * Returns the chunks' inline-datum CBOR. The concatenation of the chunks in
- * this order is the original proof, which is the only property the on-chain
- * verification depends on.
- */
-export const splitProofIntoChunkDatums = (
-  proofCbor: string,
-): readonly string[] => {
-  const steps = Data.from(proofCbor, Proof) as unknown as readonly unknown[];
-  if (steps.length === 0) {
-    return [];
-  }
-  const datums: string[] = [];
-  for (
-    let offset = 0;
-    offset < steps.length;
-    offset += MAXIMUM_CHUNK_PROOF_STEP_COUNT
-  ) {
-    const slice = steps.slice(offset, offset + MAXIMUM_CHUNK_PROOF_STEP_COUNT);
-    datums.push(
-      canonicalPlutusDataCbor(
-        Data.to({ proof_steps: slice } as never, ProofChunkDatum),
-      ),
-    );
-  }
-  if (datums.length > MAXIMUM_PROOF_CHUNK_COUNT) {
-    throw new Error(
-      `A proof of ${String(steps.length)} steps needs ${String(datums.length)} publication chunks, above the on-chain maximum of ${String(MAXIMUM_PROOF_CHUNK_COUNT)}.`,
-    );
-  }
-  return datums;
 };
 
 /**
@@ -211,60 +168,3 @@ export const publishProofChunksV1 = async ({
     spentFeeInput,
   };
 };
-
-/**
- * Wallet inputs with the published chunks removed, so a step transaction can
- * never spend the very UTxOs it is referencing (nor offer them as collateral).
- */
-export const walletInputsExcludingChunks = ({
-  walletUtxos,
-  chunks,
-}: {
-  readonly walletUtxos: readonly UTxO[];
-  readonly chunks: readonly PublishedProofChunkV1[];
-}): UTxO[] =>
-  walletUtxos.filter(
-    (utxo) =>
-      !chunks.some(
-        (chunk) =>
-          chunk.utxo.txHash === utxo.txHash &&
-          chunk.utxo.outputIndex === utxo.outputIndex,
-      ),
-  );
-
-/**
- * The merkelized verifier's script, reward address and claim redeemer for one
- * membership opening.
- *
- * A step on the chunked route attaches this in place of the `phas` membership
- * withdrawal: the proof never enters the transaction, only the claim and the
- * chunks' reference inputs do.
- */
-export const chunkedMembershipClaimRedeemer = ({
-  merkleRoot,
-  keyBytes,
-  valueBytes,
-  orderedChunkReferenceInputIndices,
-}: {
-  readonly merkleRoot: string;
-  readonly keyBytes: string;
-  readonly valueBytes: string;
-  readonly orderedChunkReferenceInputIndices: readonly bigint[];
-}): string =>
-  Data.to(
-    {
-      mode: "Membership",
-      merkle_root: merkleRoot,
-      key_bytes: keyBytes,
-      value_hash: computeHash32(Buffer.from(valueBytes, "hex")).toString("hex"),
-      ordered_chunk_reference_input_indices: [
-        ...orderedChunkReferenceInputIndices,
-      ],
-    },
-    ChunkedProofClaim,
-  );
-
-export const chunkedVerifyWithdrawalScript = (blueprint: unknown): Script => ({
-  type: "PlutusV3",
-  script: getCompiledScript(blueprint, MPF_CHUNKED_VERIFY_WITHDRAW_TITLE),
-});

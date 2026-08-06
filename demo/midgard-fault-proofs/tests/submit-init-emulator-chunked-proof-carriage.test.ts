@@ -58,19 +58,31 @@ import {
 } from "../src/index.js";
 import { MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES } from "../src/validation-dispute/submit.js";
 import {
+  neSubmitStep01,
+  neSubmitStep02,
+  neSubmitStep03,
+  neSubmitStep04,
+  parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
   submitInit,
   submitInvalidRangeStep01,
   submitInvalidRangeStep02,
+  submitStep01,
+  submitStep02,
+  submitStep03,
+  submitStep04,
   submitZeroInputStep01,
   submitZeroInputStep02,
 } from "./support/legacy-submit-emulator.js";
 import {
   buildInvalidRangeTransactionInclusionFixture,
+  buildNonExistentInputFixture,
+  buildTransactionInclusionFixture,
   buildZeroInputTransactionInclusionFixture,
   countedTransactionsRoot,
   expectStateQueueHeaderOrder,
   PROOF_TRANSACTION_BRANCH_LEVEL_BYTES,
+  registerPexcludesExclusionRewardAccount,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -91,7 +103,10 @@ import {
   registerPhasMembershipRewardAccount,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
-import { syntheticDeepMembershipProofV1 } from "./support/synthetic-deep-proof-v1.js";
+import {
+  syntheticDeepMembershipProofV1,
+  syntheticDeepSharedRootProofsV1,
+} from "./support/synthetic-deep-proof-v1.js";
 
 const EXECUTION_RESERVE_FRACTION = 20n;
 
@@ -224,6 +239,62 @@ const deepenInclusion = ({
       transactionsPhasRoot: deep.transactionsPhasRoot,
       txMembershipProofCbor: deep.proofCbor,
     },
+  };
+};
+
+/** A fixture's inclusion record, whose declared type is deliberately opaque. */
+const inclusionRecord = (
+  inclusion: unknown,
+): Record<string, unknown> & {
+  readonly nativeTxId: string;
+  readonly nativeTxCompactCbor: string;
+} =>
+  inclusion as Record<string, unknown> & {
+    readonly nativeTxId: string;
+    readonly nativeTxCompactCbor: string;
+  };
+
+/**
+ * The same re-commitment for a family that opens the challenged block's
+ * transactions trie more than once (issue #549). Q10 opens it twice for
+ * membership (tx1 at step-01, tx2 at step-02); Q11 opens it once for membership
+ * and once for ABSENCE (the phantom input's producing transaction, at step-04).
+ * All openings must reconstruct one root, because the step validators
+ * re-authenticate every one of them against the root the challenged header
+ * commits.
+ */
+const deepenSharedRoot = ({
+  members,
+  absentKeys = [],
+  branchLevels,
+}: {
+  readonly members: readonly {
+    readonly nativeTxId: string;
+    readonly nativeTxCompactCbor: string;
+  }[];
+  readonly absentKeys?: readonly string[];
+  readonly branchLevels: number;
+}) => {
+  const shared = syntheticDeepSharedRootProofsV1({
+    claims: [
+      ...members.map((member) => ({
+        key: Buffer.from(member.nativeTxId, "hex"),
+        value: Buffer.from(member.nativeTxCompactCbor, "hex"),
+      })),
+      ...absentKeys.map((key) => ({ key: Buffer.from(key, "hex") })),
+    ],
+    branchLevels,
+  });
+  const openings = shared.openings;
+  return {
+    root: shared.root,
+    membershipProofCbors: openings
+      .slice(0, members.length)
+      .map((opening) => opening.proofCbor),
+    absenceProofCbors: openings
+      .slice(members.length)
+      .map((opening) => opening.proofCbor),
+    proofCborBytes: openings[0]!.proofCborBytes,
   };
 };
 
@@ -697,4 +768,585 @@ describe("fault-proof published-chunk proof carriage", () => {
       proofCborBytes: deep.proofCborBytes,
     });
   }, 600_000);
+
+  /**
+   * Q10 (double-spend), the whole four-step correction path, with BOTH
+   * membership openings carried by published chunks at a depth the direct route
+   * cannot reach (issue #549).
+   *
+   * The two openings are of one trie — the challenged block commits a single
+   * transactions root and both steps re-authenticate against it — so the fixture
+   * builds them as two sub-tries of one shared branch node. Steps 03 and 04 open
+   * the spend-inputs witnesses instead of the trie and are unchanged by
+   * carriage; they are measured because the claim is about the complete path.
+   */
+  it("carries both double-spend membership proofs past the direct route's envelope ceiling", async () => {
+    const realBlueprint = readBlueprint(realBlueprintPath);
+    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+    const { emulator, funderLucid, proverLucid, proverSigner } =
+      await newEmulatorParty();
+
+    await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
+    await registerChunkedVerifyRewardAccount(funderLucid, realBlueprint);
+    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
+    if (nonceUtxo === undefined) {
+      throw new Error("Expected funder wallet to expose a nonce UTxO");
+    }
+    const contracts = await buildMinimalFaultProofContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      nonceUtxo,
+      { alwaysFraudProofCatalogue: true },
+    );
+    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    const removalReferenceScriptPublications =
+      await publishRemovalReferenceScripts({ lucid: proverLucid, contracts });
+    const fixture = await buildTransactionInclusionFixture();
+    const tx1Record = inclusionRecord(fixture.tx1.inclusion);
+    const tx2Record = inclusionRecord(fixture.tx2.inclusion);
+    const deep = deepenSharedRoot({
+      members: [tx1Record, tx2Record],
+      branchLevels: CARRIAGE_BRANCH_LEVELS,
+    });
+    const tx1Inclusion = parseSubmitStep01TxInclusion({
+      ...tx1Record,
+      transactionsPhasRoot: deep.root,
+      txMembershipProofCbor: deep.membershipProofCbors[0],
+    });
+    const tx2Inclusion = parseSubmitStep01TxInclusion({
+      ...tx2Record,
+      transactionsPhasRoot: deep.root,
+      txMembershipProofCbor: deep.membershipProofCbors[1],
+    });
+
+    const headerStartTime =
+      alignUnixTimeToEmulatorSlotBoundary(
+        funderLucid,
+        emulator.now() + 120_000,
+      ) - 1;
+    const l2TransactionCount = 10_000n;
+    const fraudulentHeader = makeHeader(
+      await funderPaymentKeyHash(funderLucid),
+      headerStartTime,
+      await countedTransactionsRoot(deep.root, l2TransactionCount),
+      l2TransactionCount,
+    );
+    const setup = await submitSetupTx({
+      lucid: funderLucid,
+      contracts,
+      nonceUtxo,
+      catalogue,
+      header: fraudulentHeader,
+    });
+    const { headerHash } = setup;
+    const deploymentInfo = buildRemovalDeploymentInfo(
+      contracts,
+      catalogue,
+      undefined,
+      undefined,
+      removalReferenceScriptPublications.published,
+    );
+
+    const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
+    const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;
+
+    const tx1PublicationCapture = await captureEmulatorSubmission(
+      emulator,
+      async () =>
+        publishProofChunksV1({
+          lucid: proverLucid,
+          network,
+          signer: proverSigner,
+          proofCbor: deep.membershipProofCbors[0]!,
+          awaitConfirmation: true,
+        }),
+    );
+    proofFit["publish-chunks"] = tx1PublicationCapture.measurement;
+    const tx1Publication = tx1PublicationCapture.result;
+    expect(tx1Publication.chunks.length).toBe(EXPECTED_CHUNK_COUNT);
+    expect(tx1Publication.proofStepCount).toBe(CARRIAGE_BRANCH_LEVELS);
+
+    const initCapture = await captureEmulatorSubmission(emulator, async () =>
+      submitInit({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        awaitConfirmation: true,
+      }),
+    );
+    proofFit["init"] = initCapture.measurement;
+    const initResult = initCapture.result;
+    expect(initResult.computationThreadAssetName).toBe(
+      `${catalogue.categories.doubleSpend.categoryId}${headerHash}`,
+    );
+
+    const firstStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      initResult.firstStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step01Capture = await captureEmulatorSubmission(emulator, async () =>
+      submitStep01({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(firstStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: tx1Inclusion,
+        publishedProofChunks: tx1Publication.chunks,
+        awaitConfirmation: true,
+      }),
+    );
+    proofFit["step-01"] = step01Capture.measurement;
+    const step01Result = step01Capture.result;
+    expect(step01Result.nativeTxId).toBe(fixture.tx1.nativeTxId);
+    expect(step01Result.proofCarriage).toBe("published-chunks");
+    // Hub oracle, state-queue node and the two chunks — and nothing else.
+    expect(step01Capture.measurement.referenceInputCount).toBe(
+      2 + EXPECTED_CHUNK_COUNT,
+    );
+
+    // The second opening's chunks are published when the step that consumes
+    // them is next, which is also what keeps them out of every earlier
+    // transaction's fee selection.
+    const tx2PublicationCapture = await captureEmulatorSubmission(
+      emulator,
+      async () =>
+        publishProofChunksV1({
+          lucid: proverLucid,
+          network,
+          signer: proverSigner,
+          proofCbor: deep.membershipProofCbors[1]!,
+          awaitConfirmation: true,
+        }),
+    );
+    proofFit["publish-chunks-2"] = tx2PublicationCapture.measurement;
+    const tx2Publication = tx2PublicationCapture.result;
+    expect(tx2Publication.chunks.length).toBe(EXPECTED_CHUNK_COUNT);
+
+    const secondStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step01Result.secondStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step02Capture = await captureEmulatorSubmission(emulator, async () =>
+      submitStep02({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(secondStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: tx2Inclusion,
+        publishedProofChunks: tx2Publication.chunks,
+        awaitConfirmation: true,
+      }),
+    );
+    proofFit["step-02"] = step02Capture.measurement;
+    const step02Result = step02Capture.result;
+    expect(step02Result.nativeTx2Id).toBe(fixture.tx2.nativeTxId);
+    expect(step02Result.proofCarriage).toBe("published-chunks");
+    expect(step02Capture.measurement.referenceInputCount).toBe(
+      2 + EXPECTED_CHUNK_COUNT,
+    );
+    // Both publications survive the steps that referenced them.
+    const survivors = await proverLucid.utxosByOutRef(
+      [...tx1Publication.chunks, ...tx2Publication.chunks].map((chunk) => ({
+        txHash: chunk.utxo.txHash,
+        outputIndex: chunk.utxo.outputIndex,
+      })),
+    );
+    expect(survivors.length).toBe(2 * EXPECTED_CHUNK_COUNT);
+
+    const thirdStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step02Result.thirdStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step03Capture = await captureEmulatorSubmission(emulator, async () =>
+      submitStep03({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(thirdStepUtxo),
+        tx1SpendInputCbors: parseSpendInputCbors(
+          fixture.tx1SpendInputCbors,
+          "--tx1-inputs",
+        ),
+        doubleSpentInputIndex: 1n,
+        awaitConfirmation: true,
+      }),
+    );
+    proofFit["step-03"] = step03Capture.measurement;
+    const step03Result = step03Capture.result;
+
+    const fourthStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step03Result.fourthStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step04Capture = await captureEmulatorSubmission(emulator, async () =>
+      submitStep04({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(fourthStepUtxo),
+        tx2SpendInputCbors: parseSpendInputCbors(
+          fixture.tx2SpendInputCbors,
+          "--tx2-inputs",
+        ),
+        doubleSpentInputIndex: 1n,
+        awaitConfirmation: true,
+      }),
+    );
+    proofFit["step-04"] = step04Capture.measurement;
+    expect(step04Capture.result.fraudProofAssetName).toBe(
+      initResult.computationThreadAssetName,
+    );
+
+    const removeNow = BigInt(emulator.now());
+    const removeCapture = await captureEmulatorSubmission(emulator, async () =>
+      submitRemoveFraudulentBlock({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        fraudulentHeaderHash: headerHash,
+        awaitConfirmation: true,
+        requireReferenceScripts: true,
+        validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
+        validTo: removeNow + 300_000n,
+      }),
+    );
+    proofFit["remove"] = removeCapture.measurement;
+    await expectStateQueueHeaderOrder({
+      lucid: funderLucid,
+      contracts,
+      expectedHeaderHashes: [],
+    });
+
+    expect(Object.keys(proofFit)).toEqual([
+      "publish-chunks",
+      "init",
+      "step-01",
+      "publish-chunks-2",
+      "step-02",
+      "step-03",
+      "step-04",
+      "remove",
+    ]);
+    for (const [stage, measurement] of Object.entries(proofFit)) {
+      expectProofFitV1({
+        stage: `double-spend chunked ${stage}`,
+        measurement,
+        maxTxExMem,
+        maxTxExSteps,
+      });
+    }
+    const step01 = proofFit["step-01"];
+    if (step01 === undefined) {
+      throw new Error("double-spend chunked step-01 was not measured");
+    }
+    expect(step01.completeSignedBytes).toBeLessThan(
+      MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES,
+    );
+    printCarriageFit("double-spend", proofFit, {
+      branchLevels: CARRIAGE_BRANCH_LEVELS,
+      chunkCount: tx1Publication.chunks.length,
+      proofCborBytes: deep.proofCborBytes,
+    });
+  }, 900_000);
+
+  /**
+   * Q11 (no-input), the whole four-step correction path, with the membership
+   * opening AND the absence opening carried by published chunks at a depth the
+   * direct route cannot reach (issue #549).
+   *
+   * This family is the one whose two trie openings have different terminals:
+   * step-01 proves the challenged transaction present in the block's
+   * transactions root, step-04 proves the phantom input's producing transaction
+   * ABSENT from the very same root. Both are grindable by the same adversary,
+   * so both are driven at the carriage depth. Step-03 opens the block's
+   * prev-utxos root, which the fixture leaves empty, and stays on the direct
+   * route: its proof is a constant with nothing for depth to grow.
+   */
+  it("carries a no-input membership and absence proof past the direct route's envelope ceiling", async () => {
+    const realBlueprint = readBlueprint(realBlueprintPath);
+    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+    const { emulator, funderLucid, proverLucid, proverSigner } =
+      await newEmulatorParty();
+
+    await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
+    await registerPexcludesExclusionRewardAccount(funderLucid, realBlueprint);
+    await registerChunkedVerifyRewardAccount(funderLucid, realBlueprint);
+    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
+    if (nonceUtxo === undefined) {
+      throw new Error("Expected funder wallet to expose a nonce UTxO");
+    }
+    const contracts = await buildMinimalFaultProofContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      nonceUtxo,
+      { realNonExistentInput: true, alwaysFraudProofCatalogue: true },
+    );
+    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    const removalReferenceScriptPublications =
+      await publishRemovalReferenceScripts({ lucid: proverLucid, contracts });
+    const fixture = await buildNonExistentInputFixture();
+    const deep = deepenSharedRoot({
+      members: [
+        {
+          nativeTxId: fixture.nativeTxId,
+          nativeTxCompactCbor: fixture.inclusion.nativeTxCompactCbor,
+        },
+      ],
+      absentKeys: [fixture.missingInputTxId],
+      branchLevels: CARRIAGE_BRANCH_LEVELS,
+    });
+    const inclusion = parseSubmitStep01TxInclusion({
+      ...fixture.inclusion,
+      transactionsPhasRoot: deep.root,
+      txMembershipProofCbor: deep.membershipProofCbors[0],
+    });
+    const txsAbsenceProofCbor = deep.absenceProofCbors[0]!;
+
+    const headerStartTime =
+      alignUnixTimeToEmulatorSlotBoundary(
+        funderLucid,
+        emulator.now() + 120_000,
+      ) - 1;
+    const l2TransactionCount = 10_000n;
+    const fraudulentHeader = makeHeader(
+      await funderPaymentKeyHash(funderLucid),
+      headerStartTime,
+      await countedTransactionsRoot(deep.root, l2TransactionCount),
+      l2TransactionCount,
+    );
+    const setup = await submitSetupTx({
+      lucid: funderLucid,
+      contracts,
+      nonceUtxo,
+      catalogue,
+      header: fraudulentHeader,
+    });
+    const { headerHash } = setup;
+    const deploymentInfo = buildRemovalDeploymentInfo(
+      contracts,
+      catalogue,
+      undefined,
+      undefined,
+      removalReferenceScriptPublications.published,
+    );
+
+    const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
+    const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;
+
+    const membershipPublicationCapture = await captureEmulatorSubmission(
+      emulator,
+      async () =>
+        publishProofChunksV1({
+          lucid: proverLucid,
+          network,
+          signer: proverSigner,
+          proofCbor: deep.membershipProofCbors[0]!,
+          awaitConfirmation: true,
+        }),
+    );
+    proofFit["publish-chunks"] = membershipPublicationCapture.measurement;
+    const membershipPublication = membershipPublicationCapture.result;
+    expect(membershipPublication.chunks.length).toBe(EXPECTED_CHUNK_COUNT);
+    expect(membershipPublication.proofStepCount).toBe(CARRIAGE_BRANCH_LEVELS);
+
+    const initCapture = await captureEmulatorSubmission(emulator, async () =>
+      submitInit({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        fraudCategory: "nonExistentInput",
+        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        awaitConfirmation: true,
+      }),
+    );
+    proofFit["init"] = initCapture.measurement;
+    const initResult = initCapture.result;
+
+    const firstStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      initResult.firstStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step01Capture = await captureEmulatorSubmission(emulator, async () =>
+      neSubmitStep01({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(firstStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: inclusion,
+        publishedProofChunks: membershipPublication.chunks,
+        awaitConfirmation: true,
+      }),
+    );
+    proofFit["step-01"] = step01Capture.measurement;
+    const step01Result = step01Capture.result;
+    expect(step01Result.nativeTxId).toBe(fixture.nativeTxId);
+    expect(step01Result.proofCarriage).toBe("published-chunks");
+    expect(step01Capture.measurement.referenceInputCount).toBe(
+      2 + EXPECTED_CHUNK_COUNT,
+    );
+
+    const secondStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step01Result.secondStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step02Capture = await captureEmulatorSubmission(emulator, async () =>
+      neSubmitStep02({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(secondStepUtxo),
+        inputsPreimage: fixture.inputsPreimage,
+        badInputIndex: fixture.badInputIndex,
+        awaitConfirmation: true,
+      }),
+    );
+    proofFit["step-02"] = step02Capture.measurement;
+    const step02Result = step02Capture.result;
+
+    const thirdStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step02Result.thirdStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step03Capture = await captureEmulatorSubmission(emulator, async () =>
+      neSubmitStep03({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(thirdStepUtxo),
+        ledgerNonMembershipProofCbor: fixture.ledgerNonMembershipProofCbor,
+        awaitConfirmation: true,
+      }),
+    );
+    proofFit["step-03"] = step03Capture.measurement;
+    const step03Result = step03Capture.result;
+
+    const absencePublicationCapture = await captureEmulatorSubmission(
+      emulator,
+      async () =>
+        publishProofChunksV1({
+          lucid: proverLucid,
+          network,
+          signer: proverSigner,
+          proofCbor: txsAbsenceProofCbor,
+          awaitConfirmation: true,
+        }),
+    );
+    proofFit["publish-chunks-2"] = absencePublicationCapture.measurement;
+    const absencePublication = absencePublicationCapture.result;
+    expect(absencePublication.chunks.length).toBe(EXPECTED_CHUNK_COUNT);
+
+    const fourthStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step03Result.fourthStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step04Capture = await captureEmulatorSubmission(emulator, async () =>
+      neSubmitStep04({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(fourthStepUtxo),
+        txsNonMembershipProofCbor: txsAbsenceProofCbor,
+        publishedProofChunks: absencePublication.chunks,
+        awaitConfirmation: true,
+      }),
+    );
+    proofFit["step-04"] = step04Capture.measurement;
+    const step04Result = step04Capture.result;
+    expect(step04Result.fraudProofAssetName).toBe(
+      initResult.computationThreadAssetName,
+    );
+    expect(step04Result.proofCarriage).toBe("published-chunks");
+    // Only the chunks: this step reads no oracle and no state-queue node.
+    expect(step04Capture.measurement.referenceInputCount).toBe(
+      EXPECTED_CHUNK_COUNT,
+    );
+
+    const removeNow = BigInt(emulator.now());
+    const removeCapture = await captureEmulatorSubmission(emulator, async () =>
+      submitRemoveFraudulentBlock({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        fraudCategory: "nonExistentInput",
+        fraudulentHeaderHash: headerHash,
+        awaitConfirmation: true,
+        requireReferenceScripts: true,
+        validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
+        validTo: removeNow + 300_000n,
+      }),
+    );
+    proofFit["remove"] = removeCapture.measurement;
+    await expectStateQueueHeaderOrder({
+      lucid: funderLucid,
+      contracts,
+      expectedHeaderHashes: [],
+    });
+
+    expect(Object.keys(proofFit)).toEqual([
+      "publish-chunks",
+      "init",
+      "step-01",
+      "step-02",
+      "step-03",
+      "publish-chunks-2",
+      "step-04",
+      "remove",
+    ]);
+    for (const [stage, measurement] of Object.entries(proofFit)) {
+      expectProofFitV1({
+        stage: `no-input chunked ${stage}`,
+        measurement,
+        maxTxExMem,
+        maxTxExSteps,
+      });
+    }
+    const step01 = proofFit["step-01"];
+    if (step01 === undefined) {
+      throw new Error("no-input chunked step-01 was not measured");
+    }
+    expect(step01.completeSignedBytes).toBeLessThan(
+      MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES,
+    );
+    printCarriageFit("no-input", proofFit, {
+      branchLevels: CARRIAGE_BRANCH_LEVELS,
+      chunkCount: membershipPublication.chunks.length,
+      proofCborBytes: deep.proofCborBytes,
+    });
+  }, 900_000);
 });

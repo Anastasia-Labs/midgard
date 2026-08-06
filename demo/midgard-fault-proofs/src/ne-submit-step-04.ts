@@ -2,6 +2,7 @@ import {
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
+  type NonMembershipCarriage,
   NonExistentInputStep04Datum,
   NonExistentInputStep04SpendRedeemer,
   Proof,
@@ -24,6 +25,14 @@ import {
 
 import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "./ne-submit-step-03.js";
+import {
+  chunkedNonMembershipClaimRedeemer,
+  chunkedVerifyWithdrawalScript,
+  derivedChunkReferenceIndices,
+  type PublishedProofChunkV1,
+  requireBuiltChunkReferenceIndices,
+  walletInputsExcludingChunks,
+} from "./proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPexcludesProofRedeemer,
@@ -79,6 +88,9 @@ export type NeSubmitStep04Result = {
   readonly nonMembershipProofScriptRedeemerIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
+  /** Which route the absence opening took to L1 (issue #545). */
+  readonly proofCarriage: "redeemer" | "published-chunks";
+  readonly publishedChunkOutRefs: readonly string[];
   readonly awaitedConfirmation: boolean;
 };
 
@@ -118,6 +130,7 @@ export const neSubmitStep04 = async ({
   signer,
   threadOutRef,
   txsNonMembershipProofCbor,
+  publishedProofChunks,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -127,6 +140,12 @@ export const neSubmitStep04 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly txsNonMembershipProofCbor: string;
+  /**
+   * Chunks published by `publishProofChunksV1`, in proof order. When present
+   * the absence proof reaches L1 through them and never enters this
+   * transaction (issue #545).
+   */
+  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
   readonly awaitConfirmation?: boolean;
 }): Promise<NeSubmitStep04Result> => {
   const { nonExistentInputCategory, contracts } =
@@ -158,7 +177,15 @@ export const neSubmitStep04 = async ({
   const proof = Data.from(txsNonMembershipProofCbor, Proof);
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const chunks = publishedProofChunks ?? [];
+  const carriedByChunks = chunks.length > 0;
+  const feeInput = selectFeeInput(
+    walletInputsExcludingChunks({
+      walletUtxos: await lucid.wallet().getUtxos(),
+      chunks,
+    }),
+  );
+  const referenceInputs = chunks.map((chunk) => chunk.utxo);
   const pexcludesScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PEXCLUDES_EXCLUSION_WITHDRAW_TITLE),
@@ -167,6 +194,18 @@ export const neSubmitStep04 = async ({
     network,
     pexcludesScript,
   );
+  // On the chunked route the merkelized published-chunk verifier stands in for
+  // the `pexcludes` exclusion withdrawal; the proof stays in the chunks.
+  const chunkedVerifyScript = chunkedVerifyWithdrawalScript(blueprint);
+  const chunkedVerifyRewardAddress = phasMembershipRewardAddress(
+    network,
+    chunkedVerifyScript,
+  );
+  const resolvedChunkIndices = derivedChunkReferenceIndices({
+    referenceInputs,
+    chunks,
+    label: "non-existent-input step 04",
+  });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -215,24 +254,41 @@ export const neSubmitStep04 = async ({
       ),
       nonMembershipProofScriptRedeemerIndex: requireWithdrawalRedeemerIndex(
         ctx,
-        pexcludesRewardAddress,
+        carriedByChunks ? chunkedVerifyRewardAddress : pexcludesRewardAddress,
         "non-existent-input step 04 txs non-membership",
       ),
     };
     spendLayout = layout;
+    // The prover chooses the carriage for the absence opening exactly as
+    // step-01 does for the membership one (issue #545).
+    requireBuiltChunkReferenceIndices({
+      ctx,
+      chunks,
+      derived: resolvedChunkIndices,
+      label: "non-existent-input step 04",
+    });
+    const carriage: NonMembershipCarriage = carriedByChunks
+      ? {
+          PublishedChunkNonMembership: [
+            {
+              ordered_chunk_reference_input_indices: resolvedChunkIndices,
+            },
+          ],
+        }
+      : {
+          RedeemerCarriedNonMembership: {
+            non_membership_proof: proof,
+            non_membership_proof_script_redeemer_index:
+              layout.nonMembershipProofScriptRedeemerIndex,
+          },
+        };
     return Data.to(
       {
         Continue: [
           {
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
-            non_membership_in_txs: {
-              RedeemerCarriedNonMembership: {
-                non_membership_proof: proof,
-                non_membership_proof_script_redeemer_index:
-                  layout.nonMembershipProofScriptRedeemerIndex,
-              },
-            },
+            non_membership_in_txs: carriage,
             fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
           },
         ],
@@ -274,19 +330,28 @@ export const neSubmitStep04 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const unsigned = await lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .withdraw(
-      pexcludesRewardAddress,
-      0n,
-      encodeRawPexcludesProofRedeemer({
-        root: inputDatum.data.blocks_transactions_root,
-        keyBytes: inputDatum.data.missing_input_tx_id,
-        nonMembershipProofCbor: txsNonMembershipProofCbor,
-      }),
-    )
+    .readFrom(referenceInputs);
+  const withCarriage = carriedByChunks
+    ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
+        chunkedNonMembershipClaimRedeemer({
+          merkleRoot: inputDatum.data.blocks_transactions_root,
+          keyBytes: inputDatum.data.missing_input_tx_id,
+          orderedChunkReferenceInputIndices: resolvedChunkIndices,
+        })) satisfies BuildTxWithRedeemer)
+    : base.withdraw(
+        pexcludesRewardAddress,
+        0n,
+        encodeRawPexcludesProofRedeemer({
+          root: inputDatum.data.blocks_transactions_root,
+          keyBytes: inputDatum.data.missing_input_tx_id,
+          nonMembershipProofCbor: txsNonMembershipProofCbor,
+        }),
+      );
+  const unsigned = await withCarriage
     .mintAssets({ [threadToken.unit]: -1n }, computationThreadSuccessRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
     .pay.ToContract(
@@ -296,7 +361,9 @@ export const neSubmitStep04 = async ({
     )
     .addSignerKey(signer.paymentKeyHash)
     .attach.SpendingValidator(steps[3].spendingScript)
-    .attach.WithdrawalValidator(pexcludesScript)
+    .attach.WithdrawalValidator(
+      carriedByChunks ? chunkedVerifyScript : pexcludesScript,
+    )
     .attach.MintingPolicy(contracts.computationThread.mintingScript)
     .attach.MintingPolicy(contracts.fraudProof.mintingScript)
     .complete({ localUPLCEval: true });
@@ -342,6 +409,8 @@ export const neSubmitStep04 = async ({
     fraudProofMintRedeemerIndex: Number(
       spendLayout.fraudProofMintRedeemerIndex,
     ),
+    proofCarriage: carriedByChunks ? "published-chunks" : "redeemer",
+    publishedChunkOutRefs: chunks.map((chunk) => chunk.outRef),
     awaitedConfirmation: awaitConfirmation,
   };
 };

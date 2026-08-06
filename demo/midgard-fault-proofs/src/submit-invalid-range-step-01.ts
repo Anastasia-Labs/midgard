@@ -1,4 +1,3 @@
-import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
 import {
   getHeaderV1FromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
@@ -31,9 +30,11 @@ import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submissi
 import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
+  derivedChunkReferenceIndices,
   type PublishedProofChunkV1,
+  requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
-} from "./publish-proof-chunks.js";
+} from "./proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
@@ -251,19 +252,10 @@ export const submitInvalidRangeStep01 = async ({
     network,
     chunkedVerifyScript,
   );
-  const canonicalReferenceOrder = [...referenceInputs].sort(compareOutRefs);
-  const resolvedChunkIndices = chunks.map((chunk) => {
-    const index = canonicalReferenceOrder.findIndex(
-      (utxo) =>
-        utxo.txHash === chunk.utxo.txHash &&
-        utxo.outputIndex === chunk.utxo.outputIndex,
-    );
-    if (index < 0) {
-      throw new Error(
-        `Published proof chunk ${chunk.outRef} is not among the invalid-range step 01 reference inputs.`,
-      );
-    }
-    return BigInt(index);
+  const resolvedChunkIndices = derivedChunkReferenceIndices({
+    referenceInputs,
+    chunks,
+    label: "invalid-range step 01",
   });
   const step02Datum = Data.to(
     {
@@ -317,18 +309,12 @@ export const submitInvalidRangeStep01 = async ({
     // route stays the cheaper one for every proof that fits.
     // The canonical order derived above is the order the ledger will present;
     // re-deriving it from the builder context here proves the two agree.
-    for (const [position, chunk] of chunks.entries()) {
-      const contextIndex = requireReferenceInputIndex(
-        ctx,
-        chunk.utxo,
-        "invalid-range step 01 published proof chunk",
-      );
-      if (contextIndex !== resolvedChunkIndices[position]) {
-        throw new Error(
-          `Published proof chunk ${chunk.outRef} landed at reference-input index ${contextIndex.toString()}, not the derived ${String(resolvedChunkIndices[position])}.`,
-        );
-      }
-    }
+    requireBuiltChunkReferenceIndices({
+      ctx,
+      chunks,
+      derived: resolvedChunkIndices,
+      label: "invalid-range step 01",
+    });
     const carriage: NativeTxInclusionCarriage = carriedByChunks
       ? {
           PublishedChunkInclusion: [

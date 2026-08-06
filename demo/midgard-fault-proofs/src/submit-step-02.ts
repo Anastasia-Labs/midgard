@@ -3,6 +3,7 @@ import {
   DoubleSpendStep02SpendRedeemer,
   DoubleSpendStep03Datum,
   HUB_ORACLE_ASSET_NAME,
+  type NativeTxInclusionCarriage,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
@@ -22,6 +23,14 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
+import {
+  chunkedMembershipClaimRedeemer,
+  chunkedVerifyWithdrawalScript,
+  derivedChunkReferenceIndices,
+  type PublishedProofChunkV1,
+  requireBuiltChunkReferenceIndices,
+  walletInputsExcludingChunks,
+} from "./proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
@@ -84,6 +93,9 @@ export type SubmitStep02Result = {
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
+  /** Which route the membership opening took to L1 (issue #545). */
+  readonly proofCarriage: "redeemer" | "published-chunks";
+  readonly publishedChunkOutRefs: readonly string[];
   readonly awaitedConfirmation: boolean;
 };
 
@@ -129,6 +141,7 @@ export const submitStep02 = async ({
   threadOutRef,
   stateQueueBlockOutRef,
   txInclusion,
+  publishedProofChunks,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -139,6 +152,12 @@ export const submitStep02 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
+  /**
+   * Chunks published by `publishProofChunksV1`, in proof order. When present
+   * the second transaction's membership proof reaches L1 through them and
+   * never enters this transaction (issue #545).
+   */
+  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep02Result> => {
   const resolvedDeployment = await resolveDoubleSpendDeploymentContracts({
@@ -210,8 +229,19 @@ export const submitStep02 = async ({
   }
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const referenceInputs = [hubOracleUtxo, stateQueueBlockUtxo];
+  const chunks = publishedProofChunks ?? [];
+  const carriedByChunks = chunks.length > 0;
+  const feeInput = selectFeeInput(
+    walletInputsExcludingChunks({
+      walletUtxos: await lucid.wallet().getUtxos(),
+      chunks,
+    }),
+  );
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    ...chunks.map((chunk) => chunk.utxo),
+  ];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -220,6 +250,18 @@ export const submitStep02 = async ({
     network,
     phasMembershipScript,
   );
+  // On the chunked route the merkelized published-chunk verifier stands in for
+  // the `phas` membership withdrawal; the proof stays in the referenced chunks.
+  const chunkedVerifyScript = chunkedVerifyWithdrawalScript(blueprint);
+  const chunkedVerifyRewardAddress = phasMembershipRewardAddress(
+    network,
+    chunkedVerifyScript,
+  );
+  const resolvedChunkIndices = derivedChunkReferenceIndices({
+    referenceInputs,
+    chunks,
+    label: "double-spend step 02",
+  });
   const step03Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -259,56 +301,79 @@ export const submitStep02 = async ({
       ),
     };
     resolvedLayout = layout;
-    return Data.to(
-      {
-        Continue: [
-          {
-            RedeemerCarriedInclusion: [
-              {
-                input_index: layout.inputIndex,
-                output_index: layout.outputIndex,
-                hub_ref_input_index: layout.hubOracleRefInputIndex,
-                state_queue_node_ref_input_index:
-                  layout.stateQueueNodeRefInputIndex,
-                native_tx_id: txInclusion.nativeTxId,
-                native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
-                transactions_phas_root: txInclusion.transactionsPhasRoot,
-                tx_membership_proof: txInclusion.txMembershipProof,
-                inclusion_proof_script_withdraw_redeemer_index:
-                  requireWithdrawalRedeemerIndex(
-                    ctx,
-                    phasRewardAddress,
-                    "double-spend step 02 PHAS membership",
-                  ),
-              },
-            ],
-          },
-        ],
-      },
-      DoubleSpendStep02SpendRedeemer,
-    );
+    const common = {
+      input_index: layout.inputIndex,
+      output_index: layout.outputIndex,
+      hub_ref_input_index: layout.hubOracleRefInputIndex,
+      state_queue_node_ref_input_index: layout.stateQueueNodeRefInputIndex,
+      native_tx_id: txInclusion.nativeTxId,
+      native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+      transactions_phas_root: txInclusion.transactionsPhasRoot,
+    };
+    // Same prover-chosen carriage as step-01: the second conflicting
+    // transaction's opening is the one that grows with proof depth here.
+    requireBuiltChunkReferenceIndices({
+      ctx,
+      chunks,
+      derived: resolvedChunkIndices,
+      label: "double-spend step 02",
+    });
+    const carriage: NativeTxInclusionCarriage = carriedByChunks
+      ? {
+          PublishedChunkInclusion: [
+            {
+              ...common,
+              ordered_chunk_reference_input_indices: resolvedChunkIndices,
+            },
+          ],
+        }
+      : {
+          RedeemerCarriedInclusion: [
+            {
+              ...common,
+              tx_membership_proof: txInclusion.txMembershipProof,
+              inclusion_proof_script_withdraw_redeemer_index:
+                requireWithdrawalRedeemerIndex(
+                  ctx,
+                  phasRewardAddress,
+                  "double-spend step 02 PHAS membership",
+                ),
+            },
+          ],
+        };
+    return Data.to({ Continue: [carriage] }, DoubleSpendStep02SpendRedeemer);
   }) satisfies BuildTxWithRedeemer;
   const threadAssets = {
     lovelace: threadUtxo.assets.lovelace ?? 0n,
     [threadToken.unit]: 1n,
   };
 
-  const tx = lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom(referenceInputs)
-    .withdraw(
-      phasRewardAddress,
-      0n,
-      encodeRawPhasMembershipProofRedeemer({
-        root: txInclusion.transactionsPhasRoot,
-        keyBytes: txInclusion.nativeTxId,
-        valueBytes: txInclusion.nativeTxCompactCbor,
-        membershipProofCbor: txInclusion.txMembershipProofCbor,
-      }),
-    )
-    .pay.ToContract(
+    .readFrom(referenceInputs);
+  const tx = (
+    carriedByChunks
+      ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
+          chunkedMembershipClaimRedeemer({
+            merkleRoot: txInclusion.transactionsPhasRoot,
+            keyBytes: txInclusion.nativeTxId,
+            valueBytes: txInclusion.nativeTxCompactCbor,
+            orderedChunkReferenceInputIndices: resolvedChunkIndices,
+          })) satisfies BuildTxWithRedeemer)
+      : base.withdraw(
+          phasRewardAddress,
+          0n,
+          encodeRawPhasMembershipProofRedeemer({
+            root: txInclusion.transactionsPhasRoot,
+            keyBytes: txInclusion.nativeTxId,
+            valueBytes: txInclusion.nativeTxCompactCbor,
+            membershipProofCbor: txInclusion.txMembershipProofCbor,
+          }),
+        )
+  ).pay
+    .ToContract(
       contracts.doubleSpend.steps[2].spendingScriptAddress,
       {
         kind: "inline",
@@ -317,10 +382,12 @@ export const submitStep02 = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.doubleSpend.steps[1].spendingScript)
-    .attach.WithdrawalValidator(phasMembershipScript);
+    .attach.SpendingValidator(contracts.doubleSpend.steps[1].spendingScript);
+  const completedTx = carriedByChunks
+    ? tx.attach.WithdrawalValidator(chunkedVerifyScript)
+    : tx.attach.WithdrawalValidator(phasMembershipScript);
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
     throw new Error("BuildTxWithRedeemer did not resolve step 02 layout.");
   }
@@ -354,6 +421,8 @@ export const submitStep02 = async ({
     stateQueueNodeRefInputIndex: Number(
       resolvedLayout.stateQueueNodeRefInputIndex,
     ),
+    proofCarriage: carriedByChunks ? "published-chunks" : "redeemer",
+    publishedChunkOutRefs: chunks.map((chunk) => chunk.outRef),
     awaitedConfirmation: awaitConfirmation,
   };
 };
