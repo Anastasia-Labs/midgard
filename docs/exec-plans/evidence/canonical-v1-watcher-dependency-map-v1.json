@@ -44,6 +44,7 @@
       "demo/midgard-watcher/src/state-queue-indexer.ts",
       "demo/midgard-watcher/src/user-event-indexer.ts",
       "demo/midgard-watcher/tests/config.test.ts",
+      "demo/midgard-watcher/tests/crash-rollback-matrix.test.ts",
       "demo/midgard-watcher/tests/block-replay.test.ts",
       "demo/midgard-watcher/tests/canonical-fraud-proof-catalogue.ts",
       "demo/midgard-watcher/tests/canonical-block-store.test.ts",
@@ -348,6 +349,18 @@
     },
     "scaffold": {
       "expectedFocusedTestCount": 5
+    },
+    "crashRollbackMatrix": {
+      "status": "PASS",
+      "goalIds": ["W44"],
+      "matrixPolicy": "exact_17_cases_14_before_after_crash_points_across_the_7_W32_lifecycle_transitions_plus_1_ordinary_L1_rollback_1_rollback_deeper_than_finality_depth_within_cardano_k_2160_and_1_configured_source_inconsistency",
+      "crashSeam": "compareAndSwapWatcherDurableAtomicSnapshotV1_backend_boundary_thrown_before_and_after_the_durable_byte_replacement",
+      "recoveryPolicy": "restart_replays_the_same_deterministic_driver_against_the_same_durable_snapshot_no_manual_surgery_step_exists",
+      "invariantPolicy": "every_case_measures_0_double_submits_0_duplicate_rewards_0_lost_evidence_0_false_verified_states_and_0_unrecoverable_workflows",
+      "securityConditionPolicy": "every_case_measures_0_public_data_violations_0_configured_source_inconsistencies_0_maturity_budget_violations_and_0_disabled_family_faults",
+      "readinessPolicy": "readiness_is_false_from_every_partially_recovered_crash_state_and_true_only_after_the_terminal_verification_transition_lands",
+      "unknownBehavior": "fail_closed",
+      "expectedFocusedTestCount": 17
     },
     "remainingTasks": [
       "W04",

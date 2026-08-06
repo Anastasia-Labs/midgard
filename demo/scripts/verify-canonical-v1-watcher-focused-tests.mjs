@@ -84,6 +84,10 @@ const expectedByFile = new Map([
     watcherEvidence.eventClassificationVerifier?.expectedFocusedTestCount,
   ],
   ["scaffold.test.ts", watcherEvidence.scaffold?.expectedFocusedTestCount],
+  [
+    "crash-rollback-matrix.test.ts",
+    watcherEvidence.crashRollbackMatrix?.expectedFocusedTestCount,
+  ],
 ]);
 
 const fail = (message) => {
@@ -91,22 +95,22 @@ const fail = (message) => {
 };
 
 if (
-  expectedByFile.size !== 19 ||
+  expectedByFile.size !== 20 ||
   [...expectedByFile.values()].some(
     (count) => !Number.isSafeInteger(count) || count <= 0,
   )
 ) {
   fail(
-    "dependency map must declare a positive expected count for all 19 files",
+    "dependency map must declare a positive expected count for all 20 files",
   );
 }
 
-// #519 finding V-4 (#527): the published 19-file/599-test total used to be a
+// #519 finding V-4 (#527): the published 20-file/616-test total used to be a
 // `reduce` over the dependency map's own numbers compared against the runner —
 // but the per-file expectations came from the same map, so editing the artifact
 // under audit moved both sides of every comparison at once. Four suites
 // (publicDaClient, canonicalBlockStore, headerRootReconstruction,
-// phaseAVerifier — 301 of the 599) additionally had no literal pin in
+// phaseAVerifier — 301 of the 616) additionally had no literal pin in
 // verify-canonical-v1-watcher-dependency-map.mjs, so their counts were
 // self-declared end to end.
 //
@@ -138,8 +142,9 @@ const pinnedByFile = new Map([
   ["block-replay.test.ts", 21],
   ["event-classification-verifier.test.ts", 15],
   ["scaffold.test.ts", 5],
+  ["crash-rollback-matrix.test.ts", 17],
 ]);
-const pinnedTotal = 599;
+const pinnedTotal = 616;
 const sumCounts = (counts) => counts.reduce((sum, count) => sum + count, 0);
 if (
   pinnedByFile.size !== expectedByFile.size ||

@@ -2211,8 +2211,72 @@ for (const requiredSymbol of [
     fail(`W23 rule-bundle symbol ${requiredSymbol} is not public or invoked`);
   }
 }
+// W44 crash/rollback matrix (#509). The matrix is a count contract, not a
+// free-form suite: exactly 17 cases, of which exactly 14 are before/after
+// crash points across the 7 W32 durable lifecycle transitions, 1 is an
+// ordinary pre-finality L1 rollback, 1 is a rollback deeper than the
+// configured finality depth and within the fixed Cardano k, and 1 is a
+// configured-source inconsistency. The literals below pin that decomposition
+// so a future edit cannot quietly drop a crash point and stay green.
+const crashRollbackMatrix =
+  dependencyMap.requiredWatcherPackage?.crashRollbackMatrix;
+const crashRollbackMatrixSource = readIndexedFile(
+  "demo/midgard-watcher/tests/crash-rollback-matrix.test.ts",
+  "utf8",
+);
+if (
+  crashRollbackMatrix?.expectedFocusedTestCount !== 17 ||
+  crashRollbackMatrix?.status !== "PASS" ||
+  crashRollbackMatrix?.unknownBehavior !== "fail_closed" ||
+  !Array.isArray(crashRollbackMatrix?.goalIds) ||
+  !crashRollbackMatrix.goalIds.includes("W44") ||
+  typeof crashRollbackMatrix?.matrixPolicy !== "string" ||
+  typeof crashRollbackMatrix?.crashSeam !== "string" ||
+  typeof crashRollbackMatrix?.recoveryPolicy !== "string" ||
+  typeof crashRollbackMatrix?.invariantPolicy !== "string" ||
+  typeof crashRollbackMatrix?.securityConditionPolicy !== "string" ||
+  typeof crashRollbackMatrix?.readinessPolicy !== "string"
+) {
+  fail("W44 crash/rollback matrix evidence is incomplete or stale");
+}
+for (const requiredTransition of [
+  '"detect"',
+  '"persist_evidence"',
+  '"init"',
+  '"steps"',
+  '"proof_token"',
+  '"removal_slashing"',
+  '"terminal_verification"',
+]) {
+  if (!crashRollbackMatrixSource.includes(requiredTransition)) {
+    fail(
+      `W44 crash/rollback matrix must cover the W32 lifecycle transition ${requiredTransition}`,
+    );
+  }
+}
+for (const requiredMarker of [
+  "compareAndSwapWatcherDurableAtomicSnapshotV1",
+  "crashBeforeAttempt",
+  "crashAfterAttempt",
+  "evaluateAndPersistWatcherRollbackV1",
+  "evaluateAndPersistWatcherPostFinalityRecoveryV1",
+  "WATCHER_ROLLBACK_V1_BOUNDS",
+  "doubleSubmits",
+  "duplicateRewards",
+  "lostEvidence",
+  "falseVerifiedStates",
+  "unrecoverableWorkflows",
+  "publicDataViolations",
+  "sourceConsistencyViolations",
+  "maturityViolations",
+  "disabledFamilyFaults",
+]) {
+  if (!crashRollbackMatrixSource.includes(requiredMarker)) {
+    fail(`W44 crash/rollback matrix must exercise ${requiredMarker}`);
+  }
+}
 // #519 finding V-4 (#527): publicDaClient, canonicalBlockStore,
-// headerRootReconstruction, and phaseAVerifier — 301 of the published 599
+// headerRootReconstruction, and phaseAVerifier — 301 of the published 616
 // watcher tests — had no literal pin anywhere in this verifier, so the map
 // could declare any number for them and both watcher gates stayed green. These
 // pins were measured from a package-local Vitest 3.0.7 JSON report and are

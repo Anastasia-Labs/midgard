@@ -1,0 +1,149 @@
+{
+  "schemaVersion": "midgard-canonical-v1-w44-crash-rollback-matrix-v1",
+  "goalIds": ["W44"],
+  "goalSpecAnchor": "GOAL_SPEC.md 10.5 W44",
+  "sourceRevision": "f35bf45c9f70d0d9627e3a1f20658bdfd316d7be",
+  "acceptance": "Crash before/after every submit/confirm/journal transition plus L1 rollback/configured-source inconsistency, including at least one rollback deeper than the configured finality depth proving the automated k-depth recovery of W13; no double submit, lost evidence, false verified state, manual-surgery recovery step, or stuck unrecoverable workflow.",
+  "toolchain": {
+    "node": "v24.13.1",
+    "vitest": "3.0.7",
+    "runner": "package-local vitest in demo/midgard-watcher"
+  },
+  "focusedCommand": "pnpm --dir demo/midgard-watcher exec vitest run tests/crash-rollback-matrix.test.ts",
+  "sourcePathInventory": [
+    {
+      "path": "demo/midgard-watcher/tests/crash-rollback-matrix.test.ts",
+      "kind": "created_executable_evidence",
+      "sha256": "c0c00d246c21ff6709eebeb1ab392de9a5814b1fbeeef8885c49f19e57cffa05"
+    }
+  ],
+  "seams": {
+    "journalBoundary": "demo/midgard-watcher/src/durable-store.ts compareAndSwapWatcherDurableAtomicSnapshotV1 (the single atomic durable byte-replacement boundary)",
+    "crashInjection": "WatcherDurableAtomicBackend.compareAndSwap throws at an exact attempt index, before or after the durable byte replacement; the post-commit throw is the ambiguous window a real process crash produces",
+    "rollbackAuthority": "demo/midgard-watcher/src/rollback-engine.ts evaluateAndPersistWatcherRollbackV1 and evaluateAndPersistWatcherPostFinalityRecoveryV1",
+    "recoveryProcedure": "restart re-invokes the same deterministic driver against the same durable snapshot; no manual-surgery step exists anywhere in the matrix"
+  },
+  "lifecycleTransitions": [
+    "detect",
+    "persist_evidence",
+    "init",
+    "steps",
+    "proof_token",
+    "removal_slashing",
+    "terminal_verification"
+  ],
+  "caseCounts": {
+    "total": 17,
+    "beforeAfterCrashPoints": 14,
+    "lifecycleTransitions": 7,
+    "ordinaryL1Rollback": 1,
+    "rollbackDeeperThanFinalityDepthWithinCardanoK": 1,
+    "configuredSourceInconsistency": 1
+  },
+  "depthBinding": {
+    "configuredFinalityDepth": 5,
+    "measuredDeepRollbackDepth": 8,
+    "cardanoK": 2160,
+    "boundAuthority": "WATCHER_ROLLBACK_V1_BOUNDS.postFinalityRecoveryDepth in demo/midgard-watcher/src/rollback-engine.ts"
+  },
+  "zeroDefectInvariants": {
+    "doubleSubmits": 0,
+    "duplicateRewards": 0,
+    "lostEvidence": 0,
+    "falseVerifiedStates": 0,
+    "unrecoverableWorkflows": 0,
+    "manualSurgeryRecoverySteps": 0,
+    "measuredIn": "every one of the 17 cases"
+  },
+  "ig3SecurityConditions": {
+    "publicDataViolations": 0,
+    "sourceConsistencyViolations": 0,
+    "maturityViolations": 0,
+    "disabledFamilyFaults": 0,
+    "familyAuthority": "DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER in demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+    "measuredIn": "every one of the 17 cases"
+  },
+  "readinessPolicy": "readiness is false from every partially recovered crash state and from every quarantined or rejected rollback state; it is true only after the terminal-verification transition has durably landed",
+  "runnerReport": {
+    "numTotalTestSuites": 2,
+    "numTotalTests": 17,
+    "numPassedTests": 17,
+    "numFailedTests": 0,
+    "numPendingTests": 0,
+    "numTodoTests": 0,
+    "cases": [
+      {
+        "title": "recovers deterministically from a crash before the detect journal boundary",
+        "status": "passed"
+      },
+      {
+        "title": "recovers deterministically from a crash after the detect journal boundary",
+        "status": "passed"
+      },
+      {
+        "title": "recovers deterministically from a crash before the persist-evidence journal boundary",
+        "status": "passed"
+      },
+      {
+        "title": "recovers deterministically from a crash after the persist-evidence journal boundary",
+        "status": "passed"
+      },
+      {
+        "title": "recovers deterministically from a crash before the proof-init journal boundary",
+        "status": "passed"
+      },
+      {
+        "title": "recovers deterministically from a crash after the proof-init journal boundary",
+        "status": "passed"
+      },
+      {
+        "title": "recovers deterministically from a crash before the submit journal boundary",
+        "status": "passed"
+      },
+      {
+        "title": "recovers deterministically from a crash after the submit journal boundary",
+        "status": "passed"
+      },
+      {
+        "title": "recovers deterministically from a crash before the proof-token confirm boundary",
+        "status": "passed"
+      },
+      {
+        "title": "recovers deterministically from a crash after the proof-token confirm boundary",
+        "status": "passed"
+      },
+      {
+        "title": "recovers deterministically from a crash before the removal/slashing confirm boundary",
+        "status": "passed"
+      },
+      {
+        "title": "recovers deterministically from a crash after the removal/slashing confirm boundary",
+        "status": "passed"
+      },
+      {
+        "title": "recovers deterministically from a crash before the terminal-verification journal boundary",
+        "status": "passed"
+      },
+      {
+        "title": "recovers deterministically from a crash after the terminal-verification journal boundary",
+        "status": "passed"
+      },
+      {
+        "title": "rewinds and replays an ordinary pre-finality L1 rollback without losing evidence",
+        "status": "passed"
+      },
+      {
+        "title": "automatically recovers a rollback deeper than the finality depth within the k bound",
+        "status": "passed"
+      },
+      {
+        "title": "fails closed on a configured-source inconsistency without mutating durable state",
+        "status": "passed"
+      }
+    ]
+  },
+  "scopeLimits": [
+    "W32 (demo/midgard-watcher/src/proof-state-machine.ts) and W33 (demo/midgard-watcher/src/submission-reconciliation.ts) are NOT_STARTED and their modules do not exist in the tree, so the seven-transition lifecycle is driven by a deterministic in-test driver over the real W03 durable record schema and the real W03 atomic journal boundary. The crash, restart, idempotence, referential-integrity, canonical-encoding and atomicity properties exercised are production properties; the transition sequencing policy is not yet owned by a production module.",
+    "The ordinary rollback, deep rollback and configured-source inconsistency cases drive the real W12/W13 production entry points with no in-test substitution."
+  ]
+}
