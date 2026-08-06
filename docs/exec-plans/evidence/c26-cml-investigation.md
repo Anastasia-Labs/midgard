@@ -380,6 +380,11 @@ unnecessary and is not recommended in either case.
 # permanent validation boundary and CML patch suites
 pnpm --dir demo/midgard-validation test -- plutus-data-unary-depth
 pnpm --dir demo/midgard-validation test -- cml-wasm-stack-patch-v1
+# ^ Retired 2026-08-05: CML 6.2.0-2 fixed the shadow stack at source
+#   (16 MiB via -zstack-size, upstream CML PR #6), so the patcher and
+#   cml-wasm-stack-patch-v1.test.ts were removed with the #543 bump.
+#   The active successor suite is:
+pnpm --dir demo/midgard-validation test -- cml-wasm-shadow-stack-v1
 
 # permanent midgard-core gate, retained datum, and redeemer suites
 pnpm --dir demo/midgard-core test -- plutus-data-wellformed-v1 plutus-data-deep-datum-retained-v1 native-redeemer-deep-data-v1

@@ -3,17 +3,18 @@
  *
  * Two reasons this is a separate process rather than inline test code:
  *
- *  1. `--stack-size`. Raising the CML wasm shadow stack (see
- *     `demo/scripts/patch-cml-wasm-stack.mjs`) exposes a second, independent
- *     limit: V8 executes wasm frames on the real machine stack, so depth 4,043
- *     also needs `--stack-size >= 1400` (2,000 is used for headroom). Setting
- *     that per-suite in a child process keeps default vitest execution — every
- *     other suite in every package — completely unchanged.
+ *  1. `--stack-size`. Past the 16 MiB CML wasm shadow stack (built into CML
+ *     `6.2.0-2` at source; previously the retired install-time patcher raised
+ *     it), a second, independent limit applies: V8 executes wasm frames on the
+ *     real machine stack, so depth 4,043 also needs `--stack-size >= 1400`
+ *     (2,000 is used for headroom). Setting that per-suite in a child process
+ *     keeps default vitest execution — every other suite in every package —
+ *     completely unchanged.
  *
  *  2. Trap containment. A CML wasm trap permanently poisons the
- *     `WebAssembly.Instance` for the whole process, so the stock-CML control
- *     cases (which are *expected* to trap) must never share a worker with real
- *     assertions.
+ *     `WebAssembly.Instance` for the whole process, so any case that is
+ *     *expected* to trap (historically the stock-CML controls) must never
+ *     share a worker with real assertions.
  *
  * Usage:  node --stack-size=2000 cml-max-depth-runner-v1.mjs <requestJsonPath>
  * Writes a single JSON object to stdout. Never throws out of `main`; failures
@@ -58,7 +59,9 @@ const describeFailure = (cause) => ({
 });
 
 const main = async () => {
-  const request = reviveBigints(JSON.parse(readFileSync(process.argv[2], "utf8")));
+  const request = reviveBigints(
+    JSON.parse(readFileSync(process.argv[2], "utf8")),
+  );
 
   if (request.operation === "plutusDataParse") {
     const CML = require(request.cmlMainPath);
@@ -68,7 +71,9 @@ const main = async () => {
     );
     const roundTripHex = data.to_cbor_hex();
     const canonicalHex = data.to_canonical_cbor_hex();
-    const hashHex = Buffer.from(CML.hash_plutus_data(data).to_raw_bytes()).toString("hex");
+    const hashHex = Buffer.from(
+      CML.hash_plutus_data(data).to_raw_bytes(),
+    ).toString("hex");
     return {
       ok: true,
       operation: request.operation,

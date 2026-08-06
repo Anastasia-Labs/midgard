@@ -389,10 +389,10 @@ const HALF_CANONICAL_MATURITY_MS = 302_400_000;
  * producing runs used `@anastasia-labs/cardano-multiplatform-lib-nodejs`
  * `6.2.0-1` with the locally shadow-stack-patched
  * `cardano_multiplatform_lib_bg.wasm` (sha256 `cd96b005…`; pristine npm
- * `6.2.0-1` is `91b38c8e…`). The patch only raises the wasm shadow stack, so
- * byte-identical transactions serialize identically under either binary; the
- * line exists so the pending `6.2.0-2` bump — the go-forward artifact, after
- * which the patcher is retired — can re-verify these pins cheaply.
+ * `6.2.0-1` is `91b38c8e…`). RE-VERIFIED 2026-08-05: the `6.2.0-2` bump
+ * (source-built 16 MiB shadow stack, wasm sha256 `47e56638…`; patcher
+ * retired) landed and this suite reproduced every pin below unchanged —
+ * the shadow-stack size is serialization-invisible, as expected.
  */
 const COMPLETE_PUBLISHED_CANONICAL_PROOF = {
   signedTxBytes: 7_771,

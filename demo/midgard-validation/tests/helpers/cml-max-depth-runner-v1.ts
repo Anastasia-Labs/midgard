@@ -9,8 +9,10 @@ import { fileURLToPath } from "node:url";
  *
  * Maximum-depth Plutus Data work needs BOTH raised budgets:
  *
- *   - the CML wasm shadow stack, raised at install time by
- *     `demo/scripts/patch-cml-wasm-stack.mjs` (hash-pinned), and
+ *   - the CML wasm shadow stack — 16 MiB since CML `6.2.0-2`, which is built
+ *     with `-C link-arg=-zstack-size=16777216` at source
+ *     (Anastasia-Labs/cardano-multiplatform-lib PR #6; previously bridged by
+ *     the retired install-time patcher), and
  *   - V8's machine stack, raised with `--stack-size` (measured floor 1,400 KB
  *     at depth 4,043; 2,000 KB is used for headroom).
  *

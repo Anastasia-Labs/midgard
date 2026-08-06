@@ -162,8 +162,10 @@ transaction layout did not move: signed bytes stayed 7,771 and every
 structural count is unchanged. Both producing runs serialized through
 `@anastasia-labs/cardano-multiplatform-lib-nodejs` `6.2.0-1` with the locally
 shadow-stack-patched `cardano_multiplatform_lib_bg.wasm` (sha256
-`cd96b005…`); the patch only raises the wasm shadow stack, so the pending
-`6.2.0-2` bump should reproduce the same tuple.
+`cd96b005…`); the patch only raised the wasm shadow stack, and the `6.2.0-2`
+bump (source-built 16 MiB shadow stack, wasm sha256 `47e56638…`) reproduced
+the same tuple on 2026-08-05 — the suite's pinned assertions passed unchanged
+against the published artifact.
 
 ### 3. Minimum transparent multi-output publication
 
