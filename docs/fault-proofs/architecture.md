@@ -208,9 +208,20 @@ it is not evidence that Q54's retention-enforcement task is open.
    pre-signing checklist (`technical-spec/5-ledger-rules/3-da-rules.tex:13-28`) is part of
    the soundness argument but is off-chain and unslashable.
 2. **An active challenger exists** — no autonomous watcher exists; detection and the
-   multi-step submission chains are manual.
+   multi-step submission chains are manual. Challengers are independent and
+   self-selecting: a watcher that identifies a fault opens its own fault-proof thread
+   and drives that thread to completion, and it carries no obligation to threads opened
+   by other parties. Soundness per fault requires exactly one honest active challenger,
+   not coordination among watchers (owner clarification, 2026-08-06).
 3. **Economics parameters will be set** — with zeroed bond/penalty/reward, a successful
    proof currently neither deters nor compensates. The canonical maturity window is seven
-   days (`604,800,000` ms), not 30 ms.
+   days (`604,800,000` ms), not 30 ms. Threshold interpretation: a correction path's
+   economic sufficiency (fees and collateral against the prover reward) is judged
+   against the production launch economics — the F04 decision record §2.1 profile with
+   its 75,000-ADA `fraud_prover_reward`, which dwarfs per-step L1 fees even on
+   thousand-step threads — never against the scaled §2.2 drill profile; likewise the
+   `GOAL_SPEC.md` §3.3 maturity fit binds against half the production seven-day
+   maturity, never a scaled acceptance or test window (owner clarification,
+   2026-08-06).
 4. **Operator monotonicity for cascades** — descendant removal currently assumes the
    descendant shares the faulty block's operator (see §3 seams).

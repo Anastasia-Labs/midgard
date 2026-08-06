@@ -485,7 +485,10 @@ machine instruction and builtin must satisfy all of:
 - execution memory and CPU at or below the deployment's measured protocol
   limits with a 20% reserve;
 - challenger can complete 32 rounds plus settlement inside half the maturity
-  window under the configured response deadlines;
+  window under the configured response deadlines — the maturity window for
+  this threshold is the exact V1 production block maturity (seven days;
+  half-maturity 302,400,000 ms), never a scaled acceptance or test window
+  (owner clarification, 2026-08-06);
 - canonical DA payload and decompressed payload stay within their compiled
   limits;
 - mutation tests show unknown tags, omitted nodes, oversized preimages, wrong

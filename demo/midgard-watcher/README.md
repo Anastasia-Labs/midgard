@@ -3,6 +3,12 @@
 `midgard-watcher` is the independent Midgard verifier and challenger package.
 It is distinct from the DA committee service in `../da-committee-node`.
 
+Thread model: watchers are independent and self-selecting. A watcher that
+identifies a fault opens its own fault-proof thread and drives it to
+completion; it has no obligation to threads opened by other parties, and
+soundness per fault requires only one honest active challenger. See
+`docs/fault-proofs/architecture.md` §5.
+
 W00 provides the workspace, executable, and verification scaffold. W01 adds a
 strict configuration language. This checkpoint also implements the strict
 W10-W17 and W23 observation, source-consistency, finality, rollback, protocol
