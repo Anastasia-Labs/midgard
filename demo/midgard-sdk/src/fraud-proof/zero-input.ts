@@ -15,6 +15,7 @@ import {
   type NativeTxBodyCompact as NativeTxBodyCompactData,
   NativeTxInclusionArgs,
   NativeTxInclusionArgsSchema,
+  NativeTxInclusionCarriageSchema,
 } from "./native.js";
 
 export const ZeroInputStep01DatumSchema = faultProofStepDatumSchema(Data.Any());
@@ -25,7 +26,7 @@ export const ZeroInputStep01Datum =
   ZeroInputStep01DatumSchema as unknown as ZeroInputStep01Datum;
 
 export const ZeroInputStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
-  NativeTxInclusionArgsSchema,
+  NativeTxInclusionCarriageSchema,
 );
 export type ZeroInputStep01SpendRedeemer = Data.Static<
   typeof ZeroInputStep01SpendRedeemerSchema

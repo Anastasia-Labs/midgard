@@ -1,6 +1,6 @@
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema, ProofSchema } from "@/common.js";
+import { H32Schema } from "@/common.js";
 
 import {
   FaultProofStepCancel,
@@ -11,6 +11,8 @@ import {
   MidgardTxInputSchema,
   NativeTxInclusionArgs,
   NativeTxInclusionArgsSchema,
+  NativeTxInclusionCarriageSchema,
+  NonMembershipCarriageSchema,
 } from "./native.js";
 
 /**
@@ -43,7 +45,7 @@ export const NonExistentInputStepCancel =
 // only the native-tx inclusion redeemer; the produced UTxO carries step-02.
 
 export const NonExistentInputStep01SpendRedeemerSchema =
-  faultProofStepRedeemerSchema(NonExistentInputTxInclusionArgsSchema);
+  faultProofStepRedeemerSchema(NativeTxInclusionCarriageSchema);
 export type NonExistentInputStep01SpendRedeemer = Data.Static<
   typeof NonExistentInputStep01SpendRedeemerSchema
 >;
@@ -123,8 +125,7 @@ export const NonExistentInputStep03Datum =
 export const NonExistentInputStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  non_membership_proof_in_ledger: ProofSchema,
-  non_membership_proof_script_redeemer_index: Data.Integer(),
+  non_membership_in_ledger: NonMembershipCarriageSchema,
 });
 export type NonExistentInputStep03Args = Data.Static<
   typeof NonExistentInputStep03ArgsSchema
@@ -164,8 +165,7 @@ export const NonExistentInputStep04Datum =
 export const NonExistentInputStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  non_membership_proof_in_txs: ProofSchema,
-  non_membership_proof_script_redeemer_index: Data.Integer(),
+  non_membership_in_txs: NonMembershipCarriageSchema,
   fraud_proof_mint_redeemer_index: Data.Integer(),
 });
 export type NonExistentInputStep04Args = Data.Static<

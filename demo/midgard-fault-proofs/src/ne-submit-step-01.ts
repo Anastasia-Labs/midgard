@@ -242,21 +242,25 @@ export const neSubmitStep01 = async ({
       {
         Continue: [
           {
-            input_index: layout.inputIndex,
-            output_index: layout.outputIndex,
-            hub_ref_input_index: layout.hubOracleRefInputIndex,
-            state_queue_node_ref_input_index:
-              layout.stateQueueNodeRefInputIndex,
-            native_tx_id: txInclusion.nativeTxId,
-            native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
-            transactions_phas_root: txInclusion.transactionsPhasRoot,
-            tx_membership_proof: txInclusion.txMembershipProof,
-            inclusion_proof_script_withdraw_redeemer_index:
-              requireWithdrawalRedeemerIndex(
-                ctx,
-                phasRewardAddress,
-                "non-existent-input step 01 PHAS membership",
-              ),
+            RedeemerCarriedInclusion: [
+              {
+                input_index: layout.inputIndex,
+                output_index: layout.outputIndex,
+                hub_ref_input_index: layout.hubOracleRefInputIndex,
+                state_queue_node_ref_input_index:
+                  layout.stateQueueNodeRefInputIndex,
+                native_tx_id: txInclusion.nativeTxId,
+                native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+                transactions_phas_root: txInclusion.transactionsPhasRoot,
+                tx_membership_proof: txInclusion.txMembershipProof,
+                inclusion_proof_script_withdraw_redeemer_index:
+                  requireWithdrawalRedeemerIndex(
+                    ctx,
+                    phasRewardAddress,
+                    "non-existent-input step 01 PHAS membership",
+                  ),
+              },
+            ],
           },
         ],
       },

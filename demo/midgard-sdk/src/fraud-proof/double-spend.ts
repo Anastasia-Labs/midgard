@@ -17,6 +17,7 @@ import {
   NativeTxCompactSchema,
   NativeTxInclusionArgs,
   NativeTxInclusionArgsSchema,
+  NativeTxInclusionCarriageSchema,
 } from "./native.js";
 
 export {
@@ -60,7 +61,7 @@ export const DoubleSpendStep01Datum =
   DoubleSpendStep01DatumSchema as unknown as DoubleSpendStep01Datum;
 
 export const DoubleSpendStep01SpendRedeemerSchema =
-  faultProofStepRedeemerSchema(DoubleSpendTxInclusionArgsSchema);
+  faultProofStepRedeemerSchema(NativeTxInclusionCarriageSchema);
 export type DoubleSpendStep01SpendRedeemer = Data.Static<
   typeof DoubleSpendStep01SpendRedeemerSchema
 >;
@@ -87,7 +88,7 @@ export const DoubleSpendStep02Datum =
   DoubleSpendStep02DatumSchema as unknown as DoubleSpendStep02Datum;
 
 export const DoubleSpendStep02SpendRedeemerSchema =
-  faultProofStepRedeemerSchema(DoubleSpendTxInclusionArgsSchema);
+  faultProofStepRedeemerSchema(NativeTxInclusionCarriageSchema);
 export type DoubleSpendStep02SpendRedeemer = Data.Static<
   typeof DoubleSpendStep02SpendRedeemerSchema
 >;

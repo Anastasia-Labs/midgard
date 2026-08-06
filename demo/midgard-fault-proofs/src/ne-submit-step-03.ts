@@ -220,9 +220,13 @@ export const neSubmitStep03 = async ({
           {
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
-            non_membership_proof_in_ledger: proof,
-            non_membership_proof_script_redeemer_index:
-              layout.nonMembershipProofScriptRedeemerIndex,
+            non_membership_in_ledger: {
+              RedeemerCarriedNonMembership: {
+                non_membership_proof: proof,
+                non_membership_proof_script_redeemer_index:
+                  layout.nonMembershipProofScriptRedeemerIndex,
+              },
+            },
           },
         ],
       },

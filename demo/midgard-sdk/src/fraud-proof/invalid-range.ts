@@ -10,6 +10,7 @@ import {
   type NativeTxBodyCompact as NativeTxBodyCompactData,
   NativeTxInclusionArgs,
   NativeTxInclusionArgsSchema,
+  NativeTxInclusionCarriageSchema,
 } from "./native.js";
 
 export const InvalidRangeStep01DatumSchema = faultProofStepDatumSchema(
@@ -22,7 +23,7 @@ export const InvalidRangeStep01Datum =
   InvalidRangeStep01DatumSchema as unknown as InvalidRangeStep01Datum;
 
 export const InvalidRangeStep01SpendRedeemerSchema =
-  faultProofStepRedeemerSchema(NativeTxInclusionArgsSchema);
+  faultProofStepRedeemerSchema(NativeTxInclusionCarriageSchema);
 export type InvalidRangeStep01SpendRedeemer = Data.Static<
   typeof InvalidRangeStep01SpendRedeemerSchema
 >;

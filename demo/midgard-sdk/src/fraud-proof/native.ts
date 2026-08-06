@@ -50,6 +50,134 @@ export const NativeTxInclusionArgs =
   NativeTxInclusionArgsSchema as unknown as NativeTxInclusionArgs;
 
 /**
+ * Published-chunk carriage of a step's transactions-root membership opening
+ * (issue #545). Positional slots mirror the aiken
+ * `PublishedChunkInclusionArgs` record: identical to `NativeTxInclusionArgs`
+ * up to the proof, which is replaced by the order of the publication UTxOs as
+ * indices into `tx.reference_inputs`.
+ */
+export const PublishedChunkInclusionArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  hub_ref_input_index: Data.Integer(),
+  state_queue_node_ref_input_index: Data.Integer(),
+  native_tx_id: H32Schema,
+  native_tx_compact_cbor: Data.Bytes(),
+  transactions_phas_root: H32Schema,
+  ordered_chunk_reference_input_indices: Data.Array(Data.Integer()),
+});
+export type PublishedChunkInclusionArgs = Data.Static<
+  typeof PublishedChunkInclusionArgsSchema
+>;
+export const PublishedChunkInclusionArgs =
+  PublishedChunkInclusionArgsSchema as unknown as PublishedChunkInclusionArgs;
+
+/**
+ * How a step's membership opening reaches L1. Constructor order mirrors the
+ * aiken `NativeTxInclusionCarriage` sum exactly: `RedeemerCarriedInclusion`
+ * first (the pre-#545 route, proof in the redeemers), `PublishedChunkInclusion`
+ * second (proof published beforehand, this transaction names its chunks).
+ */
+export const NativeTxInclusionCarriageSchema = Data.Enum([
+  Data.Object({
+    RedeemerCarriedInclusion: Data.Tuple([NativeTxInclusionArgsSchema]),
+  }),
+  Data.Object({
+    PublishedChunkInclusion: Data.Tuple([PublishedChunkInclusionArgsSchema]),
+  }),
+]);
+export type NativeTxInclusionCarriage = Data.Static<
+  typeof NativeTxInclusionCarriageSchema
+>;
+export const NativeTxInclusionCarriage =
+  NativeTxInclusionCarriageSchema as unknown as NativeTxInclusionCarriage;
+
+/** Published-chunk carriage of a non-membership opening (issue #545). */
+export const PublishedProofCarriageSchema = Data.Object({
+  ordered_chunk_reference_input_indices: Data.Array(Data.Integer()),
+});
+export type PublishedProofCarriage = Data.Static<
+  typeof PublishedProofCarriageSchema
+>;
+export const PublishedProofCarriage =
+  PublishedProofCarriageSchema as unknown as PublishedProofCarriage;
+
+/**
+ * How a step's non-membership opening reaches L1. Constructor order mirrors
+ * the aiken `NonMembershipCarriage` sum exactly.
+ */
+export const NonMembershipCarriageSchema = Data.Enum([
+  Data.Object({
+    RedeemerCarriedNonMembership: Data.Object({
+      non_membership_proof: ProofSchema,
+      non_membership_proof_script_redeemer_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    PublishedChunkNonMembership: Data.Tuple([PublishedProofCarriageSchema]),
+  }),
+]);
+export type NonMembershipCarriage = Data.Static<
+  typeof NonMembershipCarriageSchema
+>;
+export const NonMembershipCarriage =
+  NonMembershipCarriageSchema as unknown as NonMembershipCarriage;
+
+/**
+ * One published proof chunk's inline datum: nothing but MPF proof steps.
+ * Mirrors the aiken `mpf_chunked_proof_v1.ProofChunkDatum`.
+ */
+export const ProofChunkDatumSchema = Data.Object({
+  proof_steps: ProofSchema,
+});
+export type ProofChunkDatum = Data.Static<typeof ProofChunkDatumSchema>;
+export const ProofChunkDatum =
+  ProofChunkDatumSchema as unknown as ProofChunkDatum;
+
+/**
+ * Which terminal a published-chunk claim demands. Constructor order mirrors the
+ * aiken `chunked_inclusion_v1.ProofTerminal` sum.
+ */
+export const ProofTerminalSchema = Data.Enum([
+  Data.Literal("Membership"),
+  Data.Literal("NonMembership"),
+]);
+export type ProofTerminal = Data.Static<typeof ProofTerminalSchema>;
+export const ProofTerminal = ProofTerminalSchema as unknown as ProofTerminal;
+
+/**
+ * Redeemer of the merkelized `mpf_chunked_verify` withdraw validator, and the
+ * exact value a delegating step requires to find in it.
+ *
+ * The walk lives in that one shared validator rather than in every step's own
+ * script, so adding the chunked route does not enlarge the redeemer-carried
+ * route it exists to remediate (issue #545).
+ */
+export const ChunkedProofClaimSchema = Data.Object({
+  mode: ProofTerminalSchema,
+  merkle_root: H32Schema,
+  key_bytes: Data.Bytes(),
+  value_hash: H32Schema,
+  ordered_chunk_reference_input_indices: Data.Array(Data.Integer()),
+});
+export type ChunkedProofClaim = Data.Static<typeof ChunkedProofClaimSchema>;
+export const ChunkedProofClaim =
+  ChunkedProofClaimSchema as unknown as ChunkedProofClaim;
+
+/** Blueprint title of the merkelized published-chunk verifier. */
+export const MPF_CHUNKED_VERIFY_WITHDRAW_TITLE =
+  "mpf_chunked_verify.verify.withdraw";
+
+/** The `value_hash` slot of a non-membership claim, which has no value. */
+export const ABSENT_VALUE_HASH = "00".repeat(32);
+
+/** Maximum proof steps one publication UTxO may carry (aiken-pinned). */
+export const MAXIMUM_CHUNK_PROOF_STEP_COUNT = 16;
+
+/** Maximum publication UTxOs one verifying transaction may reference. */
+export const MAXIMUM_PROOF_CHUNK_COUNT = 8;
+
+/**
  * Per-category witness commitments of a native V1 transaction, the preimage of
  * the compact transaction's `witness_set_hash`. Positional order mirrors the
  * aiken `NativeTxWitnessSetCompact` record exactly.
