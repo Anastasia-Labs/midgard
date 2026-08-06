@@ -49,6 +49,15 @@
   artifact's bound identities are in it). The earlier "2/2" reading of this
   file is therefore no longer reproducible and is corrected to 1/1 on the
   CEK-relevant case.
+- Re-measured 2026-08-06 (issue #548): the `script_source_resolvers` drift
+  named above is closed. Twelve of that group's 29 pinned hashes were
+  rebound in `onchain/aiken/lib/midgard/validation-resolver-v1.test.ak` to
+  the values the production `buildFaultProofContracts` builder derives, so
+  the ungated case passes again and the file replays 2/2 — both with
+  `MIDGARD_REAL_BLUEPRINT_PATH` unset and with it set to the committed-tree
+  blueprint (SHA-256 `2b5973fe2832bac0…`, 393 validators). Nothing this
+  artifact binds moved: the group's cardinality, the CEK direct resolver's
+  four parameters, and the applied `cek_v1` identity are unchanged.
 - Applied direct-resolver identities on the measurement deployment
   (`hub_oracle=11…11`, `catalogue=22…22`):
   current-tree applied `cek_v1` is 156,467 bytes with hash
