@@ -5623,3 +5623,83 @@ retire tracked as #543; no new evidence may pin either 6.2.0-1 hash.
 Gates on the final tree: manifest quality 186/186 with 0 defects +
 self-test (13 mutations), verification plan PASS, capability 115/115,
 input-no-idx 4/4, emulator family 8 files / 27 tests.
+
+
+## PR harvest: Q18/Q31/Q15 closure leases (2026-08-05)
+
+Owner-directed harvest of the three stale fault-proof PRs onto this branch
+(#469 → Q18, #473 → Q31, #474 → Q15), landed as `5bd3556d`, `2b540c1b`,
+`980c1fe5`. Method per PR: supersession check first, stack-isolated diff,
+hand-port of registration deltas onto current shared files, adaptation to
+post-#521 conventions — never a blind merge.
+
+- **#469 → Q18** `5bd3556d` — the PR's entire on-chain half is SUPERSEDED
+  (all 8 no-reference-input modules exist at HEAD in strictly newer form:
+  native binding, pexcludes_raw keying, HeaderV1, fixture selectors the PR
+  lacked; a merge would have regressed step-01). Harvested: the SDK family
+  module + chain builder, prepare-no-reference-input + test (rebuilt on
+  current HeaderV1/codecs), index exports. Measured: step_01 2/2 both
+  compilers (baseline re-pin); prepare 13/13; SDK fault-proof 20/20 at the
+  time of harvest. Dropped as stale: docs-site, always-succeeds blueprint,
+  parent-owned docs/fault-proofs status files, common.ts/phas.ts fixes
+  already at HEAD.
+- **#473 → Q31** `2b540c1b` — the reference-input-no-idx Aiken family is
+  GENUINELY NEW (8 modules: lib+validators step-01..04), ported with real
+  adaptation: preimage openings rebuilt from blake2b-over-byte-list to the
+  current `bounded_collection_v1.from_items` native-codec commitments;
+  step-04 outputs_preimage retyped to `List<MidgardTxOutput>`; **8
+  native_binding_fixture_v1 selectors added where the PR shipped zero
+  on-chain tests**; the PR's false UPLC-sharing claim corrected by
+  measurement (only steps 03/04 share; step-02 diverged). All four modules
+  2/2 both compilers (8/8 total, identical). Q31's structural-N/A row is
+  re-derived — its own invalidation trigger ("standalone Q31
+  family/category appears") fired; all 9 focusedCommands now resolve and
+  execute. Applied proof surface 131 → 133.
+- **#474 → Q15** `980c1fe5` — the PR's on-chain diff is SUPERSEDED (HEAD's
+  invalid-signature steps are strictly ahead: witness-set opening in
+  step-01 via verify_native_tx_witness_set, native-codec collection
+  commitment, fixture selectors the PR deleted) and its midgard-core delta
+  is already public through codec/native.ts. Harvested: SDK
+  invalid-signature module (schemas rebuilt on HEAD shapes, commitment
+  helper twinning encode_midgard_address_witness), native.ts schemas,
+  chain builder, prepare-invalid-signature + test. Steps 2/2 + 2/2 both
+  compilers; prepare 9/9; SDK fault-proof 30/30. Applied surface 133 →
+  135; Q31's "exactly 133" count annotated in place.
+
+**Shared blocker, recorded verbatim in all three rows (one parent action
+unblocks all three):** the submit-step builders resolve contracts through
+`resolveFaultProofDeploymentContracts`, requiring each family to be a
+registered `FraudProofCatalogueCategoryName` — a deployment-identity
+change (SDK catalogue.ts order + FraudProofs, midgard-core
+`DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES` + V1 category order, node
+services, and the two hand-pinned catalogue fixtures whose MPF root and
+per-category membership proofs must be recomputed). Parent-owned under
+the rows' pathsMustNotTouch.
+
+**§4.4 verification for this push (validators changed):**
+- Dual-compiler guard on the harvested tree: **388 validators (380 + the
+  8 new reference-input-no-idx entries), all compiled bytes and hashes
+  identical across stock v1.1.22+39d6b04 and fork v1.1.23+6d14ab2,
+  definitions identical** — exit 0.
+- Fresh committed-tree stock `aiken build --env testnet`: 388 validators,
+  blueprint SHA-256
+  `aaefc713805a9034f25ad3e66f283ab2b9e94a62f0d3e000058a13417782d607`,
+  installed at onchain/aiken/plutus.json (supersedes 76f9e53d…).
+- Journey regression: fresh isolated database `midgard_test_harvest`
+  (port 5433), pinned Node v22.22.2, the exact named selector `runs
+  deposit, reserve absorption, withdrawal commitment, and payout to
+  conclusion` **PASSES 1/1 in 204.4 s** against the harvest blueprint.
+- Integrated gates: manifest quality 186/186 with 0 defects + self-test
+  (13 mutations); SDK fault-proof 30/30 and the three prepare suites
+  32/32 after rebuilding the SDK dist (the workspace symlink serves
+  source, but consumers import the built dist — remember to rebuild dist
+  whenever SDK source lands).
+
+PRs #469/#473/#474 remain open for the author's disposition (owner
+coordinating with Drop-Table-Users); the useful portions now live on this
+branch. Blueprint-dependent pins measured under 76f9e53d… earlier today
+(#542's CompletePublished tuple, #544's Q13 root) were NOT re-measured
+under aaefc713… in this entry: the harvest adds new validators without
+touching the previously measured families' sources, and the guard proves
+compiler-identity; a currency spot-check rides with the next
+blueprint-adjacent lane.
