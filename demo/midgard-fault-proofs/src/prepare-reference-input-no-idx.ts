@@ -11,9 +11,10 @@
  * operator-diagnostic rehearsal routes: they read block material from the node's
  * REST surface or an operator-private file and can never mint a security-grade
  * claim. A Q03 evidence-gated entry point (the analogue of
- * `prepareInputNoIdxFromCanonicalEvidenceV1`) is not landed here, because the
- * family's submit tooling is blocked on the catalogue registration recorded in
- * the Q31 manifest row.
+ * `prepareInputNoIdxFromCanonicalEvidenceV1`) is not landed here yet; the four
+ * `submit-reference-input-no-idx-step-0N` builders are, and each re-derives its
+ * commitments from the on-chain header and step datum rather than trusting
+ * these artifacts.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -51,9 +52,9 @@ import { nativeTxFromCoreCompact } from "./submit-step-01.js";
 
 /**
  * One reference input of the bad transaction, as committed by its native
- * `reference_inputs_hash`. The step-02 submitter will consume this shape once
- * the family's submit tooling lands (it is blocked on the catalogue-category
- * registration, which is a parent-owned deployment-identity change).
+ * `reference_inputs_hash`. Consumed by
+ * `submit-reference-input-no-idx-step-02.ts`, which re-commits the whole list
+ * against the hash the on-chain step-02 datum carries.
  */
 export type ReferenceInputNoIdxPreimageEntry = {
   readonly txId: string;
@@ -170,9 +171,9 @@ const decodeTx = (payload: NodeTransactionPayload): DecodedTx => {
   return {
     nodeTxId,
     nativeTxCompact: nativeTxFromCoreCompact(nativeTx.compact),
-    nativeCompactCbor: encodeMidgardNativeTxCompactV1(nativeTx.compact).toString(
-      "hex",
-    ),
+    nativeCompactCbor: encodeMidgardNativeTxCompactV1(
+      nativeTx.compact,
+    ).toString("hex"),
     referenceInputs: spendInputsWitnessFromCbors(
       referenceInputCbors,
       "reference_inputs",

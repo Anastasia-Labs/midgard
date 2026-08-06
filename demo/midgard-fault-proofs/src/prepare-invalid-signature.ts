@@ -17,9 +17,10 @@
  * The `--midgard-node-url` and `--transactions` routes below are
  * operator-diagnostic rehearsal routes: they read block material from the node's
  * REST surface or an operator-private file and can never mint a security-grade
- * claim. A Q03 evidence-gated entry point is not landed here, because the
- * family's submit tooling is blocked on the catalogue registration recorded in
- * the Q15 manifest row.
+ * claim. A Q03 evidence-gated entry point is not landed here yet; the two
+ * `submit-invalid-signature-step-0N` builders are, and each re-derives its
+ * commitments from the on-chain header and step datum rather than trusting
+ * these artifacts.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";

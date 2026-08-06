@@ -43,10 +43,9 @@ type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 /**
  * One reference input of the bad transaction, as committed by its native
- * `reference_inputs_hash`. Mirrors `NeInputPreimageEntry` on the spend side; the
- * step-02 submitter will consume this shape once the family's submit tooling
- * lands (it is blocked on the `noReferenceInput` catalogue-category
- * registration, which is a parent-owned deployment-identity change).
+ * `reference_inputs_hash`. Mirrors `NeInputPreimageEntry` on the spend side and
+ * is consumed by `submit-no-reference-input-step-02.ts`, which re-commits the
+ * whole list against the hash the on-chain step-02 datum carries.
  */
 export type NoReferenceInputPreimageEntry = {
   readonly txId: string;
