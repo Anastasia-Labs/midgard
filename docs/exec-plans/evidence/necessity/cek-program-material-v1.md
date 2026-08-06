@@ -22,23 +22,45 @@
   plus `onchain/aiken/validators/fraud-proofs/validation-trace/cek-v1.ak`.
 - Protected generated `onchain/aiken/plutus.json` SHA-256
   `f5ae651e34cf3e1175d928634c002580c4f2af4659a229952007c458945b866b`
-  (provenance only; C28 does not regenerate the protected blueprint). The
-  current-tree disposable blueprint compiled from the changed Aiken sources
-  with pinned `aiken v1.1.22+39d6b04` has SHA-256
-  `b1c79edca9b305f4000a3116d73ba998687ea95aa5d1a9091de544218449937a`; its
+  (provenance only; C28 did not regenerate the protected blueprint). That
+  digest names the 380-validator measurement epoch and is NOT a current-tree
+  claim. The C28-epoch disposable blueprint compiled from the then-changed
+  Aiken sources with pinned `aiken v1.1.22+39d6b04` was SHA-256
+  `b1c79edca9b305f4000a3116d73ba998687ea95aa5d1a9091de544218449937a`.
+- Re-measured 2026-08-06 (issue #546): C28's sources are merged, so the
+  protected/disposable split has collapsed to one blueprint. A fresh stock
+  `aiken build --env testnet` of the current tree (`aiken v1.1.22+39d6b04`)
+  produces `onchain/aiken/plutus.json` SHA-256
+  `605c8b8dca1f01e2cde5219138a1f81e69214f9a182c10b73c20341187ddc2dc`
+  (391 validators, including the chunked-MPF and harvest additions); that
+  digest supersedes both `f5ae651e…` and `b1c79edc…` as the current-tree
+  pin. Measured unchanged in it:
   `fraud_proofs/validation_trace/cek_v1.main.spend` is 156,312 compiled bytes
   with exactly 4 parameters (fraud-proof address, computation-thread policy,
-  award hash, immutable CEK program-material identity), verified by the
-  gated current-tree selector in
-  `demo/midgard-sdk/tests/validation-resolver-applied-hashes.test.ts` (2/2
-  with `MIDGARD_REAL_BLUEPRINT_PATH` set to the disposable blueprint).
+  award hash, immutable CEK program-material identity). The 4-parameter
+  identity is gated by
+  `demo/midgard-sdk/tests/validation-resolver-applied-hashes.test.ts` with
+  `MIDGARD_REAL_BLUEPRINT_PATH` set to that blueprint; its gated case
+  `applies immutable CEK material identity as the exact fourth
+  direct-resolver parameter` PASSES 1/1, but the file's other, ungated case
+  now FAILS on unrelated `script_source_resolvers` fixture drift in
+  `onchain/aiken/lib/midgard/validation-resolver-v1.test.ak` (that group's
+  applied hashes moved with post-C28 script-sources work; none of this
+  artifact's bound identities are in it). The earlier "2/2" reading of this
+  file is therefore no longer reproducible and is corrected to 1/1 on the
+  CEK-relevant case.
 - Applied direct-resolver identities on the measurement deployment
   (`hub_oracle=11…11`, `catalogue=22…22`):
   current-tree applied `cek_v1` is 156,467 bytes with hash
-  `f5d6395c562f2c0e1dc76582e2b1f2ba3e287345ab4abcd8cceb6666`; the protected
-  checked-in blueprint's applied `cek_v1` is 141,959 bytes with hash
-  `92c53d4757c14275600484193355f09917437e05e731ba25b935d549`. Any change to
-  either hash invalidates this artifact (GOAL_SPEC.md §3.2).
+  `f5d6395c562f2c0e1dc76582e2b1f2ba3e287345ab4abcd8cceb6666` — both
+  re-measured unchanged on 2026-08-06 under blueprint `605c8b8d…` by the
+  producing emulator selector named below. The 141,959-byte applied `cek_v1`
+  with hash `92c53d4757c14275600484193355f09917437e05e731ba25b935d549` is an
+  epoch-bound measurement of the superseded protected blueprint
+  `f5ae651e…`; that blueprint is no longer producible from this tree (there
+  is now a single generated blueprint), so the pin is retained as historical
+  provenance and is not re-derivable. Any change to the current-tree hash
+  invalidates this artifact (GOAL_SPEC.md §3.2).
 - The canonical envelope remains a complete item, at most 50 CBOR bytes.
   Its maximum claims are 1,597,819 nodes and 67,108,418 material bytes. The
   maximum Aiken envelope/program-hash vector is
@@ -205,8 +227,20 @@ reference-script deployment role:
 - Measured authenticated publication receipts (real signed emulator
   transactions through the production publication program,
   `completeReferenceScriptPublicationTxProgram`): current-tree blueprint
-  156,676 signed bytes (L1 margin −140,292); protected blueprint 142,474
-  signed bytes (L1 margin −126,090). Both are deployment-time-only
+  156,982 signed bytes (L1 margin −140,598), re-measured 2026-08-06 (#546)
+  under blueprint `605c8b8d…` by the producing selector `publishes and
+  verifies the authenticated generated-blueprint CEK direct-resolver
+  reference script` in
+  `demo/midgard-fault-proofs/tests/submit-init-emulator-validation-dispute.test.ts`
+  (`MIDGARD_PRINT_PROOF_FIT=1`, suite 4/4, reproduced identically on two
+  runs). The applied resolver body inside it is unchanged at 156,467 bytes /
+  `f5d6395c…`, so the +306-byte move is in the publication framing, not the
+  script. Superseded epoch value: 156,676 signed bytes (L1 margin −140,292)
+  under blueprint `b1c79edc…`. The protected-blueprint receipt of 142,474
+  signed bytes (L1 margin −126,090) is epoch-bound to `f5ae651e…` and has no
+  producing surface in this tree any more (the suite now publishes exactly
+  one blueprint's resolver), so it is retained as provenance and is not
+  re-derivable. All are deployment-time-only
   transactions hosted under a raised 262,144-byte emulator `maxTxSize`; they
   exceed the mainnet 16,384-byte `maxTxSize`, so the resolver itself remains
   unpublishable on the live target network until the tracked oversized-

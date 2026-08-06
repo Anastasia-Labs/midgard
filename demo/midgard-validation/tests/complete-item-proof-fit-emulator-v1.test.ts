@@ -753,6 +753,28 @@ const measurePublicationFrontierAt = async (
 };
 
 describe("complete-item proof fit V1 (emulator, applied validators)", () => {
+  // #546: the six shared §3.2 necessity artifacts
+  // (transaction-field-chunk, ledger-output-incremental-proof,
+  // mint-fold-asset, native-script-traversal, redeemer-item-traversal,
+  // script-source-hash-block) bind exactly these two identities on this
+  // measurement deployment. The C21-AUDIT (#484) pass inferred the applied
+  // hash from the unchanged unapplied script instead of measuring it; this
+  // selector measures it, so the artifacts' "any change invalidates" clause
+  // is now gated rather than argued. Measured unchanged under the current
+  // tree's stock testnet blueprint
+  // 605c8b8dca1f01e2cde5219138a1f81e69214f9a182c10b73c20341187ddc2dc
+  // (391 validators, aiken v1.1.22+39d6b04).
+  it("pins the applied §3.2 necessity identities on the measurement deployment", async () => {
+    const contracts = await loadContracts();
+    expect(contracts.validationTraceDispute.semanticResolvers).toHaveLength(76);
+    expect(
+      contracts.validationTraceDispute.semanticResolvers[1]!.spendingScriptHash,
+    ).toBe("983051b4a0c3fe90057a599e77ed44c5ab694014036d49c86373a143");
+    expect(contracts.validationTraceDispute.proofItem.spendingScriptHash).toBe(
+      "22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab",
+    );
+  }, 120_000);
+
   it("measures applied direct authentication at the staged reliability boundary", async () => {
     // The observation stage is the limiting direct-carriage transaction and
     // is pinned by the full five-stage fault-proof emulator lifecycle. This

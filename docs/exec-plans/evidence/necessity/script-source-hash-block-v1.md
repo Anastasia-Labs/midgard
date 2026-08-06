@@ -16,21 +16,38 @@
   (2026-07-29): `925662085ac87eb3cd63221b5184f59fde2c8b46d8db93052e80fc96` /
   blueprint `6d23a25f8cb96f62f3e3aeeecb4e1506e8002ac712ae9bcb8873e42b4136ff1a`.
 - Re-verification 2026-08-04 (C21-AUDIT, issue #484): the generated
-  `onchain/aiken/plutus.json` is now SHA-256
-  `f5ae651e34cf3e1175d928634c002580c4f2af4659a229952007c458945b866b`, so the
-  whole-file blueprint pin above is superseded. Both validators this artifact
-  binds are byte-identical in that blueprint:
+  `onchain/aiken/plutus.json` of that epoch was SHA-256
+  `f5ae651e34cf3e1175d928634c002580c4f2af4659a229952007c458945b866b`
+  (380 validators, `aiken v1.1.22+39d6b04`), which superseded the whole-file
+  blueprint pin above. Both validators this artifact binds were byte-identical
+  in that blueprint:
   `fraud_proofs/validation_trace/canonical_decode_item_semantic_v1.main.spend`
-  is unapplied `62501cfe7cf63485a493c902060cd422acdd88757c319345eadb8819` and
-  `fraud_proofs/validation_trace/proof_item_v1.main.else` is
-  `22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab`. The applied
-  hash `983051b4a0c3fe90057a599e77ed44c5ab694014036d49c86373a143` therefore
-  still follows from the unchanged unapplied script and the parameter
-  snapshot pinned above, and the measurements below remain bound. The
-  whole-file digest moved because other validators in the same blueprint
-  changed; that was not diffed here, only the two bound script hashes were
-  compared. A fresh applied re-measurement is still owed before CG5 release
-  closure.
+  unapplied `62501cfe7cf63485a493c902060cd422acdd88757c319345eadb8819` and
+  `fraud_proofs/validation_trace/proof_item_v1.main.else`
+  `22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab`. That pass
+  compared only the two bound script hashes and *inferred* the applied hash
+  `983051b4a0c3fe90057a599e77ed44c5ab694014036d49c86373a143` from them, so it
+  left a fresh applied re-measurement owed. The `f5ae651e…` digest is retained
+  here as measurement-epoch provenance only.
+- Re-verification 2026-08-06 (issue #546) — applied re-measurement, not
+  inference. A fresh stock `aiken build --env testnet` of the current tree
+  (`aiken v1.1.22+39d6b04`) produces `onchain/aiken/plutus.json` SHA-256
+  `605c8b8dca1f01e2cde5219138a1f81e69214f9a182c10b73c20341187ddc2dc`
+  (391 validators, including the chunked-MPF and harvest additions); that is
+  the current whole-file pin and it supersedes both `277b6457…` and
+  `f5ae651e…`. Measured against it, unchanged: the two bound scripts are
+  byte-identical again (`62501cfe…` unapplied, `22c9a103…` for
+  `proof_item_v1`), and the applied hash
+  `983051b4a0c3fe90057a599e77ed44c5ab694014036d49c86373a143` was re-derived by
+  the production builder `buildValidationTraceDisputeFaultProofContracts` on
+  the measurement deployment (`hub_oracle=11…11`, `catalogue=22…22`, semantic
+  resolver 1 of 76). Producing run: `pins the applied §3.2 necessity
+  identities on the measurement deployment` in
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`,
+  which now gates both identities instead of arguing them. Every hash pinned
+  above is therefore current under `605c8b8d…` and the measurement tables
+  below stay bound; the C21-AUDIT "fresh applied re-measurement owed before
+  CG5" residual is discharged for these two identities.
 - Parameter snapshot digests: profile digest
   `181730d304796b764c8f657b0ae788b87c6aba9f4491dbfa9ce24d99932911b7`;
   capability floor per
