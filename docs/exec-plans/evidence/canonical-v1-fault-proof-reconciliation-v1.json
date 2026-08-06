@@ -47,7 +47,7 @@
     "focusedCommand": "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/family-scaffold-v1.test.ts"
   },
   "bindingInventory": {
-    "compiledStandaloneFamilies": 12,
+    "compiledStandaloneFamilies": 13,
     "nativeV1Families": [
       "double-spend",
       "input-no-idx",
@@ -58,14 +58,15 @@
       "missing-signature",
       "no-input",
       "no-reference-input",
+      "reference-input-no-idx",
       "transition-trace",
       "withdrawn-reference-input",
       "zero-input"
     ],
     "legacyPlutusDataFamilies": [],
-    "registeredCatalogueCategories": 8,
-    "initializationCliCategories": 8,
-    "inspectionCategories": 8,
+    "registeredCatalogueCategories": 11,
+    "initializationCliCategories": 11,
+    "inspectionCategories": 11,
     "registeredCategoryNames": [
       "doubleSpend",
       "nonExistentInput",
@@ -74,7 +75,10 @@
       "transitionTrace",
       "zeroInput",
       "validationTraceDispute",
-      "daHashPreimage"
+      "daHashPreimage",
+      "noReferenceInput",
+      "referenceInputNoIdx",
+      "invalidSignature"
     ],
     "deployedValidatorDirectories": [
       "da-hash-preimage",
@@ -85,19 +89,20 @@
       "min-fee",
       "missing-native-script-tx",
       "missing-signature",
+      "mpf-chunked-proof",
       "no-input",
       "no-reference-input",
+      "reference-input-no-idx",
       "transition-trace",
       "validation-trace",
       "withdrawn-reference-input",
       "zero-input"
     ],
     "unregisteredValidatorDirectories": [
-      "invalid-signature",
       "min-fee",
       "missing-native-script-tx",
       "missing-signature",
-      "no-reference-input",
+      "mpf-chunked-proof",
       "withdrawn-reference-input"
     ]
   },

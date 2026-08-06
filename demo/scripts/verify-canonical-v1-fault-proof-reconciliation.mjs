@@ -1123,7 +1123,11 @@ const registeredCategoryNames = stringLiteralsBetween(
   "export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [",
   "] as const",
 );
-assert.equal(evidence.bindingInventory.compiledStandaloneFamilies, 12);
+// Exact pin on the standalone-family count, re-derived below from the step
+// sources themselves; the `reference-input-no-idx` harvest added the twelfth
+// transaction-proof chain, so the inventory is twelve chains plus
+// `transition-trace`.
+assert.equal(evidence.bindingInventory.compiledStandaloneFamilies, 13);
 assert.deepEqual(
   evidence.bindingInventory.registeredCategoryNames,
   registeredCategoryNames,
@@ -1157,7 +1161,7 @@ const inspectionCategoryNames = stringLiteralsBetween(
 );
 assert.equal(
   inspectionCategoryNames.length,
-  8,
+  registeredCategoryNames.length,
   "inspect-contracts category count changed",
 );
 assert.deepEqual(
@@ -1171,6 +1175,19 @@ assert.equal(
   [...commonFaultProofSource.matchAll(nativeHelperDefinition)].length,
   1,
   "native V1 transition helper must retain one exact identifier definition",
+);
+// #545 added the carriage seam: `pass_native_tx_to_next_step_carried` takes the
+// membership opening by whichever carriage the prover chose and funnels the
+// redeemer-carried route straight back into the helper above. It is the same
+// native V1 binding, reached through one extra seam, so it is pinned here and
+// counted as native V1 below. Without it the family inventory would silently
+// drop every family #545 rerouted.
+const carriedNativeHelperDefinition =
+  /\bpub\s+fn\s+pass_native_tx_to_next_step_carried\s*\(/gu;
+assert.equal(
+  [...commonFaultProofSource.matchAll(carriedNativeHelperDefinition)].length,
+  1,
+  "native V1 carriage seam must retain one exact identifier definition",
 );
 assert.doesNotMatch(
   commonFaultProofSource,
@@ -1849,12 +1866,15 @@ assert.equal(
 assert.deepEqual(
   evidence.bindingInventory.unregisteredValidatorDirectories,
   unregisteredValidatorDirectories,
-  "six catalogue-decision residues must derive from source titles and deployed directories",
+  "catalogue-decision residues must derive from source titles and deployed directories",
 );
+// #547 registered `invalid-signature`, `no-reference-input` and
+// `reference-input-no-idx`, and #545 added the shared `mpf-chunked-proof`
+// verifier, which is carriage rather than a family: six residues became five.
 assert.equal(
   unregisteredValidatorDirectories.length,
-  6,
-  "the deployed inventory must expose exactly six unregistered validator directories",
+  5,
+  "the deployed inventory must expose exactly five unregistered validator directories",
 );
 const nativeStepSources = await Promise.all(
   deployedValidatorDirectories.map(async (directory) => {
@@ -1874,7 +1894,12 @@ const nativeStepSources = await Promise.all(
     }
   }),
 );
-const nativeHelperCall = /\bpass_native_tx_to_next_step\s*\(/gu;
+// Either spelling of the seam counts: a step that calls the carriage variant
+// reaches the very same helper for the redeemer-carried route and the
+// merkelized verifier for the published-chunk one, so it is native V1 either
+// way. The optional suffix keeps the "exactly one transition per step-01"
+// measurement intact across the #545 reroute.
+const nativeHelperCall = /\bpass_native_tx_to_next_step(?:_carried)?\s*\(/gu;
 const nativeV1StepFamilies = nativeStepSources
   .filter(
     ([, source]) =>

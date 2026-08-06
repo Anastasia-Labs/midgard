@@ -313,11 +313,25 @@ mustReject(
 /* 19-21: drift findings, waivers and the freeze status itself.        */
 /* ------------------------------------------------------------------ */
 
+// #550 recaptured the F20 inventory, so the gate now measures no drift at all
+// and `driftFindings: []` is the published claim. The seeded defect is
+// therefore the other direction: an artifact that invents a finding the tree
+// does not support is rejected exactly as one that hides a real one was. Both
+// directions are the same equality, so the surviving mutation still measures
+// it.
 mustReject(
-  "measured drift finding deleted",
-  /- driftFindings must equal the 2 findings this gate measures/u,
+  "invented drift finding",
+  /- driftFindings must equal the 0 findings this gate measures: \(none\)/u,
   (candidate) => {
-    candidate.driftFindings = [];
+    candidate.driftFindings = [
+      {
+        id: "f20-registered-categories-behind-the-frozen-catalogue",
+        surface:
+          "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json:bindingInventory.registeredCategoryNames",
+        measured: "seeded claim of a drift the tree does not carry",
+        owner: "F20",
+      },
+    ];
   },
 );
 

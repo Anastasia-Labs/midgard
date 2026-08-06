@@ -1025,20 +1025,7 @@
       }
     ]
   },
-  "driftFindings": [
-    {
-      "id": "f20-registered-categories-behind-the-frozen-catalogue",
-      "surface": "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json:bindingInventory.registeredCategoryNames",
-      "measured": "reconciliation records 8 registered categories; the frozen catalogue order is 11",
-      "owner": "F20"
-    },
-    {
-      "id": "f20-validator-directories-behind-the-index",
-      "surface": "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json:bindingInventory.deployedValidatorDirectories",
-      "measured": "reconciliation records 14 validator directories; the index carries 16",
-      "owner": "F20"
-    }
-  ],
+  "driftFindings": [],
   "focusedCommands": [
     "node demo/scripts/verify-canonical-v1-abi-freeze.mjs",
     "node demo/scripts/verify-canonical-v1-abi-freeze-self-test.mjs",
@@ -1047,7 +1034,6 @@
     "pnpm --dir demo/midgard-node exec vitest run tests/sdk-abi-fixtures.test.ts"
   ],
   "nextActions": [
-    "F20 recapture: the reconciliation inventory records 8 registered catalogue categories and 14 validator directories where the tree now carries 11 and 16.",
     "Q10-Q50 per-family valid-block rejection evidence, which every integrated family currently lacks.",
     "C53 and the per-family maximum proof-fit measurements, which CG3 gates.",
     "C60-C68 correction lifecycles, which CG4 gates.",
