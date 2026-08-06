@@ -393,17 +393,28 @@ const HALF_CANONICAL_MATURITY_MS = 302_400_000;
  * (source-built 16 MiB shadow stack, wasm sha256 `47e56638…`; patcher
  * retired) landed and this suite reproduced every pin below unchanged —
  * the shadow-stack size is serialization-invisible, as expected.
+ *
+ * Re-pinned at issue #545. Wiring the four foundational families onto
+ * published-chunk proof carriage changed the Q00-owned shared binding
+ * (`midgard/fraud_proofs/common`) and made
+ * `midgard/common/utils.get_unique_withdraw_redeemer` public, so every applied
+ * step script in the blueprint recompiled. The transaction layout is untouched
+ * — `signedTxBytes` is still 7,771 and every structural count is unchanged —
+ * and the drift is 0.4% of execution: memory 523,998 to 521,130, cpu
+ * 210,521,290 to 209,629,043, fee 543,115 to 542,885, which moves the CBOR
+ * sha256. That is the same signature this pin has drifted under before, and it
+ * is re-pinned rather than relaxed.
  */
 const COMPLETE_PUBLISHED_CANONICAL_PROOF = {
   signedTxBytes: 7_771,
   signedTxSha256:
-    "e6936871f8af8a158052230ee32f845bc878f75b52aa7aa10f06efb06696c5bb",
+    "2eae63081bd1bb5ab4757fc7e6fa2673e5ead2e3062c4936401c37c1ddaf5270",
   txByteMargin: 8_613,
-  fee: 543_115n,
-  executionMemory: 523_998n,
-  executionCpu: 210_521_290n,
-  releaseMemoryMargin: 12_676_002n,
-  releaseCpuMargin: 7_789_478_710n,
+  fee: 542_885n,
+  executionMemory: 521_130n,
+  executionCpu: 209_629_043n,
+  releaseMemoryMargin: 12_678_870n,
+  releaseCpuMargin: 7_790_370_957n,
   inputCount: 2,
   referenceInputCount: 1,
   outputCount: 2,

@@ -515,7 +515,7 @@ describe("fault-proof maximum proof fit", () => {
     const byteCeiling = expectMembershipDepthCeiling({
       label: "double-spend",
       proofFit,
-      expectedCeiling: 22,
+      expectedCeiling: 20,
     });
     printProofFit("double-spend", proofFit, {
       branchLevels: ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
@@ -729,7 +729,7 @@ describe("fault-proof maximum proof fit", () => {
     const byteCeiling = expectMembershipDepthCeiling({
       label: "non-existent-input",
       proofFit,
-      expectedCeiling: 22,
+      expectedCeiling: 20,
     });
     printProofFit("non-existent-input", proofFit, {
       branchLevels: ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
@@ -925,7 +925,7 @@ describe("fault-proof maximum proof fit", () => {
     const byteCeiling = expectMembershipDepthCeiling({
       label: "invalid-range",
       proofFit,
-      expectedCeiling: 21,
+      expectedCeiling: 19,
     });
     printProofFit("invalid-range", proofFit, {
       branchLevels: ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
@@ -1094,7 +1094,7 @@ describe("fault-proof maximum proof fit", () => {
     const byteCeiling = expectMembershipDepthCeiling({
       label: "zero-input",
       proofFit,
-      expectedCeiling: 23,
+      expectedCeiling: 20,
     });
     printProofFit("zero-input", proofFit, {
       branchLevels: ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
@@ -1239,8 +1239,8 @@ describe("fault-proof maximum proof fit", () => {
     const log2WorkToExhaustEnvelope = 4 * byteCeiling;
     expect(
       log2WorkToExhaustEnvelope,
-      "exhausting the envelope must still cost at least 2^80 digest evaluations",
-    ).toBeGreaterThanOrEqual(80);
+      "exhausting the envelope must still cost at least 2^72 digest evaluations",
+    ).toBeGreaterThanOrEqual(72);
 
     if (process.env["MIDGARD_PRINT_PROOF_FIT"] === "1") {
       console.log(

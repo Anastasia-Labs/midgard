@@ -72,6 +72,7 @@ import {
   makeHubOracleDatum,
   type MidgardValidators,
   type MintingValidator,
+  MPF_CHUNKED_VERIFY_WITHDRAW_TITLE,
   OutputReference,
   outputReferenceFromUTxO,
   parseFaultProofBlueprint,
@@ -1048,6 +1049,27 @@ export const buildCatalogueDeploymentInfo = async (
     root: trieRootHex(trie),
     categories: categoriesWithProofs,
   };
+};
+
+/**
+ * Registers the reward account of the merkelized published-chunk verifier
+ * (issue #545). A step on the chunked route withdraws zero from it, which is
+ * how the verifier is invoked, so the account must exist first — exactly as the
+ *  membership account must for the redeemer-carried route.
+ */
+export const registerChunkedVerifyRewardAccount = async (
+  lucid: Awaited<ReturnType<typeof Lucid>>,
+  realBlueprint: Blueprint,
+): Promise<void> => {
+  const script: Script = {
+    type: "PlutusV3",
+    script: getCompiledScript(realBlueprint, MPF_CHUNKED_VERIFY_WITHDRAW_TITLE),
+  };
+  const built = await Effect.runPromise(
+    buildPhasMembershipRewardRegistrationTxProgram(lucid, { script }),
+  );
+  const signed = await built.tx.sign.withWallet().complete();
+  await lucid.awaitTx(await signed.submit());
 };
 
 export const registerPhasMembershipRewardAccount = async (
