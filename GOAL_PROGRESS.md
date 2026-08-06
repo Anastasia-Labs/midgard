@@ -33,6 +33,34 @@
   only — §3, §12, §14, §15, every fail-closed gate, §5.1 serialization,
   §4.3 commit discipline, §0.2 release/evidence binding, and the exclusion
   of the unprovenanced 246-row bulk edit are explicitly not waived.
+- Owner decision on 2026-08-06 (wayfinder map #552) quiesces ABI-touching
+  lane work: all nine compact-tx per-field commitments revert to flat
+  blake2b-256 over raw canonical field preimage bytes (#554), executed now,
+  inside the Goal (#553), moving the 2026-08-20 delivery target to
+  ~mid-September. Until the GOAL_SPEC amendment (#561) lands, every lane is
+  restricted to non-ABI work: no new work on the counted
+  bounded_collection_v1 field commitments, their TS/Aiken codec twins,
+  proof-step witness idioms, the validation-machine item access they feed,
+  or ABI/identity artifacts derived from them — such work would be redone
+  under the flat format. Pause notices posted on the active lane issues:
+  the four proof-family lanes #481 (B13), #482 (B14), #492 (B16), #493
+  (B17), and the C29–C33 cluster #485 (B06), #486 (B07/CG2). The D5
+  four-lane concurrency stays available for non-ABI surfaces (W-family,
+  infrastructure, docs and evidence hygiene). In-flight inventory per §3
+  invariant 14 (quiesce ticket #562): all 42 non-main worktrees swept —
+  zero uncommitted lane state (four carry only untracked node_modules
+  install artifacts); a patch-equivalence sweep of all 38 impl/* branches
+  against the goal branch shows every lane commit integrated, with four
+  commits on impl/530, impl/544, and impl/545 integrated in
+  conflict-resolved or superseded form, each already ledgered (the #530
+  entry; "#544: Q13 applied-hash and blueprint pin currency verified
+  post-#521"; the #545 entry plus the tail wave's Q1x re-decision). The
+  map's research basis docs/research/l2-tx-commitment-survey-2026-08-06.md
+  existed only as an untracked working-tree file and is committed with this
+  entry (invariant-14 provenance: produced by the #552 charting session's
+  research subagent, cited by the #554 resolution); GOAL_ASSIST.md
+  (2026-08-02 Codex coordination surface) remains deliberately untracked
+  and is the only other non-ignored working-tree state.
 
 ## Baseline
 
