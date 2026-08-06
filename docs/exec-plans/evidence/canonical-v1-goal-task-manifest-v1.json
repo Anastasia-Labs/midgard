@@ -6969,10 +6969,21 @@
       "risk": "medium",
       "detailStatus": "DETAILED",
       "writablePaths": [
-        "onchain/aiken/lib/midgard/fraud-proofs/native-tx/structural-na-q31-reference-input-no-idx.test.ak",
-        "demo/midgard-validation/tests/structural-na-q31-reference-input-no-idx.test.ts",
-        "docs/exec-plans/evidence/canonical-v1-structural-na-q31-v1.json",
-        "demo/scripts/verify-canonical-v1-structural-na-q31.mjs"
+        "onchain/aiken/validators/fraud-proofs/reference-input-no-idx/step-01.ak",
+        "onchain/aiken/validators/fraud-proofs/reference-input-no-idx/step-02.ak",
+        "onchain/aiken/validators/fraud-proofs/reference-input-no-idx/step-03.ak",
+        "onchain/aiken/validators/fraud-proofs/reference-input-no-idx/step-04.ak",
+        "onchain/aiken/lib/midgard/fraud-proofs/reference-input-no-idx/step-01.ak",
+        "onchain/aiken/lib/midgard/fraud-proofs/reference-input-no-idx/step-02.ak",
+        "onchain/aiken/lib/midgard/fraud-proofs/reference-input-no-idx/step-03.ak",
+        "onchain/aiken/lib/midgard/fraud-proofs/reference-input-no-idx/step-04.ak",
+        "demo/midgard-sdk/src/fraud-proof/reference-input-no-idx.ts",
+        "demo/midgard-fault-proofs/src/prepare-reference-input-no-idx.ts",
+        "demo/midgard-fault-proofs/src/submit-reference-input-no-idx-step-01.ts",
+        "demo/midgard-fault-proofs/src/submit-reference-input-no-idx-step-02.ts",
+        "demo/midgard-fault-proofs/src/submit-reference-input-no-idx-step-03.ts",
+        "demo/midgard-fault-proofs/src/submit-reference-input-no-idx-step-04.ts",
+        "demo/midgard-fault-proofs/tests/prepare-reference-input-no-idx.test.ts"
       ],
       "pathsMustNotTouch": [
         "GOAL_SPEC.md",
@@ -6980,39 +6991,52 @@
         "onchain/aiken/plutus.json (parent-only generated blueprint)",
         "demo/package.json and demo/pnpm-lock.yaml (parent-owned shared integration surfaces)",
         ".github/workflows/** (parent-owned)",
-        "docs/exec-plans/evidence/** except an artifact explicitly named in this row's writablePaths"
+        "docs/exec-plans/evidence/** except an artifact explicitly named in this row's writablePaths",
+        "demo/midgard-sdk/src/fraud-proof/catalogue.ts (deployment identity, parent-owned)",
+        "docs/fault-proofs/coverage-matrix.md",
+        "docs/fault-proofs/catalogue-status.md",
+        "onchain/aiken/lib/midgard/fraud-proofs/input-no-idx (the shared step-03/step-04 UPLC is Q13-owned)"
       ],
       "sourceAnchors": [
         "GOAL_SPEC.md §9.3 Q31 and §9.1 executable disposition contract; C41 owns canonical reference-input state semantics",
-        "GOAL_PROGRESS.md triage classifies Q31 structural N/A to validation-trace ResolveInputs and flags reduction confidence for executable re-verification",
-        "validation-machine-v1.ak ResolveInputs authenticates each spend/reference outref against the pre-state UTxO root and emits exact E_INPUT_NOT_FOUND on counted-root non-membership",
-        "validation-machine-v1.test.ak `resolve_inputs_proves_non_membership_as_an_exact_no_op` plus membership begin/stream/finalize controls are current anchors; no standalone category exists",
-        "onchain/aiken/lib/midgard/fraud-proofs/native-tx/structural-na-q31-reference-input-no-idx.test.ak is the exact implementation/current-tree anchor for Q31."
+        "STANDALONE FAMILY NOW EXISTS — the prior structural-N/A disposition (reduction to validation-trace ResolveInputs, zero standalone inventory) is superseded by the PR #473 harvest; the row's own `standalone Q31 family/category appears` invalidation trigger has fired and its evidence is re-derived below",
+        "Harvested from PR #473 (`fp/no-ref-input-idx`), adapted to the current boundary: onchain/aiken/lib/midgard/fraud-proofs/reference-input-no-idx/step-0{1..4}.ak and onchain/aiken/validators/fraud-proofs/reference-input-no-idx/step-0{1..4}.ak, with the PR's `blake2b_256(encode_native_byte_list(...))` openings replaced by the current `bounded_collection_v1.from_items` commitments (field 1 for reference inputs, field 2 for outputs) and its `List<ByteArray>` step-04 preimage replaced by `List<MidgardTxOutput>`",
+        "onchain/aiken/validators/fraud-proofs/reference-input-no-idx/step-01.ak binds the bad tx through `pass_native_tx_to_next_step` and forwards `bad_tx_view.tx_compact.body.reference_inputs_hash`; every step carries a positive plus a valid-block-negative selector driven by onchain/aiken/lib/midgard/fraud-proofs/native-binding-fixture-v1.ak",
+        "SHARED APPLIED SCRIPTS — steps 03 and 04 differ from onchain/aiken/validators/fraud-proofs/input-no-idx/step-03.ak and step-04.ak only in record field names, which PlutusData erases, so the two chains share those two applied hashes exactly as the `no_input`/`no_reference_input` pair do; steps 01 and 02 are distinct",
+        "demo/midgard-sdk/src/fraud-proof/reference-input-no-idx.ts is the TypeScript twin (step-01..04 datum/state/args/redeemer schemas plus the field-1 and field-2 commitment helpers), and demo/midgard-sdk/src/fraud-proof/contracts.ts carries `REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES` and `buildReferenceInputNoIdxFaultProofContracts`",
+        "demo/midgard-fault-proofs/src/prepare-reference-input-no-idx.ts is the operator-diagnostic prepare builder with demo/midgard-fault-proofs/tests/prepare-reference-input-no-idx.test.ts",
+        "STILL BLOCKED — the four prescribed `submit-reference-input-no-idx-step-0N.ts` builders are absent. They resolve contracts through `resolveFaultProofDeploymentContracts`, which requires the family to be a registered `FraudProofCatalogueCategoryName`. That registration is a deployment-identity change (demo/midgard-sdk/src/fraud-proof/catalogue.ts + `FraudProofs`, midgard-core `DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES` and the V1 catalogue-category order, plus the two hand-pinned catalogue fixtures whose MPF root and per-category membership proofs must be recomputed) and is parent-owned under this row's pathsMustNotTouch.",
+        "validation-machine-v1.ak ResolveInputs authenticates each spend/reference outref against the pre-state UTxO root and emits exact E_INPUT_NOT_FOUND on counted-root non-membership; it remains the adjacent guard, but it does not adjudicate an out-of-range index into an in-block producing transaction, which is what this family convicts"
       ],
       "evidenceOutputs": [
-        "executable reference-input non-membership fixture reaching exact E_INPUT_NOT_FOUND and adjacent authenticated-reference control reaching ScriptSources",
-        "Aiken/TypeScript byte twins and mutations for wrong outref, forged root/count/path, spend/reference source-kind swap, and membership substitution",
-        "§9.1 outputs 1-10 structural disposition and zero standalone reference-input-no-idx family/category inventory",
-        "source-verified reduction audit resolving the triage confidence caveat before Q31 may close"
+        "§9.1 outputs 1-10 status list, with the exact evidence for each applicable output and an explicit N/A justification for any that does not apply",
+        "exact guarded Aiken selector counts per edited module, recorded in GOAL_PROGRESS.md",
+        "positive plus valid-block-negative selectors for every step of the family",
+        "maximum/adversarial proof-fit fixture with measured bytes/memory/CPU against the §3.3 thresholds",
+        "emulator lifecycle result: init, every step, permanent proof token, fraudulent header removal, correct slashing/reward",
+        "source-verified audit of the shared step-03/step-04 applied hashes, showing the computation-thread category binding keeps the two chains separable"
       ],
       "focusedCommands": [
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/reference_input_no_idx/step_01 reference_input_no_idx_step_01_binds_native_v1_block_fixture reference_input_no_idx_step_01_rejects_forged_transactions_root",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/reference_input_no_idx/step_02 reference_input_no_idx_step_02_forwards_the_committed_out_of_range_input reference_input_no_idx_step_02_rejects_a_forged_inputs_preimage",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/reference_input_no_idx/step_03 reference_input_no_idx_step_03_forwards_the_producing_tx_outputs_hash reference_input_no_idx_step_03_rejects_a_substituted_producing_transaction",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/reference_input_no_idx/step_04 reference_input_no_idx_step_04_accepts_out_of_range_index reference_input_no_idx_step_04_rejects_valid_block_challenge",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1.test resolve_inputs_begins_authenticated_membership_output resolve_inputs_streams_authenticated_membership_output resolve_inputs_finalizes_authenticated_membership_output resolve_inputs_proves_non_membership_as_an_exact_no_op",
-        "pnpm --dir demo/midgard-validation exec vitest run tests/structural-na-q31-reference-input-no-idx.test.ts",
-        "node demo/scripts/verify-canonical-v1-structural-na-q31.mjs --json",
-        "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/fraud-proofs/native-tx/structural-na-q31-reference-input-no-idx.test.ak",
+        "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/prepare-reference-input-no-idx.test.ts",
+        "pnpm --dir demo/midgard-sdk exec vitest run tests/fault-proof.test.ts",
+        "cd onchain/aiken && node scripts/verify-normalized-format.mjs validators/fraud-proofs/reference-input-no-idx/step-01.ak validators/fraud-proofs/reference-input-no-idx/step-02.ak validators/fraud-proofs/reference-input-no-idx/step-03.ak validators/fraud-proofs/reference-input-no-idx/step-04.ak lib/midgard/fraud-proofs/reference-input-no-idx/step-01.ak lib/midgard/fraud-proofs/reference-input-no-idx/step-02.ak lib/midgard/fraud-proofs/reference-input-no-idx/step-03.ak lib/midgard/fraud-proofs/reference-input-no-idx/step-04.ak",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "plannedFocusedCommands": [
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/native_tx/structural_na_q31_reference_input_no_idx q31_reference_nonmembership_rejects q31_membership_control_accepts q31_wrong_source_kind_rejects q31_membership_substitution_rejects q31_typescript_bytes_match"
-      ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1.test, midgard/fraud_proofs/native_tx/structural_na_q31_reference_input_no_idx, structural-na-q31-reference-input-no-idx.test.ts, verify-canonical-v1-structural-na-q31.mjs. Existing ResolveInputs guard: exactly 4 selectors; Q31 Aiken structural module: exactly 5 selectors; TypeScript twin: exactly 5 tests; evidence: exactly 10 §9.1 outputs; standalone inventory: exactly 0 paths/categories, all with zero failures.",
+      "expectedNonzeroCounts": "Measured at the PR #473 harvest: fraud_proofs/reference_input_no_idx/step_01, fraud_proofs/reference_input_no_idx/step_02, fraud_proofs/reference_input_no_idx/step_03 and fraud_proofs/reference_input_no_idx/step_04 each collected 2 / passed 2 / failed 0 under both the stock v1.1.22 `aiken` and the fork, for exactly 8 family selectors with identical counts; tests/prepare-reference-input-no-idx.test.ts collected 10 / passed 10 / failed 0; demo/midgard-sdk tests/fault-proof.test.ts collected 23 / passed 23 / failed 0 with the new `referenceInputNoIdx` chain registered, pinning exactly 6 distinct applied hashes across the 8 reference-input-no-idx and input-no-idx steps and exactly 133 across the whole applied proof surface; verify-normalized-format PASS (8/8); `aiken check --skip-tests` green. The existing ResolveInputs guard midgard/validation_machine_v1.test still holds exactly 4 selectors. Candidate closure still requires the four submit-step builders, exactly 1 emulator lifecycle test, and the §3.3 proof-fit fixture; these counts are family-partial, not family PASS evidence.",
       "invalidationTriggers": [
         "C41 or ResolveInputs changes reference source-kind, outref encoding, UTxO counted-root membership/non-membership, E_INPUT_NOT_FOUND, phase handoff, or TS twin",
-        "validationTraceDispute category/final hash, native codec, target snapshot, or applied scripts change",
-        "standalone Q31 family/category appears or reduction fixture stops convicting"
+        "any counted-root, bounded-collection, or native codec change re-runs every selector in the family",
+        "catalogue order or category-id change (demo/midgard-sdk/src/fraud-proof/catalogue.ts), or any change to the shared input-no-idx step-03/step-04 UPLC, which would fork the applied hashes this family reuses",
+        "validationTraceDispute category/final hash, target snapshot, or applied scripts change"
       ],
       "blockedOn": ["C41"],
-      "blockedBecause": "Q31 remains dependency-blocked only on current non-PASS queue rows: C41. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted."
+      "blockedBecause": "Q31 remains dependency-blocked only on current non-PASS queue rows: C41. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted.",
+      "schedulingNote": "IN_PROGRESS candidate; the PR #473 harvest landed the four-step Aiken family with 8 selectors, the SDK schema module and `referenceInputNoIdx` contract chain, and the prepare builder plus its 10-test suite. The four submit-step builders and the catalogue registration they depend on are still absent, and C41 remains non-PASS."
     },
     {
       "id": "Q32",
