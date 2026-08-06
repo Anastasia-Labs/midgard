@@ -642,6 +642,143 @@ assert.ok(
 );
 declareVitest(carriage.suite, carriage.titles);
 
+// ## Spend-input preimage cardinality (issue #549): the SECOND adversarial axis
+//
+// The depth axis was exercised, bounded, and then remediated. This one is
+// exercised and bounded and NOT remediated, and the block below is what makes
+// that a derived conclusion rather than a claim: the admissible cardinality is
+// recomputed from the consensus profile's own numbers, the reserve ceiling from
+// the ledger's own cap, and the verdict from the two measured cardinalities per
+// family. A future edit that quietly raised the measured ceiling, lowered the
+// admissible one, or flipped the verdict without the numbers moving fails here.
+const cardinality = evidence.spendInputCardinalityBound;
+assert.ok(
+  cardinality !== undefined && typeof cardinality === "object",
+  "the spend-input cardinality bound must be recorded, not asserted in prose",
+);
+for (const goalId of cardinality.affectsGoalIds) {
+  assert.ok(
+    GOAL_IDS.includes(goalId),
+    `the spend-input cardinality bound names unknown goal id ${goalId}`,
+  );
+}
+assert.equal(
+  cardinality.admissiblePreimageBytes,
+  2 * L1_MAX_TX_SIZE,
+  "the spend-inputs preimage field bound is twice the preserved L1 envelope",
+);
+assert.equal(
+  cardinality.admissibleByPreimageBytes,
+  Math.floor(
+    (cardinality.admissiblePreimageBytes -
+      cardinality.preimageArrayHeaderBytes) /
+      cardinality.preimageBytesPerInput,
+  ),
+  "the cardinality the field-bytes bound admits is not the one its own bytes imply",
+);
+assert.equal(
+  cardinality.admissibleCardinality,
+  Math.min(
+    cardinality.admissibleItemCountGuardrail,
+    cardinality.admissibleByPreimageBytes,
+    cardinality.cardanoScriptSpendShapeCardinality,
+  ),
+  "the admissible cardinality must be the SMALLEST of the constraints it lists; taking any other would understate what a proof has to survive",
+);
+assert.equal(
+  cardinality.executionMemoryReserveCeiling,
+  (cardinality.executionMemoryCap *
+    (100 - evidence.proofFitThresholds.executionFit.reservePercent)) /
+    100,
+  "the reserve ceiling is not the 20% reserve applied to the ledger's own memory cap",
+);
+assert.ok(
+  cardinality.executionMemoryCap < cardinality.consensusProfileMemoryFloor,
+  "the ceiling the boundary is measured against must be the conservative one; measuring against a cap above the consensus profile's capability floor would overstate what fits",
+);
+assert.equal(
+  cardinality.bindingEnvelope,
+  "executionMemory",
+  "the binding envelope of this axis must be named explicitly",
+);
+let cardinalityFamilyChecks = 0;
+let largestFittingCardinality = 0;
+for (const goalId of cardinality.affectsGoalIds) {
+  const measured = cardinality.measured[goalId];
+  assert.ok(
+    measured !== undefined,
+    `${goalId} is named as affected by the cardinality axis but records no measurement`,
+  );
+  assert.equal(
+    measured.firstOverReserveCardinality,
+    measured.largestFittingCardinality + 1,
+    `${goalId} must measure the boundary as an adjacent PAIR; ${String(measured.firstOverReserveCardinality)} does not follow ${String(measured.largestFittingCardinality)}`,
+  );
+  assert.ok(
+    measured.largestFittingExecutionMemory <=
+      cardinality.executionMemoryReserveCeiling,
+    `${goalId} claims ${String(measured.largestFittingCardinality)} inputs fit, but its measured memory exceeds the reserve ceiling`,
+  );
+  assert.ok(
+    measured.firstOverReserveExecutionMemory >
+      cardinality.executionMemoryReserveCeiling,
+    `${goalId} claims ${String(measured.firstOverReserveCardinality)} inputs exceed the reserve, but its measured memory does not`,
+  );
+  // The adjacent case must be a real evaluation that fails the RELEASE policy,
+  // not one the ledger rejected outright: an over-cap number here would prove
+  // nothing about the 20% reserve.
+  assert.ok(
+    measured.firstOverReserveExecutionMemory < cardinality.executionMemoryCap,
+    `${goalId}'s first over-reserve measurement is above the ledger's own cap, so it does not isolate the 20% reserve`,
+  );
+  if (measured.witnessPublicationBytes !== undefined) {
+    assert.equal(
+      measured.witnessPublicationL1ByteMargin,
+      L1_MAX_TX_SIZE - measured.witnessPublicationBytes,
+      `${goalId} witness publication margin does not equal 16384 - ${String(measured.witnessPublicationBytes)}`,
+    );
+    // The correction issue #482's expectation needed: publication is not the
+    // constraint, so it must be recorded as comfortably inside the envelope.
+    assert.ok(
+      measured.witnessPublicationL1ByteMargin > 0,
+      `${goalId} publishes its spend-inputs witness outside the L1 envelope, which would make the publication the binding constraint after all`,
+    );
+  }
+  largestFittingCardinality = Math.max(
+    largestFittingCardinality,
+    measured.largestFittingCardinality,
+  );
+  cardinalityFamilyChecks += 1;
+}
+assert.ok(
+  cardinalityFamilyChecks > 0,
+  "the cardinality axis must be measured for at least one family it affects",
+);
+assert.equal(
+  cardinality.admissibleCardinalityExceedsMeasuredCeiling,
+  cardinality.admissibleCardinality > largestFittingCardinality,
+  "the cardinality verdict disagrees with the numbers it is drawn from",
+);
+// A fit claim would have to be a fit MEASUREMENT: if the admissible shape ever
+// becomes buildable, this artifact must say so with a measurement rather than
+// by deleting the finding.
+assert.equal(
+  cardinality.buildsAtAdmissibleCardinality,
+  !cardinality.admissibleCardinalityExceedsMeasuredCeiling,
+  "buildsAtAdmissibleCardinality disagrees with the measured ceiling",
+);
+assert.equal(
+  cardinality.remediableByCarriage,
+  false,
+  "a carriage remediation of this axis would have to be recorded as a remediation block, exactly as chunkedProofCarriage is for Q1X-F5",
+);
+assert.ok(
+  cardinality.titles.includes(cardinality.derivationTitle) &&
+    cardinality.titles.includes(cardinality.buildsAtAdmissibleCardinalityTitle),
+  "the cardinality suite must declare both the derivation and the admissible-shape lifecycle it is cited for",
+);
+declareVitest(cardinality.suite, cardinality.titles);
+
 // ## Shared DA-first evidence gate
 
 const gate = evidence.sharedDaFirstEvidenceGate;
@@ -744,6 +881,21 @@ assert.equal(
   "the carriage suite did not pass every lifecycle the artifact cites, so no output-5 cell may close on it",
 );
 
+// The cardinality suite's own passage. It decides no cell — the axis it
+// measures is unsettled — but a finding that says "measured and does not fit"
+// is only worth the measurement, so the suite must have run and passed.
+const cardinalityOutcome = vitestOutcomes.get(cardinality.suite);
+assert.equal(
+  cardinalityOutcome.collected,
+  cardinality.titles.length,
+  "the cardinality suite collected a different number of tests than the artifact cites",
+);
+assert.equal(
+  cardinalityOutcome.passed,
+  cardinality.titles.length,
+  "the cardinality suite did not pass every lifecycle the artifact cites, so finding Q1X-F6's numbers are unowned",
+);
+
 // ## Output status matrix
 
 assert.deepEqual(
@@ -805,6 +957,24 @@ for (const axis of evidence.adversarialAxes) {
     );
   }
 }
+// Every axis names the bound block that decides whether being exercised is
+// enough. An axis whose own bound records that the worst ADMISSIBLE instance
+// does not fit is not settled by having been measured — the measurement is the
+// exposure. Reading the wrong bound is how an unsettled axis would slip through,
+// so the mapping is explicit and an unknown bound is a hard failure.
+const axisBoundClearsTheAxis = (axis) => {
+  switch (axis.boundedBy) {
+    case "adversarialDepthBound":
+      return !evidence.adversarialDepthBound
+        .envelopeExhaustibleByReferenceAdversary;
+    case "spendInputCardinalityBound":
+      return !cardinality.admissibleCardinalityExceedsMeasuredCeiling;
+    default:
+      throw new Error(
+        `adversarial axis "${axis.axis}" names bound ${String(axis.boundedBy)}, which this gate does not know how to re-derive`,
+      );
+  }
+};
 // The depth axis is the one Q1X-F5 records. It counts as settled for a family
 // only through a remediation block this gate validated above, and only where
 // that block records a measurement for the family itself.
@@ -814,11 +984,9 @@ const axisIsSettledFor = (axis, goalId) => {
   }
   if (!axis.measuredToday.includes("unexercised")) {
     if (axis.remediatedBy === undefined || axis.remediatedBy === null) {
-      // Exercised and bounded, but the bound is the exposure itself: the
-      // envelope is exhaustible, so the axis is not settled without a
-      // remediation.
-      return !evidence.adversarialDepthBound
-        .envelopeExhaustibleByReferenceAdversary;
+      // Exercised and bounded. Whether that settles the axis is decided by the
+      // axis's own bound, not by an unrelated one.
+      return axisBoundClearsTheAxis(axis);
     }
     assert.equal(
       axis.remediatedBy,
@@ -864,6 +1032,10 @@ for (const axis of evidence.adversarialAxes) {
       `adversarial axis is missing ${key}`,
     );
   }
+  assert.ok(
+    typeof axis.boundedBy === "string" && axis.boundedBy.length > 0,
+    `adversarial axis "${axis.axis}" must name the bound block that decides it`,
+  );
 }
 
 // A finding that claims remediation must name the block that carries it, and
@@ -888,6 +1060,38 @@ for (const finding of evidence.residualFindings) {
       String(evidence.adversarialDepthBound.proofTransactionBranchLevelBytes),
     ),
     `residual finding ${finding.id} was remediated but dropped the measurement it was built on`,
+  );
+}
+
+// The cardinality axis's finding must carry the numbers, not a verdict. A
+// finding that said only "does not fit" would be unfalsifiable prose, which is
+// exactly what this axis had before it was measured.
+const cardinalityFinding = evidence.residualFindings.find((entry) =>
+  entry.finding.includes("spend-input preimage cardinality"),
+);
+assert.ok(
+  cardinalityFinding !== undefined,
+  "the spend-input cardinality axis must be owned by a residual finding",
+);
+assert.equal(
+  cardinalityFinding.severity,
+  cardinality.admissibleCardinalityExceedsMeasuredCeiling
+    ? "defect"
+    : "observation",
+  `residual finding ${cardinalityFinding.id} does not carry the severity its own measurement implies`,
+);
+for (const number of [
+  cardinality.admissibleCardinality,
+  ...cardinality.affectsGoalIds.map(
+    (goalId) => cardinality.measured[goalId].largestFittingCardinality,
+  ),
+  ...cardinality.affectsGoalIds.map(
+    (goalId) => cardinality.measured[goalId].firstOverReserveCardinality,
+  ),
+]) {
+  assert.ok(
+    cardinalityFinding.finding.includes(String(number)),
+    `residual finding ${cardinalityFinding.id} dropped the measured cardinality ${String(number)} it was built on`,
   );
 }
 
@@ -960,6 +1164,7 @@ const recomputed = {
   maximumFixtureLifecyclesExecuted: maximumOutcome.passed,
   chunkedCarriageStages: chunkedStages,
   chunkedCarriageLifecyclesExecuted: carriageOutcome.passed,
+  spendInputCardinalityLifecyclesExecuted: cardinalityOutcome.passed,
   residualFindings: evidence.residualFindings.length,
 };
 assert.deepEqual(
@@ -1058,8 +1263,13 @@ const report = {
   chunkedCarriageStages: evidence.summary.chunkedCarriageStages,
   chunkedCarriageLifecyclesExecuted:
     evidence.summary.chunkedCarriageLifecyclesExecuted,
+  spendInputCardinalityLifecyclesExecuted:
+    evidence.summary.spendInputCardinalityLifecyclesExecuted,
+  admissibleSpendInputCardinality: cardinality.admissibleCardinality,
+  largestFittingSpendInputCardinality: largestFittingCardinality,
   residualFindings: evidence.summary.residualFindings,
   familyChecks,
+  cardinalityFamilyChecks,
   thresholdEnforcementChecks,
   vitestSuitesExecuted: vitestOutcomes.size,
 };
@@ -1078,6 +1288,8 @@ if (emitJson) {
       evidence.summary.worstMaximumByteMarginAcrossFamilies,
     )} maximum, envelope exhausted at branch level ${String(
       evidence.summary.lowestEnvelopeExhaustionBranchLevel,
-    )})`,
+    )}, spend-input cardinality admissible ${String(
+      cardinality.admissibleCardinality,
+    )} against a measured ceiling of ${String(largestFittingCardinality)})`,
   );
 }

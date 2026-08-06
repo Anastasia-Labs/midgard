@@ -1,21 +1,11 @@
 {
   "schema": "midgard.canonical-v1-proof-family-q1x.v1",
   "version": 1,
-  "goalIds": [
-    "Q10",
-    "Q11",
-    "Q12",
-    "Q14"
-  ],
+  "goalIds": ["Q10", "Q11", "Q12", "Q14"],
   "issue": 482,
   "note": "Binds GOAL_SPEC.md 9.1 outputs 5 through 9 for the four foundational proof families whose outputs 1 through 4 were measured PASS at issue #481. Outputs 1 through 4 are inherited and are NOT re-claimed here. This artifact records LOCAL_PASS or OPEN per family per output and claims no Q57/QG3 LIVE_PASS. Output 5 was OPEN for all four families at issue #482 because the maximum/adversarial fixture measured that the L1 envelope is EXHAUSTIBLE on the redeemer-carried route: every forced MPF branch level costs a measured 276 complete-signed-transaction bytes, and reaching the level that exhausts the 16,384-byte envelope is a fixed-target search of about 2^(4i) digests. That measurement stands: it is re-run here, its marginal cost is unchanged, and finding Q1X-F5 keeps it. What changed at issue #545 is that the route is no longer the only one. All four families were wired onto published-chunk carriage (midgard/fraud_proofs/chunked_inclusion_v1 delegating to the merkelized mpf_chunked_verify validator over midgard/mpf_chunked_proof_v1), whose step transaction is byte-identical at branch level 22 and at branch level 32 \u2014 the depth a 2^128 adversary reaches. The carriage dispatch this adds costs the redeemer-carried route a measured constant of about 700 script bytes, lowering ITS ceiling from branch level 21..23 to 19..20 (2^76 work at the cheapest family); that shift is recorded in adversarialDepthBound.constantShiftNote rather than hidden. Output 5 is re-decided per family: LOCAL_PASS where the chunked route is emulator-measured end to end AND no adversarial axis remains unexercised for that family (Q12, Q14); still OPEN for Q10 and Q11, whose second axis, spend-input preimage cardinality, is unmeasured (finding Q1X-F6).",
   "inheritedOutputs": {
-    "outputs": [
-      1,
-      2,
-      3,
-      4
-    ],
+    "outputs": [1, 2, 3, 4],
     "closedBy": 481,
     "measured": {
       "Q10": "8 of 8 Aiken selectors (1 positive + 1 valid-block negative in each of 4 steps), 0 failures",
@@ -40,18 +30,12 @@
       {
         "file": "demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts",
         "helper": "expectProofFitV1",
-        "families": [
-          "Q10"
-        ]
+        "families": ["Q10"]
       },
       {
         "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
         "helper": "expectProofFitV1",
-        "families": [
-          "Q12",
-          "Q14",
-          "Q11"
-        ]
+        "families": ["Q12", "Q14", "Q11"]
       }
     ]
   },
@@ -131,10 +115,7 @@
         ],
         "worstByteMargin": 5436,
         "worstByteMarginStage": "step-02",
-        "removalTransactionBytes": [
-          2167,
-          1315
-        ],
+        "removalTransactionBytes": [2167, 1315],
         "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage. Exact removal execution units vary run to run because the removal validity interval is derived from emulator.now(), so they are not pinned as fixed numbers here; the threshold assertion is the binding claim."
       },
       "maximumProofFit": {
@@ -251,9 +232,7 @@
         ],
         "worstByteMargin": 5384,
         "worstByteMarginStage": "step-01",
-        "removalTransactionBytes": [
-          1867
-        ],
+        "removalTransactionBytes": [1867],
         "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage."
       },
       "maximumProofFit": {
@@ -322,9 +301,7 @@
       "terminalStepModule": "demo/midgard-fault-proofs/src/submit-invalid-range-step-02.ts",
       "emulator": {
         "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
-        "titles": [
-          "proves and removes a tail invalid-range block end to end"
-        ],
+        "titles": ["proves and removes a tail invalid-range block end to end"],
         "measuredLifecycleTitle": "proves and removes a tail invalid-range block end to end",
         "hasValidBlockNegative": false
       },
@@ -354,9 +331,7 @@
         ],
         "worstByteMargin": 5365,
         "worstByteMarginStage": "step-01",
-        "removalTransactionBytes": [
-          1867
-        ],
+        "removalTransactionBytes": [1867],
         "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage."
       },
       "maximumProofFit": {
@@ -405,10 +380,7 @@
       "titlesConstant": "ZERO_INPUT_FAULT_PROOF_TITLES",
       "daFirstBuilder": "prepareZeroInputFromCanonicalEvidenceV1",
       "prepareVerb": "prepare-zero-input",
-      "submitVerbs": [
-        "submit-zero-input-step-01",
-        "submit-zero-input-step-02"
-      ],
+      "submitVerbs": ["submit-zero-input-step-01", "submit-zero-input-step-02"],
       "resumableStepModules": [
         "demo/midgard-fault-proofs/src/submit-zero-input-step-01.ts"
       ],
@@ -450,9 +422,7 @@
         ],
         "worstByteMargin": 5672,
         "worstByteMarginStage": "step-01",
-        "removalTransactionBytes": [
-          1867
-        ],
+        "removalTransactionBytes": [1867],
         "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage."
       },
       "maximumProofFit": {
@@ -543,9 +513,9 @@
       "Q11": "OPEN",
       "Q12": "LOCAL_PASS",
       "Q14": "LOCAL_PASS",
-      "evidence": "Three measurements now exist. Issue #482 added the first threshold-enforcing measurement of the complete correction path on the MINIMAL fixture; re-run after the #545 wiring its worst byte margins are Q10 5436 at step-02, Q11 5384 at step-01, Q12 5365 at step-01, Q14 5672 at step-01. The #481 residual added the MAXIMUM/adversarial fixture: a deterministically grinded block forcing five all-branch levels into each family's step-01 membership proof, and for Q11 into the step-04 non-membership proof as well, with the marginal cost of one further level measured at two real depths (276 complete-signed-transaction bytes, 48,237 execution memory units, 14,876,759 execution steps) and the resulting envelope ceiling at branch level 19 to 20. Issue #545 added the third: the same real prepare/submit pipeline with the proof carried by published chunks and verified by the merkelized mpf_chunked_verify validator, driven at branch level 22 \u2014 past every family's direct-route ceiling \u2014 end to end for Q14 (worst byte margin 3339 at step-01) and Q12 (worst byte margin 3049 at step-01), each including the publication transaction, both steps and the block removal, every stage inside the 20% execution reserve. The same journey at branch level 32 produces a step-01 transaction of exactly the same 13,045 bytes, pinning the chunked route's marginal cost per proof level at zero.",
-      "whyOpen": "Q12 and Q14 are LOCAL_PASS: their maximum is now measured to FIT, because the depth an adversary can force no longer reaches the step transaction, and neither family carries the second adversarial axis at all (the invalid-range steps operate on the compact transaction and the zero-input family's challenged transaction spends nothing by construction). Q10 and Q11 stay OPEN on that second axis alone: spend-input preimage cardinality (finding Q1X-F6) is still unexercised for them, its binding constraint is different from the membership-depth axis, and the depth remediation says nothing about it. Their membership-depth exposure is wired onto the same carriage seam on-chain and covered by per-step selectors at branch level 22 under both compilers, but no end-to-end emulator measurement of the chunked route exists for them yet.",
-      "owner": "Q12/Q14 closed at issue #545; Q10/Q11 remaining work for issue #483"
+      "evidence": "Four measurements now exist. Issue #482 added the first threshold-enforcing measurement of the complete correction path on the MINIMAL fixture; re-run after the #545 wiring its worst byte margins are Q10 5436 at step-02, Q11 5384 at step-01, Q12 5365 at step-01, Q14 5672 at step-01. The #481 residual added the MAXIMUM/adversarial fixture: a deterministically grinded block forcing five all-branch levels into each family's step-01 membership proof, and for Q11 into the step-04 non-membership proof as well, with the marginal cost of one further level measured at two real depths (276 complete-signed-transaction bytes, 48,237 execution memory units, 14,876,759 execution steps) and the resulting envelope ceiling at branch level 19 to 20. Issue #545 added the third: the same real prepare/submit pipeline with the proof carried by published chunks and verified by the merkelized mpf_chunked_verify validator, driven at branch level 22 \u2014 past every family's direct-route ceiling \u2014 end to end for Q14 (worst byte margin 3339 at step-01) and Q12 (worst byte margin 3049 at step-01). Issue #549 completed that route for the remaining two families, whose openings are of one shared root rather than one apiece: Q10 carries both membership proofs by chunks (worst byte margin 3249 at step-02) and Q11 carries its membership proof and its step-04 ABSENCE proof by chunks (worst byte margin 2790 at step-04), each including every publication, every step and the block removal, every stage inside the 20% execution reserve. Issue #549 also added the fourth: the second adversarial axis, spend-input preimage cardinality, measured through the same pipeline for Q10 and Q11 \u2014 and it does not fit.",
+      "whyOpen": "Q12 and Q14 are LOCAL_PASS: their maximum is measured to FIT, because the depth an adversary can force no longer reaches the step transaction, and neither family carries the second adversarial axis at all (the invalid-range steps operate on the compact transaction and the zero-input family's challenged transaction spends nothing by construction). Q10 and Q11 stay OPEN, and no longer for want of a measurement: their chunked lifecycles are now measured end to end at branch level 22 like their siblings', but the second axis IS measured and DOES NOT FIT. The admissible spend-input cardinality is 296 and the correction paths run out of execution memory at 40 (Q10) and 41 (Q11); at 296 neither proof can be evaluated at all. Finding Q1X-F6 records the numbers, and unlike Q1X-F5 it is not remediable by carriage: the cost is the step's reproduction of an authenticated collection, not the travel of any bytes.",
+      "owner": "Q12/Q14 closed at issue #545; Q10/Q11 chunked lifecycle and F6 measurement landed at issue #549, cells remain with issue #483"
     },
     {
       "output": 6,
@@ -594,34 +564,28 @@
       "axis": "MPF membership proof depth",
       "growsWith": "the challenged block's l2_transaction_count",
       "affects": "every step-01 transaction of all four families, which carries tx_membership_proof",
-      "measuredToday": "five forced all-branch levels, run end to end through the real pipeline for every family on the redeemer-carried route; the marginal cost of a sixth is measured at two depths and the resulting envelope ceiling is 21 to 23 levels. Issue #545 then measured the published-chunk route at branch level 22 and 32 with an identical step transaction, so the axis is bounded AND remediated.",
+      "measuredToday": "five forced all-branch levels, run end to end through the real pipeline for every family on the redeemer-carried route; the marginal cost of a sixth is measured at two depths and the resulting envelope ceiling is 19 to 20 levels. Issue #545 then measured the published-chunk route at branch level 22 and 32 with an identical step transaction, and issue #549 drove the remaining two families through that route end to end at branch level 22, so the axis is bounded AND remediated for all four.",
       "note": "This is the dominant adversarial axis. Its cost bound is unchanged and its exhaustion of the redeemer-carried envelope is still true (finding Q1X-F5): what changed is that a prover facing such a proof now has a route that does not carry it in the step transaction at all. The lever is not block size \u2014 a larger random block deepens the path only logarithmically \u2014 but grinding transactions whose hashed paths branch at consecutive nibbles of the challenged transaction's own path.",
-      "affectsGoalIds": [
-        "Q10",
-        "Q11",
-        "Q12",
-        "Q14"
-      ],
-      "remediatedBy": "chunkedProofCarriage"
+      "affectsGoalIds": ["Q10", "Q11", "Q12", "Q14"],
+      "remediatedBy": "chunkedProofCarriage",
+      "boundedBy": "adversarialDepthBound"
     },
     {
       "axis": "spend-input preimage cardinality",
       "growsWith": "the number of inputs the challenged transaction spends",
-      "affects": "double-spend step-03 (spend-input witnesses) and no-input step-02/step-03",
-      "measuredToday": "the minimal input set of each fixture; still unexercised",
-      "note": "Enlarging a native transaction's OUTPUTS does not grow these transactions, because the step redeemer carries native_tx_compact_cbor, whose fields are hashes rather than preimages. Only the paths that carry actual preimages grow. This axis is expected to bind on the spend-inputs WITNESS publication transaction and on execution units rather than on the step transaction itself, because the witness reaches the step as a reference input whose datum is not part of the step transaction's bytes; that expectation is unmeasured, which is precisely why it is still an open axis and not a closed one. See finding Q1X-F6.",
-      "affectsGoalIds": [
-        "Q10",
-        "Q11"
-      ],
-      "remediatedBy": null
+      "affects": "double-spend step-03 and step-04 (spend-input witnesses, reference inputs) and no-input step-02 (spend-input preimage, step redeemer)",
+      "measuredToday": "driven end to end through the real pipeline for both families at the largest cardinality that clears the 20% execution reserve and at the first that does not: Q10 fits 39 and exceeds the reserve at 40 (step-04, 11,312,784 memory units against an 11,200,000 ceiling), Q11 fits 40 and exceeds it at 41 (step-02, 11,465,641). At the admissible 296 neither family's proof can be evaluated at all \u2014 both exceed the ledger's own memory cap, which the suite asserts by driving them. The axis is therefore exercised and bounded, and the bound is the exposure: finding Q1X-F6.",
+      "note": "Enlarging a native transaction's OUTPUTS does not grow these transactions, because the step redeemer carries native_tx_compact_cbor, whose fields are hashes rather than preimages. Only the paths that carry actual preimages grow. Issue #482's expectation that the binding constraint would be the witness PUBLICATION transaction is measured false (spendInputCardinalityBound.expectationCorrected): the publication is under two kilobytes at the boundary, and what binds is the execution memory of re-hashing the authenticated collection inside the step. Unlike the membership-depth axis this is not remediable by moving bytes, so no carriage settles it. See finding Q1X-F6.",
+      "affectsGoalIds": ["Q10", "Q11"],
+      "remediatedBy": null,
+      "boundedBy": "spendInputCardinalityBound"
     }
   ],
   "residualFindings": [
     {
       "id": "Q1X-F1",
       "severity": "gap",
-      "finding": "Output 5 is closed for Q12 and Q14 and remains OPEN for Q10 and Q11. The maximum/adversarial fixture that #482 recorded as missing exists and is runner-measured, and what it measures \u2014 that the redeemer-carried maximum does not fit (Q1X-F5) \u2014 is now remediated by published-chunk carriage, measured end to end for Q12 and Q14 (chunkedProofCarriage). Q10 and Q11 stay OPEN on the second axis alone (Q1X-F6), which does not apply to Q12 or Q14.",
+      "finding": "Output 5 is closed for Q12 and Q14 and remains OPEN for Q10 and Q11. The maximum/adversarial fixture that #482 recorded as missing exists and is runner-measured, and what it measures \u2014 that the redeemer-carried maximum does not fit (Q1X-F5) \u2014 is remediated by published-chunk carriage, now measured end to end for all four families (chunkedProofCarriage). Q10 and Q11 stay OPEN on the second axis alone (Q1X-F6), which does not apply to Q12 or Q14, and which is no longer unexercised: it is measured, and it does not fit.",
       "owner": "issue #483 (Q10/Q11 only)"
     },
     {
@@ -651,13 +615,10 @@
     },
     {
       "id": "Q1X-F6",
-      "severity": "gap",
-      "finding": "The second adversarial axis, spend-input preimage cardinality, is still unexercised for Q10 and Q11. Its expected binding constraint is different from the membership-depth axis (the spend-inputs witness publication transaction and step execution units, not the step transaction's own bytes) so the membership-depth bound above says nothing about it. Q12 and Q14 do not carry this axis at all: the invalid-range steps operate on the compact transaction and the zero-input family's challenged transaction spends nothing by construction.",
-      "owner": "issue #483",
-      "affectsGoalIds": [
-        "Q10",
-        "Q11"
-      ]
+      "severity": "defect",
+      "finding": "MEASURED AND DOES NOT FIT. The second adversarial axis, spend-input preimage cardinality, is exercised end to end for Q10 and Q11 at issue #549 and the measurement is a defect rather than a clearance. The admissible cardinality is 296 \u2014 the smallest of the consensus profile's 16,384-item guardrail, its 32,768-byte spend-inputs preimage field bound (862 inputs at 38 bytes each), and the Cardano script-spend shape already pinned as maximum_cardano_spend_redeemer_count. Measured against the 20% execution reserve over Cardano's 14,000,000-unit memory cap, Q10's complete correction path fits at 39 inputs (step-04, 11,049,259 memory units) and exceeds the reserve at 40 (11,312,784), and Q11's fits at 40 (step-02, 11,170,542) and exceeds it at 41 (11,465,641). At the admissible 296 neither family's proof can be evaluated at all: both exceed the ledger's own memory cap. So a block producer whose challenged transaction spends 41 admissible inputs censors the Q10 and Q11 correction paths outright, at no grinding cost whatsoever \u2014 this axis is free to the adversary, where the membership-depth axis cost about 2^76 digests. The expectation #482 recorded about WHERE it would bind is also measured false: the witness publication transaction is 1,862 bytes at the boundary with 14,522 bytes of margin, and Q11 does not use a witness reference input at all \u2014 its step-02 carries the preimage in the step redeemer. Execution memory binds, and published-chunk carriage cannot remediate it, because the cost is the step's reproduction of the whole authenticated collection rather than the travel of any bytes.",
+      "owner": "issue #483 (Q10/Q11 only)",
+      "affectsGoalIds": ["Q10", "Q11"]
     }
   ],
   "runners": [
@@ -665,6 +626,7 @@
     "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-ledger-rules.test.ts",
     "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-max-proof-fit.test.ts",
     "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-chunked-proof-carriage.test.ts",
+    "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-spend-input-cardinality.test.ts",
     "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/canonical-evidence-source-v1.test.ts"
   ],
   "maximumFixtureSuite": {
@@ -697,9 +659,10 @@
     "canonicalEvidenceSuiteTests": 32,
     "emulatorLifecyclesExecuted": 7,
     "maximumFixtureLifecyclesExecuted": 6,
-    "residualFindings": 6,
-    "chunkedCarriageStages": 10,
-    "chunkedCarriageLifecyclesExecuted": 3
+    "chunkedCarriageStages": 26,
+    "chunkedCarriageLifecyclesExecuted": 5,
+    "spendInputCardinalityLifecyclesExecuted": 4,
+    "residualFindings": 6
   },
   "parentIntegration": {
     "owner": "parent",
@@ -707,7 +670,8 @@
       "GOAL_PROGRESS.md: bind Q10/Q11/Q12/Q14 rows for 9.1 outputs 6 to 9 at LOCAL_PASS and output 5 at OPEN, with the measured numbers in this artifact.",
       "Finding Q1X-F5 is a protocol exposure, not a bookkeeping item: the L1 envelope on the step-01 proof transaction is exhaustible at roughly 2^84 grinding work. It needs an owner outside this artifact \u2014 either a bound on admissible membership-proof depth, a proof-transaction split, or an accepted risk with the number written down.",
       "docs/fault-proofs/coverage-matrix.md: the four families' rows may cite this artifact for outputs 6 to 9; output 5 must remain OPEN.",
-      "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json: the Q10/Q11/Q12 schedulingNote text still says outputs 5 to 9 are all unreached; outputs 6 to 9 are now bound here. Q14's writablePaths do not include this artifact or its verifier, so the Q14 row needs its path set widened by the parent."
+      "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json: the Q10/Q11/Q12 schedulingNote text still says outputs 5 to 9 are all unreached; outputs 6 to 9 are now bound here. Q14's writablePaths do not include this artifact or its verifier, so the Q14 row needs its path set widened by the parent.",
+      "Manifest rows for Q10 and Q11 cite the chunked-carriage lifecycle and the spend-input cardinality measurement landed at issue #549."
     ]
   },
   "chunkedProofCarriage": {
@@ -737,24 +701,21 @@
     "titles": [
       "carries a zero-input membership proof past the direct route's envelope ceiling",
       "pins the step transaction's marginal cost per proof level at zero",
-      "carries an invalid-range membership proof past the direct route's envelope ceiling"
+      "carries an invalid-range membership proof past the direct route's envelope ceiling",
+      "carries both double-spend membership proofs past the direct route's envelope ceiling",
+      "carries a no-input membership and absence proof past the direct route's envelope ceiling"
     ],
     "familyTitles": {
+      "Q10": "carries both double-spend membership proofs past the direct route's envelope ceiling",
+      "Q11": "carries a no-input membership and absence proof past the direct route's envelope ceiling",
       "Q12": "carries an invalid-range membership proof past the direct route's envelope ceiling",
       "Q14": "carries a zero-input membership proof past the direct route's envelope ceiling"
     },
     "branchLevels": 22,
     "chunkCount": 2,
     "proofCborBytes": 3060,
-    "measuredFamilies": [
-      "Q12",
-      "Q14"
-    ],
-    "unmeasuredFamilies": [
-      "Q10",
-      "Q11"
-    ],
-    "unmeasuredFamiliesNote": "Q10 and Q11 are wired onto the same shared seam on-chain and carry per-step published-chunk selectors at branch level 22 under both compilers, but their end-to-end emulator journeys still drive the redeemer-carried route. Their output-5 cells stay OPEN regardless, because finding Q1X-F6 is unexercised for exactly those two families.",
+    "measuredFamilies": ["Q10", "Q11", "Q12", "Q14"],
+    "unmeasuredFamilies": [],
     "stages": {
       "Q14": [
         {
@@ -809,6 +770,90 @@
           "bytes": 1867,
           "l1ByteMargin": 14517
         }
+      ],
+      "Q10": [
+        {
+          "stage": "publish-chunks",
+          "bytes": 3402,
+          "l1ByteMargin": 12982
+        },
+        {
+          "stage": "init",
+          "bytes": 7862,
+          "l1ByteMargin": 8522
+        },
+        {
+          "stage": "step-01",
+          "bytes": 13098,
+          "l1ByteMargin": 3286
+        },
+        {
+          "stage": "publish-chunks-2",
+          "bytes": 3402,
+          "l1ByteMargin": 12982
+        },
+        {
+          "stage": "step-02",
+          "bytes": 13135,
+          "l1ByteMargin": 3249
+        },
+        {
+          "stage": "step-03",
+          "bytes": 4244,
+          "l1ByteMargin": 12140
+        },
+        {
+          "stage": "step-04",
+          "bytes": 9295,
+          "l1ByteMargin": 7089
+        },
+        {
+          "stage": "remove",
+          "bytes": 1868,
+          "l1ByteMargin": 14516
+        }
+      ],
+      "Q11": [
+        {
+          "stage": "publish-chunks",
+          "bytes": 3402,
+          "l1ByteMargin": 12982
+        },
+        {
+          "stage": "init",
+          "bytes": 7862,
+          "l1ByteMargin": 8522
+        },
+        {
+          "stage": "step-01",
+          "bytes": 13187,
+          "l1ByteMargin": 3197
+        },
+        {
+          "stage": "step-02",
+          "bytes": 4212,
+          "l1ByteMargin": 12172
+        },
+        {
+          "stage": "step-03",
+          "bytes": 3929,
+          "l1ByteMargin": 12455
+        },
+        {
+          "stage": "publish-chunks-2",
+          "bytes": 3402,
+          "l1ByteMargin": 12982
+        },
+        {
+          "stage": "step-04",
+          "bytes": 13594,
+          "l1ByteMargin": 2790
+        },
+        {
+          "stage": "remove",
+          "bytes": 1868,
+          "l1ByteMargin": 14516
+        }
       ]
     },
     "executionUnits": {
@@ -823,6 +868,18 @@
       "Q14Depth32": {
         "step01Memory": 2922554,
         "step01Steps": 1100822722
+      },
+      "Q10": {
+        "step01Memory": 2317835,
+        "step01Steps": 858354062,
+        "step02Memory": 2321392,
+        "step02Steps": 859635834
+      },
+      "Q11": {
+        "step01Memory": 2322781,
+        "step01Steps": 860709174,
+        "step04Memory": 1925264,
+        "step04Steps": 726431965
       }
     },
     "depthInvariance": {
@@ -844,6 +901,67 @@
       "demo/midgard-fault-proofs/src/publish-proof-chunks.ts",
       "demo/midgard-fault-proofs/src/submit-zero-input-step-01.ts",
       "demo/midgard-fault-proofs/src/submit-invalid-range-step-01.ts"
-    ]
+    ],
+    "extendedByIssue": 549,
+    "sharedRootOpenings": "Q12 and Q14 open the challenged block's transactions trie exactly once, so issue #545 could give each a standalone synthetic ladder. Q10 and Q11 cannot: double-spend opens the SAME root twice for membership (tx1 at step-01, tx2 at step-02) and no-input opens it once for membership and once for ABSENCE (the phantom input's producing transaction, at step-04), and every step re-authenticates its opening against the one root the challenged header commits. Two independent ladders each determine their own root, so the fixture builds what a real trie would hold instead: one shared branch node whose child slots carry the sub-tries of the individual ladders, with every opening's top-level neighbours read out of that same node. The library's own Proof.verify is what confirms each opening reconstructs the one root. See syntheticDeepSharedRootProofsV1 in demo/midgard-fault-proofs/tests/support/synthetic-deep-proof-v1.ts.",
+    "secondPublicationNote": "Q10 and Q11 publish twice, because each opens the trie twice and a publication carries one proof. The second publication is submitted immediately before the step that consumes it, which is also what keeps its UTxOs out of every earlier transaction's fee selection. Both publications survive the steps that reference them, which the suite asserts.",
+    "executionUnitsNote": "Every stage of every journey is asserted against the 20% execution reserve by the runner-executed helper; the numbers recorded here are the proof-carrying stages of one measured run. They drift in the last digits run to run because the emulator-derived validity interval moves, so the threshold assertion is the binding claim, not these constants."
+  },
+  "spendInputCardinalityBound": {
+    "axis": "spend-input preimage cardinality",
+    "issue": 549,
+    "affectsGoalIds": ["Q10", "Q11"],
+    "suite": "demo/midgard-fault-proofs/tests/submit-init-emulator-spend-input-cardinality.test.ts",
+    "titles": [
+      "derives the admissible spend-input cardinality from the consensus profile",
+      "fits the largest double-spend spend-input preimage and measures the first that does not",
+      "fits the largest no-input spend-input preimage and measures the first that does not",
+      "cannot build either family's proof at the admissible Cardano spend shape"
+    ],
+    "derivationTitle": "derives the admissible spend-input cardinality from the consensus profile",
+    "admissibilityDerivation": "Three protocol constraints bound how many inputs an admissible challenged transaction may spend, and the smallest is the one a fraud proof must survive. (1) MIDGARD_CONSENSUS_LIMITS_V1.maxSpendInputCount = 16,384, which is bounded_collection_v1.max_tx_size_derived_item_count in onchain/aiken/lib/midgard/bounded-collection-v1.ak; its own source calls it a one-byte-per-item encoding floor that can never reject a shape Cardano could fit, so it is a guardrail, not the effective bound. (2) MIDGARD_CONSENSUS_LIMITS_V1.maxSpendInputsPreimageBytes = 32,768, twice the preserved L1 envelope, in demo/midgard-core/src/consensus-profile-v1.ts; at 38 bytes per canonical TransactionInput item it admits 862. (3) The Cardano script-spend shape boundary this repository already pins: 296 inputs each carrying a spend redeemer, maximum_cardano_spend_redeemer_count in onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-redeemers.test.ak, which validators/fraud-proofs/input-no-idx/step-02.ak already names as the shape a Q13 proof must handle. 296 is the smallest, and is the admissible cardinality these two families are measured against.",
+    "admissibleItemCountGuardrail": 16384,
+    "admissiblePreimageBytes": 32768,
+    "preimageArrayHeaderBytes": 3,
+    "preimageBytesPerInput": 38,
+    "admissibleByPreimageBytes": 862,
+    "cardanoScriptSpendShapeCardinality": 296,
+    "cardanoScriptSpendShapeSource": "onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-redeemers.test.ak",
+    "admissibleCardinality": 296,
+    "executionMemoryCap": 14000000,
+    "executionMemoryReserveCeiling": 11200000,
+    "consensusProfileMemoryFloor": 16500000,
+    "ceilingNote": "The boundary is measured against Cardano's own 14,000,000-unit transaction memory cap, which is what EMULATOR_PROTOCOL_PARAMETERS carries and what every other execution measurement in this artifact is judged by. That cap is BELOW the consensus profile's 16,500,000-unit capability floor, so the measured cardinality ceiling is the conservative one; raising the ceiling to the profile floor moves it by single digits, not by the two orders of magnitude the admissible shape is away.",
+    "bindingEnvelope": "executionMemory",
+    "expectationCorrected": "Issue #482 recorded an expectation that this axis would bind on the spend-inputs WITNESS PUBLICATION transaction and on execution units rather than on the step transaction's own bytes. Half of that is now measured false. The publication transaction is not the constraint at all: at Q10's boundary it is 1,862 bytes with 14,522 bytes of margin, and the steps that reference it are within five bytes of their minimal-fixture size, exactly because the preimage is a reference input's datum. And Q11 is not shaped that way in the first place: no-input step-02 carries inputs_preimage in the STEP REDEEMER (midgard/fraud_proofs/no_input/step_02.Args), so the axis does reach that transaction's bytes there, and still does not bind, with 10,684 bytes of margin at the boundary. Execution memory binds, in both families, because a step must re-hash the whole authenticated bounded collection before it may select one item from it.",
+    "measured": {
+      "Q10": {
+        "bindingStage": "step-04",
+        "preimageCarriage": "reference input",
+        "largestFittingCardinality": 39,
+        "largestFittingExecutionMemory": 11049259,
+        "firstOverReserveCardinality": 40,
+        "firstOverReserveExecutionMemory": 11312784,
+        "witnessPublicationBytes": 1862,
+        "witnessPublicationL1ByteMargin": 14522,
+        "stepTransactionBytes": 4249,
+        "minimalFixtureStepTransactionBytes": 4244
+      },
+      "Q11": {
+        "bindingStage": "step-02",
+        "preimageCarriage": "step redeemer",
+        "largestFittingCardinality": 40,
+        "largestFittingExecutionMemory": 11170542,
+        "firstOverReserveCardinality": 41,
+        "firstOverReserveExecutionMemory": 11465641,
+        "stepTransactionBytes": 5700,
+        "stepTransactionL1ByteMargin": 10684
+      }
+    },
+    "admissibleCardinalityExceedsMeasuredCeiling": true,
+    "buildsAtAdmissibleCardinality": false,
+    "buildsAtAdmissibleCardinalityTitle": "cannot build either family's proof at the admissible Cardano spend shape",
+    "remediableByCarriage": false,
+    "whyNotRemediableByCarriage": "Published-chunk carriage remediated Q1X-F5 by moving the proof's BYTES out of the step transaction. There is nothing to move here: the cost is the step's own re-hashing of a bounded collection it must reproduce in full before it may select one item from it, and that work is the same wherever the preimage travelled from. A remediation would have to change what the step proves \u2014 an item-level proof against the collection commitment rather than a whole-collection reproduction, which bounded_collection_v1.verify_item already supports and no foundational family's step uses."
   }
 }

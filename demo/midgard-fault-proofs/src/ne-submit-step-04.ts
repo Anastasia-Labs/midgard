@@ -2,9 +2,9 @@ import {
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  type NonMembershipCarriage,
   NonExistentInputStep04Datum,
   NonExistentInputStep04SpendRedeemer,
+  type NonMembershipCarriage,
   Proof,
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -330,11 +330,15 @@ export const neSubmitStep04 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const base = lucid
+  // This step reads no oracle and no state-queue node, so on the direct route
+  // it has no reference inputs at all and must not declare an empty set.
+  const collected = lucid
     .newTx()
     .collectFrom([feeInput])
-    .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom(referenceInputs);
+    .collectFrom([threadUtxo], spendRedeemer);
+  const base = carriedByChunks
+    ? collected.readFrom(referenceInputs)
+    : collected;
   const withCarriage = carriedByChunks
     ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
         chunkedNonMembershipClaimRedeemer({

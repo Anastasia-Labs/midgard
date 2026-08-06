@@ -321,7 +321,10 @@ export const neSubmitStep01 = async ({
             },
           ],
         };
-    return Data.to({ Continue: [carriage] }, NonExistentInputStep01SpendRedeemer);
+    return Data.to(
+      { Continue: [carriage] },
+      NonExistentInputStep01SpendRedeemer,
+    );
   }) satisfies BuildTxWithRedeemer;
   const threadAssets = {
     lovelace: threadUtxo.assets.lovelace ?? 0n,

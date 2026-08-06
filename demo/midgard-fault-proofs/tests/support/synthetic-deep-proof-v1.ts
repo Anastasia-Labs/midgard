@@ -206,9 +206,7 @@ const branchMerkleFromNeighbors = ({
     const neighbor = neighbors[level]!;
     const rightHandSide =
       ((child >> (BRANCH_MERKLE_LEVELS - 1 - level)) & 1) === 1;
-    node = rightHandSide
-      ? hashPair(neighbor, node)
-      : hashPair(node, neighbor);
+    node = rightHandSide ? hashPair(neighbor, node) : hashPair(node, neighbor);
   }
   return node;
 };
