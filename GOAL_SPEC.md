@@ -494,7 +494,11 @@ are:
    fetch, evidence construction, every proof step including 32 interactive
    rounds where applicable, settlement, L1 confirmations, retries, rollback
    allowance, and removal — completes inside half the canonical maturity
-   window under the configured response deadlines.
+   window under the configured response deadlines. The canonical maturity
+   window for this threshold is the production block maturity — 7 days per
+   the F04 decision record §1, a half-maturity budget of 302,400,000 ms —
+   never a scaled acceptance or test window; short drill windows are drill
+   configuration, not this threshold (owner clarification, 2026-08-06).
 4. **Resource fit:** live acceptance runs inside the explicit container
    memory/CPU/PID ceilings fixed by the F04 decision record and enforced by
    C80. Those ceilings are local-acceptance containment caps only; F04
@@ -504,7 +508,11 @@ are:
 A path that fits its raw limit but not the applicable reserve is a failing
 result, not a smaller margin. Bond, slash, inactivity penalty, prover reward,
 finality/confirmation depths, retry budget, and availability deadlines are
-never invented per task; they come from the F04 decision record.
+never invented per task; they come from the F04 decision record. Economic
+sufficiency of a correction path (fees and collateral against the prover
+reward) is likewise judged against the production launch economics — the F04
+§2.1 profile with its 75,000-ADA `fraud_prover_reward` — never the scaled
+§2.2 drill profile (owner clarification, 2026-08-06).
 
 ## 4. Execution and durable progress protocol
 
