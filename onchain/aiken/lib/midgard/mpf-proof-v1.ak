@@ -12,7 +12,10 @@ const digest_byte_count: Int = 32
 
 const path_nibble_count: Int = 64
 
-const maximum_proof_step_count: Int = 64
+/// A Midgard V1 MPF path is 64 nibbles, so a well-formed proof can never carry
+/// more than one step per nibble. This is the protocol-wide ceiling on the
+/// number of steps any single proof may contain, however it is carried.
+pub const maximum_proof_step_count: Int = 64
 
 fn neighbor_is_well_formed(neighbor: mpf.Neighbor) -> Bool {
   and {
@@ -252,6 +255,68 @@ pub fn has(
     membership_proof_is_well_formed(path, 0, proof, maximum_proof_step_count),
   } {
     mpf.has(mpf.from_root(root), key, value, proof)
+  } else {
+    False
+  }
+}
+
+/// Mirror of the library's private `do_including`, specialised to take the
+/// *hash* of the proved value instead of its preimage.
+///
+/// A published-chunk challenge authenticates the target value by its digest
+/// (the preimage never reaches L1), so the walk has to start from the digest
+/// directly. `mpf.has` hashes the value it is given and is therefore unusable
+/// here. The recursion is otherwise identical to the library's, and
+/// `mpf_proof_v1_value_hash_membership_agrees_with_the_library` pins that
+/// equivalence.
+fn do_including(
+  path: ByteArray,
+  value_hash: ByteArray,
+  cursor: Int,
+  proof: mpf.Proof,
+) -> ByteArray {
+  when proof is {
+    [] -> combine(suffix(path, cursor), value_hash)
+    [mpf.Branch { skip, neighbors }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      let root = do_including(path, value_hash, next_cursor, steps)
+      do_branch(path, cursor, next_cursor, root, neighbors)
+    }
+    [mpf.Fork { skip, neighbor }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      let root = do_including(path, value_hash, next_cursor, steps)
+      do_fork(path, cursor, next_cursor, root, neighbor)
+    }
+    [mpf.Leaf { skip, key, value }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      let root = do_including(path, value_hash, next_cursor, steps)
+      let neighbor = mpf.Neighbor {
+        prefix: suffix(key, next_cursor),
+        nibble: nibble(key, next_cursor - 1),
+        root: value,
+      }
+      do_fork(path, cursor, next_cursor, root, neighbor)
+    }
+  }
+}
+
+/// Total, fail-closed membership verification against a 32-byte value digest.
+///
+/// Equivalent to `has(root, key, value, proof)` whenever
+/// `value_hash == blake2b_256(value)`, with the same well-formedness gate.
+pub fn has_value_hash(
+  root: ByteArray,
+  key: ByteArray,
+  value_hash: ByteArray,
+  proof: mpf.Proof,
+) -> Bool {
+  let path = blake2b_256(key)
+  if and {
+    bytearray.length(root) == digest_byte_count,
+    bytearray.length(value_hash) == digest_byte_count,
+    membership_proof_is_well_formed(path, 0, proof, maximum_proof_step_count),
+  } {
+    do_including(path, value_hash, 0, proof) == root
   } else {
     False
   }

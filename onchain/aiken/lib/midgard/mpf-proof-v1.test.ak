@@ -51,6 +51,36 @@ test mpf_proof_v1_verifies_empty_proof_membership() {
   mpf_proof_v1.has(singleton_root(), key, value, [])
 }
 
+test mpf_proof_v1_value_hash_membership_agrees_with_the_library() {
+  let absent_path = blake2b_256(absent_key)
+  let divergent_leaf = mpf.Leaf {
+    skip: 0,
+    key: absent_path,
+    value: blake2b_256(absent_value),
+  }
+  let two_leaf_root = mpf_proof_v1.has(singleton_root(), key, value, [])
+  and {
+    two_leaf_root,
+    mpf_proof_v1.has_value_hash(singleton_root(), key, blake2b_256(value), []),
+    // A wrong digest, a wrong root and a non-32-byte digest all fail closed.
+    !mpf_proof_v1.has_value_hash(
+      singleton_root(),
+      key,
+      blake2b_256(absent_value),
+      [],
+    ),
+    !mpf_proof_v1.has_value_hash(null_hash, key, blake2b_256(value), []),
+    !mpf_proof_v1.has_value_hash(singleton_root(), key, #"0102", []),
+    // And the one-step shape agrees with `has` on both verdicts.
+    mpf_proof_v1.has_value_hash(
+      singleton_root(),
+      key,
+      blake2b_256(value),
+      [divergent_leaf],
+    ) == mpf_proof_v1.has(singleton_root(), key, value, [divergent_leaf]),
+  }
+}
+
 test mpf_proof_v1_verifies_empty_trie_non_membership() {
   mpf_proof_v1.does_not_have(null_hash, key, [])
 }
