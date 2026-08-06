@@ -177,6 +177,19 @@
           "timeoutMs": 43200000
         },
         {
+          "id": "capability-abi-freeze",
+          "cwd": ".",
+          "argv": ["node", "demo/scripts/verify-canonical-v1-abi-freeze.mjs"]
+        },
+        {
+          "id": "capability-abi-freeze-self-test",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-abi-freeze-self-test.mjs"
+          ]
+        },
+        {
           "id": "capability-criteria",
           "cwd": ".",
           "argv": [
@@ -316,6 +329,22 @@
           "argv": [
             "node",
             "demo/scripts/verify-canonical-v1-format-registry.mjs"
+          ]
+        },
+        {
+          "id": "evidence-cg4-fund-safety-classification-gate",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate.mjs"
+          ]
+        },
+        {
+          "id": "evidence-cg4-fund-safety-classification-gate-self-test",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate-self-test.mjs"
           ]
         },
         {

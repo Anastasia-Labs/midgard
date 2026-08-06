@@ -82,6 +82,20 @@ jobs:
         run: node demo/scripts/verify-canonical-v1-watcher-dependency-map-self-test.mjs
       - name: Verify canonical watcher focused-test evidence
         run: node demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs
+      # B34/#510: CG4 is the consolidated ABI/fund-safety review. It reconciles
+      # the nine C60-C68 classification rows against the F05 manifest and the
+      # index and refuses PASS while any is unmeasured, so it must run wherever
+      # the manifest, the reconciliation or the ABI freeze can move. It is
+      # pure-node and needs no compiler.
+      - name: Verify canonical V1 CG4 fund-safety and classification gate
+        run: node demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate.mjs
+      # An uninvoked gate and a gate that cannot fail are the same defect. This
+      # self-test drives the real CG4 gate against seeded promotions — a row
+      # promoted past its missing surfaces, QG1 promoted while its verifier does
+      # not exist, a tampered ABI-freeze digest — and requires each to be
+      # rejected with its specific diagnostic.
+      - name: Self-test the CG4 gate against seeded promotions
+        run: node demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate-self-test.mjs
 
   # #519 V-8: `verify-canonical-v1-header-v1-abi.mjs` holds the only comparison
   # of the format registry's L01 contract against BOTH real projections — the
@@ -137,6 +151,20 @@ jobs:
       # non-zero with its specific diagnostic.
       - name: Self-test the HeaderV1 ABI gate against seeded mismatches
         run: node demo/scripts/verify-canonical-v1-header-v1-abi-self-test.mjs
+      # B34/#510 IG1/IG2. The ABI freeze binds the seven deployment-ABI
+      # identities that midgard-core, midgard-node and midgard-sdk each declare
+      # separately, the catalogue-to-validator-tree bijection, and the blueprint
+      # the pinned compiler produced. It lives in THIS job rather than `verify`
+      # because the blueprint leg needs a real `aiken build`, which that job has
+      # no compiler for; the gate fails closed when the blueprint is missing
+      # rather than skipping the check.
+      - name: Verify canonical V1 ABI freeze against the real blueprint
+        run: node demo/scripts/verify-canonical-v1-abi-freeze.mjs
+      # The freeze's own hostile suite: 23 seeded mutations, including two that
+      # seed a single package's identity source and leave the others real, so
+      # the cross-package comparison cannot be satisfied by the artifact alone.
+      - name: Self-test the ABI freeze against seeded drift
+        run: node demo/scripts/verify-canonical-v1-abi-freeze-self-test.mjs
 
   # GOAL_SPEC.md §7 F40: "wires `goal:verify:static` into repository CI for the
   # Goal branch so drift is caught between checkpoints." This job runs the
