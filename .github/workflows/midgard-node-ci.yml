@@ -84,6 +84,14 @@ jobs:
       TESTNET_GENESIS_WALLET_SEED_PHRASE_C: "cactus chalk grit reopen true slight whale sand law sibling silver fringe cement twist process bracket history leopard churn federal coral three hockey fossil"
     steps:
       - uses: actions/checkout@v4
+        with:
+          # #537: the watcher dependency-map verifier now resolves the map's
+          # §0 provenance and its W13-W17/W23 review records against git —
+          # ancestry, the published merge's exact parent list, and byte-exact
+          # `git show <rev>:<path>` digests. All of that needs real history;
+          # actions/checkout defaults to a depth-1 shallow clone, in which
+          # every such check fails regardless of correctness.
+          fetch-depth: 0
       - uses: aiken-lang/setup-aiken@v1.0.3
         with:
           version: v1.1.22

@@ -71,6 +71,15 @@ jobs:
         run: node demo/scripts/verify-canonical-v1-format-registry-self-test.mjs
       - name: Verify canonical watcher dependency map
         run: node demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs
+      # #537: the map's §0-integrity revisions and the W13-W17/W23 review
+      # claims were compared only to hardcoded copies of themselves, so a
+      # nonexistent revision or an edited pair of literals passed CI. They are
+      # git-bound now, and this self-test drives the real gate against seeded
+      # provenance defects — a non-ancestor revision, tampered historical
+      # bytes, a malformed review record — and requires each to be rejected
+      # with its specific diagnostic.
+      - name: Self-test the watcher dependency-map git-authority bindings
+        run: node demo/scripts/verify-canonical-v1-watcher-dependency-map-self-test.mjs
       - name: Verify canonical watcher focused-test evidence
         run: node demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs
 

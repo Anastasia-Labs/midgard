@@ -1,16 +1,25 @@
 {
   "schemaVersion": "midgard-canonical-v1-watcher-dependency-map-v1",
   "authority": {
+    "artifactPath": "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
+    "publishedMergeRevision": "f74be64cd5065cd05831265326820d461c60813f",
     "publishedParentRevisions": [
       "2b755a776d6af4a57d877633485ca0701e4cc51d",
       "d8fcc0f74f659fe614dc215dcef0f3d2c9b16590"
     ],
+    "publishedParentArtifactSha256": [
+      "119fd20de506619adf00b30fb67f374978fde97e1ec263a626743093166cd54c",
+      "30bdb04b40ab5914f9f4989eaf48a6d8891d9727919309221f3f14a0a54f8dd6"
+    ],
     "sourceRevision": "4acf68215c76bbac72c5a7f35962c611ce3b92da",
-    "treeState": "reviewed merge content; provenance from git history",
+    "sourceArtifactSha256": "c43e40585ded1a5c2c81e94ecaddcb028e459f9cb5f13b2d7990f177ba3d132b",
+    "baseRevision": "8bae9403a13124f647f215999848ff5c82784e37",
+    "baseTree": "fab7924fae8bcbfca5e27dae6d5f8f70cdcc17fa",
+    "baseArtifactState": "absent_before_first_publication",
+    "treeState": "git_authority_bound_published_merge_reviewed_parents_first_publication_and_pre_publication_base",
     "goalSpec": "GOAL_SPEC.md",
     "graphifySnapshotSha256": "c5cabaf0bc10d217717a6555c07df20958616c7b8f4fa2e7939cd42845db60e5",
-    "graphifyUse": "navigation_only_current_source_verified",
-    "baseRevision": "8bae9403a13124f647f215999848ff5c82784e37"
+    "graphifyUse": "navigation_only_current_source_verified"
   },
   "requiredWatcherPackage": {
     "path": "demo/midgard-watcher",
@@ -212,7 +221,14 @@
     },
     "rollbackEngine": {
       "status": "PASS",
-      "independentAudit": "PASS_all_original_and_residual_hostile_probes",
+      "reviewRecord": {
+        "reviewedAtRev": "4acf68215c76bbac72c5a7f35962c611ce3b92da",
+        "reviewedPaths": [
+          "demo/midgard-watcher/src/rollback-engine.ts",
+          "demo/midgard-watcher/tests/rollback-engine.test.ts"
+        ],
+        "summary": "Parent-program review, not a second-party audit: all original and residual hostile probes passed against the rollback engine and its focused suite at this revision."
+      },
       "stateSchemaVersion": "midgard-watcher-rollback-state-v1",
       "incidentSchemaVersion": "midgard-watcher-rollback-incident-v1",
       "resultSchemaVersion": "midgard-watcher-rollback-result-v1",
@@ -233,7 +249,14 @@
     },
     "stateQueueIndexer": {
       "status": "LIBRARY_PASS_CANONICAL_WIRE_PROVENANCE_OPEN",
-      "independentAudit": "PASS_library_remediated_original_and_spent_journal_hostile_probes",
+      "reviewRecord": {
+        "reviewedAtRev": "6d0f493b1d3b04420709886bb80ccb283e508851",
+        "reviewedPaths": [
+          "demo/midgard-watcher/src/state-queue-indexer.ts",
+          "demo/midgard-watcher/tests/state-queue-indexer.test.ts"
+        ],
+        "summary": "Parent-program review, not a second-party audit: the library-remediated original and spent-journal hostile probes passed against the state-queue indexer and its focused suite at this revision."
+      },
       "policySchemaVersion": "midgard-watcher-state-queue-indexer-policy-v1",
       "snapshotSchemaVersion": "midgard-watcher-state-queue-snapshot-v1",
       "observationSchemaVersion": "midgard-watcher-state-queue-observation-v1",
@@ -249,7 +272,14 @@
     },
     "userEventIndexer": {
       "status": "PASS",
-      "independentAudit": "PASS_source_replay_and_residual_boundary_review",
+      "reviewRecord": {
+        "reviewedAtRev": "4acf68215c76bbac72c5a7f35962c611ce3b92da",
+        "reviewedPaths": [
+          "demo/midgard-watcher/src/user-event-indexer.ts",
+          "demo/midgard-watcher/tests/user-event-indexer.test.ts"
+        ],
+        "summary": "Parent-program review, not a second-party audit: source replay and the residual boundary review passed against the user-event indexer and its focused suite at this revision."
+      },
       "policySchemaVersion": "midgard-watcher-user-event-indexer-policy-v1",
       "snapshotSchemaVersion": "midgard-watcher-user-event-snapshot-v1",
       "observationSchemaVersion": "midgard-watcher-user-event-observation-v1",
@@ -265,7 +295,14 @@
     },
     "settlementIndexer": {
       "status": "PASS",
-      "independentAudit": "PASS_full_restart_replay_canonical_transaction_order_aggregate_bounds_and_hostile_probes",
+      "reviewRecord": {
+        "reviewedAtRev": "d9d1c793ef93ede98cc36f67003c78d0d0de0096",
+        "reviewedPaths": [
+          "demo/midgard-watcher/src/settlement-indexer.ts",
+          "demo/midgard-watcher/tests/settlement-indexer.test.ts"
+        ],
+        "summary": "Parent-program review, not a second-party audit: full restart replay, canonical transaction order, aggregate bounds and hostile probes passed against the settlement indexer and its focused suite at this revision."
+      },
       "policySchemaVersion": "midgard-watcher-settlement-indexer-policy-v1",
       "snapshotSchemaVersion": "midgard-watcher-settlement-snapshot-v1",
       "observationSchemaVersion": "midgard-watcher-settlement-observation-v1",
@@ -282,7 +319,14 @@
     },
     "proofThreadIndexer": {
       "status": "PASS",
-      "independentAudit": "PASS_full_restart_replay_revision_monotonicity_canonical_transaction_order_and_aggregate_bounds",
+      "reviewRecord": {
+        "reviewedAtRev": "d9d1c793ef93ede98cc36f67003c78d0d0de0096",
+        "reviewedPaths": [
+          "demo/midgard-watcher/src/proof-thread-indexer.ts",
+          "demo/midgard-watcher/tests/proof-thread-indexer.test.ts"
+        ],
+        "summary": "Parent-program review, not a second-party audit: full restart replay, revision monotonicity, canonical transaction order and aggregate bounds passed against the proof-thread indexer and its focused suite at this revision."
+      },
       "policySchemaVersion": "midgard-watcher-proof-thread-policy-v1",
       "journalSchemaVersion": "midgard-watcher-proof-thread-journal-v1",
       "layoutSchemaVersion": "midgard-watcher-proof-thread-layout-v1",
@@ -299,7 +343,14 @@
     },
     "ruleBundle": {
       "status": "PASS",
-      "independentAudit": "PASS_parent_found_and_closed_forgeable_verified_summary_boundary",
+      "reviewRecord": {
+        "reviewedAtRev": "4acf68215c76bbac72c5a7f35962c611ce3b92da",
+        "reviewedPaths": [
+          "demo/midgard-watcher/src/rule-bundle-v1.ts",
+          "demo/midgard-watcher/tests/rule-bundle-v1.test.ts"
+        ],
+        "summary": "Parent-program review, not a second-party audit: the parent found and closed the forgeable verified-summary boundary in the rule bundle and its focused suite at this revision."
+      },
       "schemaVersion": "midgard-watcher-rule-bundle-v1",
       "bundleVersion": 1,
       "authorityPolicy": "raw_signed_W02_authority_reverified_on_every_security_load",

@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "@typescript-eslint/parser";
 import { parseDocument } from "yaml";
@@ -27,16 +29,230 @@ const execGit = (args, encoding = "buffer") => {
 };
 const readIndexedFile = (path, encoding = "buffer") =>
   execGit(["show", `:${path}`], encoding);
+const dependencyMapPath =
+  "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json";
+// `--map-under-test=` lets the behavioural self-test
+// (verify-canonical-v1-watcher-dependency-map-self-test.mjs) drive this exact
+// gate against a mutated copy of the map. Only the map is redirected: git
+// history, the staged watcher sources, the CI workflows and every other input
+// stay the real ones, so a seeded provenance claim is judged against reality
+// rather than against a fixture of its own choosing.
+const mapUnderTestArgument = process.argv
+  .slice(2)
+  .find((argument) => argument.startsWith("--map-under-test="));
 const dependencyMap = JSON.parse(
-  readIndexedFile(
-    "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
-    "utf8",
-  ),
+  mapUnderTestArgument === undefined
+    ? readIndexedFile(dependencyMapPath, "utf8")
+    : readFileSync(
+        resolve(mapUnderTestArgument.slice("--map-under-test=".length)),
+        "utf8",
+      ),
 );
 
 const fail = (message) => {
   throw new Error(`Watcher dependency map verification failed: ${message}`);
 };
+
+// Git-authority primitives (#537). Every provenance claim this file makes is a
+// claim about Git history, so it is asked of Git instead of being compared to a
+// second hardcoded copy of itself. The exemplar is
+// demo/scripts/verify-canonical-v1-format-registry.mjs: 40-hex shape check,
+// `git merge-base --is-ancestor <rev> HEAD`, and a byte-exact `git show
+// <rev>:<path>`. Only immutable historical bytes are bound, so no binding here
+// can go stale on a legitimate commit — the failure mode that retired the
+// staged-tree identity this block replaces.
+const isFullCommitSha = (value) =>
+  typeof value === "string" && /^[0-9a-f]{40}$/u.test(value);
+const isSha256Hex = (value) =>
+  typeof value === "string" && /^[0-9a-f]{64}$/u.test(value);
+const isRepositoryRelativePath = (value) =>
+  typeof value === "string" &&
+  value.length > 0 &&
+  !value.startsWith("/") &&
+  !value.split("/").includes("..");
+const gitCommandSucceeds = (args) => {
+  try {
+    execFileSync("git", args, {
+      cwd: repositoryRoot,
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+};
+const isAncestorOf = (ancestor, descendant) =>
+  gitCommandSucceeds(["merge-base", "--is-ancestor", ancestor, descendant]);
+const isAncestorOfHead = (revision) => isAncestorOf(revision, "HEAD");
+/** Historical bytes at a revision, or null when the path is absent there. */
+const showAtRevision = (revision, path) => {
+  try {
+    return execFileSync("git", ["show", `${revision}:${path}`], {
+      cwd: repositoryRoot,
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: 128 * 1024 * 1024,
+    });
+  } catch {
+    return null;
+  }
+};
+const gitOutput = (args) => {
+  try {
+    return execFileSync("git", args, {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return null;
+  }
+};
+const sha256Hex = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+// #537: the W13-W17/W23 rows used to carry an `independentAudit` prose string
+// compared only to a hardcoded copy of itself in this file, so editing both
+// literals passed CI, and "independent" named no second party that could have
+// been independent of anything. Each is now a `reviewRecord` whose falsifiable
+// content is Git: `reviewedAtRev` must be a real 40-hex ancestor of HEAD that
+// actually changed the reviewed paths, and every reviewed path must resolve
+// byte-exactly at that revision. `summary` is prose for humans and is NEVER
+// evidence — it is checked only for being a non-empty string, so no assertion
+// in this file can be satisfied by a sentence. A record therefore states what
+// content was reviewed and when; if the reviewed files have moved since, that
+// is visible rather than hidden, which is the whole point.
+const REVIEW_RECORD_FIELDS = new Set([
+  "reviewedAtRev",
+  "reviewedPaths",
+  "summary",
+  "secondPartyAudit",
+]);
+const SECOND_PARTY_AUDIT_FIELDS = new Set(["auditor", "rev", "reportDigest"]);
+// The optional slot a genuine external audit would fill. It is absent
+// everywhere today — the honest state — and is validated structurally whenever
+// it appears, so the schema exists before the first real second-party report
+// rather than being invented under deadline.
+const verifySecondPartyAudit = (audit, label) => {
+  if (audit === null || typeof audit !== "object" || Array.isArray(audit)) {
+    fail(`${label} secondPartyAudit must be an object when present`);
+  }
+  for (const field of Object.keys(audit)) {
+    if (!SECOND_PARTY_AUDIT_FIELDS.has(field)) {
+      fail(`${label} secondPartyAudit carries the unknown field ${field}`);
+    }
+  }
+  if (typeof audit.auditor !== "string" || audit.auditor.trim().length === 0) {
+    fail(`${label} secondPartyAudit.auditor must be a non-empty string`);
+  }
+  if (!isFullCommitSha(audit.rev)) {
+    fail(
+      `${label} secondPartyAudit.rev must be a full 40-character Git commit`,
+    );
+  }
+  if (!isAncestorOfHead(audit.rev)) {
+    fail(
+      `${label} secondPartyAudit.rev ${audit.rev} is not an ancestor of HEAD`,
+    );
+  }
+  if (!isSha256Hex(audit.reportDigest)) {
+    fail(
+      `${label} secondPartyAudit.reportDigest must be a 64-character SHA-256 hex digest`,
+    );
+  }
+};
+const verifyReviewRecord = (record, label, requiredReviewedPaths) => {
+  if (record === null || typeof record !== "object" || Array.isArray(record)) {
+    fail(`${label} reviewRecord must be an object`);
+  }
+  for (const field of Object.keys(record)) {
+    if (!REVIEW_RECORD_FIELDS.has(field)) {
+      fail(`${label} reviewRecord carries the unknown field ${field}`);
+    }
+  }
+  if (!isFullCommitSha(record.reviewedAtRev)) {
+    fail(
+      `${label} reviewRecord.reviewedAtRev must be a full 40-character Git commit`,
+    );
+  }
+  if (!isAncestorOfHead(record.reviewedAtRev)) {
+    fail(
+      `${label} reviewRecord.reviewedAtRev ${record.reviewedAtRev} is not an ancestor of HEAD`,
+    );
+  }
+  const reviewedPaths = record.reviewedPaths;
+  if (
+    !Array.isArray(reviewedPaths) ||
+    reviewedPaths.length === 0 ||
+    new Set(reviewedPaths).size !== reviewedPaths.length ||
+    !reviewedPaths.every(isRepositoryRelativePath)
+  ) {
+    fail(
+      `${label} reviewRecord.reviewedPaths must be a non-empty array of unique repository-relative paths without '..'`,
+    );
+  }
+  const missingReviewedPaths = requiredReviewedPaths.filter(
+    (requiredPath) => !reviewedPaths.includes(requiredPath),
+  );
+  if (missingReviewedPaths.length !== 0) {
+    fail(
+      `${label} reviewRecord.reviewedPaths does not cover ${missingReviewedPaths.join(", ")}`,
+    );
+  }
+  for (const reviewedPath of reviewedPaths) {
+    if (showAtRevision(record.reviewedAtRev, reviewedPath) === null) {
+      fail(
+        `${label} reviewRecord.reviewedAtRev ${record.reviewedAtRev} does not contain ${reviewedPath}`,
+      );
+    }
+  }
+  // A revision that never touched the reviewed content cannot be the revision
+  // that content was reviewed at, so an arbitrary ancestor cannot be pasted in.
+  const lastChangingRevision = gitOutput([
+    "rev-list",
+    "-1",
+    record.reviewedAtRev,
+    "--",
+    ...reviewedPaths,
+  ]);
+  if (lastChangingRevision !== record.reviewedAtRev) {
+    fail(
+      `${label} reviewRecord.reviewedAtRev ${record.reviewedAtRev} did not change the reviewed paths (git reports ${lastChangingRevision ?? "no such commit"})`,
+    );
+  }
+  if (
+    typeof record.summary !== "string" ||
+    record.summary.trim().length === 0
+  ) {
+    fail(`${label} reviewRecord.summary must be non-empty prose`);
+  }
+  if (record.secondPartyAudit !== undefined) {
+    verifySecondPartyAudit(record.secondPartyAudit, label);
+  }
+};
+// The retired field cannot come back anywhere in the map, including on rows
+// that never carried it (W25, W26 and the F30 conclusion), whose evidence is
+// the runner-measured focused-test counts pinned below and in
+// demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs.
+const retiredMapFields = (value, path = "$") => {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry, index) =>
+      retiredMapFields(entry, `${path}[${index}]`),
+    );
+  }
+  if (value === null || typeof value !== "object") {
+    return [];
+  }
+  return Object.entries(value).flatMap(([key, entry]) =>
+    key === "independentAudit"
+      ? [`${path}.${key}`]
+      : retiredMapFields(entry, `${path}.${key}`),
+  );
+};
+const retiredAuditFields = retiredMapFields(dependencyMap);
+if (retiredAuditFields.length !== 0) {
+  fail(
+    `the retired independentAudit field reappeared at ${retiredAuditFields.join(", ")}; a review claim must be a git-bound reviewRecord`,
+  );
+}
 
 if (
   dependencyMap.schemaVersion !==
@@ -1104,6 +1320,13 @@ for (const [name, requiredEvidenceCommand] of [
     "Verify canonical watcher focused-test evidence",
     "node demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs",
   ],
+  // #537: a gate whose provenance bindings are only asserted by itself is the
+  // defect this lane closed, so the behavioural self-test that seeds hostile
+  // provenance into a copy of the map is itself CI-bound here.
+  [
+    "Self-test the watcher dependency-map git-authority bindings",
+    "node demo/scripts/verify-canonical-v1-watcher-dependency-map-self-test.mjs",
+  ],
 ]) {
   if (
     evidenceCiActiveLines.filter(
@@ -1266,25 +1489,176 @@ const w25AuthorityFixturesBytes = readIndexedFile(
 const watcherOpaqueAuthorityHarnessBytes = readIndexedFile(
   "demo/midgard-watcher/tests/support/watcher-opaque-authority-harness.ts",
 );
-// GOAL_SPEC §13.4 / §0 Integrity (owner amendment 2026-08-01): the staged-tree
-// identity that used to live here recomputed a SHA-256 over every tracked file
-// in the repository — a hand-rolled duplicate of Git's own tree object, which
-// `git rev-parse HEAD^{tree}` already provides. It caught no defect, went stale
-// on every legitimate commit, cost two CI-red heads to converge, and formed a
-// mutually unsatisfiable cycle with the closure manifest. Provenance Git cannot
-// supply — which revisions were reviewed and merged — is still asserted here.
+// GOAL_SPEC §13.4 / §0 Integrity (owner amendment 2026-08-01; git-authority
+// binding 2026-08-06, issue #537). The staged-tree identity that used to live
+// here recomputed a SHA-256 over every tracked file in the repository — a
+// hand-rolled duplicate of Git's own tree object, which `git rev-parse
+// HEAD^{tree}` already provides. It caught no defect, went stale on every
+// legitimate commit, cost two CI-red heads to converge, and formed a mutually
+// unsatisfiable cycle with the closure manifest. What replaced it was three
+// commit SHAs compared to hardcoded copies of themselves in this file: the
+// revisions did not have to exist, be reachable, or contain anything. Each of
+// the three is now asked of Git, and each binds exactly what it claims:
+//
+//   1. `publishedParentRevisions` claims two revisions were reviewed and
+//      merged. Git is asked for the merge: `publishedMergeRevision` must be an
+//      ancestor of HEAD whose parent list is exactly those two revisions in
+//      that order, and the map artifact's bytes at each parent must hash to the
+//      declared digest.
+//   2. `sourceRevision` claims the revision this artifact was first published
+//      at. It must be an ancestor of HEAD and of both reviewed parents, and the
+//      artifact's bytes there must hash to the declared digest.
+//   3. `baseRevision` claims the upstream base both reviewed parents descend
+//      from, before this artifact existed. It must be an ancestor of HEAD and
+//      of both parents, its tree must be exactly the declared tree object, and
+//      the artifact must be absent there.
+//
+// Every bound byte is historical and therefore immutable, so a legitimate
+// commit to the current tree can never falsify these bindings.
+const authority = dependencyMap.authority;
 if (
-  JSON.stringify(dependencyMap.authority?.publishedParentRevisions) !==
-    JSON.stringify([
-      "2b755a776d6af4a57d877633485ca0701e4cc51d",
-      "d8fcc0f74f659fe614dc215dcef0f3d2c9b16590",
-    ]) ||
-  dependencyMap.authority?.sourceRevision !==
-    "4acf68215c76bbac72c5a7f35962c611ce3b92da" ||
-  dependencyMap.authority?.baseRevision !==
-    "8bae9403a13124f647f215999848ff5c82784e37"
+  authority === null ||
+  typeof authority !== "object" ||
+  Array.isArray(authority)
 ) {
-  fail("authority must bind both reviewed merge parents and revisions");
+  fail("authority must be an object");
+}
+if (authority.artifactPath !== dependencyMapPath) {
+  fail(`authority.artifactPath must be ${dependencyMapPath}`);
+}
+const publishedParentRevisions = authority.publishedParentRevisions;
+if (
+  !Array.isArray(publishedParentRevisions) ||
+  publishedParentRevisions.length !== 2 ||
+  !publishedParentRevisions.every(isFullCommitSha)
+) {
+  fail(
+    "authority.publishedParentRevisions must be exactly two full 40-character Git commits",
+  );
+}
+// Reachability is checked per revision before the merge shape, so a fabricated
+// revision is named by its own field rather than reported as a merge mismatch.
+for (const [index, parentRevision] of publishedParentRevisions.entries()) {
+  if (!isAncestorOfHead(parentRevision)) {
+    fail(
+      `authority.publishedParentRevisions[${index}] ${parentRevision} is not an ancestor of HEAD`,
+    );
+  }
+}
+if (!isFullCommitSha(authority.publishedMergeRevision)) {
+  fail(
+    "authority.publishedMergeRevision must be a full 40-character Git commit",
+  );
+}
+if (!isAncestorOfHead(authority.publishedMergeRevision)) {
+  fail(
+    `authority.publishedMergeRevision ${authority.publishedMergeRevision} is not an ancestor of HEAD`,
+  );
+}
+const publishedMergeParentLine = gitOutput([
+  "rev-list",
+  "--parents",
+  "-1",
+  authority.publishedMergeRevision,
+]);
+if (
+  publishedMergeParentLine !==
+  [authority.publishedMergeRevision, ...publishedParentRevisions].join(" ")
+) {
+  fail(
+    `authority.publishedMergeRevision ${authority.publishedMergeRevision} does not merge exactly ${publishedParentRevisions.join(" and ")} in that order (git reports: ${publishedMergeParentLine ?? "no such commit"})`,
+  );
+}
+const publishedParentArtifactSha256 = authority.publishedParentArtifactSha256;
+if (
+  !Array.isArray(publishedParentArtifactSha256) ||
+  publishedParentArtifactSha256.length !== publishedParentRevisions.length ||
+  !publishedParentArtifactSha256.every(isSha256Hex)
+) {
+  fail(
+    "authority.publishedParentArtifactSha256 must be one 64-character SHA-256 hex digest per published parent",
+  );
+}
+for (const [index, parentRevision] of publishedParentRevisions.entries()) {
+  const parentArtifactBytes = showAtRevision(parentRevision, dependencyMapPath);
+  if (parentArtifactBytes === null) {
+    fail(
+      `authority.publishedParentRevisions[${index}] ${parentRevision} does not contain ${dependencyMapPath}`,
+    );
+  }
+  const parentArtifactDigest = sha256Hex(parentArtifactBytes);
+  if (parentArtifactDigest !== publishedParentArtifactSha256[index]) {
+    fail(
+      `authority.publishedParentArtifactSha256[${index}] declares ${publishedParentArtifactSha256[index]}, but ${dependencyMapPath} at ${parentRevision} hashes to ${parentArtifactDigest}`,
+    );
+  }
+}
+if (!isFullCommitSha(authority.sourceRevision)) {
+  fail("authority.sourceRevision must be a full 40-character Git commit");
+}
+if (!isAncestorOfHead(authority.sourceRevision)) {
+  fail(
+    `authority.sourceRevision ${authority.sourceRevision} is not an ancestor of HEAD`,
+  );
+}
+for (const [index, parentRevision] of publishedParentRevisions.entries()) {
+  if (!isAncestorOf(authority.sourceRevision, parentRevision)) {
+    fail(
+      `authority.sourceRevision ${authority.sourceRevision} is not an ancestor of publishedParentRevisions[${index}] ${parentRevision}`,
+    );
+  }
+}
+if (!isSha256Hex(authority.sourceArtifactSha256)) {
+  fail(
+    "authority.sourceArtifactSha256 must be a 64-character SHA-256 hex digest",
+  );
+}
+const sourceArtifactBytes = showAtRevision(
+  authority.sourceRevision,
+  dependencyMapPath,
+);
+if (sourceArtifactBytes === null) {
+  fail(
+    `authority.sourceRevision ${authority.sourceRevision} does not contain ${dependencyMapPath}`,
+  );
+}
+const sourceArtifactDigest = sha256Hex(sourceArtifactBytes);
+if (sourceArtifactDigest !== authority.sourceArtifactSha256) {
+  fail(
+    `authority.sourceArtifactSha256 declares ${authority.sourceArtifactSha256}, but ${dependencyMapPath} at ${authority.sourceRevision} hashes to ${sourceArtifactDigest}`,
+  );
+}
+if (!isFullCommitSha(authority.baseRevision)) {
+  fail("authority.baseRevision must be a full 40-character Git commit");
+}
+if (!isAncestorOfHead(authority.baseRevision)) {
+  fail(
+    `authority.baseRevision ${authority.baseRevision} is not an ancestor of HEAD`,
+  );
+}
+for (const [index, parentRevision] of publishedParentRevisions.entries()) {
+  if (!isAncestorOf(authority.baseRevision, parentRevision)) {
+    fail(
+      `authority.baseRevision ${authority.baseRevision} is not an ancestor of publishedParentRevisions[${index}] ${parentRevision}`,
+    );
+  }
+}
+if (!isFullCommitSha(authority.baseTree)) {
+  fail("authority.baseTree must be a full 40-character Git tree object");
+}
+const baseTree = gitOutput(["rev-parse", `${authority.baseRevision}^{tree}`]);
+if (baseTree !== authority.baseTree) {
+  fail(
+    `authority.baseTree declares ${authority.baseTree}, but git resolves ${authority.baseRevision}^{tree} to ${baseTree ?? "no such tree"}`,
+  );
+}
+if (authority.baseArtifactState !== "absent_before_first_publication") {
+  fail("authority.baseArtifactState must be absent_before_first_publication");
+}
+if (showAtRevision(authority.baseRevision, dependencyMapPath) !== null) {
+  fail(
+    `authority.baseRevision ${authority.baseRevision} already contains ${dependencyMapPath}, so it is not the pre-publication base`,
+  );
 }
 if (
   strictConfiguration?.schemaVersion !== "midgard-watcher-config-v1" ||
@@ -1673,8 +2047,6 @@ if (
   rollbackEngine.maximumPostFinalityRecoveryDepth !== 2160 ||
   rollbackEngine.transitionHistoryPerEpoch !== 128 ||
   rollbackEngine.status !== "PASS" ||
-  rollbackEngine.independentAudit !==
-    "PASS_all_original_and_residual_hostile_probes" ||
   rollbackEngine.rewindPolicy !==
     "deterministic_dependency_cascade_with_shared_input_retention_and_orphan_consumption_restoration" ||
   rollbackEngine.restartPolicy !==
@@ -1691,6 +2063,10 @@ if (
 ) {
   fail("W13 rollback-engine evidence is incomplete or stale");
 }
+verifyReviewRecord(rollbackEngine.reviewRecord, "W13 rollback-engine", [
+  "demo/midgard-watcher/src/rollback-engine.ts",
+  "demo/midgard-watcher/tests/rollback-engine.test.ts",
+]);
 const rollbackEngineSource = rollbackEngineBytes.toString("utf8");
 for (const requiredSymbol of [
   "WATCHER_ROLLBACK_STATE_V1_SCHEMA_VERSION",
@@ -1732,8 +2108,6 @@ const stateQueueIndexer =
   dependencyMap.requiredWatcherPackage?.stateQueueIndexer;
 if (
   stateQueueIndexer?.status !== "LIBRARY_PASS_CANONICAL_WIRE_PROVENANCE_OPEN" ||
-  stateQueueIndexer.independentAudit !==
-    "PASS_library_remediated_original_and_spent_journal_hostile_probes" ||
   stateQueueIndexer.policySchemaVersion !==
     "midgard-watcher-state-queue-indexer-policy-v1" ||
   stateQueueIndexer.snapshotSchemaVersion !==
@@ -1758,6 +2132,10 @@ if (
 ) {
   fail("W14 state-queue-indexer evidence is incomplete or stale");
 }
+verifyReviewRecord(stateQueueIndexer.reviewRecord, "W14 state-queue-indexer", [
+  "demo/midgard-watcher/src/state-queue-indexer.ts",
+  "demo/midgard-watcher/tests/state-queue-indexer.test.ts",
+]);
 const stateQueueIndexerSource = stateQueueIndexerBytes.toString("utf8");
 for (const requiredSymbol of [
   "WATCHER_STATE_QUEUE_INDEXER_POLICY_V1_SCHEMA_VERSION",
@@ -1783,8 +2161,6 @@ for (const requiredSymbol of [
 const userEventIndexer = dependencyMap.requiredWatcherPackage?.userEventIndexer;
 if (
   userEventIndexer?.status !== "PASS" ||
-  userEventIndexer.independentAudit !==
-    "PASS_source_replay_and_residual_boundary_review" ||
   userEventIndexer.policySchemaVersion !==
     "midgard-watcher-user-event-indexer-policy-v1" ||
   userEventIndexer.snapshotSchemaVersion !==
@@ -1809,6 +2185,10 @@ if (
 ) {
   fail("W15 user-event-indexer evidence is incomplete or stale");
 }
+verifyReviewRecord(userEventIndexer.reviewRecord, "W15 user-event-indexer", [
+  "demo/midgard-watcher/src/user-event-indexer.ts",
+  "demo/midgard-watcher/tests/user-event-indexer.test.ts",
+]);
 const userEventIndexerSource = userEventIndexerBytes.toString("utf8");
 for (const requiredSymbol of [
   "WATCHER_USER_EVENT_INDEXER_POLICY_V1_SCHEMA_VERSION",
@@ -1835,8 +2215,6 @@ const settlementIndexer =
   dependencyMap.requiredWatcherPackage?.settlementIndexer;
 if (
   settlementIndexer?.status !== "PASS" ||
-  settlementIndexer.independentAudit !==
-    "PASS_full_restart_replay_canonical_transaction_order_aggregate_bounds_and_hostile_probes" ||
   settlementIndexer.policySchemaVersion !==
     "midgard-watcher-settlement-indexer-policy-v1" ||
   settlementIndexer.snapshotSchemaVersion !==
@@ -1863,6 +2241,10 @@ if (
 ) {
   fail("W16 settlement-indexer evidence is incomplete or stale");
 }
+verifyReviewRecord(settlementIndexer.reviewRecord, "W16 settlement-indexer", [
+  "demo/midgard-watcher/src/settlement-indexer.ts",
+  "demo/midgard-watcher/tests/settlement-indexer.test.ts",
+]);
 const settlementIndexerSource = settlementIndexerBytes.toString("utf8");
 for (const requiredSymbol of [
   "WATCHER_SETTLEMENT_INDEXER_POLICY_V1_SCHEMA_VERSION",
@@ -1889,8 +2271,6 @@ const proofThreadIndexer =
   dependencyMap.requiredWatcherPackage?.proofThreadIndexer;
 if (
   proofThreadIndexer?.status !== "PASS" ||
-  proofThreadIndexer.independentAudit !==
-    "PASS_full_restart_replay_revision_monotonicity_canonical_transaction_order_and_aggregate_bounds" ||
   proofThreadIndexer.policySchemaVersion !==
     "midgard-watcher-proof-thread-policy-v1" ||
   proofThreadIndexer.journalSchemaVersion !==
@@ -1917,6 +2297,14 @@ if (
 ) {
   fail("W17 proof-thread-indexer evidence is incomplete or stale");
 }
+verifyReviewRecord(
+  proofThreadIndexer.reviewRecord,
+  "W17 proof-thread-indexer",
+  [
+    "demo/midgard-watcher/src/proof-thread-indexer.ts",
+    "demo/midgard-watcher/tests/proof-thread-indexer.test.ts",
+  ],
+);
 const proofThreadIndexerSource = proofThreadIndexerBytes.toString("utf8");
 for (const requiredSymbol of [
   "WATCHER_PROOF_THREAD_POLICY_V1_SCHEMA_VERSION",
@@ -1943,8 +2331,6 @@ for (const requiredSymbol of [
 const ruleBundle = dependencyMap.requiredWatcherPackage?.ruleBundle;
 if (
   ruleBundle?.status !== "PASS" ||
-  ruleBundle.independentAudit !==
-    "PASS_parent_found_and_closed_forgeable_verified_summary_boundary" ||
   ruleBundle.schemaVersion !== "midgard-watcher-rule-bundle-v1" ||
   ruleBundle.bundleVersion !== 1 ||
   ruleBundle.authorityPolicy !==
@@ -1962,6 +2348,10 @@ if (
 ) {
   fail("W23 rule-bundle evidence is incomplete or stale");
 }
+verifyReviewRecord(ruleBundle.reviewRecord, "W23 rule-bundle", [
+  "demo/midgard-watcher/src/rule-bundle-v1.ts",
+  "demo/midgard-watcher/tests/rule-bundle-v1.test.ts",
+]);
 const blockReplay = dependencyMap.requiredWatcherPackage?.blockReplay;
 if (
   blockReplay?.status !== "PASS" ||
