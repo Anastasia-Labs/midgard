@@ -1,11 +1,21 @@
 {
   "schema": "midgard.canonical-v1-proof-family-q1x.v1",
   "version": 1,
-  "goalIds": ["Q10", "Q11", "Q12", "Q14"],
+  "goalIds": [
+    "Q10",
+    "Q11",
+    "Q12",
+    "Q14"
+  ],
   "issue": 482,
-  "note": "Binds GOAL_SPEC.md 9.1 outputs 5 through 9 for the four foundational proof families whose outputs 1 through 4 were measured PASS at issue #481. Outputs 1 through 4 are inherited and are NOT re-claimed here. This artifact records LOCAL_PASS or OPEN per family per output and claims no Q57/QG3 LIVE_PASS. Output 5 remains OPEN for all four families, but for a different and far more specific reason than before: the maximum/adversarial fixture now EXISTS and is runner-measured (issue #481 residual), and what it measures is that the L1 envelope is exhaustible. Forcing branch levels into the step-01 membership proof costs a measured 276 complete-signed-transaction bytes per level, which exhausts the 16,384-byte envelope at branch level 21 to 23 depending on family, and reaching that depth costs about 2^84 fixed-target digest searches. That is expensive but inside a 2^128 adversary, so 'maximum fit' is not true at the structural maximum and may not be published as a pass. The second adversarial axis, spend-input preimage cardinality, is still unexercised.",
+  "note": "Binds GOAL_SPEC.md 9.1 outputs 5 through 9 for the four foundational proof families whose outputs 1 through 4 were measured PASS at issue #481. Outputs 1 through 4 are inherited and are NOT re-claimed here. This artifact records LOCAL_PASS or OPEN per family per output and claims no Q57/QG3 LIVE_PASS. Output 5 was OPEN for all four families at issue #482 because the maximum/adversarial fixture measured that the L1 envelope is EXHAUSTIBLE on the redeemer-carried route: every forced MPF branch level costs a measured 276 complete-signed-transaction bytes, and reaching the level that exhausts the 16,384-byte envelope is a fixed-target search of about 2^(4i) digests. That measurement stands: it is re-run here, its marginal cost is unchanged, and finding Q1X-F5 keeps it. What changed at issue #545 is that the route is no longer the only one. All four families were wired onto published-chunk carriage (midgard/fraud_proofs/chunked_inclusion_v1 delegating to the merkelized mpf_chunked_verify validator over midgard/mpf_chunked_proof_v1), whose step transaction is byte-identical at branch level 22 and at branch level 32 \u2014 the depth a 2^128 adversary reaches. The carriage dispatch this adds costs the redeemer-carried route a measured constant of about 700 script bytes, lowering ITS ceiling from branch level 21..23 to 19..20 (2^76 work at the cheapest family); that shift is recorded in adversarialDepthBound.constantShiftNote rather than hidden. Output 5 is re-decided per family: LOCAL_PASS where the chunked route is emulator-measured end to end AND no adversarial axis remains unexercised for that family (Q12, Q14); still OPEN for Q10 and Q11, whose second axis, spend-input preimage cardinality, is unmeasured (finding Q1X-F6).",
   "inheritedOutputs": {
-    "outputs": [1, 2, 3, 4],
+    "outputs": [
+      1,
+      2,
+      3,
+      4
+    ],
     "closedBy": 481,
     "measured": {
       "Q10": "8 of 8 Aiken selectors (1 positive + 1 valid-block negative in each of 4 steps), 0 failures",
@@ -30,12 +40,18 @@
       {
         "file": "demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts",
         "helper": "expectProofFitV1",
-        "families": ["Q10"]
+        "families": [
+          "Q10"
+        ]
       },
       {
         "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
         "helper": "expectProofFitV1",
-        "families": ["Q12", "Q14", "Q11"]
+        "families": [
+          "Q12",
+          "Q14",
+          "Q11"
+        ]
       }
     ]
   },
@@ -89,13 +105,13 @@
           },
           {
             "stage": "step-01",
-            "bytes": 10224,
-            "l1ByteMargin": 6160
+            "bytes": 10911,
+            "l1ByteMargin": 5473
           },
           {
             "stage": "step-02",
-            "bytes": 10269,
-            "l1ByteMargin": 6115
+            "bytes": 10948,
+            "l1ByteMargin": 5436
           },
           {
             "stage": "step-03",
@@ -113,9 +129,12 @@
             "l1ByteMargin": 15069
           }
         ],
-        "worstByteMargin": 6115,
+        "worstByteMargin": 5436,
         "worstByteMarginStage": "step-02",
-        "removalTransactionBytes": [2167, 1315],
+        "removalTransactionBytes": [
+          2167,
+          1315
+        ],
         "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage. Exact removal execution units vary run to run because the removal validity interval is derived from emulator.now(), so they are not pinned as fixed numbers here; the threshold assertion is the binding claim."
       },
       "maximumProofFit": {
@@ -124,17 +143,37 @@
         "l2TransactionCount": 22,
         "membershipProofCborBytes": 697,
         "stages": [
-          { "stage": "init", "bytes": 7862, "l1ByteMargin": 8522 },
-          { "stage": "step-01", "bytes": 11460, "l1ByteMargin": 4924 },
-          { "stage": "step-02", "bytes": 11505, "l1ByteMargin": 4879 },
-          { "stage": "step-03", "bytes": 4244, "l1ByteMargin": 12140 },
-          { "stage": "step-04", "bytes": 9295, "l1ByteMargin": 7089 }
+          {
+            "stage": "init",
+            "bytes": 7862,
+            "l1ByteMargin": 8522
+          },
+          {
+            "stage": "step-01",
+            "bytes": 12147,
+            "l1ByteMargin": 4237
+          },
+          {
+            "stage": "step-02",
+            "bytes": 12184,
+            "l1ByteMargin": 4200
+          },
+          {
+            "stage": "step-03",
+            "bytes": 4244,
+            "l1ByteMargin": 12140
+          },
+          {
+            "stage": "step-04",
+            "bytes": 9295,
+            "l1ByteMargin": 7089
+          }
         ],
-        "worstByteMargin": 4879,
+        "worstByteMargin": 4200,
         "worstByteMarginStage": "step-02",
-        "largestStageBytes": 11505,
-        "envelopeExhaustionBranchLevel": 22,
-        "log2WorkToExhaustEnvelope": 88,
+        "largestStageBytes": 12184,
+        "envelopeExhaustionBranchLevel": 20,
+        "log2WorkToExhaustEnvelope": 80,
         "removalMeasured": true,
         "removalNote": "The removal transactions carry no membership proof and are therefore invariant in this axis; they are measured against the same thresholds by the same runner-executed helper but their exact byte count varies by one byte run to run with the emulator-derived validity interval, so it is not pinned here."
       }
@@ -186,8 +225,8 @@
           },
           {
             "stage": "step-01",
-            "bytes": 10281,
-            "l1ByteMargin": 6103
+            "bytes": 11000,
+            "l1ByteMargin": 5384
           },
           {
             "stage": "step-02",
@@ -196,13 +235,13 @@
           },
           {
             "stage": "step-03",
-            "bytes": 3455,
-            "l1ByteMargin": 12929
+            "bytes": 3929,
+            "l1ByteMargin": 12455
           },
           {
             "stage": "step-04",
-            "bytes": 8560,
-            "l1ByteMargin": 7824
+            "bytes": 9036,
+            "l1ByteMargin": 7348
           },
           {
             "stage": "remove",
@@ -210,9 +249,11 @@
             "l1ByteMargin": 14517
           }
         ],
-        "worstByteMargin": 6103,
+        "worstByteMargin": 5384,
         "worstByteMarginStage": "step-01",
-        "removalTransactionBytes": [1867],
+        "removalTransactionBytes": [
+          1867
+        ],
         "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage."
       },
       "maximumProofFit": {
@@ -221,17 +262,37 @@
         "l2TransactionCount": 22,
         "membershipProofCborBytes": 697,
         "stages": [
-          { "stage": "init", "bytes": 7862, "l1ByteMargin": 8522 },
-          { "stage": "step-01", "bytes": 11517, "l1ByteMargin": 4867 },
-          { "stage": "step-02", "bytes": 4212, "l1ByteMargin": 12172 },
-          { "stage": "step-03", "bytes": 3455, "l1ByteMargin": 12929 },
-          { "stage": "step-04", "bytes": 9652, "l1ByteMargin": 6732 }
+          {
+            "stage": "init",
+            "bytes": 7862,
+            "l1ByteMargin": 8522
+          },
+          {
+            "stage": "step-01",
+            "bytes": 12236,
+            "l1ByteMargin": 4148
+          },
+          {
+            "stage": "step-02",
+            "bytes": 4212,
+            "l1ByteMargin": 12172
+          },
+          {
+            "stage": "step-03",
+            "bytes": 3929,
+            "l1ByteMargin": 12455
+          },
+          {
+            "stage": "step-04",
+            "bytes": 10128,
+            "l1ByteMargin": 6256
+          }
         ],
-        "worstByteMargin": 4867,
+        "worstByteMargin": 4148,
         "worstByteMarginStage": "step-01",
-        "largestStageBytes": 11517,
-        "envelopeExhaustionBranchLevel": 22,
-        "log2WorkToExhaustEnvelope": 88,
+        "largestStageBytes": 12236,
+        "envelopeExhaustionBranchLevel": 20,
+        "log2WorkToExhaustEnvelope": 80,
         "removalMeasured": true,
         "removalNote": "Depth-invariant; measured against the same thresholds but not byte-pinned. This family is the only one whose maximum fixture also deepens a NON-membership proof: the step-04 txs-non-membership proof is grinded against the phantom input's producing transaction id and reaches the same 697 CBOR bytes."
       }
@@ -261,7 +322,9 @@
       "terminalStepModule": "demo/midgard-fault-proofs/src/submit-invalid-range-step-02.ts",
       "emulator": {
         "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
-        "titles": ["proves and removes a tail invalid-range block end to end"],
+        "titles": [
+          "proves and removes a tail invalid-range block end to end"
+        ],
         "measuredLifecycleTitle": "proves and removes a tail invalid-range block end to end",
         "hasValidBlockNegative": false
       },
@@ -275,8 +338,8 @@
           },
           {
             "stage": "step-01",
-            "bytes": 10384,
-            "l1ByteMargin": 6000
+            "bytes": 11019,
+            "l1ByteMargin": 5365
           },
           {
             "stage": "step-02",
@@ -289,9 +352,11 @@
             "l1ByteMargin": 14517
           }
         ],
-        "worstByteMargin": 6000,
+        "worstByteMargin": 5365,
         "worstByteMarginStage": "step-01",
-        "removalTransactionBytes": [1867],
+        "removalTransactionBytes": [
+          1867
+        ],
         "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage."
       },
       "maximumProofFit": {
@@ -300,15 +365,27 @@
         "l2TransactionCount": 11,
         "membershipProofCborBytes": 697,
         "stages": [
-          { "stage": "init", "bytes": 7862, "l1ByteMargin": 8522 },
-          { "stage": "step-01", "bytes": 11766, "l1ByteMargin": 4618 },
-          { "stage": "step-02", "bytes": 7399, "l1ByteMargin": 8985 }
+          {
+            "stage": "init",
+            "bytes": 7862,
+            "l1ByteMargin": 8522
+          },
+          {
+            "stage": "step-01",
+            "bytes": 12401,
+            "l1ByteMargin": 3983
+          },
+          {
+            "stage": "step-02",
+            "bytes": 7399,
+            "l1ByteMargin": 8985
+          }
         ],
-        "worstByteMargin": 4618,
+        "worstByteMargin": 3983,
         "worstByteMarginStage": "step-01",
-        "largestStageBytes": 11766,
-        "envelopeExhaustionBranchLevel": 21,
-        "log2WorkToExhaustEnvelope": 84,
+        "largestStageBytes": 12401,
+        "envelopeExhaustionBranchLevel": 19,
+        "log2WorkToExhaustEnvelope": 76,
         "removalMeasured": true,
         "removalNote": "Depth-invariant; measured against the same thresholds but not byte-pinned. This is the tightest of the four families and is the one the two-depth marginal measurement in adversarialDepthBound is taken from."
       }
@@ -328,7 +405,10 @@
       "titlesConstant": "ZERO_INPUT_FAULT_PROOF_TITLES",
       "daFirstBuilder": "prepareZeroInputFromCanonicalEvidenceV1",
       "prepareVerb": "prepare-zero-input",
-      "submitVerbs": ["submit-zero-input-step-01", "submit-zero-input-step-02"],
+      "submitVerbs": [
+        "submit-zero-input-step-01",
+        "submit-zero-input-step-02"
+      ],
       "resumableStepModules": [
         "demo/midgard-fault-proofs/src/submit-zero-input-step-01.ts"
       ],
@@ -354,8 +434,8 @@
           },
           {
             "stage": "step-01",
-            "bytes": 10020,
-            "l1ByteMargin": 6364
+            "bytes": 10712,
+            "l1ByteMargin": 5672
           },
           {
             "stage": "step-02",
@@ -368,9 +448,11 @@
             "l1ByteMargin": 14517
           }
         ],
-        "worstByteMargin": 6364,
+        "worstByteMargin": 5672,
         "worstByteMarginStage": "step-01",
-        "removalTransactionBytes": [1867],
+        "removalTransactionBytes": [
+          1867
+        ],
         "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage."
       },
       "maximumProofFit": {
@@ -379,15 +461,27 @@
         "l2TransactionCount": 11,
         "membershipProofCborBytes": 697,
         "stages": [
-          { "stage": "init", "bytes": 7718, "l1ByteMargin": 8666 },
-          { "stage": "step-01", "bytes": 11402, "l1ByteMargin": 4982 },
-          { "stage": "step-02", "bytes": 7309, "l1ByteMargin": 9075 }
+          {
+            "stage": "init",
+            "bytes": 7718,
+            "l1ByteMargin": 8666
+          },
+          {
+            "stage": "step-01",
+            "bytes": 12094,
+            "l1ByteMargin": 4290
+          },
+          {
+            "stage": "step-02",
+            "bytes": 7309,
+            "l1ByteMargin": 9075
+          }
         ],
-        "worstByteMargin": 4982,
+        "worstByteMargin": 4290,
         "worstByteMarginStage": "step-01",
-        "largestStageBytes": 11402,
-        "envelopeExhaustionBranchLevel": 23,
-        "log2WorkToExhaustEnvelope": 92,
+        "largestStageBytes": 12094,
+        "envelopeExhaustionBranchLevel": 20,
+        "log2WorkToExhaustEnvelope": 80,
         "removalMeasured": true,
         "removalNote": "Depth-invariant; measured against the same thresholds but not byte-pinned. This family has the most headroom of the four because its challenged transaction spends nothing."
       }
@@ -401,22 +495,23 @@
     "construction": "Two siblings are deterministically grinded per level so that the challenged transaction's hashed path branches at every nibble 0..N-1, each into a DISTINCT nibble slot. Distinct slots are what force a three-child node, which is what makes every on-path proof step serialize as MPF's largest `branch` shape rather than the cheaper `fork` or `leaf`. Candidate keys are a counter written into a fixed buffer, so the fixture is byte-for-byte reproducible.",
     "shallowBranchLevels": 1,
     "deepBranchLevels": 5,
-    "shallowStep01Bytes": 10662,
-    "deepStep01Bytes": 11766,
+    "shallowStep01Bytes": 11297,
+    "deepStep01Bytes": 12401,
     "mpfBranchProofStepCborBytes": 139,
     "proofTransactionBranchLevelBytes": 276,
     "cborVersusTransactionNote": "The 139-byte figure is the MPF library's own compact CBOR cost per branch step, measured separately at levels 1 through 5 with exactly constant differences. The 276-byte figure is the cost in the COMPLETE SIGNED transaction, which is what the L1 envelope measures, and is roughly double because the proof reaches the chain as Plutus data in the step redeemer. Using the smaller number for envelope arithmetic would understate the exposure by a factor of two; both are pinned so that substitution cannot happen silently.",
-    "marginalExecutionMemoryPerBranchLevel": 48139.25,
-    "marginalExecutionStepsPerBranchLevel": 14961966.75,
-    "byteCeiling": 21,
-    "executionMemoryCeiling": 215,
-    "executionStepCeiling": 516,
+    "marginalExecutionMemoryPerBranchLevel": 48237.25,
+    "marginalExecutionStepsPerBranchLevel": 14876758.75,
+    "byteCeiling": 19,
+    "executionMemoryCeiling": 214,
+    "executionStepCeiling": 518,
     "bindingEnvelope": "bytes",
-    "log2WorkToExhaustEnvelope": 84,
+    "log2WorkToExhaustEnvelope": 76,
     "referenceAdversaryLog2Work": 128,
     "referenceAdversaryBranchLevelReach": 32,
     "envelopeExhaustibleByReferenceAdversary": true,
-    "workModel": "Forcing a branch at level i requires a transaction whose hashed path agrees with the challenged transaction's path on i chosen nibbles. That is a fixed-target search, not a birthday search, so it costs about 16^i = 2^(4i) candidate hashings, and the whole ladder is dominated by its last rung."
+    "workModel": "Forcing a branch at level i requires a transaction whose hashed path agrees with the challenged transaction's path on i chosen nibbles. That is a fixed-target search, not a birthday search, so it costs about 16^i = 2^(4i) candidate hashings, and the whole ladder is dominated by its last rung.",
+    "constantShiftNote": "The per-level cost is unchanged at 276 complete-signed-transaction bytes; what moved between issue #482 and issue #545 is the CONSTANT. Every step that can open a trie now carries the carriage dispatch that lets a prover choose published-chunk carriage, which costs a measured ~700 bytes of spending script and lowers this route's ceiling from branch level 21..23 to 19..20. That is the price of the remediation, and it is paid on the route being remediated: the chunked route it buys has a marginal cost of zero bytes per level and is measured out to level 32 (chunkedProofCarriage). Keeping the walk itself in the merkelized mpf_chunked_verify validator rather than inlining it into every step is what holds the shift to ~700 bytes; inlining measured ~3,700 and took this ceiling to 8..9."
   },
   "sharedDaFirstEvidenceGate": {
     "module": "demo/midgard-fault-proofs/src/evidence/prepare-from-evidence-v1.ts",
@@ -446,11 +541,11 @@
       "title": "Maximum/adversarial proof-fit fixture",
       "Q10": "OPEN",
       "Q11": "OPEN",
-      "Q12": "OPEN",
-      "Q14": "OPEN",
-      "evidence": "Two measurements now exist. Issue #482 added the first threshold-enforcing measurement of the complete correction path on the MINIMAL fixture (worst byte margins Q10 6115 at step-02, Q11 6103 at step-01, Q12 6000 at step-01, Q14 6364 at step-01). The #481 residual added the MAXIMUM/adversarial fixture: a deterministically grinded block that forces five all-`branch` levels into each family's step-01 membership proof, and for Q11 into the step-04 non-membership proof as well, run through the real prepare/submit pipeline end to end. Measured worst byte margins at that depth: Q10 4879 at step-02, Q11 4867 at step-01, Q12 4618 at step-01, Q14 4982 at step-01, with every stage inside the 20% execution reserve. The marginal cost of one further level is measured at two real depths: 276 complete-signed-transaction bytes, 48,139 execution memory units and 14,961,967 execution steps.",
-      "whyOpen": "The fixture exists now, and what it measures is that the maximum does NOT fit. Byte fit is the binding envelope (byte ceiling 21 versus execution-memory ceiling 215 and execution-step ceiling 516, all measured), and it is exhausted at branch level 21 to 23 depending on family. Reaching that depth is a fixed-target search costing about 2^84 to 2^92 candidate hashings, which is expensive but inside the 2^128 reference adversary that reaches level 32. Publishing LOCAL_PASS would assert a maximum fit that the measurement contradicts. The second axis in adversarialAxes, spend-input preimage cardinality, is separately still unexercised.",
-      "owner": "Q10/Q11/Q12/Q14, remaining work for issue #483"
+      "Q12": "LOCAL_PASS",
+      "Q14": "LOCAL_PASS",
+      "evidence": "Three measurements now exist. Issue #482 added the first threshold-enforcing measurement of the complete correction path on the MINIMAL fixture; re-run after the #545 wiring its worst byte margins are Q10 5436 at step-02, Q11 5384 at step-01, Q12 5365 at step-01, Q14 5672 at step-01. The #481 residual added the MAXIMUM/adversarial fixture: a deterministically grinded block forcing five all-branch levels into each family's step-01 membership proof, and for Q11 into the step-04 non-membership proof as well, with the marginal cost of one further level measured at two real depths (276 complete-signed-transaction bytes, 48,237 execution memory units, 14,876,759 execution steps) and the resulting envelope ceiling at branch level 19 to 20. Issue #545 added the third: the same real prepare/submit pipeline with the proof carried by published chunks and verified by the merkelized mpf_chunked_verify validator, driven at branch level 22 \u2014 past every family's direct-route ceiling \u2014 end to end for Q14 (worst byte margin 3339 at step-01) and Q12 (worst byte margin 3049 at step-01), each including the publication transaction, both steps and the block removal, every stage inside the 20% execution reserve. The same journey at branch level 32 produces a step-01 transaction of exactly the same 13,045 bytes, pinning the chunked route's marginal cost per proof level at zero.",
+      "whyOpen": "Q12 and Q14 are LOCAL_PASS: their maximum is now measured to FIT, because the depth an adversary can force no longer reaches the step transaction, and neither family carries the second adversarial axis at all (the invalid-range steps operate on the compact transaction and the zero-input family's challenged transaction spends nothing by construction). Q10 and Q11 stay OPEN on that second axis alone: spend-input preimage cardinality (finding Q1X-F6) is still unexercised for them, its binding constraint is different from the membership-depth axis, and the depth remediation says nothing about it. Their membership-depth exposure is wired onto the same carriage seam on-chain and covered by per-step selectors at branch level 22 under both compilers, but no end-to-end emulator measurement of the chunked route exists for them yet.",
+      "owner": "Q12/Q14 closed at issue #545; Q10/Q11 remaining work for issue #483"
     },
     {
       "output": 6,
@@ -499,23 +594,35 @@
       "axis": "MPF membership proof depth",
       "growsWith": "the challenged block's l2_transaction_count",
       "affects": "every step-01 transaction of all four families, which carries tx_membership_proof",
-      "measuredToday": "five forced all-branch levels, run end to end through the real pipeline for every family; the marginal cost of a sixth is measured at two depths and the resulting envelope ceiling is 21 to 23 levels",
-      "note": "This is the dominant adversarial axis and it is now exercised and bounded. The bound is not a pass: see adversarialDepthBound and finding Q1X-F5. Note that the lever is not block size — a larger random block deepens the path only logarithmically — but grinding transactions whose hashed paths branch at consecutive nibbles of the challenged transaction's own path."
+      "measuredToday": "five forced all-branch levels, run end to end through the real pipeline for every family on the redeemer-carried route; the marginal cost of a sixth is measured at two depths and the resulting envelope ceiling is 21 to 23 levels. Issue #545 then measured the published-chunk route at branch level 22 and 32 with an identical step transaction, so the axis is bounded AND remediated.",
+      "note": "This is the dominant adversarial axis. Its cost bound is unchanged and its exhaustion of the redeemer-carried envelope is still true (finding Q1X-F5): what changed is that a prover facing such a proof now has a route that does not carry it in the step transaction at all. The lever is not block size \u2014 a larger random block deepens the path only logarithmically \u2014 but grinding transactions whose hashed paths branch at consecutive nibbles of the challenged transaction's own path.",
+      "affectsGoalIds": [
+        "Q10",
+        "Q11",
+        "Q12",
+        "Q14"
+      ],
+      "remediatedBy": "chunkedProofCarriage"
     },
     {
       "axis": "spend-input preimage cardinality",
       "growsWith": "the number of inputs the challenged transaction spends",
       "affects": "double-spend step-03 (spend-input witnesses) and no-input step-02/step-03",
       "measuredToday": "the minimal input set of each fixture; still unexercised",
-      "note": "Enlarging a native transaction's OUTPUTS does not grow these transactions, because the step redeemer carries native_tx_compact_cbor, whose fields are hashes rather than preimages. Only the paths that carry actual preimages grow. This axis is expected to bind on the spend-inputs WITNESS publication transaction and on execution units rather than on the step transaction itself, because the witness reaches the step as a reference input whose datum is not part of the step transaction's bytes; that expectation is unmeasured, which is precisely why it is still an open axis and not a closed one. See finding Q1X-F6."
+      "note": "Enlarging a native transaction's OUTPUTS does not grow these transactions, because the step redeemer carries native_tx_compact_cbor, whose fields are hashes rather than preimages. Only the paths that carry actual preimages grow. This axis is expected to bind on the spend-inputs WITNESS publication transaction and on execution units rather than on the step transaction itself, because the witness reaches the step as a reference input whose datum is not part of the step transaction's bytes; that expectation is unmeasured, which is precisely why it is still an open axis and not a closed one. See finding Q1X-F6.",
+      "affectsGoalIds": [
+        "Q10",
+        "Q11"
+      ],
+      "remediatedBy": null
     }
   ],
   "residualFindings": [
     {
       "id": "Q1X-F1",
       "severity": "gap",
-      "finding": "Output 5 is not closed for any of the four families. The maximum/adversarial fixture that #482 recorded as missing now exists and is runner-measured, so the reason has changed: the measurement shows the maximum does not fit (Q1X-F5) and one adversarial axis is still unexercised (Q1X-F6). Recorded OPEN, not LOCAL_PASS.",
-      "owner": "issue #483"
+      "finding": "Output 5 is closed for Q12 and Q14 and remains OPEN for Q10 and Q11. The maximum/adversarial fixture that #482 recorded as missing exists and is runner-measured, and what it measures \u2014 that the redeemer-carried maximum does not fit (Q1X-F5) \u2014 is now remediated by published-chunk carriage, measured end to end for Q12 and Q14 (chunkedProofCarriage). Q10 and Q11 stay OPEN on the second axis alone (Q1X-F6), which does not apply to Q12 or Q14.",
+      "owner": "issue #483 (Q10/Q11 only)"
     },
     {
       "id": "Q1X-F2",
@@ -537,21 +644,27 @@
     },
     {
       "id": "Q1X-F5",
-      "severity": "defect",
-      "finding": "The 16,384-byte L1 envelope on the step-01 proof transaction is exhaustible by a block producer willing to grind. Each forced MPF branch level costs a measured 276 bytes of complete signed transaction, so the envelope runs out at branch level 22 (Q10), 22 (Q11), 21 (Q12) and 23 (Q14). Forcing level i is a fixed-target search costing about 2^(4i) candidate hashings, so the cheapest of the four is exhaustible at roughly 2^84 work — expensive, but well inside the 2^128 reference adversary, which reaches level 32. A malicious operator who pays that cost makes their own fraudulent block unprovable on L1, which is a griefing vector against the correction path itself rather than a test-fixture gap. Byte fit is the binding envelope: the execution-memory ceiling is 215 levels and the execution-step ceiling 516, both measured, so no amount of execution headroom helps. This is asserted executably by the emulator suite, which fails if the ceiling ever moves.",
-      "owner": "issue #483, and a protocol decision rather than a test fix"
+      "severity": "observation",
+      "finding": "REMEDIATED BY CARRIAGE, measurement retained. The 16,384-byte L1 envelope on the REDEEMER-CARRIED step-01 proof transaction is exhaustible by a block producer willing to grind: each forced MPF branch level costs a measured 276 bytes of complete signed transaction, so that route runs out at branch level 20 (Q10), 20 (Q11), 19 (Q12) and 20 (Q14). Forcing level i is a fixed-target search costing about 2^(4i) candidate hashings, so the cheapest of the four is exhaustible at roughly 2^76 work \u2014 expensive, but well inside the 2^128 reference adversary, which reaches level 32. Byte fit is the binding envelope: the execution-memory ceiling is 214 levels and the execution-step ceiling 518, both measured. All of that remains true and is still asserted executably by the maximum fixture, which fails if the ceiling ever moves. Those ceilings are two to three levels lower than the 21..23 issue #482 published, because every step that can open a trie now carries the carriage dispatch; the per-level cost is unchanged, only the constant moved, and adversarialDepthBound.constantShiftNote records why. What has changed in substance is that the direct route is no longer the ONLY route: issue #545 wired all four families onto published-chunk carriage, whose step transaction is byte-identical at branch level 22 and at branch level 32 (chunkedProofCarriage.depthInvariance), so the griefing vector no longer censors the correction path. The finding stays recorded rather than deleted because the direct route still ships and a prover who chooses it still faces this ceiling.",
+      "owner": "remediated at issue #545; the direct-route measurement stays pinned",
+      "status": "remediated-by-carriage"
     },
     {
       "id": "Q1X-F6",
       "severity": "gap",
       "finding": "The second adversarial axis, spend-input preimage cardinality, is still unexercised for Q10 and Q11. Its expected binding constraint is different from the membership-depth axis (the spend-inputs witness publication transaction and step execution units, not the step transaction's own bytes) so the membership-depth bound above says nothing about it. Q12 and Q14 do not carry this axis at all: the invalid-range steps operate on the compact transaction and the zero-input family's challenged transaction spends nothing by construction.",
-      "owner": "issue #483"
+      "owner": "issue #483",
+      "affectsGoalIds": [
+        "Q10",
+        "Q11"
+      ]
     }
   ],
   "runners": [
     "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator.test.ts",
     "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-ledger-rules.test.ts",
     "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-max-proof-fit.test.ts",
+    "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-chunked-proof-carriage.test.ts",
     "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/canonical-evidence-source-v1.test.ts"
   ],
   "maximumFixtureSuite": {
@@ -574,25 +687,163 @@
   "summary": {
     "families": 4,
     "outputsBound": 5,
-    "localPassCells": 16,
-    "openCells": 4,
+    "localPassCells": 18,
+    "openCells": 2,
     "measuredProofFitStages": 20,
     "measuredMaximumProofFitStages": 16,
-    "worstByteMarginAcrossFamilies": 6000,
-    "worstMaximumByteMarginAcrossFamilies": 4618,
-    "lowestEnvelopeExhaustionBranchLevel": 21,
+    "worstByteMarginAcrossFamilies": 5365,
+    "worstMaximumByteMarginAcrossFamilies": 3983,
+    "lowestEnvelopeExhaustionBranchLevel": 19,
     "canonicalEvidenceSuiteTests": 32,
     "emulatorLifecyclesExecuted": 7,
     "maximumFixtureLifecyclesExecuted": 6,
-    "residualFindings": 6
+    "residualFindings": 6,
+    "chunkedCarriageStages": 10,
+    "chunkedCarriageLifecyclesExecuted": 3
   },
   "parentIntegration": {
     "owner": "parent",
     "pendingEdits": [
       "GOAL_PROGRESS.md: bind Q10/Q11/Q12/Q14 rows for 9.1 outputs 6 to 9 at LOCAL_PASS and output 5 at OPEN, with the measured numbers in this artifact.",
-      "Finding Q1X-F5 is a protocol exposure, not a bookkeeping item: the L1 envelope on the step-01 proof transaction is exhaustible at roughly 2^84 grinding work. It needs an owner outside this artifact — either a bound on admissible membership-proof depth, a proof-transaction split, or an accepted risk with the number written down.",
+      "Finding Q1X-F5 is a protocol exposure, not a bookkeeping item: the L1 envelope on the step-01 proof transaction is exhaustible at roughly 2^84 grinding work. It needs an owner outside this artifact \u2014 either a bound on admissible membership-proof depth, a proof-transaction split, or an accepted risk with the number written down.",
       "docs/fault-proofs/coverage-matrix.md: the four families' rows may cite this artifact for outputs 6 to 9; output 5 must remain OPEN.",
       "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json: the Q10/Q11/Q12 schedulingNote text still says outputs 5 to 9 are all unreached; outputs 6 to 9 are now bound here. Q14's writablePaths do not include this artifact or its verifier, so the Q14 row needs its path set widened by the parent."
+    ]
+  },
+  "chunkedProofCarriage": {
+    "remediates": "Q1X-F5",
+    "issue": 545,
+    "mechanism": "The MPF proof is published beforehand across bounded UTxOs whose inline datum carries nothing but canonical mpf.ProofStep values (mpf_chunked_proof_v1.ProofChunkDatum, at most 16 steps and 2,304 bytes each). The step transaction references them and names their order as indices into tx.reference_inputs; midgard/fraud_proofs/chunked_inclusion_v1 concatenates the chunks and verifies the complete proof atomically against the very root the challenged header commits. The redeemer-carried route is retained unchanged \u2014 it is cheaper for every proof that fits \u2014 so the carriage is a prover-chosen sum type (NativeTxInclusionCarriage / NonMembershipCarriage), not a replacement.",
+    "onchainSeam": {
+      "sharedHelper": "onchain/aiken/lib/midgard/fraud-proofs/chunked-inclusion-v1.ak",
+      "sharedHelperGuards": 15,
+      "membershipSeam": "midgard/fraud_proofs/common.pass_native_tx_to_next_step_carried",
+      "nonMembershipSeam": "midgard/fraud_proofs/common.verify_non_membership_carried",
+      "wiredSteps": [
+        "validators/fraud-proofs/double-spend/step-01.ak",
+        "validators/fraud-proofs/double-spend/step-02.ak",
+        "validators/fraud-proofs/no-input/step-01.ak",
+        "validators/fraud-proofs/no-input/step-03.ak",
+        "validators/fraud-proofs/no-input/step-04.ak",
+        "validators/fraud-proofs/invalid-range/step-01.ak",
+        "validators/fraud-proofs/zero-input/step-01.ak"
+      ],
+      "directRouteRetained": true,
+      "merkelizedVerifier": "onchain/aiken/validators/mpf-chunked-verify.ak",
+      "merkelizedVerifierHash": "cb5a7ec4def35ce3ec75c40919992e1b4e8839b4f6b6a2d3b06e7469",
+      "whyMerkelized": "Compiling the proof walk into every step that can open a trie added a measured ~3,700 bytes to each step's spending script, which the step transaction carries on EITHER route \u2014 taking the redeemer-carried route's ceiling from branch level 21..23 down to 8..9. Remediating one route by degrading the other is not a remediation, so the walk lives in one merkelized withdraw validator shared by every family, exactly as phas.ak and pexcludes.ak already host the single-transaction walks. The residual cost to the direct route is the carriage dispatch alone: ~700 bytes, two to three forced levels."
+    },
+    "suite": "demo/midgard-fault-proofs/tests/submit-init-emulator-chunked-proof-carriage.test.ts",
+    "titles": [
+      "carries a zero-input membership proof past the direct route's envelope ceiling",
+      "pins the step transaction's marginal cost per proof level at zero",
+      "carries an invalid-range membership proof past the direct route's envelope ceiling"
+    ],
+    "familyTitles": {
+      "Q12": "carries an invalid-range membership proof past the direct route's envelope ceiling",
+      "Q14": "carries a zero-input membership proof past the direct route's envelope ceiling"
+    },
+    "branchLevels": 22,
+    "chunkCount": 2,
+    "proofCborBytes": 3060,
+    "measuredFamilies": [
+      "Q12",
+      "Q14"
+    ],
+    "unmeasuredFamilies": [
+      "Q10",
+      "Q11"
+    ],
+    "unmeasuredFamiliesNote": "Q10 and Q11 are wired onto the same shared seam on-chain and carry per-step published-chunk selectors at branch level 22 under both compilers, but their end-to-end emulator journeys still drive the redeemer-carried route. Their output-5 cells stay OPEN regardless, because finding Q1X-F6 is unexercised for exactly those two families.",
+    "stages": {
+      "Q14": [
+        {
+          "stage": "publish-chunks",
+          "bytes": 3402,
+          "l1ByteMargin": 12982
+        },
+        {
+          "stage": "init",
+          "bytes": 7718,
+          "l1ByteMargin": 8666
+        },
+        {
+          "stage": "step-01",
+          "bytes": 13045,
+          "l1ByteMargin": 3339
+        },
+        {
+          "stage": "step-02",
+          "bytes": 7309,
+          "l1ByteMargin": 9075
+        },
+        {
+          "stage": "remove",
+          "bytes": 1867,
+          "l1ByteMargin": 14517
+        }
+      ],
+      "Q12": [
+        {
+          "stage": "publish-chunks",
+          "bytes": 3402,
+          "l1ByteMargin": 12982
+        },
+        {
+          "stage": "init",
+          "bytes": 7862,
+          "l1ByteMargin": 8522
+        },
+        {
+          "stage": "step-01",
+          "bytes": 13335,
+          "l1ByteMargin": 3049
+        },
+        {
+          "stage": "step-02",
+          "bytes": 7399,
+          "l1ByteMargin": 8985
+        },
+        {
+          "stage": "remove",
+          "bytes": 1867,
+          "l1ByteMargin": 14517
+        }
+      ]
+    },
+    "executionUnits": {
+      "Q14": {
+        "step01Memory": 2645780,
+        "step01Steps": 989637385
+      },
+      "Q12": {
+        "step01Memory": 2366103,
+        "step01Steps": 875730362
+      },
+      "Q14Depth32": {
+        "step01Memory": 2922554,
+        "step01Steps": 1100822722
+      }
+    },
+    "depthInvariance": {
+      "measuredFamily": "Q14",
+      "shallowBranchLevels": 22,
+      "deepBranchLevels": 32,
+      "shallowStep01Bytes": 13045,
+      "deepStep01Bytes": 13045,
+      "stepTransactionBytesPerBranchLevel": 0,
+      "directRouteBytesForTheSameLevels": 2760,
+      "shallowProofCborBytes": 3060,
+      "deepProofCborBytes": 4450,
+      "shallowPublicationBytes": 3402,
+      "deepPublicationBytes": 4782,
+      "note": "Ten further forced branch levels. On the redeemer-carried route those levels cost 10 * 276 = 2,760 more complete-signed-transaction bytes, which is what exhausts the envelope. Here the step transaction is byte-identical, because it carries one small integer and one reference input per CHUNK rather than per level. The proof itself did grow (3,060 to 4,450 CBOR bytes); only its carriage did not. The depth a 2^128 adversary reaches (32) is therefore no longer a censorship lever on the step transaction."
+    },
+    "depthConstruction": "The depth is synthesised rather than grinded, and deliberately so: a genuinely grinded level-22 trie costs about 2^88 digests, which is the adversary's cost and the whole point of finding Q1X-F5, not something a fixture can pay. The proof is a real MPF proof of a real trie shape (an all-branch ladder, MPF's widest step), verified by the library's own verify, and the challenged header is then made to commit exactly the root that proof proves \u2014 so the step's counted-root authentication is genuine. The grinded fixture in submit-init-emulator-max-proof-fit.test.ts remains the source of the COST bound; this one measures carriage. See demo/midgard-fault-proofs/tests/support/synthetic-deep-proof-v1.ts.",
+    "offchainBuilders": [
+      "demo/midgard-fault-proofs/src/publish-proof-chunks.ts",
+      "demo/midgard-fault-proofs/src/submit-zero-input-step-01.ts",
+      "demo/midgard-fault-proofs/src/submit-invalid-range-step-01.ts"
     ]
   }
 }

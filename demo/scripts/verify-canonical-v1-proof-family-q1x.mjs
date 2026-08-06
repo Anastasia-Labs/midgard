@@ -545,6 +545,103 @@ for (const family of evidence.families) {
 // any of it passed.
 declareVitest(maximumSuite.file, maximumSuite.titles);
 
+// ## Published-chunk proof carriage (issue #545): the remediation of Q1X-F5
+//
+// Q1X-F5 is a measured fact about the redeemer-carried route and stays asserted
+// above, unchanged. What is checked here is the remediation that lets a family's
+// output-5 cell close in spite of it: a carriage whose step transaction does not
+// grow with proof depth, measured end to end for the families that claim it.
+// Every number is recomputed from the recorded stages, and the depth-invariance
+// claim is recomputed from the two depths it was measured at.
+const carriage = evidence.chunkedProofCarriage;
+assert.ok(
+  carriage !== undefined && typeof carriage === "object",
+  "the published-chunk carriage that remediates Q1X-F5 must be recorded, not asserted in prose",
+);
+assert.equal(
+  carriage.remediates,
+  "Q1X-F5",
+  "the carriage block must name the finding it remediates",
+);
+assert.ok(
+  carriage.onchainSeam.directRouteRetained === true,
+  "the redeemer-carried route must be retained; removing it would strand every prover whose proof already fits",
+);
+assert.ok(
+  carriage.branchLevels > bound.byteCeiling,
+  `the carriage must be measured PAST the direct route's envelope ceiling; ${String(carriage.branchLevels)} is not above ${String(bound.byteCeiling)}`,
+);
+let chunkedStages = 0;
+for (const goalId of carriage.measuredFamilies) {
+  assert.ok(
+    GOAL_IDS.includes(goalId),
+    `carriage names unknown goal id ${goalId}`,
+  );
+  const stages = carriage.stages[goalId];
+  assert.ok(
+    Array.isArray(stages) && stages.length > 0,
+    `${goalId} claims a measured carriage journey but records no stages`,
+  );
+  assert.ok(
+    stages.some((stage) => stage.stage === "publish-chunks"),
+    `${goalId} carriage journey must measure the publication transaction, not only the step that references it`,
+  );
+  for (const stage of stages) {
+    assert.equal(
+      stage.l1ByteMargin,
+      L1_MAX_TX_SIZE - stage.bytes,
+      `${goalId} carriage stage ${stage.stage} margin ${String(stage.l1ByteMargin)} does not equal 16384 - ${String(stage.bytes)}`,
+    );
+    assert.ok(
+      stage.l1ByteMargin >= 0,
+      `${goalId} carriage stage ${stage.stage} exceeds the L1 envelope`,
+    );
+    chunkedStages += 1;
+  }
+  assert.ok(
+    carriage.titles.includes(carriage.familyTitles[goalId]),
+    `the carriage suite does not declare a lifecycle title for ${goalId}`,
+  );
+}
+assert.deepEqual(
+  [...carriage.measuredFamilies, ...carriage.unmeasuredFamilies].sort(),
+  [...GOAL_IDS].sort(),
+  "every family must be recorded as either carriage-measured or explicitly not",
+);
+// The claim that makes the remediation a remediation: depth costs the step
+// transaction nothing. Recomputed, not asserted.
+const invariance = carriage.depthInvariance;
+assert.ok(
+  invariance.deepBranchLevels > invariance.shallowBranchLevels,
+  "depth invariance must be measured at two distinct depths",
+);
+assert.equal(
+  invariance.stepTransactionBytesPerBranchLevel,
+  (invariance.deepStep01Bytes - invariance.shallowStep01Bytes) /
+    (invariance.deepBranchLevels - invariance.shallowBranchLevels),
+  "the published per-level cost of the chunked step transaction is not the difference between its own two measured depths",
+);
+assert.equal(
+  invariance.stepTransactionBytesPerBranchLevel,
+  0,
+  "the chunked step transaction still grows with proof depth, so it does not remediate Q1X-F5",
+);
+assert.equal(
+  invariance.directRouteBytesForTheSameLevels,
+  (invariance.deepBranchLevels - invariance.shallowBranchLevels) *
+    bound.proofTransactionBranchLevelBytes,
+  "the direct-route comparison is not the pinned marginal cost times the level difference",
+);
+assert.ok(
+  invariance.deepProofCborBytes > invariance.shallowProofCborBytes,
+  "the deeper proof must actually be larger; if it were not, the invariance would be measuring nothing",
+);
+assert.ok(
+  invariance.deepBranchLevels >= bound.referenceAdversaryBranchLevelReach,
+  "depth invariance must be measured out to the depth the reference adversary reaches",
+);
+declareVitest(carriage.suite, carriage.titles);
+
 // ## Shared DA-first evidence gate
 
 const gate = evidence.sharedDaFirstEvidenceGate;
@@ -634,6 +731,19 @@ assert.equal(
   "the maximum-fixture suite collected a different number of tests than the artifact cites",
 );
 
+// The carriage suite's own passage, likewise read out of the runner report.
+const carriageOutcome = vitestOutcomes.get(carriage.suite);
+assert.equal(
+  carriageOutcome.collected,
+  carriage.titles.length,
+  "the carriage suite collected a different number of tests than the artifact cites",
+);
+assert.equal(
+  carriageOutcome.passed,
+  carriage.titles.length,
+  "the carriage suite did not pass every lifecycle the artifact cites, so no output-5 cell may close on it",
+);
+
 // ## Output status matrix
 
 assert.deepEqual(
@@ -671,31 +781,74 @@ for (const row of evidence.outputStatus) {
     );
   }
 }
-// Output 5 must remain OPEN for every family while the maximum fixture's own
-// measurement says the envelope is exhaustible, or while an adversarial axis is
-// still unexercised. Publishing LOCAL_PASS on the strength of a fixture that
-// merely fits at the depth someone chose to build would be the exact defect
-// this program has been bitten by: a passage claim an adversary can falsify.
+// Output 5 is decided PER FAMILY, and the decision is derived here rather than
+// read from the artifact. A family may be LOCAL_PASS only when BOTH hold:
+//
+//   1. every adversarial axis that affects it is either exercised or remediated
+//      by a mechanism this gate has just re-derived, and
+//   2. that remediation is measured end to end for THAT family.
+//
+// Publishing LOCAL_PASS on the strength of a fixture that merely fits at the
+// depth someone chose to build, or on a remediation measured for a sibling
+// family, would be the exact defect this program has been bitten by: a passage
+// claim an adversary can falsify.
 const output5 = evidence.outputStatus.find((row) => row.output === 5);
-const unexercisedAxes = evidence.adversarialAxes.filter((axis) =>
-  axis.measuredToday.includes("unexercised"),
-);
-const output5MayClose =
-  !evidence.adversarialDepthBound.envelopeExhaustibleByReferenceAdversary &&
-  unexercisedAxes.length === 0;
+for (const axis of evidence.adversarialAxes) {
+  assert.ok(
+    Array.isArray(axis.affectsGoalIds) && axis.affectsGoalIds.length > 0,
+    `adversarial axis "${axis.axis}" must name the families it affects, so output 5 can be decided per family`,
+  );
+  for (const goalId of axis.affectsGoalIds) {
+    assert.ok(
+      GOAL_IDS.includes(goalId),
+      `adversarial axis "${axis.axis}" names unknown goal id ${goalId}`,
+    );
+  }
+}
+// The depth axis is the one Q1X-F5 records. It counts as settled for a family
+// only through a remediation block this gate validated above, and only where
+// that block records a measurement for the family itself.
+const axisIsSettledFor = (axis, goalId) => {
+  if (!axis.affectsGoalIds.includes(goalId)) {
+    return true;
+  }
+  if (!axis.measuredToday.includes("unexercised")) {
+    if (axis.remediatedBy === undefined || axis.remediatedBy === null) {
+      // Exercised and bounded, but the bound is the exposure itself: the
+      // envelope is exhaustible, so the axis is not settled without a
+      // remediation.
+      return !evidence.adversarialDepthBound
+        .envelopeExhaustibleByReferenceAdversary;
+    }
+    assert.equal(
+      axis.remediatedBy,
+      "chunkedProofCarriage",
+      `adversarial axis "${axis.axis}" claims a remediation this gate does not know how to verify`,
+    );
+    return carriage.measuredFamilies.includes(goalId);
+  }
+  return false;
+};
 for (const goalId of GOAL_IDS) {
+  const unsettled = evidence.adversarialAxes.filter(
+    (axis) => !axisIsSettledFor(axis, goalId),
+  );
+  const mayClose = unsettled.length === 0;
   assert.equal(
     output5[goalId],
-    "OPEN",
-    `output 5 / ${goalId} may not be LOCAL_PASS while the L1 envelope is exhaustible at branch level ${String(
-      evidence.adversarialDepthBound.byteCeiling,
-    )} and ${String(unexercisedAxes.length)} adversarial axis/axes remain unexercised`,
+    mayClose ? "LOCAL_PASS" : "OPEN",
+    mayClose
+      ? `output 5 / ${goalId} has no unsettled adversarial axis left, so the cell must be re-decided deliberately rather than left OPEN by inertia`
+      : `output 5 / ${goalId} may not be LOCAL_PASS while ${String(unsettled.length)} adversarial axis/axes (${unsettled
+          .map((axis) => axis.axis)
+          .join(", ")}) remain unsettled for it`,
   );
 }
-assert.equal(
-  output5MayClose,
-  false,
-  "the conditions that keep output 5 OPEN have been cleared; the cells must be re-decided deliberately rather than left OPEN by inertia",
+// At least one cell must still be OPEN or still be LOCAL_PASS by measurement,
+// never by an empty axis list.
+assert.ok(
+  evidence.adversarialAxes.length > 1,
+  "collapsing the axis list to one entry would make the per-family rule vacuous",
 );
 
 // Adversarial axes must be enumerated, not hand-waved.
@@ -711,6 +864,31 @@ for (const axis of evidence.adversarialAxes) {
       `adversarial axis is missing ${key}`,
     );
   }
+}
+
+// A finding that claims remediation must name the block that carries it, and
+// that block must have been validated above. Q1X-F5's measurement stays
+// recorded either way: a remediated finding is restated, never deleted.
+for (const finding of evidence.residualFindings) {
+  if (finding.status === undefined) {
+    continue;
+  }
+  assert.equal(
+    finding.status,
+    "remediated-by-carriage",
+    `residual finding ${finding.id} carries an unknown status ${String(finding.status)}`,
+  );
+  assert.equal(
+    finding.id,
+    carriage.remediates,
+    `residual finding ${finding.id} claims a remediation the carriage block does not name`,
+  );
+  assert.ok(
+    finding.finding.includes(
+      String(evidence.adversarialDepthBound.proofTransactionBranchLevelBytes),
+    ),
+    `residual finding ${finding.id} was remediated but dropped the measurement it was built on`,
+  );
 }
 
 // No LIVE_PASS may ever be claimed from a family-local artifact.
@@ -780,6 +958,8 @@ const recomputed = {
   canonicalEvidenceSuiteTests: gateOutcome.passed,
   emulatorLifecyclesExecuted,
   maximumFixtureLifecyclesExecuted: maximumOutcome.passed,
+  chunkedCarriageStages: chunkedStages,
+  chunkedCarriageLifecyclesExecuted: carriageOutcome.passed,
   residualFindings: evidence.residualFindings.length,
 };
 assert.deepEqual(
@@ -875,6 +1055,9 @@ const report = {
   emulatorLifecyclesExecuted: evidence.summary.emulatorLifecyclesExecuted,
   maximumFixtureLifecyclesExecuted:
     evidence.summary.maximumFixtureLifecyclesExecuted,
+  chunkedCarriageStages: evidence.summary.chunkedCarriageStages,
+  chunkedCarriageLifecyclesExecuted:
+    evidence.summary.chunkedCarriageLifecyclesExecuted,
   residualFindings: evidence.summary.residualFindings,
   familyChecks,
   thresholdEnforcementChecks,
