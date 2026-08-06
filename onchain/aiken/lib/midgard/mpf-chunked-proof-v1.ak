@@ -98,9 +98,18 @@ pub type ProofMode {
 
 /// The challenge thread's state. Authenticated once, at initialization, against
 /// the challenged block header; never mutated afterwards.
+///
+/// `challenged_root_domain` is an owner-directed deviation from the #541 brief,
+/// which placed the domain in the initialization redeemer alone. A redeemer is
+/// not retained by the ledger, so a reader of a finalized challenge could not
+/// recover *which* of the header's seven roots had been challenged. The field
+/// is not advisory: `challenge_matches_header` requires it to be the very
+/// domain the counted-root commitment was reproduced under, so the datum is
+/// authenticated at initialization along with everything else it claims.
 pub type ProofChallengeDatum {
   proof_owner: VerificationKeyHash,
   challenged_header_hash: ByteArray,
+  challenged_root_domain: transition_trace.RootDomain,
   target_key: ByteArray,
   target_value_hash: ByteArray,
   expected_root: ByteArray,
@@ -165,7 +174,7 @@ pub fn header_counted_commitment(
 }
 
 /// The challenge's target commitment is exactly what the challenged header
-/// commits for the named domain.
+/// commits for the named domain, and the datum names that same domain.
 pub fn challenge_matches_header(
   challenge: ProofChallengeDatum,
   header: ledger_state.HeaderV1,
@@ -175,6 +184,9 @@ pub fn challenge_matches_header(
   let (counted_root, leaf_count) = header_counted_commitment(header, domain)
   and {
     challenge.challenged_header_hash == header_hash,
+    // The datum's own record of which root was challenged is bound to the
+    // domain this commitment was reproduced under, so it survives the redeemer.
+    challenge.challenged_root_domain == domain,
     transition_trace.verify_root_count_proof(
       transition_trace.RootCountProof {
         domain,

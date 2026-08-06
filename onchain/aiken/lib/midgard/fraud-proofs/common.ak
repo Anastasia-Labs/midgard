@@ -8,14 +8,16 @@ use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Redeemer, ScriptPurpose,
   Transaction,
 }
+use env
 use midgard/common/types.{Proof}
 use midgard/common/utils.{
   get_redeemer_at, get_single_asset_from_value_apart_from_ada, has_signed,
-  plutarch_phas_raw,
+  plutarch_pexcludes_raw, plutarch_phas_raw,
 }
 use midgard/computation_thread as ct
 use midgard/fraud_proof
 use midgard/fraud_proof_catalogue
+use midgard/fraud_proofs/chunked_inclusion_v1.{PublishedProofCarriage}
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_witness_set_compact, verify_native_tx_compact_cbor_v1,
 }
@@ -40,6 +42,217 @@ pub type NativeTxInclusionArgs {
   transactions_phas_root: ByteArray,
   tx_membership_proof: Proof,
   inclusion_proof_script_withdraw_redeemer_index: Int,
+}
+
+/// The same evidence as [`NativeTxInclusionArgs`](#NativeTxInclusionArgs) with
+/// the membership proof taken out of the transaction: the proof's steps live in
+/// published chunk UTxOs and only their order reaches the redeemer, as indices
+/// into `tx.reference_inputs` (issue #545).
+///
+/// Field-for-field identical to `NativeTxInclusionArgs` up to the proof: the
+/// two carriages authenticate the very same commitment and differ only in where
+/// the proof's bytes are.
+pub type PublishedChunkInclusionArgs {
+  input_index: Int,
+  output_index: Int,
+  hub_ref_input_index: Int,
+  state_queue_node_ref_input_index: Int,
+  native_tx_id: ByteArray,
+  native_tx_compact_cbor: ByteArray,
+  transactions_phas_root: ByteArray,
+  ordered_chunk_reference_input_indices: List<Int>,
+}
+
+/// How a step's transactions-root membership opening reaches L1.
+///
+/// The prover chooses. Both arms end in the same verified opening against the
+/// same header-authenticated root, so the choice is a cost decision (one
+/// transaction versus two) and not a trust one. Small proofs belong on the
+/// direct route; a proof an adversary has grinded past the envelope belongs on
+/// the published-chunk route, which is the point of the type.
+pub type NativeTxInclusionCarriage {
+  /// The proof travels in this transaction's redeemers, verified by the
+  /// merkelized `phas` validator. ~276 signed bytes per proof level.
+  RedeemerCarriedInclusion(NativeTxInclusionArgs)
+  /// The proof was published beforehand; this transaction names its chunks.
+  /// One integer and one reference input per chunk.
+  PublishedChunkInclusion(PublishedChunkInclusionArgs)
+}
+
+/// How a step's non-membership opening reaches L1. The membership twin's
+/// reasoning applies unchanged.
+pub type NonMembershipCarriage {
+  /// The proof travels in this transaction's redeemers, verified by the
+  /// merkelized `pexcludes` validator.
+  RedeemerCarriedNonMembership {
+    non_membership_proof: Proof,
+    non_membership_proof_script_redeemer_index: Int,
+  }
+  /// The proof was published beforehand; this transaction names its chunks.
+  PublishedChunkNonMembership(PublishedProofCarriage)
+}
+
+/// The raw transactions MPF root a carriage names, whichever arm it is.
+///
+/// Safe for a step to thread forward only *after* the carriage has been
+/// verified, because that is where the root is authenticated against the
+/// challenged header's counted `transactions_root`.
+pub fn carriage_transactions_phas_root(
+  carriage: NativeTxInclusionCarriage,
+) -> ByteArray {
+  when carriage is {
+    RedeemerCarriedInclusion(args) -> args.transactions_phas_root
+    PublishedChunkInclusion(args) -> args.transactions_phas_root
+  }
+}
+
+/// Verifies the absence of `key_bytes` under an already-authenticated
+/// `merkle_root`, by whichever route the prover chose.
+pub fn verify_non_membership_carried(
+  carriage: NonMembershipCarriage,
+  merkle_root: ByteArray,
+  key_bytes: ByteArray,
+  reference_inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> Bool {
+  when carriage is {
+    RedeemerCarriedNonMembership {
+      non_membership_proof,
+      non_membership_proof_script_redeemer_index,
+    } ->
+      plutarch_pexcludes_raw(
+        merkle_root: merkle_root,
+        key_bytes: key_bytes,
+        non_membership_proof: non_membership_proof,
+        redeemers: redeemers,
+        withdraw_redeemer_index: non_membership_proof_script_redeemer_index,
+      )
+    PublishedChunkNonMembership(published) ->
+      // Delegated to the merkelized verifier, which reads the published chunks
+      // from the very same `reference_inputs` this step sees. Keeping the walk
+      // out of the step's own script is what stops the chunked route from
+      // enlarging the direct one (issue #545).
+      chunked_inclusion_v1.delegated_chunk_non_membership(
+        env.mpf_chunked_verify_validator_hash,
+        redeemers,
+        published,
+        merkle_root,
+        key_bytes,
+      )
+  }
+}
+
+/// Native v1 transaction inclusion helper for fault proofs whose evidence is
+/// committed by the node's native transaction root rather than PlutusData
+/// `MidgardTxCompact` values, taking the membership opening by whichever
+/// carriage the prover chose.
+///
+/// This is the single seam through which all four foundational families reach
+/// published-chunk carriage; the per-family semantics that follow the opening
+/// are untouched by it.
+pub fn pass_native_tx_to_next_step_carried(
+  computation_thread_token_policy_id: PolicyId,
+  hub_oracle: ScriptHash,
+  datum: Option<ct.StepDatum<input_state>>,
+  carriage: NativeTxInclusionCarriage,
+  own_out_ref: OutputReference,
+  l1_tx: Transaction,
+  validation: fn(
+    ScriptHash,
+    AssetName,
+    VerificationKeyHash,
+    Option<input_state>,
+    ScriptHash,
+    Data<output_state>,
+    HeaderV1,
+    ByteArray,
+    VerifiedMidgardNativeTxCompact,
+  ) ->
+    Bool,
+) -> Bool {
+  when carriage is {
+    RedeemerCarriedInclusion(tx_inclusion_args) ->
+      pass_native_tx_to_next_step(
+        computation_thread_token_policy_id,
+        hub_oracle,
+        datum,
+        tx_inclusion_args,
+        own_out_ref,
+        l1_tx,
+        validation,
+      )
+    PublishedChunkInclusion(published_args) -> {
+      let
+          PublishedChunkInclusionArgs {
+            input_index,
+            output_index,
+            hub_ref_input_index,
+            state_queue_node_ref_input_index,
+            native_tx_id,
+            native_tx_compact_cbor,
+            transactions_phas_root,
+            ordered_chunk_reference_input_indices,
+          }
+        = published_args
+
+      let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = l1_tx
+
+      expect Some(step_datum) = datum
+
+      let
+          own_script_hash,
+          computation_thread_token_asset_name,
+          fraud_prover,
+          m_input_state_data,
+          output_script_hash,
+          output_state_data
+        <- continue(
+        computation_thread_token_policy_id,
+        step_datum,
+        input_index,
+        output_index,
+        own_out_ref,
+        inputs,
+        outputs,
+      )
+
+      let _verified_tx_id, header, native_tx_view <- verify_native_tx_in_state_queue_node_with(
+        native_tx_id,
+        native_tx_compact_cbor,
+        transactions_phas_root,
+        computation_thread_token_asset_name,
+        hub_oracle,
+        hub_ref_input_index,
+        state_queue_node_ref_input_index,
+        reference_inputs,
+        fn(authenticated_root, key_bytes, value_bytes) {
+          chunked_inclusion_v1.delegated_chunk_membership(
+            env.mpf_chunked_verify_validator_hash,
+            redeemers,
+            PublishedProofCarriage { ordered_chunk_reference_input_indices },
+            authenticated_root,
+            key_bytes,
+            value_bytes,
+          )
+        },
+      )
+
+      expect
+        validation(
+          own_script_hash,
+          computation_thread_token_asset_name,
+          fraud_prover,
+          m_input_state_data,
+          output_script_hash,
+          output_state_data,
+          header,
+          native_tx_id,
+          native_tx_view,
+        )
+
+      True
+    }
+  }
 }
 
 /// Native v1 transaction inclusion helper for fault proofs whose evidence is
@@ -547,6 +760,51 @@ pub fn verify_native_tx_in_state_queue_node(
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   return: fn(ByteArray, HeaderV1, VerifiedMidgardNativeTxCompact) -> result,
 ) -> result {
+  verify_native_tx_in_state_queue_node_with(
+    native_tx_id,
+    native_tx_compact_cbor,
+    transactions_phas_root,
+    computation_thread_token_asset_name,
+    hub_oracle,
+    hub_ref_input_index,
+    state_queue_node_ref_input_index,
+    reference_inputs,
+    fn(authenticated_root, key_bytes, value_bytes) {
+      plutarch_phas_raw(
+        merkle_root: authenticated_root,
+        key_bytes: key_bytes,
+        value_bytes: value_bytes,
+        membership_proof: tx_membership_proof,
+        redeemers: redeemers,
+        withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
+      )
+    },
+    return,
+  )
+}
+
+/// The carriage-agnostic core of
+/// [`verify_native_tx_in_state_queue_node`](#verify_native_tx_in_state_queue_node).
+///
+/// Everything that makes the evidence trustworthy lives here — the canonical
+/// codec precondition, hub identity, state-queue node identity and the
+/// counted-root authentication that turns a prover-supplied raw root into the
+/// header's own commitment — and the opening itself is delegated to
+/// `membership_check`, which receives `(authenticated root, key, value)`. A
+/// carriage therefore cannot choose what it proves, only where the proof's
+/// bytes travelled.
+pub fn verify_native_tx_in_state_queue_node_with(
+  native_tx_id: ByteArray,
+  native_tx_compact_cbor: ByteArray,
+  transactions_phas_root: ByteArray,
+  computation_thread_token_asset_name: AssetName,
+  hub_oracle: ScriptHash,
+  hub_ref_input_index: Int,
+  state_queue_node_ref_input_index: Int,
+  reference_inputs: List<Input>,
+  membership_check: fn(ByteArray, ByteArray, ByteArray) -> Bool,
+  return: fn(ByteArray, HeaderV1, VerifiedMidgardNativeTxCompact) -> result,
+) -> result {
   let native_tx_view = verify_native_tx_compact_cbor_v1(
     native_tx_id,
     native_tx_compact_cbor,
@@ -583,13 +841,10 @@ pub fn verify_native_tx_in_state_queue_node(
 
   // MPF membership check runs against the authenticated raw root.
   expect
-    plutarch_phas_raw(
-      merkle_root: transactions_phas_root,
-      key_bytes: native_tx_id,
-      value_bytes: native_tx_compact_cbor,
-      membership_proof: tx_membership_proof,
-      redeemers: redeemers,
-      withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
+    membership_check(
+      transactions_phas_root,
+      native_tx_id,
+      native_tx_compact_cbor,
     )
 
   return(native_tx_id, state_queue_datum, native_tx_view)

@@ -279,6 +279,7 @@ fn honest_challenge() -> ProofChallengeDatum {
   ProofChallengeDatum {
     proof_owner: fixture.fraud_prover_key_hash,
     challenged_header_hash: claimed.header_hash,
+    challenged_root_domain: transition_trace.TransactionsV1RootDomain,
     target_key: claimed.tx_id,
     target_value_hash: blake2b_256(claimed.compact_cbor),
     expected_root: claimed.transactions_phas_root,
@@ -499,6 +500,19 @@ test mpf_chunked_challenge_init_rejects_a_substituted_root_domain() {
     challenge_output(honest_challenge()),
     assets.from_asset(challenge_script_hash, thread_nonce(), 1),
     transition_trace.DepositsRootDomain,
+  )
+}
+
+/// The datum's own  is authenticated, not advisory: a
+/// datum that names a domain other than the one whose counted commitment was
+/// reproduced is rejected, so a finalized challenge's datum always records the
+/// root it really challenged (owner-directed deviation from the #541 brief).
+test mpf_chunked_challenge_init_rejects_a_datum_domain_the_proof_was_not_bound_to() {
+  !run_honest_init(
+    ProofChallengeDatum {
+      ..honest_challenge(),
+      challenged_root_domain: transition_trace.DepositsRootDomain,
+    },
   )
 }
 

@@ -9,7 +9,12 @@
 //// reachable from any on-chain validator entry point.
 
 use aiken/builtin
+use aiken/cbor
+use aiken/collection/list
+use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
+use aiken/merkle_patricia_forestry/helpers.{combine, nibble, nibbles, suffix}
+use aiken/merkle_patricia_forestry/merkling.{merkle_16}
 use aiken_design_patterns/linked_list
 use cardano/address.{Address, Script}
 use cardano/assets
@@ -22,12 +27,16 @@ use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proof
 use midgard/fraud_proof_catalogue
-use midgard/fraud_proofs/common.{NativeTxInclusionArgs}
+use midgard/fraud_proofs/chunked_inclusion_v1
+use midgard/fraud_proofs/common.{
+  NativeTxInclusionArgs, NativeTxInclusionCarriage,
+}
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/hub_oracle
 use midgard/ledger_state
+use midgard/mpf_chunked_proof_v1
 use midgard/state_queue
 use midgard/transition_trace
 
@@ -306,6 +315,233 @@ pub fn native_inclusion_args_v1(
     transactions_phas_root: fixture.transactions_phas_root,
     tx_membership_proof: [],
     inclusion_proof_script_withdraw_redeemer_index: 0,
+  }
+}
+
+/// The prover-side inclusion carriage matching `continue_step_l1_tx_v1`: the
+/// proof rides in this transaction's redeemers, which is the route every
+/// pre-#545 selector exercises.
+pub fn native_inclusion_carriage_v1(
+  fixture: NativeBlockFixtureV1,
+) -> NativeTxInclusionCarriage {
+  common.RedeemerCarriedInclusion(native_inclusion_args_v1(fixture))
+}
+
+// ## Published-chunk carriage fixtures (issue #545)
+//
+// The on-chain library has no prover, so a proof deep enough to matter is
+// synthesised here and the block's header is then made to commit exactly the
+// root that proof proves. Neighbour digests are arbitrary but deterministic;
+// an all-`Branch` ladder is the adversarial shape, because a ground sibling at
+// every level forces MPF's widest step.
+
+fn branch_neighbors(seed: Int) -> ByteArray {
+  let a = blake2b_256(cbor.serialise(seed))
+  let b = blake2b_256(a)
+  let c = blake2b_256(b)
+  let d = blake2b_256(c)
+  a
+    |> builtin.append_bytearray(b)
+    |> builtin.append_bytearray(c)
+    |> builtin.append_bytearray(d)
+}
+
+/// A deterministic ladder of `count` all-`Branch` proof steps — one forced
+/// branch level each, the worst admissible shape per level.
+pub fn adversarial_branch_steps(count: Int) -> mpf.Proof {
+  if count <= 0 {
+    []
+  } else {
+    list.push(adversarial_branch_steps(count - 1), branch_step(count - 1))
+  }
+}
+
+fn branch_step(seed: Int) -> mpf.ProofStep {
+  mpf.Branch { skip: 0, neighbors: branch_neighbors(seed) }
+}
+
+/// Independent reconstruction of the root an all-`Branch` membership proof of
+/// `(key, value)` proves. Independent because it mirrors the MPF fold directly
+/// rather than calling the verifier the selectors are testing.
+pub fn adversarial_membership_root(
+  key: ByteArray,
+  value: ByteArray,
+  steps: mpf.Proof,
+) -> ByteArray {
+  fold_membership_root(blake2b_256(key), blake2b_256(value), 0, steps)
+}
+
+fn fold_membership_root(
+  path: ByteArray,
+  value_hash: ByteArray,
+  cursor: Int,
+  steps: mpf.Proof,
+) -> ByteArray {
+  when steps is {
+    [] -> combine(suffix(path, cursor), value_hash)
+    [mpf.Branch { skip, neighbors }, ..rest] -> {
+      let next_cursor = cursor + 1 + skip
+      let child_root = fold_membership_root(path, value_hash, next_cursor, rest)
+      combine(
+        nibbles(path, cursor, next_cursor - 1),
+        merkle_16(
+          nibble(path, next_cursor - 1),
+          child_root,
+          builtin.slice_bytearray(0, 32, neighbors),
+          builtin.slice_bytearray(32, 32, neighbors),
+          builtin.slice_bytearray(64, 32, neighbors),
+          builtin.slice_bytearray(96, 32, neighbors),
+        ),
+      )
+    }
+    // The ladder is all- by construction; the other step shapes are
+    // enumerated rather than wildcarded so no unenumerated case can be
+    // accepted here (family-scaffold rule ).
+    [mpf.Fork { .. }, ..] -> merkling.null_hash
+    [mpf.Leaf { .. }, ..] -> merkling.null_hash
+  }
+}
+
+/// Re-commits a block fixture so its header commits `transactions_phas_root`
+/// under `l2_transaction_count`, leaving the committed transaction untouched.
+///
+/// This is how a selector reaches a trie deep enough that its membership proof
+/// cannot travel inside the step transaction: the counted-root authentication
+/// the step performs is genuine, and only the depth is synthetic.
+pub fn deep_transactions_root_block_fixture_v1(
+  base: NativeBlockFixtureV1,
+  transactions_phas_root: ByteArray,
+  l2_transaction_count: Int,
+) -> NativeBlockFixtureV1 {
+  let header = ledger_state.HeaderV1 {
+    ..base.header,
+    transactions_root: transition_trace.commit_counted_root(
+      transition_trace.TransactionsV1RootDomain,
+      transactions_phas_root,
+      l2_transaction_count,
+    ),
+    l2_transaction_count,
+  }
+  let header_data: Data = header
+  NativeBlockFixtureV1 {
+    ..base,
+    transactions_phas_root,
+    header,
+    header_hash: utils.serialise_and_hash_28(header_data),
+  }
+}
+
+/// Publication UTxOs for `steps`, packed to the per-chunk step bound. A chunk
+/// is inert data at an arbitrary address: no token, no owner, no ordering
+/// claim.
+pub fn proof_chunk_reference_inputs(steps: mpf.Proof) -> List<Input> {
+  do_proof_chunk_reference_inputs(steps, 0)
+}
+
+fn do_proof_chunk_reference_inputs(steps: mpf.Proof, index: Int) -> List<Input> {
+  if steps == [] {
+    []
+  } else {
+    let head_steps = list.take(steps, chunk_step_bound)
+    let tail_steps = list.drop(steps, chunk_step_bound)
+    let chunk_datum: Data = mpf_chunked_proof_v1.ProofChunkDatum {
+      proof_steps: head_steps,
+    }
+    list.push(
+      do_proof_chunk_reference_inputs(tail_steps, index + 1),
+      Input {
+        output_reference: OutputReference {
+          transaction_id: blake2b_256(cbor.serialise(index)),
+          output_index: index,
+        },
+        output: Output {
+          address: address.from_script(chunk_holder_script_hash),
+          value: assets.from_lovelace(2_000_000),
+          datum: InlineDatum(chunk_datum),
+          reference_script: None,
+        },
+      },
+    )
+  }
+}
+
+const chunk_step_bound: Int =
+  mpf_chunked_proof_v1.maximum_chunk_proof_step_count
+
+const chunk_holder_script_hash =
+  #"90909090909090909090909090909090909090909090909090909090"
+
+/// The published-chunk inclusion carriage matching
+/// `continue_step_chunked_l1_tx_v1`: the block's hub-oracle and state-queue
+/// reference inputs occupy slots 0 and 1, so the chunks start at slot 2.
+pub fn published_chunk_inclusion_carriage_v1(
+  fixture: NativeBlockFixtureV1,
+  chunk_count: Int,
+) -> NativeTxInclusionCarriage {
+  common.PublishedChunkInclusion(
+    common.PublishedChunkInclusionArgs {
+      input_index: 0,
+      output_index: 0,
+      hub_ref_input_index: 0,
+      state_queue_node_ref_input_index: 1,
+      native_tx_id: fixture.tx_id,
+      native_tx_compact_cbor: fixture.compact_cbor,
+      transactions_phas_root: fixture.transactions_phas_root,
+      ordered_chunk_reference_input_indices: chunk_indices_v1(chunk_count),
+    },
+  )
+}
+
+/// Withdraw redeemer entry mirroring the merkelized `mpf_chunked_verify`
+/// invocation for one published-chunk claim.
+pub fn chunked_verify_withdraw_redeemer_entry(
+  claim: chunked_inclusion_v1.ChunkedProofClaim,
+) -> Pair<ScriptPurpose, Redeemer> {
+  let claim_data: Data = claim
+  Pair(Withdraw(Script(env.mpf_chunked_verify_validator_hash)), claim_data)
+}
+
+/// The membership claim a published-chunk step must find in the merkelized
+/// verifier's redeemer: the block's authenticated raw root, the committed
+/// transaction's id and value digest, and the chunk order the step named.
+pub fn chunked_membership_claim_v1(
+  fixture: NativeBlockFixtureV1,
+  chunk_count: Int,
+) -> chunked_inclusion_v1.ChunkedProofClaim {
+  chunked_inclusion_v1.ChunkedProofClaim {
+    mode: chunked_inclusion_v1.Membership,
+    merkle_root: fixture.transactions_phas_root,
+    key_bytes: fixture.tx_id,
+    value_hash: blake2b_256(fixture.compact_cbor),
+    ordered_chunk_reference_input_indices: chunk_indices_v1(chunk_count),
+  }
+}
+
+fn chunk_indices_v1(chunk_count: Int) -> List<Int> {
+  list.map(list.range(0, chunk_count - 1), fn(index) { index + 2 })
+}
+
+/// L1 transaction that continues a first-step computation thread against the
+/// fixture block with the membership proof carried by published chunks: same
+/// thread input/output and block reference inputs, the merkelized verifier's
+/// claim in place of the `phas` membership redeemer, and the chunk UTxOs
+/// appended as reference inputs.
+pub fn continue_step_chunked_l1_tx_v1(
+  fixture: NativeBlockFixtureV1,
+  output_state_data: Data,
+  chunks: List<Input>,
+  claim: chunked_inclusion_v1.ChunkedProofClaim,
+) -> Transaction {
+  let asset_name = ct_token_asset_name(fixture)
+  Transaction {
+    ..placeholder,
+    inputs: [ct_thread_input(asset_name)],
+    outputs: [next_step_output(asset_name, output_state_data)],
+    reference_inputs: list.concat(
+      [hub_reference_input(), state_queue_reference_input(fixture)],
+      chunks,
+    ),
+    redeemers: [chunked_verify_withdraw_redeemer_entry(claim)],
   }
 }
 

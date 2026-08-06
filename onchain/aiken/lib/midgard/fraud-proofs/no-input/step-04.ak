@@ -1,5 +1,5 @@
-use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
+use midgard/fraud_proofs/common.{NonMembershipCarriage}
 use midgard/ledger_state.{MidgardTxId, MidgardTxsRoot}
 
 pub type State {
@@ -13,8 +13,8 @@ pub type Datum =
 pub type Args {
   input_index: Int,
   output_index: Int,
-  non_membership_proof_in_txs: Proof,
-  non_membership_proof_script_redeemer_index: Int,
+  /// The prover's chosen carriage for the transactions-root absence proof.
+  non_membership_in_txs: NonMembershipCarriage,
   fraud_proof_mint_redeemer_index: Int,
 }
 

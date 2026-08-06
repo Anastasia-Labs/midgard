@@ -15,6 +15,7 @@ use midgard/mpf_chunked_proof_v1.{
   FinalizeProofRedeemer, Membership, NonMembership, ProofChallengeDatum,
   ProofChunkDatum,
 }
+use midgard/transition_trace
 
 // ## Deterministic identities
 
@@ -189,6 +190,7 @@ fn membership_challenge(expected_root: ByteArray) -> ProofChallengeDatum {
   ProofChallengeDatum {
     proof_owner,
     challenged_header_hash,
+    challenged_root_domain: transition_trace.TransactionsV1RootDomain,
     target_key,
     target_value_hash,
     expected_root,
@@ -201,6 +203,7 @@ fn non_membership_challenge(expected_root: ByteArray) -> ProofChallengeDatum {
   ProofChallengeDatum {
     proof_owner,
     challenged_header_hash,
+    challenged_root_domain: transition_trace.TransactionsV1RootDomain,
     target_key,
     target_value_hash,
     expected_root,

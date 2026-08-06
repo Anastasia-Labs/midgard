@@ -1,15 +1,21 @@
 use aiken/builtin
 use aiken/collection/list
+use aiken/crypto.{blake2b_256}
+use aiken/merkle_patricia_forestry as mpf
+use aiken/merkle_patricia_forestry/helpers.{combine, nibble, suffix}
 use cardano/address.{Address, Script}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
-  OutputReference, Redeemer, ScriptPurpose, Transaction, Withdraw,
+  Input, OutputReference, Redeemer, ScriptPurpose, Transaction, Withdraw,
 }
 use env
 use midgard/common/types.{Proof}
-use midgard/common/utils
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, finalize}
+use midgard/fraud_proofs/chunked_inclusion_v1.{PublishedProofCarriage}
+use midgard/fraud_proofs/common.{
+  NonMembershipCarriage, PublishedChunkNonMembership,
+  RedeemerCarriedNonMembership, cancel, finalize, verify_non_membership_carried,
+}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/no_input/step_04.{Args, Datum, SpendRedeemer, State}
 
@@ -37,11 +43,10 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
-        non_membership_proof_in_txs,
-        non_membership_proof_script_redeemer_index,
+        non_membership_in_txs,
         fraud_proof_mint_redeemer_index,
       }) -> {
-        let Transaction { inputs, outputs, redeemers, .. } = tx
+        let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = tx
 
         expect Some(step_datum) = datum
 
@@ -71,13 +76,15 @@ validator main(
         // 2. The missing input must not have been produced in the same block.
         //    The transactions MPF is keyed by the raw 32-byte native tx id, so
         //    the non-membership key is the tx id bytes directly.
+        //    The prover chooses the carriage: redeemer-carried, or published
+        //    beforehand as chunks this transaction references (issue #545).
         expect
-          utils.plutarch_pexcludes_raw(
-            merkle_root: blocks_transactions_root,
-            key_bytes: missing_input_tx_id,
-            non_membership_proof: non_membership_proof_in_txs,
-            redeemers: redeemers,
-            withdraw_redeemer_index: non_membership_proof_script_redeemer_index,
+          verify_non_membership_carried(
+            non_membership_in_txs,
+            blocks_transactions_root,
+            missing_input_tx_id,
+            reference_inputs,
+            redeemers,
           )
 
         // Done.
@@ -128,15 +135,18 @@ fn pexcludes_withdraw_redeemer_entry(
   )
 }
 
-fn run_finalize(claimed_root: ByteArray, claimed_key: ByteArray) -> Bool {
+fn run_finalize_with(
+  blocks_transactions_root: ByteArray,
+  carriage: NonMembershipCarriage,
+  extra_redeemers: Pairs<ScriptPurpose, Redeemer>,
+  reference_inputs: List<Input>,
+) -> Bool {
   let asset_name = fixture.ct_token_asset_name(challenged_block())
   let base = fixture.finalize_step_l1_tx_v1(asset_name)
   let l1_tx = Transaction {
     ..base,
-    redeemers: list.concat(
-      base.redeemers,
-      [pexcludes_withdraw_redeemer_entry(claimed_root, claimed_key)],
-    ),
+    reference_inputs,
+    redeemers: list.concat(base.redeemers, extra_redeemers),
   }
   main.spend(
     fixture.fraud_proof_policy_id,
@@ -145,25 +155,103 @@ fn run_finalize(claimed_root: ByteArray, claimed_key: ByteArray) -> Bool {
     Some(
       ct.StepDatum {
         fraud_prover: fixture.fraud_prover_key_hash,
-        data: Some(
-          State {
-            missing_input_tx_id,
-            blocks_transactions_root: transactions_root(),
-          },
-        ),
+        data: Some(State { missing_input_tx_id, blocks_transactions_root }),
       },
     ),
     ct.Continue(
       Args {
         input_index: 0,
         output_index: 0,
-        non_membership_proof_in_txs: [],
-        non_membership_proof_script_redeemer_index: 1,
+        non_membership_in_txs: carriage,
         fraud_proof_mint_redeemer_index: 0,
       },
     ),
     fixture.own_out_ref(),
     l1_tx,
+  )
+}
+
+fn run_finalize(claimed_root: ByteArray, claimed_key: ByteArray) -> Bool {
+  run_finalize_with(
+    transactions_root(),
+    RedeemerCarriedNonMembership {
+      non_membership_proof: [],
+      non_membership_proof_script_redeemer_index: 1,
+    },
+    [pexcludes_withdraw_redeemer_entry(claimed_root, claimed_key)],
+    [],
+  )
+}
+
+// ## Published-chunk carriage (issue #545)
+
+const absence_witness_value_hash =
+  #"6666666666666666666666666666666666666666666666666666666666666666"
+
+fn absence_witness_leaf_path() -> ByteArray {
+  blake2b_256(#"a15e17")
+}
+
+/// The canonical absence witness for any key whose path diverges from
+/// `absence_witness_leaf_path` at the first nibble, and the root it proves.
+fn absence_witness() -> (ByteArray, mpf.Proof) {
+  let leaf_path = absence_witness_leaf_path()
+  (
+    combine(suffix(leaf_path, 0), absence_witness_value_hash),
+    [mpf.Leaf { skip: 0, key: leaf_path, value: absence_witness_value_hash }],
+  )
+}
+
+/// The absence claim a published-chunk step must find in the merkelized
+/// verifier's redeemer.
+fn absence_claim(
+  merkle_root: ByteArray,
+  key_bytes: ByteArray,
+  indices: List<Int>,
+) -> chunked_inclusion_v1.ChunkedProofClaim {
+  chunked_inclusion_v1.ChunkedProofClaim {
+    mode: chunked_inclusion_v1.NonMembership,
+    merkle_root,
+    key_bytes,
+    value_hash: chunked_inclusion_v1.absent_value_hash,
+    ordered_chunk_reference_input_indices: indices,
+  }
+}
+
+fn run_finalize_published_with_claim(
+  blocks_transactions_root: ByteArray,
+  indices: List<Int>,
+  claim_indices: List<Int>,
+  witness: mpf.Proof,
+) -> Bool {
+  run_finalize_with(
+    blocks_transactions_root,
+    PublishedChunkNonMembership(
+      PublishedProofCarriage { ordered_chunk_reference_input_indices: indices },
+    ),
+    [
+      fixture.chunked_verify_withdraw_redeemer_entry(
+        absence_claim(
+          blocks_transactions_root,
+          missing_input_tx_id,
+          claim_indices,
+        ),
+      ),
+    ],
+    fixture.proof_chunk_reference_inputs(witness),
+  )
+}
+
+fn run_finalize_published(
+  blocks_transactions_root: ByteArray,
+  indices: List<Int>,
+  witness: mpf.Proof,
+) -> Bool {
+  run_finalize_published_with_claim(
+    blocks_transactions_root,
+    indices,
+    indices,
+    witness,
   )
 }
 
@@ -182,4 +270,23 @@ test no_input_step_04_excludes_the_producing_transaction() {
 test no_input_step_04_rejects_valid_block_challenge() fail {
   let unrelated_root = #"4040404040404040404040404040404040404040404040404040404040404040"
   run_finalize(unrelated_root, missing_input_tx_id)
+}
+
+/// Positive selector, published-chunk carriage: the same absence claim
+/// finalizes with the witness in a referenced publication UTxO.
+test no_input_step_04_excludes_the_producing_transaction_through_published_chunks() {
+  let (root, witness) = absence_witness()
+  and {
+    nibble(blake2b_256(missing_input_tx_id), 0) != nibble(
+      absence_witness_leaf_path(),
+      0,
+    ),
+    run_finalize_published(root, [0], witness),
+  }
+}
+
+/// The step is bound to the exact claim its redeemer named.
+test no_input_step_04_rejects_a_claim_the_redeemer_did_not_name() fail {
+  let (root, witness) = absence_witness()
+  run_finalize_published_with_claim(root, [0], [0, 0], witness)
 }

@@ -763,7 +763,9 @@ pub fn plutarch_pexcludes_raw(
   True
 }
 
-fn get_unique_withdraw_redeemer(
+/// The single withdraw redeemer of `withdraw_script_hash` in this transaction.
+/// Exactly one is required, which is what makes a merkelized claim unambiguous.
+pub fn get_unique_withdraw_redeemer(
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_script_hash: ScriptHash,
 ) -> Redeemer {
