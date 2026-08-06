@@ -1,0 +1,280 @@
+{
+  "schemaVersion": "midgard-canonical-v1-cg4-fund-safety-classification-gate-v1",
+  "goalIds": ["CG4"],
+  "goalSpecAnchors": [
+    "GOAL_SPEC.md 8.4 P4 forced execution and classification, row CG4",
+    "GOAL_SPEC.md 9.4 Shared correction lifecycle, row QG1",
+    "GOAL_SPEC.md 11 IG1 and IG2, bound here as the ABI half of the consolidated review"
+  ],
+  "sourceRevision": "1a94c00a11b6f3ad8ca04d655dbe5e74a3e6c007",
+  "gateStatus": "BLOCKED",
+  "waivers": [],
+  "createsC70Snapshots": false,
+  "liveOrReadinessClaims": 0,
+  "reviewNote": "This is the single consolidated ABI/fund-safety review CG4's acceptance requires. It reconciles all nine C60-C68 classification rows one-to-one against the F05 task manifest and the git index, records the QG1 local-family route, and binds the IG1/IG2 ABI freeze by digest. It records what is measured, not what is hoped for. CG4 is BLOCKED and refuses PASS: every one of the nine rows is still dependency-blocked in the manifest, six of them are missing at least one prescribed surface, QG1's own local-coverage verifier does not exist in the tree at all so QG1 is UNMEASURED rather than merely open, and the bound ABI freeze is BLOCKED with 11 IG2 violations. No row here is promoted, no C70 snapshot is created, and no deployment, live or readiness status is inferred. What this gate closes is CG4's own deliverable: the exact one-to-one reconciliation and the zero-debt report. The C60-C68 implementations themselves are owned by the forced-execution semantics and coverage rows that block them and are deliberately not attempted here.",
+  "classificationRows": [
+    {
+      "id": "C60",
+      "title": "Normal valid/effectful",
+      "acceptance": "Exact accepted delta.",
+      "classification": "normal source, valid and effectful",
+      "expectedTerminal": "the accepted ledger delta is applied exactly; a valid static-rules transition cannot be proven rejected",
+      "status": "BLOCKED",
+      "blockedOn": ["CG3"],
+      "prescribedSurfaces": [
+        "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+        "onchain/aiken/lib/midgard/validation-machine-v1.test.ak",
+        "demo/midgard-validation/src/validation-machine.ts",
+        "demo/midgard-validation/tests/validation-machine.test.ts"
+      ],
+      "missingSurfaces": [],
+      "evidence": "all 4 prescribed surfaces are in the index, but the manifest still blocks this row on CG3, so its semantics are not measured closed"
+    },
+    {
+      "id": "C61",
+      "title": "Forced valid/effectful",
+      "acceptance": "Same validation and delta as equivalent normal source; cannot be skipped/rejected/no-op.",
+      "classification": "forced source, valid and effectful",
+      "expectedTerminal": "the same validation and delta as the equivalent normal source; the transition can be neither skipped, rejected nor turned into a no-op",
+      "status": "BLOCKED",
+      "blockedOn": ["CG3"],
+      "prescribedSurfaces": [
+        "onchain/aiken/lib/midgard/transaction-root-v1-golden.test.ak",
+        "demo/midgard-validation/tests/helpers/retained-da-boundary-v1.ts",
+        "demo/midgard-validation/tests/retained-da-boundary-v1.test.ts",
+        "demo/midgard-validation/tests/forced-valid-effectful-equivalence-v1.test.ts"
+      ],
+      "missingSurfaces": [
+        "demo/midgard-validation/tests/forced-valid-effectful-equivalence-v1.test.ts"
+      ],
+      "evidence": "3 of 4 prescribed surfaces are in the index; 1 are absent (demo/midgard-validation/tests/forced-valid-effectful-equivalence-v1.test.ts), and the manifest blocks this row on CG3"
+    },
+    {
+      "id": "C62",
+      "title": "Forced invalid",
+      "acceptance": "Consumes exact forced-order effect and applies no invalid ledger delta.",
+      "classification": "forced source, invalid",
+      "expectedTerminal": "the exact forced-order effect is consumed and no invalid ledger delta is applied",
+      "status": "BLOCKED",
+      "blockedOn": ["CG3"],
+      "prescribedSurfaces": [
+        "onchain/aiken/lib/midgard/validation-trace-v1.ak",
+        "onchain/aiken/lib/midgard/validation-trace-v1.test.ak",
+        "demo/midgard-validation/src/validation-dispute-evidence.ts",
+        "demo/midgard-validation/tests/validation-dispute-evidence.test.ts"
+      ],
+      "missingSurfaces": [],
+      "evidence": "all 4 prescribed surfaces are in the index, but the manifest still blocks this row on CG3, so its semantics are not measured closed"
+    },
+    {
+      "id": "C63",
+      "title": "Forced specified no-op",
+      "acceptance": "Remains exact authenticated no-op.",
+      "classification": "forced source, specified no-op",
+      "expectedTerminal": "an exact authenticated no-op that remains provable as such",
+      "status": "BLOCKED",
+      "blockedOn": ["CG3"],
+      "prescribedSurfaces": [
+        "onchain/aiken/lib/midgard/validation-tail-controls-v1-abi.test.ak",
+        "demo/midgard-validation/src/forced-specified-noop-v1.ts",
+        "demo/midgard-validation/tests/forced-specified-noop-v1.test.ts",
+        "demo/midgard-validation/tests/validation-tail-controls-v1-abi.test.ts"
+      ],
+      "missingSurfaces": [
+        "demo/midgard-validation/src/forced-specified-noop-v1.ts",
+        "demo/midgard-validation/tests/forced-specified-noop-v1.test.ts"
+      ],
+      "evidence": "2 of 4 prescribed surfaces are in the index; 2 are absent (demo/midgard-validation/src/forced-specified-noop-v1.ts, demo/midgard-validation/tests/forced-specified-noop-v1.test.ts), and the manifest blocks this row on CG3"
+    },
+    {
+      "id": "C64",
+      "title": "Normal misclassified as forced",
+      "acceptance": "Single deterministic proof/correction path.",
+      "classification": "normal source misclassified as forced",
+      "expectedTerminal": "a single deterministic proof and correction path",
+      "status": "BLOCKED",
+      "blockedOn": ["C60", "C61", "C62", "C63"],
+      "prescribedSurfaces": [
+        "demo/midgard-fault-proofs/src/transition-trace/detect.ts",
+        "demo/midgard-fault-proofs/tests/normal-misclassified-as-forced-v1.test.ts"
+      ],
+      "missingSurfaces": [
+        "demo/midgard-fault-proofs/tests/normal-misclassified-as-forced-v1.test.ts"
+      ],
+      "evidence": "1 of 2 prescribed surfaces are in the index; 1 are absent (demo/midgard-fault-proofs/tests/normal-misclassified-as-forced-v1.test.ts), and the manifest blocks this row on C60, C61, C62, C63"
+    },
+    {
+      "id": "C65",
+      "title": "Forced misclassified as normal",
+      "acceptance": "Single deterministic proof/correction path.",
+      "classification": "forced source misclassified as normal",
+      "expectedTerminal": "a single deterministic proof and correction path",
+      "status": "BLOCKED",
+      "blockedOn": ["C60", "C61", "C62", "C63"],
+      "prescribedSurfaces": [
+        "demo/midgard-fault-proofs/src/transition-trace/witnesses.ts",
+        "demo/midgard-fault-proofs/tests/forced-misclassified-as-normal-v1.test.ts"
+      ],
+      "missingSurfaces": [
+        "demo/midgard-fault-proofs/tests/forced-misclassified-as-normal-v1.test.ts"
+      ],
+      "evidence": "1 of 2 prescribed surfaces are in the index; 1 are absent (demo/midgard-fault-proofs/tests/forced-misclassified-as-normal-v1.test.ts), and the manifest blocks this row on C60, C61, C62, C63"
+    },
+    {
+      "id": "C66",
+      "title": "Accepted source paired with wrong delta",
+      "acceptance": "Detected and corrected for normal and forced sources.",
+      "classification": "accepted source paired with the wrong delta",
+      "expectedTerminal": "detection and correction for both normal and forced sources",
+      "status": "BLOCKED",
+      "blockedOn": ["C60", "C61", "C62", "C63"],
+      "prescribedSurfaces": [
+        "demo/midgard-fault-proofs/src/accepted-source-wrong-delta-v1.ts",
+        "demo/midgard-fault-proofs/tests/accepted-source-wrong-delta-v1.test.ts",
+        "demo/midgard-fault-proofs/tests/submit-init-emulator-soundness.test.ts"
+      ],
+      "missingSurfaces": [
+        "demo/midgard-fault-proofs/src/accepted-source-wrong-delta-v1.ts",
+        "demo/midgard-fault-proofs/tests/accepted-source-wrong-delta-v1.test.ts"
+      ],
+      "evidence": "1 of 3 prescribed surfaces are in the index; 2 are absent (demo/midgard-fault-proofs/src/accepted-source-wrong-delta-v1.ts, demo/midgard-fault-proofs/tests/accepted-source-wrong-delta-v1.test.ts), and the manifest blocks this row on C60, C61, C62, C63"
+    },
+    {
+      "id": "C67",
+      "title": "Single-party proof regression",
+      "acceptance": "Existing self-contained families remain direct and pass soundness tests.",
+      "classification": "single-party proof regression across the direct families",
+      "expectedTerminal": "the existing self-contained families stay direct and keep passing their soundness tests",
+      "status": "BLOCKED",
+      "blockedOn": ["C60", "C61", "C62", "C63", "C64", "C65", "C66"],
+      "prescribedSurfaces": [
+        "onchain/aiken/lib/midgard/fraud-proofs/common.ak",
+        "onchain/aiken/lib/midgard/fraud-proofs/common.test.ak",
+        "demo/midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
+        "demo/midgard-fault-proofs/tests/submit-init-emulator-input-no-idx.test.ts",
+        "demo/midgard-fault-proofs/tests/submit-init-emulator-da-hash-preimage.test.ts",
+        "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace.test.ts"
+      ],
+      "missingSurfaces": [],
+      "evidence": "all 6 prescribed surfaces are in the index, but the manifest still blocks this row on C60, C61, C62, C63, C64, C65, C66, so its semantics are not measured closed"
+    },
+    {
+      "id": "C68",
+      "title": "Both interactive verdict directions",
+      "acceptance": "Operator-valid/challenger-invalid and operator-invalid/challenger-valid lifecycles, including withholding timeout, complete through award/removal.",
+      "classification": "both interactive verdict directions",
+      "expectedTerminal": "operator-valid/challenger-invalid and operator-invalid/challenger-valid lifecycles, including withholding timeout, complete through award and removal",
+      "status": "BLOCKED",
+      "blockedOn": ["C60", "C61", "C62", "C63", "C64", "C65", "C66", "C67"],
+      "prescribedSurfaces": [
+        "onchain/aiken/lib/midgard/validation-dispute-v1.ak",
+        "onchain/aiken/lib/midgard/validation-dispute-v1.test.ak",
+        "demo/midgard-fault-proofs/src/validation-dispute/submit.ts",
+        "demo/midgard-fault-proofs/tests/validation-dispute-submit.test.ts",
+        "demo/midgard-fault-proofs/tests/submit-init-emulator-validation-dispute.test.ts",
+        "demo/midgard-fault-proofs/tests/submit-init-emulator-removal-lease.test.ts",
+        "demo/midgard-fault-proofs/tests/both-interactive-verdict-directions-v1.test.ts"
+      ],
+      "missingSurfaces": [
+        "demo/midgard-fault-proofs/tests/both-interactive-verdict-directions-v1.test.ts"
+      ],
+      "evidence": "6 of 7 prescribed surfaces are in the index; 1 are absent (demo/midgard-fault-proofs/tests/both-interactive-verdict-directions-v1.test.ts), and the manifest blocks this row on C60, C61, C62, C63, C64, C65, C66, C67"
+    }
+  ],
+  "qg1Route": {
+    "rowId": "QG1",
+    "status": "BLOCKED",
+    "verifierPath": "demo/scripts/verify-canonical-v1-qg1-local-coverage-gate.mjs",
+    "verifierPresent": false,
+    "acceptance": "No `PARTIAL`, documented-missing, required-undocumented, unreachable, stub, untooled, or untested fund-safety row remains. QG1 is the local-closure gate: it requires §9.1 `LOCAL_PASS`, never live evidence.",
+    "blockedOn": [
+      "Q10",
+      "Q11",
+      "Q12",
+      "Q14",
+      "Q15",
+      "Q16",
+      "Q17",
+      "Q18",
+      "Q19",
+      "Q20",
+      "Q21",
+      "Q22",
+      "Q23",
+      "Q26",
+      "Q27",
+      "Q28",
+      "Q29",
+      "Q30",
+      "Q31",
+      "Q32",
+      "Q33",
+      "Q34",
+      "Q35",
+      "Q36",
+      "Q37",
+      "Q38",
+      "Q39",
+      "Q40",
+      "Q41",
+      "Q42",
+      "Q43",
+      "Q45",
+      "Q46",
+      "Q47",
+      "Q48",
+      "Q49",
+      "Q50",
+      "Q55",
+      "Q58",
+      "Q59",
+      "Q60",
+      "Q61",
+      "Q62",
+      "Q63"
+    ],
+    "reconciliation": {
+      "total": 70,
+      "locallyComplete": 8,
+      "structuralOrNA": 13,
+      "open": 49,
+      "preprodComplete": 0
+    },
+    "publishedAcceptance": "OPEN"
+  },
+  "abiFreezeBinding": {
+    "artifactPath": "docs/exec-plans/evidence/canonical-v1-abi-freeze-v1.json",
+    "artifactSha256": "0ea5badc5bd362fe3021cc6b57f459a82bc566fc5571cb2a882c3654e11db8da",
+    "verifierPath": "demo/scripts/verify-canonical-v1-abi-freeze.mjs",
+    "verifierSha256": "0de278199adce544a461157e873de1ebd9aa3388247e159943bb3158c4f4da26",
+    "freezeStatus": "BLOCKED",
+    "ig2Status": "BLOCKED",
+    "ig2Violations": 11,
+    "driftFindings": 2
+  },
+  "zeroDebt": {
+    "missingFundSafetyRows": 6,
+    "partialFundSafetyRows": 6,
+    "dependencyBlockedRows": 9,
+    "unknownClassificationRows": 0,
+    "staleSemanticsRows": 0,
+    "directFamilyReroutes": 0,
+    "unprovableAsVerifiedRows": 0,
+    "nonLocalPassRows": 9,
+    "liveClaims": 0,
+    "readinessClaims": 0
+  },
+  "focusedCommands": [
+    "node demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate.mjs",
+    "node demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate-self-test.mjs",
+    "node demo/scripts/verify-canonical-v1-abi-freeze.mjs",
+    "node demo/scripts/verify-canonical-v1-fault-proof-reconciliation.mjs"
+  ],
+  "nextActions": [
+    "CG3 closure, which C60-C63 are blocked on and which C64-C68 inherit.",
+    "The prescribed C61/C62/C63 equivalence, forced-order and no-op suites in demo/midgard-validation.",
+    "The prescribed C64/C65/C66/C68 classification, wrong-delta and verdict-direction suites in demo/midgard-fault-proofs.",
+    "QG1's own local-coverage verifier and artifact, which do not exist in the tree; until they do, QG1 is unmeasured and CG4 cannot be evaluated for PASS.",
+    "Re-run this gate after each: it promotes nothing on its own and refuses PASS until every row, QG1 and the ABI freeze are measured PASS."
+  ]
+}
