@@ -7,6 +7,8 @@ help:
 	@echo "  help               -- show this help"
 	@echo "  enable-git-hooks   -- enable git hooks in this local repo clone"
 	@echo "  disable-git-hooks  -- enable git hooks in this local repo clone"
+	@echo "  enable-graphify-post-commit -- install the Graphify refresh hook without replacing other hooks"
+	@echo "  refresh-graphify-graph -- refresh the external Graphify graph from a coherent checkout"
 	@echo "  spec               -- build the specification technical-spec/midgard.pdf"
 	@echo "  spec-clean         -- clean the latexmk files in technical-spec"
 	@echo "  proof-v1-envelope  -- verify V1 L1 byte and execution envelopes"
@@ -19,6 +21,15 @@ enable-git-hooks:
 .PHONY: disable-git-hooks
 disable-git-hooks:
 	git config --unset core.hooksPath
+
+.PHONY: enable-graphify-post-commit
+enable-graphify-post-commit:
+	mkdir -p "$$(git rev-parse --git-path hooks)"
+	ln -sfn "$$(pwd)/.githooks/post-commit" "$$(git rev-parse --git-path hooks)/post-commit"
+
+.PHONY: refresh-graphify-graph
+refresh-graphify-graph:
+	.githooks/post-commit
 
 .PHONY: spec
 spec:
