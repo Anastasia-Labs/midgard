@@ -1,0 +1,154 @@
+{
+  "schemaVersion": "midgard-canonical-v1-watcher-local-gate-v1",
+  "goalIds": ["WG1", "IG3"],
+  "goalSpecAnchors": [
+    "GOAL_SPEC.md 10.5 WG1 local watcher gate",
+    "GOAL_SPEC.md 11 IG3 watcher security gate",
+    "GOAL_SPEC.md 12 AC-W18 / AC-W19"
+  ],
+  "sourceRevision": "f35bf45c9f70d0d9627e3a1f20658bdfd316d7be",
+  "gateStatus": "BLOCKED",
+  "productionReadiness": false,
+  "waivers": [],
+  "reviewNote": "This is the single consolidated WG1 + IG3 review required by the B33 acceptance criteria. It records what is measured, not what is hoped for. WG1 is BLOCKED: four of its five predecessors have no executable surface in the tree at all. The one predecessor that is delivered (W44) is bound below by digest and by exact runner counts.",
+  "predecessors": [
+    {
+      "id": "W40",
+      "title": "Unit/property/fuzz suite",
+      "status": "BLOCKED",
+      "measurement": "git ls-files under demo/midgard-watcher: neither declared W40 test surface exists in the index",
+      "missingSurfaces": [
+        "demo/midgard-watcher/tests/watcher-properties.test.ts",
+        "demo/midgard-watcher/tests/watcher-fuzz.test.ts"
+      ]
+    },
+    {
+      "id": "W41",
+      "title": "Multi-process local integration",
+      "status": "BLOCKED",
+      "measurement": "git ls-files under demo/midgard-watcher: neither declared W41 surface exists in the index",
+      "missingSurfaces": [
+        "demo/midgard-watcher/tests/multi-process-integration.test.ts",
+        "demo/midgard-watcher/tests/support/multi-process-watcher-harness.ts"
+      ]
+    },
+    {
+      "id": "W42",
+      "title": "Read-only clean replay corpus",
+      "status": "BLOCKED",
+      "measurement": "git ls-files under demo/midgard-watcher: the declared W42 surface does not exist in the index",
+      "missingSurfaces": [
+        "demo/midgard-watcher/tests/read-only-replay-corpus.test.ts"
+      ]
+    },
+    {
+      "id": "W43",
+      "title": "Emulator autonomous correction",
+      "status": "BLOCKED",
+      "measurement": "git ls-files under demo/midgard-watcher: the declared W43 surface does not exist in the index",
+      "missingSurfaces": [
+        "demo/midgard-watcher/tests/emulator-autonomous-correction.test.ts"
+      ]
+    },
+    {
+      "id": "W44",
+      "title": "Crash/rollback matrix",
+      "status": "PASS",
+      "measurement": "package-local Vitest 3.0.7 JSON report over demo/midgard-watcher/tests/crash-rollback-matrix.test.ts: 17/17 passed, 0 failed, 0 pending, 0 todo; the case decomposition, depth binding and zero-defect invariants are re-derived from the bound artifact by this verifier",
+      "scopeLimit": "W32 and W33 are NOT_STARTED and their modules do not exist, so the seven-transition lifecycle sequencing is driven by a deterministic in-test driver over the real W03 durable schema and the real W03 atomic journal boundary. The rollback and configured-source cases drive the real W12/W13 production entry points with no substitution."
+    }
+  ],
+  "wg1Conditions": [
+    {
+      "id": "independent",
+      "status": "BLOCKED",
+      "dependsOn": ["W41"],
+      "blockedOn": ["W41"],
+      "evidence": "demo/midgard-watcher/tests/scaffold.test.ts and docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json already prove operator-node/API/database/private-file independence at the library boundary, but WG1 independence is a process-boundary claim that only W41 can measure."
+    },
+    {
+      "id": "deterministic",
+      "status": "BLOCKED",
+      "dependsOn": ["W40", "W42"],
+      "blockedOn": ["W40", "W42"],
+      "evidence": "W44 shows byte-identical convergence to the uncrashed control digest from all 14 crash points, which is determinism of the recovery path only. Seed-recorded property/fuzz determinism (W40) and corpus replay determinism (W42) are unmeasured."
+    },
+    {
+      "id": "complete_for_every_enabled_family_locally",
+      "status": "BLOCKED",
+      "dependsOn": ["W43"],
+      "blockedOn": ["W43", "CG3"],
+      "evidence": "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json publishes an INITIAL_ONLY launch scope of 8 families and 0 preprod-complete rows; the WG1 row requires 14 enabled families plus 1 availability route. No autonomous per-family correction sweep exists.",
+      "measuredEnabledFamilies": 8,
+      "requiredEnabledFamilies": 14,
+      "requiredAvailabilityRoutes": 1,
+      "measuredAvailabilityRoutes": 0
+    },
+    {
+      "id": "restart_rollback_safe",
+      "status": "BLOCKED",
+      "dependsOn": ["W40", "W41", "W44"],
+      "blockedOn": ["W40", "W41"],
+      "evidence": "W44 is PASS and is bound by digest below: 14 before/after crash points across the 7 W32 lifecycle transitions, 1 ordinary pre-finality L1 rollback, 1 rollback deeper than the configured finality depth within Cardano k = 2160, and 1 configured-source inconsistency, each measuring 0 double submits, 0 duplicate rewards, 0 lost evidence, 0 false verified states, 0 unrecoverable workflows and 0 manual-surgery recovery steps. This is the strongest restart/rollback evidence in the program, but WG1 also requires the W40 restart properties and the W41 multi-process restart boundary, which are unmeasured."
+    },
+    {
+      "id": "observable",
+      "status": "BLOCKED",
+      "dependsOn": ["W40", "W41"],
+      "blockedOn": ["W38", "W39", "W40", "W41"],
+      "evidence": "No watcher status/metrics/alert surface exists in demo/midgard-watcher/src; W38 and W39 are NOT_STARTED, so readiness-versus-liveness and the alert inventory are unmeasured."
+    },
+    {
+      "id": "ready_for_final_deployment",
+      "status": "BLOCKED",
+      "dependsOn": ["W40", "W41", "W42", "W43", "W44"],
+      "blockedOn": ["W40", "W41", "W42", "W43", "CG3"],
+      "evidence": "Readiness is the conjunction of the five conditions above and explicit CG3 closure. Four predecessors are unmeasured, so readiness is false by construction and is never inferred from the W26 PASS evidence."
+    }
+  ],
+  "ig3SecurityConditions": [
+    {
+      "id": "no_enabled_feature_maps_to_unprovable_gap",
+      "status": "BLOCKED",
+      "blockedOn": ["W43", "CG3"],
+      "evidence": "WATCHER_BLOCK_DECISIONS_V1 in demo/midgard-watcher/src/durable-store.ts carries an explicit unprovable_gap decision and the watcher fails closed into it, which satisfies the visibility half of AC-W14. The IG3 clause is stronger: it requires that no *enabled* feature lands there. With 0 preprod-complete coverage rows and 49 open rows in the fault-proof reconciliation, that cannot be asserted."
+    },
+    {
+      "id": "no_proof_input_requires_private_operator_state",
+      "status": "PASS",
+      "evidence": "Re-measured under every W44 scenario: the recovered durable store carries exactly the byte-exact canonical encoding of the authenticated public L1 observation, and 0 private material markers (rollback authority key bytes, prover and rollback key environment variable names, operator storage path) appear anywhere in the encoded store. The rollback authority key is a MAC key over the durable snapshot, never a proof input. Recovery from every crash point uses only the durable public snapshot."
+    },
+    {
+      "id": "finality_and_rollback_are_defined",
+      "status": "PASS",
+      "evidence": "demo/midgard-watcher/src/finality-engine.ts and demo/midgard-watcher/src/rollback-engine.ts define the complete pre-finality rewind and post-finality quarantine-then-automated-recovery paths with a fixed WATCHER_ROLLBACK_V1_BOUNDS.postFinalityRecoveryDepth of 2160. W44 exercises the ordinary rewind, the deeper-than-finality recovery and the fail-closed configured-source inconsistency end to end through the durable authority, with restart idempotence proven in each."
+    },
+    {
+      "id": "maturity_budget_accommodates_the_complete_path",
+      "status": "BLOCKED",
+      "blockedOn": ["W34", "W43"],
+      "evidence": "W44 measures 0 maturity violations: every durable deadline it creates falls strictly after the evidence chain point and within the 604800-slot retention budget. That is a durable record invariant, not a worst-case timing measurement. The AC-X11 worst-case DA fetch plus proof construction plus L1 confirmation and rollback margin has not been measured, and W34 deadline escalation is NOT_STARTED."
+    }
+  ],
+  "w44Binding": {
+    "artifactPath": "docs/exec-plans/evidence/testnet/w44-crash-rollback-matrix-v1.json",
+    "artifactSha256": "46df72ba528d5e261d7abd42b722c58dd4ebba9036e0e385d3871fafc09858bd",
+    "testPath": "demo/midgard-watcher/tests/crash-rollback-matrix.test.ts",
+    "testSha256": "c0c00d246c21ff6709eebeb1ab392de9a5814b1fbeeef8885c49f19e57cffa05",
+    "focusedCommand": "pnpm --dir demo/midgard-watcher exec vitest run tests/crash-rollback-matrix.test.ts"
+  },
+  "focusedCommands": [
+    "node demo/scripts/verify-canonical-v1-wg1-watcher-local-gate.mjs",
+    "node demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs",
+    "node demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs",
+    "pnpm --dir demo/midgard-watcher exec vitest run tests/crash-rollback-matrix.test.ts"
+  ],
+  "nextActions": [
+    "W40 unit/property/fuzz suite (seed-recorded, time-bounded).",
+    "W41 multi-process local integration with exact process boundaries.",
+    "W42 read-only clean replay corpus reusing the C72 boundary corpus.",
+    "W43 emulator autonomous correction across every launch-scope family.",
+    "W32 and W33 production modules, after which the W44 in-test lifecycle driver is replaced by the owned state machine and the matrix is re-measured.",
+    "Explicit CG3 closure, which every WG1 condition ultimately depends on."
+  ]
+}
