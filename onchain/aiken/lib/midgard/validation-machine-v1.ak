@@ -2023,6 +2023,43 @@ fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1 {
   }
 }
 
+// C49 (#540). The canonical parameterized minimum-Ada floor for one ledger
+// output, in lovelace, at the target-network protocol parameters. It is the
+// Cardano rule verbatim -- `coins_per_utxo_byte * (overhead + serialized output
+// bytes)` -- where `min_ada_output_overhead_bytes` is the fixed 160-byte UTxO
+// entry overhead the target ledger adds to every output before pricing it. The
+// TypeScript twin computes the same quantity through `CML.min_ada_required` in
+// `minimumLovelaceForValidationProofItemPublicationV1`
+// (demo/midgard-sdk/src/fraud-proof/validation-proof-item-v1.ts:57), and the
+// `coins_per_utxo_byte` this is instantiated at is the C70 target snapshot
+// (`PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.coinsPerUtxoByte == 4_310`).
+//
+// NO ARBITRARY SUB-CAP. The floor is exactly the target-network limit: it is
+// linear in the serialized size with slope `coins_per_utxo_byte` and carries no
+// additional Midgard margin, so an output the target network funds adequately
+// is never rejected here for carrying too little Ada. The counterpart duty --
+// binding this floor to a machine rejection code on the ValueAndMint output
+// descriptor scan -- is the wiring step; this is the formula that step must
+// consume, pinned here so the two cannot drift.
+pub const min_ada_output_overhead_bytes = 160
+
+pub fn min_ada_lovelace_v1(
+  coins_per_utxo_byte: Int,
+  serialized_output_bytes: Int,
+) -> Int {
+  coins_per_utxo_byte * (
+    min_ada_output_overhead_bytes + serialized_output_bytes
+  )
+}
+
+pub fn output_meets_min_ada_v1(
+  coins_per_utxo_byte: Int,
+  serialized_output_bytes: Int,
+  lovelace: Int,
+) -> Bool {
+  lovelace >= min_ada_lovelace_v1(coins_per_utxo_byte, serialized_output_bytes)
+}
+
 fn rejected_successor_is_exact(
   pre: validation_trace_v1.ValidationMachineStateV1,
   post: validation_trace_v1.ValidationMachineStateV1,

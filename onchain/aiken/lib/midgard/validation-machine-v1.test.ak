@@ -19,8 +19,8 @@ use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_compact_v1, decode_native_tx_field_preimage_lengths_v1,
   decode_native_tx_witness_set_compact, encode_native_tx_body_compact,
   encode_native_tx_compact_v1, encode_native_tx_field_preimage_lengths_v1,
-  encode_native_tx_witness_set_compact, native_tx_id_for_version,
-  native_tx_proof_commitment_v1,
+  encode_native_tx_witness_set_compact, native_tx_canonical_size_v1,
+  native_tx_id_for_version, native_tx_proof_commitment_v1,
 }
 use midgard/fraud_proofs/native_tx/components.{
   encode_midgard_address_witness, encode_midgard_redeemer_witness,
@@ -71,6 +71,30 @@ const maximum_mint_preimage_cbor =
 
 const validation_context_cbor =
   #"8701546d6964676172642d636f6e73656e7375732d763118640000001864"
+
+// C49 (#540). The C70 target snapshot: the preprod epoch-303 protocol
+// parameters pinned by `PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1`
+// (demo/midgard-validation/tests/helpers/ordered-collection-boundary-v1.ts:78),
+// which is the same snapshot every TypeScript Cardano boundary corpus is built
+// against. These three numbers are the only free parameters in the min-fee and
+// min-Ada formulas; a C70 parameter change re-derives both.
+const target_snapshot_min_fee_a = 44
+
+const target_snapshot_min_fee_b = 155_381
+
+const target_snapshot_coins_per_utxo_byte = 4_310
+
+// `validation_context_cbor` re-encoded at the target snapshot. The tuple is
+// [1, "midgard-consensus-v1", 100, 0, 44, 155381, 100] -- identical to the
+// profile-neutral context above except that `min_fee_a`/`min_fee_b` now carry
+// the snapshot values instead of the zero-fee defaults.
+const target_snapshot_validation_context_cbor =
+  #"8701546d6964676172642d636f6e73656e7375732d7631186400182c1a00025ef51864"
+
+const reject_min_fee_code = #"455f4d494e5f464545"
+
+const reject_value_not_preserved_code =
+  #"455f56414c55455f4e4f545f505245534552564544"
 
 test native_v1_optional_posix_time_sentinel_and_adjacent_invalid_are_exact() {
   and {
@@ -14186,6 +14210,664 @@ test value_and_mint_replays_output_descriptor_asset_on_l1() {
       },
     },
   )
+}
+
+// ---------------------------------------------------------------------------
+// C49 (#540) closure -- the four prescribed value/fee/mint selectors.
+//
+// The six selectors above authenticate the ValueAndMint scan machinery. These
+// four close the row's remaining semantics: the canonical parameterized
+// minimum-fee formula and the minimum-Ada floor, both instantiated at the C70
+// target snapshot with adjacent accept/reject; the exact signed multi-asset
+// plus Ada conservation equation, pinned on the same numeric vector the
+// TypeScript twin uses; and mint/burn authorization against the authenticated
+// mint frontier.
+// ---------------------------------------------------------------------------
+
+// The exact canonical size the min-fee formula is evaluated against, for the
+// empty V1 transaction carrying `fee`. Size depends on the fee's own CBOR
+// width, so the boundary is a fixed point: the tests below assert that the
+// probe fee, the boundary fee and the adjacent below-boundary fee all encode to
+// the same width and therefore share one canonical size.
+fn target_snapshot_canonical_size(fee: Int) -> Int {
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, fee },
+  }
+  let compact = midgard_transaction_to_compact(tx)
+  let proof_source = midgard_transaction_proof_source_v1(tx)
+  native_tx_canonical_size_v1(
+    compact,
+    decode_native_tx_field_preimage_lengths_v1(
+      proof_source.field_preimage_lengths_cbor,
+    ),
+  )
+}
+
+// One StaticLedgerRules step over the empty V1 transaction carrying `fee`,
+// evaluated against the target-snapshot validation context. `claims_advance`
+// selects which successor the prover claims: the exact InputSets advance, or
+// the exact `E_MIN_FEE` terminal. Every other field is identical between the
+// two legs, so the only thing that can move the result is the min-fee conjunct
+// of `static_rules_rejection`.
+fn target_snapshot_min_fee_step_is_provable(
+  fee: Int,
+  claims_advance: Bool,
+) -> Bool {
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, fee },
+  }
+  let compact = midgard_transaction_to_compact(tx)
+  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let work_witness_cbor = validation_machine_v1.encode_static_rules_witness(
+    proof_source.compact_cbor,
+    proof_source.witness_set_compact_cbor,
+    proof_source.field_preimage_lengths_cbor,
+    target_snapshot_validation_context_cbor,
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash: h_a,
+    transaction_id: tx_id,
+    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    validation_context_hash: validation_trace_v1.hash_validation_context(
+      target_snapshot_validation_context_cbor,
+    ),
+    source_kind: validation_trace_v1.Forced,
+    prior_ledger_root: h_c,
+    phase: validation_trace_v1.StaticLedgerRules,
+    program_counter: 2,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.StaticLedgerRules,
+      2,
+      work_witness_cbor,
+    ),
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict: validation_trace_v1.Pending,
+    rejection_code_hash: zero,
+    // A realistic non-empty claimed delta, per the rejection-fixture rule
+    // recorded at `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
+    ledger_delta_root: non_empty_claimed_delta_root(),
+  }
+  let claimed_successor = if claims_advance {
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..pre,
+      phase: validation_trace_v1.InputSets,
+      program_counter: 3,
+      work_root: validation_trace_v1.hash_work_witness(
+        validation_trace_v1.InputSets,
+        3,
+        validation_machine_v1.encode_input_sets_scan_witness(
+          proof_source.compact_cbor,
+          proof_source.witness_set_compact_cbor,
+          proof_source.field_preimage_lengths_cbor,
+          target_snapshot_validation_context_cbor,
+          0,
+          0,
+          0,
+          0,
+          #"",
+          validation_machine_v1.empty_resolution_schedule_hash(),
+        ),
+      ),
+    }
+  } else {
+    exact_rejection_post(pre, reject_min_fee_code)
+  }
+  validation_machine_v1.verify_one_step(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor,
+    },
+  )
+}
+
+// C49 (#540). The canonical parameterized minimum-fee rule is
+// `body.fee >= min_fee_a * canonical_tx_size + min_fee_b`, evaluated by
+// `static_rules_rejection` (validation-machine-v1.ak) over
+// `native_tx_canonical_size_v1`. This selector instantiates it at the C70
+// target snapshot (`minFeeA = 44`, `minFeeB = 155_381`) and pins the two
+// ADJACENT transactions at the boundary: a fee exactly at the floor advances to
+// InputSets, a fee one lovelace below it is an exact `E_MIN_FEE` rejection.
+//
+// The two negative legs are the attribution: neither disposition is provable
+// against the other's transaction, so the min-fee comparison -- not some other
+// conjunct of the StaticLedgerRules step -- is what separates them. The two
+// transactions differ in exactly one lovelace of `body.fee`.
+//
+// NO ARBITRARY SUB-CAP: the accepted leg pays exactly `44 * size + 155_381`,
+// not one lovelace more, so no Midgard-specific margin is stacked on top of the
+// target-network floor.
+test parameterized_min_fee_boundary_matches_target_snapshot() {
+  let probe_size = target_snapshot_canonical_size(target_snapshot_min_fee_b)
+  let boundary_fee = target_snapshot_min_fee_a * probe_size + target_snapshot_min_fee_b
+  and {
+    target_snapshot_min_fee_a == 44,
+    target_snapshot_min_fee_b == 155_381,
+    // The fixed point: the fee's CBOR width, and therefore the canonical size,
+    // is the same for the probe, the boundary and the adjacent transaction.
+    target_snapshot_canonical_size(boundary_fee) == probe_size,
+    target_snapshot_canonical_size(boundary_fee - 1) == probe_size,
+    target_snapshot_min_fee_step_is_provable(boundary_fee, True),
+    target_snapshot_min_fee_step_is_provable(boundary_fee - 1, False),
+    !target_snapshot_min_fee_step_is_provable(boundary_fee, False),
+    !target_snapshot_min_fee_step_is_provable(boundary_fee - 1, True),
+  }
+}
+
+// C49 (#540). The canonical parameterized minimum-Ada floor,
+// `min_ada_lovelace_v1` (validation-machine-v1.ak), instantiated at the C70
+// target snapshot `coinsPerUtxoByte = 4_310` over a concrete serialized ledger
+// output. The boundary is pinned adjacently: an output funded at exactly the
+// floor satisfies it, one lovelace below does not.
+//
+// NO ARBITRARY SUB-CAP: the last two conjuncts pin that the floor is exactly
+// linear in the serialized size with slope `coins_per_utxo_byte` and intercept
+// `coins_per_utxo_byte * 160` -- the target-network entry overhead -- with no
+// additional Midgard margin at any size.
+test parameterized_min_ada_boundary_matches_target_snapshot() {
+  let output = MidgardTxOutput {
+    address: MidgardAddress {
+      protected: False,
+      network_id: 0,
+      payment_credential: PubKeyCredential(h_28_a),
+      stake_credential: None,
+    },
+    value: MidgardValue { lovelace: 2_000_000, assets: [] },
+    datum_cbor: None,
+    script_ref: None,
+  }
+  let output_bytes = bytearray.length(encode_midgard_tx_output(output))
+  let floor = validation_machine_v1.min_ada_lovelace_v1(
+    target_snapshot_coins_per_utxo_byte,
+    output_bytes,
+  )
+  and {
+    target_snapshot_coins_per_utxo_byte == 4_310,
+    validation_machine_v1.min_ada_output_overhead_bytes == 160,
+    floor == target_snapshot_coins_per_utxo_byte * ( 160 + output_bytes ),
+    validation_machine_v1.output_meets_min_ada_v1(
+      target_snapshot_coins_per_utxo_byte,
+      output_bytes,
+      floor,
+    ),
+    !validation_machine_v1.output_meets_min_ada_v1(
+      target_snapshot_coins_per_utxo_byte,
+      output_bytes,
+      floor - 1,
+    ),
+    validation_machine_v1.output_meets_min_ada_v1(
+      target_snapshot_coins_per_utxo_byte,
+      output_bytes,
+      floor + 1,
+    ),
+    validation_machine_v1.min_ada_lovelace_v1(
+      target_snapshot_coins_per_utxo_byte,
+      output_bytes + 1,
+    ) - floor == target_snapshot_coins_per_utxo_byte,
+    validation_machine_v1.min_ada_lovelace_v1(
+      target_snapshot_coins_per_utxo_byte,
+      0,
+    ) == 689_600,
+  }
+}
+
+// The conservation vector's transaction. `fee = 1` is the TypeScript twin's
+// fee, and stage five reads it straight off the authenticated body.
+fn conservation_transaction() -> MidgardTransaction {
+  let base = empty_v1_transaction()
+  MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, fee: 1 },
+  }
+}
+
+fn conservation_unit() -> ByteArray {
+  h_28_a |> bytearray.concat(#"beef")
+}
+
+// One ValueAndMint stage-four mint step that folds `mint_quantity` into an
+// asset delta that already stands at `pre_asset_delta` (inputs minus outputs
+// for that unit). This is where the signed multi-asset arithmetic actually
+// happens: `apply_value_asset_mutation` updates the delta trie and maintains
+// `nonzero_asset_count`.
+fn conservation_mint_step_is_exact(
+  mint_quantity: Int,
+  pre_asset_delta: Int,
+) -> Bool {
+  let asset_name = #"beef"
+  let tx = conservation_transaction()
+  let unit = conservation_unit()
+  let mint_frontier = validation_merkle_v1.build_frontier(
+    [
+      validation_machine_v1.mint_asset_leaf_hash(
+        h_28_a,
+        asset_name,
+        mint_quantity,
+      ),
+    ],
+  )
+  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+    ..empty_native_control_fixture(tx),
+    mint_count: mint_frontier.count,
+    mint_peaks: mint_frontier.peaks,
+  }
+  let control = validation_machine_v1.ValueAndMintControlV1 {
+    native_control,
+    stage: 4,
+    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_cursor: 0,
+    replay_asset_cursor: 0,
+    replay_value_hash: zero,
+    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    output_cursor: 0,
+    output_asset_cursor: 0,
+    mint_cursor: 0,
+    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+      lovelace_delta: 1,
+      asset_root: singleton_root(unit, cbor.serialise(pre_asset_delta)),
+      seen_asset_count: 1,
+      nonzero_asset_count: 1,
+    },
+  }
+  let next_asset_delta = pre_asset_delta + mint_quantity
+  let next_control = validation_machine_v1.ValueAndMintControlV1 {
+    ..control,
+    mint_cursor: 1,
+    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+      lovelace_delta: 1,
+      asset_root: singleton_root(unit, cbor.serialise(next_asset_delta)),
+      seen_asset_count: 1,
+      nonzero_asset_count: if next_asset_delta == 0 {
+        0
+      } else {
+        1
+      },
+    },
+  }
+  let work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
+    control,
+  )
+  let compact = midgard_transaction_to_compact(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash: h_a,
+    transaction_id: tx_id,
+    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    validation_context_hash: validation_trace_v1.hash_validation_context(
+      validation_context_cbor,
+    ),
+    source_kind: validation_trace_v1.Forced,
+    prior_ledger_root: h_c,
+    phase: validation_trace_v1.ValueAndMint,
+    program_counter: 60,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      60,
+      work_witness_cbor,
+    ),
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict: validation_trace_v1.Pending,
+    rejection_code_hash: zero,
+    ledger_delta_root: non_empty_claimed_delta_root(),
+  }
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: 61,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      61,
+      validation_machine_v1.encode_value_and_mint_control_v1(next_control),
+    ),
+  }
+  validation_machine_v1.verify_value_and_mint_one_step_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: post,
+      },
+      auxiliary: validation_machine_v1.ValueMintAssetWitness {
+        mint_index: 0,
+        policy_id: h_28_a,
+        asset_name,
+        quantity: mint_quantity,
+        siblings: [],
+        mutation: validation_machine_v1.ValueAssetMutationWitnessV1 {
+          delta_was_present: True,
+          old_delta: pre_asset_delta,
+          delta_proof: [],
+        },
+      },
+    },
+  )
+}
+
+// The ValueAndMint stage-five final equation on the settled accumulator.
+// `claims_advance` selects the claimed successor: the LedgerDelta advance, or
+// the exact `E_VALUE_NOT_PRESERVED` terminal.
+fn conservation_final_step_is_provable(
+  lovelace_delta: Int,
+  asset_delta: Int,
+  claims_advance: Bool,
+) -> Bool {
+  let tx = conservation_transaction()
+  let unit = conservation_unit()
+  let mint_frontier = validation_merkle_v1.build_frontier(
+    [validation_machine_v1.mint_asset_leaf_hash(h_28_a, #"beef", 3)],
+  )
+  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+    ..empty_native_control_fixture(tx),
+    mint_count: mint_frontier.count,
+    mint_peaks: mint_frontier.peaks,
+  }
+  let control = validation_machine_v1.ValueAndMintControlV1 {
+    native_control,
+    stage: 5,
+    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_cursor: 0,
+    replay_asset_cursor: 0,
+    replay_value_hash: zero,
+    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    output_cursor: 0,
+    output_asset_cursor: 0,
+    mint_cursor: 1,
+    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+      lovelace_delta,
+      asset_root: singleton_root(unit, cbor.serialise(asset_delta)),
+      seen_asset_count: 1,
+      nonzero_asset_count: if asset_delta == 0 {
+        0
+      } else {
+        1
+      },
+    },
+  }
+  let work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
+    control,
+  )
+  let compact = midgard_transaction_to_compact(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash: h_a,
+    transaction_id: tx_id,
+    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    validation_context_hash: validation_trace_v1.hash_validation_context(
+      validation_context_cbor,
+    ),
+    source_kind: validation_trace_v1.Forced,
+    prior_ledger_root: h_c,
+    phase: validation_trace_v1.ValueAndMint,
+    program_counter: 62,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      62,
+      work_witness_cbor,
+    ),
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict: validation_trace_v1.Pending,
+    rejection_code_hash: zero,
+    ledger_delta_root: non_empty_claimed_delta_root(),
+  }
+  let claimed_successor = if claims_advance {
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..pre,
+      phase: validation_trace_v1.LedgerDelta,
+      program_counter: 63,
+      work_root: validation_trace_v1.hash_work_witness(
+        validation_trace_v1.LedgerDelta,
+        63,
+        validation_machine_v1.encode_ledger_delta_witness_v1(
+          native_control,
+          pre.prior_ledger_root,
+          control.replay_schedule_hash,
+        ),
+      ),
+    }
+  } else {
+    exact_rejection_post(pre, reject_value_not_preserved_code)
+  }
+  validation_machine_v1.verify_value_and_mint_one_step_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor,
+      },
+      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+    },
+  )
+}
+
+// C49 (#540). Exact signed multi-asset conservation, including the Ada-specific
+// rule, on the SAME numeric vector the TypeScript twin pins in
+// demo/midgard-validation/tests/value-accounting.test.ts (`mint-aware value
+// accounting`, over `valuePreservationDelta`):
+//
+//   mint vector  inputs {lovelace 5, asset 2}, fee 1, mint +3,
+//                outputs {lovelace 4, asset 5}  ->  delta is zero
+//   burn vector  inputs {lovelace 5, asset 5}, fee 1, mint -2,
+//                outputs {lovelace 4, asset 3}  ->  delta is zero
+//
+// Aiken accumulates the same equation in two halves. The unit's delta reaches
+// the mint step already carrying `inputs - outputs` (-3 for the mint vector,
+// +2 for the burn vector), and the mint step folds the signed mint quantity in,
+// which must land it on zero and drop `nonzero_asset_count` to zero. Ada is
+// carried separately as `lovelace_delta = 5 - 4 = 1`, and stage five closes it
+// against the authenticated `body.fee = 1`. Both languages therefore assert
+// `inputs + mint - outputs - fee == 0` over the identical numbers; a change to
+// either side's arithmetic breaks this selector.
+//
+// The negative legs are single-number perturbations of the same vector, each
+// falsifying exactly one half of the equation: outputs of 5 lovelace instead of
+// 4 leaves the Ada rule one lovelace short, and a +2 mint instead of +3 leaves
+// the asset delta at -1. Each is an exact `E_VALUE_NOT_PRESERVED` rejection and
+// is NOT provable as an advance, and the conserved vector is NOT provable as a
+// rejection.
+test parameterized_ada_and_multi_asset_conservation_matches_typescript() {
+  and {
+    // Mint vector: asset delta -3 (2 in, 5 out) plus a +3 mint settles to zero.
+    conservation_mint_step_is_exact(3, -3),
+    // Burn vector: asset delta +2 (5 in, 3 out) plus a -2 burn settles to zero.
+    conservation_mint_step_is_exact(-2, 2),
+    // Ada and every asset conserved: the step advances to LedgerDelta.
+    conservation_final_step_is_provable(1, 0, True),
+    !conservation_final_step_is_provable(1, 0, False),
+    // Ada short by one lovelace (outputs 5 instead of 4).
+    conservation_final_step_is_provable(0, 0, False),
+    !conservation_final_step_is_provable(0, 0, True),
+    // One asset unbalanced (a +2 mint instead of +3).
+    conservation_final_step_is_provable(1, -1, False),
+    !conservation_final_step_is_provable(1, -1, True),
+  }
+}
+
+// One ValueAndMint stage-four step whose mint witness names
+// `witnessed_policy_id`, against a mint frontier that authenticates
+// `authenticated_policy_id` at the same asset name and quantity. Everything the
+// prover claims -- the successor control, the accumulator mutation, the cursor
+// -- is derived from the WITNESSED policy, so the two legs differ in exactly
+// one field of the auxiliary witness.
+fn mint_authorization_step_is_provable(
+  authenticated_policy_id: ByteArray,
+  witnessed_policy_id: ByteArray,
+  quantity: Int,
+) -> Bool {
+  let asset_name = #"beef"
+  let tx = empty_v1_transaction()
+  let mint_frontier = validation_merkle_v1.build_frontier(
+    [
+      validation_machine_v1.mint_asset_leaf_hash(
+        authenticated_policy_id,
+        asset_name,
+        quantity,
+      ),
+    ],
+  )
+  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+    ..empty_native_control_fixture(tx),
+    mint_count: mint_frontier.count,
+    mint_peaks: mint_frontier.peaks,
+  }
+  let control = validation_machine_v1.ValueAndMintControlV1 {
+    native_control,
+    stage: 4,
+    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_cursor: 0,
+    replay_asset_cursor: 0,
+    replay_value_hash: zero,
+    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    output_cursor: 0,
+    output_asset_cursor: 0,
+    mint_cursor: 0,
+    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+      lovelace_delta: 0,
+      asset_root: null_hash,
+      seen_asset_count: 0,
+      nonzero_asset_count: 0,
+    },
+  }
+  let unit = witnessed_policy_id |> bytearray.concat(asset_name)
+  let next_control = validation_machine_v1.ValueAndMintControlV1 {
+    ..control,
+    mint_cursor: 1,
+    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+      lovelace_delta: 0,
+      asset_root: singleton_root(unit, cbor.serialise(quantity)),
+      seen_asset_count: 1,
+      nonzero_asset_count: 1,
+    },
+  }
+  let work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
+    control,
+  )
+  let compact = midgard_transaction_to_compact(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash: h_a,
+    transaction_id: tx_id,
+    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    validation_context_hash: validation_trace_v1.hash_validation_context(
+      validation_context_cbor,
+    ),
+    source_kind: validation_trace_v1.Forced,
+    prior_ledger_root: h_c,
+    phase: validation_trace_v1.ValueAndMint,
+    program_counter: 64,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      64,
+      work_witness_cbor,
+    ),
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict: validation_trace_v1.Pending,
+    rejection_code_hash: zero,
+    ledger_delta_root: non_empty_claimed_delta_root(),
+  }
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: 65,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      65,
+      validation_machine_v1.encode_value_and_mint_control_v1(next_control),
+    ),
+  }
+  validation_machine_v1.verify_value_and_mint_one_step_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: post,
+      },
+      auxiliary: validation_machine_v1.ValueMintAssetWitness {
+        mint_index: 0,
+        policy_id: witnessed_policy_id,
+        asset_name,
+        quantity,
+        siblings: [],
+        mutation: validation_machine_v1.ValueAssetMutationWitnessV1 {
+          delta_was_present: False,
+          old_delta: 0,
+          delta_proof: [],
+        },
+      },
+    },
+  )
+}
+
+// C49 (#540). Mint and burn authorization. A ValueAndMint mint step may only
+// move an asset delta for a policy the AUTHENTICATED native mint frontier
+// commits to: `value_and_mint_stage_four` requires membership of
+// `mint_asset_leaf_hash(policy_id, asset_name, quantity)` in
+// `native_control.mint_peaks`. An unbacked policy -- one no native script
+// authorized, so no leaf exists for it -- can therefore never move value, in
+// either direction.
+//
+// ATTRIBUTION (post-#532). This is not a bare `test ... fail`: each leg is a
+// full one-step evaluation and the fixture differs between the passing and
+// failing legs in exactly one field, `policy_id` in the auxiliary witness.
+// Every other conjunct of the stage-four arm survives that substitution --
+// `mint_index == mint_cursor` (0 == 0), `length(policy_id) == 28` (h_28_b is
+// also 28 bytes), `length(asset_name) <= 32`, `quantity != 0`, and the
+// accumulator mutation, whose claimed successor is derived from the witnessed
+// policy so it stays internally exact. The last two conjuncts below pin that
+// directly: the authenticated leaf IS a member of the frontier and the unbacked
+// one is NOT, which makes the membership check the sole falsifier.
+test mint_and_burn_authorization_rejects_unbacked_policy() {
+  let backed_mint_frontier = validation_merkle_v1.build_frontier(
+    [validation_machine_v1.mint_asset_leaf_hash(h_28_a, #"beef", 3)],
+  )
+  and {
+    // Positive controls: the authorized policy mints and burns.
+    mint_authorization_step_is_provable(h_28_a, h_28_a, 3),
+    mint_authorization_step_is_provable(h_28_a, h_28_a, -3),
+    // The same steps under an unbacked policy are unprovable, mint and burn.
+    !mint_authorization_step_is_provable(h_28_a, h_28_b, 3),
+    !mint_authorization_step_is_provable(h_28_a, h_28_b, -3),
+    // Attribution: the frontier membership conjunct is what moved.
+    validation_merkle_v1.verify_membership(
+      backed_mint_frontier.count,
+      backed_mint_frontier.peaks,
+      0,
+      validation_machine_v1.mint_asset_leaf_hash(h_28_a, #"beef", 3),
+      [],
+    ),
+    !validation_merkle_v1.verify_membership(
+      backed_mint_frontier.count,
+      backed_mint_frontier.peaks,
+      0,
+      validation_machine_v1.mint_asset_leaf_hash(h_28_b, #"beef", 3),
+      [],
+    ),
+  }
 }
 
 test value_asset_output_instruction_evidence_is_bounded() {
