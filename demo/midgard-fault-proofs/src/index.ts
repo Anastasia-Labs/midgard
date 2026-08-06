@@ -9,6 +9,7 @@ export * from "./prepare-da-hash-preimage.js";
 export * from "./prepare-double-spend.js";
 export * from "./prepare-input-no-idx.js";
 export * from "./prepare-invalid-range.js";
+export * from "./prepare-no-reference-input.js";
 export * from "./prepare-non-existent-input.js";
 export * from "./prepare-zero-input.js";
 export * from "./remove-fraudulent-block.js";

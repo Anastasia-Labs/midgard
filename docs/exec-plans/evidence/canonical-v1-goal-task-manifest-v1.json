@@ -6094,9 +6094,10 @@
         "GOAL_SPEC.md §9.3 Q18 (`no-reference-input`, key dependency Q00-Q03 and C41)",
         "ON-CHAIN SURFACE EXISTS, THINLY TESTED — 4 validator steps plus 4 lib modules; native binding at validators/fraud-proofs/no-reference-input/step-01.ak:51; tests today: step-01 has 2 (`no_reference_input_step_01_binds_native_v1_block_fixture`, `no_reference_input_step_01_rejects_forged_transactions_root`); steps 02-04 have ZERO",
         "C41 supplies membership/non-membership and the exact resolution schedule; the non-membership route is the one GOAL_PROGRESS.md Q00 records as still delegating to the deployed Plutarch `pexcludes` script — that delegation must be resolved or justified before this family closes",
-        "CONFIRMED GAP — no off-chain builder, no SDK module, not a registered catalogue category",
+        "PARTIAL GAP — the SDK schema module and the prepare builder now exist; the four submit-step builders do not, and the family is still not a registered catalogue category",
         "shared positive-binding fixture: onchain/aiken/lib/midgard/fraud-proofs/native-binding-fixture-v1.ak drives every step-01 positive through the real `main.spend` handler on a genuine native-V1 block; forged-root negatives fail at the counted-root unwrap (GOAL_PROGRESS.md Q00 row)",
-        "The prescribed no-reference-input SDK, prepare, submit, and prepare-test paths do not exist in the current tree; no builder completion is claimed.",
+        "Harvested from PR #469 (`fp/no-reference-input`): demo/midgard-sdk/src/fraud-proof/no-reference-input.ts (step-01..04 datum/redeemer/state schemas), the `noReferenceInput` chain in demo/midgard-sdk/src/fraud-proof/contracts.ts (`NO_REFERENCE_INPUT_FAULT_PROOF_TITLES`, `buildNoReferenceInputFaultProofContracts`), and demo/midgard-fault-proofs/src/prepare-no-reference-input.ts with demo/midgard-fault-proofs/tests/prepare-no-reference-input.test.ts. The PR's on-chain diff was entirely superseded by the current validators and was dropped.",
+        "The four prescribed `submit-no-reference-input-step-0N.ts` builders remain absent: they resolve their contracts through `resolveFaultProofDeploymentContracts`, which requires `noReferenceInput` to be a registered `FraudProofCatalogueCategoryName`. That registration is a deployment-identity change (demo/midgard-sdk/src/fraud-proof/catalogue.ts + `FraudProofs`, midgard-core `DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES` and the V1 catalogue-category order, plus the two hand-pinned catalogue fixtures whose MPF root and per-category membership proofs must be recomputed) and is parent-owned under this row's pathsMustNotTouch.",
         "`NativeTxInclusionArgs` is field-for-field identical across the boundary: onchain/aiken/lib/midgard/fraud-proofs/common.ak:30-44 and demo/midgard-sdk/src/fraud-proof/native.ts:32-45 (9 fields, same order) — GOAL_PROGRESS.md Q00-OFFCHAIN row",
         "Q03 evidence gate every builder must pass: `assertSecurityGradeEvidenceV1` + `assertNativeInclusionRootAuthenticatedV1` from `@al-ft/midgard-sdk` (demo/midgard-sdk/src/fraud-proof/evidence-source-v1.ts), wired in demo/midgard-fault-proofs/src/evidence/prepare-from-evidence-v1.ts"
       ],
@@ -6110,10 +6111,11 @@
       "focusedCommands": [
         "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/no_reference_input/step_01 no_reference_input_step_01_binds_native_v1_block_fixture no_reference_input_step_01_rejects_forged_transactions_root",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/prepare-no-reference-input.test.ts",
+        "pnpm --dir demo/midgard-sdk exec vitest run tests/fault-proof.test.ts",
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs validators/fraud-proofs/no-reference-input/step-01.ak validators/fraud-proofs/no-reference-input/step-02.ak validators/fraud-proofs/no-reference-input/step-03.ak validators/fraud-proofs/no-reference-input/step-04.ak lib/midgard/fraud-proofs/no-reference-input/step-01.ak lib/midgard/fraud-proofs/no-reference-input/step-02.ak lib/midgard/fraud-proofs/no-reference-input/step-03.ak lib/midgard/fraud-proofs/no-reference-input/step-04.ak",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: fraud_proofs/no_reference_input/step_01, prepare-no-reference-input.test.ts. Candidate closure requires exactly 8 Aiken selectors, exactly 4 no-reference-input prepare tests, exactly 1 emulator lifecycle test, and zero failures; current partial selectors are not family PASS evidence.",
+      "expectedNonzeroCounts": "Measured at the PR #469 harvest: fraud_proofs/no_reference_input/step_01 collected 2 / passed 2 / failed 0 under both the stock v1.1.22 `aiken` and the fork (identical counts); tests/prepare-no-reference-input.test.ts collected 13 / passed 13 / failed 0; demo/midgard-sdk tests/fault-proof.test.ts collected 20 / passed 20 / failed 0 with the new `noReferenceInput` chain registered; verify-normalized-format PASS (8/8). Candidate closure still requires exactly 8 Aiken selectors (steps 02-04 have ZERO), the four submit-step builders, exactly 1 emulator lifecycle test, and zero failures; these partial selectors are not family PASS evidence.",
       "invalidationTriggers": [
         "any counted-root or native codec change re-runs every selector in the family",
         "catalogue order or category-id change (demo/midgard-sdk/src/fraud-proof/catalogue.ts)",
@@ -6123,7 +6125,7 @@
       "detailStatus": "DETAILED",
       "blockedOn": ["C41"],
       "blockedBecause": "Q18 remains dependency-blocked only on current non-PASS queue row C41; Q00-Q03 are recorded PASS.",
-      "schedulingNote": "NOT_STARTED candidate; prescribed off-chain paths are absent and C41 remains non-PASS."
+      "schedulingNote": "IN_PROGRESS candidate; the PR #469 harvest landed the SDK schema module, the `noReferenceInput` contract chain, and the prepare builder plus its 13-test suite. The four submit-step builders and the catalogue registration they depend on are still absent, and C41 remains non-PASS."
     },
     {
       "id": "Q19",

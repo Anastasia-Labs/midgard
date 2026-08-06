@@ -45,6 +45,13 @@ export const NON_EXISTENT_INPUT_FAULT_PROOF_TITLES = {
   step04: "fraud_proofs/no_input/step_04.main.spend",
 } as const;
 
+export const NO_REFERENCE_INPUT_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/no_reference_input/step_01.main.spend",
+  step02: "fraud_proofs/no_reference_input/step_02.main.spend",
+  step03: "fraud_proofs/no_reference_input/step_03.main.spend",
+  step04: "fraud_proofs/no_reference_input/step_04.main.spend",
+} as const;
+
 export const INPUT_NO_IDX_FAULT_PROOF_TITLES = {
   step01: "fraud_proofs/input_no_idx/step_01.main.spend",
   step02: "fraud_proofs/input_no_idx/step_02.main.spend",
@@ -332,6 +339,26 @@ export type NonExistentInputFaultProofContracts = {
 };
 
 /**
+ * Q18 `no-reference-input`: a committed transaction references an input that
+ * never existed in the block's prev ledger and was not produced in-block. The
+ * chain mirrors `no_input`'s applied-parameter order step for step; only the
+ * field lifted out of the bad transaction differs (reference inputs, not spend
+ * inputs).
+ */
+export type NoReferenceInputFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly noReferenceInput: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+/**
  * Q13 `input-no-idx` (`nonExistentInputNoIndex`): a committed transaction
  * spends an output index its in-block producing transaction never created.
  */
@@ -544,6 +571,7 @@ export type FaultProofContracts = {
   readonly fraudProof: AuthenticatedValidator;
   readonly doubleSpend: DoubleSpendFaultProofContracts["doubleSpend"];
   readonly nonExistentInput: NonExistentInputFaultProofContracts["nonExistentInput"];
+  readonly noReferenceInput: NoReferenceInputFaultProofContracts["noReferenceInput"];
   readonly invalidRange: InvalidRangeFaultProofContracts["invalidRange"];
   readonly zeroInput: ZeroInputFaultProofContracts["zeroInput"];
   readonly transitionTrace: TransitionTraceFaultProofContracts["transitionTrace"];
@@ -569,6 +597,9 @@ export type BuildDoubleSpendFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildNonExistentInputFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildNoReferenceInputFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildInputNoIdxFaultProofContractsParams =
@@ -913,6 +944,99 @@ const buildNonExistentInputChain = ({
             getCompiledScript(
               blueprint,
               NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step01,
+            ),
+            [
+              step02.spendingScriptHash,
+              computationThread.policyId,
+              hubOraclePolicyId,
+            ],
+          ),
+        ),
+    );
+
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04],
+    };
+  });
+
+const buildNoReferenceInputChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: {
+  readonly blueprint: FaultProofBlueprint;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+}): Effect.Effect<
+  NoReferenceInputFaultProofContracts["noReferenceInput"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const step04 = yield* tryBuild(
+      "Failed to build no-reference-input step 04",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              NO_REFERENCE_INPUT_FAULT_PROOF_TITLES.step04,
+            ),
+            [
+              fraudProof.policyId,
+              fraudProofTokenAddressData,
+              computationThread.policyId,
+            ],
+          ),
+        ),
+    );
+
+    const step03 = yield* tryBuild(
+      "Failed to build no-reference-input step 03",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              NO_REFERENCE_INPUT_FAULT_PROOF_TITLES.step03,
+            ),
+            [step04.spendingScriptHash, computationThread.policyId],
+          ),
+        ),
+    );
+
+    const step02 = yield* tryBuild(
+      "Failed to build no-reference-input step 02",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              NO_REFERENCE_INPUT_FAULT_PROOF_TITLES.step02,
+            ),
+            [step03.spendingScriptHash, computationThread.policyId],
+          ),
+        ),
+    );
+
+    const step01 = yield* tryBuild(
+      "Failed to build no-reference-input step 01",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              NO_REFERENCE_INPUT_FAULT_PROOF_TITLES.step01,
             ),
             [
               step02.spendingScriptHash,
@@ -2001,6 +2125,10 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
+    const noReferenceInput = yield* buildNoReferenceInputChain({
+      ...params,
+      ...shared,
+    });
     const invalidRange = yield* buildInvalidRangeChain({
       ...params,
       ...shared,
@@ -2031,6 +2159,7 @@ export const buildFaultProofContracts = (
       fraudProof: shared.fraudProof,
       doubleSpend,
       nonExistentInput,
+      noReferenceInput,
       invalidRange,
       zeroInput,
       transitionTrace,
@@ -2069,6 +2198,22 @@ export const buildNonExistentInputFaultProofContracts = (
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
       nonExistentInput,
+    };
+  });
+
+export const buildNoReferenceInputFaultProofContracts = (
+  params: BuildNoReferenceInputFaultProofContractsParams,
+): Effect.Effect<NoReferenceInputFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const noReferenceInput = yield* buildNoReferenceInputChain({
+      ...params,
+      ...shared,
+    });
+    return {
+      computationThread: shared.computationThread,
+      fraudProof: shared.fraudProof,
+      noReferenceInput,
     };
   });
 
