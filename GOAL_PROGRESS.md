@@ -6114,3 +6114,27 @@ max-proof-fit 6/6; Q1x verifier PASS (18 LOCAL_PASS / 2 OPEN, worst
 margins 5,365 minimal / 3,983 maximum); §4.4 journey selector **PASSES
 1/1** on fresh isolated database `midgard_test_545`; manifest quality
 186/186 with 0 defects + self-test 13 mutations.
+
+## #537 landing: git-authority provenance for the watcher map (2026-08-06)
+
+`0f47a760` — per the owner disposition: the three §0-integrity bindings now
+bind exclusively historical, immutable bytes through git (merge-parent
+structure verified via rev-list, artifact digests via `git show` at each
+bound rev, base-tree absence proof), so no legitimate commit can stale
+them; `independentAudit` is migrated to `reviewRecord`
+({reviewedAtRev, reviewedPaths, summary, secondPartyAudit?}) with each
+rev derived as the commit that both recorded the review and last touched
+the reviewed content, verified by `git rev-list -1 <rev> -- <paths>`;
+summaries open with "Parent-program review, not a second-party audit";
+the optional secondPartyAudit slot is structurally validated and absent
+everywhere today; a fail-closed scan rejects any reappearance of the old
+field. W25/W26 manifest citations of the nonexistent field replaced with
+their runner-measured evidence. New self-test: 4 controls / 26 hostile
+mutations, including a real unreferenced commit object as the
+non-ancestor probe. CI fix: midgard-node-ci gained fetch-depth 0 (the
+default shallow checkout would have failed every ancestry check).
+Prose clarification for this ledger's historical queue rows (W12-W17,
+W23, W25/W26): "independent review/audit" there records intra-program
+review by a second agent, not a second-party external audit — the
+durable, checkable form of those claims is now the map's reviewRecord;
+no second-party audit exists yet and none is claimed.
