@@ -5703,3 +5703,59 @@ under aaefc713… in this entry: the harvest adds new validators without
 touching the previously measured families' sources, and the guard proves
 compiler-identity; a currency spot-check rides with the next
 blueprint-adjacent lane.
+
+## #541 remediation implemented: chunked MPF proof carriage (2026-08-05)
+
+Owner-approved design (published proof chunks with atomic final
+verification) implemented as `736b607c` + `a0d5bf34` + `a672f6e7`:
+
+- `midgard/mpf_chunked_proof_v1` — pure verification core: chunks selected
+  by reference-input indices, strict inline-datum decode with
+  protocol-width hash checks and size bounds, concatenation, and the full
+  MPF walk to the exact Membership/NonMembership terminal. `MpfProofStep`
+  IS the canonical library `ProofStep` (Branch/Fork/Leaf) — no parallel
+  encoding. One library addition with precedent:
+  `mpf_proof_v1.has_value_hash` (digest-comparing membership, mirroring
+  `do_excluding`), agreement-tested against `has` on the existing vectors.
+- `fraud_proofs/mpf_chunked_proof/challenge` — unique challenge thread:
+  mint authenticates header/root/count/target (root+count via
+  `verify_root_count_proof` against the header's committed counted root;
+  one-shot token by consumed-out-ref nonce per the user-events pattern);
+  finalize burns the token exactly once, requires the verified proof, and
+  binds the reward to `proof_owner`. Chunk publication is permissionless
+  by design (inert content-trusted data, no mutable intermediate state) —
+  rationale in the module header.
+- Spec deviation, documented: `challenged_header_hash` is bound to 28
+  bytes (`ledger_state.HeaderHash` is blake2b-224); a 32-byte requirement
+  would be unsatisfiable by any honest prover. All other hash fields are
+  exactly 32 bytes as specified.
+- **The exhaustion arithmetic is defeated and pinned in tests**: 16 steps
+  per chunk → worst-case chunk datum 2,230 bytes (bound 2,304) against
+  the measured 16,173-byte usable inline payload (7 chunks fit one
+  publication tx); total steps bounded at the MPF path maximum 64 → at
+  most 4 chunks ever; the 2^128-adversary depth 32 needs 2 chunks; the
+  finalize transaction's marginal cost per proof level is ZERO (one small
+  integer + one reference input per chunk, ≤ 8) versus the 276
+  bytes/level that made single-transaction carriage exhaustible at ~2^84
+  (Q1X-F5).
+- Coverage: 23 core + 22 validator + 13 mpf_proof_v1 tests, one guard per
+  invariant (missing/reordered/duplicated/substituted/trailing steps,
+  datum strictness/emptiness/size, step and chunk bounds, index range,
+  root/count/target/value mismatches, absence-witness violation,
+  token uniqueness/burn/re-mint, reward binding, width checks) — all
+  attributed, identical under both compilers (stock 46/44/54 s, fork
+  3/4/5 s).
+
+Verification for this push: dual-compiler guard **391 validators (388 +
+the challenge validator), byte-identical, definitions identical**; fresh
+stock testnet blueprint
+`605c8b8dca1f01e2cde5219138a1f81e69214f9a182c10b73c20341187ddc2dc`
+installed; §4.4 journey selector **PASSES 1/1 in 202.1 s** (fresh
+isolated database, pinned Node 22.22.2).
+
+Not yet done (follow-up lease, ticketed): wiring the four foundational
+proof families onto chunked carriage (their Q1x output-5 cells stay OPEN
+until then — the exhaustible single-transaction route remains their
+shipped path), off-chain TypeScript builders, and a datum-level
+`challenged_root_domain` field to consider when the families are wired
+(the domain currently lives only in the init redeemer).
