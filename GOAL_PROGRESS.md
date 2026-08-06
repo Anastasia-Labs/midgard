@@ -5759,3 +5759,134 @@ until then — the exhaustible single-transaction route remains their
 shipped path), off-chain TypeScript builders, and a datum-level
 `challenged_root_domain` field to consider when the families are wired
 (the domain currently lives only in the init redeemer).
+
+
+## #543: CML 6.2.0-2 bump and wasm patcher retirement (2026-08-05)
+
+The upstream shadow-stack fix (CML PR #6, cml/wasm `0f02b369`, 16 MiB stack)
+is published on npm as `6.2.0-2`; the workspace now consumes it and the
+install-time binary patcher is retired — ``afd93997`` + ``f1287c18`` —
+closing #543 and the "no new evidence may pin either 6.2.0-1 hash" standing
+rule (the go-forward pin is the published artifact below):
+
+- **Dependency identity** — `demo/package.json` drops the
+  `postinstall`/`patch:cml-wasm*` patcher wiring and adds `pnpm.overrides`
+  pinning both wasm-bindgen targets (`-nodejs`/`-browser`) `6.2.0-1` →
+  `6.2.0-2`; the lockfile diff is exactly that move (all 14 importer
+  references plus the override mappings, nothing else). Retired with their
+  subject: `demo/scripts/patch-cml-wasm-stack.mjs`,
+  `demo/scripts/cml-wasm-stack-patch.md`, and
+  `demo/midgard-validation/tests/cml-wasm-stack-patch-v1.test.ts`. A fresh
+  `pnpm install` no longer silently reverts to the trapping stock build —
+  the failure mode recorded in the #542-era CML context note is gone.
+- **Successor suite** `cml-wasm-shadow-stack-v1.test.ts` (5/5) pins both
+  budgets structurally, not behaviorally: lucid-evolution must resolve the
+  published `6.2.0-2` (wasm sha256
+  `47e566383ca7b8f945377b149af83eb32c6d185e5e9e1b58eea19f85043d2b3c`,
+  2,904,467 bytes) and no other `6.2.0-x` copy may exist in the pnpm store
+  (a lockfile regression to `6.2.0-1` fails loudly); the 16 MiB
+  `__stack_pointer` (16,777,216) is decoded from the binary's global
+  section; depths 1,523 (old trap), 4,043 (derived maximum), and 4,044
+  (beyond-maximum control) parse and round-trip in per-depth child
+  processes; and the independent V8 machine-stack budget keeps its
+  below-floor `--stack-size=600` RangeError control
+  (`MAX_DEPTH_V8_STACK_SIZE_KB_V1` stays ≥ 1,400). Suite honesty was
+  spot-checked outside vitest: one hand-built child at depth 4,043
+  returned `ok/roundTripIsInput` in 65 ms and the below-floor control
+  failed with the exact RangeError, so the sub-second suite time is real
+  child work, not a gate that cannot fail.
+- **Pin currency** — the COMPLETE_PUBLISHED_CANONICAL suite (input-no-idx)
+  reproduced every #542 pin unchanged under `6.2.0-2` (signed bytes 7,771;
+  fee/ex-units/tx-hash identical): the shadow-stack size is
+  serialization-invisible, exactly as the #542 entry predicted. The
+  producing-run provenance comment and
+  `docs/exec-plans/evidence/necessity/input-no-idx-spend-input-proof-v1.md`
+  record the re-verification;
+  `docs/exec-plans/evidence/c26-cml-investigation.md`'s reproduction
+  section gains a dated retirement note pointing at the successor suite
+  (that historical doc's Prettier non-compliance is pre-existing at HEAD;
+  only the fenced note was added, on otherwise untouched bytes).
+- **Graphify papercut** (``f1287c18``) — `.githooks/post-commit` plus
+  `make enable-graphify-post-commit` / `make refresh-graphify-graph`
+  refresh the external navigation graph only from a coherent checkout
+  (dirty trees are refused with instructions;
+  `MIDGARD_GRAPHIFY_SKIP_POST_COMMIT=1` opts out; missing `graphify` is a
+  skip, not a failure), so the standing "graph is stale navigation hints"
+  caveat stops compounding at every commit.
+
+Gates on the final tree (pinned Node v22.22.2 / pnpm 9.15.9, vitest 3.0.7):
+shadow-stack suite 5/5 (562 ms; re-run green after a frozen-lockfile
+install proved a no-op); whole emulator family **9 files / 31 tests**
+green in 975.6 s including input-no-idx 4/4 (its pins carry the
+re-verification) — this count supersedes the 8-file/27-test family
+citations, the #481 max-proof-fit suite (6 tests) having since joined;
+scoped ESLint/Prettier and both package typechecks clean; hook `bash -n`
+clean; manifest quality 186/186 with 0 defects + self-test (1 control
+accepted, 13 hostile mutations rejected); verification plan PASS
+(7 phases / 40 commands); capability reconciliation exit 0 — 115/115
+manifest-declared selectors across 12 modules and 17 tasks in one 81.1 s
+batched fork invocation, 0 excluded, 17/22 PASS measured. The
+unprovenanced 246-row "(live-verified on preprod)" bulk edit remains
+excluded from this checkpoint and preserved in the working tree, as
+recorded on 2026-08-04.
+
+## Owner-delegated decisions: #541 cells, C26 promotion, catalogue registration (2026-08-05)
+
+Owner-delegated decision round (research and decision delegated by the
+owner on 2026-08-05; the durable record with full rationale, execution
+contracts, and line citations is
+`docs/exec-plans/evidence/owner-decisions-2026-08-05.md` — the citable
+authority for the #545 lane, the C26 promotion batch, and the catalogue
+registration batch):
+
+- **#541 / Q1x output-5 cells** — the four cells (Q10/Q11/Q12/Q14) stay
+  OPEN and are pre-authorized to flip to LOCAL_PASS without a further
+  owner round-trip exactly when all of: the shipped submit route carries
+  its MPF openings via chunked carriage (emulator lifecycle through the
+  real pipeline at adversarial depth ≥ 22 and at the structural maximum
+  64); the re-measured `adversarialDepthBound` shows
+  `envelopeExhaustibleByReferenceAdversary: false`; and Q1X-F6
+  (spend-input preimage cardinality, Q10/Q11; Q12/Q14 keep their recorded
+  structural exclusion) is exercised. The Q1x verifier's global
+  unexercised-axes tripwire stays as designed and forces the re-decision
+  in the same change that lands the last condition.
+  `challenged_root_domain` is REQUIRED for #545 (datum field written from
+  the authenticated init redeemer plus per-consumer equality asserts),
+  not deferred — the challenge validator's hash enters the deployment
+  manifest in the registration batch below, making this the last cheap
+  moment. #541 closes when the Q1x verifier exits 0 with 4 LOCAL_PASS
+  output-5 cells on a §4.4-green tree; if the F6 measurement reveals a
+  new exhaustion inside the 2^128 reference adversary, the
+  pre-authorization is void and the finding is recorded as Q1X-F7.
+- **C26 → PASS** — promotion decided; executed as one parent-owned batch
+  after this checkpoint, gated on post-#543 green re-runs of the C26 TS
+  suite (6/6) and the 4-test Aiken selector under both compilers — the
+  CML bump fires C26's `invalidationTriggers`, so the re-run is not
+  skippable; a red witness aborts the promotion. Edit set (from the
+  decision record): first-queue C26 row, capability artifact
+  `p2Summary` 17/5 → 18/4 plus the verifier literal pin, F05's
+  blocked-on claim → "exactly 1: F41", C30–C33/CG2 `blockedOn` refresh,
+  and the stale-claim repairs below. C26 PASS moves the matrix to 18/4
+  and does NOT close CG2.
+- **Catalogue registration** — batched: one deployment-identity change
+  immediately after #545 lands, combining the three harvested categories
+  (appended IDs 8/9/10: `noReferenceInput`, `referenceInputNoIndex`,
+  `invalidSignature`), the chunked challenge validator's manifest
+  registration, and the recomputation of both hand-pinned catalogue
+  fixtures — the catalogue MPF leaf is the per-category step-01 script
+  hash and #545 moves those hashes, so batching moves the fixtures and
+  deployment identity once, not twice. Escape hatch: if #545 has not
+  landed by 2026-08-12, register the three categories alone against the
+  current blueprint. The decision record carries the complete 12-file
+  execution contract (production surfaces are append-only; category IDs
+  are positional).
+- **Ledger claims corrected by the review** (repairs assigned to the C26
+  promotion batch): the wave-1 "(C26 PARTIAL held by C30–C33/CG2)" note
+  is directionally backwards — C26 is the upstream hold that releases
+  them; the CG2 manifest row's "exactly 16 PASS / 6 PARTIAL" verifier
+  claim is stale (the verifier pins 17/5 today); C33 is published PASS
+  while its `blockedBecause` prose still claims dependency-blocked; and
+  the harvest entry's registration surface omitted the watcher's
+  production category map
+  (`demo/midgard-watcher/src/deployment-identity.ts`), which the
+  execution contract now enumerates.
