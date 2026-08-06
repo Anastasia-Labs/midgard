@@ -200,10 +200,12 @@ describe("fault-proof ABI", () => {
     ).toEqual({ fraud_prover: h28, data: null });
     expect(
       roundTrip(
-        { Continue: [txInclusionArgs] },
+        { Continue: [{ RedeemerCarriedInclusion: [txInclusionArgs] }] },
         DoubleSpendStep01SpendRedeemer,
       ),
-    ).toMatchObject({ Continue: [{ native_tx_id: h32 }] });
+    ).toMatchObject({
+      Continue: [{ RedeemerCarriedInclusion: [{ native_tx_id: h32 }] }],
+    });
 
     const step02Datum = {
       fraud_prover: h28,
@@ -215,10 +217,12 @@ describe("fault-proof ABI", () => {
     expect(roundTrip(step02Datum, DoubleSpendStep02Datum)).toEqual(step02Datum);
     expect(
       roundTrip(
-        { Continue: [txInclusionArgs] },
+        { Continue: [{ RedeemerCarriedInclusion: [txInclusionArgs] }] },
         DoubleSpendStep02SpendRedeemer,
       ),
-    ).toMatchObject({ Continue: [{ native_tx_id: h32 }] });
+    ).toMatchObject({
+      Continue: [{ RedeemerCarriedInclusion: [{ native_tx_id: h32 }] }],
+    });
 
     const step03Datum = {
       fraud_prover: h28,
@@ -282,10 +286,12 @@ describe("fault-proof ABI", () => {
     ).toEqual({ fraud_prover: h28, data: null });
     expect(
       roundTrip(
-        { Continue: [txInclusionArgs] },
+        { Continue: [{ RedeemerCarriedInclusion: [txInclusionArgs] }] },
         InvalidRangeStep01SpendRedeemer,
       ),
-    ).toMatchObject({ Continue: [{ native_tx_id: h32 }] });
+    ).toMatchObject({
+      Continue: [{ RedeemerCarriedInclusion: [{ native_tx_id: h32 }] }],
+    });
 
     const step02Datum = {
       fraud_prover: h28,
@@ -518,8 +524,13 @@ describe("fault-proof ABI", () => {
       roundTrip({ fraud_prover: h28, data: null }, ZeroInputStep01Datum),
     ).toEqual({ fraud_prover: h28, data: null });
     expect(
-      roundTrip({ Continue: [txInclusionArgs] }, ZeroInputStep01SpendRedeemer),
-    ).toMatchObject({ Continue: [{ native_tx_id: h32 }] });
+      roundTrip(
+        { Continue: [{ RedeemerCarriedInclusion: [txInclusionArgs] }] },
+        ZeroInputStep01SpendRedeemer,
+      ),
+    ).toMatchObject({
+      Continue: [{ RedeemerCarriedInclusion: [{ native_tx_id: h32 }] }],
+    });
 
     const step02Datum = {
       fraud_prover: h28,
