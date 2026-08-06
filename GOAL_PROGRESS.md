@@ -5890,3 +5890,49 @@ registration batch):
   production category map
   (`demo/midgard-watcher/src/deployment-identity.ts`), which the
   execution contract now enumerates.
+
+
+## #544: Q13 applied-hash and blueprint pin currency verified post-#521 (2026-08-05)
+
+Measured with the producing inspection (the Q13 focusedCommand triple:
+prepare-input-no-idx + submit-input-no-idx-step-02 + inspect-contracts)
+against the current committed blueprint
+`605c8b8dca1f01e2cde5219138a1f81e69214f9a182c10b73c20341187ddc2dc`
+(391 validators, tracked clean at HEAD), pinned Node v22.22.2 — landed as
+`5d0c0953`:
+
+- **Current, confirmed by measurement:** the four applied step hashes
+  (`5c79063d…`, `a562f6b3…`, `e22e2b38…`, `9984b16c…`) are byte-identical
+  under the current blueprint — the #521 renames did not move this
+  family's applied scripts — and the catalogue ID `00000002`, the
+  category script-hash binding, and the membership proof re-derive
+  unchanged.
+- **Drifted, re-pinned:** the catalogue root. Pinned `d88f9829…bcca394`
+  (original `f5ae651e…` 380-validator epoch), measured
+  `d1a70a1bd5b024d41c9f1279d564cf81f85304eeca8dec1767de3763702e24aa`.
+  The suite's own runtime derivation equals the measured value (the
+  derived-equals-output assertion passed while only the pin failed), so
+  the root moved because other categories' step-01 leaves moved — the
+  exact #521 mechanism #542 attributed by dual-epoch build. This also
+  coheres with #542's fee/ex-units/tx-hash drift at unchanged 7,771
+  bytes: the catalogue reference datum changed content, not size.
+  Re-pinned in `inspect-contracts.test.ts`, the manifest Q13
+  `evidenceOutputs` (the `f5ae651e…` line now marked original-epoch
+  provenance with the current-blueprint re-verification recorded), and
+  the §3.2 necessity artifact. The Q13 ledger row above stays as epoch
+  provenance per the #542 precedent; this entry supersedes its catalogue
+  root claim.
+- The blueprint SHA pin `f5ae651e…` is original-epoch provenance, not a
+  current-tree identity claim; the current committed-tree identity is
+  `605c8b8d…` as recorded by the #541 remediation entry.
+- **Rider — the owed blueprint-adjacent spot-check:** today's #543
+  checkpoint gates already asserted the #542-re-pinned CompletePublished
+  tuple green under blueprint `605c8b8d…` and CML `6.2.0-2` (emulator
+  family 9 files / 31 tests including input-no-idx 4/4); those pins are
+  current.
+
+Gates: producing inspection 38/38 after the re-pin (was 37/38 with
+exactly the root-pin failure as the drift fingerprint); manifest quality
+186/186 with 0 defects + self-test; scoped ESLint/Prettier clean on the
+three edited files. The unprovenanced 246-row bulk edit remains excluded
+from this checkpoint and preserved in the working tree.
