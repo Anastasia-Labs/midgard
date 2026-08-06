@@ -6138,3 +6138,46 @@ W23, W25/W26): "independent review/audit" there records intra-program
 review by a second agent, not a second-party external audit — the
 durable, checkable form of those claims is now the map's reviewRecord;
 no second-party audit exists yet and none is claimed.
+
+## #547 deployment-identity registration (2026-08-06)
+
+`a6dd05a6`+`c56d371d`+`50131aef` (+ `e1906985`) — the single parent action
+the three harvest rows recorded verbatim:
+
+- Categories appended (no existing id shifts): noReferenceInput
+  `00000008`, referenceInputNoIdx `00000009`, invalidSignature
+  `0000000a`; DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES **52 → 55** in core
+  and node. Catalogue roots re-derived programmatically from the
+  production builder — the positional recompute reproduced all eight
+  pre-existing script hashes bit-for-bit before emitting the three new
+  ones (core fixed-script root `774e736e…` → `b5a26557…`, watcher
+  positional `6af775fd…` → `e6462b63…`, node manifest id `c9cb35df…` →
+  `28ac3909…`, inspect-contracts root `d1a70a1b…` → `32e29b6d…`;
+  input-no-idx CompletePublished sha moved to `ae89c6c6…` with every
+  measured quantity bit-identical — membership-proof content only).
+- **Chunked-MPF validators deliberately NOT registered**: they follow the
+  pexcludes precedent (inline attachment at submit time), not phas (which
+  registers only for its reference-script role); neither appears in any
+  deployment-identity surface and #545 landed both without touching one.
+- The ten submit builders landed and CLI-wired; per-family emulator
+  lifecycles prove init → step-01 for all three families (3/3) against
+  the fresh blueprint — steps 02-04 need populated prev-ledger tries
+  (Q18/Q31) or a genuinely failing ed25519 witness (Q15) and remain those
+  rows' recorded work. Fixed in passing: the da-committee-node fixture
+  had been missing fraudProofDaHashPreimage since Q44, silently redding 5
+  suites.
+- Integration fix `e1906985`: four SDK round-trip fixtures (DS-01/02,
+  IR-01, ZI-01) still passed bare inclusion args where #545's carriage
+  sum now sits — red at `319abcbf`, caught by this lane's base bisect,
+  wrapped in RedeemerCarriedInclusion; suite 30/30.
+- Operational lesson re-learned and recorded: consumers import DIST —
+  after landing midgard-core or midgard-sdk source, rebuild BOTH dists
+  before running consumer suites (stale core dist briefly redded the
+  registration suites on the integrated tree; green after rebuild).
+
+Verification: blueprint unchanged (`2b5973fe…`, 393 validators — no .ak
+touched, guard carried by the standing 393-validator identity);
+registered-families lifecycle 3/3; contract-deployment-info 13/13;
+deployment-manifest-identity 9/9; SDK fault-proof 30/30; manifest quality
+186/186 with 0 defects; §4.4 journey selector **PASSES 1/1** on fresh
+isolated database `midgard_test_547`.
