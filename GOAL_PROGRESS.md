@@ -6474,3 +6474,34 @@ the single identity batch (blueprint regen, dual-compiler guard,
 manifest/ABI-freeze re-derivation, full battery, fresh-DB §4.4
 journey) and record it. In parallel, the owner resolves #560/#561/#563
 to lift the quiesce.
+
+## Q60 mutant killed and PASS; manifest reconciled to the wave (2026-08-07)
+
+- **Q60 → PASS.** Remediation `b02b25cd` (fast-forwarded) landed the
+  killing fixtures with a measured three-arm mutation experiment: the
+  pre-remediation family survives the interval-membership mutant 21/21;
+  the remediated family kills it (2 failures of 23); the real rule
+  passes 23/23. Gate now publishes the kill in its PASS line and adds
+  the strictly-inside-window rejection class; self-test 8/8 seeded
+  defects (3 new, including forge-surviving-mutant). Parent replay on
+  the integrated tree: selector 23/23, gate PASS exit 0, vitest 12/12,
+  format 1/1. Parent follow-up patch (this commit) applied the
+  remediation's late review residuals: prettier conformance on the
+  gate, a splice(-1) guard in a self-test mutator, two artifact wording
+  corrections (only-boundaryClasses fixture; stale blueprintImpact
+  change list), and an honest translation-invariance docstring for the
+  second liveness call. Recorded residuals, deliberately not repaired:
+  two verifier check layers the review proved unreachable
+  (ERR_Q60_REQUIRED_SELECTOR_NOT_MEASURED and the measured-count
+  comparison — dead but harmless; removing gate code under deadline
+  pressure without a fresh review is the riskier edit), and the
+  systemic observation that any artifact claiming "equality, not a
+  range" warrants the same strictly-inside probe — carried to the
+  matrix-wide review backlog.
+- **F05 manifest reconciled** (same commit): Q60 counts re-pinned
+  (strictly-inside class added, selector total 23); F05/F40
+  `blockedOn: ["F41"]` cleared and F05's reconciled claim moved to
+  "exactly 0 current non-PASS dependencies" — the quality gate itself
+  caught both stale rows after F41's PASS flip (a working
+  gate-that-can-fail, for once in the pleasant direction);
+  186/186 with 0 defects after reconciliation.

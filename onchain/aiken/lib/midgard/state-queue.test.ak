@@ -476,12 +476,15 @@ test state_queue_commit_end_time_bound_keeps_a_future_forced_event_not_due() {
 /// out, which is the stall half of D-S12.
 ///
 /// Only two things here can move, so only two things are asserted: the rule
-/// itself (twice, over consecutive windows, so the chain advancing is not a
-/// one-step coincidence) and the maturity constant, which is the sole symbol in
-/// `end_time + block_maturity_duration_v1`. Three further conjuncts comparing
-/// that sum against pre-computed literals were removed: with the constant
-/// pinned on the line above them they reduced to comparisons between two closed
-/// forms and could not fail unless the pin had already failed.
+/// itself and the maturity constant, which is the sole symbol in
+/// `end_time + block_maturity_duration_v1`. The second rule call over the next
+/// consecutive window is a translation-invariance companion — the predicate is
+/// a pure comparison over integer offsets, so the call cannot fail
+/// independently of the first; it documents the advancing-window shape and is
+/// not claimed as a distinct failure mode. Three further conjuncts comparing
+/// the maturity sum against pre-computed literals were removed: with the
+/// constant pinned on the line above them they reduced to comparisons between
+/// two closed forms and could not fail unless the pin had already failed.
 test state_queue_commit_end_time_maximum_accepted_keeps_queue_and_merge_live() {
   and {
     state_queue.commit_bound_header_time_is_valid(

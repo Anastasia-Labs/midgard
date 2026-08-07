@@ -294,14 +294,14 @@
         "pnpm --dir demo exec prettier --check ../docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json ../docs/exec-plans/templates/README.md ../docs/exec-plans/templates/task-manifest-row.json ../docs/exec-plans/templates/necessity-artifact-template.md ../docs/exec-plans/templates/structural-na-template.md ../docs/exec-plans/templates/subagent-assignment-brief.md scripts/verify-canonical-v1-goal-task-manifest-quality.mjs",
         "git diff --check -- docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json docs/exec-plans/templates/README.md docs/exec-plans/templates/task-manifest-row.json docs/exec-plans/templates/necessity-artifact-template.md docs/exec-plans/templates/structural-na-template.md docs/exec-plans/templates/subagent-assignment-brief.md demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-goal-task-manifest-quality.mjs. Quality closure reports exactly 186 manifest tasks, 186 unique authoritative task IDs, 186 DETAILED rows, 119 authoritative first-queue IDs, and 0 defects; exactly 4 of 4 worked templates validate and blockedOn contains exactly 1 current non-PASS dependency F41 with 0 stale PASS blockers.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-goal-task-manifest-quality.mjs. Quality closure reports exactly 186 manifest tasks, 186 unique authoritative task IDs, 186 DETAILED rows, 119 authoritative first-queue IDs, and 0 defects; exactly 4 of 4 worked templates validate and blockedOn contains exactly 0 current non-PASS dependencies with 0 stale PASS blockers. F41 passed 2026-08-07 at f9bfb5a1.",
       "invalidationTriggers": [
         "Any F01/F02/F20/F21/F30 inventory/reconciliation finding, F41 closure-schema requirement, GOAL_SPEC \u00a77-\u00a710 task, or authoritative first-queue ID/dependency/status changes",
         "Any manifest row, dependency expansion, lease, anchor, command, count contract, blocker, summary cardinality, template, or quality-verifier rule changes after capture",
         "F05 edits its own manifest row or any other row: the prior F05 quality evidence self-invalidates and the full 186-row quality gate must rerun before assignment",
         "The GOAL_SPEC 13.4 tracked-path evidence-storage amendment or documented four-template contract changes"
       ],
-      "blockedOn": ["F41"],
+      "blockedOn": [],
       "blockedBecause": "F05 remains dependency-blocked only on current non-PASS queue rows: F41. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted."
     },
     {
@@ -544,7 +544,7 @@
         "C79 changes acceptance readiness, goal:accept:testnet is published/retired, or a command gains a hidden skip, ignored exit, zero-test allowance, allow-incomplete mode, unbounded resource, or state-changing behavior in a local phase",
         "Any F40 owned plan/package/workflow/script changes after capture; all plan/static/CI inventories must rerun"
       ],
-      "blockedOn": ["F41"],
+      "blockedOn": [],
       "blockedBecause": "F40 remains dependency-blocked only on current non-PASS dependency F41. Q02/Q03 and every other PASS dependency are omitted. Independently, C79 is still OPEN, so publishing goal:accept:testnet would be unsafe and does not make F40 ready."
     },
     {
@@ -9428,7 +9428,7 @@
         "pnpm --dir demo/midgard-node exec tsc --noEmit",
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs validators/state-queue.ak lib/midgard/state-queue.test.ak"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: state_queue, commit-block-header-state-queue-tail.test.ts, verify-canonical-v1-q60-commit-end-time-bound.mjs. Exactly 1 lower-bound control, 1 maximum accepted end_time, 1 immediately-above-bound rejection, 1 far-future rejection, and 3 due-event classes (deposit, withdrawal, forced) pass; exactly 0 accepted cases permit end_time beyond the commit validity bound and all commands report exact totals with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: state_queue, commit-block-header-state-queue-tail.test.ts, verify-canonical-v1-q60-commit-end-time-bound.mjs. Exactly 1 lower-bound control, 1 maximum accepted end_time, 1 immediately-above-bound rejection, 1 far-future rejection, 1 strictly-inside-window rejection (the interval-membership mutant witness; measured mutant-kill experiment recorded in the artifact), and 3 due-event classes (deposit, withdrawal, forced) pass; the state_queue selector collects exactly 23; exactly 0 accepted cases permit end_time beyond the commit validity bound and all commands report exact totals with 0 failures.",
       "invalidationTriggers": [
         "Commit transaction validity-range construction, maximum validity length, network slot/time conversion, header time codec, or state-queue successor-time rule changes",
         "Deposit, withdrawal, forced-event due-window semantics, merge readiness, blueprint/applied state-queue hash, or target network era/time parameters change after capture"

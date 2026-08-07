@@ -120,7 +120,7 @@
         "headerEndTimeMs": 1700000479000,
         "commitInclusiveLowerBoundMs": 1700000000000,
         "commitInclusiveUpperBoundMs": 1700000480000,
-        "claim": "An end_time strictly inside the commit window is rejected. It satisfies lower <= end_time <= upper and is refused anyway, which is what distinguishes the anchor (equality with the upper bound) from interval membership. This is the only fixture in the family with that property, and mutationExperiment below is the measured run that proves it: under an interval-membership rule this is one of exactly two tests that fail, and all four other boundary cases still pass."
+        "claim": "An end_time strictly inside the commit window is rejected. It satisfies lower <= end_time <= upper and is refused anyway, which is what distinguishes the anchor (equality with the upper bound) from interval membership. This is the only boundaryClasses fixture with that property, and mutationExperiment below is the measured run that proves it: under an interval-membership rule this is one of exactly two tests that fail, and all four other boundary cases still pass."
       }
     ],
     "membershipExclusion": {
@@ -228,7 +228,7 @@
       },
       {
         "selector": "state_queue_commit_end_time_maximum_accepted_keeps_queue_and_merge_live",
-        "claim": "Liveness control: the maximum accepted end_time lets each successor commit open exactly where its predecessor closed and re-anchor on its own window, asserted twice over consecutive windows against the real predicate, plus a pin of block_maturity_duration_v1 at 604800000 ms — the sole symbol in the merge deadline end_time + block_maturity_duration_v1, and so the only thing that can turn that finite deadline into a moving one. Three further conjuncts that compared that sum against pre-computed literals were removed by the Q60 audit remediation: with the constant pinned on the preceding line they reduced to comparisons between two closed forms and could not fail unless the pin had already failed."
+        "claim": "Liveness control: the maximum accepted end_time lets each successor commit open exactly where its predecessor closed and re-anchor on its own window, asserted against the real predicate over a second consecutive window (a translation-invariance companion, not an independent failure mode), plus a pin of block_maturity_duration_v1 at 604800000 ms — the sole symbol in the merge deadline end_time + block_maturity_duration_v1, and so the only thing that can turn that finite deadline into a moving one. Three further conjuncts that compared that sum against pre-computed literals were removed by the Q60 audit remediation: with the constant pinned on the preceding line they reduced to comparisons between two closed forms and could not fail unless the pin had already failed."
       },
       {
         "selector": "state_queue_commit_end_time_accepts_the_normalized_commit_upper_bound",
@@ -296,7 +296,7 @@
   },
   "blueprintImpact": {
     "validatorHashMoves": false,
-    "reason": "This task changed only test modules (onchain/aiken/lib/midgard/state-queue.test.ak) and a Vitest file. No validator or library source compiled into a script changed, so onchain/aiken/plutus.json and every applied state-queue hash pin are unaffected and no blueprint regeneration is required.",
+    "reason": "This task changed only test modules (onchain/aiken/lib/midgard/state-queue.test.ak), a Vitest file, the gate script, and this artifact. No validator or library source compiled into a script changed, so onchain/aiken/plutus.json and every applied state-queue hash pin are unaffected and no blueprint regeneration is required.",
     "verifiedBy": "No compiled source changed: the code-bearing diff over onchain/aiken/validators/, onchain/aiken/lib/, onchain/aiken/env/ and onchain/aiken/aiken.toml, excluding *.test.ak, is empty, and nothing imports state_queue.test (it is a leaf test module). The blueprint itself is an untracked build artifact — onchain/aiken/plutus.json is gitignored at onchain/aiken/.gitignore:8 and is not in the index — so no diff can witness it either way, and the previously published basis (a `git diff --stat` over plutus.json) could never have been evidence of anything.",
     "correctedBy": "Q60 audit remediation. The prior verifiedBy cited a diff over a gitignored, untracked path."
   },

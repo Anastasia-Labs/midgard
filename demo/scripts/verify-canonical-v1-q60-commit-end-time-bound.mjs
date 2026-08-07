@@ -130,6 +130,11 @@ if (fault === "drop-membership-witness") {
   const index = boundaryClasses.findIndex((entry) =>
     REQUIRED_AIKEN_SELECTORS.includes(entry.selector),
   );
+  if (index < 0) {
+    throw new Error(
+      "self-test fixture: no boundaryClasses entry matches a required selector; the seeded defect would silently mutate the wrong entry",
+    );
+  }
   boundaryClasses.splice(index, 1);
 }
 if (fault === "drop-required-vitest-title") {
@@ -563,10 +568,7 @@ for (const [className, requiredCount] of [
   ["maximumAcceptedEndTime", expected.maximumAcceptedEndTime],
   ["immediatelyAboveBoundRejection", expected.immediatelyAboveBoundRejection],
   ["farFutureRejection", expected.farFutureRejection],
-  [
-    "strictlyInsideWindowRejection",
-    expected.strictlyInsideWindowRejection,
-  ],
+  ["strictlyInsideWindowRejection", expected.strictlyInsideWindowRejection],
   ["dueEventClasses", expected.dueEventClasses],
 ]) {
   if (measuredCounts[className] !== requiredCount) {
