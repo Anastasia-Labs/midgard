@@ -1,0 +1,225 @@
+{
+  "schema": "midgard.canonical-v1-q60-commit-end-time-bound.v1",
+  "version": 1,
+  "goalIds": ["Q60"],
+  "decisionRow": "D-S12",
+  "note": "Q60 closes the D-S12 decision row: a committed header's `end_time` must be anchored to the commit transaction's bounded validity window rather than merely satisfying `start_time < end_time`. The anchor is present in the final tree, so this artifact is the adjacent-bound executable proof the GOAL_SPEC 9.5 row asks for, not a re-implementation.",
+  "direction": {
+    "chosen": "anchor-already-present-prove-adjacent-bounds",
+    "rationale": "GOAL_SPEC.md 5.2 admits `already implemented` as an outcome when final-tree source plus all listed evidence prove the acceptance. Final-tree source does bound `end_time`, so the deliverable is the executable adjacent-bound evidence and the cross-language vector, not a second implementation.",
+    "sourceEvidence": [
+      "onchain/aiken/lib/midgard/state-queue.ak:49 `commit_bound_header_time_is_valid` requires `header_end_time == inclusive_commit_upper_bound`, where the bound comes from `utils.get_inclusive_bounds_of_a_short_validity_range`.",
+      "onchain/aiken/validators/state-queue.ak:456 wires that predicate into the `CommitBlockHeader` handler, immediately after `commit_block_header_output_is_valid_v1`.",
+      "The anchor landed in commit 66d2d5d5 (`fix: harden canonical watcher checkpoint`), not in a Q60 lane, which is why docs/fault-proofs/execution-plan.md:114 still describes the pre-anchor state.",
+      "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json Q60 `sourceAnchors` already records that `merged state-queue contains an L1-bound commit end-time check, but final assignment still requires adjacent-bound executable evidence`."
+    ]
+  },
+  "rule": {
+    "onchain": {
+      "predicate": "commit_bound_header_time_is_valid",
+      "path": "onchain/aiken/lib/midgard/state-queue.ak",
+      "line": 49,
+      "statement": "header_start_time < header_end_time and header_end_time == inclusive upper bound of the commit transaction's short validity range",
+      "rangeNormalizer": "onchain/aiken/lib/midgard/common/utils.ak:38 get_inclusive_bounds_of_a_short_validity_range",
+      "maxInclusiveRangeMs": 480000,
+      "maxInclusiveRangeSource": "onchain/aiken/env/default.ak:49 max_validity_range_length"
+    },
+    "offchain": {
+      "derivation": "demo/midgard-node/src/workers/utils/commit-end-time.ts:147 `inclusiveUpperBoundMs = validToMs - 1`",
+      "guard": "demo/midgard-sdk/src/state-queue-production.ts:92 productionCommitHeaderMatchesValidityUpperBound requires `headerEndTime === BigInt(validTo - 1)`",
+      "guardEnforcedAt": "demo/midgard-sdk/src/state-queue-production.ts:549",
+      "rangeGuard": "demo/midgard-sdk/src/state-queue-production.ts:80 isProductionCommitValidityInterval requires `validTo - validFrom <= 480000`",
+      "headerAssignment": "demo/midgard-node/src/workers/commit-block-header/build-unsigned-tx.ts:217 destructures `inclusiveUpperBoundMs` as `blockEndTimeMs` and passes it as the header end time at line 244",
+      "conservatism": "The node states its range guard over the exclusive span and the validator over the inclusive span, so the widest interval the node builds has an inclusive span of 479999 ms — one millisecond inside what the validator accepts. The mirror is strictly conservative and cannot construct a commit the chain rejects on this rule."
+    }
+  },
+  "vector": {
+    "units": "POSIX milliseconds",
+    "commitValidity": {
+      "inclusiveLowerBoundMs": 1700000000000,
+      "inclusiveUpperBoundMs": 1700000480000,
+      "transactionValidToMs": 1700000480001,
+      "validToIsExclusive": true,
+      "inclusiveSpanMs": 480000,
+      "maxInclusiveRangeMs": 480000
+    },
+    "slotConversion": {
+      "slotLengthMs": 1000,
+      "note": "The off-chain half drives the real resolver with a deterministic 1000 ms slot map (unixTimeToSlot = floor(ms/1000)), so every published millisecond value is reproducible without a provider.",
+      "resolvedValidFromMs": 1700000240000,
+      "reAnchoredValidFromMs": 1700000001000
+    },
+    "acceptedHeaderEndTimeMs": 1700000480000,
+    "immediatelyAboveBoundHeaderEndTimeMs": 1700000480001,
+    "farFutureHeaderEndTimeMs": 2015360480000,
+    "farFutureOffsetMs": 315360000000,
+    "farFutureOffsetNote": "Ten years past the window that commits it."
+  },
+  "aiken": {
+    "projectDirectory": "onchain/aiken",
+    "module": "midgard/state_queue.test",
+    "modulePath": "onchain/aiken/lib/midgard/state-queue.test.ak",
+    "selectorNamingRule": "Aiken's `-m` flag is a glob over test NAMES, not module names. Every test in this family is named `state_queue_commit_end_time_*` so that the `state_queue` selector the F05 manifest gates Q60 with actually collects it.",
+    "testCompiler": {
+      "requiredVersionPrefix": "aiken v1.1.23",
+      "binaryEnvironmentVariable": "MIDGARD_AIKEN_BIN",
+      "binaryEnvironmentFallback": "MIDGARD_FORK_AIKEN_BIN",
+      "rationale": "Test execution must use the patched fork, never the stock v1.1.22 that compiles the blueprint. Local runs name the fork with MIDGARD_AIKEN_BIN and .github/workflows/aiken-ci.yml names it with MIDGARD_FORK_AIKEN_BIN; the gate honours both, measures the resolved binary's reported version, and fails closed rather than executing this family under the wrong compiler."
+    },
+    "boundaryClasses": [
+      {
+        "class": "lowerBoundControl",
+        "selector": "state_queue_commit_end_time_lower_bound_control_accepts_the_anchor",
+        "disposition": "accepted",
+        "headerStartTimeMs": 1700000000000,
+        "headerEndTimeMs": 1700000480000,
+        "commitInclusiveLowerBoundMs": 1700000479000,
+        "commitInclusiveUpperBoundMs": 1700000480000,
+        "claim": "Moving the window's lower bound 479000 ms later leaves the same header times accepted: only the upper bound decides, which is what makes this an anchor rather than interval membership."
+      },
+      {
+        "class": "maximumAcceptedEndTime",
+        "selector": "state_queue_commit_end_time_maximum_accepted_is_the_inclusive_upper_bound",
+        "disposition": "accepted",
+        "headerStartTimeMs": 1700000000000,
+        "headerEndTimeMs": 1700000480000,
+        "commitInclusiveLowerBoundMs": 1700000000000,
+        "commitInclusiveUpperBoundMs": 1700000480000,
+        "claim": "The inclusive upper bound of the longest short validity range opening at 1700000000000 — the largest end_time any such commit can carry."
+      },
+      {
+        "class": "immediatelyAboveBoundRejection",
+        "selector": "state_queue_commit_end_time_rejects_one_millisecond_above_the_bound",
+        "disposition": "rejected",
+        "headerStartTimeMs": 1700000000000,
+        "headerEndTimeMs": 1700000480001,
+        "commitInclusiveLowerBoundMs": 1700000000000,
+        "commitInclusiveUpperBoundMs": 1700000480000,
+        "claim": "One millisecond above the bound is already rejected; the accepted set is a single point, not a range."
+      },
+      {
+        "class": "farFutureRejection",
+        "selector": "state_queue_commit_end_time_rejects_a_far_future_end",
+        "disposition": "rejected",
+        "headerStartTimeMs": 1700000000000,
+        "headerEndTimeMs": 2015360480000,
+        "commitInclusiveLowerBoundMs": 1700000000000,
+        "commitInclusiveUpperBoundMs": 1700000480000,
+        "claim": "The D-S12 far-future end_time, ten years past the window that commits it."
+      }
+    ],
+    "dueEventClasses": [
+      {
+        "class": "deposit",
+        "selector": "state_queue_commit_end_time_bound_keeps_a_future_deposit_not_due",
+        "adjudicationSite": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak:1450",
+        "predicate": "timed_l1_event_is_due",
+        "eventInclusionTimeMs": 1700000480001,
+        "claim": "A deposit includable one millisecond after the maximum accepted end_time is not due under that end_time, would be due under the far-future end_time, and the far-future end_time is exactly what the commit anchor refuses."
+      },
+      {
+        "class": "withdrawal",
+        "selector": "state_queue_commit_end_time_bound_keeps_a_future_withdrawal_not_due",
+        "adjudicationSite": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak:1474",
+        "predicate": "timed_l1_event_is_due",
+        "eventInclusionTimeMs": 1731536480000,
+        "claim": "Taken a full year past the commit window to show the gap the anchor closes is unbounded, not an off-by-one."
+      },
+      {
+        "class": "forced",
+        "selector": "state_queue_commit_end_time_bound_keeps_a_future_forced_event_not_due",
+        "adjudicationSite": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak:1500",
+        "predicate": "forced_event_is_due = timed_l1_event_is_due and forced_tx_is_due",
+        "eventInclusionTimeMs": 1700000480001,
+        "forcedValidityIntervalStartMs": 1700000480001,
+        "forcedValidityIntervalEndMs": 1700100000000,
+        "claim": "Both halves of forced due-ness flip together under a far-future end_time, and both are held shut by the anchor."
+      }
+    ],
+    "supportingSelectors": [
+      {
+        "selector": "state_queue_commit_end_time_maximum_range_length_is_pinned",
+        "claim": "Pins env.max_validity_range_length at 480000 so widening it fails here instead of silently redefining the maximum accepted end_time."
+      },
+      {
+        "selector": "state_queue_commit_end_time_never_accepts_any_value_past_the_bound",
+        "claim": "Sweeps four distances past the bound (+1 ms, +10 ms, +520000 ms, +10 years); none is accepted."
+      },
+      {
+        "selector": "state_queue_commit_end_time_maximum_accepted_keeps_queue_and_merge_live",
+        "claim": "Liveness control: the maximum accepted end_time lets the successor commit start exactly there and re-anchor, and leaves merge maturity a finite 604800000 ms deadline that the rejected far-future end_time would have pushed ten years out."
+      },
+      {
+        "selector": "state_queue_commit_end_time_accepts_the_normalized_commit_upper_bound",
+        "claim": "An exclusive upper bound Finite(2001) normalizes to the inclusive 2000 the header carries."
+      },
+      {
+        "selector": "state_queue_commit_end_time_rejects_a_backdated_end",
+        "claim": "An end_time before the window is rejected."
+      },
+      {
+        "selector": "state_queue_commit_end_time_rejects_an_overlong_validity_range",
+        "claim": "A validity range longer than max_validity_range_length aborts in the normalizer."
+      },
+      {
+        "selector": "state_queue_commit_end_time_rejects_a_future_end",
+        "claim": "An end_time past the window is rejected."
+      },
+      {
+        "selector": "state_queue_commit_end_time_rejects_a_non_advancing_event_interval",
+        "claim": "start_time == end_time is rejected; the event interval must advance."
+      }
+    ],
+    "mirroredPrivatePredicates": [
+      {
+        "mirror": "timed_l1_event_is_due_mirror",
+        "original": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak:1294 timed_l1_event_is_due",
+        "reason": "The original is module-private and cannot be imported by the state-queue test module."
+      },
+      {
+        "mirror": "forced_tx_is_due_mirror",
+        "original": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak:1304 forced_tx_is_due",
+        "reason": "The original is module-private and cannot be imported by the state-queue test module."
+      }
+    ]
+  },
+  "vitest": {
+    "packageDirectory": "demo/midgard-node",
+    "testFile": "tests/commit-block-header-state-queue-tail.test.ts",
+    "titles": [
+      "derives the header end_time as the inclusive upper bound of the interval it builds",
+      "accepts the maximum end_time the production validity guard allows",
+      "keeps the same anchor when only the validity lower bound moves",
+      "rejects a header end_time one millisecond above the bound",
+      "rejects a far-future header end_time",
+      "re-anchors the lower bound rather than emitting an over-long interval"
+    ],
+    "note": "The off-chain half exercises the real production predicates and the real validity-interval resolver on the same absolute vector as the Aiken family, so the two languages are pinned to the same numbers."
+  },
+  "expectedCounts": {
+    "lowerBoundControl": 1,
+    "maximumAcceptedEndTime": 1,
+    "immediatelyAboveBoundRejection": 1,
+    "farFutureRejection": 1,
+    "dueEventClasses": 3,
+    "acceptedCasesPermittingEndTimeBeyondBound": 0,
+    "source": "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json Q60 expectedNonzeroCounts"
+  },
+  "blueprintImpact": {
+    "validatorHashMoves": false,
+    "reason": "This task changed only test modules (onchain/aiken/lib/midgard/state-queue.test.ak) and a Vitest file. No validator or library source compiled into a script changed, so onchain/aiken/plutus.json and every applied state-queue hash pin are unaffected and no blueprint regeneration is required.",
+    "verifiedBy": "git diff --stat over the task commit shows no change under onchain/aiken/validators/ or onchain/aiken/lib/midgard/state-queue.ak."
+  },
+  "invalidationTriggers": [
+    "`commit_bound_header_time_is_valid` or `get_inclusive_bounds_of_a_short_validity_range` changes shape or drops the equality with the inclusive upper bound.",
+    "`env.max_validity_range_length` moves away from 480000, which redefines the maximum accepted end_time this artifact publishes.",
+    "The private `timed_l1_event_is_due` or `forced_tx_is_due` in fraud-proofs/transition-trace/proof.ak changes, which invalidates the mirrors this family adjudicates due-ness with.",
+    "Deposit, withdrawal or forced-event due-window semantics, merge readiness, or `block_maturity_duration_v1` change.",
+    "The off-chain `inclusiveUpperBoundMs = validTo - 1` derivation, `productionCommitHeaderMatchesValidityUpperBound`, `isProductionCommitValidityInterval`, or the commit validity-interval resolver changes.",
+    "Network slot length or era time parameters change such that the published millisecond vector no longer round-trips through the slot map."
+  ],
+  "openParentActions": [
+    "docs/fault-proofs/execution-plan.md:114 (D-S12) still describes the pre-anchor state (`checks only start_time < end_time (state-queue.ak:223); nothing anchors end_time`). GOAL_SPEC.md 5.2 requires the authoritative matrix to be updated rather than the work reimplemented. The file is outside this task's lease.",
+    "The F05 manifest's Q60 focused command `guard-focused-selector.mjs state_queue` collected 6 tests before this task, none of which exercised the commit end_time bound. It now collects 21. The manifest's own count contract should be re-pinned to the measured total."
+  ]
+}
