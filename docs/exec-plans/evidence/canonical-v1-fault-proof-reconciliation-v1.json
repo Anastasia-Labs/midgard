@@ -148,9 +148,9 @@
   },
   "documentationAnchors": {
     "docs/fault-proofs/README.md": "Q00/Q02/Q03 and Q13 are complete in their assigned scope",
-    "docs/fault-proofs/architecture.md": "eight positional categories",
+    "docs/fault-proofs/architecture.md": "eleven positional categories",
     "docs/fault-proofs/onchain-reference.md": "All eleven transaction-proof step-01 validator chains use the native V1",
-    "docs/fault-proofs/offchain-reference.md": "accepts exactly eight values",
+    "docs/fault-proofs/offchain-reference.md": "accepts exactly eleven values",
     "docs/fault-proofs/catalogue-status.md": "Native V1 binding is complete; closure is still family-specific",
     "docs/fault-proofs/coverage-matrix.md": "Q13 `LOCAL_PASS`; live evidence remains Q57/QG3",
     "docs/fault-proofs/testing-status.md": "Q13 `input-no-idx` init → all steps",

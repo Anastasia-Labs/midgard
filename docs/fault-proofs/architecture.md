@@ -129,9 +129,9 @@ insufficient.
   only as `fee >= env.slashing_penalty`, and nothing on-chain routes the bond remainder to
   the prover.
 - **Catalogue registration ≠ compiled validators.** The deployment layer now registers
-  eight positional categories (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`), and
-  `submit-init`/inspection enforce that same eight-category inventory. This does not
-  close the six unregistered deployed validator directories or settle the final §9.1
+  eleven positional categories (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`), and
+  `submit-init`/inspection enforce that same eleven-category inventory. This does not
+  close the five unregistered deployed validator directories or settle the final §9.1
   launch scope; Q50/Q55 own that integration. The `FaultProofs` type also carries a TODO that
   multi-step registration needs "a more elaborate design" (`common.ts:160-161`).
 - **`Success` trusts the terminal step.** `computation-thread.ak`'s `Success` branch only

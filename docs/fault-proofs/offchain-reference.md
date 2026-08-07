@@ -26,9 +26,10 @@
 `submit-input-no-idx-step-01..04` (and `submit-input-no-idx-fold`) ·
 `remove-fraudulent-block`.
 
-`submit-init --fraud-category` accepts exactly eight values — `doubleSpend |
+`submit-init --fraud-category` accepts exactly eleven values — `doubleSpend |
 nonExistentInput | nonExistentInputNoIndex | invalidRange | transitionTrace |
-zeroInput | validationTraceDispute | daHashPreimage` — matching the catalogue and
+zeroInput | validationTraceDispute | daHashPreimage | noReferenceInput |
+referenceInputNoIdx | invalidSignature` — matching the catalogue and
 inspector. Q13 added the `nonExistentInputNoIndex` lifecycle. **No
 transition-trace proof-submission command exists** — `bin.ts` never imports
 `./transition-trace/`; `submitTransitionTraceProofFromFiles`

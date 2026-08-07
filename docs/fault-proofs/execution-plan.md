@@ -46,7 +46,7 @@ Summary of today's classification:
 - 🔶 Implemented, not fully verified: input-no-idx (Q13 local lifecycle is
   complete), invalid-signature, missing-signature, missing-native-script-tx,
   no-reference-input, withdrawn-reference-input. The current positional
-  catalogue has eight categories; Q50/Q55 still own final route integration.
+  catalogue has eleven categories; Q50/Q55 still own final route integration.
 - 🟠 Partial: transition-trace (no CLI; enabled-family test sub-variant gaps;
   forced-validity classification still needs complete retained-data and
   end-to-end evidence), min-fee (stub),

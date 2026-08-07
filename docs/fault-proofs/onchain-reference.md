@@ -103,10 +103,11 @@ min_fee_a, min_fee_b, prev_header_hash, operator_vkey, protocol_version
 | `min-fee`                   | 2                    | ⚠️ `bad_tx_body_fee < get_min_transaction_fee(bad_tx)` (`step-02.ak:64`) with the stub `fn get_min_transaction_fee(_) { 0 }` (`:78-80`, TODO `:77`) — unsatisfiable                                                           |
 | `transition-trace`          | single proof         | dispatch in `lib/.../transition-trace/proof.ak`; header binding + category prefix `#"00000004"`; direct unilateral transition families plus canonical accepted-validation-claim binding for normal and valid-forced effects   |
 
-The append-only catalogue currently assigns eight categories, IDs `00000000` through
-`00000007`; Q13's `nonExistentInputNoIndex` is `00000002`, `zeroInput` is
-`00000005`, `validationTraceDispute` is `00000006`, and `daHashPreimage` is
-`00000007`. All eleven transaction-proof step-01 validator chains use the native V1
+The append-only catalogue currently assigns eleven categories, IDs `00000000` through
+`0000000a`; Q13's `nonExistentInputNoIndex` is `00000002`, `zeroInput` is
+`00000005`, `validationTraceDispute` is `00000006`, `daHashPreimage` is
+`00000007`, `noReferenceInput` is `00000008`, `referenceInputNoIdx` is
+`00000009`, and `invalidSignature` is `0000000a`. All eleven transaction-proof step-01 validator chains use the native V1
 binding path; `transition-trace` has its separate canonical V1 trace/claim route.
 
 ## 5. Environment parameters (`env/default.ak`, `env/testnet.ak`)
