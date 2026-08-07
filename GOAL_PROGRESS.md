@@ -6551,3 +6551,134 @@ mutation-proven evidence:
 
 Q63 remains open on clause (c) exactly as designed; the Q62+rescue
 lane fires next with the da-attestation-types lease.
+
+## Wave close: Q62+rescue, compliance, and the identity batch (2026-08-07)
+
+Five commits land together (the push was held until the full battery
+passed on the final stack): `f729cdf1` DA-INIT-COMPLIANCE, `b6a41431`
+Q62+Q63c, `a1053973` parent lockstep repairs, `7172db0d` the
+compliance seam fix, and this ledger commit.
+
+- **DA-INIT-COMPLIANCE** `f729cdf1` (lane 84bdbf2a) — bootstrap fails
+  closed instead of writing the forbidden 1-of-1. Deployment names a
+  real committee and owner set (`DA_COMMITTEE_HEX` + new
+  `DA_OWNERS_HEX`, ≥2 each, validated); dev/emulator gets a genuine
+  second locally-held key (`DA_COSIGNER_SEED_PHRASE`) reaching a real
+  2-of-2 — no invented keys, no silent fallback. Floor arithmetic
+  delegates to `SDK.governedThresholdFloor`, never restated. Two
+  beyond-brief finds: the governor requires sorted-unique-ascending
+  key sets and unsorted config is REJECTED, not silently reordered
+  (committee position IS the signer index; a quiet re-sort would
+  desync a node from its peers); and deposit-flow-emulator carried an
+  undocumented in-process manifest pinning threshold 1 — fixed. The
+  hardcoded `OPERATOR_DA_SIGNER_INDEX = 0` single witness is gone; the
+  node signs once per locally-held key with on-chain index lookup.
+  Lane evidence includes the Scalus suite running a genuine
+  two-signature attestation through the actual Plutus validator.
+- **Q62 (D-DA4) closed.** Source-verified before-state: apply resolved
+  the attestation and asserted its own frozen `da_threshold`; it never
+  read governed params and declared no params reference — unreachable
+  even in principle; and `get_da_params` contained no `blake2b_256`
+  anywhere. Now: apply carries `da_params_ref_input_index`, binds the
+  frozen `committee_signers_hash`/`da_threshold` to the current
+  governed values, and the committee hash is re-derived at exactly one
+  production site inside the single params reader. The plan's third
+  anchor (state-queue.ak:350-352) was stale — no second enforcement
+  point exists; state-queue source is byte-identical (its hash still
+  moves: it decodes the changed-arity MintRedeemer — **deploy in
+  lockstep with da-attestation**, field index 2→3). Gate: exit 0, 17
+  runner-executed checks (unchanged-committee control 1, rotation
+  mutation rejections 5, strandedness-completeness 1,
+  burn-redeemer-cross-binding 3, rescue-refund-value-binding 1,
+  offchain-rotation-abi 6); da_attestation selector 3→18;
+  state_queue 23 and da_params_governor 14 unchanged.
+- **Q63 clause (c) closed — with a lane semantics decision flagged for
+  owner ratification.** The proposed rescue condition (committee-hash
+  divergence only) was refuted by the lane's synchronous review: its
+  own D-DA4 fix froze a second value, so a threshold-only governance
+  update — explicitly permitted by the governor — would strand a
+  partially signed attestation's ADA with no rescue. Implemented
+  condition: the exact complement of the apply gate (committee hash OR
+  threshold divergence); rescuable and appliable are provable
+  complements, never both. Refund binds to original contributors and
+  value; the DAAT burn is the sole consumer; theft/duplicate/replay
+  reject (3 classes). Both `validate_burn_binding` directions pinned
+  individually after the review caught a one-sided regression path.
+  The Q63 gate now exits 0 with all nine groups measured (29 checks);
+  its three open-group self-test fixtures were re-pointed by the
+  parent to strike their targets wherever they live so none can no-op
+  (a defect the gate's own no-op-mutation guard caught, working as
+  designed).
+- **Parent lockstep repairs** (`a1053973`): node apply program, DA
+  committee coordinator builder/submitter, and the watcher indexer
+  fixture adopt the required params reference; one forced out-of-lease
+  Q62 edit (sdk da-attestation.test.ts call sites) recorded with
+  provenance.
+- **Compliance seam fix** (`7172db0d`, lane dc10d299): the parent's
+  worker-path hypothesis was WRONG — the lane disproved it (full file
+  14/14 in isolation, 2,241 s). Real cause: floors validated at
+  NodeConfig load, which every subsystem loads, so the integrated
+  checkout's untracked legacy `.env` (`DA_THRESHOLD=1`) bricked
+  unrelated tests with opaque ~300 ms FiberFailures — invisible in
+  worktrees, which carry no `.env`. Floors now live only in
+  `deriveOperatorDaParams`, the seam that writes the datum, where the
+  real committee length is known even for cosigner-derived committees
+  (closing a reviewer-flagged no-op). Encoding faults still reject at
+  load; below-floor values still reject at derivation; new
+  da-config-load suite pins both halves.
+- **Identity batch.** Dual-compiler agreement: **393 validators, all
+  compiled bytes and hashes identical** across stock v1.1.22+39d6b04
+  and fork v1.1.23+2a78108, definitions identical. Fresh stock
+  testnet blueprint installed: 393 validators, sha256
+  `70da64a334efc8af84de9b1bfbc4423f6443505ef3710a675e03eb73b09f9444`.
+  Battery on the final stack: deployment-manifest-v1 +
+  contract-deployment-info 23/23 (both re-derive from the blueprint at
+  runtime — no hand-pins to refresh), ABI-freeze 0 drift findings / 0
+  waivers, SDK full suite 176/176, fault-proof reconciliation 70 rows
+  / 49 open, Q1x 18 LOCAL_PASS / 2 OPEN unchanged, F41 closure
+  schema-only PASS, manifest quality 186/186 with 0 defects,
+  deposit-flow full file **14/14 PASS** (2,185.72 s, fresh DB
+  midgard_test_wave0807b) — including test 14, the §4.4
+  deposit→reserve→withdrawal→payout journey, against the NEW governor
+  and attestation validators.
+- **Parent methodology defect, recorded against its own evidence:**
+  every red deposit-flow run the parent produced this wave (five in
+  total, including the "reproduction in the lane's own worktree" and
+  two runs whose `createdb` guard silently failed because the binary
+  does not exist on this machine) was INVALID — the harness connects
+  to POSTGRES_DB but never creates it, and an uncreated database fails
+  DB-touching tests in ~300 ms with the same opaque FiberFailure shape
+  as a real defect (`PostgresError: database … does not exist`,
+  exposed only by a deep-inspect preload; database creation on this
+  machine goes through the postgres client library, not createdb —
+  the pg_database listing showed every lane-created DB present and
+  every parent name absent). On a genuinely created database the
+  previously "failing" worker-core test PASSES FIRST TRY on the final
+  integrated stack — there was never a code defect in the
+  deposit-flow path, and the interim lockstep-blocked narrative is
+  retracted as inference from invalid evidence. Two things survive on
+  their own measured merits: the compliance lane's wrong-seam fix
+  (config-load bricking on legacy env values was real, demonstrated
+  by its direct probes) — a defective trigger that still surfaced a
+  genuine defect — and the Q62 lockstep deploy-together requirement
+  (an ABI fact independent of any test run). The divergence checklist
+  (memory + this ledger) now leads with database existence.
+- **Owner decision queue from this wave:** (1) ratify the widened
+  rescue condition (Q62 lane, mutation-proven rationale above); (2)
+  the single-key attest-loop operational change (a node holding one
+  key cannot attest alone at floor 2; `attestStateQueueOnce` aborts
+  its target batch each cycle until peers sign — pre-existing loop,
+  trigger frequency changes); (3) the F41 items (branch-name gate on
+  detached HEAD before F40 CI wiring; snapshotDigest vs §13.4;
+  schema-vs-decoder agreement gate); (4) local `.env` still carries
+  legacy DA values — a real deployment from this checkout correctly
+  fails closed until reconfigured per `.env.example`.
+
+## Superseding current next action (2026-08-07, wave closed)
+
+Owner rounds: the four decision-queue items above, and the
+#560/#561/#563 grilling sessions that lift the quiesce. Parent lanes:
+harvest the next non-ABI ready set (F40 continuation after the
+branch-name ruling; W-family after re-scoping W27 post-amendment);
+fire the reversion Phase-1 lane the moment the GOAL_SPEC amendment
+lands.
