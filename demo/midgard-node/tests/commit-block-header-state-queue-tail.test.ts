@@ -236,11 +236,24 @@ describe("commit-block expected state-queue tail lookup", () => {
 //   accepted header end_time / inclusive upper bound   1_700_000_480_000
 //   transaction validTo (invalid_hereafter, exclusive) 1_700_000_480_001
 //   far-future end_time (ten years on)                 2_015_360_480_000
+//   strictly-inside end_time (1_000 ms below the bound) 1_700_000_479_000
+//
+// That last value is load-bearing. The guard is an equality, but a case sitting
+// AT the anchor, one millisecond above it, or ten years above it is satisfied
+// by a `<=` or interval-membership guard just as well — so a suite built only
+// from those cannot tell the real guard from a weaker one. The strictly-inside
+// case is the one that can.
 // ---------------------------------------------------------------------------
 
 const ACCEPTED_HEADER_END_TIME_MS = 1_700_000_480_000;
 const COMMIT_VALID_TO_MS = 1_700_000_480_001;
 const FAR_FUTURE_HEADER_END_TIME_MS = 2_015_360_480_000;
+// Strictly between the widest production `validFrom` and the anchor. The Aiken
+// family pins the same absolute value in
+// `state_queue_commit_end_time_rejects_an_end_strictly_inside_the_commit_window`.
+const STRICTLY_INSIDE_HEADER_END_TIME_MS = 1_700_000_479_000;
+// The widest interval the production guard admits for this validTo.
+const WIDEST_COMMIT_VALID_FROM_MS = 1_700_000_000_001;
 // `env.max_validity_range_length` in onchain/aiken/env/default.ak, over which
 // the validator normalizes the *inclusive* span.
 const ONCHAIN_MAX_INCLUSIVE_RANGE_MS = 480_000;
@@ -346,6 +359,58 @@ describe("commit-block header end_time is anchored to the commit validity bound"
         validTo: COMMIT_VALID_TO_MS,
       }),
     ).toBe(false);
+  });
+
+  it("rejects a header end_time strictly below the bound", () => {
+    // The case that separates `=== validTo - 1` from `<= validTo - 1`. It is
+    // inside the interval the commit is actually built with, so a membership
+    // guard would accept it.
+    const validFrom =
+      COMMIT_VALID_TO_MS - SDK.PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS;
+    expect(validFrom).toBe(WIDEST_COMMIT_VALID_FROM_MS);
+
+    // The interval itself is admissible, so the rejection below is attributable
+    // to the header guard rather than to the interval guard.
+    expect(
+      SDK.isProductionCommitValidityInterval({
+        validFrom,
+        validTo: COMMIT_VALID_TO_MS,
+      }),
+    ).toBe(true);
+    expect(STRICTLY_INSIDE_HEADER_END_TIME_MS).toBeGreaterThan(validFrom);
+    expect(STRICTLY_INSIDE_HEADER_END_TIME_MS).toBeLessThan(
+      ACCEPTED_HEADER_END_TIME_MS,
+    );
+
+    expect(
+      SDK.productionCommitHeaderMatchesValidityUpperBound({
+        headerEndTime: BigInt(STRICTLY_INSIDE_HEADER_END_TIME_MS),
+        validTo: COMMIT_VALID_TO_MS,
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects every header end_time strictly inside the commit validity interval", () => {
+    // Depth sweep from both ends of the interior: the interval's own lower
+    // bound, one millisecond in, the midpoint, and one millisecond below the
+    // anchor. None is the anchor, so none may be accepted.
+    for (const headerEndTimeMs of [
+      WIDEST_COMMIT_VALID_FROM_MS,
+      WIDEST_COMMIT_VALID_FROM_MS + 1,
+      1_700_000_240_000,
+      ACCEPTED_HEADER_END_TIME_MS - 1,
+    ]) {
+      expect(headerEndTimeMs).toBeGreaterThanOrEqual(
+        WIDEST_COMMIT_VALID_FROM_MS,
+      );
+      expect(headerEndTimeMs).toBeLessThan(ACCEPTED_HEADER_END_TIME_MS);
+      expect(
+        SDK.productionCommitHeaderMatchesValidityUpperBound({
+          headerEndTime: BigInt(headerEndTimeMs),
+          validTo: COMMIT_VALID_TO_MS,
+        }),
+      ).toBe(false);
+    }
   });
 
   it("re-anchors the lower bound rather than emitting an over-long interval", () => {

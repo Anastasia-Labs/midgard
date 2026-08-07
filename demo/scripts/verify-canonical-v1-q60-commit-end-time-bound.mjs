@@ -24,6 +24,17 @@
 // its citations executed second (phase 2), so the count contract is only
 // published once both agree.
 //
+//  3. It never lets the family shrink back to the shape the Q60 audit caught it
+//     in. Every fixture in the original family sat AT the commit window's
+//     inclusive upper bound or beyond it, so replacing the rule's equality with
+//     interval membership (`lower <= end_time <= upper`) passed all 21 tests
+//     while three published claims asserted the family excluded exactly that.
+//     The fixtures that close the gap are named in REQUIRED_AIKEN_SELECTORS and
+//     REQUIRED_VITEST_TITLES below rather than read out of the artifact, so a
+//     later edit cannot drop a claim and its evidence together and stay green,
+//     and the artifact's recorded mutation experiment is checked for the shape
+//     of a real measurement (two arms, mutant fails, real passes).
+//
 // usage: node demo/scripts/verify-canonical-v1-q60-commit-end-time-bound.mjs [--json] [--self-test]
 
 import assert from "node:assert/strict";
@@ -64,12 +75,29 @@ const FAULTS = new Set([
   "phantom-aiken-selector",
   "phantom-vitest-title",
   "disposition-contradicts-rule",
+  "drop-membership-witness",
+  "drop-required-vitest-title",
+  "forge-surviving-mutant",
 ]);
 const fault = process.env.MIDGARD_Q60_FAULT;
 if (fault !== undefined && !FAULTS.has(fault)) {
   console.error(`unknown MIDGARD_Q60_FAULT ${fault}`);
   process.exit(2);
 }
+
+// The fixtures that separate the anchor from interval membership. Named here,
+// in the gate, and not read out of the artifact: an artifact edit can remove a
+// class and its expected count in one stroke, and before the Q60 audit that
+// would have left a green gate over a family that proved strictly less than it
+// claimed. Removing any of these must fail instead.
+const REQUIRED_AIKEN_SELECTORS = [
+  "state_queue_commit_end_time_rejects_an_end_strictly_inside_the_commit_window",
+  "state_queue_commit_end_time_never_accepts_any_value_inside_the_window",
+];
+const REQUIRED_VITEST_TITLES = [
+  "rejects a header end_time strictly below the bound",
+  "rejects every header end_time strictly inside the commit validity interval",
+];
 
 const evidence = JSON.parse(
   await readFile(resolve(repositoryRoot, artifactPath), "utf8"),
@@ -94,6 +122,28 @@ const dueEventClasses = evidence.aiken.dueEventClasses.map((entry) => ({
   ...entry,
 }));
 const vitestTitles = [...evidence.vitest.titles];
+const mutationExperiment = structuredClone(
+  evidence.aiken.mutationExperiment ?? null,
+);
+
+if (fault === "drop-membership-witness") {
+  const index = boundaryClasses.findIndex((entry) =>
+    REQUIRED_AIKEN_SELECTORS.includes(entry.selector),
+  );
+  boundaryClasses.splice(index, 1);
+}
+if (fault === "drop-required-vitest-title") {
+  const index = vitestTitles.indexOf(REQUIRED_VITEST_TITLES[0]);
+  vitestTitles.splice(index, 1);
+}
+if (fault === "forge-surviving-mutant") {
+  const mutantRun = mutationExperiment.runs.find(
+    (entry) => entry.arm === "mutant",
+  );
+  mutantRun.passed = mutantRun.collected;
+  mutantRun.failed = 0;
+  mutantRun.failedSelectors = [];
+}
 
 if (fault === "accepted-beyond-bound") {
   const target = boundaryClasses.find(
@@ -229,6 +279,7 @@ for (const className of [
   "maximumAcceptedEndTime",
   "immediatelyAboveBoundRejection",
   "farFutureRejection",
+  "strictlyInsideWindowRejection",
 ]) {
   const declared = declaredByClass.get(className) ?? 0;
   if (declared !== expected[className]) {
@@ -254,6 +305,134 @@ if (expected.acceptedCasesPermittingEndTimeBeyondBound !== 0) {
   failures.push(
     "ERR_Q60_CONTRACT: the count contract must require 0 accepted cases beyond the bound",
   );
+}
+
+// The membership-exclusion fixtures must be cited by name, and at least one of
+// them must sit strictly INSIDE the commit window. A case at or beyond the
+// bound is satisfied by interval membership too, so a family without a strictly
+// interior case cannot tell the two rules apart no matter how many cases it has.
+const citedSelectorNames = new Set([
+  ...boundaryClasses.map((entry) => entry.selector),
+  ...dueEventClasses.map((entry) => entry.selector),
+  ...evidence.aiken.supportingSelectors.map((entry) => entry.selector),
+]);
+for (const selector of REQUIRED_AIKEN_SELECTORS) {
+  if (!citedSelectorNames.has(selector)) {
+    failures.push(
+      `ERR_Q60_REQUIRED_SELECTOR_MISSING: ${selector} is required to separate the commit anchor from interval membership but is not cited by the artifact`,
+    );
+  }
+}
+for (const title of REQUIRED_VITEST_TITLES) {
+  if (!vitestTitles.includes(title)) {
+    failures.push(
+      `ERR_Q60_REQUIRED_TITLE_MISSING: the off-chain case "${title}" is required to separate \`=== validTo - 1\` from \`<= validTo - 1\` but is not cited by the artifact`,
+    );
+  }
+}
+
+const strictlyInsideCases = boundaryClasses.filter(
+  (entry) =>
+    entry.headerEndTimeMs > entry.commitInclusiveLowerBoundMs &&
+    entry.headerEndTimeMs < entry.commitInclusiveUpperBoundMs,
+);
+if (strictlyInsideCases.length === 0) {
+  failures.push(
+    "ERR_Q60_NO_INTERIOR_CASE: no boundary case places header_end_time strictly inside the commit window, so the family cannot distinguish the anchor from interval membership",
+  );
+}
+for (const entry of strictlyInsideCases) {
+  if (entry.disposition !== "rejected") {
+    failures.push(
+      `ERR_Q60_INTERIOR_ACCEPTED: ${entry.class} places end_time ${String(entry.headerEndTimeMs)} strictly inside the commit window but publishes it as accepted; the rule accepts only the inclusive upper bound`,
+    );
+  }
+}
+if (
+  vector.strictlyInsideHeaderEndTimeMs <=
+    vector.commitValidity.inclusiveLowerBoundMs ||
+  vector.strictlyInsideHeaderEndTimeMs >=
+    vector.commitValidity.inclusiveUpperBoundMs
+) {
+  failures.push(
+    "ERR_Q60_VECTOR_INCOHERENT: strictlyInsideHeaderEndTimeMs must lie strictly between the inclusive lower and upper bounds",
+  );
+}
+
+// The recorded mutation experiment must have the shape of a real measurement:
+// two arms over the same tree, the mutant killed by the required fixtures, the
+// real rule passing clean. A survived mutant is the defect, not the evidence.
+if (mutationExperiment === null) {
+  failures.push(
+    "ERR_Q60_NO_MUTATION_EXPERIMENT: the artifact must record the measured interval-membership mutation experiment",
+  );
+} else {
+  const runs = mutationExperiment.runs ?? [];
+  const arms = new Map(runs.map((entry) => [entry.arm, entry]));
+  if (runs.length !== 2 || !arms.has("mutant") || !arms.has("real")) {
+    failures.push(
+      "ERR_Q60_MUTATION_ARMS: the mutation experiment must record exactly two runs, one `mutant` and one `real`",
+    );
+  } else {
+    for (const [arm, run] of arms) {
+      if (
+        !Number.isSafeInteger(run.collected) ||
+        !Number.isSafeInteger(run.passed) ||
+        !Number.isSafeInteger(run.failed) ||
+        run.collected <= 0
+      ) {
+        failures.push(
+          `ERR_Q60_MUTATION_COUNTS: the ${arm} arm must publish safe-integer counts over a nonzero collection`,
+        );
+      } else if (run.passed + run.failed !== run.collected) {
+        failures.push(
+          `ERR_Q60_MUTATION_COUNTS: the ${arm} arm publishes passed ${String(run.passed)} + failed ${String(run.failed)} which does not total collected ${String(run.collected)}`,
+        );
+      }
+    }
+    const mutantRun = arms.get("mutant");
+    const realRun = arms.get("real");
+    if (mutantRun.collected !== realRun.collected) {
+      failures.push(
+        `ERR_Q60_MUTATION_ARMS: the arms collected ${String(mutantRun.collected)} and ${String(realRun.collected)} tests; a mutation experiment must run the same collection against both predicates`,
+      );
+    }
+    if (mutantRun.failed < 1) {
+      failures.push(
+        "ERR_Q60_MUTANT_SURVIVED: the recorded mutant arm reports no failing test, so the family does not kill the interval-membership mutant",
+      );
+    }
+    if (realRun.failed !== 0 || realRun.passed !== realRun.collected) {
+      failures.push(
+        `ERR_Q60_MUTATION_REAL_ARM_FAILED: the real arm must pass clean but reports ${String(realRun.failed)} failure(s)`,
+      );
+    }
+    const killers = new Set(mutantRun.failedSelectors ?? []);
+    for (const selector of REQUIRED_AIKEN_SELECTORS) {
+      if (!killers.has(selector)) {
+        failures.push(
+          `ERR_Q60_MUTATION_KILLER: ${selector} is not recorded among the tests that fail under the mutant, so it is not doing the work the artifact credits it with`,
+        );
+      }
+    }
+    for (const selector of killers) {
+      if (!citedSelectorNames.has(selector)) {
+        failures.push(
+          `ERR_Q60_MUTATION_KILLER: the mutant arm cites ${selector} as failing but the artifact does not cite that selector anywhere`,
+        );
+      }
+    }
+    const priorFamily = mutationExperiment.preRemediation;
+    if (
+      priorFamily !== undefined &&
+      (!Number.isSafeInteger(priorFamily.collected) ||
+        !Number.isSafeInteger(priorFamily.failedUnderMutant))
+    ) {
+      failures.push(
+        "ERR_Q60_MUTATION_COUNTS: preRemediation must publish safe-integer counts",
+      );
+    }
+  }
 }
 
 if (failures.length > 0) {
@@ -364,6 +543,7 @@ const measuredCounts = {
   maximumAcceptedEndTime: 0,
   immediatelyAboveBoundRejection: 0,
   farFutureRejection: 0,
+  strictlyInsideWindowRejection: 0,
   dueEventClasses: 0,
 };
 for (const entry of boundaryClasses) {
@@ -383,6 +563,10 @@ for (const [className, requiredCount] of [
   ["maximumAcceptedEndTime", expected.maximumAcceptedEndTime],
   ["immediatelyAboveBoundRejection", expected.immediatelyAboveBoundRejection],
   ["farFutureRejection", expected.farFutureRejection],
+  [
+    "strictlyInsideWindowRejection",
+    expected.strictlyInsideWindowRejection,
+  ],
   ["dueEventClasses", expected.dueEventClasses],
 ]) {
   if (measuredCounts[className] !== requiredCount) {
@@ -391,6 +575,24 @@ for (const [className, requiredCount] of [
     );
   }
 }
+
+// Citation is not execution. The membership-exclusion fixtures must appear in
+// the runner report as collected and passing, not merely be named above.
+for (const selector of REQUIRED_AIKEN_SELECTORS) {
+  if (!measuredSelectors.has(selector)) {
+    countFailures.push(
+      `ERR_Q60_REQUIRED_SELECTOR_NOT_MEASURED: ${selector} did not appear as a passing test in the Aiken runner report`,
+    );
+  }
+}
+// The off-chain half needs no equivalent loop here, and adding one would be a
+// check that cannot fail: REQUIRED_VITEST_TITLES is asserted to be a subset of
+// vitestTitles in phase 1, vitestTitles is handed to deriveVitestOutcome as its
+// requiredTitles, and that helper throws ERR_FOCUSED_CHECK_TITLE_NOT_COLLECTED
+// for any title the runner did not collect and ERR_FOCUSED_CHECK_FAILED /
+// ERR_FOCUSED_CHECK_NOT_EXECUTED unless every collected test actually passed.
+// Reaching this line already means both required titles ran and passed.
+
 if (countFailures.length > 0) {
   for (const failure of countFailures) {
     console.error(failure);
@@ -419,6 +621,9 @@ if (selfTestMode) {
     ["phantom-aiken-selector", /ERR_AIKEN_SELECTOR_NOT_COLLECTED/u],
     ["phantom-vitest-title", /ERR_FOCUSED_CHECK_TITLE_NOT_COLLECTED/u],
     ["disposition-contradicts-rule", /ERR_Q60_REJECTED_ON_ANCHOR/u],
+    ["drop-membership-witness", /ERR_Q60_REQUIRED_SELECTOR_MISSING/u],
+    ["drop-required-vitest-title", /ERR_Q60_REQUIRED_TITLE_MISSING/u],
+    ["forge-surviving-mutant", /ERR_Q60_MUTANT_SURVIVED/u],
   ];
   for (const [seededFault, expectedDiagnostic] of seeded) {
     const result = runSeeded(seededFault);
@@ -454,6 +659,18 @@ const report = {
   },
   measuredCounts,
   acceptedCasesPermittingEndTimeBeyondBound: acceptedBeyondBound.length,
+  membershipExclusion: {
+    requiredAikenSelectors: REQUIRED_AIKEN_SELECTORS,
+    requiredVitestTitles: REQUIRED_VITEST_TITLES,
+    strictlyInsideCases: strictlyInsideCases.length,
+    mutationExperiment: {
+      mutant: mutationExperiment.mutant.id,
+      mutantArm: mutationExperiment.runs.find(
+        (entry) => entry.arm === "mutant",
+      ),
+      realArm: mutationExperiment.runs.find((entry) => entry.arm === "real"),
+    },
+  },
   aiken: {
     command: aikenPublishedCommand({
       projectDirectory: aikenProjectDirectory,
@@ -484,6 +701,8 @@ if (emitJson) {
     `Q60 commit end_time bound: PASS (${String(aikenOutcome.passed)}/${String(aikenOutcome.collected)} Aiken selectors, ${String(vitestOutcome.passed)}/${String(vitestOutcome.collected)} Vitest tests, ` +
       `${String(measuredCounts.lowerBoundControl)} lower-bound control, ${String(measuredCounts.maximumAcceptedEndTime)} maximum accepted end_time, ` +
       `${String(measuredCounts.immediatelyAboveBoundRejection)} immediately-above-bound rejection, ${String(measuredCounts.farFutureRejection)} far-future rejection, ` +
-      `${String(measuredCounts.dueEventClasses)} due-event classes, ${String(acceptedBeyondBound.length)} accepted cases beyond the bound)`,
+      `${String(measuredCounts.strictlyInsideWindowRejection)} strictly-inside-window rejection, ` +
+      `${String(measuredCounts.dueEventClasses)} due-event classes, ${String(acceptedBeyondBound.length)} accepted cases beyond the bound; ` +
+      `interval-membership mutant killed ${String(report.membershipExclusion.mutationExperiment.mutantArm.failed)}/${String(report.membershipExclusion.mutationExperiment.mutantArm.collected)} vs real ${String(report.membershipExclusion.mutationExperiment.realArm.passed)}/${String(report.membershipExclusion.mutationExperiment.realArm.collected)})`,
   );
 }
