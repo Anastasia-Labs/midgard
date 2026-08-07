@@ -6505,3 +6505,49 @@ to lift the quiesce.
   caught both stale rows after F41's PASS flip (a working
   gate-that-can-fail, for once in the pleasant direction);
   186/186 with 0 defects after reconciliation.
+
+## Q63 remediation rounds landed; rescue remains Q62's (2026-08-07)
+
+`535e2e83`+`9b3cca8d` (lane commits 9cf8817e+bfda1e6f) — both
+adversarial-review rounds against the Q63 governor work are closed on
+mutation-proven evidence:
+
+- **Both datum seams are now pinned by differential pairs driving the
+  real handlers.** Spend: quorum-signed continuing datum below floor
+  rejects where the identical on-floor control accepts. Mint (round 2,
+  load-bearing): deleting `expect valid_datum(...)` from the mint
+  path's helper failed 0 of 12 selectors before, fails exactly 1 of 14
+  now — the "single-key init params are unmintable" handoff claim
+  finally rests on a tested seam.
+- **The evidence gate can no longer be satisfied by its own artifact:**
+  the required-group table (8 groups, cardinalities, languages) lives
+  in the verifier; dropped/duplicated/invented groups reject; the floor
+  arithmetic is re-derived independently over 0..256 (digest-pinned,
+  full-table off-chain, sample-pinned on-chain at adversarial points
+  incl. 100/255/256 — no full-table on-chain claim survives); vitest
+  counts derive from executed outcomes with duplicate- and
+  substring-title rejection; compiler identity is resolved from
+  MIDGARD_AIKEN_BIN or MIDGARD_FORK_AIKEN_BIN, checked against the
+  fork identity, persisted measured — all seeded (22 negative seeds,
+  3 positive controls).
+- **D2/D3 kept-with-rationale:** the redundant `owner_len >=
+  min_owner_count` line stays as declared defense-in-depth — the
+  redundancy is an artifact of the current two-thirds arithmetic, not
+  a governor property; weakening F04's economic term (e.g. ceil(n/2))
+  would otherwise re-admit a one-owner set silently. Comments and the
+  renamed `..._by_overlapping_bounds` test say so plainly.
+- **Compiled bytes unchanged, twice measured:** temp-dir A/B builds at
+  both rounds — governor mint/spend/else hash `f00f70a2…8352`,
+  compiledCode 4448 chars, identical to 98975333. Not an
+  identity-batch member; the batch re-verifies regardless.
+- Parent replay on the integrated tree: selector 14/14 (fork), vitest
+  11/11, gate INCOMPLETE exit 1 publishing per-group totals
+  (3/3, 2/2, 3/3, 2/2, mint 2, spend 2, provenance 1, rescue 0+0 OPEN
+  on the Q62 lease), tsc clean, format 1/1. F05's Q63 counts restated
+  against the published vocabulary (quality 186/186, 0 defects).
+  Artifact caveat recorded: `summary.aikenCompiler` pins the exact
+  fork build string; rebuilding the fork at another commit needs a
+  one-line artifact update (the prefix check tolerates any v1.1.23).
+
+Q63 remains open on clause (c) exactly as designed; the Q62+rescue
+lane fires next with the da-attestation-types lease.
