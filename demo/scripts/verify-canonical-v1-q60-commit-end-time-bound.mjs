@@ -194,7 +194,9 @@ if (
     "ERR_Q60_VECTOR_INCOHERENT: transactionValidToMs must be one millisecond past the inclusive upper bound",
   );
 }
-if (vector.acceptedHeaderEndTimeMs !== vector.commitValidity.inclusiveUpperBoundMs) {
+if (
+  vector.acceptedHeaderEndTimeMs !== vector.commitValidity.inclusiveUpperBoundMs
+) {
   failures.push(
     "ERR_Q60_VECTOR_INCOHERENT: acceptedHeaderEndTimeMs must equal the inclusive upper bound",
   );
@@ -208,8 +210,7 @@ if (
   );
 }
 if (
-  vector.farFutureHeaderEndTimeMs <=
-  vector.commitValidity.inclusiveUpperBoundMs
+  vector.farFutureHeaderEndTimeMs <= vector.commitValidity.inclusiveUpperBoundMs
 ) {
   failures.push(
     "ERR_Q60_VECTOR_INCOHERENT: farFutureHeaderEndTimeMs must be past the inclusive upper bound",
