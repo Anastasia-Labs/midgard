@@ -94,11 +94,16 @@ export const MIN_DA_OWNER_COUNT = 2;
  * TypeScript twin of `governed_threshold_floor` in
  * `onchain/aiken/validators/da-params-governor.ak`. Both evaluate the ceiling
  * as `(2*setLength + 2) / 3` under integer division and both clamp with the
- * threshold constant (`MIN_DA_GOVERNED_THRESHOLD` / `min_governed_threshold`),
- * so the two languages agree on every representable set size — that is, every
- * size up to `max_indexed_signer_count` (256), the largest committee the
- * attested-signer bitmap can index. `tests/da-governor-safety-v1.test.ts` pins
- * the agreement over that whole range rather than at sample points alone.
+ * threshold constant (`MIN_DA_GOVERNED_THRESHOLD` / `min_governed_threshold`).
+ *
+ * How far that agreement is actually measured differs by side, and the two
+ * should not be conflated. Off-chain, `tests/da-governor-safety-v1.test.ts`
+ * sweeps every representable set size — 0 through `max_indexed_signer_count`
+ * (256), the largest committee the attested-signer bitmap can index — and pins
+ * the whole table by digest. On-chain, the equivalent Aiken test pins a
+ * *sample* of set sizes (the clamp boundary and the top of the range), because
+ * a full sweep in a Plutus test is not practical. So: full-table off-chain,
+ * sample-pinned on-chain, against the same shared vectors.
  */
 export const governedThresholdFloor = (setLength: number): number => {
   if (!Number.isSafeInteger(setLength) || setLength < 0) {

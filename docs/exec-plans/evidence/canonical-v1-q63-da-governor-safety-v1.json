@@ -30,7 +30,7 @@
     ]
   },
   "floorTable": {
-    "note": "Quoting F04's floor text proves the decision record still says what Q63 cited; it does not prove either implementation computes it. This digest is the shared pin that does. The verifier recomputes `max(2, ceil(2n/3))` from an integer ceiling written independently of the `(2n+2)/3` form both implementations use, hashes the table, and asserts this value; the `floor-arithmetic-provenance` Vitest check hashes the table produced by the SDK's `governedThresholdFloor` and asserts the same value. A floor/ceil transcription error on either side breaks one of the two legs.",
+    "note": "Quoting F04's floor text proves the decision record still says what Q63 cited; it does not prove either implementation computes it. This digest is the shared pin that does. Its authority is the verifier's own recomputation, not anything recorded here: the verifier derives `max(2, ceil(2n/3))` from an integer ceiling written independently of the `(2n+2)/3` form both implementations use, hashes the table, and asserts this value; the `floor-arithmetic-provenance` Vitest check hashes the table produced by the SDK's `governedThresholdFloor` and asserts the same value. A floor/ceil transcription error on either side breaks one of the two legs. The `expression` field below is free-text documentation for a reader — it is compared only for consistency with the F04 bound expressions and is not what gives the digest its force.",
     "expression": "max(2, ceil(2*set_len/3))",
     "range": [0, 256],
     "rangeSource": "onchain/aiken/lib/midgard/da-attestation-types.ak `max_indexed_signer_count`",
@@ -38,8 +38,9 @@
     "sha256": "f804429e15a05c4810a6972d335fb0e0e641efa9bdd1199fee224d710e67b744"
   },
   "compiler": {
-    "environmentVariable": "MIDGARD_AIKEN_BIN",
-    "rule": "Aiken test execution for this goal is fork-only: the stock v1.1.22 build that is the authority for compilation and applied validator hashes ships a codegen defect and takes hours over this tree, so it is used only for `aiken check --skip-tests`. This gate fails closed when `MIDGARD_AIKEN_BIN` is unset rather than falling through to whatever `aiken` is first on PATH, and records the spawned binary's self-reported version in its output so a published on-chain result always names the compiler that produced it."
+    "environmentVariables": ["MIDGARD_AIKEN_BIN", "MIDGARD_FORK_AIKEN_BIN"],
+    "forkVersionPrefix": "aiken v1.1.23",
+    "rule": "Aiken test execution for this goal is fork-only: the stock v1.1.22 build that is the authority for compilation and applied validator hashes ships a codegen defect and takes hours over this tree, so it is used only for `aiken check --skip-tests`. The gate resolves the compiler from `MIDGARD_AIKEN_BIN` then `MIDGARD_FORK_AIKEN_BIN` (CI pins only the latter) and fails closed with ERR_AIKEN_BINARY_UNPINNED when neither is set, rather than falling through to whatever `aiken` is first on PATH. Whichever resolves must then report a `aiken v1.1.23` version or the run fails closed with ERR_AIKEN_COMPILER_MISMATCH, so a stock binary cannot supply a result under the fork's name. Both behaviours are seeded self-tests, not assurances: the gate spawns itself with the variables stripped, and again against a stub binary reporting a v1.1.22 version."
   },
   "implementation": {
     "governor": "onchain/aiken/validators/da-params-governor.ak",
@@ -152,6 +153,24 @@
       ]
     },
     {
+      "id": "mint-seam-datum-enforcement",
+      "claim": "The mint handler itself enforces the governed floors on the params output it authorises, so the governor cannot be initialised with below-floor params.",
+      "expected": 2,
+      "languages": ["aiken"],
+      "languageRationale": "On-chain only by construction, and declared so. The claim is about a Plutus minting policy resolving the output it authorises; the SDK builds no DA-params initialisation transaction, so there is no off-chain twin that could carry this cardinality. This is the seam the parent-handoff claim about the node's single-key DA defaults being unmintable actually rests on, which is why it is measured separately from the spend seam.",
+      "disposition": "PASS",
+      "evidence": [
+        {
+          "kind": "aiken",
+          "module": "onchain/aiken/validators/da-params-governor.ak",
+          "selectors": [
+            "da_params_governor_mint_control_initial_params_at_floor_accepted",
+            "da_params_governor_mint_rejects_initial_datum_below_floor"
+          ]
+        }
+      ]
+    },
+    {
       "id": "spend-seam-datum-enforcement",
       "claim": "The spend handler itself enforces the governed floors on the continuing output, so a quorum cannot rotate the params into a below-floor configuration.",
       "expected": 2,
@@ -174,7 +193,7 @@
       "claim": "The off-chain floor reproduces the F04 arithmetic over every representable set size, measured against a digest the verifier recomputes independently rather than against the quoted decision text.",
       "expected": 1,
       "languages": ["vitest"],
-      "languageRationale": "Off-chain only by construction, and declared so. The verifier is a Node process: it can import no Aiken, so the on-chain half of the same arithmetic is pinned by the `governed-floor-drain-invariants` selectors against the same absolute table instead.",
+      "languageRationale": "Off-chain only by construction, and declared so. The verifier is a Node process: it can import no Aiken. The two sides are therefore measured to different depths, and the difference is deliberate rather than glossed: full-table off-chain (this group sweeps 0..max_indexed_signer_count and pins the digest), sample-pinned on-chain (`da_params_governor_invariant_da_threshold_majority_floor` pins a sample of set sizes that straddles the clamp boundary and reaches the top of the range at 100, 255 and 256). No full-table on-chain claim is made anywhere, because no full-table Aiken sweep exists.",
       "disposition": "PASS",
       "evidence": [
         {
@@ -214,23 +233,25 @@
     }
   ],
   "summary": {
-    "measuredGroups": 6,
+    "measuredGroups": 7,
     "openGroups": 2,
     "groupTotals": {
-      "governed-floor-drain-invariants": 3,
-      "valid-boundary-controls": 2,
-      "below-floor-drain-rejections": 3,
-      "single-member-committee-consequence": 2,
-      "spend-seam-datum-enforcement": 2,
-      "floor-arithmetic-provenance": 1,
-      "partial-attestation-rescue-path": 0,
-      "rescue-theft-duplicate-replay-rejections": 0
+      "governed-floor-drain-invariants": { "aiken": 3, "vitest": 3 },
+      "valid-boundary-controls": { "aiken": 2, "vitest": 2 },
+      "below-floor-drain-rejections": { "aiken": 3, "vitest": 3 },
+      "single-member-committee-consequence": { "aiken": 2, "vitest": 2 },
+      "mint-seam-datum-enforcement": { "aiken": 2 },
+      "spend-seam-datum-enforcement": { "aiken": 2 },
+      "floor-arithmetic-provenance": { "vitest": 1 },
+      "partial-attestation-rescue-path": { "aiken": 0 },
+      "rescue-theft-duplicate-replay-rejections": { "aiken": 0 }
     },
-    "aikenChecksExecuted": 12,
+    "aikenCompiler": "aiken v1.1.23+2a78108",
+    "aikenChecksExecuted": 14,
     "vitestChecksExecuted": 11,
-    "executedChecks": 23,
+    "executedChecks": 25,
     "runners": [
-      "cd onchain/aiken && $MIDGARD_AIKEN_BIN check -e -m da_params_governor_invariant_da_threshold_majority_floor -m da_params_governor_invariant_update_threshold_two_of_n_floor -m da_params_governor_invariant_owner_set_drain_protection -m da_params_governor_control_da_threshold_at_floor_accepted -m da_params_governor_control_update_threshold_at_floor_accepted -m da_params_governor_rejects_da_threshold_below_floor -m da_params_governor_rejects_update_threshold_below_floor -m da_params_governor_rejects_owner_set_drained_to_one_by_overlapping_bounds -m da_params_governor_rejects_single_member_committee_thresholds -m da_params_governor_rejects_single_member_committee_datum -m da_params_governor_spend_control_quorum_signed_update_accepted -m da_params_governor_spend_rejects_continued_datum_below_floor",
+      "cd onchain/aiken && $MIDGARD_AIKEN_BIN check -e -m da_params_governor_invariant_da_threshold_majority_floor -m da_params_governor_invariant_update_threshold_two_of_n_floor -m da_params_governor_invariant_owner_set_drain_protection -m da_params_governor_control_da_threshold_at_floor_accepted -m da_params_governor_control_update_threshold_at_floor_accepted -m da_params_governor_rejects_da_threshold_below_floor -m da_params_governor_rejects_update_threshold_below_floor -m da_params_governor_rejects_owner_set_drained_to_one_by_overlapping_bounds -m da_params_governor_rejects_single_member_committee_thresholds -m da_params_governor_rejects_single_member_committee_datum -m da_params_governor_mint_control_initial_params_at_floor_accepted -m da_params_governor_mint_rejects_initial_datum_below_floor -m da_params_governor_spend_control_quorum_signed_update_accepted -m da_params_governor_spend_rejects_continued_datum_below_floor",
       "pnpm --dir demo/midgard-sdk exec vitest run tests/da-governor-safety-v1.test.ts"
     ]
   },
@@ -241,10 +262,19 @@
       "implementationOrLiveClaimsFromF04": 0,
       "rationale": "Q63 is a governed DA safety/liveness fix. It adds no fraud-proof catalogue family and therefore no standalone catalogue ID. F04 is a decision record only: it supplies the accepted floor expressions, and nothing here infers implementation status, deployment, infrastructure, or live readiness from it."
     },
+    "reviewRemediationByteIdentity": {
+      "note": "Recorded as a measurement with its method, not as a prose assurance. This gate does not re-derive it — nothing here re-runs the build — so the parent must re-verify at the identity batch. It is published only so the parent knows what was observed and how.",
+      "method": "The pristine `onchain/aiken` tree at 98975333 and the remediated tree were each copied to a throwaway directory (never writing the repository's `plutus.json`), built with `aiken build` under the same patched fork, and the resulting blueprint entries for `da_params_governor` compared.",
+      "measuredAt": "the review-remediation commit on top of 98975333",
+      "observedHash": "f00f70a2a4a2de25ae2c52a5919195386067d3c1f2b3799965ef8352",
+      "observedCompiledCodeLength": 4448,
+      "result": "identical for da_params_governor.mint, .spend and .else across both trees",
+      "basis": "The only non-test, non-comment edits to `da-params-governor.ak` are the `transaction.{NoDatum, placeholder}` imports used by the test fixtures and documentation comments; `valid_datum`, the floor function, the constants and both handlers are untouched."
+    },
     "parentIntegration": {
       "owner": "parent",
       "pendingEdits": [
-        "Regenerate `onchain/aiken/plutus.json`: the `da_params_governor` mint and spend hashes move because `valid_datum` gained the governed floors. Re-pin every consumer of that hash. (The Q63 review remediation did not move them again — its governor edits are tests and comments only, and the compiled `da_params_governor` hash is byte-identical before and after.)",
+        "Regenerate `onchain/aiken/plutus.json`: the `da_params_governor` mint and spend hashes move because `valid_datum` gained the governed floors. Re-pin every consumer of that hash. The Q63 review remediation did not move them again; see `reviewRemediationByteIdentity` below for the measured basis of that statement, which the parent should re-verify at the identity batch rather than take from this artifact.",
         "`demo/midgard-node/src/transactions/initialization.ts` builds DA params with `owners: [operatorKeyHash]`, `update_threshold: 1n`, and a `DA_THRESHOLD` defaulting to `1n` over a single-key committee. That configuration is exactly the single-key capture F04 §4 forbids and is now unmintable; the node default and its `DA_COMMITTEE_HEX`/`DA_THRESHOLD` config path must move to a >= 2-of-N committee and owner set. Note the sharper form recorded above: a one-member committee is unrepresentable at any threshold, so this is not a matter of raising `DA_THRESHOLD` alone.",
         "Suites outside this task's lease pin `update_threshold: 1n` or a single-key committee and will need the same correction: `demo/midgard-node/tests/initialization-emulator.test.ts`, `demo/midgard-sdk/tests/da-attestation.test.ts`, `demo/da-committee-node/tests/startup-da-params.test.ts`, `demo/da-committee-node/tests/scalus-add-signatures-eval.test.ts`, `demo/da-committee-node/tests/da-attestation-reader.test.ts`.",
         "Arbitrate the `onchain/aiken/lib/midgard/da-attestation-types.ak` lease so the Q63 rescue path (acceptance clause c) can add its `MintRedeemer`/`SpendRedeemer` constructors, or sequence Q63's rescue half after Q62.",

@@ -44,8 +44,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { runFixtureMode } from "./lib/runner-fixtures.mjs";
@@ -135,6 +137,7 @@ const REQUIRED_GROUPS = [
     expected: 2,
     languages: ["aiken", "vitest"],
   },
+  { id: "mint-seam-datum-enforcement", expected: 2, languages: ["aiken"] },
   { id: "spend-seam-datum-enforcement", expected: 2, languages: ["aiken"] },
   { id: "floor-arithmetic-provenance", expected: 1, languages: ["vitest"] },
   { id: "partial-attestation-rescue-path", expected: 1, languages: ["aiken"] },
@@ -221,6 +224,7 @@ const assertFloorTableProvenance = (candidate) => {
 // Pure: a title cited twice would let one executed test be counted for two
 // separate claims.
 const assertCitedTitlesUnique = (candidate) => {
+  const titles = [];
   const seen = new Set();
   for (const group of candidate.groups ?? []) {
     for (const item of group.evidence ?? []) {
@@ -234,6 +238,20 @@ const assertCitedTitlesUnique = (candidate) => {
           );
         }
         seen.add(title);
+        titles.push(title);
+      }
+    }
+  }
+  // A cited title is matched against the runner's `title` *and* its longer
+  // `fullName`, so the match is substring-tolerant by design. That makes one
+  // cited title containing another dangerous in a way plain uniqueness does not
+  // catch: a single executed test could satisfy both citations.
+  for (const title of titles) {
+    for (const other of titles) {
+      if (title !== other && other.includes(title)) {
+        throw new Error(
+          `ERR_AMBIGUOUS_VITEST_CITATION: the cited title "${title}" is a substring of the cited title "${other}", so under the substring-tolerant runner match one executed test could be counted for both citations`,
+        );
       }
     }
   }
@@ -243,6 +261,23 @@ const assertCitedTitlesUnique = (candidate) => {
 // required groups, or throws naming exactly which requirement it failed. Kept
 // side-effect free so the seeded mutations below can drive it directly.
 const partitionRequiredGroups = (candidate) => {
+  // Keying by id below would make a repeated declaration last-wins, so the
+  // earlier one's cardinality would never be checked. Reject it first.
+  for (const [arrayName, groups] of [
+    ["groups", candidate.groups ?? []],
+    ["openGroups", candidate.openGroups ?? []],
+  ]) {
+    const seenIds = new Set();
+    for (const group of groups) {
+      if (seenIds.has(group.id)) {
+        throw new Error(
+          `ERR_DUPLICATE_GROUP_ID: ${group.id} is declared more than once in ${arrayName}; indexing by id would silently keep only the last, leaving the earlier declaration's cardinality unchecked`,
+        );
+      }
+      seenIds.add(group.id);
+    }
+  }
+
   const measured = new Map(
     (candidate.groups ?? []).map((group) => [group.id, group]),
   );
@@ -355,6 +390,19 @@ const evidenceFixtures = {
     ...artifact,
     floorTable: { ...artifact.floorTable, range: [0, 128] },
   }),
+  "duplicate-group-id": (artifact) => ({
+    ...artifact,
+    groups: [...artifact.groups, structuredClone(artifact.groups[0])],
+  }),
+  // The substring hazard: a cited title contained in another cited title.
+  "substring-vitest-citation": (artifact) => {
+    const groups = structuredClone(artifact.groups);
+    const item = groups
+      .flatMap((group) => group.evidence)
+      .find((evidenceItem) => evidenceItem.kind === "vitest");
+    item.titles = [...item.titles, item.titles[0].slice(0, 12)];
+    return { ...artifact, groups };
+  },
   // Finding E2: one executed test counted for two claims.
   "duplicate-vitest-citation": (artifact) => {
     const groups = structuredClone(artifact.groups);
@@ -574,20 +622,33 @@ assert.equal(
 // name rather than by PATH default is what lets the gate publish *which* build
 // produced its on-chain result; falling through to a stock `aiken` would
 // silently supply the answer under another compiler's identity.
-const aikenBinaryPath = process.env.MIDGARD_AIKEN_BIN;
+// `MIDGARD_AIKEN_BIN` first, then `MIDGARD_FORK_AIKEN_BIN` — the same
+// precedence the Q60 verifier and the capability-reconciliation gate use, since
+// CI pins only the latter.
+const aikenBinaryVariable = ["MIDGARD_AIKEN_BIN", "MIDGARD_FORK_AIKEN_BIN"].find(
+  (name) =>
+    typeof process.env[name] === "string" && process.env[name].length > 0,
+);
 assert.ok(
-  typeof aikenBinaryPath === "string" && aikenBinaryPath.length > 0,
-  "ERR_AIKEN_BINARY_UNPINNED: MIDGARD_AIKEN_BIN must name the patched Aiken fork — Q63's on-chain measurement is fork-only, and an unset variable would run whatever `aiken` is first on PATH while still publishing the result as Q63's",
+  aikenBinaryVariable !== undefined,
+  "ERR_AIKEN_BINARY_UNPINNED: neither MIDGARD_AIKEN_BIN nor MIDGARD_FORK_AIKEN_BIN names the patched Aiken fork — Q63's on-chain measurement is fork-only, and leaving both unset would run whatever `aiken` is first on PATH while still publishing the result as Q63's",
 );
-assert.equal(
-  evidence.compiler.environmentVariable,
-  "MIDGARD_AIKEN_BIN",
-  "the artifact must record the compiler variable this gate pins",
+const aikenBinaryPath = process.env[aikenBinaryVariable];
+assert.deepEqual(
+  evidence.compiler.environmentVariables,
+  ["MIDGARD_AIKEN_BIN", "MIDGARD_FORK_AIKEN_BIN"],
+  "the artifact must record the compiler variables this gate accepts",
 );
+
+// The identity is measured, not assumed. The stock v1.1.22 build is the
+// authority for compilation and applied hashes, but it must never be what
+// executes these tests, so a resolved binary that is not the patched fork fails
+// closed rather than quietly supplying the result under the fork's name.
+const FORK_VERSION_PREFIX = "aiken v1.1.23";
 const aikenCompiler = aikenCompilerVersion(aikenBinaryPath);
 assert.ok(
-  aikenCompiler.length > 0,
-  `${aikenBinaryPath} reported an empty version string`,
+  aikenCompiler.startsWith(FORK_VERSION_PREFIX),
+  `ERR_AIKEN_COMPILER_MISMATCH: ${aikenBinaryVariable}=${aikenBinaryPath} reports "${aikenCompiler}", which is not the patched fork Q63's on-chain measurement requires (expected a ${FORK_VERSION_PREFIX} build)`,
 );
 
 const aikenOutcome = deriveAikenOutcome({
@@ -659,25 +720,31 @@ for (const required of REQUIRED_GROUPS) {
   if (plan === undefined) {
     // An OPEN clause has measured nothing. That is the honest number, and the
     // required-group table is what stops the clause from vanishing instead.
-    groupTotals[required.id] = 0;
+    groupTotals[required.id] = Object.fromEntries(
+      required.languages.map((language) => [language, 0]),
+    );
     continue;
   }
-  const perLanguage = required.languages.map((language) =>
-    language === "aiken"
-      ? plan.aikenSelectors.filter((selector) =>
-          measuredAikenSelectors.has(selector),
-        ).length
-      : plan.vitestTitles.filter((title) => measuredVitestTitles.has(title))
-          .length,
-  );
-  for (const [index, count] of perLanguage.entries()) {
+  // Published per language rather than collapsed to one number: the two are
+  // separately measured, and reporting only the first would hide a divergence
+  // between them behind a figure that looked like the group's total.
+  const totals = {};
+  for (const language of required.languages) {
+    const count =
+      language === "aiken"
+        ? plan.aikenSelectors.filter((selector) =>
+            measuredAikenSelectors.has(selector),
+          ).length
+        : plan.vitestTitles.filter((title) => measuredVitestTitles.has(title))
+            .length;
     assert.equal(
       count,
       required.expected,
-      `group ${required.id}: the runner measured ${String(count)} passing ${required.languages[index]} check(s), but Q63 acceptance requires ${String(required.expected)}`,
+      `group ${required.id}: the runner measured ${String(count)} passing ${language} check(s), but Q63 acceptance requires ${String(required.expected)}`,
     );
+    totals[language] = count;
   }
-  groupTotals[required.id] = perLanguage[0];
+  groupTotals[required.id] = totals;
 }
 
 const vitestChecksExecuted = measuredVitestTitles.size;
@@ -688,6 +755,9 @@ const recomputedSummary = {
     .length,
   openGroups: REQUIRED_GROUPS.filter(({ id }) => openGroups.has(id)).length,
   groupTotals,
+  // The compiler that actually produced the on-chain half, read back from the
+  // binary rather than named by the artifact.
+  aikenCompiler,
   aikenChecksExecuted: aikenOutcome.passed,
   vitestChecksExecuted,
   executedChecks,
@@ -832,6 +902,14 @@ const selfTests = [
     "--evidence-fixture=duplicate-vitest-citation",
     /ERR_DUPLICATE_VITEST_CITATION: .*counted for two claims/su,
   ],
+  [
+    "--evidence-fixture=duplicate-group-id",
+    /ERR_DUPLICATE_GROUP_ID: .*declared more than once in groups/su,
+  ],
+  [
+    "--evidence-fixture=substring-vitest-citation",
+    /ERR_AMBIGUOUS_VITEST_CITATION: .*is a substring of the cited title/su,
+  ],
 ];
 for (const [flag, expectedDiagnostic] of selfTests) {
   const selfTest = runSelfTest(flag);
@@ -863,31 +941,55 @@ for (const [flag, expectedStdout] of [
   assert.match(control.stdout, expectedStdout);
 }
 
-// Finding E7, seeded rather than asserted: spawn this gate's real main path
-// with the compiler pin removed and require it to fail closed. It reaches the
-// pin before any runner, so this costs a process start and nothing more.
-const unpinnedEnvironment = { ...process.env };
-delete unpinnedEnvironment.MIDGARD_AIKEN_BIN;
-const unpinnedRun = spawnSync(
-  process.execPath,
-  [fileURLToPath(import.meta.url)],
-  {
+// Finding E7, seeded rather than asserted. Both compiler claims — "an unpinned
+// compiler fails closed" and "a stock compiler may not execute these tests" —
+// are the kind of fail-closed assurance this gate exists to stop anyone taking
+// on trust, so each is exercised by spawning this gate's real main path. Both
+// reach the pin before any runner, so they cost a process start apiece.
+const spawnGateWith = (environment) =>
+  spawnSync(process.execPath, [fileURLToPath(import.meta.url)], {
     cwd: repositoryRoot,
     encoding: "utf8",
     maxBuffer: 128 * 1024 * 1024,
-    env: unpinnedEnvironment,
-  },
-);
+    env: environment,
+  });
+
+const unpinnedEnvironment = { ...process.env };
+delete unpinnedEnvironment.MIDGARD_AIKEN_BIN;
+delete unpinnedEnvironment.MIDGARD_FORK_AIKEN_BIN;
+const unpinnedRun = spawnGateWith(unpinnedEnvironment);
 assert.notEqual(
   unpinnedRun.status,
   0,
-  "Q63 DA-governor safety gate ran its on-chain measurement without a pinned Aiken compiler",
+  "Q63 DA-governor safety gate ran its on-chain measurement with neither compiler variable set",
 );
 assert.match(
   unpinnedRun.stderr,
   /ERR_AIKEN_BINARY_UNPINNED/su,
   "the gate rejected an unpinned compiler without its specific diagnostic",
 );
+
+const compilerStubRoot = mkdtempSync(join(tmpdir(), "midgard-q63-compiler-"));
+try {
+  const stubBinary = resolve(compilerStubRoot, "stock-aiken");
+  writeFileSync(stubBinary, "#!/bin/sh\nprintf '%s\\n' 'aiken v1.1.22+unknown'\n");
+  chmodSync(stubBinary, 0o755);
+  const stockEnvironment = { ...process.env, MIDGARD_AIKEN_BIN: stubBinary };
+  delete stockEnvironment.MIDGARD_FORK_AIKEN_BIN;
+  const stockRun = spawnGateWith(stockEnvironment);
+  assert.notEqual(
+    stockRun.status,
+    0,
+    "Q63 DA-governor safety gate accepted a stock-versioned compiler for test execution",
+  );
+  assert.match(
+    stockRun.stderr,
+    /ERR_AIKEN_COMPILER_MISMATCH: .*v1\.1\.22/su,
+    "the gate rejected a stock compiler without its specific diagnostic",
+  );
+} finally {
+  rmSync(compilerStubRoot, { recursive: true, force: true });
+}
 
 const openGroupIds = REQUIRED_GROUPS.filter(({ id }) => openGroups.has(id)).map(
   ({ id }) => id,
@@ -898,7 +1000,11 @@ const report = {
   status,
   goalIds: evidence.goalIds,
   decisionRow: evidence.decisionRow,
-  aikenCompiler: { binary: aikenBinaryPath, version: aikenCompiler },
+  aikenCompiler: {
+    variable: aikenBinaryVariable,
+    binary: aikenBinaryPath,
+    version: aikenCompiler,
+  },
   floorTableDigest: independentFloorDigest,
   floorTableRange: [0, MAX_INDEXED_SIGNER_COUNT],
   groupTotals,
@@ -918,8 +1024,13 @@ if (emitJson) {
 } else {
   console.log(
     `Q63 DA-governor safety: ${status} (${Object.entries(groupTotals)
-      .map(([id, total]) => `${id} ${String(total)}`)
-      .join(", ")}; ${String(executedChecks)} runner-executed checks under ${aikenCompiler}, ${String(declared.structural.standaloneCatalogueIds.length)} declared standalone catalogue IDs, ${String(declared.structural.implementationOrLiveClaimsFromF04)} declared F04-derived implementation/live claims)`,
+      .map(
+        ([id, totals]) =>
+          `${id} ${Object.entries(totals)
+            .map(([language, total]) => `${language}=${String(total)}`)
+            .join("/")}`,
+      )
+      .join(", ")}; ${String(executedChecks)} runner-executed checks under ${aikenCompiler} via ${aikenBinaryVariable}, ${String(declared.structural.standaloneCatalogueIds.length)} declared standalone catalogue IDs, ${String(declared.structural.implementationOrLiveClaimsFromF04)} declared F04-derived implementation/live claims)`,
   );
 }
 

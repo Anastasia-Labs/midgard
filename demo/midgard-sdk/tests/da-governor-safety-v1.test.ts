@@ -63,6 +63,9 @@ const SHARED_FLOOR_VECTORS: ReadonlyArray<readonly [number, number]> = [
   [7, 5],
   [9, 6],
   [16, 11],
+  [100, 67],
+  [255, 170],
+  [256, 171],
 ];
 
 describe("Q63 governed floor/drain invariants", () => {

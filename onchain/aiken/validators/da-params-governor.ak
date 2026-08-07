@@ -4,7 +4,7 @@ use aiken/primitive/bytearray
 use cardano/address.{Address, Script}
 use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction, placeholder,
+  InlineDatum, Input, NoDatum, Output, OutputReference, Transaction, placeholder,
 }
 use midgard/da_attestation_types.{
   DaParamsDatum, da_params_asset_name, max_indexed_signer_count,
@@ -388,11 +388,15 @@ fn floor_is_satisfiable_from(set_len: Int, max_len: Int) -> Bool {
   }
 }
 
-/// True when no threshold in `threshold..set_len` can satisfy both governed
-/// bounds `valid_datum` applies to a threshold over a set of `set_len` members
-/// — `>= governed_threshold_floor(set_len)` and `<= set_len`. Exhaustive rather
-/// than an appeal to monotonicity, so "regardless of threshold" is measured
-/// over the whole representable range instead of asserted.
+/// True when no integer in `threshold..set_len` satisfies both
+/// `>= governed_threshold_floor(set_len)` and `<= set_len`.
+///
+/// This is arithmetic over the floor function, not a statement about
+/// `valid_datum`; it happens to mirror the shape of the two threshold bounds
+/// `valid_datum` applies, which is why a `False` here corresponds to a set size
+/// no datum could name a threshold for. Exhaustive rather than an appeal to
+/// monotonicity, so "regardless of threshold" is measured over the whole
+/// candidate range instead of asserted.
 fn no_threshold_satisfies_floor(set_len: Int, threshold: Int) -> Bool {
   if threshold > set_len {
     True
@@ -499,6 +503,49 @@ fn test_governor_quorum() -> List<VerificationKeyHash> {
   [test_owner_hash(1), test_owner_hash(2)]
 }
 
+/// A DA-params initialisation transaction: the `init_ref` UTxO is consumed, one
+/// params NFT is minted, and it lands at the governor script carrying
+/// `minted_datum`.
+fn test_governor_mint_tx(minted_datum: DaParamsDatum) -> Transaction {
+  let script_address = address.from_script(test_governor_script_hash)
+  let minted_datum_data: Data = minted_datum
+  Transaction {
+    ..placeholder,
+    inputs: [
+      Input {
+        output_reference: test_governor_init_ref,
+        output: Output {
+          address: script_address,
+          value: assets.from_lovelace(test_governor_lovelace),
+          datum: NoDatum,
+          reference_script: None,
+        },
+      },
+    ],
+    outputs: [
+      Output {
+        address: script_address,
+        value: test_governor_params_value(),
+        datum: InlineDatum(minted_datum_data),
+        reference_script: None,
+      },
+    ],
+    mint: assets.from_asset(test_governor_script_hash, da_params_asset_name, 1),
+  }
+}
+
+fn test_governor_mint(minted_datum: DaParamsDatum) -> Bool {
+  let redeemer: Data = 0
+  da_params_governor.mint(
+    test_governor_init_ref,
+    test_max_committee_size,
+    test_max_owner_count,
+    redeemer,
+    test_governor_script_hash,
+    test_governor_mint_tx(minted_datum),
+  )
+}
+
 // ## Q63 governed floor/drain invariants
 //
 // These three tests pin the *arithmetic* — `governed_threshold_floor` and the
@@ -510,9 +557,18 @@ fn test_governor_quorum() -> List<VerificationKeyHash> {
 // spend-seam section.
 
 /// Invariant 1 — majority DA floor. `governed_threshold_floor` reproduces
-/// `max(2, ceil(2*set_len/3))` at the F04 §4 table points, which is what makes a
-/// bare majority of a committee insufficient once `valid_datum` floors
+/// `max(2, ceil(2*set_len/3))` at a *sample* of set sizes, which is what makes
+/// a bare majority of a committee insufficient once `valid_datum` floors
 /// `da_threshold` with it.
+///
+/// Sample-pinned, not a full sweep: the sample deliberately straddles the
+/// clamp boundary where the two-thirds ceiling overtakes the constant two
+/// (`3 -> 2`, `4 -> 3`), and reaches the top of the representable range
+/// (`100`, `255`, `256 == max_indexed_signer_count`) so a defect in the
+/// large-`n` arithmetic cannot hide below the sample. The exhaustive
+/// 0..max_indexed_signer_count agreement is pinned off-chain instead, by the
+/// digest the `floor-arithmetic-provenance` check and the Q63 verifier both
+/// recompute.
 test da_params_governor_invariant_da_threshold_majority_floor() {
   and {
     governed_threshold_floor(2) == 2,
@@ -523,6 +579,9 @@ test da_params_governor_invariant_da_threshold_majority_floor() {
     governed_threshold_floor(7) == 5,
     governed_threshold_floor(9) == 6,
     governed_threshold_floor(16) == 11,
+    governed_threshold_floor(100) == 67,
+    governed_threshold_floor(255) == 170,
+    governed_threshold_floor(max_indexed_signer_count) == 171,
   }
 }
 
@@ -585,12 +644,15 @@ test da_params_governor_control_update_threshold_at_floor_accepted() {
 // failure can only be the named violation.
 //
 // The drain rejection is deliberately the exception, and says so in its own
-// name. No one-owner datum can violate exactly one bound — `owner_len >=
-// min_owner_count`, `update_threshold >= governed_threshold_floor(owner_len)`
-// and `update_threshold <= owner_len` all reject it, and the overlap is not
-// removable by choosing a different `update_threshold`. It therefore pins the
-// class (a drained owner set is unrepresentable) rather than a single
-// mechanism.
+// name. No one-owner datum can violate exactly one bound, and the overlap is
+// not removable by choosing a different `update_threshold`: at
+// `update_threshold == 1` both `owner_len >= min_owner_count` and
+// `update_threshold >= governed_threshold_floor(1) == 2` reject it (while
+// `update_threshold <= owner_len` is satisfied), and at any
+// `update_threshold >= 2` the floor is met but `update_threshold <= owner_len`
+// fails instead — alongside `owner_len >= min_owner_count` either way. It
+// therefore pins the class (a drained owner set is unrepresentable) rather
+// than a single mechanism.
 
 /// Rejection: a bare majority `3` of a 6-member committee is below the F04
 /// two-thirds floor of `4`, so DA capture by a sub-two-thirds committee slice
@@ -607,13 +669,16 @@ test da_params_governor_rejects_update_threshold_below_floor() fail {
 
 /// Rejection: draining the owner set to a single owner is unrepresentable.
 ///
-/// Named for the overlap because the overlap is real: this datum violates
-/// `owner_len >= min_owner_count` *and* `update_threshold >=
-/// governed_threshold_floor(1) == 2`, and the two cannot be separated — every
-/// `update_threshold` a one-owner set could name is either below the floor or
-/// above the owner count. The test therefore pins that the class is rejected,
-/// not which of the three bounds did it. `min_owner_count`'s docstring records
-/// which of them is redundant today and why it is kept.
+/// Named for the overlap because the overlap is real: this datum
+/// (`update_threshold == 1` over one owner) violates `owner_len >=
+/// min_owner_count` *and* `update_threshold >= governed_threshold_floor(1) ==
+/// 2` — two of the three owner bounds; `update_threshold <= owner_len` is
+/// satisfied here. The two cannot be separated by picking a different
+/// threshold, because any `update_threshold >= 2` trades the floor violation
+/// for an `update_threshold <= owner_len` violation instead. The test
+/// therefore pins that the class is rejected, not which bound did it.
+/// `min_owner_count`'s docstring records which of them is redundant today and
+/// why it is kept.
 test da_params_governor_rejects_owner_set_drained_to_one_by_overlapping_bounds() fail {
   test_valid_datum(test_params(6, 4, 1, 1))
 }
@@ -642,6 +707,32 @@ test da_params_governor_rejects_single_member_committee_thresholds() {
 /// `da_threshold <= committee_len` is the only bound left to fail.
 test da_params_governor_rejects_single_member_committee_datum() fail {
   test_valid_datum(test_params(1, 2, 4, 3))
+}
+
+// ## Q63 mint-seam datum enforcement
+//
+// The mint path has its own `valid_datum` call, in
+// `params_output_datum_at_script`, and it is the one that makes initialising
+// the governor with single-key params impossible — the claim the parent
+// handoff rests on when it says the node's current DA defaults are now
+// unmintable. It needs its own differential pair: deleting that `expect` left
+// every other selector green.
+
+/// Mint-seam control: initialising a 6-member committee whose `da_threshold`
+/// sits exactly on the F04 floor is accepted, so the negative below is not a
+/// policy that refuses every initialisation.
+test da_params_governor_mint_control_initial_params_at_floor_accepted() {
+  test_governor_mint(test_params(6, 4, 3, 2))
+}
+
+/// Mint-seam rejection: the same initialisation transaction — same `init_ref`
+/// input, same single minted NFT, same script output — differing only in that
+/// the minted datum names a bare-majority `da_threshold` of `3` over the
+/// 6-member committee. The control passing is what establishes that every
+/// other check in the handler is satisfied, so the minted datum's governed
+/// floor is the only bound left to fail.
+test da_params_governor_mint_rejects_initial_datum_below_floor() fail {
+  test_governor_mint(test_params(6, 3, 3, 2))
 }
 
 // ## Q63 spend-seam datum enforcement (review finding D1)
