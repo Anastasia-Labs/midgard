@@ -184,9 +184,17 @@ export const DaAttestationMintRedeemerSchema = Data.Enum([
   Data.Object({
     ApplyToStateQueue: Data.Object({
       da_attestation_input_index: Data.Integer(),
+      da_params_ref_input_index: Data.Integer(),
       state_queue_input_index: Data.Integer(),
       state_queue_output_index: Data.Integer(),
       state_queue_mint_ref_script_input_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RescueStrandedAttestation: Data.Object({
+      da_attestation_input_index: Data.Integer(),
+      da_params_ref_input_index: Data.Integer(),
+      refund_output_index: Data.Integer(),
     }),
   }),
 ]);
@@ -209,12 +217,58 @@ export const DaAttestationSpendRedeemerSchema = Data.Enum([
       mint_redeemer_index: Data.Integer(),
     }),
   }),
+  Data.Object({
+    BurnForRescue: Data.Object({
+      mint_redeemer_index: Data.Integer(),
+    }),
+  }),
 ]);
 export type DaAttestationSpendRedeemer = Data.Static<
   typeof DaAttestationSpendRedeemerSchema
 >;
 export const DaAttestationSpendRedeemer =
   DaAttestationSpendRedeemerSchema as unknown as DaAttestationSpendRedeemer;
+
+/**
+ * The rescue path's entire authorization condition, mirrored off-chain
+ * (decision row D-DA5 clause c).
+ *
+ * An attestation freezes both governed values at Init, and `ApplyToStateQueue`
+ * requires both to still match. So it is stranded exactly when *either* has
+ * moved — and that disjunction is the exact complement of the apply gate, which
+ * is load-bearing rather than tidy.
+ *
+ * Testing only the committee hash would leave a second, silent strand:
+ * governance may change `da_threshold` over an unchanged committee, and such an
+ * attestation could then never apply (the threshold no longer matches) and
+ * never be rescued (the committee hash still matches), while `AddSignatures`
+ * kept accepting signatures that could never amount to anything. Its ADA would
+ * be locked for good — the exact failure clause (c) exists to rule out.
+ *
+ * Nor is the disjunction too permissive: whenever it holds, the apply gate is
+ * unsatisfiable no matter how many further signatures are gathered, so this can
+ * never take value from an attestation still in flight. Rescuable and appliable
+ * are complements, never both.
+ *
+ * There is deliberately no deadline and no configured value here: the state
+ * condition *is* the proof of strandedness.
+ *
+ * The Aiken twin is the `expect or { ... }` in the `RescueStrandedAttestation`
+ * branch of `onchain/aiken/validators/da-attestation.ak`.
+ */
+export const daAttestationIsStranded = (params: {
+  readonly attestationDatum: Pick<
+    DaAttestationDatum,
+    "committee_signers_hash" | "da_threshold"
+  >;
+  readonly daParamsDatum: Pick<
+    DaParamsDatum,
+    "committee_signers_hash" | "da_threshold"
+  >;
+}): boolean =>
+  params.attestationDatum.committee_signers_hash !==
+    params.daParamsDatum.committee_signers_hash ||
+  params.attestationDatum.da_threshold !== params.daParamsDatum.da_threshold;
 
 export const daParamsUnit = (
   daParamsGovernor: AuthenticatedValidator,
@@ -630,12 +684,41 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
   lucid: LucidEvolution,
   contracts: Pick<MidgardValidators, "daAttestation" | "stateQueue">,
   config: {
+    readonly daParamsUtxo: UTxO;
+    readonly daParamsDatum: DaParamsDatum;
     readonly target: DaAttestationStateQueueTarget;
     readonly attestation: DaAttestationUtxo;
     readonly referenceScripts: DaAttestationReferenceScripts;
   },
 ): Effect.Effect<TxBuilder, DaAttestationBuildError> =>
   Effect.gen(function* () {
+    // Decision row D-DA4: committee rotation is retroactive, so apply now reads
+    // the current governed params on-chain and requires the attestation's
+    // frozen pair to still equal them. Refusing to build the transaction here
+    // is not the enforcement — the validator is — but it turns a rotation into
+    // a legible build error instead of a script failure at submission.
+    //
+    // The two branches are split for the diagnostic, not for the decision: they
+    // are together exactly `daAttestationIsStranded`, so anything this refuses
+    // to apply the rescue path can pick up. Nothing falls between them.
+    if (
+      config.attestation.datum.committee_signers_hash !==
+      config.daParamsDatum.committee_signers_hash
+    ) {
+      return yield* failBuild(
+        "DA committee rotated away from the attestation's frozen committee; this attestation can no longer apply and must be rescued",
+        `frozen=${config.attestation.datum.committee_signers_hash},governed=${config.daParamsDatum.committee_signers_hash}`,
+      );
+    }
+    if (
+      config.attestation.datum.da_threshold !==
+      config.daParamsDatum.da_threshold
+    ) {
+      return yield* failBuild(
+        "DA threshold changed since the attestation froze it; this attestation can no longer apply and must be rescued",
+        `frozen=${config.attestation.datum.da_threshold.toString()},governed=${config.daParamsDatum.da_threshold.toString()}`,
+      );
+    }
     if (config.attestation.datum.header_hash !== config.target.headerHash) {
       return yield* failBuild(
         "DA attestation header does not match state-queue target",
@@ -675,6 +758,11 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
               ctx,
               config.attestation.utxo,
               "DA attestation apply DA attestation",
+            ),
+            da_params_ref_input_index: requireReferenceInputIndex(
+              ctx,
+              config.daParamsUtxo,
+              "DA attestation apply DA params",
             ),
             state_queue_input_index: requireInputIndex(
               ctx,
@@ -737,6 +825,7 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
     return lucid
       .newTx()
       .readFrom([
+        config.daParamsUtxo,
         config.referenceScripts.daAttestationMinting,
         config.referenceScripts.daAttestationSpending,
         config.referenceScripts.stateQueueMinting,
@@ -750,4 +839,115 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
         config.target.stateQueueUtxo.utxo.assets,
       )
       .mintAssets({ [attestationUnit]: -1n }, daMintRedeemer);
+  });
+
+/**
+ * Refunds an attestation that a mid-flight committee rotation stranded
+ * (decision row D-DA5 clause c).
+ *
+ * The transaction burns the DAAT and pays the attestation's entire remaining
+ * value to one address. There is no state-queue leg: a stranded attestation is
+ * by definition one that can never reach quorum, so there is nothing to attach.
+ */
+export const incompleteRescueStrandedDaAttestationTxProgram = (
+  lucid: LucidEvolution,
+  contracts: Pick<MidgardValidators, "daAttestation">,
+  config: {
+    readonly daParamsUtxo: UTxO;
+    readonly daParamsDatum: DaParamsDatum;
+    readonly attestation: DaAttestationUtxo;
+    readonly refundAddress: string;
+    readonly referenceScripts: Pick<
+      DaAttestationReferenceScripts,
+      "daAttestationMinting" | "daAttestationSpending"
+    >;
+  },
+): Effect.Effect<TxBuilder, DaAttestationBuildError> =>
+  Effect.gen(function* () {
+    if (
+      !daAttestationIsStranded({
+        attestationDatum: config.attestation.datum,
+        daParamsDatum: config.daParamsDatum,
+      })
+    ) {
+      return yield* failBuild(
+        "DA attestation is not stranded: its committee is still the governed one, so it may still be signed and applied",
+        `frozen=${config.attestation.datum.committee_signers_hash},governed=${config.daParamsDatum.committee_signers_hash}`,
+      );
+    }
+    if (
+      config.refundAddress === contracts.daAttestation.spendingScriptAddress
+    ) {
+      return yield* failBuild(
+        "DA attestation rescue refund may not return to the attestation script; the burnt DAAT would leave it unspendable",
+        config.refundAddress,
+      );
+    }
+
+    const attestationUnit = daAttestationUnit(
+      contracts.daAttestation,
+      config.attestation.datum.header_hash,
+    );
+    const refundAssets = Object.fromEntries(
+      Object.entries(config.attestation.utxo.assets).filter(
+        ([unit]) => unit !== attestationUnit,
+      ),
+    );
+
+    const rescueMintRedeemer = ((ctx) => {
+      requireOwnMintPurpose(
+        ctx,
+        contracts.daAttestation.policyId,
+        "DA attestation rescue mint",
+      );
+      return Data.to(
+        {
+          RescueStrandedAttestation: {
+            da_attestation_input_index: requireInputIndex(
+              ctx,
+              config.attestation.utxo,
+              "DA attestation rescue DA attestation",
+            ),
+            da_params_ref_input_index: requireReferenceInputIndex(
+              ctx,
+              config.daParamsUtxo,
+              "DA attestation rescue DA params",
+            ),
+            refund_output_index: requireUniqueOutputIndex(
+              ctx.outputs,
+              (output) =>
+                output.address === config.refundAddress &&
+                assetsEqual(output.assets, refundAssets),
+              "DA attestation rescue refund",
+            ),
+          },
+        } satisfies DaAttestationMintRedeemer as never,
+        DaAttestationMintRedeemer as never,
+      );
+    }) satisfies BuildTxWithRedeemer;
+
+    const rescueSpendRedeemer = ((ctx) =>
+      Data.to(
+        {
+          BurnForRescue: {
+            mint_redeemer_index: requireMintRedeemerIndex(
+              ctx,
+              contracts.daAttestation.policyId,
+              "DA attestation rescue DA attestation mint",
+            ),
+          },
+        } satisfies DaAttestationSpendRedeemer as never,
+        DaAttestationSpendRedeemer as never,
+      )) satisfies BuildTxWithRedeemer;
+
+    return lucid
+      .newTx()
+      .readFrom([
+        config.daParamsUtxo,
+        config.referenceScripts.daAttestationMinting,
+        config.referenceScripts.daAttestationSpending,
+      ])
+      .collectFrom([config.attestation.utxo], rescueSpendRedeemer)
+      .pay.ToAddress(config.refundAddress, refundAssets)
+      .mintAssets({ [attestationUnit]: -1n }, rescueMintRedeemer);
   });

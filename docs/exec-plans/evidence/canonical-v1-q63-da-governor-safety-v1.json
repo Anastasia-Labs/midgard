@@ -3,8 +3,8 @@
   "version": 1,
   "goalIds": ["Q63"],
   "decisionRow": "D-DA5",
-  "acceptanceComplete": false,
-  "note": "Q63 governs the DA params floors and the owner-set drain protection accepted in F04 §4, and pins them in both languages. Acceptance clauses (a) governed lower bounds and (b) owner-set drain protection are implemented in `onchain/aiken/validators/da-params-governor.ak` and measured by the groups below. Acceptance clause (c) — the partial-attestation rescue/refund path — is NOT delivered here: it requires new `MintRedeemer` and `SpendRedeemer` constructors, and both enums live in `onchain/aiken/lib/midgard/da-attestation-types.ak`, which is Q62's exclusive lease and forbidden to this task. The rescue groups are therefore recorded OPEN with their blocker, and this gate exits non-zero until they carry measured evidence. No count here is a declaration count: every published number is recomputed from an executed runner report. Deployment consequence of the F04 §4 floor, recorded so it is not rediscovered in the field: because `max(2, ceil(2*1/3)) == 2 > 1`, a one-member DA committee (and likewise a one-member owner set) is now unrepresentable — there is no `da_threshold` such a committee could name — so every single-signer DA topology is invalid by construction and must move to at least two members.",
+  "acceptanceComplete": true,
+  "note": "Q63 governs the DA params floors and the owner-set drain protection accepted in F04 §4, and pins them in both languages. Acceptance clauses (a) governed lower bounds and (b) owner-set drain protection are implemented in `onchain/aiken/validators/da-params-governor.ak` and measured by the groups below. Acceptance clause (c) — the partial-attestation rescue/refund path — was delivered later, under the Q62 lane that held the `onchain/aiken/lib/midgard/da-attestation-types.ak` lease, and its two groups are now measured rather than OPEN. The rescue adds a `RescueStrandedAttestation` mint constructor and a `BurnForRescue` spend constructor. Its authorization is a state condition and nothing else — no deadline, no quorum of its own, no new F04 value — and that condition is the exact complement of what `ApplyToStateQueue` requires: the attestation's pinned `committee_signers_hash` OR its pinned `da_threshold` must no longer equal the current authenticated DA params' governed value. An attestation freezes both at Init and apply demands both still match, so it is unrecoverable precisely when either has moved. Taking only the committee half — which the first draft did, and an adversarial review caught before commit — would have left a second silent strand, since the governor permits a threshold change over an unchanged committee: such an attestation could never apply and never be rescued, while `AddSignatures` kept accepting signatures that could never amount to anything, and its ADA would be locked for good. The complement is also not too permissive: whenever it holds the apply gate is unsatisfiable no matter how many further signatures are gathered, so the path can never take value from an attestation still in flight. Rescuable and appliable are complements, never both, and Q62's `strandedness-completeness` group measures that against the same attestation and governed params its apply rejection uses. The refund is bound to the attestation's own value less the burnt DAAT, and the burn is required to be the sole movement of that policy's tokens in the transaction, which is what the duplicate and cross-attestation rejections are derived from. No count here is a declaration count: every published number is recomputed from an executed runner report. Deployment consequence of the F04 §4 floor, recorded so it is not rediscovered in the field: because `max(2, ceil(2*1/3)) == 2 > 1`, a one-member DA committee (and likewise a one-member owner set) is now unrepresentable — there is no `da_threshold` such a committee could name — so every single-signer DA topology is invalid by construction and must move to at least two members.",
   "decisionSource": {
     "path": "docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md",
     "section": "4. DA-governor floors (Q63, ACCEPTED)",
@@ -204,37 +204,48 @@
           ]
         }
       ]
-    }
-  ],
-  "openGroups": [
+    },
     {
       "id": "partial-attestation-rescue-path",
       "claim": "A partially signed attestation stranded by a mid-flight committee rotation can be rescued/refunded.",
       "expected": 1,
-      "disposition": "OPEN",
-      "blockedOn": {
-        "owner": "parent",
-        "leasedPath": "onchain/aiken/lib/midgard/da-attestation-types.ak",
-        "leaseHolder": "Q62",
-        "reason": "Recovering the stranded ADA requires burning the DAAT NFT. The burn runs the minting policy, and both `MintRedeemer` constructors (`Init`, `ApplyToStateQueue`) demand a state-queue attachment that a sub-threshold attestation can never satisfy; both `SpendRedeemer` constructors (`AddSignatures`, `BurnForStateQueue`) are equally unusable after rotation because `validate_add_signatures` pins `params.committee_signers_hash` to the datum's. A rescue therefore needs a new constructor in each enum, and both enums are declared in Q62's leased type module."
-      }
+      "languages": ["aiken"],
+      "languageRationale": "On-chain only by construction, and declared so rather than left to be inferred from an absent citation. The claim is that a Plutus policy releases a stranded UTxO's value, which is settled only by running the `da_attestation` mint and spend handlers against a transaction; a Node verifier can execute no Plutus. The control therefore carries both handlers, because a rescue transaction is valid only if both run — the mint half decides whether the attestation is stranded and where its value goes, the spend half binds that particular UTxO to the decision, and pinning only the mint would leave the binding the replay rejection attacks unmeasured. The off-chain half of this work exists and is measured, but under Q62's gate and against different claims (redeemer ABI ordering, and the builder's refusal to rescue a live attestation), so it is not cited here as if it carried this cardinality.",
+      "disposition": "PASS",
+      "evidence": [
+        {
+          "kind": "aiken",
+          "module": "onchain/aiken/validators/da-attestation.ak",
+          "selectors": [
+            "da_attestation_rescue_control_rotated_committee_refunds_partial_attestation"
+          ]
+        }
+      ]
     },
     {
       "id": "rescue-theft-duplicate-replay-rejections",
       "claim": "The rescue path rejects theft of another party's attestation value, duplicate refunds, and replay of a consumed rescue.",
       "expected": 3,
-      "disposition": "OPEN",
-      "blockedOn": {
-        "owner": "parent",
-        "leasedPath": "onchain/aiken/lib/midgard/da-attestation-types.ak",
-        "leaseHolder": "Q62",
-        "reason": "These rejection classes can only be authored against the rescue redeemer that the lease blocks."
-      }
+      "languages": ["aiken"],
+      "languageRationale": "On-chain only, for the same reason as the rescue path itself: each rejection is a Plutus handler refusing a transaction. Each is also a one-field mutation of the control's transaction, which is why they are measured against the same fixture rather than restated off-chain. Theft is the state-condition negative — the governed committee still equals the one the attestation froze, so the attestation is in flight and its value is not the rescuer's to take; without that condition the path would be a burn-and-take backdoor over every live attestation. Duplicate is the burn-quantity negative: because this policy is stateless it cannot prove per-header uniqueness, so two DAAT UTxOs may share an asset name, and retiring both under one authorization collapses to exactly the `-2` the sole-burn check refuses. Replay is the binding negative: the rescue mint redeemer names one input, so its authorization cannot be replayed onto a second attestation UTxO bundled into the same transaction.",
+      "disposition": "PASS",
+      "evidence": [
+        {
+          "kind": "aiken",
+          "module": "onchain/aiken/validators/da-attestation.ak",
+          "selectors": [
+            "da_attestation_rescue_rejects_unrotated_committee_attestation",
+            "da_attestation_rescue_rejects_duplicate_burn_quantity",
+            "da_attestation_rescue_rejects_replayed_mint_binding"
+          ]
+        }
+      ]
     }
   ],
+  "openGroups": [],
   "summary": {
-    "measuredGroups": 7,
-    "openGroups": 2,
+    "measuredGroups": 9,
+    "openGroups": 0,
     "groupTotals": {
       "governed-floor-drain-invariants": { "aiken": 3, "vitest": 3 },
       "valid-boundary-controls": { "aiken": 2, "vitest": 2 },
@@ -243,15 +254,15 @@
       "mint-seam-datum-enforcement": { "aiken": 2 },
       "spend-seam-datum-enforcement": { "aiken": 2 },
       "floor-arithmetic-provenance": { "vitest": 1 },
-      "partial-attestation-rescue-path": { "aiken": 0 },
-      "rescue-theft-duplicate-replay-rejections": { "aiken": 0 }
+      "partial-attestation-rescue-path": { "aiken": 1 },
+      "rescue-theft-duplicate-replay-rejections": { "aiken": 3 }
     },
     "aikenCompiler": "aiken v1.1.23+2a78108",
-    "aikenChecksExecuted": 14,
+    "aikenChecksExecuted": 18,
     "vitestChecksExecuted": 11,
-    "executedChecks": 25,
+    "executedChecks": 29,
     "runners": [
-      "cd onchain/aiken && $MIDGARD_AIKEN_BIN check -e -m da_params_governor_invariant_da_threshold_majority_floor -m da_params_governor_invariant_update_threshold_two_of_n_floor -m da_params_governor_invariant_owner_set_drain_protection -m da_params_governor_control_da_threshold_at_floor_accepted -m da_params_governor_control_update_threshold_at_floor_accepted -m da_params_governor_rejects_da_threshold_below_floor -m da_params_governor_rejects_update_threshold_below_floor -m da_params_governor_rejects_owner_set_drained_to_one_by_overlapping_bounds -m da_params_governor_rejects_single_member_committee_thresholds -m da_params_governor_rejects_single_member_committee_datum -m da_params_governor_mint_control_initial_params_at_floor_accepted -m da_params_governor_mint_rejects_initial_datum_below_floor -m da_params_governor_spend_control_quorum_signed_update_accepted -m da_params_governor_spend_rejects_continued_datum_below_floor",
+      "cd onchain/aiken && $MIDGARD_AIKEN_BIN check -e -m da_params_governor_invariant_da_threshold_majority_floor -m da_params_governor_invariant_update_threshold_two_of_n_floor -m da_params_governor_invariant_owner_set_drain_protection -m da_params_governor_control_da_threshold_at_floor_accepted -m da_params_governor_control_update_threshold_at_floor_accepted -m da_params_governor_rejects_da_threshold_below_floor -m da_params_governor_rejects_update_threshold_below_floor -m da_params_governor_rejects_owner_set_drained_to_one_by_overlapping_bounds -m da_params_governor_rejects_single_member_committee_thresholds -m da_params_governor_rejects_single_member_committee_datum -m da_params_governor_mint_control_initial_params_at_floor_accepted -m da_params_governor_mint_rejects_initial_datum_below_floor -m da_params_governor_spend_control_quorum_signed_update_accepted -m da_params_governor_spend_rejects_continued_datum_below_floor -m da_attestation_rescue_control_rotated_committee_refunds_partial_attestation -m da_attestation_rescue_rejects_unrotated_committee_attestation -m da_attestation_rescue_rejects_duplicate_burn_quantity -m da_attestation_rescue_rejects_replayed_mint_binding",
       "pnpm --dir demo/midgard-sdk exec vitest run tests/da-governor-safety-v1.test.ts"
     ]
   },

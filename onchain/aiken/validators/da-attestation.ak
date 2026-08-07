@@ -1,19 +1,22 @@
 use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
-use aiken/crypto.{verify_ed25519_signature}
+use aiken/crypto.{VerificationKeyHash, blake2b_256, verify_ed25519_signature}
 use aiken/primitive/bytearray
+use aiken_design_patterns/linked_list
 use cardano/address.{Address, Script}
-use cardano/assets.{AssetName, PolicyId}
+use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{
-  InlineDatum, Input, Mint, Output, OutputReference, Transaction, resolve_input,
+  InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Transaction,
+  placeholder, resolve_input,
 }
 use midgard/common/utils
 use midgard/da_attestation_types.{
-  AddSignatures, ApplyToStateQueue, BurnForStateQueue, DaAttestationDatum,
-  DaParamsDatum, Init, MintRedeemer, SpendRedeemer,
-  attestation_asset_name_prefix, attested_signer_bitmap_byte_count,
-  da_params_asset_name, empty_attested_signer_bitmap, signature_byte_count,
+  AddSignatures, ApplyToStateQueue, BurnForRescue, BurnForStateQueue,
+  DaAttestationDatum, DaParamsDatum, Init, MintRedeemer,
+  RescueStrandedAttestation, SpendRedeemer, attestation_asset_name_prefix,
+  attested_signer_bitmap_byte_count, da_params_asset_name,
+  empty_attested_signer_bitmap, signature_byte_count,
   signature_witness_byte_count, state_queue_mint_reference_script_asset_name,
   verification_key_byte_count,
 }
@@ -88,6 +91,17 @@ fn get_da_params(
     assets.quantity_of(value, da_params_policy_id, da_params_asset_name) == 1
 
   expect datum: DaParamsDatum = datum_data
+
+  // W-C15 / decision row D-DA4. Until this line the committee hash was taken on
+  // the datum's word: every consumer compared its own frozen
+  // `committee_signers_hash` against a field that nothing here re-derived, so a
+  // params datum carrying a rotated `committee` under the *pre-rotation* hash
+  // would satisfy every such comparison while signatures verified against the
+  // new keys. Re-deriving it once, here, is what makes `committee` and
+  // `committee_signers_hash` a single fact for every caller. This is the sole
+  // re-derivation site in this module, and it is paid once per params read.
+  expect blake2b_256(datum.committee) == datum.committee_signers_hash
+
   datum
 }
 
@@ -202,11 +216,14 @@ fn verify_indexed_signatures(
   }
 }
 
+/// Returns the attestation input's datum together with its value. The value is
+/// what the rescue path refunds; `has_nft_strict` below is what makes it
+/// unambiguous, since it admits exactly one token of this policy in the input.
 fn get_attestation_input_datum(
   inputs: List<Input>,
   input_index: Int,
   own_policy_id: PolicyId,
-) -> DaAttestationDatum {
+) -> (DaAttestationDatum, Value) {
   expect
       Some(Input {
         output: Output {
@@ -223,7 +240,89 @@ fn get_attestation_input_datum(
   expect datum: DaAttestationDatum = datum_data
   let attestation_asset = attestation_asset_name(datum.header_hash)
   expect assets.has_nft_strict(value, own_policy_id, attestation_asset)
-  datum
+  (datum, value)
+}
+
+/// The single burn of `attestation_asset` this transaction is allowed to make.
+/// Requiring the policy's whole token map to be exactly one pair at quantity
+/// `-1` is what the rescue path's duplicate and cross-attestation rejections
+/// rest on: two attestations cannot be retired under one authorization, because
+/// two burns of the same asset name collapse into a quantity of `-2` and two
+/// burns of different names produce a second pair.
+fn expect_sole_burn(
+  tx: Transaction,
+  own_policy_id: PolicyId,
+  asset: AssetName,
+) -> Bool {
+  expect [Pair(minted_asset_name, minted_quantity)] = tx.mint
+    |> assets.tokens(own_policy_id)
+    |> dict.to_pairs
+  expect minted_asset_name == asset
+  expect minted_quantity == -1
+  True
+}
+
+/// The rescue's value binding. The attestation's entire value, less the burnt
+/// DAAT, must land on the single output the redeemer names.
+fn validate_rescue_refund(
+  outputs: List<Output>,
+  refund_output_index: Int,
+  attestation_value: Value,
+  own_policy_id: PolicyId,
+  attestation_asset: AssetName,
+) -> Bool {
+  let Output { address: refund_address, value: refund_value, .. } = outputs
+    |> output_at_index(refund_output_index)
+
+  // Refunding back into this script would re-strand the ADA rather than
+  // release it: every spend path requires the UTxO to carry its DAAT, and the
+  // DAAT is being burnt here, so such an output could never be spent again.
+  expect refund_address.payment_credential != Script(own_policy_id)
+
+  expect
+    refund_value == (
+      attestation_value
+        |> assets.merge(assets.from_asset(own_policy_id, attestation_asset, -1))
+    )
+
+  True
+}
+
+/// Resolves the mint redeemer that a burn-side spend redeemer defers to, and
+/// requires it to name *this* very input. `expect_rescue` selects which mint
+/// constructor is acceptable, so a `BurnForStateQueue` cannot be satisfied by a
+/// rescue authorization and a `BurnForRescue` cannot be satisfied by an apply.
+fn validate_burn_binding(
+  tx: Transaction,
+  own_ref: OutputReference,
+  mint_redeemer_index: Int,
+  expect_rescue: Bool,
+) -> Bool {
+  let own_policy_id = tx.inputs
+    |> resolve_input(own_ref)
+    |> expect_script_hash_from_output
+
+  let mint_redeemer_data = tx.redeemers
+    |> utils.get_redeemer_at(Mint(own_policy_id), mint_redeemer_index)
+  expect mint_redeemer: MintRedeemer = mint_redeemer_data
+
+  let bound_input_index = when mint_redeemer is {
+    ApplyToStateQueue { da_attestation_input_index, .. } -> {
+      expect !expect_rescue
+      da_attestation_input_index
+    }
+    RescueStrandedAttestation { da_attestation_input_index, .. } -> {
+      expect expect_rescue
+      da_attestation_input_index
+    }
+    Init { .. } -> fail @"burn redeemer defers to a non-burning mint redeemer"
+  }
+
+  expect Some(Input { output_reference, .. }) = tx.inputs
+    |> list.at(bound_input_index)
+  expect output_reference == own_ref
+
+  True
 }
 
 pub fn validate_add_signatures(
@@ -345,26 +444,44 @@ validator da_attestation(
       }
       ApplyToStateQueue {
         da_attestation_input_index,
+        da_params_ref_input_index,
         state_queue_input_index,
         state_queue_output_index,
         state_queue_mint_ref_script_input_index,
       } -> {
-        let attestation_datum = get_attestation_input_datum(
+        let (attestation_datum, _attestation_value) = get_attestation_input_datum(
           tx.inputs,
           da_attestation_input_index,
           own_policy_id,
         )
+
+        // Decision row D-DA4. This branch used to decide quorum entirely from
+        // the attestation datum's own frozen `da_threshold`, never reading the
+        // DA params at all, so committee rotation was not retroactive: a quorum
+        // gathered under a rotated-out committee stayed applicable forever.
+        // Reading the *current* governed params and requiring the frozen pair
+        // to still equal them is what retires that quorum.
+        //
+        // Equality of the committee hash, not merely `count >= governed
+        // threshold`: what is stale about such a quorum is *whose* signatures
+        // it holds, and a threshold that happens to be satisfied must not
+        // launder a rotated-out membership.
+        let params = get_da_params(
+          tx.reference_inputs,
+          da_params_policy_id,
+          da_params_ref_input_index,
+        )
+        expect
+          attestation_datum.committee_signers_hash == params.committee_signers_hash
+        expect attestation_datum.da_threshold == params.da_threshold
+
         expect
           attestation_datum.attestation_count >= attestation_datum.da_threshold
 
         let attestation_asset = attestation_asset_name(
           attestation_datum.header_hash,
         )
-        expect [Pair(minted_asset_name, minted_quantity)] = tx.mint
-          |> assets.tokens(own_policy_id)
-          |> dict.to_pairs
-        expect minted_asset_name == attestation_asset
-        expect minted_quantity == -1
+        expect expect_sole_burn(tx, own_policy_id, attestation_asset)
 
         let state_queue_policy_id = get_authenticated_state_queue_policy_id(
           tx.reference_inputs,
@@ -380,6 +497,62 @@ validator da_attestation(
           state_queue_output_index,
           attestation_datum.header_hash,
           own_policy_id,
+        )
+      }
+      RescueStrandedAttestation {
+        da_attestation_input_index,
+        da_params_ref_input_index,
+        refund_output_index,
+      } -> {
+        let (attestation_datum, attestation_value) = get_attestation_input_datum(
+          tx.inputs,
+          da_attestation_input_index,
+          own_policy_id,
+        )
+        let params = get_da_params(
+          tx.reference_inputs,
+          da_params_policy_id,
+          da_params_ref_input_index,
+        )
+
+        // Decision row D-DA5 clause (c), and deliberately the whole of the
+        // authorization: no deadline, no quorum of its own, no new governed
+        // value to configure or get wrong. The state condition *is* the proof
+        // of strandedness.
+        //
+        // It is the exact complement of the pair `ApplyToStateQueue` requires
+        // above, and that is load-bearing rather than tidy. An attestation
+        // freezes *both* governed values at Init, and apply demands both still
+        // match; so an attestation is unrecoverable precisely when either has
+        // moved. Inverting only the committee hash would leave a second, silent
+        // strand: governance may change `da_threshold` over an unchanged
+        // committee — the DA-params governor explicitly permits it — and such
+        // an attestation could then never apply (the threshold no longer
+        // matches) and never be rescued (the committee hash still matches),
+        // while `AddSignatures` kept accepting signatures that could never
+        // amount to anything. Its ADA would be locked for good, which is the
+        // exact failure D-DA5 clause (c) exists to rule out.
+        //
+        // Widening to the complement cannot take value from an attestation
+        // still in flight: whenever this condition holds, the apply gate above
+        // is unsatisfiable no matter how many further signatures are gathered.
+        // Rescuable and appliable are complements, never both.
+        expect or {
+            attestation_datum.committee_signers_hash != params.committee_signers_hash,
+            attestation_datum.da_threshold != params.da_threshold,
+          }
+
+        let attestation_asset = attestation_asset_name(
+          attestation_datum.header_hash,
+        )
+        expect expect_sole_burn(tx, own_policy_id, attestation_asset)
+
+        validate_rescue_refund(
+          tx.outputs,
+          refund_output_index,
+          attestation_value,
+          own_policy_id,
+          attestation_asset,
         )
       }
     }
@@ -402,26 +575,749 @@ validator da_attestation(
           own_ref,
           tx,
         )
-      BurnForStateQueue { mint_redeemer_index } -> {
-        let own_policy_id = tx.inputs
-          |> resolve_input(own_ref)
-          |> expect_script_hash_from_output
-
-        let mint_redeemer_data = tx.redeemers
-          |> utils.get_redeemer_at(Mint(own_policy_id), mint_redeemer_index)
-        expect
-            ApplyToStateQueue { da_attestation_input_index, .. }: MintRedeemer
-          = mint_redeemer_data
-        expect Some(Input { output_reference, .. }) = tx.inputs
-          |> list.at(da_attestation_input_index)
-        expect output_reference == own_ref
-
-        True
-      }
+      BurnForStateQueue { mint_redeemer_index } ->
+        validate_burn_binding(tx, own_ref, mint_redeemer_index, False)
+      BurnForRescue { mint_redeemer_index } ->
+        validate_burn_binding(tx, own_ref, mint_redeemer_index, True)
     }
   }
 
   else(_) {
     fail
   }
+}
+
+// midgard:test-fixtures-below
+//
+// Everything below this line is fixture and test code. The Q62 gate
+// (`demo/scripts/verify-canonical-v1-q62-da-rotation.mjs`) measures the
+// committee-hash re-derivation only *above* it, so fixtures — which legitimately
+// call `blake2b_256` to build params — cannot inflate the count that the
+// "re-derived exactly once per params read" claim rests on. Removing or
+// renaming this sentinel fails that gate closed rather than silently widening
+// the region it measures.
+
+// ---------------------------------------------------------------------------
+// Fixtures — Q62 (decision row D-DA4, non-retroactive committee rotation) and
+// Q63 acceptance clause (c) (decision row D-DA5, partial-attestation rescue).
+//
+// Every transaction below is built from one base builder and mutated in
+// exactly one field per negative, so a rejection can only be attributed to the
+// bound it names. The one deliberate exception is documented at its test.
+// ---------------------------------------------------------------------------
+
+const test_da_policy: PolicyId =
+  #"da11da11da11da11da11da11da11da11da11da11da11da11da11da11"
+
+const test_da_params_policy: PolicyId =
+  #"cd22cd22cd22cd22cd22cd22cd22cd22cd22cd22cd22cd22cd22cd22"
+
+const test_ref_script_auth_policy: PolicyId =
+  #"ef33ef33ef33ef33ef33ef33ef33ef33ef33ef33ef33ef33ef33ef33"
+
+const test_refund_key_hash: VerificationKeyHash =
+  #"12341234123412341234123412341234123412341234123412341234"
+
+const test_header_hash: HeaderHash =
+  #"aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd"
+
+const test_attestation_ref: OutputReference =
+  OutputReference {
+    transaction_id: #"1111111111111111111111111111111111111111111111111111111111111111",
+    output_index: 0,
+  }
+
+const test_second_attestation_ref: OutputReference =
+  OutputReference {
+    transaction_id: #"2222222222222222222222222222222222222222222222222222222222222222",
+    output_index: 0,
+  }
+
+const test_params_ref: OutputReference =
+  OutputReference {
+    transaction_id: #"3333333333333333333333333333333333333333333333333333333333333333",
+    output_index: 0,
+  }
+
+const test_state_queue_ref: OutputReference =
+  OutputReference {
+    transaction_id: #"4444444444444444444444444444444444444444444444444444444444444444",
+    output_index: 0,
+  }
+
+const test_ref_script_ref: OutputReference =
+  OutputReference {
+    transaction_id: #"5555555555555555555555555555555555555555555555555555555555555555",
+    output_index: 0,
+  }
+
+const test_state_queue_policy: PolicyId =
+  #"5b115b115b115b115b115b115b115b115b115b115b115b115b115b11"
+
+const test_attestation_lovelace: Int = 2_000_000
+
+const test_params_lovelace: Int = 2_000_000
+
+fn repeat_byte(byte: Int, count: Int, accumulated: ByteArray) -> ByteArray {
+  if count == 0 {
+    accumulated
+  } else {
+    repeat_byte(byte, count - 1, bytearray.push(accumulated, byte))
+  }
+}
+
+fn test_signer_key(byte: Int) -> ByteArray {
+  repeat_byte(byte, verification_key_byte_count, #"")
+}
+
+/// A two-member committee, packed as the on-chain format requires. The two
+/// committees below are disjoint, so rotating from one to the other changes
+/// `blake2b_256(committee)` and nothing else about the fixture.
+fn test_committee(first_byte: Int, second_byte: Int) -> ByteArray {
+  test_signer_key(first_byte) |> bytearray.concat(test_signer_key(second_byte))
+}
+
+fn test_committee_a() -> ByteArray {
+  test_committee(0xa1, 0xa2)
+}
+
+fn test_committee_b() -> ByteArray {
+  test_committee(0xb1, 0xb2)
+}
+
+fn test_owner_hash(byte: Int) -> VerificationKeyHash {
+  repeat_byte(byte, 28, #"")
+}
+
+/// Params whose `committee_signers_hash` is the honest re-derivation, which is
+/// what `get_da_params` now requires of every params read.
+fn test_da_params(committee: ByteArray, da_threshold: Int) -> DaParamsDatum {
+  DaParamsDatum {
+    committee,
+    committee_signers_hash: blake2b_256(committee),
+    da_threshold,
+    owners: [test_owner_hash(0x1), test_owner_hash(0x2)],
+    update_threshold: 2,
+  }
+}
+
+/// Params carrying an arbitrary `committee_signers_hash`, so a fixture can
+/// state a hash that is *not* `blake2b_256(committee)`. Nothing but a forged
+/// params datum can do this on-chain, which is exactly what the re-derivation
+/// in `get_da_params` exists to refuse.
+fn test_da_params_with_hash(
+  committee: ByteArray,
+  committee_signers_hash: ByteArray,
+  da_threshold: Int,
+) -> DaParamsDatum {
+  DaParamsDatum {
+    committee,
+    committee_signers_hash,
+    da_threshold,
+    owners: [test_owner_hash(0x1), test_owner_hash(0x2)],
+    update_threshold: 2,
+  }
+}
+
+/// MSB-first bitmap with the first `set_bits` committee indexes attested.
+fn test_attested_bitmap(set_bits: Int) -> ByteArray {
+  let first_byte = bytearray.at(
+    #[0, 128, 192, 224, 240, 248, 252, 254, 255],
+    set_bits,
+  )
+  bytearray.push(
+    repeat_byte(0, attested_signer_bitmap_byte_count - 1, #""),
+    first_byte,
+  )
+}
+
+fn test_attestation_datum(
+  committee_signers_hash: ByteArray,
+  da_threshold: Int,
+  attestation_count: Int,
+) -> DaAttestationDatum {
+  DaAttestationDatum {
+    header_hash: test_header_hash,
+    da_threshold,
+    committee_signers_hash,
+    attested_signers: test_attested_bitmap(attestation_count),
+    attestation_count,
+  }
+}
+
+fn test_attestation_asset() -> AssetName {
+  attestation_asset_name(test_header_hash)
+}
+
+fn test_attestation_value() -> Value {
+  assets.from_lovelace(test_attestation_lovelace)
+    |> assets.add(test_da_policy, test_attestation_asset(), 1)
+}
+
+fn test_attestation_input(
+  output_reference: OutputReference,
+  datum: DaAttestationDatum,
+) -> Input {
+  let datum_data: Data = datum
+  Input {
+    output_reference,
+    output: Output {
+      address: address.from_script(test_da_policy),
+      value: test_attestation_value(),
+      datum: InlineDatum(datum_data),
+      reference_script: None,
+    },
+  }
+}
+
+fn test_params_reference_input_with_value(
+  params: DaParamsDatum,
+  value: Value,
+) -> Input {
+  let params_data: Data = params
+  Input {
+    output_reference: test_params_ref,
+    output: Output {
+      address: address.from_script(test_da_params_policy),
+      value,
+      datum: InlineDatum(params_data),
+      reference_script: None,
+    },
+  }
+}
+
+fn test_authenticated_params_value() -> Value {
+  assets.from_lovelace(test_params_lovelace)
+    |> assets.add(test_da_params_policy, da_params_asset_name, 1)
+}
+
+fn test_params_reference_input(params: DaParamsDatum) -> Input {
+  test_params_reference_input_with_value(
+    params,
+    test_authenticated_params_value(),
+  )
+}
+
+fn test_rescue_mint_redeemer() -> MintRedeemer {
+  RescueStrandedAttestation {
+    da_attestation_input_index: 0,
+    da_params_ref_input_index: 0,
+    refund_output_index: 0,
+  }
+}
+
+/// The rescue transaction under test. `attestation_datum` pins the committee
+/// the attestation froze; `params` supplies the governed committee it is
+/// compared against; the remaining knobs are the mutation points the negatives
+/// below move, one at a time.
+fn test_rescue_tx(
+  attestation_datum: DaAttestationDatum,
+  params: DaParamsDatum,
+  burn_quantity: Int,
+  refund_lovelace: Int,
+  with_second_attestation: Bool,
+) -> Transaction {
+  let redeemer_data: Data = test_rescue_mint_redeemer()
+  let first_input = test_attestation_input(
+    test_attestation_ref,
+    attestation_datum,
+  )
+  Transaction {
+    ..placeholder,
+    inputs: if with_second_attestation {
+      [
+        first_input,
+        test_attestation_input(test_second_attestation_ref, attestation_datum),
+      ]
+    } else {
+      [first_input]
+    },
+    reference_inputs: [test_params_reference_input(params)],
+    outputs: [
+      Output {
+        address: address.from_verification_key(test_refund_key_hash),
+        value: assets.from_lovelace(refund_lovelace),
+        datum: NoDatum,
+        reference_script: None,
+      },
+    ],
+    mint: assets.from_asset(
+      test_da_policy,
+      test_attestation_asset(),
+      burn_quantity,
+    ),
+    redeemers: [Pair(Mint(test_da_policy), redeemer_data)],
+  }
+}
+
+/// The fixture's stranded attestation: it froze committee A, gathered one of
+/// the two signatures it needs, and governance has since rotated to committee
+/// B. It can never take another signature, so it can never be applied.
+fn test_stranded_attestation() -> DaAttestationDatum {
+  test_attestation_datum(blake2b_256(test_committee_a()), 2, 1)
+}
+
+fn test_rotated_params() -> DaParamsDatum {
+  test_da_params(test_committee_b(), 2)
+}
+
+fn test_rescue_mint(tx: Transaction) -> Bool {
+  da_attestation.mint(
+    test_da_params_policy,
+    test_ref_script_auth_policy,
+    test_rescue_mint_redeemer(),
+    test_da_policy,
+    tx,
+  )
+}
+
+/// Runs the spend handler with an arbitrary burn-side redeemer, so the two
+/// burn constructors can be exercised against either mint transaction.
+fn test_apply_burn_spend(tx: Transaction, redeemer: SpendRedeemer) -> Bool {
+  da_attestation.spend(
+    test_da_params_policy,
+    test_ref_script_auth_policy,
+    None,
+    redeemer,
+    test_attestation_ref,
+    tx,
+  )
+}
+
+fn test_rescue_spend(tx: Transaction, own_ref: OutputReference) -> Bool {
+  da_attestation.spend(
+    test_da_params_policy,
+    test_ref_script_auth_policy,
+    None,
+    BurnForRescue { mint_redeemer_index: 0 },
+    own_ref,
+    tx,
+  )
+}
+
+/// The rescue transaction the negatives are all mutations of.
+fn test_rescue_base_tx() -> Transaction {
+  test_rescue_tx(
+    test_stranded_attestation(),
+    test_rotated_params(),
+    -1,
+    test_attestation_lovelace,
+    False,
+  )
+}
+
+/// The same rescue with a second stranded attestation added as an input — an
+/// attacker bundling somebody else's UTxO into their rescue. The mint half is
+/// unchanged and still authorises only input 0.
+fn test_rescue_drain_tx() -> Transaction {
+  test_rescue_tx(
+    test_stranded_attestation(),
+    test_rotated_params(),
+    -1,
+    test_attestation_lovelace,
+    True,
+  )
+}
+
+// ## Q63 acceptance clause (c) — partial-attestation rescue path
+//
+// The control has to carry both handlers, because a rescue transaction is only
+// valid if both run: the mint half decides *whether* the attestation is
+// stranded and where its value goes, and the spend half binds this particular
+// UTxO to that decision. Pinning only the mint would leave the binding — the
+// thing the replay rejection below attacks — unmeasured. The third conjunct
+// establishes the same binding inside the drain transaction, which is what
+// makes that rejection a one-field differential rather than a comparison
+// against a different transaction.
+
+/// Rescue control: a sub-threshold attestation pinned to a rotated-out
+/// committee is refunded in full and its DAAT burnt. `attestation_count` is 1
+/// against a `da_threshold` of 2, so this attestation never reached quorum and
+/// no other redeemer could ever consume it.
+test da_attestation_rescue_control_rotated_committee_refunds_partial_attestation() {
+  and {
+    test_rescue_mint(test_rescue_base_tx()),
+    test_rescue_spend(test_rescue_base_tx(), test_attestation_ref),
+    test_rescue_spend(test_rescue_drain_tx(), test_attestation_ref),
+  }
+}
+
+/// Rescue theft rejection: the governed committee still equals the one the
+/// attestation froze, so the attestation is not stranded — it can still be
+/// signed and applied — and its value is not the rescuer's to take. The single
+/// mutated field is the params committee, restored to committee A. Without the
+/// state condition this path would be a burn-and-take backdoor over every
+/// in-flight attestation in the system.
+test da_attestation_rescue_rejects_unrotated_committee_attestation() fail {
+  test_rescue_mint(
+    test_rescue_tx(
+      test_stranded_attestation(),
+      test_da_params(test_committee_a(), 2),
+      -1,
+      test_attestation_lovelace,
+      False,
+    ),
+  )
+}
+
+/// Rescue duplicate-refund rejection: the single mutated field is the burnt
+/// quantity, `-2` rather than `-1`. Because this policy is stateless it cannot
+/// prove per-header uniqueness, so two DAAT UTxOs may carry the same asset
+/// name; retiring both under one authorization collapses to exactly this
+/// quantity, and would refund one attestation's value while destroying the
+/// other's claim to its own.
+test da_attestation_rescue_rejects_duplicate_burn_quantity() fail {
+  test_rescue_mint(
+    test_rescue_tx(
+      test_stranded_attestation(),
+      test_rotated_params(),
+      -2,
+      test_attestation_lovelace,
+      False,
+    ),
+  )
+}
+
+/// Rescue replay rejection: the same drain transaction the control validated at
+/// input 0, spent instead at input 1. The single mutated field is `own_ref`.
+/// The rescue mint redeemer names input 0, so its authorization cannot be
+/// replayed onto the second attestation UTxO bundled into the transaction.
+test da_attestation_rescue_rejects_replayed_mint_binding() fail {
+  test_rescue_spend(test_rescue_drain_tx(), test_second_attestation_ref)
+}
+
+/// Rescue completeness control, and the regression test for the second strand
+/// condition D-DA4 introduced. This is the *same* attestation and the *same*
+/// governed params as `da_attestation_apply_rejects_governed_threshold_change`:
+/// a full quorum whose frozen `da_threshold` no longer matches the governed one
+/// over an unchanged committee. Apply refuses it; rescue must therefore accept
+/// it, or its ADA is locked for good. The pair is what makes "rescuable and
+/// appliable are complements" a measured claim rather than a comment.
+///
+/// It also covers the quorum-reached case: the rescue arm reads neither
+/// `attestation_count` nor `da_threshold`, so a fully attested but stranded
+/// attestation is rescuable, and that is correct — apply cannot consume it
+/// either.
+test da_attestation_rescue_control_threshold_change_refunds_quorum_attestation() {
+  and {
+    test_rescue_mint(
+      test_rescue_tx(
+        test_quorum_attestation(),
+        test_da_params(test_committee_a(), 3),
+        -1,
+        test_attestation_lovelace,
+        False,
+      ),
+    ),
+    test_rescue_spend(
+      test_rescue_tx(
+        test_quorum_attestation(),
+        test_da_params(test_committee_a(), 3),
+        -1,
+        test_attestation_lovelace,
+        False,
+      ),
+      test_attestation_ref,
+    ),
+  }
+}
+
+// ## Burn-redeemer cross-binding
+//
+// `validate_burn_binding` discriminates on which mint constructor a burn-side
+// spend redeemer is allowed to defer to. A *full* swap of its two dispositions
+// would be caught by the controls above, but a one-sided regression — dropping
+// either guard alone — would leave every other test in this module green while
+// letting one burn redeemer be authorised by the other's mint. That matters:
+// `ApplyToStateQueue` imposes no refund binding at all, so a `BurnForRescue`
+// satisfied by an apply redeemer would release an attestation's value with
+// nothing constraining where it went. Both directions are therefore pinned
+// individually.
+
+/// Cross-binding control: `BurnForStateQueue` against the apply transaction's
+/// own mint redeemer is accepted, so the two rejections below are not a helper
+/// that refuses every binding.
+test da_attestation_burn_control_queue_binding_accepts_apply_redeemer() {
+  test_apply_burn_spend(
+    test_apply_tx(
+      test_quorum_attestation(),
+      test_params_reference_input(test_da_params(test_committee_a(), 2)),
+    ),
+    BurnForStateQueue { mint_redeemer_index: 0 },
+  )
+}
+
+/// Cross-binding rejection: a `BurnForRescue` spend deferring to an
+/// `ApplyToStateQueue` mint redeemer. The single mutated field is the spend
+/// redeemer's constructor.
+test da_attestation_rejects_rescue_burn_bound_to_apply_redeemer() fail {
+  test_apply_burn_spend(
+    test_apply_tx(
+      test_quorum_attestation(),
+      test_params_reference_input(test_da_params(test_committee_a(), 2)),
+    ),
+    BurnForRescue { mint_redeemer_index: 0 },
+  )
+}
+
+/// Cross-binding rejection, the mirror direction: a `BurnForStateQueue` spend
+/// deferring to a `RescueStrandedAttestation` mint redeemer. The single mutated
+/// field is the spend redeemer's constructor, against the same rescue
+/// transaction the control at the top of this family validated.
+test da_attestation_rejects_queue_burn_bound_to_rescue_redeemer() fail {
+  test_apply_burn_spend(
+    test_rescue_base_tx(),
+    BurnForStateQueue { mint_redeemer_index: 0 },
+  )
+}
+
+/// Rescue value-binding rejection: the single mutated field is the refund
+/// output's lovelace, one short of the attestation's. The rescue is
+/// permissionless in who submits it, so the value binding is what stops a
+/// rescuer skimming the deposit rather than returning it.
+test da_attestation_rescue_rejects_refund_short_of_attestation_value() fail {
+  test_rescue_mint(
+    test_rescue_tx(
+      test_stranded_attestation(),
+      test_rotated_params(),
+      -1,
+      test_attestation_lovelace - 1,
+      False,
+    ),
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ## Q62 / decision row D-DA4 — non-retroactive committee rotation
+//
+// Before this change `ApplyToStateQueue` read no DA params at all: it decided
+// quorum from the attestation datum's own frozen `da_threshold` and burnt the
+// DAAT. Rotation was therefore not retroactive — a quorum gathered under a
+// committee that governance had since replaced stayed applicable forever. The
+// control below is the unchanged-committee case that must keep working, and
+// the five negatives are the mutation classes that must not.
+// ---------------------------------------------------------------------------
+
+fn test_header() -> ledger_state.HeaderV1 {
+  let root32 = #"1010101010101010101010101010101010101010101010101010101010101010"
+  ledger_state.HeaderV1 {
+    prev_utxos_root: root32,
+    utxos_root: root32,
+    withdrawals_root: root32,
+    forced_transactions_root: root32,
+    transactions_root: root32,
+    deposits_root: root32,
+    transition_trace_root: root32,
+    event_to_step_root: root32,
+    validation_traces_root: root32,
+    withdrawal_count: 1,
+    forced_transaction_count: 1,
+    l2_transaction_count: 1,
+    deposit_count: 1,
+    total_event_count: 4,
+    transition_step_count: 4,
+    validation_trace_count: 2,
+    start_time: 1_000,
+    end_time: 2_000,
+    block_slot: 0,
+    expected_network_id: 0,
+    min_fee_a: 0,
+    min_fee_b: 0,
+    prev_header_hash: test_header_hash,
+    operator_vkey: test_header_hash,
+    protocol_version: ledger_state.protocol_version_v1,
+  }
+}
+
+/// A state-queue linked-list node for `test_header_hash`. `da_attestation` is
+/// `no_da_attestation` on the way in and the DA policy id on the way out, which
+/// is the attachment `validate_da_attestation_attachment` requires.
+fn test_state_queue_node_output(da_attestation: ByteArray) -> Output {
+  let node = state_queue.StateQueueNode {
+    header: test_header(),
+    da_attestation,
+  }
+  let element: linked_list.Element<Data, state_queue.StateQueueNode> = linked_list.Element {
+    data: linked_list.Node { data: node },
+    link: None,
+  }
+  let element_data: Data = element
+  Output {
+    address: address.from_script(test_state_queue_policy),
+    value: assets.from_lovelace(test_attestation_lovelace)
+      |> assets.add(
+          test_state_queue_policy,
+          state_queue.block_asset_name_prefix
+            |> bytearray.concat(test_header_hash),
+          1,
+        ),
+    datum: InlineDatum(element_data),
+    reference_script: None,
+  }
+}
+
+/// The reference input carrying the state-queue minting script, authenticated
+/// by its own reference-script NFT.
+fn test_state_queue_ref_script_input() -> Input {
+  Input {
+    output_reference: test_ref_script_ref,
+    output: Output {
+      address: address.from_script(test_ref_script_auth_policy),
+      value: assets.from_lovelace(test_params_lovelace)
+        |> assets.add(
+            test_ref_script_auth_policy,
+            state_queue_mint_reference_script_asset_name,
+            1,
+          ),
+      datum: NoDatum,
+      reference_script: Some(test_state_queue_policy),
+    },
+  }
+}
+
+fn test_apply_mint_redeemer() -> MintRedeemer {
+  ApplyToStateQueue {
+    da_attestation_input_index: 0,
+    da_params_ref_input_index: 0,
+    state_queue_input_index: 1,
+    state_queue_output_index: 0,
+    state_queue_mint_ref_script_input_index: 1,
+  }
+}
+
+/// The apply transaction under test. Only the attestation datum and the DA
+/// params reference input vary across the family below; everything else — the
+/// state-queue node, its attachment, the burn, the reference scripts — is held
+/// fixed, so a rejection can only come from the governed-params comparison.
+fn test_apply_tx(
+  attestation_datum: DaAttestationDatum,
+  params_reference_input: Input,
+) -> Transaction {
+  let redeemer_data: Data = test_apply_mint_redeemer()
+  Transaction {
+    ..placeholder,
+    inputs: [
+      test_attestation_input(test_attestation_ref, attestation_datum),
+      Input {
+        output_reference: test_state_queue_ref,
+        output: test_state_queue_node_output(state_queue.no_da_attestation),
+      },
+    ],
+    reference_inputs: [
+      params_reference_input,
+      test_state_queue_ref_script_input(),
+    ],
+    outputs: [test_state_queue_node_output(test_da_policy)],
+    mint: assets.from_asset(test_da_policy, test_attestation_asset(), -1),
+    redeemers: [Pair(Mint(test_da_policy), redeemer_data)],
+  }
+}
+
+fn test_apply_mint(tx: Transaction) -> Bool {
+  da_attestation.mint(
+    test_da_params_policy,
+    test_ref_script_auth_policy,
+    test_apply_mint_redeemer(),
+    test_da_policy,
+    tx,
+  )
+}
+
+/// The attestation the apply family starts from: it froze committee A at a
+/// threshold of 2 and has both signatures, so it is a genuine quorum.
+fn test_quorum_attestation() -> DaAttestationDatum {
+  test_attestation_datum(blake2b_256(test_committee_a()), 2, 2)
+}
+
+/// Apply control: the governed committee and threshold are still the ones the
+/// attestation froze, so the quorum applies and the DAAT is burnt. This is the
+/// test that establishes the five negatives below are not merely a handler that
+/// rejects everything.
+test da_attestation_apply_control_unchanged_committee_applies() {
+  test_apply_mint(
+    test_apply_tx(
+      test_quorum_attestation(),
+      test_params_reference_input(test_da_params(test_committee_a(), 2)),
+    ),
+  )
+}
+
+/// Rotation rejection — the D-DA4 headline. The single mutated field is the
+/// governed committee, rotated from A to B with its hash honestly re-derived.
+/// The attestation still holds a full quorum under its frozen threshold, which
+/// is exactly what used to be sufficient.
+test da_attestation_apply_rejects_rotated_committee() fail {
+  test_apply_mint(
+    test_apply_tx(
+      test_quorum_attestation(),
+      test_params_reference_input(test_da_params(test_committee_b(), 2)),
+    ),
+  )
+}
+
+/// Threshold-change rejection. The single mutated field is the governed
+/// `da_threshold`, raised from 2 to 3 over the same committee. Governance
+/// tightening the DA bar must retire in-flight quorums gathered under the old
+/// one rather than let them apply at the bar they froze.
+test da_attestation_apply_rejects_governed_threshold_change() fail {
+  test_apply_mint(
+    test_apply_tx(
+      test_quorum_attestation(),
+      test_params_reference_input(test_da_params(test_committee_a(), 3)),
+    ),
+  )
+}
+
+/// Forged-committee-hash rejection, and the reason the rotation check alone is
+/// not enough. The single mutated field is the params `committee`, rotated to
+/// B while `committee_signers_hash` is left at A's. Every equality this
+/// validator performs against that field would still pass; only re-deriving
+/// `blake2b_256(committee)` inside `get_da_params` refuses it. Without that
+/// re-derivation this transaction defeats the rotation rejection above.
+test da_attestation_apply_rejects_forged_committee_hash() fail {
+  test_apply_mint(
+    test_apply_tx(
+      test_quorum_attestation(),
+      test_params_reference_input(
+        test_da_params_with_hash(
+          test_committee_b(),
+          blake2b_256(test_committee_a()),
+          2,
+        ),
+      ),
+    ),
+  )
+}
+
+/// Stale-params-reference rejection. The single mutated field is the params
+/// reference input's value, which no longer carries the governance NFT. The
+/// datum it presents is byte-for-byte the control's, so this is an attacker
+/// replaying an obsolete snapshot of the params to reinstate a rotated-out
+/// committee; only the NFT authentication distinguishes it.
+test da_attestation_apply_rejects_stale_params_reference_input() fail {
+  test_apply_mint(
+    test_apply_tx(
+      test_quorum_attestation(),
+      test_params_reference_input_with_value(
+        test_da_params(test_committee_a(), 2),
+        assets.from_lovelace(test_params_lovelace),
+      ),
+    ),
+  )
+}
+
+/// Old-quorum rejection. Declared deliberately as the family's one compound
+/// mutation: the committee rotates to B *and* the governed threshold drops to
+/// 1, so the frozen count of 2 clears the new bar with room to spare. It exists
+/// to kill a specific weaker fix — re-reading the params but comparing
+/// `attestation_count >= params.da_threshold` — which every one-field negative
+/// above would still pass. What is stale about this quorum is whose signatures
+/// it holds, and no satisfied threshold may launder that.
+test da_attestation_apply_rejects_old_committee_quorum() fail {
+  test_apply_mint(
+    test_apply_tx(
+      test_quorum_attestation(),
+      test_params_reference_input(test_da_params(test_committee_b(), 1)),
+    ),
+  )
 }

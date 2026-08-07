@@ -46,6 +46,13 @@ pub type DaParamsDatum {
   update_threshold: Int,
 }
 
+/// `ApplyToStateQueue.da_params_ref_input_index` and
+/// `RescueStrandedAttestation.da_params_ref_input_index` both point at the
+/// authenticated DA params UTxO holding the *current* governed committee and
+/// threshold. Every redeemer that consumes an attestation reads them, which is
+/// what makes committee rotation retroactive (decision row D-DA4): a quorum
+/// frozen under a rotated-out committee no longer matches the governed values
+/// and can no longer apply.
 pub type MintRedeemer {
   Init {
     output_index: Int,
@@ -55,9 +62,22 @@ pub type MintRedeemer {
   }
   ApplyToStateQueue {
     da_attestation_input_index: Int,
+    da_params_ref_input_index: Int,
     state_queue_input_index: Int,
     state_queue_output_index: Int,
     state_queue_mint_ref_script_input_index: Int,
+  }
+  /// Refunds an attestation that a mid-flight committee rotation stranded
+  /// (decision row D-DA5 clause c). Authorization is a *state condition*, not a
+  /// deadline and not a new governed value: the attestation's pinned
+  /// `committee_signers_hash` must no longer equal the current authenticated DA
+  /// params' governed value. Such an attestation can never reach quorum again —
+  /// `validate_add_signatures` pins the datum's committee hash to the governed
+  /// one — so without this path its ADA is locked forever.
+  RescueStrandedAttestation {
+    da_attestation_input_index: Int,
+    da_params_ref_input_index: Int,
+    refund_output_index: Int,
   }
 }
 
@@ -76,4 +96,10 @@ pub type SpendRedeemer {
     signatures: ByteArray,
   }
   BurnForStateQueue { mint_redeemer_index: Int }
+  /// The spend half of `RescueStrandedAttestation`. It carries no authorization
+  /// of its own: it binds this UTxO to the rescue mint redeemer at
+  /// `mint_redeemer_index`, which must name *this* input. That binding is what
+  /// stops one rescue authorization from being replayed onto a second
+  /// attestation UTxO in the same transaction.
+  BurnForRescue { mint_redeemer_index: Int }
 }

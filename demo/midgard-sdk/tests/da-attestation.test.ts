@@ -428,6 +428,8 @@ describe("DA attestation SDK builders", () => {
         lucid,
         fixture.contracts,
         {
+          daParamsUtxo: fixture.daParamsUtxo,
+          daParamsDatum: fixture.daParamsDatum,
           target: fixture.target,
           attestation: thresholdAttestation,
           referenceScripts: fixture.referenceScripts,
@@ -437,6 +439,7 @@ describe("DA attestation SDK builders", () => {
 
     expect(record.reads).toEqual([
       [
+        fixture.daParamsUtxo,
         fixture.referenceScripts.daAttestationMinting,
         fixture.referenceScripts.daAttestationSpending,
         fixture.referenceScripts.stateQueueMinting,
@@ -484,6 +487,8 @@ describe("DA attestation SDK builders", () => {
         lucid,
         fixture.contracts,
         {
+          daParamsUtxo: fixture.daParamsUtxo,
+          daParamsDatum: fixture.daParamsDatum,
           target: fixture.target,
           attestation: fixture.attestation,
           referenceScripts: fixture.referenceScripts,
@@ -495,6 +500,8 @@ describe("DA attestation SDK builders", () => {
         lucid,
         fixture.contracts,
         {
+          daParamsUtxo: fixture.daParamsUtxo,
+          daParamsDatum: fixture.daParamsDatum,
           target: fixture.target,
           attestation: {
             ...fixture.attestation,
