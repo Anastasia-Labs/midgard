@@ -119,12 +119,14 @@ export class LucidDaAttestationSubmitter
       return { status: "already_attested" };
     }
     const attestation = await this.fetchCandidateUtxo(candidate);
+    const daParams = await this.fetchDaParamsUtxo();
     await this.deps.refreshFundingUtxos();
     const tx = await buildApplyAttestationTx({
       lucid: this.deps.lucid,
       contracts: this.deps.contracts,
       target,
       attestationUtxo: attestation.utxo,
+      daParamsUtxo: daParams.utxo,
       referenceScripts: this.deps.referenceScripts,
     });
     const txHash = await this.deps.signSubmit(tx);

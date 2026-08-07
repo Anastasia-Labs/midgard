@@ -2223,6 +2223,7 @@ const attachDaBundle = (input: {
           ApplyToStateQueue: {
             da_attestation_input_index: BigInt(attestationInputIndex),
             state_queue_input_index: BigInt(stateQueueInputIndex),
+            da_params_ref_input_index: 0n,
             state_queue_output_index: input.applyOutputIndex ?? 0n,
             state_queue_mint_ref_script_input_index: 0n,
           },

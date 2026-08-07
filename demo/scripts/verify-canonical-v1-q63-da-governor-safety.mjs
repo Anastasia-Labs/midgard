@@ -126,7 +126,11 @@ const REQUIRED_GROUPS = [
     expected: 3,
     languages: ["aiken", "vitest"],
   },
-  { id: "valid-boundary-controls", expected: 2, languages: ["aiken", "vitest"] },
+  {
+    id: "valid-boundary-controls",
+    expected: 2,
+    languages: ["aiken", "vitest"],
+  },
   {
     id: "below-floor-drain-rejections",
     expected: 3,
@@ -172,11 +176,7 @@ const independentGovernedThresholdFloor = (setLength) => {
 };
 
 const independentFloorTable = [];
-for (
-  let setLength = 0;
-  setLength <= MAX_INDEXED_SIGNER_COUNT;
-  setLength += 1
-) {
+for (let setLength = 0; setLength <= MAX_INDEXED_SIGNER_COUNT; setLength += 1) {
   independentFloorTable.push(independentGovernedThresholdFloor(setLength));
 }
 const independentFloorDigest = createHash("sha256")
@@ -211,9 +211,13 @@ const assertFloorTableProvenance = (candidate) => {
       (entry) => entry.name === name,
     );
     if (bound === undefined) {
-      throw new Error(`ERR_FLOOR_TABLE_UNBOUND: the artifact does not bind ${name}`);
+      throw new Error(
+        `ERR_FLOOR_TABLE_UNBOUND: the artifact does not bind ${name}`,
+      );
     }
-    if (bound.expression !== floorTable.expression.replace("set_len", setName)) {
+    if (
+      bound.expression !== floorTable.expression.replace("set_len", setName)
+    ) {
       throw new Error(
         `ERR_FLOOR_TABLE_EXPRESSION: the F04 ${name} expression ${bound.expression} is not the digest-pinned floor expression with the set named`,
       );
@@ -327,19 +331,29 @@ const partitionRequiredGroups = (candidate) => {
 // code on a dropped, shrunken, or invented acceptance group.
 // ---------------------------------------------------------------------------
 
+// A required group may legitimately live in `groups` (closed) or `openGroups`
+// (blocked); the rescue groups moved from open to closed when Q62 landed the
+// rescue path. Each seed therefore strikes its target wherever it lives, so
+// the mutation can never become a no-op that trips the self-test's
+// no-op-mutation guard.
+const dropGroupEverywhere = (artifact, id) => ({
+  ...artifact,
+  groups: artifact.groups.filter((group) => group.id !== id),
+  openGroups: artifact.openGroups.filter((group) => group.id !== id),
+});
+
 const evidenceFixtures = {
   intact: (artifact) => artifact,
-  "dropped-open-group": (artifact) => ({
-    ...artifact,
-    openGroups: artifact.openGroups.filter(
-      (group) => group.id !== "partial-attestation-rescue-path",
-    ),
-  }),
-  // The exact E1 shape: delete every OPEN entry and the incompleteness signal
-  // vanishes with them.
+  "dropped-open-group": (artifact) =>
+    dropGroupEverywhere(artifact, "partial-attestation-rescue-path"),
+  // The exact E1 shape: delete both rescue entries wherever they live and
+  // declare acceptance complete — the incompleteness/coverage signal must not
+  // vanish with them.
   "dropped-all-open-groups": (artifact) => ({
-    ...artifact,
-    openGroups: [],
+    ...dropGroupEverywhere(
+      dropGroupEverywhere(artifact, "partial-attestation-rescue-path"),
+      "rescue-theft-duplicate-replay-rejections",
+    ),
     acceptanceComplete: true,
   }),
   "dropped-measured-group": (artifact) => ({
@@ -350,6 +364,11 @@ const evidenceFixtures = {
   }),
   "shrunken-open-group": (artifact) => ({
     ...artifact,
+    groups: artifact.groups.map((group) =>
+      group.id === "rescue-theft-duplicate-replay-rejections"
+        ? { ...group, expected: 1 }
+        : group,
+    ),
     openGroups: artifact.openGroups.map((group) =>
       group.id === "rescue-theft-duplicate-replay-rejections"
         ? { ...group, expected: 1 }
@@ -625,7 +644,10 @@ assert.equal(
 // `MIDGARD_AIKEN_BIN` first, then `MIDGARD_FORK_AIKEN_BIN` — the same
 // precedence the Q60 verifier and the capability-reconciliation gate use, since
 // CI pins only the latter.
-const aikenBinaryVariable = ["MIDGARD_AIKEN_BIN", "MIDGARD_FORK_AIKEN_BIN"].find(
+const aikenBinaryVariable = [
+  "MIDGARD_AIKEN_BIN",
+  "MIDGARD_FORK_AIKEN_BIN",
+].find(
   (name) =>
     typeof process.env[name] === "string" && process.env[name].length > 0,
 );
@@ -972,7 +994,10 @@ assert.match(
 const compilerStubRoot = mkdtempSync(join(tmpdir(), "midgard-q63-compiler-"));
 try {
   const stubBinary = resolve(compilerStubRoot, "stock-aiken");
-  writeFileSync(stubBinary, "#!/bin/sh\nprintf '%s\\n' 'aiken v1.1.22+unknown'\n");
+  writeFileSync(
+    stubBinary,
+    "#!/bin/sh\nprintf '%s\\n' 'aiken v1.1.22+unknown'\n",
+  );
   chmodSync(stubBinary, 0o755);
   const stockEnvironment = { ...process.env, MIDGARD_AIKEN_BIN: stubBinary };
   delete stockEnvironment.MIDGARD_FORK_AIKEN_BIN;
@@ -1030,7 +1055,9 @@ if (emitJson) {
             .map(([language, total]) => `${language}=${String(total)}`)
             .join("/")}`,
       )
-      .join(", ")}; ${String(executedChecks)} runner-executed checks under ${aikenCompiler} via ${aikenBinaryVariable}, ${String(declared.structural.standaloneCatalogueIds.length)} declared standalone catalogue IDs, ${String(declared.structural.implementationOrLiveClaimsFromF04)} declared F04-derived implementation/live claims)`,
+      .join(
+        ", ",
+      )}; ${String(executedChecks)} runner-executed checks under ${aikenCompiler} via ${aikenBinaryVariable}, ${String(declared.structural.standaloneCatalogueIds.length)} declared standalone catalogue IDs, ${String(declared.structural.implementationOrLiveClaimsFromF04)} declared F04-derived implementation/live claims)`,
   );
 }
 

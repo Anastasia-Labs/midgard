@@ -201,12 +201,14 @@ export const buildApplyAttestationTx = async ({
   contracts,
   target,
   attestationUtxo,
+  daParamsUtxo,
   referenceScripts,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: DaAttestationValidatorSet;
   readonly target: DaAttestationTarget;
   readonly attestationUtxo: UTxO;
+  readonly daParamsUtxo: UTxO;
   readonly referenceScripts: DaAttestationReferenceScripts;
 }): Promise<TxSignBuilder> => {
   const attestationUnit = SDK.daAttestationUnit(
@@ -246,6 +248,11 @@ export const buildApplyAttestationTx = async ({
               outputDatumCborMatches(output, updatedStateQueueDatum) &&
               assetsEqual(output.assets, target.stateQueueUtxo.utxo.assets),
             "DA attestation apply state queue",
+          ),
+          da_params_ref_input_index: SDK.requireReferenceInputIndex(
+            ctx as never,
+            daParamsUtxo,
+            "DA attestation apply DA params",
           ),
           state_queue_mint_ref_script_input_index:
             SDK.requireReferenceInputIndex(
@@ -294,6 +301,7 @@ export const buildApplyAttestationTx = async ({
     lucid
       .newTx()
       .readFrom([
+        daParamsUtxo,
         referenceScripts.daAttestationMinting,
         referenceScripts.daAttestationSpending,
         referenceScripts.stateQueueMinting,

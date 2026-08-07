@@ -530,6 +530,8 @@ const attestHeader = ({
         lucid,
         contracts,
         {
+          daParamsUtxo,
+          daParamsDatum,
           target,
           attestation: signedAttestation,
           referenceScripts,
