@@ -4,7 +4,7 @@ use aiken/primitive/bytearray
 use cardano/address.{Address, Script}
 use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction,
+  InlineDatum, Input, Output, OutputReference, Transaction, placeholder,
 }
 use midgard/da_attestation_types.{
   DaParamsDatum, da_params_asset_name, max_indexed_signer_count,
@@ -99,12 +99,29 @@ fn sorted_unique_len_from(
 /// single-key capture of `da_threshold` or `update_threshold` unrepresentable.
 const min_governed_threshold: Int = 2
 
-/// Smallest owner set the governor will represent — the owner-set drain
-/// protection. It is deliberately a separate constant from
-/// `min_governed_threshold` even though both are currently two: one bounds a
-/// threshold, the other bounds a set size, and a future change to either must
-/// not silently move the other. `da_params_governor_invariant_owner_set_drain_protection`
-/// pins the relationship they must keep.
+/// Smallest owner set the governor will represent.
+///
+/// Under the current `governed_threshold_floor` the `expect owner_len >=
+/// min_owner_count` in `valid_datum` is **redundant**, not load-bearing: a
+/// one-owner set is already unrepresentable because `update_threshold` would
+/// have to be both `>= governed_threshold_floor(1) == 2` and `<= owner_len ==
+/// 1`. Removing the line would not change the set of datums the governor
+/// admits today, so nothing here should be read as "this line is what stops the
+/// drain".
+///
+/// It is kept as *declared defense in depth*, because the redundancy is an
+/// artifact of the current arithmetic rather than a property of the governor.
+/// F04 §4's two-thirds term is an economic parameter; if it were ever weakened
+/// (say to `ceil(set_len/2)`, whose value at 1 is 1) a one-owner set carrying
+/// `update_threshold == 1` would become representable again and single-key
+/// governance capture would return. This constant blocks that independently of
+/// whatever the floor expression becomes.
+///
+/// It is deliberately a separate constant from `min_governed_threshold` even
+/// though both are currently two: one bounds a set size, the other bounds a
+/// threshold, and a future change to either must not silently move the other.
+/// `da_params_governor_invariant_owner_set_drain_protection` pins the
+/// relationship they must keep.
 const min_owner_count: Int = 2
 
 /// F04 §4 governed threshold floor: `max(2, ceil(2*set_len/3))`.
@@ -371,14 +388,131 @@ fn floor_is_satisfiable_from(set_len: Int, max_len: Int) -> Bool {
   }
 }
 
+/// True when no threshold in `threshold..set_len` can satisfy both governed
+/// bounds `valid_datum` applies to a threshold over a set of `set_len` members
+/// — `>= governed_threshold_floor(set_len)` and `<= set_len`. Exhaustive rather
+/// than an appeal to monotonicity, so "regardless of threshold" is measured
+/// over the whole representable range instead of asserted.
+fn no_threshold_satisfies_floor(set_len: Int, threshold: Int) -> Bool {
+  if threshold > set_len {
+    True
+  } else if threshold >= governed_threshold_floor(set_len) {
+    False
+  } else {
+    no_threshold_satisfies_floor(set_len, threshold + 1)
+  }
+}
+
+// ## Q63 spend-seam fixtures
+//
+// `valid_datum` is a private function; the property that actually matters is
+// that the `spend` handler runs it over the *continuing* output's datum, so a
+// quorum cannot rotate the params into a below-floor configuration. These
+// fixtures build the smallest transaction that reaches that check.
+
+const test_governor_script_hash: ByteArray =
+  #"7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+
+const test_governor_own_ref: OutputReference =
+  OutputReference {
+    transaction_id: #"0101010101010101010101010101010101010101010101010101010101010101",
+    output_index: 0,
+  }
+
+const test_governor_init_ref: OutputReference =
+  OutputReference {
+    transaction_id: #"0202020202020202020202020202020202020202020202020202020202020202",
+    output_index: 1,
+  }
+
+const test_governor_lovelace: Int = 2_000_000
+
+fn test_governor_params_value() -> Value {
+  assets.from_lovelace(test_governor_lovelace)
+    |> assets.add(test_governor_script_hash, da_params_asset_name, 1)
+}
+
+/// A DA-params update transaction: the params UTxO is spent from the governor
+/// script, `signatories` witness it, and the NFT continues to the same address
+/// carrying `continued_datum` and the same value.
+fn test_governor_tx(
+  input_datum: DaParamsDatum,
+  continued_datum: DaParamsDatum,
+  signatories: List<VerificationKeyHash>,
+) -> Transaction {
+  let script_address = address.from_script(test_governor_script_hash)
+  let params_value = test_governor_params_value()
+  let input_datum_data: Data = input_datum
+  let continued_datum_data: Data = continued_datum
+  Transaction {
+    ..placeholder,
+    inputs: [
+      Input {
+        output_reference: test_governor_own_ref,
+        output: Output {
+          address: script_address,
+          value: params_value,
+          datum: InlineDatum(input_datum_data),
+          reference_script: None,
+        },
+      },
+    ],
+    outputs: [
+      Output {
+        address: script_address,
+        value: params_value,
+        datum: InlineDatum(continued_datum_data),
+        reference_script: None,
+      },
+    ],
+    extra_signatories: signatories,
+  }
+}
+
+fn test_governor_spend(
+  input_datum: DaParamsDatum,
+  continued_datum: DaParamsDatum,
+  signatories: List<VerificationKeyHash>,
+) -> Bool {
+  let redeemer: Data = 0
+  da_params_governor.spend(
+    test_governor_init_ref,
+    test_max_committee_size,
+    test_max_owner_count,
+    Some(input_datum),
+    redeemer,
+    test_governor_own_ref,
+    test_governor_tx(input_datum, continued_datum, signatories),
+  )
+}
+
+/// The params the spend-seam tests start from: a 6-member committee at the F04
+/// floor, and a 3-owner set whose `update_threshold` of two is also at its
+/// floor.
+fn test_governor_input_params() -> DaParamsDatum {
+  test_params(6, 4, 3, 2)
+}
+
+/// Exactly `update_threshold` owners of `test_governor_input_params`, so the
+/// owner quorum is met and the spend reaches the continuing-output checks.
+fn test_governor_quorum() -> List<VerificationKeyHash> {
+  [test_owner_hash(1), test_owner_hash(2)]
+}
+
 // ## Q63 governed floor/drain invariants
 //
-// The three invariants the governor now enforces, pinned as absolute values
-// against F04 §4 rather than against each other.
+// These three tests pin the *arithmetic* — `governed_threshold_floor` and the
+// two constants — as absolute values against F04 §4 rather than against each
+// other. They deliberately do not exercise a datum: that `valid_datum` applies
+// the floor to `da_threshold` and `update_threshold` is pinned by the
+// valid-boundary controls and the below-floor rejections below, and that the
+// `spend` handler applies `valid_datum` to a continuing output is pinned by the
+// spend-seam section.
 
-/// Invariant 1 — majority DA floor. `da_threshold` is floored at
-/// `max(2, ceil(2*committee_len/3))`, so a bare majority of a committee is
-/// never enough to move DA attestation power.
+/// Invariant 1 — majority DA floor. `governed_threshold_floor` reproduces
+/// `max(2, ceil(2*set_len/3))` at the F04 §4 table points, which is what makes a
+/// bare majority of a committee insufficient once `valid_datum` floors
+/// `da_threshold` with it.
 test da_params_governor_invariant_da_threshold_majority_floor() {
   and {
     governed_threshold_floor(2) == 2,
@@ -392,9 +526,12 @@ test da_params_governor_invariant_da_threshold_majority_floor() {
   }
 }
 
-/// Invariant 2 — 2-of-N update floor. The floor never drops below two for any
-/// representable set size, so single-key capture of either threshold is
-/// unrepresentable, and it never exceeds the set size, so it stays satisfiable.
+/// Invariant 2 — 2-of-N update floor. `governed_threshold_floor` never returns
+/// less than two, and never exceeds its own argument for any set size from
+/// `min_owner_count` to `max_indexed_signer_count`. The first half is what
+/// leaves single-key capture of either threshold unrepresentable once
+/// `valid_datum` applies the floor; the second is what keeps the floor
+/// satisfiable rather than a bound that admits nothing.
 test da_params_governor_invariant_update_threshold_two_of_n_floor() {
   and {
     min_governed_threshold == 2,
@@ -406,9 +543,13 @@ test da_params_governor_invariant_update_threshold_two_of_n_floor() {
   }
 }
 
-/// Invariant 3 — owner-set drain protection. The owner set floor is two, and a
-/// lone owner cannot satisfy the threshold floor, so an owner quorum cannot
-/// drain the owner set toward a single key or toward empty.
+/// Invariant 3 — owner-set drain protection. Pins the two constants and the
+/// one arithmetic fact they rest on: `min_owner_count` is two, it is not below
+/// `min_governed_threshold` (an owner set must be able to carry the threshold
+/// floor, or the governor would admit no datum at all), and the floor at a
+/// one-member set exceeds one. The last of those is what makes the drain
+/// unrepresentable even with `min_owner_count` removed — see the constant's
+/// own docstring for why the redundant check is kept anyway.
 test da_params_governor_invariant_owner_set_drain_protection() {
   and {
     min_owner_count == 2,
@@ -439,9 +580,17 @@ test da_params_governor_control_update_threshold_at_floor_accepted() {
 
 // ## Q63 below-floor and drain rejection classes
 //
-// Each rejection pins exactly one disposition: every field other than the one
-// under test is at or above its own governed floor, so the failure can only be
-// the named violation.
+// The two threshold rejections each pin exactly one disposition: every field
+// other than the one under test sits at or above its own governed floor, so the
+// failure can only be the named violation.
+//
+// The drain rejection is deliberately the exception, and says so in its own
+// name. No one-owner datum can violate exactly one bound — `owner_len >=
+// min_owner_count`, `update_threshold >= governed_threshold_floor(owner_len)`
+// and `update_threshold <= owner_len` all reject it, and the overlap is not
+// removable by choosing a different `update_threshold`. It therefore pins the
+// class (a drained owner set is unrepresentable) rather than a single
+// mechanism.
 
 /// Rejection: a bare majority `3` of a 6-member committee is below the F04
 /// two-thirds floor of `4`, so DA capture by a sub-two-thirds committee slice
@@ -456,10 +605,76 @@ test da_params_governor_rejects_update_threshold_below_floor() fail {
   test_valid_datum(test_params(6, 4, 3, 1))
 }
 
-/// Rejection: draining the owner set to a single owner is unrepresentable —
-/// the floor is `2`, and `update_threshold` can never exceed the owner count.
-test da_params_governor_rejects_owner_set_drained_to_one() fail {
+/// Rejection: draining the owner set to a single owner is unrepresentable.
+///
+/// Named for the overlap because the overlap is real: this datum violates
+/// `owner_len >= min_owner_count` *and* `update_threshold >=
+/// governed_threshold_floor(1) == 2`, and the two cannot be separated — every
+/// `update_threshold` a one-owner set could name is either below the floor or
+/// above the owner count. The test therefore pins that the class is rejected,
+/// not which of the three bounds did it. `min_owner_count`'s docstring records
+/// which of them is redundant today and why it is kept.
+test da_params_governor_rejects_owner_set_drained_to_one_by_overlapping_bounds() fail {
   test_valid_datum(test_params(6, 4, 1, 1))
+}
+
+// ## Q63 single-member-committee consequence (review finding I2)
+//
+// A consequence of the F04 §4 floor that is worth pinning explicitly rather
+// than leaving for an operator to rediscover: `governed_threshold_floor(1) ==
+// 2 > 1`, so a one-member DA committee is unrepresentable — there is no
+// `da_threshold` it could name. The same holds for a one-member owner set. Any
+// deployment topology that assumed a single-signer DA committee is now invalid
+// by construction, which is why the parent handoff has to move the node's
+// single-key defaults.
+
+/// Consequence, exhaustively: no `da_threshold` in `0..1` satisfies both
+/// governed bounds over a one-member committee, so the committee size itself is
+/// what is unrepresentable — not one unlucky threshold choice.
+test da_params_governor_rejects_single_member_committee_thresholds() {
+  no_threshold_satisfies_floor(1, 0)
+}
+
+/// Consequence, at the datum: a one-member committee naming the smallest
+/// `da_threshold` the floor allows (`2`) is rejected because that threshold
+/// exceeds the committee. Single disposition — the owner set is at its own
+/// floor, and `da_threshold >= governed_threshold_floor(1) == 2` holds, so
+/// `da_threshold <= committee_len` is the only bound left to fail.
+test da_params_governor_rejects_single_member_committee_datum() fail {
+  test_valid_datum(test_params(1, 2, 4, 3))
+}
+
+// ## Q63 spend-seam datum enforcement (review finding D1)
+//
+// Every test above reaches `valid_datum` directly. That leaves the seam that
+// actually matters unpinned: dropping `expect valid_datum(...)` from
+// `params_output_datum_at_address` would let an owner quorum rotate the params
+// into a below-floor configuration while every direct-call test stayed green.
+// These two exercise the real `spend` handler, so the negative fails closed
+// only because the handler runs the check on the continuing output.
+
+/// Spend-seam control: a quorum-signed update that raises `da_threshold` from
+/// the floor (`4`) to `5` over the same 6-member committee is accepted, so the
+/// negative below is not a handler that rejects every update.
+test da_params_governor_spend_control_quorum_signed_update_accepted() {
+  test_governor_spend(
+    test_governor_input_params(),
+    test_params(6, 5, 3, 2),
+    test_governor_quorum(),
+  )
+}
+
+/// Spend-seam rejection: the same quorum-signed update, differing only in that
+/// the continuing datum drops `da_threshold` to a bare majority `3` of the
+/// 6-member committee, is rejected. The input datum is valid, the quorum is
+/// met, the NFT continues to the same address and the value is not drained, so
+/// the continuing output's governed floor is the only bound that can fail.
+test da_params_governor_spend_rejects_continued_datum_below_floor() fail {
+  test_governor_spend(
+    test_governor_input_params(),
+    test_params(6, 3, 3, 2),
+    test_governor_quorum(),
+  )
 }
 
 validator da_params_governor(

@@ -4,7 +4,7 @@
   "goalIds": ["Q63"],
   "decisionRow": "D-DA5",
   "acceptanceComplete": false,
-  "note": "Q63 governs the DA params floors and the owner-set drain protection accepted in F04 §4, and pins them in both languages. Acceptance clauses (a) governed lower bounds and (b) owner-set drain protection are implemented in `onchain/aiken/validators/da-params-governor.ak` and measured by the groups below. Acceptance clause (c) — the partial-attestation rescue/refund path — is NOT delivered here: it requires new `MintRedeemer` and `SpendRedeemer` constructors, and both enums live in `onchain/aiken/lib/midgard/da-attestation-types.ak`, which is Q62's exclusive lease and forbidden to this task. The rescue groups are therefore recorded OPEN with their blocker, and this gate exits non-zero until they carry measured evidence. No count here is a declaration count: every published number is recomputed from an executed runner report.",
+  "note": "Q63 governs the DA params floors and the owner-set drain protection accepted in F04 §4, and pins them in both languages. Acceptance clauses (a) governed lower bounds and (b) owner-set drain protection are implemented in `onchain/aiken/validators/da-params-governor.ak` and measured by the groups below. Acceptance clause (c) — the partial-attestation rescue/refund path — is NOT delivered here: it requires new `MintRedeemer` and `SpendRedeemer` constructors, and both enums live in `onchain/aiken/lib/midgard/da-attestation-types.ak`, which is Q62's exclusive lease and forbidden to this task. The rescue groups are therefore recorded OPEN with their blocker, and this gate exits non-zero until they carry measured evidence. No count here is a declaration count: every published number is recomputed from an executed runner report. Deployment consequence of the F04 §4 floor, recorded so it is not rediscovered in the field: because `max(2, ceil(2*1/3)) == 2 > 1`, a one-member DA committee (and likewise a one-member owner set) is now unrepresentable — there is no `da_threshold` such a committee could name — so every single-signer DA topology is invalid by construction and must move to at least two members.",
   "decisionSource": {
     "path": "docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md",
     "section": "4. DA-governor floors (Q63, ACCEPTED)",
@@ -29,17 +29,31 @@
       }
     ]
   },
+  "floorTable": {
+    "note": "Quoting F04's floor text proves the decision record still says what Q63 cited; it does not prove either implementation computes it. This digest is the shared pin that does. The verifier recomputes `max(2, ceil(2n/3))` from an integer ceiling written independently of the `(2n+2)/3` form both implementations use, hashes the table, and asserts this value; the `floor-arithmetic-provenance` Vitest check hashes the table produced by the SDK's `governedThresholdFloor` and asserts the same value. A floor/ceil transcription error on either side breaks one of the two legs.",
+    "expression": "max(2, ceil(2*set_len/3))",
+    "range": [0, 256],
+    "rangeSource": "onchain/aiken/lib/midgard/da-attestation-types.ak `max_indexed_signer_count`",
+    "digest": "sha256 of JSON.stringify([floor(0), floor(1), ..., floor(256)])",
+    "sha256": "f804429e15a05c4810a6972d335fb0e0e641efa9bdd1199fee224d710e67b744"
+  },
+  "compiler": {
+    "environmentVariable": "MIDGARD_AIKEN_BIN",
+    "rule": "Aiken test execution for this goal is fork-only: the stock v1.1.22 build that is the authority for compilation and applied validator hashes ships a codegen defect and takes hours over this tree, so it is used only for `aiken check --skip-tests`. This gate fails closed when `MIDGARD_AIKEN_BIN` is unset rather than falling through to whatever `aiken` is first on PATH, and records the spawned binary's self-reported version in its output so a published on-chain result always names the compiler that produced it."
+  },
   "implementation": {
     "governor": "onchain/aiken/validators/da-params-governor.ak",
     "offChainTwin": "demo/midgard-sdk/src/da-attestation.ts",
     "floorFunction": "governed_threshold_floor",
     "offChainFloorFunction": "governedThresholdFloor",
-    "minOwnerCount": 2
+    "minGovernedThreshold": 2,
+    "minOwnerCount": 2,
+    "constantSplit": "`min_governed_threshold` bounds a threshold, `min_owner_count` bounds a set size. The off-chain twin mirrors the split as `MIN_DA_GOVERNED_THRESHOLD` and `MIN_DA_OWNER_COUNT` so a change to either cannot silently move the other. The `owner_len >= min_owner_count` check is redundant under the current floor (a one-owner set already fails because `update_threshold` would have to be both >= 2 and <= 1) and is kept as declared defense in depth against a future weakening of the two-thirds term; the drain rejection test is named for the resulting overlap rather than claiming a single disposition."
   },
   "groups": [
     {
       "id": "governed-floor-drain-invariants",
-      "claim": "The governor enforces the F04 majority DA floor, the 2-of-N update floor, and owner-set drain protection.",
+      "claim": "The floor arithmetic the governor applies reproduces the F04 majority DA floor, the 2-of-N update floor, and the constants the owner-set drain protection rests on.",
       "expected": 3,
       "disposition": "PASS",
       "evidence": [
@@ -99,7 +113,7 @@
           "selectors": [
             "da_params_governor_rejects_da_threshold_below_floor",
             "da_params_governor_rejects_update_threshold_below_floor",
-            "da_params_governor_rejects_owner_set_drained_to_one"
+            "da_params_governor_rejects_owner_set_drained_to_one_by_overlapping_bounds"
           ]
         },
         {
@@ -109,6 +123,65 @@
             "rejection 1 — a bare committee majority is below the two-thirds floor",
             "rejection 2 — a single-key update_threshold is below the 2-of-N floor",
             "rejection 3 — an owner set drained to one key is unrepresentable"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "single-member-committee-consequence",
+      "claim": "A one-member DA committee is unrepresentable: no da_threshold satisfies both governed bounds over a set of one, exhaustively over the representable range and at the datum.",
+      "expected": 2,
+      "disposition": "PASS",
+      "evidence": [
+        {
+          "kind": "aiken",
+          "module": "onchain/aiken/validators/da-params-governor.ak",
+          "selectors": [
+            "da_params_governor_rejects_single_member_committee_thresholds",
+            "da_params_governor_rejects_single_member_committee_datum"
+          ]
+        },
+        {
+          "kind": "vitest",
+          "file": "demo/midgard-sdk/tests/da-governor-safety-v1.test.ts",
+          "titles": [
+            "consequence 1 — a one-member committee admits no representable da_threshold",
+            "consequence 2 — a one-member committee datum is rejected at the committee bound"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "spend-seam-datum-enforcement",
+      "claim": "The spend handler itself enforces the governed floors on the continuing output, so a quorum cannot rotate the params into a below-floor configuration.",
+      "expected": 2,
+      "languages": ["aiken"],
+      "languageRationale": "On-chain only by construction, and declared so rather than left to be inferred from the citation list. The claim is about a Plutus spending handler resolving its own continuing output; the SDK builds no DA-params update transaction, so there is no off-chain twin that could carry this cardinality. Every other measured group is required to carry it in both languages.",
+      "disposition": "PASS",
+      "evidence": [
+        {
+          "kind": "aiken",
+          "module": "onchain/aiken/validators/da-params-governor.ak",
+          "selectors": [
+            "da_params_governor_spend_control_quorum_signed_update_accepted",
+            "da_params_governor_spend_rejects_continued_datum_below_floor"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "floor-arithmetic-provenance",
+      "claim": "The off-chain floor reproduces the F04 arithmetic over every representable set size, measured against a digest the verifier recomputes independently rather than against the quoted decision text.",
+      "expected": 1,
+      "languages": ["vitest"],
+      "languageRationale": "Off-chain only by construction, and declared so. The verifier is a Node process: it can import no Aiken, so the on-chain half of the same arithmetic is pinned by the `governed-floor-drain-invariants` selectors against the same absolute table instead.",
+      "disposition": "PASS",
+      "evidence": [
+        {
+          "kind": "vitest",
+          "file": "demo/midgard-sdk/tests/da-governor-safety-v1.test.ts",
+          "titles": [
+            "provenance — the SDK floor reproduces the F04 arithmetic over every representable set size"
           ]
         }
       ]
@@ -141,33 +214,43 @@
     }
   ],
   "summary": {
-    "groups": 3,
+    "measuredGroups": 6,
     "openGroups": 2,
-    "governedFloorDrainInvariants": 3,
-    "validBoundaryControls": 2,
-    "belowFloorDrainRejectionClasses": 3,
-    "partialAttestationRescuePaths": 0,
-    "rescueTheftDuplicateReplayRejectionClasses": 0,
-    "aikenChecksExecuted": 8,
-    "vitestChecksExecuted": 8,
-    "executedChecks": 16,
+    "groupTotals": {
+      "governed-floor-drain-invariants": 3,
+      "valid-boundary-controls": 2,
+      "below-floor-drain-rejections": 3,
+      "single-member-committee-consequence": 2,
+      "spend-seam-datum-enforcement": 2,
+      "floor-arithmetic-provenance": 1,
+      "partial-attestation-rescue-path": 0,
+      "rescue-theft-duplicate-replay-rejections": 0
+    },
+    "aikenChecksExecuted": 12,
+    "vitestChecksExecuted": 11,
+    "executedChecks": 23,
     "runners": [
-      "cd onchain/aiken && aiken check -e -m da_params_governor_invariant_da_threshold_majority_floor -m da_params_governor_invariant_update_threshold_two_of_n_floor -m da_params_governor_invariant_owner_set_drain_protection -m da_params_governor_control_da_threshold_at_floor_accepted -m da_params_governor_control_update_threshold_at_floor_accepted -m da_params_governor_rejects_da_threshold_below_floor -m da_params_governor_rejects_update_threshold_below_floor -m da_params_governor_rejects_owner_set_drained_to_one",
+      "cd onchain/aiken && $MIDGARD_AIKEN_BIN check -e -m da_params_governor_invariant_da_threshold_majority_floor -m da_params_governor_invariant_update_threshold_two_of_n_floor -m da_params_governor_invariant_owner_set_drain_protection -m da_params_governor_control_da_threshold_at_floor_accepted -m da_params_governor_control_update_threshold_at_floor_accepted -m da_params_governor_rejects_da_threshold_below_floor -m da_params_governor_rejects_update_threshold_below_floor -m da_params_governor_rejects_owner_set_drained_to_one_by_overlapping_bounds -m da_params_governor_rejects_single_member_committee_thresholds -m da_params_governor_rejects_single_member_committee_datum -m da_params_governor_spend_control_quorum_signed_update_accepted -m da_params_governor_spend_rejects_continued_datum_below_floor",
       "pnpm --dir demo/midgard-sdk exec vitest run tests/da-governor-safety-v1.test.ts"
     ]
   },
-  "structural": {
-    "standaloneCatalogueIds": [],
-    "implementationOrLiveClaimsFromF04": 0,
-    "rationale": "Q63 is a governed DA safety/liveness fix. It adds no fraud-proof catalogue family and therefore no standalone catalogue ID. F04 is a decision record only: it supplies the accepted floor expressions, and nothing here infers implementation status, deployment, infrastructure, or live readiness from it."
-  },
-  "parentIntegration": {
-    "owner": "parent",
-    "pendingEdits": [
-      "Regenerate `onchain/aiken/plutus.json`: the `da_params_governor` mint and spend hashes move because `valid_datum` gained the governed floors. Re-pin every consumer of that hash.",
-      "`demo/midgard-node/src/transactions/initialization.ts` builds DA params with `owners: [operatorKeyHash]`, `update_threshold: 1n`, and a `DA_THRESHOLD` defaulting to `1n` over a single-key committee. That configuration is exactly the single-key capture F04 §4 forbids and is now unmintable; the node default and its `DA_COMMITTEE_HEX`/`DA_THRESHOLD` config path must move to a >= 2-of-N committee and owner set.",
-      "Suites outside this task's lease pin `update_threshold: 1n` or a single-key committee and will need the same correction: `demo/midgard-node/tests/initialization-emulator.test.ts`, `demo/midgard-sdk/tests/da-attestation.test.ts`, `demo/da-committee-node/tests/startup-da-params.test.ts`, `demo/da-committee-node/tests/scalus-add-signatures-eval.test.ts`, `demo/da-committee-node/tests/da-attestation-reader.test.ts`.",
-      "Arbitrate the `onchain/aiken/lib/midgard/da-attestation-types.ak` lease so the Q63 rescue path (acceptance clause c) can add its `MintRedeemer`/`SpendRedeemer` constructors, or sequence Q63's rescue half after Q62."
-    ]
+  "declared": {
+    "note": "The fields below are author declarations about scope, not measurements. They are published as declarations so that nothing in this artifact is asserted against itself: the verifier checks them against constants it holds, and never re-derives one side of a comparison from the other.",
+    "structural": {
+      "standaloneCatalogueIds": [],
+      "implementationOrLiveClaimsFromF04": 0,
+      "rationale": "Q63 is a governed DA safety/liveness fix. It adds no fraud-proof catalogue family and therefore no standalone catalogue ID. F04 is a decision record only: it supplies the accepted floor expressions, and nothing here infers implementation status, deployment, infrastructure, or live readiness from it."
+    },
+    "parentIntegration": {
+      "owner": "parent",
+      "pendingEdits": [
+        "Regenerate `onchain/aiken/plutus.json`: the `da_params_governor` mint and spend hashes move because `valid_datum` gained the governed floors. Re-pin every consumer of that hash. (The Q63 review remediation did not move them again — its governor edits are tests and comments only, and the compiled `da_params_governor` hash is byte-identical before and after.)",
+        "`demo/midgard-node/src/transactions/initialization.ts` builds DA params with `owners: [operatorKeyHash]`, `update_threshold: 1n`, and a `DA_THRESHOLD` defaulting to `1n` over a single-key committee. That configuration is exactly the single-key capture F04 §4 forbids and is now unmintable; the node default and its `DA_COMMITTEE_HEX`/`DA_THRESHOLD` config path must move to a >= 2-of-N committee and owner set. Note the sharper form recorded above: a one-member committee is unrepresentable at any threshold, so this is not a matter of raising `DA_THRESHOLD` alone.",
+        "Suites outside this task's lease pin `update_threshold: 1n` or a single-key committee and will need the same correction: `demo/midgard-node/tests/initialization-emulator.test.ts`, `demo/midgard-sdk/tests/da-attestation.test.ts`, `demo/da-committee-node/tests/startup-da-params.test.ts`, `demo/da-committee-node/tests/scalus-add-signatures-eval.test.ts`, `demo/da-committee-node/tests/da-attestation-reader.test.ts`.",
+        "Arbitrate the `onchain/aiken/lib/midgard/da-attestation-types.ak` lease so the Q63 rescue path (acceptance clause c) can add its `MintRedeemer`/`SpendRedeemer` constructors, or sequence Q63's rescue half after Q62.",
+        "F05 task manifest (`docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json`, outside this task's lease) declares this gate's command as bare `node demo/scripts/verify-canonical-v1-q63-da-governor-safety.mjs`. The gate now fails closed with ERR_AIKEN_BINARY_UNPINNED when `MIDGARD_AIKEN_BIN` is unset, per the standing fork-only rule for Aiken test execution, so that command needs the `MIDGARD_AIKEN_BIN=<fork> ` prefix.",
+        "The same manifest's `expectedNonzeroCounts` prose still describes Q63's pre-review group vocabulary (3 invariants / 2 controls / 3 rejections / 1 rescue path / 3 rescue rejections). The remediation added the `single-member-committee-consequence`, `spend-seam-datum-enforcement` and `floor-arithmetic-provenance` groups and renamed the drain selector to `da_params_governor_rejects_owner_set_drained_to_one_by_overlapping_bounds`; the manifest text must be re-stated against the group totals this gate now publishes."
+      ]
+    }
   }
 }

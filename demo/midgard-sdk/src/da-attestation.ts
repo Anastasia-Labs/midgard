@@ -56,9 +56,32 @@ export type DaParamsDatum = Data.Static<typeof DaParamsDatumSchema>;
 export const DaParamsDatum = DaParamsDatumSchema as unknown as DaParamsDatum;
 
 /**
- * Smallest owner set the DA params governor will represent. A lone owner
- * cannot carry an `update_threshold` of at least two, so this constant is also
- * the owner-set drain protection.
+ * Lower clamp of the F04 §4 governed threshold floor — the twin of
+ * `min_governed_threshold` in
+ * `onchain/aiken/validators/da-params-governor.ak`. This is what makes
+ * single-key capture of `da_threshold` or `update_threshold` unrepresentable.
+ *
+ * Deliberately a separate constant from {@link MIN_DA_OWNER_COUNT} even though
+ * both are currently two, mirroring the on-chain split: this one bounds a
+ * threshold, that one bounds a set size, and a change to either must not
+ * silently move the other.
+ *
+ * Source: `docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md`
+ * §4 (Q63, ACCEPTED).
+ */
+export const MIN_DA_GOVERNED_THRESHOLD = 2;
+
+/**
+ * Smallest owner set the DA params governor will represent — the twin of
+ * `min_owner_count` in `onchain/aiken/validators/da-params-governor.ak`.
+ *
+ * As on-chain, the `owner_set_below_minimum` check this constant drives is
+ * currently *redundant* rather than load-bearing: a one-owner set is already
+ * unrepresentable because `updateThreshold` would have to be both
+ * `>= governedThresholdFloor(1) === 2` and `<= ownerCount === 1`. It is kept as
+ * declared defense in depth so the drain protection survives a future change to
+ * the floor expression, and {@link daParamsFloorViolations} reports it as its
+ * own violation class so a caller can tell the two apart.
  *
  * Source: `docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md`
  * §4 (Q63, ACCEPTED).
@@ -70,9 +93,12 @@ export const MIN_DA_OWNER_COUNT = 2;
  *
  * TypeScript twin of `governed_threshold_floor` in
  * `onchain/aiken/validators/da-params-governor.ak`. Both evaluate the ceiling
- * as `(2*setLength + 2) / 3` under integer division so that the two languages
- * agree on every set size; `tests/da-governor-safety-v1.test.ts` pins the
- * shared vectors.
+ * as `(2*setLength + 2) / 3` under integer division and both clamp with the
+ * threshold constant (`MIN_DA_GOVERNED_THRESHOLD` / `min_governed_threshold`),
+ * so the two languages agree on every representable set size — that is, every
+ * size up to `max_indexed_signer_count` (256), the largest committee the
+ * attested-signer bitmap can index. `tests/da-governor-safety-v1.test.ts` pins
+ * the agreement over that whole range rather than at sample points alone.
  */
 export const governedThresholdFloor = (setLength: number): number => {
   if (!Number.isSafeInteger(setLength) || setLength < 0) {
@@ -81,9 +107,9 @@ export const governedThresholdFloor = (setLength: number): number => {
     );
   }
   const twoThirdsCeiling = Math.floor((2 * setLength + 2) / 3);
-  return twoThirdsCeiling > MIN_DA_OWNER_COUNT
+  return twoThirdsCeiling > MIN_DA_GOVERNED_THRESHOLD
     ? twoThirdsCeiling
-    : MIN_DA_OWNER_COUNT;
+    : MIN_DA_GOVERNED_THRESHOLD;
 };
 
 /** One governed-bound violation class reported by {@link daParamsFloorViolations}. */
