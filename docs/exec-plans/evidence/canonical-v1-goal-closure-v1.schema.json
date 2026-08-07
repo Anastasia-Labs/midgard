@@ -9,6 +9,7 @@
     "version",
     "generatedAt",
     "revision",
+    "evidencePaths",
     "dirtyBaseline",
     "toolchain",
     "parameterSnapshot",
@@ -21,6 +22,7 @@
     "commandResults",
     "acceptanceCriteria",
     "residualBlockers",
+    "regenerationRecords",
     "secrets",
     "release"
   ],
@@ -49,6 +51,13 @@
           "enum": ["IN_PROGRESS", "BASELINE_RELATIVE_CLEAN"]
         }
       }
+    },
+    "evidencePaths": {
+      "description": "GOAL_SPEC §0.2 declared evidence path classes, in spec order. The decoder requires this to equal the pinned DECLARED_EVIDENCE_PATHS exactly; a manifest cannot widen the surface an evidence commit may touch.",
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "$ref": "#/$defs/evidencePath" }
     },
     "dirtyBaseline": {
       "type": "object",
@@ -80,11 +89,11 @@
     },
     "parameterSnapshot": {
       "description": "C70 trusted Cardano mainnet effective/pending parameter snapshot: the capability floor (GOAL_SPEC §13.3, §3.1.10).",
-      "$ref": "#/$defs/fileBinding"
+      "$ref": "#/$defs/parameterSnapshotBinding"
     },
     "targetTestnetParameterSnapshot": {
-      "description": "C70 target-testnet effective/pending parameter snapshot the deployment is validated against. Must be a different path from parameterSnapshot.",
-      "$ref": "#/$defs/fileBinding"
+      "description": "C70 target-testnet effective/pending parameter snapshot the deployment is validated against. Must be a different path — and a different parameter set — from parameterSnapshot.",
+      "$ref": "#/$defs/parameterSnapshotBinding"
     },
     "blueprint": { "$ref": "#/$defs/fileBinding" },
     "closureArtifacts": {
@@ -127,6 +136,11 @@
       "description": "GOAL_SPEC §9.5 named residual launch blockers. An empty array means none is claimed; every entry must also be recorded in root public_testnet_readiness.md, and ownerAccepted=true requires bound evidence of that acceptance.",
       "type": "array",
       "items": { "$ref": "#/$defs/residualBlocker" }
+    },
+    "regenerationRecords": {
+      "description": "GOAL_SPEC §2.4/§13.4: how to regenerate artifacts too large or transient to commit. An empty array means everything needed is committed. The verifier proves each outputPath is genuinely untracked.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/regenerationRecord" }
     },
     "secrets": {
       "type": "object",
@@ -195,6 +209,49 @@
         }
       }
     },
+    "evidencePath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "kind"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "kind": {
+          "description": "FILE matches that exact repo-relative path; TREE matches everything beneath the directory.",
+          "enum": ["FILE", "TREE"]
+        }
+      }
+    },
+    "parameterSnapshotBinding": {
+      "description": "A C70 parameter snapshot bound by path plus the identity of the parameter set it captured. snapshotDigest is SHA-256 over the snapshot's parsed values with sorted keys — stable under reformatting, and NOT the tracked-file byte hash removed by the §13.4 owner amendment. Null exactly while status is OPEN, so release fails closed until C70 delivers.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "status", "snapshotDigest"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["OPEN", "BOUND"] },
+        "snapshotDigest": {
+          "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+        }
+      }
+    },
+    "regenerationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description", "command", "outputPath", "reason"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "outputPath": { "type": "string", "minLength": 1 },
+        "reason": {
+          "enum": ["TOO_LARGE", "TOO_TRANSIENT", "UNSAFE_TO_COMMIT"]
+        }
+      }
+    },
     "protectedPath": {
       "type": "object",
       "additionalProperties": false,
@@ -250,13 +307,30 @@
       }
     },
     "residualBlocker": {
+      "description": "A GOAL_SPEC §9.5 named residual launch blocker. acceptedBy/acceptedAt are non-null exactly when ownerAccepted is true, making the acceptance an auditable record rather than a bare flag. The verifier additionally requires the id to be named in root public_testnet_readiness.md — §9.5 forbids silence.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "description", "ownerAccepted", "evidence"],
+      "required": [
+        "id",
+        "description",
+        "ownerAccepted",
+        "acceptedBy",
+        "acceptedAt",
+        "evidence"
+      ],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "description": { "type": "string", "minLength": 1 },
         "ownerAccepted": { "type": "boolean" },
+        "acceptedBy": {
+          "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+        },
+        "acceptedAt": {
+          "oneOf": [
+            { "type": "string", "format": "date-time" },
+            { "type": "null" }
+          ]
+        },
         "evidence": {
           "type": "array",
           "items": { "$ref": "#/$defs/fileBinding" }

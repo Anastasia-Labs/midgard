@@ -6,10 +6,12 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import {
+  DECLARED_EVIDENCE_PATHS,
   canonicalClosureDigest,
   decodeCanonicalV1GoalClosure,
   isBoundFile,
-  isReleaseReady,
+  parameterSnapshotDigest,
+  releaseBlockers,
 } from "./canonical-v1-goal-closure-v1.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -87,11 +89,49 @@ if (manifest.revision.branch !== currentBranch) {
   );
 }
 
-// GOAL_SPEC.md §0.2: a manifest never records the hash of the commit that
-// contains it. Once a releaseCommit is bound, every commit after it must be
-// confined to the declared evidence paths.
-const EVIDENCE_PATH_PATTERN =
-  /^(?:GOAL_PROGRESS\.md$|docs\/exec-plans\/canonical-v1-goal-completion-report\.md$|docs\/exec-plans\/evidence\/)/;
+// GOAL_SPEC §0.2. The membership test is built from the pinned
+// DECLARED_EVIDENCE_PATHS, never from `manifest.evidencePaths`: the decoder has
+// already proved the manifest declares exactly this set, and the gate that
+// decides which paths an evidence commit may touch must not read its answer
+// out of the artifact it is judging. A FILE class matches that exact path; a
+// TREE class matches anything beneath the directory.
+const isDeclaredEvidencePath = (path) =>
+  DECLARED_EVIDENCE_PATHS.some((entry) =>
+    entry.kind === "TREE" ? path.startsWith(entry.path) : path === entry.path,
+  );
+
+// GOAL_SPEC §0.2: "No artifact is ever required to record the hash of the
+// commit that contains it." The commit that contains this manifest is the last
+// commit that touched its path, resolved from Git rather than declared. A
+// manifest naming that commit as its own releaseCommit would be claiming a
+// hash it could not have known when it was written — the tell of a fabricated
+// or back-dated binding. §0.2's structure already implies the manifest lands in
+// an evidence commit strictly after releaseCommit, so this always has a
+// satisfiable answer.
+// The rule binds `releaseCommit`, not the generation-time `headCommit`: a
+// manifest regenerated in the working tree legitimately records the HEAD it was
+// generated against, and that HEAD may well be the commit that last touched the
+// manifest. So the check applies only to the release binding, and only while
+// the manifest is clean — a dirty manifest has no containing commit for its
+// current content, which makes the question vacuous rather than violated.
+const manifestRepoPath =
+  "docs/exec-plans/evidence/canonical-v1-goal-closure-v1.json";
+const manifestIsClean =
+  runGit("status", "--porcelain=v1", "--", manifestRepoPath) === "";
+const containingCommit =
+  runGit("log", "-1", "--format=%H", "--", manifestRepoPath) || null;
+if (
+  manifest.revision.releaseCommit !== null &&
+  manifestIsClean &&
+  containingCommit !== null &&
+  manifest.revision.releaseCommit === containingCommit
+) {
+  throw new Error(
+    `revision.releaseCommit ${containingCommit} is the commit containing this manifest; GOAL_SPEC §0.2 forbids an artifact recording the hash of its own containing commit, so the closure manifest must land in an evidence commit after releaseCommit`,
+  );
+}
+
+let escapingEvidencePaths = 0;
 if (manifest.revision.releaseCommit !== null) {
   if (!isAncestorOrEqual(manifest.revision.releaseCommit, currentHead)) {
     throw new Error(
@@ -105,7 +145,8 @@ if (manifest.revision.releaseCommit !== null) {
   )
     .split("\n")
     .filter(Boolean)
-    .filter((path) => !EVIDENCE_PATH_PATTERN.test(path));
+    .filter((path) => !isDeclaredEvidencePath(path));
+  escapingEvidencePaths = escaped.length;
   if (escaped.length > 0) {
     throw new Error(
       `releaseCommit..HEAD diff escapes declared evidence paths: ${escaped.join(", ")}`,
@@ -208,9 +249,44 @@ for (const entry of manifest.secrets.evidence) {
 // GOAL_SPEC §9.5: a residual launch blocker is only a legitimate outcome when
 // it is named here AND in root `public_testnet_readiness.md` with the owner's
 // explicit acceptance. Verify the acceptance evidence actually exists.
+const READINESS_DOCUMENT = "public_testnet_readiness.md";
+const readinessText = manifest.residualBlockers.length
+  ? (() => {
+      const absolute = safeAbsolutePath(READINESS_DOCUMENT);
+      if (!existsSync(absolute)) {
+        throw new Error(
+          `${manifest.residualBlockers.length} residual launch blocker(s) are recorded but root ${READINESS_DOCUMENT} is missing`,
+        );
+      }
+      return readFileSync(absolute, "utf8");
+    })()
+  : null;
 for (const blocker of manifest.residualBlockers) {
   for (const entry of blocker.evidence) {
     verifyFileBinding(entry, `residualBlockers[${blocker.id}]`);
+  }
+  // §9.5 admits a residual launch blocker only when it is named in BOTH the
+  // closure manifest and root public_testnet_readiness.md — "never silence".
+  // Recording it here while the public readiness document stays quiet is
+  // precisely the silence the rule forbids, so read the document and look.
+  if (!readinessText.includes(blocker.id)) {
+    throw new Error(
+      `residual launch blocker ${blocker.id} is not named in root ${READINESS_DOCUMENT}`,
+    );
+  }
+}
+
+// GOAL_SPEC §2.4/§13.4: a regeneration record exists because the artifact is
+// too large or transient to commit. If its output IS tracked, the record is
+// being used to describe evidence that should simply have been committed and
+// referenced by path — so confirm non-tracking against Git rather than
+// accepting the manifest's reason for it.
+for (const record of manifest.regenerationRecords) {
+  safeAbsolutePath(record.outputPath);
+  if (isTrackedPath(record.outputPath)) {
+    throw new Error(
+      `regeneration record ${record.id} declares tracked outputPath ${record.outputPath}; commit and bind it by path instead`,
+    );
   }
 }
 
@@ -320,13 +396,48 @@ const verifyNoSecrets = () => {
   }
 };
 
-if (releaseMode) {
-  if (!isReleaseReady(manifest)) {
+// GOAL_SPEC §13.3/C70: a BOUND snapshot's recorded identity must be the
+// identity of the snapshot actually committed. Recomputed here from the file's
+// normalized content, so the verdict comes from reading the snapshot rather
+// than from the digest the manifest supplies about itself. Confined to release
+// mode: while C70's snapshots are OPEN the digests are null and the gate is
+// already closed by releaseBlockers().
+const verifySnapshotDigest = (snapshot, owner) => {
+  if (snapshot.status !== "BOUND") {
+    return;
+  }
+  const absolute = safeAbsolutePath(snapshot.path);
+  if (!existsSync(absolute)) {
+    throw new Error(`${owner} is BOUND but ${snapshot.path} is missing`);
+  }
+  let actual;
+  try {
+    actual = parameterSnapshotDigest(readFileSync(absolute, "utf8"));
+  } catch (error) {
     throw new Error(
-      "closure manifest is not release-ready: revision, bindings, commands, criteria, secret scan, and digest must all be complete",
+      `${owner} snapshot ${snapshot.path} is not decodable JSON: ${error.message}`,
+    );
+  }
+  if (actual !== snapshot.snapshotDigest) {
+    throw new Error(
+      `${owner} snapshotDigest mismatch: recomputed ${actual}, recorded ${snapshot.snapshotDigest}`,
+    );
+  }
+};
+
+if (releaseMode) {
+  const blockers = releaseBlockers(manifest);
+  if (blockers.length > 0) {
+    throw new Error(
+      `closure manifest is not release-ready (${blockers.length} unmet condition(s)): ${blockers.join("; ")}`,
     );
   }
   assertPassingCriteria(manifest.acceptanceCriteria, "release");
+  verifySnapshotDigest(manifest.parameterSnapshot, "parameterSnapshot");
+  verifySnapshotDigest(
+    manifest.targetTestnetParameterSnapshot,
+    "targetTestnetParameterSnapshot",
+  );
   const expectedDigest = canonicalClosureDigest(manifest);
   if (manifest.release.digest !== expectedDigest) {
     throw new Error(
@@ -373,6 +484,14 @@ process.stdout.write(
     protectedPaths: manifest.dirtyBaseline.protectedPaths.length,
     commandResults: manifest.commandResults.length,
     residualBlockers: manifest.residualBlockers.length,
+    evidencePathClasses: manifest.evidencePaths.length,
+    parameterSnapshots: new Set([
+      manifest.parameterSnapshot.path,
+      manifest.targetTestnetParameterSnapshot.path,
+    ]).size,
+    regenerationRecords: manifest.regenerationRecords.length,
+    releaseCommitsBound: manifest.revision.releaseCommit === null ? 0 : 1,
+    escapingEvidencePaths,
     digestPreview,
   })}\n`,
 );

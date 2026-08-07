@@ -8,6 +8,14 @@
     "releaseCommit": null,
     "worktree": "IN_PROGRESS"
   },
+  "evidencePaths": [
+    { "path": "GOAL_PROGRESS.md", "kind": "FILE" },
+    {
+      "path": "docs/exec-plans/canonical-v1-goal-completion-report.md",
+      "kind": "FILE"
+    },
+    { "path": "docs/exec-plans/evidence/", "kind": "TREE" }
+  ],
   "dirtyBaseline": {
     "ledgerPath": "GOAL_PROGRESS.md",
     "startingRevision": "d5f36df25a9a1696e4df857e01aa81d2f0b6ef96",
@@ -94,11 +102,13 @@
   },
   "parameterSnapshot": {
     "path": "docs/exec-plans/evidence/canonical-v1-parameter-snapshot-v1.json",
-    "status": "OPEN"
+    "status": "OPEN",
+    "snapshotDigest": null
   },
   "targetTestnetParameterSnapshot": {
     "path": "docs/exec-plans/evidence/canonical-v1-target-testnet-parameter-snapshot-v1.json",
-    "status": "OPEN"
+    "status": "OPEN",
+    "snapshotDigest": null
   },
   "blueprint": {
     "path": "onchain/aiken/plutus.json",
@@ -480,6 +490,7 @@
     }
   ],
   "residualBlockers": [],
+  "regenerationRecords": [],
   "secrets": {
     "scanStatus": "OPEN",
     "evidence": []

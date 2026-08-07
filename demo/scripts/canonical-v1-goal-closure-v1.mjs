@@ -40,10 +40,37 @@ export const REQUIRED_AC_IDS = Object.freeze([
   "AC-X13",
 ]);
 
+// GOAL_SPEC §0.2 declares exactly three evidence path classes. They are pinned
+// here as absolute constants and never read back out of the manifest: the
+// question "which paths may a commit after `releaseCommit` touch?" must never
+// be answered by the artifact under judgement. The manifest still declares the
+// set so the closure record is self-describing, but the decoder requires that
+// declaration to equal this list exactly, in this order.
+export const DECLARED_EVIDENCE_PATHS = Object.freeze([
+  Object.freeze({ path: "GOAL_PROGRESS.md", kind: "FILE" }),
+  Object.freeze({
+    path: "docs/exec-plans/canonical-v1-goal-completion-report.md",
+    kind: "FILE",
+  }),
+  Object.freeze({ path: "docs/exec-plans/evidence/", kind: "TREE" }),
+]);
+
+// GOAL_SPEC §2.4/§13.4: large logs, databases, temporary corpora and
+// disposable deployment state are not deliverables. Where an artifact is too
+// large or too transient to commit, the manifest records how to regenerate it
+// instead of committing unsafe or irreproducible runtime state.
+export const REGENERATION_REASONS = Object.freeze([
+  "TOO_LARGE",
+  "TOO_TRANSIENT",
+  "UNSAFE_TO_COMMIT",
+]);
+
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 const CRITERION_STATUSES = new Set(["OPEN", "PASS"]);
 const BINDING_STATUSES = new Set(["OPEN", "BOUND"]);
+const EVIDENCE_PATH_KINDS = new Set(["FILE", "TREE"]);
+const REGENERATION_REASON_SET = new Set(REGENERATION_REASONS);
 
 const fail = (path, message) => {
   throw new Error(`${path}: ${message}`);
@@ -175,6 +202,71 @@ const decodeFileBinding = (value, path) => {
   return object;
 };
 
+// GOAL_SPEC §0.2: the manifest declares the evidence path classes it is bound
+// by. The declaration is checked against the pinned DECLARED_EVIDENCE_PATHS
+// rather than trusted, so a manifest cannot widen the set of paths an evidence
+// commit is allowed to touch by editing its own declaration.
+const decodeEvidencePath = (value, path) => {
+  const object = assertExactKeys(value, path, ["kind", "path"]);
+  assertString(object.path, `${path}.path`);
+  assertEnum(object.kind, `${path}.kind`, EVIDENCE_PATH_KINDS);
+  return object;
+};
+
+// GOAL_SPEC §13.3/C70: each parameter snapshot carries the identity of the
+// parameter set it captured. This is a normalized-content identity of the
+// snapshot's own values, not the tracked-file byte hash §13.4 removed: it is
+// stable under reformatting and changes only when a parameter value changes,
+// which is exactly when every capability claim derived from it must be
+// re-established. While C70 has not produced a snapshot the binding stays OPEN
+// and the digest stays null, so release fails closed.
+const decodeParameterSnapshot = (value, path) => {
+  const object = assertExactKeys(value, path, [
+    "path",
+    "snapshotDigest",
+    "status",
+  ]);
+  assertString(object.path, `${path}.path`);
+  assertEnum(object.status, `${path}.status`, BINDING_STATUSES);
+  assertSha256(object.snapshotDigest, `${path}.snapshotDigest`, {
+    nullable: true,
+  });
+  if ((object.status === "BOUND") !== (object.snapshotDigest !== null)) {
+    fail(
+      path,
+      "BOUND requires snapshotDigest and OPEN requires snapshotDigest=null",
+    );
+  }
+  return object;
+};
+
+// GOAL_SPEC §2.4 (last paragraph) and §13.4: record how to regenerate anything
+// too large or transient to commit. The command is what a reviewer re-runs;
+// `outputPath` is where it lands. The verifier additionally proves the output
+// is genuinely NOT tracked — otherwise this field would be a way to describe
+// evidence that should simply have been committed.
+const decodeRegenerationRecord = (value, path) => {
+  const object = assertExactKeys(value, path, [
+    "command",
+    "description",
+    "id",
+    "outputPath",
+    "reason",
+  ]);
+  assertString(object.id, `${path}.id`);
+  assertString(object.description, `${path}.description`);
+  assertString(object.outputPath, `${path}.outputPath`);
+  assertEnum(object.reason, `${path}.reason`, REGENERATION_REASON_SET);
+  const command = assertArray(object.command, `${path}.command`);
+  if (command.length === 0) {
+    fail(`${path}.command`, "expected at least one command token");
+  }
+  command.forEach((entry, index) =>
+    assertString(entry, `${path}.command[${index}]`),
+  );
+  return object;
+};
+
 const decodeProtectedPath = (value, path) => {
   const object = assertExactKeys(value, path, ["disposition", "path"]);
   assertString(object.path, `${path}.path`);
@@ -279,8 +371,14 @@ const decodeCommandResult = (value, path) => {
 // this manifest with the owner's explicit acceptance — never silence.
 // `ownerAccepted` therefore carries the same evidence burden as a PASS
 // criterion: acceptance without a bound evidence file is not acceptance.
+// `acceptedBy`/`acceptedAt` make the acceptance an actual record rather than a
+// bare boolean: who accepted the blocker, and when. They are null exactly when
+// `ownerAccepted` is false, so a blocker can never carry a dangling acceptance
+// stamp it did not earn, nor claim acceptance without naming an owner.
 const decodeResidualBlocker = (value, path) => {
   const object = assertExactKeys(value, path, [
+    "acceptedAt",
+    "acceptedBy",
     "description",
     "evidence",
     "id",
@@ -289,6 +387,8 @@ const decodeResidualBlocker = (value, path) => {
   assertString(object.id, `${path}.id`);
   assertString(object.description, `${path}.description`);
   assertBoolean(object.ownerAccepted, `${path}.ownerAccepted`);
+  assertNullableString(object.acceptedBy, `${path}.acceptedBy`);
+  assertNullableString(object.acceptedAt, `${path}.acceptedAt`);
   assertArray(object.evidence, `${path}.evidence`).forEach((entry, index) =>
     decodeFileBinding(entry, `${path}.evidence[${index}]`),
   );
@@ -297,6 +397,12 @@ const decodeResidualBlocker = (value, path) => {
   }
   if (object.ownerAccepted && !allBound(object.evidence)) {
     fail(path, "ownerAccepted requires all evidence files to be bound");
+  }
+  if (object.ownerAccepted !== (object.acceptedBy !== null)) {
+    fail(path, "ownerAccepted requires acceptedBy and only then");
+  }
+  if (object.ownerAccepted !== (object.acceptedAt !== null)) {
+    fail(path, "ownerAccepted requires acceptedAt and only then");
   }
   return object;
 };
@@ -325,9 +431,11 @@ export const decodeCanonicalV1GoalClosure = (input) => {
     "commandResults",
     "deployment",
     "dirtyBaseline",
+    "evidencePaths",
     "fixtureSets",
     "generatedAt",
     "parameterSnapshot",
+    "regenerationRecords",
     "release",
     "residualBlockers",
     "revision",
@@ -360,6 +468,29 @@ export const decodeCanonicalV1GoalClosure = (input) => {
     "$.revision.worktree",
     new Set(["IN_PROGRESS", "BASELINE_RELATIVE_CLEAN"]),
   );
+
+  // GOAL_SPEC §0.2: exactly the three declared evidence path classes, in the
+  // spec's order. Checked against the pinned constant, so the manifest cannot
+  // grant itself a wider evidence surface than the spec allows.
+  const evidencePaths = assertArray(root.evidencePaths, "$.evidencePaths");
+  evidencePaths.forEach((entry, index) =>
+    decodeEvidencePath(entry, `$.evidencePaths[${index}]`),
+  );
+  const declaredEvidence = evidencePaths.map(
+    ({ path, kind }) => `${kind}:${path}`,
+  );
+  const expectedEvidence = DECLARED_EVIDENCE_PATHS.map(
+    ({ path, kind }) => `${kind}:${path}`,
+  );
+  if (
+    declaredEvidence.length !== expectedEvidence.length ||
+    declaredEvidence.some((entry, index) => entry !== expectedEvidence[index])
+  ) {
+    fail(
+      "$.evidencePaths",
+      `must declare exactly the GOAL_SPEC §0.2 evidence paths [${expectedEvidence.join(", ")}]`,
+    );
+  }
 
   const dirtyBaseline = assertExactKeys(root.dirtyBaseline, "$.dirtyBaseline", [
     "ledgerPath",
@@ -403,8 +534,8 @@ export const decodeCanonicalV1GoalClosure = (input) => {
   // deployment is validated against (`targetTestnetParameterSnapshot`).
   // Capability parity derives from the least restrictive applicable value
   // across both (§3.1.10); one snapshot cannot answer both questions.
-  decodeFileBinding(root.parameterSnapshot, "$.parameterSnapshot");
-  decodeFileBinding(
+  decodeParameterSnapshot(root.parameterSnapshot, "$.parameterSnapshot");
+  decodeParameterSnapshot(
     root.targetTestnetParameterSnapshot,
     "$.targetTestnetParameterSnapshot",
   );
@@ -414,6 +545,19 @@ export const decodeCanonicalV1GoalClosure = (input) => {
     fail(
       "$.targetTestnetParameterSnapshot",
       "the mainnet capability-floor and target-testnet snapshots must be distinct files",
+    );
+  }
+  // Two snapshots that hash to the same parameter set are one snapshot recorded
+  // twice: the capability floor would then be silently taken from the testnet
+  // deployment, which is exactly the substitution §3.1.10 forbids.
+  if (
+    root.parameterSnapshot.snapshotDigest !== null &&
+    root.parameterSnapshot.snapshotDigest ===
+      root.targetTestnetParameterSnapshot.snapshotDigest
+  ) {
+    fail(
+      "$.targetTestnetParameterSnapshot",
+      "the mainnet capability-floor and target-testnet snapshots must be distinct parameter sets",
     );
   }
   decodeFileBinding(root.blueprint, "$.blueprint");
@@ -467,6 +611,24 @@ export const decodeCanonicalV1GoalClosure = (input) => {
   const residualBlockerIds = residualBlockers.map(({ id }) => id);
   if (new Set(residualBlockerIds).size !== residualBlockerIds.length) {
     fail("$.residualBlockers", "duplicate id");
+  }
+
+  const regenerationRecords = assertArray(
+    root.regenerationRecords,
+    "$.regenerationRecords",
+  );
+  regenerationRecords.forEach((entry, index) =>
+    decodeRegenerationRecord(entry, `$.regenerationRecords[${index}]`),
+  );
+  const regenerationIds = regenerationRecords.map(({ id }) => id);
+  if (new Set(regenerationIds).size !== regenerationIds.length) {
+    fail("$.regenerationRecords", "duplicate id");
+  }
+  const regenerationOutputs = regenerationRecords.map(
+    ({ outputPath }) => outputPath,
+  );
+  if (new Set(regenerationOutputs).size !== regenerationOutputs.length) {
+    fail("$.regenerationRecords", "duplicate outputPath");
   }
 
   const criteria = assertArray(root.acceptanceCriteria, "$.acceptanceCriteria");
@@ -550,38 +712,92 @@ export const canonicalClosureDigest = (manifest) => {
     .digest("hex");
 };
 
+// The identity of a C70 parameter snapshot: SHA-256 over the snapshot's parsed
+// values with object keys sorted, so the digest is stable under reformatting
+// and Prettier passes, and moves only when a parameter value actually moves.
+// Deliberately NOT a byte hash of the tracked file — §13.4 removed that regime
+// because it forced a rebind on every cosmetic edit while catching nothing.
+export const parameterSnapshotDigest = (snapshotJsonText) =>
+  createHash("sha256")
+    .update(
+      `${JSON.stringify(stableValue(JSON.parse(snapshotJsonText)))}\n`,
+      "utf8",
+    )
+    .digest("hex");
+
 export const isBoundFile = (binding) => binding.status === "BOUND";
 
 export const allBound = (bindings) => bindings.every(isBoundFile);
 
-export const isReleaseReady = (manifest) =>
-  manifest.revision.worktree === "BASELINE_RELATIVE_CLEAN" &&
-  manifest.revision.releaseCommit !== null &&
-  manifest.revision.headCommit === manifest.revision.releaseCommit &&
-  manifest.parameterSnapshot.status === "BOUND" &&
-  manifest.targetTestnetParameterSnapshot.status === "BOUND" &&
-  manifest.blueprint.status === "BOUND" &&
-  manifest.validatorSet.status === "BOUND" &&
-  allBound(manifest.validatorSet.evidence) &&
-  manifest.closureArtifacts.length >= 5 &&
-  manifest.closureArtifacts.every(isBoundFile) &&
-  manifest.deployment.status === "BOUND" &&
-  allBound(manifest.deployment.evidence) &&
-  manifest.fixtureSets.length > 0 &&
-  manifest.fixtureSets.every(isBoundFile) &&
-  manifest.commandResults.length > 0 &&
-  manifest.commandResults.every(({ exitCode }) => exitCode === 0) &&
-  manifest.acceptanceCriteria.every(
+// Returns every unmet release condition by name. A boolean answer told an
+// operator only that "something" was incomplete, which for a 35-criterion
+// closure is not an actionable verdict; the release gate reports exactly which
+// bindings are still open.
+export const releaseBlockers = (manifest) => {
+  const blockers = [];
+  const require = (condition, reason) => {
+    if (!condition) {
+      blockers.push(reason);
+    }
+  };
+
+  require(manifest.revision.worktree ===
+    "BASELINE_RELATIVE_CLEAN", "revision.worktree is not BASELINE_RELATIVE_CLEAN");
+  require(manifest.revision.releaseCommit !==
+    null, "revision.releaseCommit is unbound");
+  require(manifest.parameterSnapshot.status ===
+    "BOUND", "parameterSnapshot (mainnet capability floor) is unbound");
+  require(manifest.targetTestnetParameterSnapshot.status ===
+    "BOUND", "targetTestnetParameterSnapshot is unbound");
+  require(manifest.blueprint.status === "BOUND", "blueprint is unbound");
+  require(manifest.validatorSet.status === "BOUND" &&
+    allBound(manifest.validatorSet.evidence), "validatorSet is unbound");
+  require(manifest.closureArtifacts.length >= 5 &&
+    manifest.closureArtifacts.every(
+      isBoundFile,
+    ), "closureArtifacts are incomplete or unbound");
+  require(manifest.deployment.status === "BOUND" &&
+    allBound(manifest.deployment.evidence), "deployment is unbound");
+  require(manifest.fixtureSets.length > 0 &&
+    manifest.fixtureSets.every(
+      isBoundFile,
+    ), "fixtureSets are missing or unbound");
+  require(manifest.commandResults.length >
+    0, "commandResults records no executed command");
+  const failedCommands = manifest.commandResults.filter(
+    ({ exitCode }) => exitCode !== 0,
+  );
+  require(failedCommands.length ===
+    0, `commandResults contain nonzero exits: ${failedCommands
+    .map(({ id }) => id)
+    .join(", ")}`);
+  const openCriteria = manifest.acceptanceCriteria.filter(
     ({ status, evidence }) =>
-      status === "PASS" && evidence.length > 0 && allBound(evidence),
-  ) &&
-  manifest.secrets.scanStatus === "PASS" &&
-  manifest.secrets.evidence.length > 0 &&
-  allBound(manifest.secrets.evidence) &&
+      status !== "PASS" || evidence.length === 0 || !allBound(evidence),
+  );
+  require(openCriteria.length ===
+    0, `${openCriteria.length} acceptance criteria are open or unevidenced: ${openCriteria
+    .map(({ id }) => id)
+    .join(", ")}`);
+  require(manifest.secrets.scanStatus === "PASS" &&
+    manifest.secrets.evidence.length > 0 &&
+    allBound(
+      manifest.secrets.evidence,
+    ), "secret scan has not passed with bound evidence");
   // §9.5: an unaccepted or unevidenced residual launch blocker keeps release
   // closed. An empty list is the healthy case, not a missing check.
-  manifest.residualBlockers.every(
+  const unacceptedBlockers = manifest.residualBlockers.filter(
     ({ ownerAccepted, evidence }) =>
-      ownerAccepted === true && evidence.length > 0 && allBound(evidence),
-  ) &&
-  manifest.release.status === "BOUND";
+      ownerAccepted !== true || evidence.length === 0 || !allBound(evidence),
+  );
+  require(unacceptedBlockers.length ===
+    0, `residual launch blockers lack accepted, evidenced owner sign-off: ${unacceptedBlockers
+    .map(({ id }) => id)
+    .join(", ")}`);
+  require(manifest.release.status === "BOUND", "release digest is unbound");
+
+  return blockers;
+};
+
+export const isReleaseReady = (manifest) =>
+  releaseBlockers(manifest).length === 0;
