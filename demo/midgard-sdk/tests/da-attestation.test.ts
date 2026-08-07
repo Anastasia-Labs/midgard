@@ -177,12 +177,14 @@ const makeFixture = () => {
     stateQueueNode,
     headerHash,
   };
+  // Q63 (F04 §4) floors both governed thresholds at two, so the fixture is a
+  // 2-of-2 committee over a 2-of-2 owner set. Both sets are sorted-unique.
   const daParamsDatum: DaParamsDatum = {
     committee: h32("11") + h32("22"),
     committee_signers_hash: h32("33"),
-    da_threshold: 1n,
-    owners: [],
-    update_threshold: 1n,
+    da_threshold: 2n,
+    owners: [h28("44"), h28("55")],
+    update_threshold: 2n,
   };
   const daParamsUtxo = makeUtxo(2, { lovelace: 2_000_000n });
   const attestationUnit = daAttestationUnit(
@@ -191,7 +193,7 @@ const makeFixture = () => {
   );
   const attestationDatum = {
     header_hash: headerHash,
-    da_threshold: 1n,
+    da_threshold: 2n,
     committee_signers_hash: daParamsDatum.committee_signers_hash,
     attested_signers: EMPTY_ATTESTED_SIGNER_BITMAP,
     attestation_count: 0n,
@@ -352,7 +354,11 @@ describe("DA attestation SDK builders", () => {
         daParamsUtxo: fixture.daParamsUtxo,
         daParamsDatum: fixture.daParamsDatum,
         attestation: fixture.attestation,
-        witnesses: [{ signerIndex: 0, signatureHex: signature("aa") }],
+        // Both committee members sign, reaching the floor-compliant 2-of-2.
+        witnesses: [
+          { signerIndex: 0, signatureHex: signature("aa") },
+          { signerIndex: 1, signatureHex: signature("bb") },
+        ],
         referenceScripts: fixture.referenceScripts,
       }),
     );
@@ -366,8 +372,8 @@ describe("DA attestation SDK builders", () => {
       record.payments[0]!.datum.value,
       DaAttestationDatum,
     );
-    expect(datum.attested_signers).toBe(`80${"00".repeat(31)}`);
-    expect(datum.attestation_count).toBe(1n);
+    expect(datum.attested_signers).toBe(`c0${"00".repeat(31)}`);
+    expect(datum.attestation_count).toBe(2n);
     const redeemer = Data.from(
       (record.collects[0]!.redeemer as (ctx: unknown) => string)({
         outputs: record.payments.map((payment) => ({
@@ -381,7 +387,7 @@ describe("DA attestation SDK builders", () => {
     );
     expect(redeemer).toMatchObject({
       AddSignatures: {
-        signatures: `00${signature("aa")}`,
+        signatures: `00${signature("aa")}01${signature("bb")}`,
       },
     });
     expect(record.signerKeys).toHaveLength(0);
@@ -412,8 +418,8 @@ describe("DA attestation SDK builders", () => {
       ...fixture.attestation,
       datum: {
         ...fixture.attestation.datum,
-        attested_signers: `80${"00".repeat(31)}`,
-        attestation_count: 1n,
+        attested_signers: `c0${"00".repeat(31)}`,
+        attestation_count: 2n,
       },
     };
 
@@ -492,11 +498,13 @@ describe("DA attestation SDK builders", () => {
           target: fixture.target,
           attestation: {
             ...fixture.attestation,
+            // Threshold is satisfied, so the header-hash mismatch is the only
+            // reason this must be refused.
             datum: {
               ...fixture.attestation.datum,
               header_hash: h28("99"),
-              attested_signers: `80${"00".repeat(31)}`,
-              attestation_count: 1n,
+              attested_signers: `c0${"00".repeat(31)}`,
+              attestation_count: 2n,
             },
           },
           referenceScripts: fixture.referenceScripts,

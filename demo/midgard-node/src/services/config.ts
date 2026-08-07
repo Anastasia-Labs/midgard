@@ -15,9 +15,55 @@ import { Config, Context, Data, Effect, Layer, Option } from "effect";
 
 import { readDaHardeningConfig } from "@/da/hardening-config.js";
 import {
+  isStrictlyAscending,
+  splitPackedHex,
+  VERIFICATION_KEY_HASH_HEX_LENGTH,
+  VERIFICATION_KEY_HEX_LENGTH,
+} from "@/da/local-signers.js";
+import {
   assertRetentionDaysMatchesDeploymentV1,
   validateRetentionDays,
 } from "@/database/retention-policy.js";
+
+/**
+ * Validates one of the governed DA key sets (`DA_COMMITTEE_HEX`,
+ * `DA_OWNERS_HEX`) at config load, returning the normalized packed hex.
+ *
+ * An empty value stays empty: these are optional, and the bootstrap in
+ * `deriveOperatorDaParams` decides what to do when they are absent. A *present*
+ * value must already be a shape the governor can accept — right element width,
+ * sorted-unique ascending order, and at least `MIN_DA_OWNER_COUNT` entries,
+ * since Q63 floors both governed thresholds at two and a one-element set can
+ * never carry a threshold of two.
+ */
+const validateGovernedDaKeySet = (
+  value: string,
+  chunkHexLength: number,
+  fieldName: string,
+  shape: string,
+): string => {
+  const normalized = value.trim().toLowerCase();
+  if (normalized.length === 0) {
+    return "";
+  }
+  let elements: readonly string[];
+  try {
+    elements = splitPackedHex(normalized, chunkHexLength, fieldName);
+  } catch {
+    throw new Error(`${fieldName} must be ${shape} as hex`);
+  }
+  if (elements.length < SDK.MIN_DA_OWNER_COUNT) {
+    throw new Error(
+      `${fieldName} must list at least ${SDK.MIN_DA_OWNER_COUNT.toString()} entries to satisfy the governed threshold floor, received ${elements.length.toString()}`,
+    );
+  }
+  if (!isStrictlyAscending(elements)) {
+    throw new Error(
+      `${fieldName} must be sorted ascending with no duplicates, matching the governor's sorted-unique encoding`,
+    );
+  }
+  return normalized;
+};
 
 /**
  * Configuration loading for the Midgard node process.
@@ -156,6 +202,8 @@ export type NodeConfigDep = {
   OPERATOR_SLASHING_PENALTY_LOVELACE: bigint;
   DA_COMMITTEE_HEX: string;
   DA_THRESHOLD: bigint | null;
+  DA_OWNERS_HEX: string;
+  DA_COSIGNER_SEED_PHRASE: string;
   MIDGARD_DA_PAYLOAD_ENVELOPE: "identity" | "zstd";
   MIDGARD_DA_ZSTD_LEVEL: number;
   MIDGARD_DA_PUBLISH_CONCURRENCY: number;
@@ -696,15 +744,85 @@ const makeConfig = Effect.gen(function* () {
     Config.withDefault("200000"),
     Config.mapAttempt((value) => BigInt(value)),
   );
+  // Q63 (F04 §4): the DA params governor floors both thresholds at
+  // `max(2, ceil(2*set_len/3))`, so a 1-of-1 committee or owner set is
+  // unrepresentable on-chain. These validations reject the forbidden shapes at
+  // config load — where the operator can still read the message — rather than
+  // letting initialization fail inside a Plutus script. The floor arithmetic
+  // itself is never restated here; it comes from the SDK twin.
   const daCommitteeHex = yield* Config.string("DA_COMMITTEE_HEX").pipe(
     Config.withDefault(""),
-    Config.map((value) => value.trim().toLowerCase()),
+    Config.mapAttempt((value) =>
+      validateGovernedDaKeySet(
+        value,
+        VERIFICATION_KEY_HEX_LENGTH,
+        "DA_COMMITTEE_HEX",
+        "packed 32-byte verification keys",
+      ),
+    ),
   );
   const daThreshold = yield* Config.string("DA_THRESHOLD").pipe(
     Config.withDefault(""),
     Config.mapAttempt((value) => {
       const trimmed = value.trim();
-      return trimmed.length === 0 ? null : BigInt(trimmed);
+      if (trimmed.length === 0) {
+        return null;
+      }
+      const threshold = BigInt(trimmed);
+      if (threshold < BigInt(SDK.MIN_DA_OWNER_COUNT)) {
+        throw new Error(
+          `DA_THRESHOLD must be at least ${SDK.MIN_DA_OWNER_COUNT.toString()} to satisfy the governed threshold floor, received ${threshold.toString()}`,
+        );
+      }
+      if (daCommitteeHex.length > 0) {
+        const committeeLength =
+          daCommitteeHex.length / VERIFICATION_KEY_HEX_LENGTH;
+        const floor = BigInt(SDK.governedThresholdFloor(committeeLength));
+        if (threshold < floor) {
+          throw new Error(
+            `DA_THRESHOLD must be at least ${floor.toString()} for a committee of ${committeeLength.toString()} members, received ${threshold.toString()}`,
+          );
+        }
+        if (threshold > BigInt(committeeLength)) {
+          throw new Error(
+            `DA_THRESHOLD must not exceed the ${committeeLength.toString()} configured DA_COMMITTEE_HEX members, received ${threshold.toString()}`,
+          );
+        }
+      }
+      return threshold;
+    }),
+  );
+  const daOwnersHex = yield* Config.string("DA_OWNERS_HEX").pipe(
+    Config.withDefault(""),
+    Config.mapAttempt((value) =>
+      validateGovernedDaKeySet(
+        value,
+        VERIFICATION_KEY_HASH_HEX_LENGTH,
+        "DA_OWNERS_HEX",
+        "packed 28-byte payment key hashes",
+      ),
+    ),
+  );
+  const daCosignerSeedPhrase = yield* Config.string(
+    "DA_COSIGNER_SEED_PHRASE",
+  ).pipe(
+    Config.withDefault(""),
+    Config.mapAttempt((value) => {
+      const trimmed = value.trim();
+      if (trimmed.length > 0) {
+        // Derive once here so a malformed seed fails config load with a
+        // ConfigError, the way the operator and reference-script seeds already
+        // do, rather than surfacing later as an untyped defect inside
+        // bootstrap or attestation signing.
+        try {
+          walletFromSeed(trimmed, { network });
+        } catch (cause) {
+          throw new Error(
+            `DA_COSIGNER_SEED_PHRASE is not a valid wallet seed phrase: ${String(cause)}`,
+          );
+        }
+      }
+      return trimmed;
     }),
   );
   const daHardeningConfig = readDaHardeningConfig();
@@ -1259,6 +1377,8 @@ const makeConfig = Effect.gen(function* () {
     OPERATOR_SLASHING_PENALTY_LOVELACE: operatorSlashingPenaltyLovelace,
     DA_COMMITTEE_HEX: daCommitteeHex,
     DA_THRESHOLD: daThreshold,
+    DA_OWNERS_HEX: daOwnersHex,
+    DA_COSIGNER_SEED_PHRASE: daCosignerSeedPhrase,
     MIDGARD_DA_PAYLOAD_ENVELOPE: daHardeningConfig.envelopeMode,
     MIDGARD_DA_ZSTD_LEVEL: daHardeningConfig.zstdLevel,
     MIDGARD_DA_PUBLISH_CONCURRENCY: daHardeningConfig.publishConcurrency,

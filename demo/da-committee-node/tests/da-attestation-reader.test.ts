@@ -21,22 +21,24 @@ import { minimalConfig, tempDir } from "./helpers.js";
 describe("LucidDaAttestationChainReader", () => {
   it("fetches and decodes the unique DA params UTxO", async () => {
     const dir = await tempDir();
-    const committeeHex = "01".repeat(32);
+    // Q63 (F04 §4) floors both governed thresholds at two, so the smallest
+    // representable committee has two sorted-unique members.
+    const committeeHex = "01".repeat(32) + "02".repeat(32);
     const config = minimalConfig({
       dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: "00".repeat(32),
-      signerPublicKey: committeeHex,
+      signerPublicKey: "01".repeat(32),
     });
     const daParamsDatum: SDK.DaParamsDatum = {
       committee: committeeHex,
       committee_signers_hash: bytesToHex(
         blake2b(Buffer.from(committeeHex, "hex"), { dkLen: 32 }),
       ),
-      da_threshold: 1n,
-      owners: [],
-      update_threshold: 1n,
+      da_threshold: 2n,
+      owners: ["22".repeat(28), "33".repeat(28)],
+      update_threshold: 2n,
     };
     const paramsUnit = toUnit(
       config.daParamsGovernorPolicyId,
@@ -60,7 +62,7 @@ describe("LucidDaAttestationChainReader", () => {
     await expect(reader.fetchDaParams()).resolves.toMatchObject({
       outRef: `${"aa".repeat(32)}#0`,
       committeeHex,
-      threshold: 1,
+      threshold: 2,
       observedChainPoint: {
         network: "Preview",
         slot: 99,
@@ -240,11 +242,11 @@ describe("LucidDaAttestationChainReader", () => {
   it("fails closed when DA params providers disagree", async () => {
     const reader = new MultiDaAttestationChainReader([
       fakeReader({
-        daParams: daParamsFixture({ threshold: 1 }),
+        daParams: daParamsFixture({ threshold: 2 }),
         candidates: [],
       }),
       fakeReader({
-        daParams: daParamsFixture({ threshold: 2 }),
+        daParams: daParamsFixture({ threshold: 3 }),
         candidates: [],
       }),
     ]);
@@ -344,28 +346,34 @@ const pointResolvers = (providerSource: string) => ({
   queryPointResolver: async () => chainPoint(providerSource, 100, "cd"),
 });
 
+/**
+ * A floor-compliant DA params fixture: a three-member sorted-unique committee
+ * over a two-member owner set, so thresholds of both 2 and 3 stay within the
+ * Q63 (F04 §4) governed bounds.
+ */
 const daParamsFixture = ({
-  threshold = 1,
+  threshold = 2,
 }: {
   readonly threshold?: number;
 } = {}): OnChainDaParams => {
-  const committeeHex = "01".repeat(32);
+  const committeeHex = "01".repeat(32) + "02".repeat(32) + "03".repeat(32);
+  const owners = ["22".repeat(28), "33".repeat(28)];
   const rawDatum: SDK.DaParamsDatum = {
     committee: committeeHex,
     committee_signers_hash: bytesToHex(
       blake2b(Buffer.from(committeeHex, "hex"), { dkLen: 32 }),
     ),
     da_threshold: BigInt(threshold),
-    owners: [],
-    update_threshold: 1n,
+    owners,
+    update_threshold: 2n,
   };
   return {
     outRef: `${"aa".repeat(32)}#0`,
     committeeHex,
     committeeSignersHash: rawDatum.committee_signers_hash,
     threshold,
-    ownerCount: 0,
-    updateThreshold: 1,
+    ownerCount: owners.length,
+    updateThreshold: 2,
     rawDatum,
   };
 };

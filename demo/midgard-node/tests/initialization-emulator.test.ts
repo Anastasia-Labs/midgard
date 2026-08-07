@@ -45,12 +45,30 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 } as const;
 
 const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
+
+/**
+ * Dev/emulator DA cosigner seed.
+ *
+ * Q63 (F04 §4) floors `da_threshold` and `update_threshold` at two, so the
+ * bootstrap needs a second key before the governor will accept its params. The
+ * emulator has no committee peers, so the harness holds that key itself and
+ * passes it as `DA_COSIGNER_SEED_PHRASE`. It only ever signs attestation
+ * messages, so it never needs emulator funds.
+ */
+const TEST_DA_COSIGNER_SEED_PHRASE =
+  "second salad helmet humble left noise inform person swamp surround twice animal fitness sing laundry saddle stove guess cabin rural kidney reject oil fee";
+
+/**
+ * A floor-compliant 2-of-2 committee with a 2-of-2 owner set. Both sets are
+ * sorted-unique because `valid_datum` measures them with its `sorted_unique_*`
+ * walkers.
+ */
 const TEST_DA_PARAMS: SDK.DaParamsDatum = {
-  committee: "00".repeat(32),
+  committee: "00".repeat(32) + "01".repeat(32),
   committee_signers_hash: "11".repeat(32),
-  da_threshold: 1n,
-  owners: ["22".repeat(28)],
-  update_threshold: 1n,
+  da_threshold: 2n,
+  owners: ["22".repeat(28), "33".repeat(28)],
+  update_threshold: 2n,
 };
 
 const buildAtomicInitializationTx = async (
@@ -74,6 +92,7 @@ const buildAtomicInitializationTx = async (
         HUB_ORACLE_ONE_SHOT_TX_HASH: nonceUtxo.txHash,
         HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonceUtxo.outputIndex,
         L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
+        DA_COSIGNER_SEED_PHRASE: TEST_DA_COSIGNER_SEED_PHRASE,
         NETWORK: "Preprod",
       },
       EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,

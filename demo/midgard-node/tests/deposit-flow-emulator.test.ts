@@ -207,8 +207,23 @@ const EMULATOR_DA_PRODUCER_PEER_ID =
   "12D3KooWKf1kXPQFRZ6SR6WQF1Z7gqDRUjUe7S4hSm8LRmSk5kvA";
 const EMULATOR_DA_COMMITTEE_PEER_ID =
   "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
+const EMULATOR_DA_SECOND_COMMITTEE_PEER_ID =
+  "12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp";
 const EMULATOR_DA_PRIVATE_KEY_SOURCE = `seed:${"00".repeat(31)}01`;
 const TEST_DA_PRIVATE_KEY_SOURCE = `seed:${"00".repeat(31)}01`;
+
+/**
+ * Dev/emulator DA cosigner seed.
+ *
+ * Q63 (F04 §4) floors `da_threshold` at two, so the emulator's DA params carry
+ * a 2-of-2 committee and an attestation needs two genuine signatures. There is
+ * no committee peer in the emulator, so the harness holds the second key itself
+ * and passes it as `DA_COSIGNER_SEED_PHRASE`; the node then signs once per
+ * locally held key. The same seed must reach both the bootstrap that writes the
+ * committee and the node config that attests against it.
+ */
+const EMULATOR_DA_COSIGNER_SEED_PHRASE =
+  "second salad helmet humble left noise inform person swamp surround twice animal fitness sing laundry saddle stove guess cabin rural kidney reject oil fee";
 const TEST_DA_PRODUCER_PEER_ID =
   "12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp";
 const TEST_DA_COMMITTEE_PEER_ID =
@@ -308,7 +323,9 @@ beforeAll(async () => {
       },
       public_retained_da: publicRetainedDaBlock(),
       da_committee: {
-        threshold: 1,
+        // Q63 floors the on-chain `da_threshold` at two; the transport
+        // threshold must be at least that.
+        threshold: 2,
         members: [
           {
             signer_index: 0,
@@ -316,6 +333,15 @@ beforeAll(async () => {
             peer_id: TEST_DA_COMMITTEE_PEER_ID,
             multiaddrs: [
               `/dns4/da.example/tcp/4001/p2p/${TEST_DA_COMMITTEE_PEER_ID}`,
+            ],
+            roles: ["committee", "retrieval"],
+          },
+          {
+            signer_index: 1,
+            da_vkey: "02".repeat(32),
+            peer_id: EMULATOR_DA_SECOND_COMMITTEE_PEER_ID,
+            multiaddrs: [
+              `/dns4/da2.example/tcp/4001/p2p/${EMULATOR_DA_SECOND_COMMITTEE_PEER_ID}`,
             ],
             roles: ["committee", "retrieval"],
           },
@@ -550,6 +576,7 @@ const initializeProtocol = async ({
         HUB_ORACLE_ONE_SHOT_TX_HASH: nonceUtxo.txHash,
         HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonceUtxo.outputIndex,
         L1_OPERATOR_SEED_PHRASE: operatorAccount.seedPhrase,
+        DA_COSIGNER_SEED_PHRASE: EMULATOR_DA_COSIGNER_SEED_PHRASE,
         NETWORK: "Preprod",
       },
       fraudProofCatalogueRoot,
@@ -1459,6 +1486,9 @@ const makeNodeConfigForFixture = async (fixture: EmulatorFixture) => {
     ...nodeConfig,
     L1_OPERATOR_SEED_PHRASE: fixture.operatorAccount.seedPhrase,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: fixture.operatorAccount.seedPhrase,
+    // Must match the seed the bootstrap wrote into the committee, or the node
+    // cannot produce the second of the two signatures the threshold needs.
+    DA_COSIGNER_SEED_PHRASE: EMULATOR_DA_COSIGNER_SEED_PHRASE,
   };
 };
 
@@ -2542,7 +2572,9 @@ const configureEmulatorDaRuntimeManifest = async (): Promise<void> => {
     },
     public_retained_da: publicRetainedDaBlock(),
     da_committee: {
-      threshold: 1,
+      // Q63 floors the on-chain `da_threshold` at two, and node startup asserts
+      // the transport threshold is at least the on-chain one.
+      threshold: 2,
       members: [
         {
           signer_index: 0,
@@ -2550,6 +2582,15 @@ const configureEmulatorDaRuntimeManifest = async (): Promise<void> => {
           peer_id: EMULATOR_DA_COMMITTEE_PEER_ID,
           multiaddrs: [
             `/ip4/127.0.0.1/tcp/4002/p2p/${EMULATOR_DA_COMMITTEE_PEER_ID}`,
+          ],
+          roles: ["committee"],
+        },
+        {
+          signer_index: 1,
+          da_vkey: "02".repeat(32),
+          peer_id: EMULATOR_DA_SECOND_COMMITTEE_PEER_ID,
+          multiaddrs: [
+            `/ip4/127.0.0.1/tcp/4003/p2p/${EMULATOR_DA_SECOND_COMMITTEE_PEER_ID}`,
           ],
           roles: ["committee"],
         },

@@ -1,7 +1,6 @@
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  CML,
   credentialToAddress,
   Data as LucidData,
   LucidEvolution,
@@ -11,10 +10,17 @@ import {
   type TxBuilder,
   type TxSignBuilder,
   UTxO,
-  walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
+import {
+  type DaLocalSigner,
+  daLocalSigners,
+  isStrictlyAscending,
+  splitPackedHex,
+  VERIFICATION_KEY_HASH_HEX_LENGTH,
+  VERIFICATION_KEY_HEX_LENGTH,
+} from "@/da/local-signers.js";
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "@/lucid-time.js";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import { NodeConfig } from "@/services/config.js";
@@ -216,57 +222,107 @@ export const atomicProtocolInitReferenceScriptsFromPublications = (
   ),
 });
 
+/**
+ * Builds the `DaParamsDatum` this node writes at protocol initialization.
+ *
+ * Q63 (F04 §4) gave the governor threshold floors — `da_threshold >= max(2,
+ * ceil(2*committee_len/3))` and `update_threshold >= max(2,
+ * ceil(2*owner_len/3))` — which make a 1-of-1 committee and a lone owner
+ * unrepresentable. Every bound below is evaluated by the SDK twins
+ * (`SDK.governedThresholdFloor`, `SDK.daParamsFloorViolations`) so the
+ * arithmetic lives in exactly one place and cannot drift from the validator.
+ *
+ * Both sets are also emitted sorted-unique, because `valid_datum` measures
+ * `committee` and `owners` with its `sorted_unique_*` walkers, which fail the
+ * script outright on an out-of-order or duplicate element.
+ *
+ * The function fails closed. There is no fallback to the operator's own single
+ * key: a deployment that has not been told about a second committee member and
+ * a second owner cannot produce params the governor accepts, and saying so here
+ * is far cheaper than a cryptic on-chain script failure.
+ */
 export const deriveOperatorDaParams = (nodeConfig: {
   readonly L1_OPERATOR_SEED_PHRASE: string;
   readonly NETWORK: Network;
   readonly DA_COMMITTEE_HEX?: string;
   readonly DA_THRESHOLD?: bigint | null;
+  readonly DA_COSIGNER_SEED_PHRASE?: string;
+  readonly DA_OWNERS_HEX?: string;
 }): Effect.Effect<SDK.DaParamsDatum, SDK.HashingError> =>
   Effect.gen(function* () {
-    const wallet = walletFromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE, {
-      network: nodeConfig.NETWORK,
+    // Seed decoding is the one step here that can throw on caller-supplied
+    // input, so it is surfaced as this function's declared error rather than as
+    // an unhandled defect.
+    const signers = yield* Effect.try({
+      try: () => daLocalSigners(nodeConfig),
+      catch: (cause) =>
+        new SDK.HashingError({
+          message: "Invalid DA signer configuration",
+          cause,
+        }),
     });
-    const privateKey = CML.PrivateKey.from_bech32(wallet.paymentKey);
-    const publicKey = privateKey.to_public();
-    const configuredCommittee = (nodeConfig.DA_COMMITTEE_HEX ?? "").trim();
-    const committee =
-      configuredCommittee.length > 0
-        ? yield* validateConfiguredDaCommittee(configuredCommittee)
-        : Buffer.from(publicKey.to_raw_bytes()).toString("hex");
-    const committeeLength = BigInt(committee.length / 64);
-    const daThreshold = nodeConfig.DA_THRESHOLD ?? 1n;
-    if (daThreshold <= 0n || daThreshold > committeeLength) {
+    const committee = yield* resolveDaCommittee(nodeConfig, signers);
+    const committeeLength = committee.length / VERIFICATION_KEY_HEX_LENGTH;
+    const owners = yield* resolveDaOwners(nodeConfig, signers);
+    const daThreshold =
+      nodeConfig.DA_THRESHOLD ??
+      BigInt(SDK.governedThresholdFloor(committeeLength));
+    const updateThreshold = BigInt(SDK.governedThresholdFloor(owners.length));
+
+    const violations = SDK.daParamsFloorViolations({
+      committeeLength,
+      daThreshold: Number(daThreshold),
+      ownerCount: owners.length,
+      updateThreshold: Number(updateThreshold),
+    });
+    if (violations.length > 0) {
       return yield* Effect.fail(
         new SDK.HashingError({
           message: "Invalid DA threshold configuration",
-          cause: `threshold=${daThreshold.toString()},committee_members=${committeeLength.toString()}`,
+          cause:
+            `${violations.join(",")}; ` +
+            `threshold=${daThreshold.toString()},committee_members=${committeeLength.toString()},` +
+            `update_threshold=${updateThreshold.toString()},owners=${owners.length.toString()}`,
         }),
       );
     }
+
     return {
       committee,
       committee_signers_hash: yield* SDK.hashHexWithBlake2b(committee, 32),
       da_threshold: daThreshold,
-      owners: [publicKey.hash().to_hex()],
-      update_threshold: 1n,
+      owners,
+      update_threshold: updateThreshold,
     };
   });
 
-const validateConfiguredDaCommittee = (
-  committee: string,
+const resolveDaCommittee = (
+  nodeConfig: {
+    readonly DA_COMMITTEE_HEX?: string;
+  },
+  signers: readonly DaLocalSigner[],
 ): Effect.Effect<string, SDK.HashingError> =>
   Effect.try({
     try: () => {
-      const normalized = committee.trim().toLowerCase();
-      if (!/^[0-9a-f]*$/.test(normalized) || normalized.length % 64 !== 0) {
+      const configured = (nodeConfig.DA_COMMITTEE_HEX ?? "").trim();
+      if (configured.length > 0) {
+        return validatedPackedSet(
+          configured,
+          VERIFICATION_KEY_HEX_LENGTH,
+          "DA_COMMITTEE_HEX",
+          "packed 32-byte verification keys",
+        ).join("");
+      }
+      const keys = [
+        ...new Set(signers.map((signer) => signer.verificationKeyHex)),
+      ].sort();
+      if (keys.length < SDK.MIN_DA_OWNER_COUNT) {
         throw new Error(
-          "DA_COMMITTEE_HEX must be packed 32-byte verification keys as hex",
+          `DA committee needs at least ${SDK.MIN_DA_OWNER_COUNT.toString()} members to satisfy the governed threshold floor; ` +
+            "set DA_COMMITTEE_HEX to the packed committee, or set DA_COSIGNER_SEED_PHRASE to a second locally held key",
         );
       }
-      if (normalized.length === 0) {
-        throw new Error("DA_COMMITTEE_HEX cannot be empty when configured");
-      }
-      return normalized;
+      return keys.join("");
     },
     catch: (cause) =>
       new SDK.HashingError({
@@ -274,6 +330,77 @@ const validateConfiguredDaCommittee = (
         cause,
       }),
   });
+
+const resolveDaOwners = (
+  nodeConfig: {
+    readonly DA_OWNERS_HEX?: string;
+  },
+  signers: readonly DaLocalSigner[],
+): Effect.Effect<string[], SDK.HashingError> =>
+  Effect.try({
+    try: () => {
+      const configured = (nodeConfig.DA_OWNERS_HEX ?? "").trim();
+      if (configured.length > 0) {
+        return validatedPackedSet(
+          configured,
+          VERIFICATION_KEY_HASH_HEX_LENGTH,
+          "DA_OWNERS_HEX",
+          "packed 28-byte payment key hashes",
+        );
+      }
+      const hashes = [
+        ...new Set(signers.map((signer) => signer.keyHashHex)),
+      ].sort();
+      if (hashes.length < SDK.MIN_DA_OWNER_COUNT) {
+        throw new Error(
+          `DA owner set needs at least ${SDK.MIN_DA_OWNER_COUNT.toString()} members to satisfy the governed threshold floor; ` +
+            "set DA_OWNERS_HEX to the packed owner key hashes, or set DA_COSIGNER_SEED_PHRASE to a second locally held key",
+        );
+      }
+      return hashes;
+    },
+    catch: (cause) =>
+      new SDK.HashingError({
+        message: "Invalid DA owner configuration",
+        cause,
+      }),
+  });
+
+/**
+ * Parses a packed hex set and enforces what `valid_datum` needs of it: correct
+ * element width, strictly ascending order (its sorted-unique encoding), and at
+ * least `MIN_DA_OWNER_COUNT` elements so a governed threshold floor of two is
+ * satisfiable at all.
+ *
+ * Order is rejected rather than repaired. Committee position *is* the signer
+ * index every attestation witness and attested-signer bit is keyed on, so
+ * silently reordering a configured committee would desynchronise this node from
+ * its peers.
+ */
+const validatedPackedSet = (
+  packed: string,
+  chunkHexLength: number,
+  fieldName: string,
+  shape: string,
+): string[] => {
+  let elements: readonly string[];
+  try {
+    elements = splitPackedHex(packed, chunkHexLength, fieldName);
+  } catch {
+    throw new Error(`${fieldName} must be ${shape} as hex`);
+  }
+  if (elements.length < SDK.MIN_DA_OWNER_COUNT) {
+    throw new Error(
+      `${fieldName} must list at least ${SDK.MIN_DA_OWNER_COUNT.toString()} entries to satisfy the governed threshold floor, received ${elements.length.toString()}`,
+    );
+  }
+  if (!isStrictlyAscending(elements)) {
+    throw new Error(
+      `${fieldName} must be sorted ascending with no duplicates, matching the governor's sorted-unique encoding`,
+    );
+  }
+  return [...elements];
+};
 
 export const ensureAtomicProtocolInitReferenceScriptsProgram = (
   referenceScriptsLucid: LucidEvolution,
@@ -685,6 +812,10 @@ export const buildAtomicProtocolInitTxProgram = (
     HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
     L1_OPERATOR_SEED_PHRASE: string;
     NETWORK: Network;
+    DA_COMMITTEE_HEX?: string;
+    DA_THRESHOLD?: bigint | null;
+    DA_COSIGNER_SEED_PHRASE?: string;
+    DA_OWNERS_HEX?: string;
   },
   fraudProofCatalogueMerkleRoot: string,
   validTo?: bigint,

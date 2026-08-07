@@ -1,15 +1,14 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  CML,
   Data,
   type LucidEvolution,
   type Network,
   type TxSignBuilder,
   type UTxO,
-  walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
+import { committeeSignerIndex, daLocalSigners } from "@/da/local-signers.js";
 import { NodeConfig } from "@/services/config.js";
 import { Lucid, MidgardContracts } from "@/services/index.js";
 import {
@@ -27,7 +26,6 @@ import { outRefLabel } from "@/tx-context.js";
 const DA_ATTESTATION_OUTPUT_LOVELACE = 5_000_000n;
 const UTXO_VISIBILITY_RETRY_DELAY = "2 seconds";
 const UTXO_VISIBILITY_RETRY_COUNT = 12;
-const OPERATOR_DA_SIGNER_INDEX = 0;
 
 type CompleteOptions = {
   readonly localUPLCEval: boolean;
@@ -40,6 +38,7 @@ type CompletableTx = {
 type OperatorDaConfig = {
   readonly L1_OPERATOR_SEED_PHRASE: string;
   readonly NETWORK: Network;
+  readonly DA_COSIGNER_SEED_PHRASE?: string;
 };
 
 export type AttestStateQueueOnceOptions = {
@@ -360,19 +359,37 @@ const fetchUnattestedHeaders = (
     return matches;
   });
 
-const indexedOperatorSignature = (
+/**
+ * Every attestation witness this process can produce for `headerHash`.
+ *
+ * Since Q63 the governed floor puts `da_threshold` at two or more, so a single
+ * operator signature can never reach threshold alone. A node holding more than
+ * one DA key (dev and emulator bootstrap, via `DA_COSIGNER_SEED_PHRASE`)
+ * contributes one genuine Ed25519 signature per key here; a production node
+ * holds one key and the remaining witnesses arrive from peers over libp2p.
+ *
+ * The signer index is looked up in the on-chain committee rather than assumed,
+ * because the committee is emitted sorted-unique and the operator's key is not
+ * necessarily first. Keys absent from the committee are skipped: they cannot be
+ * indexed, and the attestation validator would reject them.
+ */
+const localDaSignatureWitnesses = (
   headerHash: string,
-  operatorSeedPhrase: string,
-  network: Network,
-): SDK.DaAttestationSignatureWitness => {
-  const wallet = walletFromSeed(operatorSeedPhrase, { network });
-  const privateKey = CML.PrivateKey.from_bech32(wallet.paymentKey);
-  return {
-    signerIndex: OPERATOR_DA_SIGNER_INDEX,
-    signatureHex: privateKey
-      .sign(SDK.daAttestationMessage(headerHash))
-      .to_hex(),
-  };
+  nodeConfig: OperatorDaConfig,
+  committeeHex: string,
+): readonly SDK.DaAttestationSignatureWitness[] => {
+  const message = SDK.daAttestationMessage(headerHash);
+  return daLocalSigners(nodeConfig)
+    .flatMap((signer) => {
+      const signerIndex = committeeSignerIndex(
+        committeeHex,
+        signer.verificationKeyHex,
+      );
+      return signerIndex === null
+        ? []
+        : [{ signerIndex, signatureHex: signer.sign(message) }];
+    })
+    .sort((left, right) => left.signerIndex - right.signerIndex);
 };
 
 const attestHeader = ({
@@ -435,10 +452,10 @@ const attestHeader = ({
       );
     }
 
-    const signatureWitnesses = indexedOperatorSignature(
+    const localWitnesses = localDaSignatureWitnesses(
       target.headerHash,
-      nodeConfig.L1_OPERATOR_SEED_PHRASE,
-      nodeConfig.NETWORK,
+      nodeConfig,
+      daParamsDatum.committee,
     );
     const initializedAttestation = yield* selectDaAttestationCandidate(
       candidates,
@@ -447,17 +464,32 @@ const attestHeader = ({
     );
 
     if (!daAttestationReachedThreshold(initializedAttestation)) {
-      if (
-        SDK.signerIndexIsDaAttested(
-          initializedAttestation.datum.attested_signers,
-          OPERATOR_DA_SIGNER_INDEX,
-        )
-      ) {
+      // Distinguish "this node is not on the committee at all" from "this node
+      // has already contributed everything it can". They need different
+      // operator responses, and conflating them sends whoever reads the log
+      // after the wrong problem.
+      if (localWitnesses.length === 0) {
         return yield* Effect.fail(
           new SDK.StateQueueError({
             message:
-              "Selected DA attestation UTxO already includes the local operator signature but has not reached threshold",
-            cause: `outRef=${outRefLabel(initializedAttestation.utxo)},attestation_count=${initializedAttestation.datum.attestation_count.toString()},threshold=${initializedAttestation.datum.da_threshold.toString()}`,
+              "No locally held DA key is a member of the on-chain DA committee",
+            cause: `outRef=${outRefLabel(initializedAttestation.utxo)},committee_members=${(daParamsDatum.committee.length / 64).toString()},threshold=${initializedAttestation.datum.da_threshold.toString()}`,
+          }),
+        );
+      }
+      const pendingWitnesses = localWitnesses.filter(
+        (witness) =>
+          !SDK.signerIndexIsDaAttested(
+            initializedAttestation.datum.attested_signers,
+            witness.signerIndex,
+          ),
+      );
+      if (pendingWitnesses.length === 0) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Selected DA attestation UTxO already includes every locally held DA signature but has not reached threshold",
+            cause: `outRef=${outRefLabel(initializedAttestation.utxo)},local_signers=${localWitnesses.length.toString()},attestation_count=${initializedAttestation.datum.attestation_count.toString()},threshold=${initializedAttestation.datum.da_threshold.toString()}`,
           }),
         );
       }
@@ -469,7 +501,7 @@ const attestHeader = ({
             daParamsUtxo,
             daParamsDatum,
             attestation: initializedAttestation,
-            witnesses: [signatureWitnesses],
+            witnesses: pendingWitnesses,
             referenceScripts,
           },
         );
