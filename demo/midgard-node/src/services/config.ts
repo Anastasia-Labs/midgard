@@ -26,17 +26,26 @@ import {
 } from "@/database/retention-policy.js";
 
 /**
- * Validates one of the governed DA key sets (`DA_COMMITTEE_HEX`,
+ * Validates the *encoding* of one of the DA key sets (`DA_COMMITTEE_HEX`,
  * `DA_OWNERS_HEX`) at config load, returning the normalized packed hex.
  *
- * An empty value stays empty: these are optional, and the bootstrap in
- * `deriveOperatorDaParams` decides what to do when they are absent. A *present*
- * value must already be a shape the governor can accept — right element width,
- * sorted-unique ascending order, and at least `MIN_DA_OWNER_COUNT` entries,
- * since Q63 floors both governed thresholds at two and a one-element set can
- * never carry a threshold of two.
+ * Encoding only — deliberately not policy. `DA_COMMITTEE_HEX`, `DA_OWNERS_HEX`
+ * and `DA_THRESHOLD` are read by exactly one consumer,
+ * `deriveOperatorDaParams`, and every other subsystem that loads `NodeConfig`
+ * ignores them. Enforcing the Q63 governed floors here would let a stale
+ * deployment value (say the pre-Q63 `DA_THRESHOLD=1` still sitting in a
+ * checkout's `.env`) fail config load for the whole process, surfacing as an
+ * opaque error inside subsystems that never touch DA. The floors are instead
+ * enforced in `deriveOperatorDaParams`, at the one point where a
+ * governor-invalid datum would actually be written, where the real committee
+ * length is known even when it is derived from local signers rather than
+ * configured.
+ *
+ * What stays here is what is unambiguously wrong regardless of policy: a value
+ * that is not hex, is not a whole number of elements, or is not the
+ * sorted-unique ascending order the governor's walkers require.
  */
-const validateGovernedDaKeySet = (
+const validateDaKeySetEncoding = (
   value: string,
   chunkHexLength: number,
   fieldName: string,
@@ -51,11 +60,6 @@ const validateGovernedDaKeySet = (
     elements = splitPackedHex(normalized, chunkHexLength, fieldName);
   } catch {
     throw new Error(`${fieldName} must be ${shape} as hex`);
-  }
-  if (elements.length < SDK.MIN_DA_OWNER_COUNT) {
-    throw new Error(
-      `${fieldName} must list at least ${SDK.MIN_DA_OWNER_COUNT.toString()} entries to satisfy the governed threshold floor, received ${elements.length.toString()}`,
-    );
   }
   if (!isStrictlyAscending(elements)) {
     throw new Error(
@@ -744,16 +748,13 @@ const makeConfig = Effect.gen(function* () {
     Config.withDefault("200000"),
     Config.mapAttempt((value) => BigInt(value)),
   );
-  // Q63 (F04 §4): the DA params governor floors both thresholds at
-  // `max(2, ceil(2*set_len/3))`, so a 1-of-1 committee or owner set is
-  // unrepresentable on-chain. These validations reject the forbidden shapes at
-  // config load — where the operator can still read the message — rather than
-  // letting initialization fail inside a Plutus script. The floor arithmetic
-  // itself is never restated here; it comes from the SDK twin.
+  // Q63 (F04 §4) governed floors are enforced in `deriveOperatorDaParams`, not
+  // here — see `validateDaKeySetEncoding`. Config load only rejects values that
+  // are malformed no matter what the policy is.
   const daCommitteeHex = yield* Config.string("DA_COMMITTEE_HEX").pipe(
     Config.withDefault(""),
     Config.mapAttempt((value) =>
-      validateGovernedDaKeySet(
+      validateDaKeySetEncoding(
         value,
         VERIFICATION_KEY_HEX_LENGTH,
         "DA_COMMITTEE_HEX",
@@ -769,25 +770,10 @@ const makeConfig = Effect.gen(function* () {
         return null;
       }
       const threshold = BigInt(trimmed);
-      if (threshold < BigInt(SDK.MIN_DA_OWNER_COUNT)) {
+      if (threshold <= 0n) {
         throw new Error(
-          `DA_THRESHOLD must be at least ${SDK.MIN_DA_OWNER_COUNT.toString()} to satisfy the governed threshold floor, received ${threshold.toString()}`,
+          `DA_THRESHOLD must be a positive integer, received ${threshold.toString()}`,
         );
-      }
-      if (daCommitteeHex.length > 0) {
-        const committeeLength =
-          daCommitteeHex.length / VERIFICATION_KEY_HEX_LENGTH;
-        const floor = BigInt(SDK.governedThresholdFloor(committeeLength));
-        if (threshold < floor) {
-          throw new Error(
-            `DA_THRESHOLD must be at least ${floor.toString()} for a committee of ${committeeLength.toString()} members, received ${threshold.toString()}`,
-          );
-        }
-        if (threshold > BigInt(committeeLength)) {
-          throw new Error(
-            `DA_THRESHOLD must not exceed the ${committeeLength.toString()} configured DA_COMMITTEE_HEX members, received ${threshold.toString()}`,
-          );
-        }
       }
       return threshold;
     }),
@@ -795,7 +781,7 @@ const makeConfig = Effect.gen(function* () {
   const daOwnersHex = yield* Config.string("DA_OWNERS_HEX").pipe(
     Config.withDefault(""),
     Config.mapAttempt((value) =>
-      validateGovernedDaKeySet(
+      validateDaKeySetEncoding(
         value,
         VERIFICATION_KEY_HASH_HEX_LENGTH,
         "DA_OWNERS_HEX",

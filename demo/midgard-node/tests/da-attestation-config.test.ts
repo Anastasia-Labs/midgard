@@ -172,4 +172,19 @@ describe("DA attestation configuration", () => {
     expect(failure.message).toBe("Invalid DA threshold configuration");
     expect(failure.cause).toMatch(/da_threshold_exceeds_committee/);
   });
+
+  // Regression: the governed floors belong to initialization, not to config
+  // load. A pre-Q63 `DA_THRESHOLD=1` left in a checkout's `.env` must not be
+  // able to fail `NodeConfig` for subsystems that never touch DA — but it must
+  // still be refused here, where the datum would be written.
+  it("still refuses a pre-Q63 threshold of one over a well-formed committee", async () => {
+    const failure = await daParamsFailure({
+      ...BASE,
+      DA_COMMITTEE_HEX: "01".repeat(32) + "02".repeat(32),
+      DA_OWNERS_HEX: ["11".repeat(28), "22".repeat(28)].join(""),
+      DA_THRESHOLD: 1n,
+    });
+    expect(failure.message).toBe("Invalid DA threshold configuration");
+    expect(failure.cause).toMatch(/da_threshold_below_floor/);
+  });
 });
