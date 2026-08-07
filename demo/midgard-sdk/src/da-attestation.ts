@@ -55,6 +55,81 @@ export const DaParamsDatumSchema = Data.Object({
 export type DaParamsDatum = Data.Static<typeof DaParamsDatumSchema>;
 export const DaParamsDatum = DaParamsDatumSchema as unknown as DaParamsDatum;
 
+/**
+ * Smallest owner set the DA params governor will represent. A lone owner
+ * cannot carry an `update_threshold` of at least two, so this constant is also
+ * the owner-set drain protection.
+ *
+ * Source: `docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md`
+ * §4 (Q63, ACCEPTED).
+ */
+export const MIN_DA_OWNER_COUNT = 2;
+
+/**
+ * F04 §4 governed threshold floor: `max(2, ceil(2*setLength/3))`.
+ *
+ * TypeScript twin of `governed_threshold_floor` in
+ * `onchain/aiken/validators/da-params-governor.ak`. Both evaluate the ceiling
+ * as `(2*setLength + 2) / 3` under integer division so that the two languages
+ * agree on every set size; `tests/da-governor-safety-v1.test.ts` pins the
+ * shared vectors.
+ */
+export const governedThresholdFloor = (setLength: number): number => {
+  if (!Number.isSafeInteger(setLength) || setLength < 0) {
+    throw new Error(
+      `governed threshold floor requires a non-negative integer set size, received ${String(setLength)}`,
+    );
+  }
+  const twoThirdsCeiling = Math.floor((2 * setLength + 2) / 3);
+  return twoThirdsCeiling > MIN_DA_OWNER_COUNT
+    ? twoThirdsCeiling
+    : MIN_DA_OWNER_COUNT;
+};
+
+/** One governed-bound violation class reported by {@link daParamsFloorViolations}. */
+export type DaParamsFloorViolation =
+  | "owner_set_below_minimum"
+  | "da_threshold_below_floor"
+  | "da_threshold_exceeds_committee"
+  | "update_threshold_below_floor"
+  | "update_threshold_exceeds_owner_set";
+
+/**
+ * Off-chain twin of the governed bounds `valid_datum` enforces in
+ * `da-params-governor.ak`. Returns every violated class so a caller can reject
+ * DA params before submitting a transaction the governor would refuse.
+ *
+ * This deliberately covers only the governed thresholds and set sizes; the
+ * sorted-unique committee encoding and the `committee_signers_hash` binding
+ * remain the on-chain validator's checks.
+ */
+export const daParamsFloorViolations = (params: {
+  readonly committeeLength: number;
+  readonly daThreshold: number;
+  readonly ownerCount: number;
+  readonly updateThreshold: number;
+}): DaParamsFloorViolation[] => {
+  const violations: DaParamsFloorViolation[] = [];
+
+  if (params.daThreshold < governedThresholdFloor(params.committeeLength)) {
+    violations.push("da_threshold_below_floor");
+  }
+  if (params.daThreshold > params.committeeLength) {
+    violations.push("da_threshold_exceeds_committee");
+  }
+  if (params.ownerCount < MIN_DA_OWNER_COUNT) {
+    violations.push("owner_set_below_minimum");
+  }
+  if (params.updateThreshold < governedThresholdFloor(params.ownerCount)) {
+    violations.push("update_threshold_below_floor");
+  }
+  if (params.updateThreshold > params.ownerCount) {
+    violations.push("update_threshold_exceeds_owner_set");
+  }
+
+  return violations;
+};
+
 export const DaAttestationDatumSchema = Data.Object({
   header_hash: HeaderHashSchema,
   da_threshold: Data.Integer(),

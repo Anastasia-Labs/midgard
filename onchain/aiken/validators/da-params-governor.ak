@@ -95,6 +95,37 @@ fn sorted_unique_len_from(
   }
 }
 
+/// Lower clamp of the F04 §4 governed threshold floor. This is what makes
+/// single-key capture of `da_threshold` or `update_threshold` unrepresentable.
+const min_governed_threshold: Int = 2
+
+/// Smallest owner set the governor will represent — the owner-set drain
+/// protection. It is deliberately a separate constant from
+/// `min_governed_threshold` even though both are currently two: one bounds a
+/// threshold, the other bounds a set size, and a future change to either must
+/// not silently move the other. `da_params_governor_invariant_owner_set_drain_protection`
+/// pins the relationship they must keep.
+const min_owner_count: Int = 2
+
+/// F04 §4 governed threshold floor: `max(2, ceil(2*set_len/3))`.
+///
+/// `ceil(2*set_len/3)` is evaluated as `(2*set_len + 2) / 3` under integer
+/// division. The clamp is what makes single-key capture of either threshold
+/// unrepresentable; the two-thirds term is what keeps a quorum from dropping
+/// either threshold to a sub-two-thirds slice of its own set.
+///
+/// Source: `docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md`
+/// §4 — `da_threshold >= max(2, ceil(2*committee_len/3))` and
+/// `update_threshold >= max(2, ceil(2*owner_len/3))`.
+fn governed_threshold_floor(set_len: Int) -> Int {
+  let two_thirds_ceiling = ( 2 * set_len + 2 ) / 3
+  if two_thirds_ceiling > min_governed_threshold {
+    two_thirds_ceiling
+  } else {
+    min_governed_threshold
+  }
+}
+
 fn valid_datum(
   datum: DaParamsDatum,
   max_committee_size: Int,
@@ -104,21 +135,22 @@ fn valid_datum(
   expect max_committee_size <= max_indexed_signer_count
   expect max_owner_count > 0
 
-  expect datum.da_threshold > 0
   let committee_len = sorted_unique_packed_len_at_most(
     datum.committee,
     max_committee_size,
     verification_key_byte_count,
   )
   expect datum.committee_signers_hash == blake2b_256(datum.committee)
+  expect datum.da_threshold >= governed_threshold_floor(committee_len)
   expect datum.da_threshold <= committee_len
 
-  expect datum.update_threshold > 0
   let owner_len = sorted_unique_len_at_most(
     datum.owners,
     max_owner_count,
     verification_key_hash_byte_count,
   )
+  expect owner_len >= min_owner_count
+  expect datum.update_threshold >= governed_threshold_floor(owner_len)
   expect datum.update_threshold <= owner_len
 
   True
@@ -259,6 +291,175 @@ fn owner_quorum_met(
       }
     }
   }
+}
+
+// ## Q63 governed-floor fixtures
+//
+// Committee keys and owner key hashes are generated with a strictly ascending
+// leading byte so that every generated set satisfies the sorted-unique
+// requirements of `valid_datum` and only the governed thresholds are ever the
+// subject under test.
+
+const test_max_committee_size: Int = 16
+
+const test_max_owner_count: Int = 16
+
+const test_committee_key_suffix: ByteArray =
+  #"00000000000000000000000000000000000000000000000000000000000000"
+
+const test_owner_hash_suffix: ByteArray =
+  #"000000000000000000000000000000000000000000000000000000"
+
+fn test_committee_key(index: Int) -> ByteArray {
+  bytearray.push(test_committee_key_suffix, index)
+}
+
+fn test_owner_hash(index: Int) -> VerificationKeyHash {
+  bytearray.push(test_owner_hash_suffix, index)
+}
+
+fn test_committee_from(size: Int, index: Int, packed: ByteArray) -> ByteArray {
+  if index > size {
+    packed
+  } else {
+    test_committee_from(
+      size,
+      index + 1,
+      bytearray.concat(packed, test_committee_key(index)),
+    )
+  }
+}
+
+fn test_owners_from(
+  index: Int,
+  owners: List<VerificationKeyHash>,
+) -> List<VerificationKeyHash> {
+  if index == 0 {
+    owners
+  } else {
+    test_owners_from(index - 1, [test_owner_hash(index), ..owners])
+  }
+}
+
+fn test_params(
+  committee_size: Int,
+  da_threshold: Int,
+  owner_count: Int,
+  update_threshold: Int,
+) -> DaParamsDatum {
+  let committee = test_committee_from(committee_size, 1, #"")
+  DaParamsDatum {
+    committee,
+    committee_signers_hash: blake2b_256(committee),
+    da_threshold,
+    owners: test_owners_from(owner_count, []),
+    update_threshold,
+  }
+}
+
+fn test_valid_datum(datum: DaParamsDatum) -> Bool {
+  valid_datum(datum, test_max_committee_size, test_max_owner_count)
+}
+
+fn floor_is_satisfiable_from(set_len: Int, max_len: Int) -> Bool {
+  if set_len > max_len {
+    True
+  } else if governed_threshold_floor(set_len) > set_len {
+    False
+  } else {
+    floor_is_satisfiable_from(set_len + 1, max_len)
+  }
+}
+
+// ## Q63 governed floor/drain invariants
+//
+// The three invariants the governor now enforces, pinned as absolute values
+// against F04 §4 rather than against each other.
+
+/// Invariant 1 — majority DA floor. `da_threshold` is floored at
+/// `max(2, ceil(2*committee_len/3))`, so a bare majority of a committee is
+/// never enough to move DA attestation power.
+test da_params_governor_invariant_da_threshold_majority_floor() {
+  and {
+    governed_threshold_floor(2) == 2,
+    governed_threshold_floor(3) == 2,
+    governed_threshold_floor(4) == 3,
+    governed_threshold_floor(5) == 4,
+    governed_threshold_floor(6) == 4,
+    governed_threshold_floor(7) == 5,
+    governed_threshold_floor(9) == 6,
+    governed_threshold_floor(16) == 11,
+  }
+}
+
+/// Invariant 2 — 2-of-N update floor. The floor never drops below two for any
+/// representable set size, so single-key capture of either threshold is
+/// unrepresentable, and it never exceeds the set size, so it stays satisfiable.
+test da_params_governor_invariant_update_threshold_two_of_n_floor() {
+  and {
+    min_governed_threshold == 2,
+    governed_threshold_floor(1) == 2,
+    governed_threshold_floor(2) == 2,
+    governed_threshold_floor(3) == 2,
+    governed_threshold_floor(4) == 3,
+    floor_is_satisfiable_from(min_owner_count, max_indexed_signer_count),
+  }
+}
+
+/// Invariant 3 — owner-set drain protection. The owner set floor is two, and a
+/// lone owner cannot satisfy the threshold floor, so an owner quorum cannot
+/// drain the owner set toward a single key or toward empty.
+test da_params_governor_invariant_owner_set_drain_protection() {
+  and {
+    min_owner_count == 2,
+    // An owner set must always be large enough to carry the threshold floor,
+    // otherwise the governor would admit no representable datum at all.
+    min_owner_count >= min_governed_threshold,
+    governed_threshold_floor(1) > 1,
+  }
+}
+
+// ## Q63 valid-boundary controls
+//
+// Both controls sit exactly on the F04 floor, so they prove the governed
+// bound admits the smallest configuration it is meant to admit rather than
+// rejecting everything.
+
+/// Control: a 6-member committee with `da_threshold` exactly at the F04 floor
+/// `max(2, ceil(2*6/3)) == 4` is accepted.
+test da_params_governor_control_da_threshold_at_floor_accepted() {
+  test_valid_datum(test_params(6, 4, 3, 2))
+}
+
+/// Control: a 4-owner set with `update_threshold` exactly at the F04 floor
+/// `max(2, ceil(2*4/3)) == 3` is accepted.
+test da_params_governor_control_update_threshold_at_floor_accepted() {
+  test_valid_datum(test_params(3, 2, 4, 3))
+}
+
+// ## Q63 below-floor and drain rejection classes
+//
+// Each rejection pins exactly one disposition: every field other than the one
+// under test is at or above its own governed floor, so the failure can only be
+// the named violation.
+
+/// Rejection: a bare majority `3` of a 6-member committee is below the F04
+/// two-thirds floor of `4`, so DA capture by a sub-two-thirds committee slice
+/// is unrepresentable.
+test da_params_governor_rejects_da_threshold_below_floor() fail {
+  test_valid_datum(test_params(6, 3, 3, 2))
+}
+
+/// Rejection: a single-key `update_threshold` over a 3-owner set is below the
+/// F04 floor of `2`, so single-key governance capture is unrepresentable.
+test da_params_governor_rejects_update_threshold_below_floor() fail {
+  test_valid_datum(test_params(6, 4, 3, 1))
+}
+
+/// Rejection: draining the owner set to a single owner is unrepresentable —
+/// the floor is `2`, and `update_threshold` can never exceed the owner count.
+test da_params_governor_rejects_owner_set_drained_to_one() fail {
+  test_valid_datum(test_params(6, 4, 1, 1))
 }
 
 validator da_params_governor(

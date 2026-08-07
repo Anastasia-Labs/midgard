@@ -1,0 +1,173 @@
+{
+  "schema": "midgard.canonical-v1-q63-da-governor-safety.v1",
+  "version": 1,
+  "goalIds": ["Q63"],
+  "decisionRow": "D-DA5",
+  "acceptanceComplete": false,
+  "note": "Q63 governs the DA params floors and the owner-set drain protection accepted in F04 §4, and pins them in both languages. Acceptance clauses (a) governed lower bounds and (b) owner-set drain protection are implemented in `onchain/aiken/validators/da-params-governor.ak` and measured by the groups below. Acceptance clause (c) — the partial-attestation rescue/refund path — is NOT delivered here: it requires new `MintRedeemer` and `SpendRedeemer` constructors, and both enums live in `onchain/aiken/lib/midgard/da-attestation-types.ak`, which is Q62's exclusive lease and forbidden to this task. The rescue groups are therefore recorded OPEN with their blocker, and this gate exits non-zero until they carry measured evidence. No count here is a declaration count: every published number is recomputed from an executed runner report.",
+  "decisionSource": {
+    "path": "docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md",
+    "section": "4. DA-governor floors (Q63, ACCEPTED)",
+    "boundValues": [
+      {
+        "name": "da_threshold_floor",
+        "expression": "max(2, ceil(2*committee_len/3))",
+        "line": 191,
+        "quote": "- `da_threshold` ≥ max(2, ⌈2·committee_len/3⌉); the governor rejects any"
+      },
+      {
+        "name": "update_threshold_floor",
+        "expression": "max(2, ceil(2*owner_len/3))",
+        "line": 193,
+        "quote": "- `update_threshold` ≥ max(2, ⌈2·owner_len/3⌉); single-key capture of either"
+      },
+      {
+        "name": "partial_attestation_rescue",
+        "expression": "mid-flight rotation must leave partial attestations rescuable/refundable",
+        "line": 195,
+        "quote": "- Mid-flight committee rotation must leave partially signed attestations"
+      }
+    ]
+  },
+  "implementation": {
+    "governor": "onchain/aiken/validators/da-params-governor.ak",
+    "offChainTwin": "demo/midgard-sdk/src/da-attestation.ts",
+    "floorFunction": "governed_threshold_floor",
+    "offChainFloorFunction": "governedThresholdFloor",
+    "minOwnerCount": 2
+  },
+  "groups": [
+    {
+      "id": "governed-floor-drain-invariants",
+      "claim": "The governor enforces the F04 majority DA floor, the 2-of-N update floor, and owner-set drain protection.",
+      "expected": 3,
+      "disposition": "PASS",
+      "evidence": [
+        {
+          "kind": "aiken",
+          "module": "onchain/aiken/validators/da-params-governor.ak",
+          "selectors": [
+            "da_params_governor_invariant_da_threshold_majority_floor",
+            "da_params_governor_invariant_update_threshold_two_of_n_floor",
+            "da_params_governor_invariant_owner_set_drain_protection"
+          ]
+        },
+        {
+          "kind": "vitest",
+          "file": "demo/midgard-sdk/tests/da-governor-safety-v1.test.ts",
+          "titles": [
+            "invariant 1 — floors da_threshold at the F04 two-thirds ceiling",
+            "invariant 2 — never admits a single-key threshold, and stays satisfiable",
+            "invariant 3 — protects the owner set from draining to one or zero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "valid-boundary-controls",
+      "claim": "A configuration sitting exactly on each F04 floor is still accepted, so the bound is not a gate that rejects everything.",
+      "expected": 2,
+      "disposition": "PASS",
+      "evidence": [
+        {
+          "kind": "aiken",
+          "module": "onchain/aiken/validators/da-params-governor.ak",
+          "selectors": [
+            "da_params_governor_control_da_threshold_at_floor_accepted",
+            "da_params_governor_control_update_threshold_at_floor_accepted"
+          ]
+        },
+        {
+          "kind": "vitest",
+          "file": "demo/midgard-sdk/tests/da-governor-safety-v1.test.ts",
+          "titles": [
+            "control 1 — accepts da_threshold exactly on the floor",
+            "control 2 — accepts update_threshold exactly on the floor"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "below-floor-drain-rejections",
+      "claim": "A sub-two-thirds da_threshold, a single-key update_threshold, and an owner set drained to one key are each rejected.",
+      "expected": 3,
+      "disposition": "PASS",
+      "evidence": [
+        {
+          "kind": "aiken",
+          "module": "onchain/aiken/validators/da-params-governor.ak",
+          "selectors": [
+            "da_params_governor_rejects_da_threshold_below_floor",
+            "da_params_governor_rejects_update_threshold_below_floor",
+            "da_params_governor_rejects_owner_set_drained_to_one"
+          ]
+        },
+        {
+          "kind": "vitest",
+          "file": "demo/midgard-sdk/tests/da-governor-safety-v1.test.ts",
+          "titles": [
+            "rejection 1 — a bare committee majority is below the two-thirds floor",
+            "rejection 2 — a single-key update_threshold is below the 2-of-N floor",
+            "rejection 3 — an owner set drained to one key is unrepresentable"
+          ]
+        }
+      ]
+    }
+  ],
+  "openGroups": [
+    {
+      "id": "partial-attestation-rescue-path",
+      "claim": "A partially signed attestation stranded by a mid-flight committee rotation can be rescued/refunded.",
+      "expected": 1,
+      "disposition": "OPEN",
+      "blockedOn": {
+        "owner": "parent",
+        "leasedPath": "onchain/aiken/lib/midgard/da-attestation-types.ak",
+        "leaseHolder": "Q62",
+        "reason": "Recovering the stranded ADA requires burning the DAAT NFT. The burn runs the minting policy, and both `MintRedeemer` constructors (`Init`, `ApplyToStateQueue`) demand a state-queue attachment that a sub-threshold attestation can never satisfy; both `SpendRedeemer` constructors (`AddSignatures`, `BurnForStateQueue`) are equally unusable after rotation because `validate_add_signatures` pins `params.committee_signers_hash` to the datum's. A rescue therefore needs a new constructor in each enum, and both enums are declared in Q62's leased type module."
+      }
+    },
+    {
+      "id": "rescue-theft-duplicate-replay-rejections",
+      "claim": "The rescue path rejects theft of another party's attestation value, duplicate refunds, and replay of a consumed rescue.",
+      "expected": 3,
+      "disposition": "OPEN",
+      "blockedOn": {
+        "owner": "parent",
+        "leasedPath": "onchain/aiken/lib/midgard/da-attestation-types.ak",
+        "leaseHolder": "Q62",
+        "reason": "These rejection classes can only be authored against the rescue redeemer that the lease blocks."
+      }
+    }
+  ],
+  "summary": {
+    "groups": 3,
+    "openGroups": 2,
+    "governedFloorDrainInvariants": 3,
+    "validBoundaryControls": 2,
+    "belowFloorDrainRejectionClasses": 3,
+    "partialAttestationRescuePaths": 0,
+    "rescueTheftDuplicateReplayRejectionClasses": 0,
+    "aikenChecksExecuted": 8,
+    "vitestChecksExecuted": 8,
+    "executedChecks": 16,
+    "runners": [
+      "cd onchain/aiken && aiken check -e -m da_params_governor_invariant_da_threshold_majority_floor -m da_params_governor_invariant_update_threshold_two_of_n_floor -m da_params_governor_invariant_owner_set_drain_protection -m da_params_governor_control_da_threshold_at_floor_accepted -m da_params_governor_control_update_threshold_at_floor_accepted -m da_params_governor_rejects_da_threshold_below_floor -m da_params_governor_rejects_update_threshold_below_floor -m da_params_governor_rejects_owner_set_drained_to_one",
+      "pnpm --dir demo/midgard-sdk exec vitest run tests/da-governor-safety-v1.test.ts"
+    ]
+  },
+  "structural": {
+    "standaloneCatalogueIds": [],
+    "implementationOrLiveClaimsFromF04": 0,
+    "rationale": "Q63 is a governed DA safety/liveness fix. It adds no fraud-proof catalogue family and therefore no standalone catalogue ID. F04 is a decision record only: it supplies the accepted floor expressions, and nothing here infers implementation status, deployment, infrastructure, or live readiness from it."
+  },
+  "parentIntegration": {
+    "owner": "parent",
+    "pendingEdits": [
+      "Regenerate `onchain/aiken/plutus.json`: the `da_params_governor` mint and spend hashes move because `valid_datum` gained the governed floors. Re-pin every consumer of that hash.",
+      "`demo/midgard-node/src/transactions/initialization.ts` builds DA params with `owners: [operatorKeyHash]`, `update_threshold: 1n`, and a `DA_THRESHOLD` defaulting to `1n` over a single-key committee. That configuration is exactly the single-key capture F04 §4 forbids and is now unmintable; the node default and its `DA_COMMITTEE_HEX`/`DA_THRESHOLD` config path must move to a >= 2-of-N committee and owner set.",
+      "Suites outside this task's lease pin `update_threshold: 1n` or a single-key committee and will need the same correction: `demo/midgard-node/tests/initialization-emulator.test.ts`, `demo/midgard-sdk/tests/da-attestation.test.ts`, `demo/da-committee-node/tests/startup-da-params.test.ts`, `demo/da-committee-node/tests/scalus-add-signatures-eval.test.ts`, `demo/da-committee-node/tests/da-attestation-reader.test.ts`.",
+      "Arbitrate the `onchain/aiken/lib/midgard/da-attestation-types.ak` lease so the Q63 rescue path (acceptance clause c) can add its `MintRedeemer`/`SpendRedeemer` constructors, or sequence Q63's rescue half after Q62."
+    ]
+  }
+}
