@@ -11,6 +11,7 @@ export * from "./initialization.js";
 export * from "./ledger-constants.js";
 export * from "./ledger-state.js";
 export * from "./linked-list.js";
+export * from "./native-tx-field-access-v1.js";
 export * from "./operator-lifecycle.js";
 export * from "./payout.js";
 export * from "./phas-membership.js";

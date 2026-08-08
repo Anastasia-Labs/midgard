@@ -19,6 +19,7 @@
 //// read whose item straddles a chunk boundary.
 
 use aiken/builtin
+use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
@@ -1393,5 +1394,54 @@ test whole_and_chunked_views_agree_on_the_same_bytes() {
   and {
     field_item_at(chunked, 529) == field_item_at(whole, 529),
     field_read_range(chunked, 15898, 6) == field_read_range(whole, 15898, 6),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// §8.8 wire layout — the exact bytes an off-chain builder has to emit
+// ---------------------------------------------------------------------------
+
+/// Pins the Plutus-data layout of the two frozen sum types against the
+/// TypeScript wire twin, `demo/midgard-sdk/src/native-tx-field-access-v1.ts`.
+/// Its `tests/native-tx-field-access-v1.test.ts` asserts the same hex strings
+/// from `Data.to`, so the two sides agree on the tag *and* on the field
+/// nesting.
+///
+/// Nesting is the part a constructor-index check alone would miss. Every
+/// variant here carries named fields, so the payload sits directly in the
+/// constructor — `Inline { preimage }` is `Constr 0 [B]`. A builder that wrapped
+/// the payload in a record of its own would emit `Constr 0 [Constr 0 [B]]`, keep
+/// the right tag, and still be undecodable here.
+test field_carriage_wire_layout_matches_the_offchain_twin() {
+  and {
+    cbor.serialise(Inline { preimage: #"80" }) == #"d8799f4180ff",
+    cbor.serialise(RawUtxo { ref_input_index: 3 }) == #"d87a9f03ff",
+    cbor.serialise(
+      Certified {
+        cert_ref_input_index: 1,
+        chunk_ref_input_indices: [2, 3],
+      },
+    ) == #"d87b9f019f0203ffff",
+  }
+}
+
+test field_view_wire_layout_matches_the_offchain_twin() {
+  let chunked_wire =
+    bytearray.concat(
+      #"d87a9f9f4180ff9f5820abababababababababababababababababababababababababababababababab",
+      #"ff0000ff",
+    )
+  and {
+    cbor.serialise(Whole { bytes: #"80", count: 0, stride: 40 }) == #"d8799f4180001828ff",
+    cbor.serialise(
+      Chunked {
+        chunks: [#"80"],
+        chunk_digests: [
+          #"abababababababababababababababababababababababababababababababab",
+        ],
+        count: 0,
+        stride: 0,
+      },
+    ) == chunked_wire,
   }
 }

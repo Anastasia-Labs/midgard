@@ -333,6 +333,14 @@ test v1_n07_n09_proof_source_and_full_hash_exact_vector() {
   }
 }
 
+/// **Red pending #570, not #569.** This vector is one of the goldens the flat
+/// field-hash reversion leaves failing, and it is easy to file under the
+/// per-field producer swap (#569) along with the rest. It is not that: what it
+/// fails on is `singleton_field_proofs` above, which builds
+/// `bounded_collection_v1.ItemProofV1` / `bounded_item_v1.ChunkProofV1`
+/// counted-opening proofs. That machinery is replaced by the three-tier access
+/// path in #570 (P3a, machine walk core), so this test is rewritten there —
+/// swapping the nine per-field producers alone will not turn it green.
 test v1_c20_6_c20_7_field_directory_and_witness_tuple_are_exact() {
   let script_item = #"8300581c111111111111111111111111111111111111111111111111111111114100"
   let address_item = #"8258202222222222222222222222222222222222222222222222222222222222222222584033333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333"

@@ -79,10 +79,39 @@ export {
 
 /**
  * The `spend_inputs_hash` a native transaction body carries when it spends
- * nothing: the canonical V1 bounded-collection commitment for dynamic field
- * zero with no items. Derived from the same codec that materializes native V1
- * transactions, so it cannot drift from the `empty_spend_inputs_hash`
- * parameter the step-02 validator compares against.
+ * nothing, **as the transaction codec computes it today**. Derived from the same
+ * codec that materializes native V1 transactions, so it cannot drift from the
+ * hashes the fixtures and builders in this repository actually produce.
+ *
+ * **Residual. Two owners, and they have to land in order.**
+ * `docs/spec/midgard-tx.md` §4 re-defines every field commitment as a flat
+ * `blake2b_256` over the §5.1 envelope, which makes the empty field
+ * `blake2b_256(#"80")` — `EMPTY_FIELD_COMMITMENT_HEX_V1` in
+ * `native-tx-field-access-v1.ts`.
+ *
+ * That is what the **source** of `fraud_proofs/zero_input/step_02` requires;
+ * it is not yet what any script requires in practice. `onchain/aiken/plutus.json`
+ * is a build artifact, not a tracked file, and the blueprint currently on disk
+ * predates the flat swap: it carries the retired counted-scheme
+ * `eb25ed4a…` and no occurrence of `45b0cfc2…`. Every emulator-backed suite
+ * in this repository — the fault-proof tests above all — executes *that*
+ * blueprint, which is why they agree with the constant below rather than with
+ * the Aiken source.
+ *
+ * So the re-pin needs both halves, in sequence:
+ *
+ *   1. the nine per-field producers in `@al-ft/midgard-core` swap to the flat
+ *      commitment (#569), which is what this constant is derived from; and
+ *   2. the blueprint is regenerated so the deployed script agrees (#579, the
+ *      identity re-derivation batch, sequenced after the #575–#578 family
+ *      rebind lanes).
+ *
+ * Re-pointing this constant at #569 alone would break the fault-proof emulator:
+ * the predicate would expect the flat hash while the script in the blueprint
+ * still tests the counted one. Re-pointing it before #569 would disagree with
+ * every transaction the codec builds. `native-tx-field-access-v1` carries the
+ * flat constant meanwhile, and `tests/native-tx-field-access-v1.test.ts`
+ * asserts the gap so it cannot be forgotten.
  */
 export const EMPTY_SPEND_INPUTS_HASH: string =
   deriveMidgardNativeFieldCollectionV1({

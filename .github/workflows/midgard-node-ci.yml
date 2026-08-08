@@ -114,6 +114,16 @@ jobs:
         run: pnpm --dir demo/midgard-core run build && pnpm --dir demo/midgard-core test
       - name: Check canonical V1 profile documentation
         run: pnpm --dir demo/midgard-core run docs:consensus-profile-v1:check
+      # Both artifacts of the native-V1 field-access golden channel — the JSON
+      # fixture and the generated Aiken module — are regenerated from the
+      # TypeScript twin, never hand-edited. Without this gate an edited
+      # `native-tx-field-access-v1-golden.test.ak` passes the Aiken suite and
+      # the vitest suite while no longer being what the twin produces, which is
+      # exactly the cross-language drift the channel exists to catch. The step
+      # runs `aiken fmt` on a temp file, so it needs the Aiken this job already
+      # installs.
+      - name: Check native V1 field-access golden vectors
+        run: pnpm --dir demo/midgard-core run fixtures:native-tx-field-access-v1:check
       - name: Build, typecheck, and test Midgard SDK
         run: pnpm --dir demo/midgard-sdk run build && pnpm --dir demo/midgard-sdk run typecheck && pnpm --dir demo/midgard-sdk test
       - name: Build, typecheck, and test Midgard validation

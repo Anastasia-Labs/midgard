@@ -151,9 +151,19 @@ test empty_spend_inputs_hash_matches_the_canonical_native_v1_commitment() {
   empty_spend_inputs_hash == native_tx_field_access_v1.field_commitment_from_items([])
 }
 
-/// Pins the exact cross-language vector used by the SDK.
+/// Pins the exact cross-language vector the off-chain side carries:
+/// `EMPTY_FIELD_COMMITMENT_HEX_V1` in
+/// `demo/midgard-sdk/src/native-tx-field-access-v1.ts`, itself
+/// `MIDGARD_EMPTY_FIELD_COMMITMENT_V1` from the TypeScript twin
+/// (`demo/midgard-core/src/codec/native-tx-field-access-v1.ts`). The same 32
+/// bytes are regenerated into
+/// `midgard/native-tx-field-access-v1-golden.test.ak` from that twin, so this
+/// literal and the off-chain constant cannot drift apart silently.
+///
+/// The previous literal was the retired counted-scheme value; under §4's plain
+/// hashing the empty field commits to `blake2b_256(#"80")` instead.
 test empty_spend_inputs_hash_matches_the_offchain_constant() {
-  empty_spend_inputs_hash == #"eb25ed4ae02426602eee44b29d93e9dcd0be514b2087eda02f398b16fbb0ec76"
+  empty_spend_inputs_hash == #"45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
 }
 
 test empty_spend_inputs_hash_rejects_a_non_empty_bounded_collection() {
