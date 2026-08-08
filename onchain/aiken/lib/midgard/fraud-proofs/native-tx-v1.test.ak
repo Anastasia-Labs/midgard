@@ -29,9 +29,10 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardV1Script, MidgardVersionedScript, NativeCardanoScript,
   NativeTxBodyCompact, NativeTxCompact, NativeTxFieldPreimageLengthsV1,
   NativeTxWitnessSetCompact, NonExistentInputUtxo, PlutusV3Script, TxIsValid,
-  UnbalancedTx, native_tx_version_v1,
+  UnbalancedTx, VerifiedMidgardNativeTxCompact, native_tx_version_v1,
 }
 use midgard/native_tx_field_access_v1
+use midgard/native_tx_machine_walk_v1
 use midgard/validation_merkle_v1
 
 const zero_hash =
@@ -97,49 +98,72 @@ fn sample_witness_set_compact() -> NativeTxWitnessSetCompact {
   }
 }
 
-fn singleton_field_proofs(
+/// The C20 witness-tuple fixture, rebuilt under the flat scheme: field 6
+/// carries `script_item`, field 7 carries `address_item`, and every other slot
+/// holds a hash neither preimage can match.
+fn c20_witness_set(
+  script_item: ByteArray,
+  address_item: ByteArray,
+  redeemer_hash: ByteArray,
+) -> NativeTxWitnessSetCompact {
+  NativeTxWitnessSetCompact {
+    addr_tx_wits_hash: native_tx_field_access_v1.field_commitment_from_items(
+      [address_item],
+    ),
+    script_tx_wits_hash: native_tx_field_access_v1.field_commitment_from_items(
+      [script_item],
+    ),
+    redeemer_tx_wits_hash: redeemer_hash,
+  }
+}
+
+fn c20_verified(
+  witness_set: NativeTxWitnessSetCompact,
+) -> VerifiedMidgardNativeTxCompact {
+  let witness_set_cbor = encode_native_tx_witness_set_compact(witness_set)
+  let compact =
+    NativeTxCompact {
+      ..sample_compact(),
+      witness_set_hash: blake2b_256(witness_set_cbor),
+    }
+  VerifiedMidgardNativeTxCompact {
+    tx_id: native_tx_id_for_version(
+      native_tx_version_v1,
+      encode_native_tx_body_compact(compact.body),
+    ),
+    version: native_tx_version_v1,
+    tx_compact: compact,
+  }
+}
+
+/// Reads the single item of `field_index` back through the machine seam.
+///
+/// Under the retired counted scheme this test opened field 6 and field 7 with
+/// `bounded_collection_v1` / `bounded_item_v1` per-item Merkle proofs. A flat
+/// hash has no leaves, so that machinery cannot be satisfied against one; the
+/// property it was proving — that field identity is positional and a field-7
+/// item does not open as a field-6 item — is now proved the way §4 and §10
+/// establish it, by extracting the expected hash from the slot and walking the
+/// authenticated preimage.
+fn c20_item_at(
+  witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
   item: ByteArray,
-) -> Pair<bounded_collection_v1.ItemProofV1, bounded_item_v1.ChunkProofV1> {
-  let item_leaf = bounded_item_v1.hash_chunk(field_index, 0, 0, item)
-  let item_frontier = validation_merkle_v1.build_frontier([item_leaf])
-  let item_commitment = bounded_item_v1.commitment(
-    field_index,
-    0,
-    bytearray.length(item),
-    item_frontier.peaks,
-  )
-  let collection_leaf = bounded_collection_v1.hash_item(
-    field_index,
-    0,
-    bytearray.length(item),
-    item_commitment,
-  )
-  let collection_frontier = validation_merkle_v1.build_frontier(
-    [collection_leaf],
-  )
-  Pair(
-    bounded_collection_v1.ItemProofV1 {
-      version: bounded_collection_v1.version,
+) -> ByteArray {
+  let preimage =
+    native_tx_field_access_v1.encode_field_preimage([item])
+  let Pair(view, start) =
+    native_tx_machine_walk_v1.open_field_walk(
+      c20_verified(witness_set),
+      witness_set,
       field_index,
-      item_count: 1,
-      item_index: 0,
-      item_length: bytearray.length(item),
-      item_commitment,
-      frontier: collection_frontier.peaks,
-      siblings: [],
-    },
-    bounded_item_v1.ChunkProofV1 {
-      version: bounded_item_v1.version,
-      field_index,
-      item_index: 0,
-      total_length: bytearray.length(item),
-      chunk_index: 0,
-      chunk: item,
-      frontier: item_frontier.peaks,
-      siblings: [],
-    },
-  )
+      native_tx_field_access_v1.Inline { preimage },
+      [],
+      zero_28,
+    )
+  let Pair(read_back, done) = native_tx_machine_walk_v1.walk_next(view, start)
+  expect native_tx_machine_walk_v1.walk_is_complete(done)
+  read_back
 }
 
 test v1_network_id_language_matches_typescript_exactly() {
@@ -333,74 +357,78 @@ test v1_n07_n09_proof_source_and_full_hash_exact_vector() {
   }
 }
 
-/// **Red pending #570, not #569.** This vector is one of the goldens the flat
-/// field-hash reversion leaves failing, and it is easy to file under the
-/// per-field producer swap (#569) along with the rest. It is not that: what it
-/// fails on is `singleton_field_proofs` above, which builds
-/// `bounded_collection_v1.ItemProofV1` / `bounded_item_v1.ChunkProofV1`
-/// counted-opening proofs. That machinery is replaced by the three-tier access
-/// path in #570 (P3a, machine walk core), so this test is rewritten there —
-/// swapping the nine per-field producers alone will not turn it green.
+const c20_script_item: ByteArray =
+  #"8300581c111111111111111111111111111111111111111111111111111111114100"
+
+const c20_address_item: ByteArray =
+  #"8258202222222222222222222222222222222222222222222222222222222222222222584033333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333"
+
+const c20_redeemer_hash: ByteArray =
+  #"4444444444444444444444444444444444444444444444444444444444444444"
+
+/// Ninety-seven bytes, which is the script payload width that makes the
+/// enveloped item `82 ‖ 03 ‖ 58 61 ‖ payload` exactly
+/// `address_witness_item_bytes` wide.
+const c20_wide_script_bytes: ByteArray =
+  #"40474e555c636a71787f868d444b525960676e757c838a41484f565d646b727980878e454c535a61686f767d848b424950575e656c737a81888f464d545b626970777e858c434a51585f666d747b828940474e555c636a71787f868d444b525960"
+
+/// A script witness that is **field-7 shaped**: a perfectly ordinary field-6
+/// item which happens to be 101 bytes, so that `address_witness_stride − 2`
+/// admits it.
+///
+/// The field-7 negative vector needs this. Built from `c20_script_item` — 34
+/// bytes — that vector never reached the hash comparison at all: 34 bytes fails
+/// field 7's §7.4 count arithmetic (`1 + 103 · 1 ≠ 37`) and then `walk_next`'s
+/// §7.2 wrapper-vs-stride check, so it was green for a reason it was not
+/// presented as proving, and the §4 positional property got no coverage from it
+/// on that side. At 101 bytes every structural check downstream of the
+/// commitment passes and the flat-hash comparison is the only thing left to
+/// refuse it.
+fn c20_wide_script_item() -> ByteArray {
+  encode_midgard_versioned_script(
+    MidgardVersionedScript {
+      language: PlutusV3Script,
+      script_bytes: c20_wide_script_bytes,
+    },
+  )
+}
+
+const zero_28: ByteArray = #"00000000000000000000000000000000000000000000000000000000"
+
+/// **Rebound to the flat scheme by #570.** The ABI half of this vector — the
+/// witness-set tuple order and the field-length directory — is unchanged and
+/// still pinned byte for byte. The opening half used to be
+/// `bounded_collection_v1` / `bounded_item_v1` counted proofs and is now the
+/// §10 machine seam: field 6 and field 7 each open through the one door
+/// against their own positionally-extracted hash, and each item reads back
+/// byte-identically.
 test v1_c20_6_c20_7_field_directory_and_witness_tuple_are_exact() {
-  let script_item = #"8300581c111111111111111111111111111111111111111111111111111111114100"
-  let address_item = #"8258202222222222222222222222222222222222222222222222222222222222222222584033333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333"
-  let redeemer_hash = #"4444444444444444444444444444444444444444444444444444444444444444"
-  let Pair(script_proof, script_chunk) = singleton_field_proofs(6, script_item)
-  let Pair(address_proof, address_chunk) = singleton_field_proofs(
-    7,
-    address_item,
-  )
-  let Pair(address_as_script_proof, address_as_script_chunk) = singleton_field_proofs(
-    6,
-    address_item,
-  )
-  let Pair(script_as_address_proof, script_as_address_chunk) = singleton_field_proofs(
-    7,
-    script_item,
-  )
-  let witness_set = NativeTxWitnessSetCompact {
-    addr_tx_wits_hash: native_tx_field_access_v1.field_commitment_from_items(
-      [address_item],
-    ),
-    script_tx_wits_hash: native_tx_field_access_v1.field_commitment_from_items(
-      [script_item],
-    ),
-    redeemer_tx_wits_hash: redeemer_hash,
-  }
+  let witness_set =
+    c20_witness_set(c20_script_item, c20_address_item, c20_redeemer_hash)
   let witness_set_cbor = encode_native_tx_witness_set_compact(witness_set)
-  let compact = NativeTxCompact {
-    ..sample_compact(),
-    witness_set_hash: blake2b_256(witness_set_cbor),
-  }
-  let compact_cbor = encode_native_tx_compact_v1(compact)
-  let tx_id = native_tx_id_for_version(
-    native_tx_version_v1,
-    encode_native_tx_body_compact(compact.body),
-  )
-  let lengths = NativeTxFieldPreimageLengthsV1 {
-    spend_inputs: 0,
-    reference_inputs: 0,
-    outputs: 0,
-    required_observers: 0,
-    required_signers: 0,
-    mint: 0,
-    address_witnesses: 7,
-    script_witnesses: 6,
-    redeemers: 8,
-  }
+  let lengths =
+    NativeTxFieldPreimageLengthsV1 {
+      spend_inputs: 0,
+      reference_inputs: 0,
+      outputs: 0,
+      required_observers: 0,
+      required_signers: 0,
+      mint: 0,
+      address_witnesses: 7,
+      script_witnesses: 6,
+      redeemers: 8,
+    }
   let lengths_cbor = encode_native_tx_field_preimage_lengths_v1(lengths)
   let decoded_lengths = decode_native_tx_field_preimage_lengths_v1(lengths_cbor)
-  let transaction_commitment = native_tx_proof_commitment_v1(
-    compact_cbor,
-    witness_set_cbor,
-    lengths_cbor,
-  )
-  let expected_witness_set_cbor = #"835820"
-    |> bytearray.concat(witness_set.addr_tx_wits_hash)
-    |> bytearray.concat(#"5820")
-    |> bytearray.concat(witness_set.script_tx_wits_hash)
-    |> bytearray.concat(#"5820")
-    |> bytearray.concat(redeemer_hash)
+  let expected_witness_set_cbor =
+    #"835820"
+      |> bytearray.concat(witness_set.addr_tx_wits_hash)
+      |> bytearray.concat(#"5820")
+      |> bytearray.concat(witness_set.script_tx_wits_hash)
+      |> bytearray.concat(#"5820")
+      |> bytearray.concat(c20_redeemer_hash)
+  let wide_witness_set =
+    c20_witness_set(c20_wide_script_item(), c20_address_item, c20_redeemer_hash)
 
   and {
     // The named witness-set tuple ABI remains [address, script, redeemer].
@@ -409,63 +437,44 @@ test v1_c20_6_c20_7_field_directory_and_witness_tuple_are_exact() {
     lengths_cbor == #"89000000000000060708",
     decoded_lengths.script_witnesses == 6,
     decoded_lengths.address_witnesses == 7,
-    script_proof.item_commitment == bounded_item_v1.from_bytes(
-      6,
-      0,
-      script_item,
-    ),
-    address_proof.item_commitment == bounded_item_v1.from_bytes(
-      7,
-      0,
-      address_item,
-    ),
-    bounded_collection_v1.verify_item(
-      witness_set.script_tx_wits_hash,
-      script_proof,
-    ),
-    bounded_collection_v1.verify_item(
-      witness_set.addr_tx_wits_hash,
-      address_proof,
-    ),
-    bounded_item_v1.verify_chunk(script_proof.item_commitment, script_chunk),
-    bounded_item_v1.verify_chunk(address_proof.item_commitment, address_chunk),
-    transaction.verify_midgard_transaction_field_chunk_v1(
-      tx_id,
-      transaction_commitment,
-      compact_cbor,
-      witness_set_cbor,
-      lengths_cbor,
-      script_proof,
-      script_chunk,
-    ),
-    transaction.verify_midgard_transaction_field_chunk_v1(
-      tx_id,
-      transaction_commitment,
-      compact_cbor,
-      witness_set_cbor,
-      lengths_cbor,
-      address_proof,
-      address_chunk,
-    ),
-    !transaction.verify_midgard_transaction_field_chunk_v1(
-      tx_id,
-      transaction_commitment,
-      compact_cbor,
-      witness_set_cbor,
-      lengths_cbor,
-      address_as_script_proof,
-      address_as_script_chunk,
-    ),
-    !transaction.verify_midgard_transaction_field_chunk_v1(
-      tx_id,
-      transaction_commitment,
-      compact_cbor,
-      witness_set_cbor,
-      lengths_cbor,
-      script_as_address_proof,
-      script_as_address_chunk,
-    ),
+    // Each field opens against its own slot and reads its own item back.
+    c20_item_at(witness_set, 6, c20_script_item) == c20_script_item,
+    c20_item_at(witness_set, 7, c20_address_item) == c20_address_item,
+    // The two slots really are distinct commitments, so the vector below is
+    // refusing a genuine cross-field opening rather than an equal one.
+    witness_set.script_tx_wits_hash != witness_set.addr_tx_wits_hash,
+    // The field-7 direction's fixture, pinned so it cannot quietly weaken: the
+    // wide script item is exactly field 7's item width, so nothing structural
+    // stands between it and a field-7 opening; it is a genuine field-6 item in
+    // its own slot; and the two slots it is opened against differ.
+    bytearray.length(c20_wide_script_item()) == native_tx_field_access_v1.address_witness_item_bytes,
+    bytearray.length(c20_address_item) == native_tx_field_access_v1.address_witness_item_bytes,
+    c20_item_at(wide_witness_set, 6, c20_wide_script_item()) == c20_wide_script_item(),
+    wide_witness_set.script_tx_wits_hash != wide_witness_set.addr_tx_wits_hash,
   }
+}
+
+/// The negative half of C20, stated positionally (§4). The address item's
+/// preimage hashes to the field-7 slot, so opening it as field 6 compares it
+/// against `script_tx_wits_hash` and fails — no counted proof required, and no
+/// way to spend a field-7 opening on a field-6 rule.
+test v1_c20_address_item_does_not_open_as_field_6() fail {
+  let witness_set =
+    c20_witness_set(c20_script_item, c20_address_item, c20_redeemer_hash)
+  c20_item_at(witness_set, 6, c20_address_item) == c20_address_item
+}
+
+/// The other direction, and the one that has to be built deliberately. Field 7
+/// is fixed-stride, so an item of the wrong width is refused by arithmetic long
+/// before any hash is compared — which would make the vector green without
+/// saying anything about positional identity. `c20_wide_script_item` is
+/// therefore 101 bytes: committed to the script slot, field-7 shaped, and
+/// refused only because `field_commitment` of its preimage is not
+/// `addr_tx_wits_hash`.
+test v1_c20_script_item_does_not_open_as_field_7() fail {
+  let witness_set =
+    c20_witness_set(c20_wide_script_item(), c20_address_item, c20_redeemer_hash)
+  c20_item_at(witness_set, 7, c20_wide_script_item()) == c20_wide_script_item()
 }
 
 test v1_n08_adjacent_eight_field_length_tuple_rejects() fail {

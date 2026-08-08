@@ -12,7 +12,8 @@
   [#552](https://github.com/Anastasia-Labs/midgard/issues/552).
 - **Owner/approver:** repository owner (Philip DiSarro).
 - **Last reviewed:** 2026-08-08 (initial authoring, Phase 0 of the flat
-  reversion program).
+  reversion program; §10 added in Phase 3 by
+  [#570](https://github.com/Anastasia-Labs/midgard/issues/570)).
 - **Version:** `native_tx_version_v1 = 1`. Pre-launch, this format replaces
   the counted bounded-collection commitment scheme in place (GOAL_SPEC §3
   invariant 13); there is no compatibility path to the retired scheme.
@@ -34,21 +35,21 @@ This document defines, for canonical V1:
 5. canonicality rules, including the datum/redeemer canonicity predicate
    (§6);
 6. the mandatory access invariants every consumer of the nine commitments
-   observes (§7); and
-7. the three-tier publication-carriage convention for field preimages (§8).
+   observes (§7);
+7. the three-tier publication-carriage convention for field preimages (§8);
+   and
+8. the resumable walk and its checkpoint encoding (§10).
 
-**Deferred by design (Phase 3).** The dispute-side mechanisms that _consume_
-this format are deliberately not defined here: the resumable walk and its
-checkpoint encoding, the Value bookmark, and the Canonical-Data Acceptor.
-They are Phase-3 deliverables of the reversion program and are added to this
-document as **§10 — resumable walk and checkpoints** by
-[#570](https://github.com/Anastasia-Labs/midgard/issues/570) and **§11 —
-Value bookmark and Canonical-Data Acceptor** by
-[#571](https://github.com/Anastasia-Labs/midgard/issues/571). Until those
-sections land, §7 governs every consumer, and §7 invariant 6 in particular
-binds any resumable state to positions rather than verbatim bytes. Documents
-that bind those mechanisms by reference — `GOAL_SPEC.md` §3.1(2) — name them
-against this note, not against a definition that exists today.
+**Still deferred by design (Phase 3).** One dispute-side mechanism that
+_consumes_ this format remains undefined here: the intra-item package — the
+Value bookmark and the Canonical-Data Acceptor — added to this document as
+**§11** by [#571](https://github.com/Anastasia-Labs/midgard/issues/571).
+§10 (resumable walk and checkpoints) landed with
+[#570](https://github.com/Anastasia-Labs/midgard/issues/570) and is below.
+Until §11 lands, §7 governs intra-item consumers, and §7 invariant 6 in
+particular binds any resumable state to positions rather than verbatim bytes.
+Documents that bind those mechanisms by reference — `GOAL_SPEC.md` §3.1(2) —
+name them against this note, not against a definition that exists today.
 
 Byte strings are written in hex (`82`, `58 20 …`). `array(n)`, `map(n)`,
 `bytes(n)`, `uint`, `int` denote definite-length canonical CBOR heads:
@@ -695,3 +696,331 @@ are prohibited in new surface.
    straddling-item reads, short/empty-slice equality attempts, certificate
    `(tx_id, field_index)` mismatch, count/total_length inconsistency, and
    wrong-field carriage.
+4. The §10 walk is proved at its seam, not at its mechanics: interrupt-and-
+   resume equals the uninterrupted walk; the checkpoint wire form is
+   `field_walk_checkpoint_bytes` long at every position of every field; two
+   walks over same-shaped preimages that differ in every byte the §5.1/§5.3
+   grammar leaves free — the array header and the wrapper/item heads are
+   forced to agree, nothing else is — serialise identically, and the fixture
+   pair asserts that per-byte rather than claiming it; and the two cost claims
+   (§10.7) are established from runner measurements rather than asserted —
+   every number §10.7 quotes is a row of that report, including the controls,
+   so a re-take is reading the report and never reconstructing a comparison by
+   hand.
+5. Every refusal on the §10 walk's operational path — resume, advance,
+   relocate, access, and the §10.3 decode — is accounted for in the §10.8
+   table, as one of exactly two things:
+   * **isolated**, by a negative vector built so that every check the fixture
+     reaches before and after the named one is satisfied. Neutralising the
+     named check turns that vector red and no other; that is what "isolates"
+     means here and it is verified by running the neutralisation, not
+     asserted. A vector that can only trip several checks at once is marked
+     as a composite and does not count as coverage for any of them.
+   * a **backstop**: a refusal that no fixture can isolate, because a check
+     that runs earlier already refuses everything it would. A backstop is
+     admissible only with the earlier check named, and only in the table —
+     "uncovered" is not a category. Backstops are kept rather than deleted
+     because the implication that makes them redundant usually lives in
+     another module, and they are the line that notices if it stops holding.
+
+   An implementation whose guard set does not partition this way has not met
+   this clause.
+
+## 10. The resumable walk and its checkpoints
+
+Normative for the dispute machine. §7 says what every consumer of the nine
+commitments must observe; this section says how a consumer that cannot finish
+inside one transaction carries its place to the next one. The reference
+implementation is
+`onchain/aiken/lib/midgard/native-tx-machine-walk-v1.ak`, and its seam suite
+is the same path with `.test.ak`.
+
+### 10.1 What a walk is
+
+A **walk** is a position over one field of one transaction, advanced by
+offset-and-slice reads against an authenticated `FieldViewV1` (§8.8). It has
+exactly two operations that move it — take the next item, or relocate forward
+by `n` items — and one that opens it.
+
+Opening a walk authenticates the field through the single §8.8 door, which
+performs the §7.1 hash check, and then **derives** the opening position from
+the resulting view: item index 0 at byte offset `header_len`. The opening
+position is never a redeemer argument. That is the base case of the
+inductive argument in §10.2: every position a walk can be at is either derived
+from authenticated bytes or reached from such a position by advances that each
+read authenticated bytes.
+
+A walk holds no bytes of its own. Reads go through the view, so tier is an
+encoding detail the walk never branches on and lazy chunk verify (§8.4)
+continues to apply unchanged underneath it.
+
+### 10.2 The checkpoint
+
+```
+FieldWalkCheckpointV1 {
+  tx_id: ByteArray,        -- 32 B; the L2 transaction whose field this walks
+  field_index: Int,        -- 0..8, the §2.5 positional index
+  total_length: Int,       -- the authenticated preimage length
+  item_count: Int,         -- the authenticated item count (§5.2)
+  next_item_index: Int,    -- items [0, next_item_index) are done
+  next_offset: Int,        -- byte offset of item next_item_index's §5.1 wrapper
+}
+```
+
+Six fields — five scalars and one 32-byte hash — which is why the §10.3 wire
+form is `86`, an array of six. There is **no accumulator**: what a rule learns from
+a walk is the rule's own business and already has a home in the machine's
+committed work state, whereas folding it in here would give every consuming
+rule one shared state shape and put rule-specific bytes one refactor away from
+a structure §7.6 requires to stay positional.
+
+`field_index` travels with the position because §4's plain hashing removed
+field-index domain separation: fields 0/1 and 3/4 alias on identical content,
+so the index is the only thing that tells them apart.
+
+`total_length` and `item_count` pin the **shape** of the view the position was
+taken against, so a checkpoint cannot be resumed against a differently-shaped
+carriage of the same field.
+
+**What a resume verifies.** Resuming re-opens the field through the door — the
+follow-on transaction holds different bytes in a different script context and
+pays its own single §7.1 hash check, which it has no way not to — and then
+binds the checkpoint to the fresh view:
+
+1. `tx_id` equals the resuming transaction's disputed transaction id;
+2. the field is named by the **checkpoint**, not by a fresh argument, so a
+   resume cannot be pointed at a different slot than the one that was opened;
+3. `total_length` and `item_count` equal the fresh view's;
+4. `0 ≤ next_item_index ≤ item_count` and
+   `header_len ≤ next_offset ≤ total_length`;
+5. a completed walk (`next_item_index == item_count`) has
+   `next_offset == total_length` — §5.1 leaves no trailing bytes, so a finished
+   walk has exactly one admissible offset;
+6. for a **fixed-stride** field the position is recomputed:
+   `next_offset == header_len + stride · next_item_index`. It is a function of
+   the index alone, so a forged offset cannot survive, and the check is O(1);
+7. for a **variable-width** field the position costs a full re-walk to
+   recompute and is deliberately not recomputed. What is checked in O(1) is
+   that the offset lands on a decodable §5.1 item head whose item ends inside
+   the authenticated bytes.
+
+Item 7 is the one place a resume cannot verify by arithmetic, and §10.6 is how
+the format closes it rather than living with it. A caller that carries
+checkpoints through anything weaker than an authenticated thread MUST treat a
+variable-width position as prover-asserted.
+
+**A field with no authenticated count cannot be walked.** A variable-width
+field under tier-3 carriage has no authenticated item count (§7 invariant 4,
+§8.6), so opening a walk over one aborts. It does not fall back to the §5.1
+header's self-asserted number, and it does not walk countless.
+
+### 10.3 Checkpoint wire form
+
+A checkpoint's wire form is **exactly 53 bytes, always** — independent of the
+field, the carriage tier, the preimage, and the position:
+
+```
+86
+  58 20 ‖ tx_id(32)
+  41    ‖ field_index(1)
+  43    ‖ total_length(3, big-endian)
+  43    ‖ item_count(3, big-endian)
+  43    ‖ next_item_index(3, big-endian)
+  43    ‖ next_offset(3, big-endian)
+```
+
+Fixed-width scalars, not canonical-minimal ones. §5.3 already establishes that
+this format pins a fixed width where a constant size is worth more than
+minimality, and here it is worth a great deal: a constant length is what makes
+"positions, not bytes" **checkable** rather than merely asserted. Two walks
+that reach the same position over different preimages serialise to identical
+bytes, which a structure carrying preimage content could not do. Three bytes
+hold every in-range value: `total_length ≤ 32,768` (§5.4),
+`item_count ≤ 65,535` (§5.1), and both positions are bounded by them.
+
+Decoding is fail-closed and canonical in the §6.1 sense — exactly one
+admissible spelling. The decoder re-encodes what it read and requires the
+input back, which is simultaneously the canonicity check and the range check
+without a second reader of the same grammar to drift from the first.
+
+The thread-carried commitment is
+
+```
+checkpoint_hash = blake2b_256("MidgardFieldWalkCheckpointV1" ‖ checkpoint_wire)
+```
+
+with the domain string as raw ASCII bytes. It is new surface: none of §4's
+prohibited counted-scheme domains is reused.
+
+### 10.4 Advancing
+
+**Take the next item.** Decode the §5.1 wrapper at `next_offset` through the
+same head reader every other §5.1 consumer uses (§5.1, §6.1 — one grammar, one
+verdict), slice the payload, and advance to `payload_offset + length`. For a
+fixed-stride field the wrapper MUST be the one form the stride admits
+(§7 invariant 2): payload two bytes in, `stride − 2` bytes long. The advance
+fails closed if it would leave the authenticated bytes, and the final advance
+MUST land exactly on `total_length` (§5.1, no trailing bytes).
+
+**Relocate by `n` items.** For a fixed-stride field this is one
+multiplication — the return on §5.3's fixed 3-byte output index. For a
+variable-width field there is nothing to compute from, so it walks. Relocating
+is not reading: §7 invariant 2 requires an accessor to decode the item's own
+wrapper, and a relocation that skips an item does not access it. The next
+read at that position does decode it. `n` MUST be non-negative and MUST NOT
+carry the position past `item_count`: on the fixed-stride path a relocation
+touches no bytes at all, so neither bound is re-established by anything a
+later read would do.
+
+**Budgeted folds.** A step visits at most `budget` items and returns the
+position it stopped at. That is the whole of interruptibility: a step takes as
+many items as its transaction can afford at the GOAL_SPEC §3.3 budget basis,
+commits the returned checkpoint, and the next step resumes from it. `budget` is
+a count of items and MUST be non-negative: the recursion stops at zero, so a
+negative budget is not "no items" but "no limit".
+
+### 10.5 The fixed-stride shortcut
+
+For fields 0 and 1 an item is located by
+`item_offset(i) = header_len + 40·i` and read by one slice: **no walk is
+entered and the cost does not grow with `i`** (§5.3). The wrapper is still
+decoded and held to the stride, so the O(1) path admits exactly one byte form
+for one logical item. Both the item accessor and the count accessor are guarded
+on the stride — each on its own, since a view that answers "how many spend
+inputs" for a field that has none is as wrong as one that answers "which" —
+so a variable-width view cannot be read as inputs by accident. Fields 3/4
+(stride 30) and 7 (stride 103) relocate by the same arithmetic.
+
+### 10.6 Threading a walk
+
+A computation thread carries the 32-byte `checkpoint_hash` of the position it
+stopped at — one digest whatever the field holds — and a resuming step
+re-supplies the 53 positional bytes that hash to it. The thread state is
+therefore a fixed-size commitment and the bytes it commits are re-derivable by
+anyone from public data.
+
+This is also what closes §10.2's item 7. A step that took a raw checkpoint
+from a redeemer would be trusting the prover's arithmetic on a variable-width
+position; here the position is pinned by a digest the **previous** step
+committed, so the only resumable positions are ones a walk over authenticated
+bytes actually reached. Dispute entry points MUST resume through the
+commitment, never from a redeemer-supplied checkpoint.
+
+**What the walk core enforces, and what it cannot.** The checkpoint MUST be an
+opaque type whose constructor and whose wire-form decoder are both private to
+the walk core, and the commitment-taking resume MUST be the only resume it
+exports. Those three together mean a caller can obtain a position in exactly
+three ways — derived from an authenticated view when the walk is opened,
+advanced from such a position, or returned by the commitment-taking resume —
+and in particular cannot construct one and hand it to the advance operations,
+which is the shape the §10.2 item 7 gap would otherwise take. An implementation
+that exports the constructor, the decoder, or the checkpoint-taking resume has
+not met this clause: any one of the three restores the ability to present a
+variable-width position that no check can catch.
+
+What the walk core cannot enforce is where the `committed` digest comes from.
+A dispute entry point that sourced it from a redeemer rather than from thread
+state would be back to trusting the prover's arithmetic, and no library can
+decide that for its callers. That is why the MUST above is on entry points and
+is normative rather than structural.
+
+### 10.7 Cost claims
+
+Two claims this section makes are about cost, and both are established by
+measurement against the GOAL_SPEC §3.3 basis of 13,200,000 memory units rather
+than asserted. The reference measurements are the seam suite's runner report at
+the grammar of this document; they are re-taken whenever the grammar moves, and
+every number quoted below is a row of that report, so a re-take is reading four
+`authenticate_once_*` rows and two `spend_input_lookup_at_*` rows rather than
+reconstructing a control by hand.
+
+1. **A dispute touching a field pays that field's full-preimage hash check at
+   most once, however many items it reads.** The controlled comparison is one
+   field, one fixture, one set of reads, varying only the number of times the
+   door is opened. At 64 items of field 0 the difference between one opening
+   and sixty-four is the difference between fitting the budget basis and
+   exceeding it: 9.79 M against 13.27 M memory units either side of the
+   13,200,000 basis, holding the relocation pattern constant.
+
+   The four rows, in the order a re-take should read them:
+
+   | seam test | opens | relocations | memory |
+   | --- | --- | --- | --- |
+   | `authenticate_once_one_open_one_read` | 1 | 0 | 1.89 M |
+   | `authenticate_once_one_open_every_read` | 1 | 0 | 8.78 M |
+   | `authenticate_once_one_open_every_relocation` | 1 | 64 | 9.79 M |
+   | `authenticate_once_reopen_per_item_costs_more` | 64 | 64 | 13.27 M |
+
+   The third row is the control the decisive claim rests on, and it exists so
+   that the 9.79 M is a runner measurement like every other number here rather
+   than something a maintainer has to reconstruct.
+
+   A re-take must not attribute the whole raw gap to hashing. The per-item-reopen
+   control differs from the single-open fold in **two** ways — it re-opens the
+   door and it relocates once per item — and the 4.49 M between them (8.78 M
+   against 13.27 M) decomposes into roughly 3.48 M of door-opens (row 4 against
+   row 3, same relocations) and roughly 1.01 M of access pattern (row 3 against
+   row 2, same single open). The conclusion is unaffected, but the margin over
+   the basis is 0.57%, so a re-take that models the gap as 63 hash checks will
+   mis-predict where the line falls.
+2. **Spend-input lookup is an arithmetic slice, not a walk.** Reading item 0
+   and item 295 of a 296-item field 0 differ by a residue attributable to the
+   surrounding assertion, not to traversal, while the same comparison over a
+   variable-width field grows linearly in the index by four orders of
+   magnitude more per step. The rows are `spend_input_lookup_at_index_0` and
+   `spend_input_lookup_at_index_295`, both 7.82 M.
+
+### 10.8 Guard coverage
+
+§9's conformance item 5 requires every refusal on the walk's operational path
+to be either isolated by a vector or listed as a backstop with the earlier
+check that makes it unreachable. This is that list, for the reference
+implementation. Twenty-three refusals: sixteen isolated, seven backstops.
+
+| # | refusal | isolated by / backstop because |
+| --- | --- | --- |
+| 1 | §10.2 item 1 — `tx_id` matches the resuming transaction | `resume_rejects_a_checkpoint_from_another_transaction` |
+| 2 | §10.2 item 3 — `total_length` matches the view | `resume_rejects_a_forged_total_length` |
+| 3 | §10.2 item 3 — `item_count` matches the view | `resume_rejects_a_forged_item_count` |
+| 4 | §10.2 item 4 — `next_item_index ≥ 0` | backstop: §10.3's decoder re-encodes before the binding check runs, and the encoder asserts the same condition |
+| 5 | §10.2 item 4 — `next_item_index ≤ item_count` | backstop: same, the encoder asserts the same condition on the same two fields |
+| 6 | §10.2 item 4 — `next_offset ≥ header_len` | `resume_rejects_an_offset_inside_the_array_header` |
+| 7 | §10.2 item 4 — `next_offset ≤ total_length` | backstop: the encoder asserts it against the checkpoint's own `total_length`, which guard 2 pins to the view's |
+| 8 | §10.2 item 5 — a completed walk sits at `total_length` | `resume_rejects_a_walk_that_declares_itself_finished_early` |
+| 9 | §10.2 item 6 — fixed-stride offset recompute | `resume_rejects_a_forged_fixed_stride_offset` |
+| 10 | §10.2 item 7 — the item at the offset ends inside the field | `resume_rejects_a_position_whose_item_runs_past_the_field` |
+| 11 | §10.6 — the position hashes to the thread's commitment | `resume_rejects_a_position_the_thread_did_not_commit` |
+| 12 | §10.3 — the wire form has one admissible spelling | `checkpoint_decode_refuses_a_non_canonical_spelling` |
+| 13 | §10.4 — a completed checkpoint cannot be stepped | backstop: every obtainable complete checkpoint sits at `total_length`, where the §5.1 head read refuses first (see §10.6 on why no other can be obtained) |
+| 14 | §10.4 — the wrapper declares `stride − 2` bytes | `walk_next_refuses_a_wrapper_whose_length_misses_the_stride` |
+| 15 | §10.4 — the wrapper's payload begins two bytes in | backstop: §5.1 heads are minimal-width, so the payload offset is a function of the declared length and guard 14 already pins that |
+| 16 | §10.4 — the advance stays inside the authenticated bytes | backstop: the §8.8 read that follows refuses every extent outside the bytes |
+| 17 | §10.4 — the final advance lands exactly on `total_length` | `walk_next_refuses_a_final_advance_that_misses_the_end` |
+| 18 | §10.4 — a relocation stops at `item_count` | `walk_skip_refuses_to_pass_the_item_count_on_a_fixed_stride_field` |
+| 19 | §10.4 — a relocation moves forward | `walk_skip_refuses_a_negative_relocation` |
+| 20 | §10.4 — a fold's budget is a count of items | `walk_fold_refuses_a_negative_budget` |
+| 21 | §10.5 — the input accessor is guarded on the stride | `spend_input_at_refuses_a_variable_width_view_of_input_shaped_items` |
+| 22 | §10.5 — an input item is `spend_input_item_bytes` wide | backstop: given guard 21, §7.4's extent already pins the width to `stride − 2`; it is the line that notices if the two constants stop agreeing |
+| 23 | §10.5 — the count accessor is guarded on the stride | `spend_input_count_refuses_a_variable_width_view` |
+
+Four vectors in the suite are composites. They are marked as such in the suite
+and are not counted above, because each of them is the *natural* shape of an
+attack and the isolating vector is the contrived one — dropping them would lose
+the realistic case:
+
+* `resume_rejects_a_reshaped_view` disagrees with the fresh view on guards 2, 3
+  and 9 at once;
+* `walk_next_refuses_to_step_past_the_end` is the ordinary shape of guard 13 and
+  inherits its redundancy;
+* `walk_next_refuses_a_one_byte_wrapper_on_a_fixed_stride_field` trips guard 14
+  on its way to guard 15, which is what makes guard 15 unisolable;
+* `walk_skip_refuses_to_pass_the_item_count` runs guard 18's bound on the
+  variable-width path, where over-relocating walks into guard 13 instead.
+
+The ten range assertions in `encode_field_walk_checkpoint` are the wire form's
+construction domain and are not itemised here. They are re-run on every decode —
+that is what makes the decoder fail-closed, and guard 12 is what proves the
+re-encode load-bearing — and three of them are the reason guards 4, 5 and 7 are
+backstops. They are not separately vectored, because each is the same condition
+as the guard it makes redundant, checked one step earlier: no fixture can
+attribute a refusal to one site rather than the other.

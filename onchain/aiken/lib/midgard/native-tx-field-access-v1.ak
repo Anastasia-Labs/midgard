@@ -712,11 +712,29 @@ pub fn field_item_extent(view: FieldViewV1, index: Int) -> Pair<Int, Int> {
   }
 }
 
-fn field_view_stride(view: FieldViewV1) -> Int {
+/// §5.3's stride for the field this view was opened on:
+/// `walk_derived_stride` for the variable-width fields, the item stride for
+/// the fixed-width ones.
+///
+/// Public for the same reason `field_item_extent` is (§7.6): a resumable walk
+/// records positions, and which *kind* of position a field has — arithmetic or
+/// walk-derived — is what decides whether a carried offset is self-authenticating
+/// (`midgard/native_tx_machine_walk_v1`, spec §10.2).
+pub fn field_view_stride(view: FieldViewV1) -> Int {
   when view is {
     Whole { stride, .. } -> stride
     Chunked { stride, .. } -> stride
   }
+}
+
+/// The byte width of this view's §5.1 array header — equivalently, the offset
+/// at which item 0's wrapper begins.
+///
+/// Public so a walk's *opening* position is derived from the authenticated view
+/// rather than supplied by a redeemer (§10.2). The count it reads is the view's
+/// own, fixed at construction, so this cannot be steered from outside.
+pub fn field_header_len(view: FieldViewV1) -> Int {
+  header_len_for_count(declared_item_count(view))
 }
 
 fn header_len_for_count(count: Int) -> Int {
@@ -787,6 +805,18 @@ fn read_chunked_range(
 
 /// Decodes the §5.1 `definite_bytes_header(L)` at `offset`, returning
 /// `(payload offset, payload length)`. Minimal width; fails closed otherwise.
+///
+/// Public as the resumable walk's single step primitive (§10.2). It stays the
+/// **only** reader of a §5.1 item head in the tree — the walk core steps
+/// through this function rather than re-deriving the grammar, so one logical
+/// field keeps one verdict (§6.1). Advancing from an arbitrary `offset` is what
+/// makes a walk resumable without re-reading completed items; the offset is a
+/// position, never a claim about content, and every byte it reaches is read
+/// through `field_read_range` and so stays inside the authenticated bytes.
+pub fn field_item_header_at(view: FieldViewV1, offset: Int) -> Pair<Int, Int> {
+  item_header_at(view, offset)
+}
+
 fn item_header_at(view: FieldViewV1, offset: Int) -> Pair<Int, Int> {
   let tag = bytearray.at(field_read_range(view, offset, 1), 0)
   if and {
