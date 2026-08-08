@@ -361,7 +361,20 @@ pub fn decode_midgard_tx_redeemer_witnesses_preimage_cbor(
 // Field 5 — mint (§5.6)
 // ---------------------------------------------------------------------------
 
-fn encode_mint_asset_quantities(pairs: List<Pair<Data, Data>>) -> ByteArray {
+/// §5.6: asset names within a policy appear in canonical key order and
+/// duplicates reject. The order is carried through the walk as
+/// `previous_asset_name` rather than checked over a materialised key list,
+/// which is exactly the shape `decode_mint_assets_at` uses on the way back in.
+///
+/// Enforced on the producer side and not merely assumed of the caller: the
+/// decoder checks it, so an encoder that let a descending or duplicated run
+/// past would hand back a preimage that never decodes — a producer emitting
+/// uncommittable bytes with no error. The TypeScript twin
+/// (`encodeMidgardMintPolicyItemV1`) rejects at the same two points.
+fn encode_mint_asset_quantities(
+  pairs: List<Pair<Data, Data>>,
+  previous_asset_name: Option<ByteArray>,
+) -> ByteArray {
   when pairs is {
     [] -> #""
     [Pair(asset_name_data, quantity_data), ..rest] -> {
@@ -369,9 +382,16 @@ fn encode_mint_asset_quantities(pairs: List<Pair<Data, Data>>) -> ByteArray {
       let quantity = builtin.un_i_data(quantity_data)
       expect bytearray.length(asset_name) <= 32
       expect quantity != 0
+      expect
+        when previous_asset_name is {
+          None -> True
+          Some(previous) -> canonical_bytes_key_precedes(previous, asset_name)
+        }
       encode_definite_bytes(asset_name)
         |> bytearray.concat(cbor.serialise(quantity))
-        |> bytearray.concat(encode_mint_asset_quantities(rest))
+        |> bytearray.concat(
+            encode_mint_asset_quantities(rest, Some(asset_name)),
+          )
     }
   }
 }
@@ -388,7 +408,7 @@ pub fn encode_mint_policy_item(
     |> bytearray.concat(encode_definite_bytes(policy_id))
     |> bytearray.concat(
         encode_definite_map_header(list.length(asset_pairs))
-          |> bytearray.concat(encode_mint_asset_quantities(asset_pairs)),
+          |> bytearray.concat(encode_mint_asset_quantities(asset_pairs, None)),
       )
 }
 
@@ -403,9 +423,35 @@ fn canonical_mint_policy_pairs(mint: Data) -> List<Pair<Data, Data>> {
   }
 }
 
+/// §5.6's field-level ordering rule, the twin of the asset-name one a level
+/// down: the *policy items* of field 5 appear in canonical key order and
+/// duplicates reject. It lives on the run rather than inside
+/// `encode_mint_policy_item`, because ordering is a property of the run and no
+/// single item can see it — the same split the decoder makes between
+/// `decode_mint_policy_items_at` and `decode_mint_policy_item_cbor`.
+fn encode_mint_policy_items(
+  pairs: List<Pair<Data, Data>>,
+  previous_policy_id: Option<ByteArray>,
+) -> List<ByteArray> {
+  when pairs is {
+    [] -> []
+    [Pair(policy_id_data, asset_map_data), ..rest] -> {
+      let policy_id = builtin.un_b_data(policy_id_data)
+      expect
+        when previous_policy_id is {
+          None -> True
+          Some(previous) -> canonical_bytes_key_precedes(previous, policy_id)
+        }
+      [
+        encode_mint_policy_item(policy_id_data, asset_map_data),
+        ..encode_mint_policy_items(rest, Some(policy_id))
+      ]
+    }
+  }
+}
+
 pub fn mint_policy_items(mint: Data) -> List<ByteArray> {
-  canonical_mint_policy_pairs(mint)
-    |> list.map(fn(pair) { encode_mint_policy_item(pair.1st, pair.2nd) })
+  canonical_mint_policy_pairs(mint) |> encode_mint_policy_items(None)
 }
 
 /// §5.6: the field-5 preimage is the enveloped list of per-policy items, and

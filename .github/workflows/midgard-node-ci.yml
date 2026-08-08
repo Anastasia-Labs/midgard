@@ -124,6 +124,14 @@ jobs:
       # installs.
       - name: Check native V1 field-access golden vectors
         run: pnpm --dir demo/midgard-core run fixtures:native-tx-field-access-v1:check
+      # The per-field half of the same channel (#569): for every field index
+      # 0..8, what §5.3's `enc_i` actually is. It gates on the identical
+      # footing and for the identical reason — the JSON fixture and the
+      # generated Aiken module are produced from the TypeScript twins and are
+      # never hand-edited, so without this step a hand-edited vector passes
+      # both language suites while no longer being what the producers emit.
+      - name: Check native V1 per-field item golden vectors
+        run: pnpm --dir demo/midgard-core run fixtures:native-tx-field-items-v1:check
       - name: Build, typecheck, and test Midgard SDK
         run: pnpm --dir demo/midgard-sdk run build && pnpm --dir demo/midgard-sdk run typecheck && pnpm --dir demo/midgard-sdk test
       - name: Build, typecheck, and test Midgard validation

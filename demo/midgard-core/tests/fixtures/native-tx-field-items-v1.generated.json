@@ -1,0 +1,1085 @@
+{
+  "schema": "midgard-native-tx-field-items-v1-golden",
+  "version": 1,
+  "specDocument": "docs/spec/midgard-tx.md",
+  "generator": "demo/midgard-core/scripts/generate-native-tx-field-items-v1-goldens.mjs",
+  "fieldCount": 9,
+  "fields": [
+    {
+      "fieldIndex": 0,
+      "fieldName": "spend_inputs",
+      "stride": 40,
+      "aikenProducer": "encode_input_preimage",
+      "aikenDecoder": "decode_midgard_tx_inputs_preimage_cbor",
+      "vectors": [
+        {
+          "label": "empty",
+          "itemCount": 0,
+          "headerLength": 1,
+          "itemsHex": [],
+          "preimageHex": "80",
+          "preimageLength": 1,
+          "commitmentHex": "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
+          "carriageTier": "Inline",
+          "itemExtents": []
+        },
+        {
+          "label": "single",
+          "itemCount": 1,
+          "headerLength": 1,
+          "itemsHex": [
+            "825820222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb190000"
+          ],
+          "preimageHex": "815826825820222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb190000",
+          "preimageLength": 41,
+          "commitmentHex": "0e2116b60e68dfb2a1f3c469ee4427050922a4d46650e55abb825630557f134f",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 38
+            }
+          ]
+        },
+        {
+          "label": "index_boundaries",
+          "itemCount": 6,
+          "headerLength": 1,
+          "itemsHex": [
+            "82582041484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a190000",
+            "82582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b3239190017",
+            "8258207f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a5158190018",
+            "8258209ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970771900ff",
+            "825820bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f96190100",
+            "825820dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb519ffff"
+          ],
+          "preimageHex": "86582682582041484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a190000582682582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323919001758268258207f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a515819001858268258209ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970771900ff5826825820bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f961901005826825820dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb519ffff",
+          "preimageLength": 241,
+          "commitmentHex": "624f216aaa343abb76bed8295181cd24bd58b2cb3e8c0a7dce2d24335b0fd341",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 38
+            },
+            {
+              "offset": 43,
+              "length": 38
+            },
+            {
+              "offset": 83,
+              "length": 38
+            },
+            {
+              "offset": 123,
+              "length": 38
+            },
+            {
+              "offset": 163,
+              "length": 38
+            },
+            {
+              "offset": 203,
+              "length": 38
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fieldIndex": 1,
+      "fieldName": "reference_inputs",
+      "stride": 40,
+      "aikenProducer": "encode_input_preimage",
+      "aikenDecoder": "decode_midgard_tx_inputs_preimage_cbor",
+      "vectors": [
+        {
+          "label": "empty",
+          "itemCount": 0,
+          "headerLength": 1,
+          "itemsHex": [],
+          "preimageHex": "80",
+          "preimageLength": 1,
+          "commitmentHex": "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
+          "carriageTier": "Inline",
+          "itemExtents": []
+        },
+        {
+          "label": "single",
+          "itemCount": 1,
+          "headerLength": 1,
+          "itemsHex": [
+            "825820222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb190000"
+          ],
+          "preimageHex": "815826825820222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb190000",
+          "preimageLength": 41,
+          "commitmentHex": "0e2116b60e68dfb2a1f3c469ee4427050922a4d46650e55abb825630557f134f",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 38
+            }
+          ]
+        },
+        {
+          "label": "pair",
+          "itemCount": 2,
+          "headerLength": 1,
+          "itemsHex": [
+            "8258201a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3190001",
+            "8258203940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b1219ffff"
+          ],
+          "preimageHex": "8258268258201a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf319000158268258203940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b1219ffff",
+          "preimageLength": 81,
+          "commitmentHex": "e067f8ded4bee00b24c3255dfd2bd99049bf3110ceeb0fd3eb4891d2018584d0",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 38
+            },
+            {
+              "offset": 43,
+              "length": 38
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fieldIndex": 2,
+      "fieldName": "outputs",
+      "stride": 0,
+      "aikenProducer": "encode_output_preimage",
+      "aikenDecoder": "decode_midgard_tx_outputs_preimage_cbor",
+      "vectors": [
+        {
+          "label": "empty",
+          "itemCount": 0,
+          "headerLength": 1,
+          "itemsHex": [],
+          "preimageHex": "80",
+          "preimageLength": 1,
+          "commitmentHex": "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
+          "carriageTier": "Inline",
+          "itemExtents": []
+        },
+        {
+          "label": "address_and_value",
+          "itemCount": 1,
+          "headerLength": 1,
+          "itemsHex": [
+            "a200581d60222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8df01821a001e8480a0"
+          ],
+          "preimageHex": "815829a200581d60222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8df01821a001e8480a0",
+          "preimageLength": 44,
+          "commitmentHex": "a5574a7b36cebf27e84f0557dc966552702d60d7c0deef077b130a5cb4b3dc68",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 41
+            }
+          ]
+        },
+        {
+          "label": "with_multiasset_value",
+          "itemCount": 1,
+          "headerLength": 1,
+          "itemsHex": [
+            "a200581d6041484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe01821a0016e360a1581c60676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161da24007434d494405"
+          ],
+          "preimageHex": "81584fa200581d6041484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe01821a0016e360a1581c60676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161da24007434d494405",
+          "preimageLength": 82,
+          "commitmentHex": "144ec68be15e0ade6c97726d32834b207b520cf1441df78379b51ae1c3000b40",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 79
+            }
+          ]
+        },
+        {
+          "label": "with_script_ref",
+          "itemCount": 1,
+          "headerLength": 1,
+          "itemsHex": [
+            "a300581d607f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c01821a002dc6c0a003820358289ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8af"
+          ],
+          "preimageHex": "815856a300581d607f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c01821a002dc6c0a003820358289ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8af",
+          "preimageLength": 89,
+          "commitmentHex": "49046b6e9924bbde1ffa8c0fb5de7b24615372d2c4d373f986b4f4dde459ee8c",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 86
+            }
+          ]
+        },
+        {
+          "label": "with_datum_and_script_ref",
+          "itemCount": 1,
+          "headerLength": 1,
+          "itemsHex": [
+            "a400581d60bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a01821a003d0900a00243d87980038218805818dce3eaf1f8ff060d141b222930373e454c535a61686f767d"
+          ],
+          "preimageHex": "81584ca400581d60bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a01821a003d0900a00243d87980038218805818dce3eaf1f8ff060d141b222930373e454c535a61686f767d",
+          "preimageLength": 79,
+          "commitmentHex": "a8e6754743e0c13f0bd40759b629f3df895a8a0ab6730574dd73d926b2f06d54",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 76
+            }
+          ]
+        },
+        {
+          "label": "datum_canonicity_boundaries",
+          "itemCount": 6,
+          "headerLength": 1,
+          "itemsHex": [
+            "a300581d60585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e1501821a000f4240a00243d87980",
+            "a300581d60777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d3401821a000f4241a002491bffffffffffffffff",
+            "a300581d60969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c5301821a000f4242a0024bc249010000000000000000",
+            "a300581d60b5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b7201821a000f4243a0024bc349010000000000000000",
+            "a300581d60d4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a9101821a000f4244a00246d905789f00ff",
+            "a300581d60f3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b001821a000f4245a00248d8668218809f00ff"
+          ],
+          "preimageHex": "86582ea300581d60585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e1501821a000f4240a00243d879805834a300581d60777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d3401821a000f4241a002491bffffffffffffffff5836a300581d60969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c5301821a000f4242a0024bc2490100000000000000005836a300581d60b5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b7201821a000f4243a0024bc3490100000000000000005831a300581d60d4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a9101821a000f4244a00246d905789f00ff5833a300581d60f3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b001821a000f4245a00248d8668218809f00ff",
+          "preimageLength": 319,
+          "commitmentHex": "792fd427527b5cdc8001dffdbb2c40ba07697d0788da0ac3c62ce06b6c400a97",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 46
+            },
+            {
+              "offset": 51,
+              "length": 52
+            },
+            {
+              "offset": 105,
+              "length": 54
+            },
+            {
+              "offset": 161,
+              "length": 54
+            },
+            {
+              "offset": 217,
+              "length": 49
+            },
+            {
+              "offset": 268,
+              "length": 51
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fieldIndex": 3,
+      "fieldName": "required_observers",
+      "stride": 30,
+      "aikenProducer": "encode_hash28_list_preimage",
+      "aikenDecoder": "decode_midgard_tx_hash28_list_preimage_cbor",
+      "vectors": [
+        {
+          "label": "empty",
+          "itemCount": 0,
+          "headerLength": 1,
+          "itemsHex": [],
+          "preimageHex": "80",
+          "preimageLength": 1,
+          "commitmentHex": "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
+          "carriageTier": "Inline",
+          "itemExtents": []
+        },
+        {
+          "label": "single",
+          "itemCount": 1,
+          "headerLength": 1,
+          "itemsHex": [
+            "222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8df"
+          ],
+          "preimageHex": "81581c222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8df",
+          "preimageLength": 31,
+          "commitmentHex": "30af757ef3138b5cf4d29d813e1178a2e7e30761774236218150688ca441d881",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 28
+            }
+          ]
+        },
+        {
+          "label": "two_byte_header",
+          "itemCount": 24,
+          "headerLength": 2,
+          "itemsHex": [
+            "41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe",
+            "60676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d",
+            "7f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c",
+            "9ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b",
+            "bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a",
+            "dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299",
+            "fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8",
+            "1a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7",
+            "3940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6",
+            "585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e15",
+            "777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d34",
+            "969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c53",
+            "b5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b72",
+            "d4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91",
+            "f3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0",
+            "121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cf",
+            "31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7ee",
+            "50575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d",
+            "6f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c",
+            "8e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b",
+            "adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a",
+            "ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b8289",
+            "ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8",
+            "0a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7"
+          ],
+          "preimageHex": "9818581c41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe581c60676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d581c7f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c581c9ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b581cbdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a581cdce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299581cfb020910171e252c333a41484f565d646b727980878e959ca3aab1b8581c1a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7581c3940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6581c585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e15581c777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d34581c969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c53581cb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b72581cd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91581cf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0581c121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cf581c31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7ee581c50575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d581c6f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c581c8e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b581cadb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a581cccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b8289581cebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8581c0a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7",
+          "preimageLength": 722,
+          "commitmentHex": "42864a8f9b132e54d3f20539b0e666d68376a16d23d09e43fac718b805f0f1dd",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 4,
+              "length": 28
+            },
+            {
+              "offset": 34,
+              "length": 28
+            },
+            {
+              "offset": 64,
+              "length": 28
+            },
+            {
+              "offset": 94,
+              "length": 28
+            },
+            {
+              "offset": 124,
+              "length": 28
+            },
+            {
+              "offset": 154,
+              "length": 28
+            },
+            {
+              "offset": 184,
+              "length": 28
+            },
+            {
+              "offset": 214,
+              "length": 28
+            },
+            {
+              "offset": 244,
+              "length": 28
+            },
+            {
+              "offset": 274,
+              "length": 28
+            },
+            {
+              "offset": 304,
+              "length": 28
+            },
+            {
+              "offset": 334,
+              "length": 28
+            },
+            {
+              "offset": 364,
+              "length": 28
+            },
+            {
+              "offset": 394,
+              "length": 28
+            },
+            {
+              "offset": 424,
+              "length": 28
+            },
+            {
+              "offset": 454,
+              "length": 28
+            },
+            {
+              "offset": 484,
+              "length": 28
+            },
+            {
+              "offset": 514,
+              "length": 28
+            },
+            {
+              "offset": 544,
+              "length": 28
+            },
+            {
+              "offset": 574,
+              "length": 28
+            },
+            {
+              "offset": 604,
+              "length": 28
+            },
+            {
+              "offset": 634,
+              "length": 28
+            },
+            {
+              "offset": 664,
+              "length": 28
+            },
+            {
+              "offset": 694,
+              "length": 28
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fieldIndex": 4,
+      "fieldName": "required_signers",
+      "stride": 30,
+      "aikenProducer": "encode_hash28_list_preimage",
+      "aikenDecoder": "decode_midgard_tx_hash28_list_preimage_cbor",
+      "vectors": [
+        {
+          "label": "empty",
+          "itemCount": 0,
+          "headerLength": 1,
+          "itemsHex": [],
+          "preimageHex": "80",
+          "preimageLength": 1,
+          "commitmentHex": "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
+          "carriageTier": "Inline",
+          "itemExtents": []
+        },
+        {
+          "label": "single",
+          "itemCount": 1,
+          "headerLength": 1,
+          "itemsHex": [
+            "222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8df"
+          ],
+          "preimageHex": "81581c222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8df",
+          "preimageLength": 31,
+          "commitmentHex": "30af757ef3138b5cf4d29d813e1178a2e7e30761774236218150688ca441d881",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 28
+            }
+          ]
+        },
+        {
+          "label": "pair",
+          "itemCount": 2,
+          "headerLength": 1,
+          "itemsHex": [
+            "a5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b62",
+            "c4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81"
+          ],
+          "preimageHex": "82581ca5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b62581cc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81",
+          "preimageLength": 61,
+          "commitmentHex": "34f1e5ac877c6ff0989c1529830c89264c67ab8d386fdb5bffaaac34f4d3937c",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 28
+            },
+            {
+              "offset": 33,
+              "length": 28
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fieldIndex": 5,
+      "fieldName": "mint",
+      "stride": 0,
+      "aikenProducer": "encode_mint_preimage",
+      "aikenDecoder": "decode_midgard_tx_mint_preimage_cbor",
+      "vectors": [
+        {
+          "label": "empty",
+          "itemCount": 0,
+          "headerLength": 1,
+          "itemsHex": [],
+          "preimageHex": "80",
+          "preimageLength": 1,
+          "commitmentHex": "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
+          "carriageTier": "Inline",
+          "itemExtents": []
+        },
+        {
+          "label": "single_policy_single_asset",
+          "itemCount": 1,
+          "headerLength": 1,
+          "itemsHex": [
+            "82581c222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfa1434d494405"
+          ],
+          "preimageHex": "81582582581c222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfa1434d494405",
+          "preimageLength": 40,
+          "commitmentHex": "09076a453010ecb84249a9a6805b02084e5fb9b46245de7027dc67cbbef59fc5",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 37
+            }
+          ]
+        },
+        {
+          "label": "ordered_assets",
+          "itemCount": 1,
+          "headerLength": 1,
+          "itemsHex": [
+            "82581c41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fea5400141410241420342414104582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323906"
+          ],
+          "preimageHex": "81584f82581c41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fea5400141410241420342414104582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323906",
+          "preimageLength": 82,
+          "commitmentHex": "f45bf4838470d9a83678cf8a99b3cf6563b67a739e39c31e968510153bbc5d25",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 79
+            }
+          ]
+        },
+        {
+          "label": "burn_negative_quantity",
+          "itemCount": 1,
+          "headerLength": 1,
+          "itemsHex": [
+            "82581c7f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353ca1444275726e3b001ffffffffffffe"
+          ],
+          "preimageHex": "81582e82581c7f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353ca1444275726e3b001ffffffffffffe",
+          "preimageLength": 49,
+          "commitmentHex": "f6278ec1a970d87f4adfd93a071ea1250cdbd79147eebdc5333aa6c04df0d7ea",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 46
+            }
+          ]
+        },
+        {
+          "label": "multi_policy",
+          "itemCount": 2,
+          "headerLength": 1,
+          "itemsHex": [
+            "82581c9ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545ba1414101",
+            "82581cbdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737aa1414202"
+          ],
+          "preimageHex": "82582382581c9ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545ba1414101582382581cbdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737aa1414202",
+          "preimageLength": 75,
+          "commitmentHex": "e0204c286985aace7fe6c6db00b55ab9d10d64333b71498e2141aaaf818a55b7",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 35
+            },
+            {
+              "offset": 40,
+              "length": 35
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fieldIndex": 6,
+      "fieldName": "script_witnesses",
+      "stride": 0,
+      "aikenProducer": "encode_script_witness_preimage",
+      "aikenDecoder": "decode_midgard_tx_script_witnesses_preimage_cbor",
+      "vectors": [
+        {
+          "label": "empty",
+          "itemCount": 0,
+          "headerLength": 1,
+          "itemsHex": [],
+          "preimageHex": "80",
+          "preimageLength": 1,
+          "commitmentHex": "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
+          "carriageTier": "Inline",
+          "itemExtents": []
+        },
+        {
+          "label": "native_cardano",
+          "itemCount": 1,
+          "headerLength": 1,
+          "itemsHex": [
+            "820058208200581c222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8df"
+          ],
+          "preimageHex": "815824820058208200581c222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8df",
+          "preimageLength": 39,
+          "commitmentHex": "f5a475b5b25fb5256a4c5efba0b61afef70ab3310f6a6fc9ca5fedaaffda4a56",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 36
+            }
+          ]
+        },
+        {
+          "label": "plutus_v3",
+          "itemCount": 1,
+          "headerLength": 1,
+          "itemsHex": [
+            "8203582841484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b52"
+          ],
+          "preimageHex": "81582c8203582841484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b52",
+          "preimageLength": 47,
+          "commitmentHex": "e321369ff46e1623f0ca1f8787f0ff4851fa5518ee1357e7aace04f275cc69e8",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 44
+            }
+          ]
+        },
+        {
+          "label": "midgard_v1",
+          "itemCount": 1,
+          "headerLength": 1,
+          "itemsHex": [
+            "821880584060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b1219"
+          ],
+          "preimageHex": "815845821880584060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b1219",
+          "preimageLength": 72,
+          "commitmentHex": "13c9cc6eec2a948749ba77e4a6f04fa42fbdeff6395401c0d56fe8796d2a15be",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 69
+            }
+          ]
+        },
+        {
+          "label": "all_languages",
+          "itemCount": 3,
+          "headerLength": 1,
+          "itemsHex": [
+            "820058208200581c7f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c",
+            "820358189ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f",
+            "82188059012cbdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3ea"
+          ],
+          "preimageHex": "835824820058208200581c7f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c581c820358189ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f59013282188059012cbdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3ea",
+          "preimageLength": 378,
+          "commitmentHex": "458983b47b540144eaf9106b969a76b82cc203fc154402485621f0301e7f5620",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 36
+            },
+            {
+              "offset": 41,
+              "length": 28
+            },
+            {
+              "offset": 72,
+              "length": 306
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fieldIndex": 7,
+      "fieldName": "address_witnesses",
+      "stride": 103,
+      "aikenProducer": "encode_address_witness_preimage",
+      "aikenDecoder": "decode_midgard_tx_address_witnesses_preimage_cbor",
+      "vectors": [
+        {
+          "label": "empty",
+          "itemCount": 0,
+          "headerLength": 1,
+          "itemsHex": [],
+          "preimageHex": "80",
+          "preimageLength": 1,
+          "commitmentHex": "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
+          "carriageTier": "Inline",
+          "itemExtents": []
+        },
+        {
+          "label": "single",
+          "itemCount": 1,
+          "headerLength": 1,
+          "itemsHex": [
+            "825820222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb584041484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa"
+          ],
+          "preimageHex": "815865825820222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb584041484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa",
+          "preimageLength": 104,
+          "commitmentHex": "84889e21cc2270a082135ab551fd0336780b157b418dd8fd9e898f77a32f9f40",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 101
+            }
+          ]
+        },
+        {
+          "label": "triple",
+          "itemCount": 3,
+          "headerLength": 1,
+          "itemsHex": [
+            "82582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323958407f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a3138",
+            "8258209ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970775840bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f76",
+            "825820dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb55840fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4"
+          ],
+          "preimageHex": "83586582582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323958407f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a313858658258209ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970775840bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f765865825820dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb55840fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4",
+          "preimageLength": 310,
+          "commitmentHex": "8c4e7220f1f418e28e3c02acffd64d3c6bbdde0aaaf796c76c0d59447710937b",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 3,
+              "length": 101
+            },
+            {
+              "offset": 106,
+              "length": 101
+            },
+            {
+              "offset": 209,
+              "length": 101
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fieldIndex": 8,
+      "fieldName": "redeemers",
+      "stride": 0,
+      "aikenProducer": "encode_redeemer_witness_preimage",
+      "aikenDecoder": "decode_midgard_tx_redeemer_witnesses_preimage_cbor",
+      "vectors": [
+        {
+          "label": "empty",
+          "itemCount": 0,
+          "headerLength": 1,
+          "itemsHex": [],
+          "preimageHex": "80",
+          "preimageLength": 1,
+          "commitmentHex": "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
+          "carriageTier": "Inline",
+          "itemExtents": []
+        },
+        {
+          "label": "all_purposes",
+          "itemCount": 7,
+          "headerLength": 1,
+          "itemsHex": [
+            "84000043d87980821903e81907d0",
+            "84010143d87980821903e91907d1",
+            "84020243d87980821903ea1907d2",
+            "84030343d87980821903eb1907d3",
+            "84040443d87980821903ec1907d4",
+            "84050543d87980821903ed1907d5",
+            "84060643d87980821903ee1907d6"
+          ],
+          "preimageHex": "874e84000043d87980821903e81907d04e84010143d87980821903e91907d14e84020243d87980821903ea1907d24e84030343d87980821903eb1907d34e84040443d87980821903ec1907d44e84050543d87980821903ed1907d54e84060643d87980821903ee1907d6",
+          "preimageLength": 106,
+          "commitmentHex": "b13455a9b2e012b2513812553c293379c0875864bbc6cc7c8427fec178e570da",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 2,
+              "length": 14
+            },
+            {
+              "offset": 17,
+              "length": 14
+            },
+            {
+              "offset": 32,
+              "length": 14
+            },
+            {
+              "offset": 47,
+              "length": 14
+            },
+            {
+              "offset": 62,
+              "length": 14
+            },
+            {
+              "offset": 77,
+              "length": 14
+            },
+            {
+              "offset": 92,
+              "length": 14
+            }
+          ]
+        },
+        {
+          "label": "scalar_boundaries",
+          "itemCount": 4,
+          "headerLength": 1,
+          "itemsHex": [
+            "84000043d87980820017",
+            "8401174443d8798082181818ff",
+            "84031818491bffffffffffffffff8219010019ffff",
+            "840619ffff48d8668218809f00ff821a000100001b0000000100000000"
+          ],
+          "preimageHex": "844a84000043d879808200174d8401174443d8798082181818ff5584031818491bffffffffffffffff8219010019ffff581d840619ffff48d8668218809f00ff821a000100001b0000000100000000",
+          "preimageLength": 79,
+          "commitmentHex": "c6d38234cac014c72b820f74f81991a00901632d84d7b57ab4c0a36847a11344",
+          "carriageTier": "Inline",
+          "itemExtents": [
+            {
+              "offset": 2,
+              "length": 10
+            },
+            {
+              "offset": 13,
+              "length": 13
+            },
+            {
+              "offset": 27,
+              "length": 21
+            },
+            {
+              "offset": 50,
+              "length": 29
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "languageTags": [
+    {
+      "language": "NativeCardano",
+      "tag": 0,
+      "itemHex": "820058208200581ce9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6"
+    },
+    {
+      "language": "PlutusV3",
+      "tag": 3,
+      "itemHex": "820348080f161d242b3239"
+    },
+    {
+      "language": "MidgardV1",
+      "tag": 128,
+      "itemHex": "82188048272e353c434a5158"
+    }
+  ],
+  "purposeTags": [
+    {
+      "purpose": "Spend",
+      "tag": 0,
+      "itemHex": "84000143d87980820203"
+    },
+    {
+      "purpose": "Mint",
+      "tag": 1,
+      "itemHex": "84010143d87980820203"
+    },
+    {
+      "purpose": "Cert",
+      "tag": 2,
+      "itemHex": "84020143d87980820203"
+    },
+    {
+      "purpose": "Reward",
+      "tag": 3,
+      "itemHex": "84030143d87980820203"
+    },
+    {
+      "purpose": "Vote",
+      "tag": 4,
+      "itemHex": "84040143d87980820203"
+    },
+    {
+      "purpose": "Propose",
+      "tag": 5,
+      "itemHex": "84050143d87980820203"
+    },
+    {
+      "purpose": "Receive",
+      "tag": 6,
+      "itemHex": "84060143d87980820203"
+    }
+  ],
+  "fixedOutputIndexes": [
+    {
+      "outputIndex": 0,
+      "encodedHex": "190000"
+    },
+    {
+      "outputIndex": 23,
+      "encodedHex": "190017"
+    },
+    {
+      "outputIndex": 24,
+      "encodedHex": "190018"
+    },
+    {
+      "outputIndex": 255,
+      "encodedHex": "1900ff"
+    },
+    {
+      "outputIndex": 256,
+      "encodedHex": "190100"
+    },
+    {
+      "outputIndex": 65535,
+      "encodedHex": "19ffff"
+    }
+  ],
+  "datumCanonicityBoundaries": [
+    {
+      "label": "unit",
+      "cborHex": "d87980"
+    },
+    {
+      "label": "uint64_max",
+      "cborHex": "1bffffffffffffffff"
+    },
+    {
+      "label": "bignum_two_to_64",
+      "cborHex": "c249010000000000000000"
+    },
+    {
+      "label": "bignum_negative_two_to_64",
+      "cborHex": "c349010000000000000000"
+    },
+    {
+      "label": "constr_alternative_127",
+      "cborHex": "d905789f00ff"
+    },
+    {
+      "label": "constr_alternative_128",
+      "cborHex": "d8668218809f00ff"
+    }
+  ],
+  "fieldPreimageLengths": {
+    "lengths": [
+      11,
+      22,
+      33,
+      44,
+      55,
+      66,
+      77,
+      88,
+      99
+    ],
+    "encodedHex": "890b161821182c18371842184d18581863"
+  },
+  "carriageTiers": [
+    {
+      "preimageLength": 1,
+      "tier": "Inline"
+    },
+    {
+      "preimageLength": 14336,
+      "tier": "Inline"
+    },
+    {
+      "preimageLength": 14337,
+      "tier": "RawUtxo"
+    },
+    {
+      "preimageLength": 15900,
+      "tier": "RawUtxo"
+    },
+    {
+      "preimageLength": 15901,
+      "tier": "Certified"
+    },
+    {
+      "preimageLength": 32768,
+      "tier": "Certified"
+    }
+  ],
+  "straddle": {
+    "fieldIndex": 1,
+    "stride": 40,
+    "blockHex": "58268258201f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f819000058268258203e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb0209101719000158268258205d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f3619000258268258207c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e5519000358268258209ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d741900045826825820bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c931900055826825820d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb21900065826825820f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad11900075826825820171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f01900085826825820363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f190009",
+    "blockElementCount": 10,
+    "repeats": 40,
+    "itemCount": 400,
+    "headerHex": "990190",
+    "totalLength": 16003,
+    "commitmentHex": "c33cac158cd252aeb86e3fafb6776fd03e7afacffa7923c05878afca870b4ef1",
+    "carriageTier": "Certified",
+    "chunkLengths": [
+      15900,
+      103
+    ],
+    "chunkDigestsHex": [
+      "3d472a8b6608fd6572a3de26a9f95a37c86c9ba739c39b5b8314f860bc908806",
+      "7243f0ea84ad415d83212fc24569d54be7e81f50198a257f93de50cfcb3d7cb2"
+    ],
+    "reads": [
+      {
+        "itemIndex": 396,
+        "offset": 15845,
+        "length": 38,
+        "straddles": false,
+        "itemHex": "825820d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2190006"
+      },
+      {
+        "itemIndex": 397,
+        "offset": 15885,
+        "length": 38,
+        "straddles": true,
+        "itemHex": "825820f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1190007"
+      },
+      {
+        "itemIndex": 398,
+        "offset": 15925,
+        "length": 38,
+        "straddles": false,
+        "itemHex": "825820171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0190008"
+      }
+    ],
+    "itemsHex": [
+      "8258201f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8190000",
+      "8258203e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb02091017190001",
+      "8258205d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f36190002",
+      "8258207c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e55190003",
+      "8258209ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d74190004",
+      "825820bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c93190005",
+      "825820d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2190006",
+      "825820f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1190007",
+      "825820171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0190008",
+      "825820363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f190009"
+    ]
+  }
+}

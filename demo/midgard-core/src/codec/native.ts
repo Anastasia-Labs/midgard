@@ -478,19 +478,47 @@ export const decodeMidgardNativeTxProofFieldLengthsV1 = (
   });
 };
 
+/**
+ * The nine field-preimage byte lengths **in `docs/spec/midgard-tx.md` §2.4 wire
+ * order** — which is not the record's declaration order.
+ *
+ * §2.4 places `script_witnesses` at wire position 6 and `address_witnesses` at
+ * 7, transposed relative to `NativeTxFieldPreimageLengthsV1`, which declares
+ * address before script. Both twins already agree on this and MUST NOT change
+ * it, so this is where the transposition lives on the TypeScript side and the
+ * only place it can be observed: `encodeMidgardNativeTxProofFieldLengthsV1`
+ * below takes an already-ordered array and cannot express it.
+ *
+ * Exported so the §2.4 cross-language golden vector can drive this function
+ * rather than a positional array — a vector that only re-serialises nine
+ * numbers proves array order, not wire order, and would still pass with the two
+ * witness slots swapped.
+ */
+export const midgardNativeTxProofFieldPreimageLengthsV1 = ({
+  body,
+  witnessSet,
+}: {
+  readonly body: MidgardNativeTxBodyCanonicalV1;
+  readonly witnessSet: MidgardNativeTxWitnessSetCanonicalV1;
+}): readonly number[] => [
+  body.spendInputsPreimageCbor.length,
+  body.referenceInputsPreimageCbor.length,
+  body.outputsPreimageCbor.length,
+  body.requiredObserversPreimageCbor.length,
+  body.requiredSignersPreimageCbor.length,
+  body.mintPreimageCbor.length,
+  witnessSet.scriptTxWitsPreimageCbor.length,
+  witnessSet.addrTxWitsPreimageCbor.length,
+  witnessSet.redeemerTxWitsPreimageCbor.length,
+];
+
 const proofFieldPreimageLengths = (
   tx: MidgardNativeTxFullV1,
-): readonly number[] => [
-  tx.body.spendInputsPreimageCbor.length,
-  tx.body.referenceInputsPreimageCbor.length,
-  tx.body.outputsPreimageCbor.length,
-  tx.body.requiredObserversPreimageCbor.length,
-  tx.body.requiredSignersPreimageCbor.length,
-  tx.body.mintPreimageCbor.length,
-  tx.witnessSet.scriptTxWitsPreimageCbor.length,
-  tx.witnessSet.addrTxWitsPreimageCbor.length,
-  tx.witnessSet.redeemerTxWitsPreimageCbor.length,
-];
+): readonly number[] =>
+  midgardNativeTxProofFieldPreimageLengthsV1({
+    body: tx.body,
+    witnessSet: tx.witnessSet,
+  });
 
 export const encodeMidgardNativeTxProofFieldLengthsV1 = (
   lengths: readonly number[],

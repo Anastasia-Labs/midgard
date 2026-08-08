@@ -89,29 +89,40 @@ export {
  * `blake2b_256(#"80")` — `EMPTY_FIELD_COMMITMENT_HEX_V1` in
  * `native-tx-field-access-v1.ts`.
  *
- * That is what the **source** of `fraud_proofs/zero_input/step_02` requires;
- * it is not yet what any script requires in practice. `onchain/aiken/plutus.json`
- * is a build artifact, not a tracked file, and the blueprint currently on disk
- * predates the flat swap: it carries the retired counted-scheme
- * `eb25ed4a…` and no occurrence of `45b0cfc2…`. Every emulator-backed suite
- * in this repository — the fault-proof tests above all — executes *that*
- * blueprint, which is why they agree with the constant below rather than with
- * the Aiken source.
+ * That is what the **source** of `fraud_proofs/zero_input/step_02` requires
+ * (`empty_spend_inputs_hash = native_tx_field_access_v1.empty_field_commitment`);
+ * it is not yet what this constant computes.
  *
- * So the re-pin needs both halves, in sequence:
+ * **What #569 did and did not change.** #569 added the flat per-field producers
+ * — `codec/native-tx-field-items-v1.ts`, whose
+ * `midgardFieldCommitmentForFieldV1` *is* the §4 flat commitment — and pinned
+ * all nine against the Aiken producers with cross-language vectors. It
+ * deliberately did **not** re-point the nine-field *consumer* path:
+ * `deriveNativeTxBodyCompact` / `deriveNativeTxWitnessSetCompact` and their
+ * roughly twenty downstream callers (validation machine, watcher indexer, node,
+ * fault-proof tooling) still route through the retired counted
+ * `deriveMidgardNativeFieldCollectionV1`, which is what the expression below
+ * calls and why it still yields `eb25ed4a…`. That consumer swap is the Phase-5
+ * family-rebind lane work (#575–#578), not the vector fan-out.
  *
- *   1. the nine per-field producers in `@al-ft/midgard-core` swap to the flat
- *      commitment (#569), which is what this constant is derived from; and
+ * So the re-pin still needs two halves that must land together:
+ *
+ *   1. the nine-field consumer path swaps to the flat commitment (#575–#578),
+ *      which is what makes this constant `45b0cfc2…`; and
  *   2. the blueprint is regenerated so the deployed script agrees (#579, the
- *      identity re-derivation batch, sequenced after the #575–#578 family
- *      rebind lanes).
+ *      identity re-derivation batch).
  *
- * Re-pointing this constant at #569 alone would break the fault-proof emulator:
- * the predicate would expect the flat hash while the script in the blueprint
- * still tests the counted one. Re-pointing it before #569 would disagree with
- * every transaction the codec builds. `native-tx-field-access-v1` carries the
- * flat constant meanwhile, and `tests/native-tx-field-access-v1.test.ts`
- * asserts the gap so it cannot be forgotten.
+ * Moving this constant on its own breaks the fault-proof emulator in one
+ * direction or the other, and which direction depends on an artifact no commit
+ * pins: `onchain/aiken/plutus.json` is an untracked build output, so whichever
+ * script the emulator executes is simply whatever was last built there. A
+ * blueprint built before #567 tests the counted hash and agrees with the value
+ * below; one built from current source tests the flat hash and does not. That
+ * ambiguity is precisely why the re-pin belongs to the batch that regenerates
+ * the blueprint rather than to any lane that can only move one side of it.
+ * `native-tx-field-access-v1` carries the flat constant meanwhile, and
+ * `tests/native-tx-field-access-v1.test.ts` asserts the gap so it cannot be
+ * forgotten.
  */
 export const EMPTY_SPEND_INPUTS_HASH: string =
   deriveMidgardNativeFieldCollectionV1({

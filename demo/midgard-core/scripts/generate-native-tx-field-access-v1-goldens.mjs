@@ -22,23 +22,24 @@
  * artifacts (issue #569); nothing here is per-field.
  *
  * Vectors are regenerated, never hand-edited. Run with `--check` to assert the
- * checked-in artifacts are exactly what the twin produces today.
+ * checked-in artifacts are exactly what the twin produces today. That contract
+ * — argument parsing, the trip through `aiken fmt`, and the check-or-write
+ * emission — is one implementation shared with the sibling generator, in
+ * `scripts/golden-channel.mjs`; only what is computed differs between them.
  *
  * usage: node scripts/generate-native-tx-field-access-v1-goldens.mjs [--check]
  */
 
-import { spawnSync } from "node:child_process";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  aikenBytes,
+  formatAikenSource,
+  goldenChannelEmitter,
+  hex,
+  parseGoldenChannelArguments,
+} from "./golden-channel.mjs";
 import {
   decodeMidgardFieldArrayHeaderV1,
   deriveMidgardFieldPreimageCertificateV1,
@@ -81,20 +82,10 @@ const generatedAikenPath = join(
   "onchain/aiken/lib/midgard/native-tx-field-access-v1-golden.test.ak",
 );
 
-const commandArguments = process.argv.slice(2);
-if (
-  commandArguments.length > 1 ||
-  (commandArguments.length === 1 && commandArguments[0] !== "--check")
-) {
-  console.error(
-    "usage: node scripts/generate-native-tx-field-access-v1-goldens.mjs [--check]",
-  );
-  process.exit(2);
-}
-const checkOnly = commandArguments.length === 1;
-
-const hex = (value) => Buffer.from(value).toString("hex");
-const aikenBytes = (hexValue) => `#"${hexValue}"`;
+const { checkOnly } = parseGoldenChannelArguments(
+  "usage: node scripts/generate-native-tx-field-access-v1-goldens.mjs [--check]",
+);
+const writeOrCheck = goldenChannelEmitter({ repositoryRoot, checkOnly });
 
 /**
  * A deterministic filler so a vector's payload bytes are reproducible from its
@@ -637,47 +628,14 @@ const renderAiken = (golden) => {
 // Emission
 // ---------------------------------------------------------------------------
 
-const formatAiken = (source) => {
-  const directory = mkdtempSync(join(tmpdir(), "midgard-568-aiken-format-"));
-  const target = join(directory, "native-tx-field-access-v1-golden.test.ak");
-  const aikenBinary = process.env.MIDGARD_AIKEN_BIN ?? "aiken";
-  try {
-    writeFileSync(target, source, "utf8");
-    const result = spawnSync(aikenBinary, ["fmt", target], {
-      cwd: join(repositoryRoot, "onchain/aiken"),
-      encoding: "utf8",
-    });
-    if (result.status !== 0) {
-      throw new Error(
-        `Aiken formatter (${aikenBinary}) failed: ${result.error?.message ?? result.stderr.trim()}`,
-      );
-    }
-    return readFileSync(target, "utf8");
-  } finally {
-    rmSync(directory, { force: true, recursive: true });
-  }
-};
-
-const writeOrCheck = (target, expected) => {
-  const relativePath = relative(repositoryRoot, target);
-  if (checkOnly) {
-    let actual;
-    try {
-      actual = readFileSync(target, "utf8");
-    } catch {
-      throw new Error(`missing generated artifact: ${relativePath}`);
-    }
-    if (actual !== expected) {
-      throw new Error(`stale generated artifact: ${relativePath}`);
-    }
-    console.log(`checked ${relativePath}`);
-    return;
-  }
-  mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, expected, "utf8");
-  console.log(`wrote ${relativePath}`);
-};
-
 const golden = buildGolden();
 writeOrCheck(generatedJsonPath, `${JSON.stringify(golden, null, 2)}\n`);
-writeOrCheck(generatedAikenPath, formatAiken(renderAiken(golden)));
+writeOrCheck(
+  generatedAikenPath,
+  formatAikenSource({
+    source: renderAiken(golden),
+    fileName: "native-tx-field-access-v1-golden.test.ak",
+    repositoryRoot,
+    tmpPrefix: "midgard-568-aiken-format-",
+  }),
+);

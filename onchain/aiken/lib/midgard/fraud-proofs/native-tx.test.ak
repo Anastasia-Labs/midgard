@@ -288,8 +288,16 @@ test encode_native_tx_compact_matches_node_cbor_shape() {
   }
 }
 
+/// The field-8 bridge vector under the §5.1 envelope. Its retired spelling
+/// concatenated raw item CBOR (`82 ‖ 84… ‖ 84…`); §5.1 now wraps every item in
+/// its own `definite_bytes_header`, so the same two witnesses are
+/// `82 ‖ 4a 84… ‖ 49 84…`. The bytes below are produced by the TypeScript twin
+/// (`encodeMidgardFieldPreimageForFieldV1`, field 8) and are pinned
+/// field-by-field by `native-tx-field-items-v1-golden.test.ak`; this vector
+/// keeps its own copy because what it exercises is the *bridge* — decode to
+/// typed witnesses and re-encode — not the item encoding alone.
 test canonical_redeemer_bridge_golden_vector_is_stable() {
-  let golden_redeemers_cbor = #"8284000043d8798082050784030142182a820b0d"
+  let golden_redeemers_cbor = #"824a84000043d879808205074984030142182a820b0d"
   let decoded = decode_midgard_tx_redeemer_witnesses_preimage_cbor(
     golden_redeemers_cbor,
   )
@@ -566,9 +574,16 @@ test golden_midgard_core_native_full_tx_decodes() {
   }
 }
 
+/// Fields 0/1 under §5.3's fixed 3-byte output index. The retired spelling put
+/// the index in minimal CBOR (`… 00`, a 36-byte item at wrapper `58 24`); §5.3
+/// always spells it `19 XXXX`, which makes the item exactly 38 bytes at wrapper
+/// `58 26` and is what fixes stride 40. The preimages and their flat §4 hashes
+/// below are produced by the TypeScript twin
+/// (`encodeMidgardFieldPreimageForFieldV1`, fields 0 and 1); the same encoding
+/// is pinned per-field by `native-tx-field-items-v1-golden.test.ak`.
 test golden_midgard_core_native_preimage_cbor_decoders() {
-  let spend_preimage_cbor = #"815824825820111111111111111111111111111111111111111111111111111111111111111100"
-  let reference_preimage_cbor = #"815824825820222222222222222222222222222222222222222222222222222222222222222201"
+  let spend_preimage_cbor = #"8158268258201111111111111111111111111111111111111111111111111111111111111111190000"
+  let reference_preimage_cbor = #"8158268258202222222222222222222222222222222222222222222222222222222222222222190001"
   let outputs_preimage_cbor = #"81584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405"
   let empty_preimage_cbor = #"80"
   let empty_preimage_hash = #"45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
@@ -586,10 +601,10 @@ test golden_midgard_core_native_preimage_cbor_decoders() {
   expect [Pair(asset_unit, quantity)] = output.value.assets
 
   and {
-    blake2b_256(spend_preimage_cbor) == #"44bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb6",
+    blake2b_256(spend_preimage_cbor) == #"214c88efa8d641e100907432a62d5a6090c840f5c845f4d97785e72842df9795",
     spend_input.tx_id == #"1111111111111111111111111111111111111111111111111111111111111111",
     spend_input.output_index == 0,
-    blake2b_256(reference_preimage_cbor) == #"e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513",
+    blake2b_256(reference_preimage_cbor) == #"c7d58dc93d2a5850ba53d9c3b54199c68bb009fc43d808d98860416d2e3bc6e0",
     reference_input.tx_id == #"2222222222222222222222222222222222222222222222222222222222222222",
     reference_input.output_index == 1,
     output.value.lovelace == 2_000_000,
