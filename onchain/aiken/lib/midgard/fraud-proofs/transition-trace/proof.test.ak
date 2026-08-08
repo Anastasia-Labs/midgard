@@ -8,7 +8,6 @@ use cardano/address.{Address}
 use cardano/assets
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
 use env
-use midgard/bounded_collection_v1
 use midgard/common/utils
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/components as native_components
@@ -18,6 +17,7 @@ use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/transition_trace/proof
 use midgard/hub_oracle
 use midgard/ledger_state
+use midgard/native_tx_field_access_v1
 use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/deposit
@@ -771,15 +771,9 @@ fn native_l2_compact_cbor(
   native_compact.encode_native_tx_compact_v1(
     native_types.NativeTxCompact {
       body: native_types.NativeTxBodyCompact {
-        spend_inputs_hash: bounded_collection_v1.from_items(
-          0,
-          spend_inputs |> list.map(native_components.encode_midgard_tx_input),
-        ),
+        spend_inputs_hash: native_tx_field_access_v1.field_commitment_from_items(spend_inputs |> list.map(native_components.encode_midgard_tx_input)),
         reference_inputs_hash: h32_b,
-        outputs_hash: bounded_collection_v1.from_items(
-          2,
-          outputs |> list.map(native_components.encode_midgard_tx_output),
-        ),
+        outputs_hash: native_tx_field_access_v1.field_commitment_from_items(outputs |> list.map(native_components.encode_midgard_tx_output)),
         fee: 0,
         validity_interval_start: -1,
         validity_interval_end: -1,

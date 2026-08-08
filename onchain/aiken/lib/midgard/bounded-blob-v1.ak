@@ -4,13 +4,12 @@ use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
 }
+use midgard/native_tx_field_access_v1.{field_count}
 use midgard/validation_merkle_v1
 
 pub const version: Int = 1
 
 pub const chunk_bytes: Int = 4095
-
-pub const field_count: Int = 9
 
 const chunk_domain = #"4d696467617264426f756e646564426c6f624368756e6b5631"
 

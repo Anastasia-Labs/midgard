@@ -3,7 +3,6 @@ use aiken/crypto.{verify_ed25519_signature}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/bounded_collection_v1
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/invalid_signature/step_02.{
@@ -11,6 +10,7 @@ use midgard/fraud_proofs/invalid_signature/step_02.{
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_address_witness}
+use midgard/native_tx_field_access_v1
 
 validator main(
   computation_thread_token_policy_id: PolicyId,
@@ -71,10 +71,7 @@ validator main(
         //    collection hash carried from the previous step (consensus field 7,
         //    list of canonically encoded key/signature array items).
         expect
-          bounded_collection_v1.from_items(
-            7,
-            list.map(addr_tx_wits_preimage, encode_midgard_address_witness),
-          ) == bad_addr_tx_wits_hash
+          native_tx_field_access_v1.field_commitment_from_items(list.map(addr_tx_wits_preimage, encode_midgard_address_witness)) == bad_addr_tx_wits_hash
 
         // 3. The referenced witness's signature over the native transaction ID
         //    must be invalid.

@@ -5,7 +5,6 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
-use midgard/bounded_collection_v1
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/double_spend/input_witness
@@ -16,6 +15,7 @@ use midgard/fraud_proofs/double_spend/step_04
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 use midgard/fraud_proofs/native_tx/types.{MidgardTxInput}
+use midgard/native_tx_field_access_v1
 
 validator main(
   step_04_validator_script_hash: ScriptHash,
@@ -118,7 +118,7 @@ fn tx2_spend_inputs_hash() -> ByteArray {
 }
 
 fn spend_inputs_hash_of(inputs: List<MidgardTxInput>) -> ByteArray {
-  bounded_collection_v1.from_items(0, list.map(inputs, encode_midgard_tx_input))
+  native_tx_field_access_v1.field_commitment_from_items(list.map(inputs, encode_midgard_tx_input))
 }
 
 fn tx1_spend_inputs() -> List<MidgardTxInput> {

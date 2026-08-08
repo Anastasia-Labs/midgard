@@ -27,20 +27,43 @@ fn expect_asset_name(asset_name: ByteArray) -> ByteArray {
   asset_name
 }
 
+/// The output index of a spend/reference input is **always** the fixed 3-byte
+/// `19 XXXX` form (CBOR uint16 head, big-endian value 0–65,535), even for
+/// values 0–23 that minimal CBOR would spell in one byte. This is the sole
+/// deliberately non-minimal encoding in the format (spec §5.3): it makes every
+/// input item exactly 38 bytes with wrapper `58 26`, giving stride 40 and pure
+/// arithmetic item access instead of a walk. Picking a different canon does
+/// not waive uniqueness — `18 XX`, the minimal one-byte forms, and any wider
+/// form all reject.
+pub fn encode_fixed_output_index(output_index: Int) -> ByteArray {
+  expect _output_index = expect_output_index(output_index)
+  bytearray.concat(#"19", bytearray.from_int_big_endian(output_index, 2))
+}
+
+fn decode_fixed_output_index_at(bytes: ByteArray, offset: Int) -> Pair<Int, Int> {
+  expect byte_at(bytes, offset) == 25
+  Pair(
+    offset + 3,
+    byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2),
+  )
+}
+
 pub fn encode_midgard_tx_input(input: MidgardTxInput) -> ByteArray {
   let MidgardTxInput { tx_id, output_index } = input
   expect _tx_id = expect_h32(tx_id)
-  expect _output_index = expect_output_index(output_index)
   #"82"
     |> bytearray.concat(encode_definite_bytes(tx_id))
-    |> bytearray.concat(cbor.serialise(output_index))
+    |> bytearray.concat(encode_fixed_output_index(output_index))
 }
 
 pub fn decode_midgard_tx_input_cbor(input_cbor: ByteArray) -> MidgardTxInput {
   let offset = expect_byte(input_cbor, 0, 130)
   let Pair(offset, tx_id) = decode_definite_bytes_at(input_cbor, offset)
   expect bytearray.length(tx_id) == 32
-  let Pair(offset, output_index) = decode_uint_at(input_cbor, offset)
+  let Pair(offset, output_index) = decode_fixed_output_index_at(
+    input_cbor,
+    offset,
+  )
   expect offset == bytearray.length(input_cbor)
   MidgardTxInput { tx_id, output_index }
 }

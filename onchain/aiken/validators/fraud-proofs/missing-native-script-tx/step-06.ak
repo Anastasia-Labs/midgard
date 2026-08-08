@@ -2,7 +2,6 @@ use aiken/collection/list
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/bounded_collection_v1
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/missing_native_script_tx/step_06.{
@@ -13,6 +12,7 @@ use midgard/fraud_proofs/native_tx/components.{encode_midgard_versioned_script}
 use midgard/fraud_proofs/native_tx/types.{
   MidgardVersionedScript, NativeCardanoScript,
 }
+use midgard/native_tx_field_access_v1
 use midgard/script_proof_v1
 
 validator main(
@@ -78,10 +78,7 @@ validator main(
         //    native collection hash carried from the previous steps
         //    (consensus field 6, canonical versioned-script CBOR per item).
         expect
-          bounded_collection_v1.from_items(
-            6,
-            list.map(script_tx_wits_preimage, encode_midgard_versioned_script),
-          ) == verified_script_wits_hash
+          native_tx_field_access_v1.field_commitment_from_items(list.map(script_tx_wits_preimage, encode_midgard_versioned_script)) == verified_script_wits_hash
 
         // 3. The bad transaction's script witnesses must not contain the
         //    required native script (canonical versioned-script hash).

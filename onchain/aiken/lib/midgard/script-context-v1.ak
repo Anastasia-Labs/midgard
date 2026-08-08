@@ -3,6 +3,7 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/bounded_collection_v1
+use midgard/canonical_plutus_data_v1
 use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_tx_input_cbor, encode_midgard_tx_input,
@@ -77,13 +78,53 @@ fn script_value_data(value_data: Data) -> Data {
   }
 }
 
-fn datum_data(output: MidgardTxOutput) -> Data {
+/// True for the two canonical spellings the stdlib CBOR decoder cannot be
+/// asked about at all. Its major-6 arm computes `constr_data(tag - 121, ..)`
+/// with no tag-range guard, so tag 2 or 3 yields a negative alternative. Under
+/// PlutusV3 builtin semantics variant E -- mainnet protocol major version 11 --
+/// that alternative is a `Word64`, so a negative one fails the machine on real
+/// L1, not merely in the test runner. Screening the head byte converts that
+/// abort into a decline.
+///
+/// Total by construction: `bytearray.take` is a slice, so an empty datum
+/// yields an empty head rather than an out-of-bounds read.
+fn datum_head_is_bignum(datum_cbor: ByteArray) -> Bool {
+  let head = bytearray.take(datum_cbor, 1)
+  or {
+    head == #"c2",
+    head == #"c3",
+  }
+}
+
+/// The one place the canonicity/materialisability split is visible. Since the
+/// spec section 6.2 re-pin a canonical datum can carry a bignum (tags 2/3) or a
+/// tag-102 constructor. Both are canonical and both reach the output decoder,
+/// but neither survives the stdlib decoder: tag 102 it declines outright, so
+/// `deserialise` answers `None`; tags 2/3 it does not decline, so
+/// `datum_head_is_bignum` above declines them here instead.
+///
+/// Declining to materialise is not declaring non-canonical. The section 6.2
+/// predicate still accepts these bytes, and AC4 requires that it does;
+/// materialising them is the deferred Canonical-Data Acceptor's job (spec
+/// section 11, issue 571).
+///
+/// Not total, and deliberately so. The screen reads the head byte only, so a
+/// bignum nested inside an otherwise ordinary canonical datum still aborts
+/// rather than declining. Closing that needs the recursive acceptor, not a
+/// wider peek -- so do not read the declines above as a guarantee that this
+/// function reaches a verdict on every canonical datum.
+fn datum_data(output: MidgardTxOutput) -> Option<Data> {
   when output.datum_cbor is {
-    None -> builtin.constr_data(0, [])
-    Some(datum_cbor) -> {
-      expect Some(datum) = cbor.deserialise(datum_cbor)
-      builtin.constr_data(2, [datum])
-    }
+    None -> Some(builtin.constr_data(0, []))
+    Some(datum_cbor) ->
+      if datum_head_is_bignum(datum_cbor) {
+        None
+      } else {
+        when cbor.deserialise(datum_cbor) is {
+          None -> None
+          Some(datum) -> Some(builtin.constr_data(2, [datum]))
+        }
+      }
   }
 }
 
@@ -114,17 +155,21 @@ pub fn tx_out_data_v1(
           when output_value_data(output_data) is {
             None -> None
             Some(value_data) ->
-              Some(
-                builtin.constr_data(
-                  0,
-                  [
-                    address_data(output, midgard_encoding),
-                    script_value_data(value_data),
-                    datum_data(output),
-                    reference_script_data(output),
-                  ],
-                ),
-              )
+              when datum_data(output) is {
+                None -> None
+                Some(datum) ->
+                  Some(
+                    builtin.constr_data(
+                      0,
+                      [
+                        address_data(output, midgard_encoding),
+                        script_value_data(value_data),
+                        datum,
+                        reference_script_data(output),
+                      ],
+                    ),
+                  )
+              }
           }
       }
   }
@@ -771,19 +816,27 @@ pub fn spend_datum_summary_v1(
       when output.datum_cbor is {
         None -> Some(none_summary())
         Some(datum_cbor) ->
-          when cbor.deserialise(datum_cbor) is {
-            None -> None
-            Some(datum) ->
-              if cbor.serialise(datum) == datum_cbor {
+          // Two separate questions, in order. The section 6.2 predicate decides
+          // canonicity and is the gate; the head-byte screen only decides
+          // whether the stdlib decoder can be asked. A canonical bignum datum
+          // passes the first and fails the second, and declines here rather
+          // than aborting -- see datum_data above.
+          if and {
+            canonical_plutus_data_v1.is_canonical_plutus_data_v1(datum_cbor),
+            !datum_head_is_bignum(datum_cbor),
+          } {
+            when cbor.deserialise(datum_cbor) is {
+              None -> None
+              Some(datum) ->
                 Some(
                   small_constr_summary(
                     0,
                     [cek_data_v1.semantic_data_summary_v1(datum)],
                   ),
                 )
-              } else {
-                None
-              }
+            }
+          } else {
+            None
           }
       }
   }

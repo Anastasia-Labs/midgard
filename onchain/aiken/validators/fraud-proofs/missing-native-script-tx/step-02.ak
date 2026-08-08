@@ -2,7 +2,6 @@ use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/bounded_collection_v1
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/missing_native_script_tx/step_02.{
@@ -10,6 +9,7 @@ use midgard/fraud_proofs/missing_native_script_tx/step_02.{
 }
 use midgard/fraud_proofs/missing_native_script_tx/step_03
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
+use midgard/native_tx_field_access_v1
 
 validator main(
   step_03_validator_script_hash: ScriptHash,
@@ -64,10 +64,7 @@ validator main(
         // 2. Provided inputs preimage must match the bad transaction's native
         //    spend-inputs hash (consensus field 0, canonical per-item CBOR).
         expect
-          bounded_collection_v1.from_items(
-            0,
-            list.map(inputs_preimage, encode_midgard_tx_input),
-          ) == bad_tx_inputs_hash
+          native_tx_field_access_v1.field_commitment_from_items(list.map(inputs_preimage, encode_midgard_tx_input)) == bad_tx_inputs_hash
         let input_with_missing_script = inputs_preimage
           |> list.expect_at(bad_input_index)
 

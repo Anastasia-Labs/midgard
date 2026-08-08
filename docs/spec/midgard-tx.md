@@ -381,7 +381,13 @@ families, watcher, builders — observes:
 2. **No offset table in the format.** Item boundaries are walk-derived (or
    arithmetic, for fixed-stride fields) from the authenticated bytes
    themselves; there is no second committed data structure to trust or
-   dispute.
+   dispute. Arithmetic derivation locates an item; it does not excuse the
+   accessor from reading it. A fixed-stride accessor MUST decode the item's
+   own `definite_bytes_header` and require it to be the minimal-width form
+   for exactly `stride − 2` payload bytes — inferring those two bytes from
+   the stride would admit several byte forms for one logical field, in
+   violation of §5.1 and §6.1, and would leave a non-canonically committed
+   preimage unfaultable.
 3. **Abort, never clamp.** An item accessor MUST fail unless
    `0 ≤ i < N` and the item's full byte range lies within the preimage
    length. Slice-primitive clamping must never reach a caller — two
@@ -390,7 +396,15 @@ families, watcher, builders — observes:
 4. **Count consistency at view construction.** For fixed-stride fields,
    `header_len + stride·N == total_length` MUST hold (from the
    authenticated header in tiers 1–2; against the mint-verified certificate
-   `total_length` in tier 3).
+   `total_length` in tier 3). For variable-width fields the equivalent check
+   is the full-content walk, which tiers 1–2 MUST run at view construction:
+   the walked items MUST account for exactly `N` and end exactly at
+   `total_length`, so a header that miscounts or undercounts its items is
+   refused there. Tier 3 cannot afford that walk (§8.6, _Consumption_), so a
+   variable-width field carried under tier 3 has **no authenticated item
+   count** and an accessor MUST abort rather than hand back the header's
+   self-asserted one. Reads stay available: the envelope walk that serves
+   them fails closed the moment it leaves the committed bytes.
 5. **Positional identity** (§4): expected hashes only via positional
    extraction from committed structures.
 6. **Positions, not bytes**, in any resumable state: checkpoints carry
@@ -513,6 +527,16 @@ independent publishers byte-compatible: identical chunks, identical digest
 vectors, interchangeable certificates — anyone's republication heals
 anyone's certificate.
 
+**The boundary is enforced, not assumed.** A consumer MUST reject a
+certificate whose `total_length ≤ K`. The tiering is a partition, not a
+preference: a preimage that fits tier 1 or tier 2 has exactly one admissible
+carriage, so one field cannot be carried two ways and simplest-fitting-first
+is a property of the format rather than a convention builders are trusted to
+follow. Without the lower bound a single-chunk manifest would certify a
+preimage of any size, and every structural check tiers 1–2 run at view
+construction (§7, item 4) could be side-stepped by re-carrying the same bytes
+under tier 3.
+
 ### 8.5 Custody
 
 - **Raw carriage (tiers 2–3) is unauthenticated data.** No consumer trusts
@@ -554,6 +578,20 @@ authentication at certification time is unnecessary.
 `(tx_id, field_index)` for indexer discovery. Duplicate certificates are
 permitted and harmless — each is independently sound.
 
+The derivation is normative, because the minting policy and every consuming
+step have to name the same token and an off-chain minter has to reproduce it:
+
+```
+asset_name = blake2b_256(field_index_byte ‖ tx_id)
+```
+
+— a 33-byte preimage whose first byte is `field_index` (0..8) and whose
+remaining 32 are `tx_id`, yielding a 32-byte name. The leading byte is domain
+separation, not a length header; with `field_index` bounded to 0..8 and
+`tx_id` fixed at 32 bytes the preimage is unambiguous, and both bounds are
+enforced rather than assumed. Implementations MUST reject a `field_index`
+outside 0..8 and a `tx_id` that is not 32 bytes.
+
 **One multi-handler validator.** The same script carries the `mint` and
 `spend` handlers, so the policy id and the spend credential are one script
 hash — mint sends to its own address; spend burns its own policy plus owner
@@ -566,8 +604,32 @@ source-agnostic. A consuming step matches the certificate's
 already-authenticated disputed transaction) — never redeemer-supplied
 identity. Post-certification single-chunk access authenticates at O(one
 chunk hash) against the digest vector (worst case two chunk hashes on a
-straddling item); `count` derives from the mint-verified `total_length`
-with no chunk hash spent.
+straddling item); for a fixed-stride field `count` derives from the
+mint-verified `total_length` with no chunk hash spent.
+
+**A variable-width field has no tier-3 count.** Fields 2, 5, 6 and 8 have no
+arithmetic count, so theirs lives only in the §5.1 header, and no affordable
+check authenticates it here. The §5.1 full-content walk that tiers 1–2 run at
+construction is not the same cost under tier 3: a chunk is re-verified every
+time a read lands in it, so an `N`-item walk spends `N` `blake2b_256` hashes
+over a whole chunk rather than one over the preimage. A consumer therefore
+MUST abort when asked for such a field's item count (§7, item 4) instead of
+returning the header's number: a rule that consumes an unauthenticated count
+would be satisfiable by a preimage its producer miscounted on purpose.
+Item reads are unaffected. Two consequences are recorded rather than fixed,
+both of them fail-closed or answer-preserving:
+
+- a variable-width field above `K` cannot serve a count-consuming rule under
+  tier 3 at all — a liveness limit, and one that bites only where the
+  per-read chunk re-verification already makes high-index access impractical;
+- a fixed-stride field's tier-3 count is derived by length and never consults
+  the §5.1 header, so a preimage whose header miscounts is refused at tiers
+  1–2 and simply parsed by length here. The answer is still the true item
+  count, never an inflated one. Closing that gap would cost one chunk hash on
+  the cheapest path in the format, against the "no chunk hash spent"
+  guarantee above; an authenticated `item_count` field on the certificate is
+  the way to close it if a later ticket decides the guarantee is worth
+  spending.
 
 ### 8.7 Publisher, funding, reuse, cleanup
 

@@ -6,17 +6,21 @@
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/bounded_collection_v1
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/zero_input/step_02.{Args, Datum, SpendRedeemer, State}
 use midgard/ledger_state.{MidgardInputsHash}
+use midgard/native_tx_field_access_v1
 
 /// The `spend_inputs_hash` a native transaction body carries when it spends
-/// nothing: the canonical V1 bounded collection commitment for field zero.
+/// nothing: `blake2b_256` over the empty §5.1 envelope `80`
+/// (`docs/spec/midgard-tx.md` §4). Under flat hashing the commitment carries
+/// no field index, so this is the same value in all nine slots and field zero
+/// has no commitment of its own — positional identity, not the hash, is what
+/// makes it the spend-inputs field.
 const empty_spend_inputs_hash: MidgardInputsHash =
-  bounded_collection_v1.from_items(0, [])
+  native_tx_field_access_v1.empty_field_commitment
 
 validator main(
   fraud_proof_token_policy_id: PolicyId,
@@ -71,9 +75,10 @@ validator main(
 
         expect Some(State { bad_tx_spend_inputs_hash }) = m_input_state_data
 
-        // 2. The spend inputs collection must be empty under the canonical
-        //    native-V1 bounded-collection commitment (field 0 is the
-        //    consensus-ordered spend-inputs field).
+        // 2. The spend-inputs field must be the empty envelope under the
+        //    canonical native-V1 flat field commitment. Positional identity
+        //    is what ties this slot to field 0; the hash itself is
+        //    field-agnostic.
         expect bad_tx_spend_inputs_hash == empty_spend_inputs_hash
 
         // Done.
@@ -118,7 +123,9 @@ fn run_finalize(state: State) -> Bool {
 /// The canonical native empty spend-inputs commitment finalizes the proof.
 test zero_input_step_02_accepts_empty_native_spend_inputs() {
   run_finalize(
-    State { bad_tx_spend_inputs_hash: bounded_collection_v1.from_items(0, []) },
+    State {
+      bad_tx_spend_inputs_hash: native_tx_field_access_v1.empty_field_commitment,
+    },
   )
 }
 
@@ -136,8 +143,12 @@ test zero_input_step_02_rejects_valid_block_challenge() fail {
   )
 }
 
+/// The differential that keeps the pinned constant honest: this site
+/// deliberately keeps the producer call rather than the pin, so the swap above
+/// is checked against `encode_field_preimage([]) |> field_commitment` and
+/// cannot drift into a self-comparison.
 test empty_spend_inputs_hash_matches_the_canonical_native_v1_commitment() {
-  empty_spend_inputs_hash == bounded_collection_v1.from_items(0, [])
+  empty_spend_inputs_hash == native_tx_field_access_v1.field_commitment_from_items([])
 }
 
 /// Pins the exact cross-language vector used by the SDK.
@@ -146,10 +157,7 @@ test empty_spend_inputs_hash_matches_the_offchain_constant() {
 }
 
 test empty_spend_inputs_hash_rejects_a_non_empty_bounded_collection() {
-  empty_spend_inputs_hash != bounded_collection_v1.from_items(
-    0,
-    [#"d8799f581c00000000000000000000000000000000000000000000000000000000ff"],
-  )
+  empty_spend_inputs_hash != native_tx_field_access_v1.field_commitment_from_items([#"d8799f581c00000000000000000000000000000000000000000000000000000000ff"])
 }
 
 type TestFraudProofDatum {
@@ -177,10 +185,7 @@ const test_computation_thread_asset_name =
   #"00000005aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 const test_non_empty_spend_inputs_hash: MidgardInputsHash =
-  bounded_collection_v1.from_items(
-    0,
-    [#"d8799f581c00000000000000000000000000000000000000000000000000000000ff"],
-  )
+  native_tx_field_access_v1.field_commitment_from_items([#"d8799f581c00000000000000000000000000000000000000000000000000000000ff"])
 
 const test_own_out_ref =
   OutputReference {

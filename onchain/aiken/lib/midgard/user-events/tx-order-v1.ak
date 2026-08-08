@@ -17,6 +17,7 @@ use midgard/ledger_state.{
   TxFieldPreimageV1, TxFieldReceiptV1, TxOrderEventV1, TxOrderId,
   TxOrderPayloadV1, unsafe_event_to_key_value_pair,
 }
+use midgard/native_tx_field_access_v1
 use midgard/transition_trace
 use midgard/user_events
 
@@ -92,7 +93,7 @@ fn next_non_empty_field(
     9
   } else {
     let commitment = commitments |> list.expect_at(field_index)
-    if commitment == bounded_collection_v1.from_items(field_index, []) {
+    if commitment == native_tx_field_access_v1.empty_field_commitment {
       expect field_length(lengths, field_index) == 1
       next_non_empty_field(commitments, lengths, field_index + 1)
     } else {

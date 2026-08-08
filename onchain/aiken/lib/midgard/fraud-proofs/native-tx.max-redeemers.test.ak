@@ -11,6 +11,7 @@ use midgard/fraud_proofs/native_tx/preimages.{
 use midgard/fraud_proofs/native_tx/types.{
   MidgardExecutionUnits, MidgardRedeemerWitness, SpendRedeemer,
 }
+use midgard/native_tx_field_access_v1
 use midgard/validation_machine_v1
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
@@ -113,7 +114,7 @@ test maximum_cardano_spend_redeemer_field_matches_typescript_terminal_commitment
     ),
     bytearray.length(preimage_cbor) == maximum_cardano_spend_redeemer_preimage_bytes,
     blake2b_256(preimage_cbor) == maximum_cardano_spend_redeemer_preimage_hash,
-    bounded_collection_v1.from_items(8, item_cbors) == maximum_cardano_spend_redeemer_collection_commitment,
+    native_tx_field_access_v1.field_commitment_from_items(item_cbors) == maximum_cardano_spend_redeemer_collection_commitment,
   }
 }
 

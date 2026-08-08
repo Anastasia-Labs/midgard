@@ -1,7 +1,13 @@
 use aiken/builtin
+use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
+use midgard/canonical_plutus_data_v1.{is_canonical_plutus_data_v1}
 use midgard/cek_data_v1
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_output}
+use midgard/fraud_proofs/native_tx/types.{
+  MidgardAddress, MidgardTxOutput, MidgardValue, PubKeyCredential,
+}
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_v1
 use midgard/script_context_v1
@@ -21,7 +27,7 @@ const reference_output_cbor =
   #"a300581d68aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a0012d687a1581c11111111111111111111111111111111111111111111111111111111a14222330703820343010203"
 
 const input_cbor =
-  #"825820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb02"
+  #"825820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb190002"
 
 fn exact_descriptor(output_index: Int, raw_output_cbor: ByteArray) -> ByteArray {
   expect Some(cardano_tx_out) = script_context_v1.tx_out_summary_v1(
@@ -368,7 +374,7 @@ test output_descriptor_membership_selects_exact_maximum_semantic_summary() {
     cek_data_v1.empty_data_list_summary_v1(),
   )
   expect Some(spend) = script_context_v1.cardano_spend_script_info_from_descriptor_v1(
-    #"825820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb00",
+    #"825820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb190000",
     descriptor_cbor,
   )
   and {
@@ -533,5 +539,241 @@ test composed_transaction_info_and_context_match_direct_plutus_data() {
         ],
       ),
     ),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The spend-datum gate: the §6.2 predicate against the pin it retired
+// ---------------------------------------------------------------------------
+//
+// `spend_datum_summary_v1` used to gate an output's inline datum on a round
+// trip through Aiken stdlib's CBOR decoder — `deserialise`, then `serialise`
+// and compare bytes. AC4 replaced that with the §6.2 predicate
+// `is_canonical_plutus_data_v1`, which decides membership in `serialiseData`'s
+// image by walking the bytes. The `round_trips` family in
+// `canonical_plutus_data_v1.test` proves the new predicate accepts everything
+// the builtin emits; what it cannot show is how the *gate* moved, and the
+// predicate is now solely load-bearing here. So the retired pin is restated
+// below and the two run side by side on the same vectors — including every
+// structural rejection the retired pin used to be trusted for.
+//
+// One thing the differential turns up immediately: the retired pin was never
+// a total function. `cbor.deserialise` does not decline a canonical tag-2/3
+// bignum or an unknown tag — it drives the stdlib decoder into
+// `constr_data` with a negative alternative, which is a machine failure, not
+// a `None`. Those vectors are therefore held to the predicate and the gate
+// only, and the reason is recorded at each site rather than left as a gap in
+// the vector list.
+
+/// The retired gate, restated verbatim so the difference is measured rather
+/// than asserted. Only safe on inputs the stdlib decoder can reach a verdict
+/// on: see the module note above.
+fn retired_round_trip_pin(datum_cbor: ByteArray) -> Bool {
+  when cbor.deserialise(datum_cbor) is {
+    None -> False
+    Some(datum) -> cbor.serialise(datum) == datum_cbor
+  }
+}
+
+fn output_with_datum(datum_cbor: ByteArray) -> ByteArray {
+  encode_midgard_tx_output(
+    MidgardTxOutput {
+      address: MidgardAddress {
+        protected: False,
+        network_id: 0,
+        payment_credential: PubKeyCredential(
+          #"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c",
+        ),
+        stake_credential: None,
+      },
+      value: MidgardValue { lovelace: 2000000, assets: [] },
+      datum_cbor: Some(datum_cbor),
+      script_ref: None,
+    },
+  )
+}
+
+/// True when the gate admits the datum — `spend_datum_summary_v1` answers with
+/// a summary rather than declining.
+fn datum_gate_admits(datum_cbor: ByteArray) -> Bool {
+  when
+    script_context_v1.spend_datum_summary_v1(output_with_datum(datum_cbor))
+  is {
+    Some(_summary) -> True
+    None -> False
+  }
+}
+
+/// Both predicates accept and the gate admits: the ordinary path is untouched
+/// by the swap.
+test datum_predicates_agree_on_ordinary_datums() {
+  let agrees = fn(datum_cbor: ByteArray) -> Bool {
+    and {
+      is_canonical_plutus_data_v1(datum_cbor),
+      retired_round_trip_pin(datum_cbor),
+      datum_gate_admits(datum_cbor),
+    }
+  }
+  and {
+    agrees(#"00"),
+    agrees(#"1818"),
+    agrees(#"20"),
+    agrees(#"4401020304"),
+    agrees(#"80"),
+    agrees(#"9f0001ff"),
+    agrees(#"a0"),
+    agrees(#"a10102"),
+    agrees(#"d87980"),
+    agrees(#"d87f9f00ff"),
+    agrees(cbor.serialise(builtin.constr_data(127, [builtin.b_data(#"ff")]))),
+  }
+}
+
+/// The direction that matters for soundness: the new predicate is not weaker.
+/// Every structural form the retired pin refused is still refused — by the
+/// predicate, and by the gate.
+///
+/// Note what the middle column costs the retired pin. `1817`, `8100`,
+/// `bf0000ff`, `9fff`, `5fff` and `d8798100` all *decode* under the stdlib
+/// decoder; the round trip caught them only because re-serialising produced
+/// different bytes. The new predicate refuses them structurally, without
+/// materialising anything.
+test datum_predicates_agree_on_every_non_canonical_form() {
+  let refuses = fn(datum_cbor: ByteArray) -> Bool {
+    and {
+      !is_canonical_plutus_data_v1(datum_cbor),
+      !retired_round_trip_pin(datum_cbor),
+      !datum_gate_admits(datum_cbor),
+    }
+  }
+  and {
+    // Non-minimal integer head.
+    refuses(#"1817"),
+    // Definite non-empty list; the indefinite form is the only spelling.
+    refuses(#"8100"),
+    // Indefinite empty list; `80` is the only spelling.
+    refuses(#"9fff"),
+    // Empty indefinite byte string.
+    refuses(#"5fff"),
+    // Constructor with a definite argument list.
+    refuses(#"d8798100"),
+    // Indefinite map.
+    refuses(#"bf0000ff"),
+    // Text and simple values are outside Plutus Data.
+    refuses(#"6161"),
+    refuses(#"f5"),
+    // Trailing bytes after a complete item.
+    refuses(#"0000"),
+    // Truncated head, and no input at all.
+    refuses(#"18"),
+    refuses(#""),
+  }
+}
+
+/// An unknown tag is the vector the retired pin cannot be asked about: tag 1
+/// drives the stdlib decoder into a constructor with alternative `1 - 121`,
+/// which fails the machine rather than returning `None`. The predicate and
+/// the gate both refuse it without materialising anything, which is the whole
+/// point of deciding canonicity on bytes.
+test unknown_tags_are_refused_without_materialising_them() {
+  and {
+    !is_canonical_plutus_data_v1(#"c11a514b67b0"),
+    !datum_gate_admits(#"c11a514b67b0"),
+  }
+}
+
+/// The divergence the re-pin exists for, on the class where both columns can
+/// be evaluated: tag-102 constructors with alternatives at or above 128. The
+/// predicate accepts them; the retired round trip refused them, because the
+/// stdlib decoder declines the form outright.
+test datum_predicates_diverge_on_high_constructor_alternatives() {
+  let diverges = fn(datum_cbor: ByteArray) -> Bool {
+    and {
+      is_canonical_plutus_data_v1(datum_cbor),
+      !retired_round_trip_pin(datum_cbor),
+    }
+  }
+  and {
+    diverges(#"d86682188080"),
+    diverges(#"d8668218809f00ff"),
+    diverges(#"d8668219ffff80"),
+  }
+}
+
+/// What that divergence does *not* do: change this gate's verdict. Canonicity
+/// and materialisability are separate questions now, and the stdlib decoder
+/// still declines tag 102, so the gate declines at the second step instead of
+/// the first. Recording it is what keeps the deferral honest — these datums
+/// become spendable when the Canonical-Data Acceptor lands (spec §11, issue
+/// 571), and not before.
+test high_alternative_datums_are_still_declined_by_this_gate() {
+  and {
+    is_canonical_plutus_data_v1(#"d86682188080"),
+    !datum_gate_admits(#"d86682188080"),
+    is_canonical_plutus_data_v1(#"d8668219ffff80"),
+    !datum_gate_admits(#"d8668219ffff80"),
+  }
+}
+
+/// The bignum class, first column: a canonical tag-2/3 bignum datum is
+/// §6.2-canonical and the output decoder admits the output that carries it, so
+/// it is a legal L2 output.
+///
+/// What the middle column still cannot say, and why. The stdlib decoder does
+/// not decline a bignum the way it declines tag 102: it reads `c2` as a
+/// constructor tag, computes alternative `2 - 121`, and applies `constr_data`
+/// to it. Whether that is a failure is *protocol-version-dependent*. Under
+/// PlutusV3 builtin semantics variant E — mainnet protocol major version 11,
+/// enacted 2026-07-18 — the alternative is a `Word64`, so a negative one fails
+/// the machine on real L1. So `retired_round_trip_pin` cannot be called on a
+/// bignum at all: not "returns False", but aborts. That is why this test holds
+/// the class to the first column only, and why the retired pin is absent from
+/// the assertions below.
+///
+/// The runner reports that abort as RC=101 from a Rust `panic!` at
+/// `crates/uplc/src/machine/runtime.rs:945` (`TryFromBigIntError`). That panic
+/// is aiken-lang/aiken#1359 — a runner defect where a clean evaluation error
+/// belongs. It is not a Midgard failure, and the *verdict* it delivers (script
+/// fails) is the one mainnet delivers at PV11.
+///
+/// The third column moved: `spend_datum_summary_v1` and `tx_out_data_v1` now
+/// screen the head byte and decline, which is what
+/// `bignum_datums_are_declined_by_the_materialisation_path` below pins. Full
+/// materialisation still waits on the Canonical-Data Acceptor (spec §11, issue
+/// 571).
+test bignum_datums_are_canonical_and_reach_the_output_decoder() {
+  and {
+    is_canonical_plutus_data_v1(#"c249010000000000000000"),
+    is_canonical_plutus_data_v1(#"c349010000000000000000"),
+    ledger_output_v1.decode_canonical_output(
+      output_with_datum(#"c249010000000000000000"),
+    ) != None,
+    ledger_output_v1.decode_canonical_output(
+      output_with_datum(#"c349010000000000000000"),
+    ) != None,
+  }
+}
+
+/// The head-byte screen, proved. Before it this test could not be written at
+/// all: every call below reached `constr_data(2 - 121, ..)` and failed the
+/// machine, so there was no verdict to assert — only an abort. Both
+/// materialisation entry points now answer `None`.
+///
+/// The first conjunct is the distinction the screen must not blur.
+/// `is_canonical_plutus_data_v1` still accepts these bytes, as AC4 requires;
+/// declining to materialise a datum is not declaring it non-canonical.
+test bignum_datums_are_declined_by_the_materialisation_path() {
+  let declines = fn(datum_cbor: ByteArray) -> Bool {
+    let output = output_with_datum(datum_cbor)
+    and {
+      is_canonical_plutus_data_v1(datum_cbor),
+      !datum_gate_admits(datum_cbor),
+      script_context_v1.tx_out_data_v1(output, False) == None,
+      script_context_v1.tx_out_data_v1(output, True) == None,
+    }
+  }
+  and {
+    declines(#"c249010000000000000000"),
+    declines(#"c349010000000000000000"),
   }
 }

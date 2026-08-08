@@ -1,16 +1,29 @@
+//// **RETIRED counted-scheme surface** (docs/spec/midgard-tx.md section 4).
+////
+//// Midgard's nine compact-transaction field commitments used to be built
+//// here as counted bounded-collection Merkle roots. They are now flat
+//// blake2b-256 hashes over the enveloped field-preimage bytes, produced
+//// and opened solely through `midgard/native_tx_field_access_v1` -- the one
+//// lib-level field-access door.
+////
+//// Nothing below produces or verifies a field commitment any more. A flat
+//// hash has no leaves, so `verify_item` cannot be satisfied against one:
+//// the item-proof surface is unreachable from the live path and is kept
+//// only so the dispute machine (issue 570) and the Phase-5 family-rebind
+//// lanes keep compiling until they delete their counted call sites. Do not
+//// bind new surface to it -- the domains below are prohibited legacy
+//// surface.
+
 use aiken/cbor
-use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
-use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
 }
+use midgard/native_tx_field_access_v1.{field_count}
 use midgard/validation_merkle_v1
 
 pub const version: Int = 1
-
-pub const field_count: Int = 9
 
 /// One byte per item is the absolute lower encoding floor under the preserved
 /// 16,384-byte Cardano transaction envelope.
@@ -79,45 +92,6 @@ pub fn commitment(
         ),
       )
     |> blake2b_256
-}
-
-pub fn from_items(field_index: Int, items: List<ByteArray>) -> ByteArray {
-  let item_count = list.length(items)
-  let frontier = build_frontier(field_index, items, 0, [])
-  commitment(field_index, item_count, frontier)
-}
-
-fn build_frontier(
-  field_index: Int,
-  items: List<ByteArray>,
-  item_index: Int,
-  frontier: List<validation_merkle_v1.FrontierPeak>,
-) -> List<validation_merkle_v1.FrontierPeak> {
-  when items is {
-    [] -> frontier
-    [item, ..rest] -> {
-      let item_commitment = bounded_item_v1.from_bytes(
-        field_index,
-        item_index,
-        item,
-      )
-      build_frontier(
-        field_index,
-        rest,
-        item_index + 1,
-        validation_merkle_v1.append_leaf(
-          item_index,
-          frontier,
-          hash_item(
-            field_index,
-            item_index,
-            bytearray.length(item),
-            item_commitment,
-          ),
-        ),
-      )
-    }
-  }
 }
 
 pub fn verify_item(expected_commitment: ByteArray, proof: ItemProofV1) -> Bool {

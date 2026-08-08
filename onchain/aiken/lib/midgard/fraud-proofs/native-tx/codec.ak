@@ -1,6 +1,5 @@
 use aiken/builtin
 use aiken/cbor
-use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/types.{
@@ -310,6 +309,15 @@ pub fn decode_definite_bytes_at(
   }
 }
 
+/// General CBOR definite-array head reader, for structures outside the §5.1
+/// field-preimage grammar — the compact-transaction array and the validation
+/// machine's work-witness array, both of which pin their own arity and header
+/// width at the call site.
+///
+/// **Not the §5.1 decoder.** This accepts non-minimal widths and the four-byte
+/// `9a` form, neither of which §5.1 admits. Field preimages decode through
+/// `native_tx_field_access_v1.decode_field_array_header_at`, which is the one
+/// place that grammar is interpreted.
 pub fn decode_definite_array_header_at(
   bytes: ByteArray,
   offset: Int,
@@ -415,19 +423,6 @@ pub fn encode_definite_bytes(bytes: ByteArray) -> ByteArray {
       |> bytearray.concat(bytearray.from_int_big_endian(length, 4))
       |> bytearray.concat(bytes)
   }
-}
-
-pub fn encode_native_byte_list(items: List<ByteArray>) -> ByteArray {
-  bytearray.concat(
-    encode_definite_array_header(list.length(items)),
-    list.foldr(
-      items,
-      #"",
-      fn(item, encoded_tail) {
-        bytearray.concat(encode_definite_bytes(item), encoded_tail)
-      },
-    ),
-  )
 }
 
 pub fn expect_deserialise(bytes: ByteArray) -> Data {

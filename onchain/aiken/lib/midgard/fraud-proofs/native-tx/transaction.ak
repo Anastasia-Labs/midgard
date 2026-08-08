@@ -1,6 +1,5 @@
 use aiken/builtin
 use aiken/cbor
-use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/bounded_collection_v1
@@ -8,8 +7,8 @@ use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/codec.{
   decode_canonical_int_at, decode_canonical_uint_at,
   decode_definite_array_header_at, decode_definite_bytes_at,
-  encode_definite_bytes, encode_native_byte_list, expect_h32, expect_network_id,
-  expect_non_negative, validity_from_code, validity_to_code,
+  encode_definite_bytes, expect_h32, expect_network_id, expect_non_negative,
+  validity_from_code, validity_to_code,
 }
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_field_preimage_lengths_v1, encode_native_tx_body_compact,
@@ -17,21 +16,16 @@ use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_witness_set_compact, native_tx_id_for_version,
   native_tx_proof_commitment_v1, verify_native_tx_proof_source_v1,
 }
-use midgard/fraud_proofs/native_tx/components.{
-  encode_midgard_address_witness, encode_midgard_redeemer_witness,
-  encode_midgard_tx_input, encode_midgard_tx_output,
-  encode_midgard_versioned_script,
-}
 use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_address_witnesses_preimage_cbor,
-  decode_midgard_tx_byte_list_preimage_cbor,
+  decode_midgard_tx_hash28_list_preimage_cbor,
   decode_midgard_tx_inputs_preimage_cbor, decode_midgard_tx_mint_preimage_cbor,
   decode_midgard_tx_outputs_preimage_cbor,
   decode_midgard_tx_redeemer_witnesses_preimage_cbor,
   decode_midgard_tx_script_witnesses_preimage_cbor,
-  encode_address_witness_preimage, encode_input_preimage, encode_mint_preimage,
-  encode_output_preimage, encode_redeemer_witness_preimage,
-  encode_script_witness_preimage, mint_policy_items,
+  encode_address_witness_preimage, encode_hash28_list_preimage,
+  encode_input_preimage, encode_mint_preimage, encode_output_preimage,
+  encode_redeemer_witness_preimage, encode_script_witness_preimage,
   verify_canonical_mint_preimage_cbor,
 }
 use midgard/fraud_proofs/native_tx/types.{
@@ -46,98 +40,95 @@ use midgard/fraud_proofs/native_tx/types.{
   VerifiedMidgardNativeTxCompact, VerifiedMidgardTransaction,
   native_tx_version_v1,
 }
+use midgard/native_tx_field_access_v1.{field_commitment}
+
+/// §4 plain hashing: the commitment is `blake2b_256` over the preimage bytes
+/// themselves, so authenticating a revealed field is one hash — no per-item
+/// leaves, no frontier, no Merkle machinery. The decode that follows is what
+/// keeps a hash match from authenticating a non-canonical shape.
+fn expect_field_preimage_hash(
+  preimage_cbor: ByteArray,
+  expected_hash: ByteArray,
+) -> ByteArray {
+  expect field_commitment(preimage_cbor) == expected_hash
+  preimage_cbor
+}
 
 fn decode_midgard_tx_inputs_preimage(
-  field_index: Int,
   preimage_cbor: ByteArray,
   expected_hash: ByteArray,
 ) -> List<MidgardTxInput> {
-  let decoded = decode_midgard_tx_inputs_preimage_cbor(preimage_cbor)
-  expect
-    bounded_collection_v1.from_items(
-      field_index,
-      list.map(decoded, encode_midgard_tx_input),
-    ) == expected_hash
-  decoded
+  expect _authenticated = expect_field_preimage_hash(
+    preimage_cbor,
+    expected_hash,
+  )
+  decode_midgard_tx_inputs_preimage_cbor(preimage_cbor)
 }
 
 fn decode_midgard_tx_outputs_preimage(
-  field_index: Int,
   preimage_cbor: ByteArray,
   expected_hash: ByteArray,
 ) -> List<MidgardTxOutput> {
-  let decoded = decode_midgard_tx_outputs_preimage_cbor(preimage_cbor)
-  expect
-    bounded_collection_v1.from_items(
-      field_index,
-      list.map(decoded, encode_midgard_tx_output),
-    ) == expected_hash
-  decoded
+  expect _authenticated = expect_field_preimage_hash(
+    preimage_cbor,
+    expected_hash,
+  )
+  decode_midgard_tx_outputs_preimage_cbor(preimage_cbor)
 }
 
-fn decode_midgard_tx_byte_list_preimage(
-  field_index: Int,
+fn decode_midgard_tx_hash28_list_preimage(
   preimage_cbor: ByteArray,
   expected_hash: ByteArray,
 ) -> List<ByteArray> {
-  let decoded = decode_midgard_tx_byte_list_preimage_cbor(preimage_cbor)
-  expect bounded_collection_v1.from_items(field_index, decoded) == expected_hash
-  decoded
+  expect _authenticated = expect_field_preimage_hash(
+    preimage_cbor,
+    expected_hash,
+  )
+  decode_midgard_tx_hash28_list_preimage_cbor(preimage_cbor)
 }
 
 fn decode_midgard_tx_mint_preimage(
-  field_index: Int,
   preimage_cbor: ByteArray,
   expected_hash: ByteArray,
 ) -> Data {
-  let decoded = decode_midgard_tx_mint_preimage_cbor(preimage_cbor)
-  expect
-    bounded_collection_v1.from_items(field_index, mint_policy_items(decoded)) == expected_hash
-  decoded
+  expect _authenticated = expect_field_preimage_hash(
+    preimage_cbor,
+    expected_hash,
+  )
+  decode_midgard_tx_mint_preimage_cbor(preimage_cbor)
 }
 
 fn decode_midgard_tx_address_witnesses_preimage(
-  field_index: Int,
   preimage_cbor: ByteArray,
   expected_hash: ByteArray,
 ) -> List<MidgardAddressWitness> {
-  let decoded = decode_midgard_tx_address_witnesses_preimage_cbor(preimage_cbor)
-  expect
-    bounded_collection_v1.from_items(
-      field_index,
-      list.map(decoded, encode_midgard_address_witness),
-    ) == expected_hash
-  decoded
+  expect _authenticated = expect_field_preimage_hash(
+    preimage_cbor,
+    expected_hash,
+  )
+  decode_midgard_tx_address_witnesses_preimage_cbor(preimage_cbor)
 }
 
 fn decode_midgard_tx_script_witnesses_preimage(
-  field_index: Int,
   preimage_cbor: ByteArray,
   expected_hash: ByteArray,
 ) -> List<MidgardScriptWitness> {
-  let decoded = decode_midgard_tx_script_witnesses_preimage_cbor(preimage_cbor)
-  expect
-    bounded_collection_v1.from_items(
-      field_index,
-      list.map(decoded, encode_midgard_versioned_script),
-    ) == expected_hash
-  decoded
+  expect _authenticated = expect_field_preimage_hash(
+    preimage_cbor,
+    expected_hash,
+  )
+  decode_midgard_tx_script_witnesses_preimage_cbor(preimage_cbor)
 }
 
 fn decode_midgard_tx_redeemer_witnesses_preimage(
-  field_index: Int,
   preimage_cbor: ByteArray,
   expected_hash: ByteArray,
 ) -> List<MidgardRedeemerWitness> {
-  let decoded = decode_midgard_tx_redeemer_witnesses_preimage_cbor(
+  expect _authenticated = expect_field_preimage_hash(
     preimage_cbor,
+    expected_hash,
   )
-  expect
-    bounded_collection_v1.from_items(
-      field_index,
-      list.map(decoded, encode_midgard_redeemer_witness),
-    ) == expected_hash
-  decoded
+  decode_midgard_tx_redeemer_witnesses_preimage_cbor(preimage_cbor)
 }
 
 pub fn encode_midgard_transaction_body_full(
@@ -161,10 +152,14 @@ pub fn encode_midgard_transaction_body_full(
     |> bytearray.concat(cbor.serialise(body.validity_interval_start))
     |> bytearray.concat(cbor.serialise(body.validity_interval_end))
     |> bytearray.concat(
-        encode_definite_bytes(encode_native_byte_list(body.required_observers)),
+        encode_definite_bytes(
+          encode_hash28_list_preimage(body.required_observers),
+        ),
       )
     |> bytearray.concat(
-        encode_definite_bytes(encode_native_byte_list(body.required_signers)),
+        encode_definite_bytes(
+          encode_hash28_list_preimage(body.required_signers),
+        ),
       )
     |> bytearray.concat(encode_definite_bytes(encode_mint_preimage(body.mint)))
     |> bytearray.concat(encode_definite_bytes(body.script_integrity_hash))
@@ -193,34 +188,28 @@ pub fn encode_midgard_transaction_witness_set_full(
       )
 }
 
+/// §4: each of the six body commitments is a flat `blake2b_256` over that
+/// field's §5.1 enveloped preimage. Field identity is positional — it comes
+/// from the slot the hash lands in, not from anything mixed into the hash.
 pub fn midgard_transaction_body_to_compact(
   body: MidgardTransactionBody,
 ) -> NativeTxBodyCompact {
   NativeTxBodyCompact {
-    spend_inputs_hash: bounded_collection_v1.from_items(
-      0,
-      list.map(body.inputs, encode_midgard_tx_input),
+    spend_inputs_hash: field_commitment(encode_input_preimage(body.inputs)),
+    reference_inputs_hash: field_commitment(
+      encode_input_preimage(body.reference_inputs),
     ),
-    reference_inputs_hash: bounded_collection_v1.from_items(
-      1,
-      list.map(body.reference_inputs, encode_midgard_tx_input),
-    ),
-    outputs_hash: bounded_collection_v1.from_items(
-      2,
-      list.map(body.outputs, encode_midgard_tx_output),
-    ),
+    outputs_hash: field_commitment(encode_output_preimage(body.outputs)),
     fee: body.fee,
     validity_interval_start: body.validity_interval_start,
     validity_interval_end: body.validity_interval_end,
-    required_observers_hash: bounded_collection_v1.from_items(
-      3,
-      body.required_observers,
+    required_observers_hash: field_commitment(
+      encode_hash28_list_preimage(body.required_observers),
     ),
-    required_signers_hash: bounded_collection_v1.from_items(
-      4,
-      body.required_signers,
+    required_signers_hash: field_commitment(
+      encode_hash28_list_preimage(body.required_signers),
     ),
-    mint_hash: bounded_collection_v1.from_items(5, mint_policy_items(body.mint)),
+    mint_hash: field_commitment(encode_mint_preimage(body.mint)),
     script_integrity_hash: body.script_integrity_hash,
     auxiliary_data_hash: body.auxiliary_data_hash,
     network_id: body.network_id,
@@ -231,17 +220,14 @@ pub fn midgard_transaction_witness_set_to_compact(
   witness_set: MidgardTransactionWitnessSet,
 ) -> NativeTxWitnessSetCompact {
   NativeTxWitnessSetCompact {
-    addr_tx_wits_hash: bounded_collection_v1.from_items(
-      7,
-      list.map(witness_set.addr_tx_wits, encode_midgard_address_witness),
+    addr_tx_wits_hash: field_commitment(
+      encode_address_witness_preimage(witness_set.addr_tx_wits),
     ),
-    script_tx_wits_hash: bounded_collection_v1.from_items(
-      6,
-      list.map(witness_set.script_tx_wits, encode_midgard_versioned_script),
+    script_tx_wits_hash: field_commitment(
+      encode_script_witness_preimage(witness_set.script_tx_wits),
     ),
-    redeemer_tx_wits_hash: bounded_collection_v1.from_items(
-      8,
-      list.map(witness_set.redeemer_tx_wits, encode_midgard_redeemer_witness),
+    redeemer_tx_wits_hash: field_commitment(
+      encode_redeemer_witness_preimage(witness_set.redeemer_tx_wits),
     ),
   }
 }
@@ -277,10 +263,10 @@ pub fn midgard_transaction_proof_source_v1(
       ),
       outputs: bytearray.length(encode_output_preimage(tx.body.outputs)),
       required_observers: bytearray.length(
-        encode_native_byte_list(tx.body.required_observers),
+        encode_hash28_list_preimage(tx.body.required_observers),
       ),
       required_signers: bytearray.length(
-        encode_native_byte_list(tx.body.required_signers),
+        encode_hash28_list_preimage(tx.body.required_signers),
       ),
       mint: bytearray.length(encode_mint_preimage(tx.body.mint)),
       address_witnesses: bytearray.length(
@@ -325,7 +311,6 @@ fn verify_midgard_transaction_field_preimage_against_source_v1(
     0 -> {
       expect bytearray.length(preimage_cbor) == field_lengths.spend_inputs
       let decoded = decode_midgard_tx_inputs_preimage(
-        0,
         preimage_cbor,
         body.spend_inputs_hash,
       )
@@ -334,7 +319,6 @@ fn verify_midgard_transaction_field_preimage_against_source_v1(
     1 -> {
       expect bytearray.length(preimage_cbor) == field_lengths.reference_inputs
       let decoded = decode_midgard_tx_inputs_preimage(
-        1,
         preimage_cbor,
         body.reference_inputs_hash,
       )
@@ -343,7 +327,6 @@ fn verify_midgard_transaction_field_preimage_against_source_v1(
     2 -> {
       expect bytearray.length(preimage_cbor) == field_lengths.outputs
       let decoded = decode_midgard_tx_outputs_preimage(
-        2,
         preimage_cbor,
         body.outputs_hash,
       )
@@ -351,21 +334,19 @@ fn verify_midgard_transaction_field_preimage_against_source_v1(
     }
     3 -> {
       expect bytearray.length(preimage_cbor) == field_lengths.required_observers
-      let decoded = decode_midgard_tx_byte_list_preimage(
-        3,
+      let decoded = decode_midgard_tx_hash28_list_preimage(
         preimage_cbor,
         body.required_observers_hash,
       )
-      encode_native_byte_list(decoded) == preimage_cbor
+      encode_hash28_list_preimage(decoded) == preimage_cbor
     }
     4 -> {
       expect bytearray.length(preimage_cbor) == field_lengths.required_signers
-      let decoded = decode_midgard_tx_byte_list_preimage(
-        4,
+      let decoded = decode_midgard_tx_hash28_list_preimage(
         preimage_cbor,
         body.required_signers_hash,
       )
-      encode_native_byte_list(decoded) == preimage_cbor
+      encode_hash28_list_preimage(decoded) == preimage_cbor
     }
     5 -> {
       expect bytearray.length(preimage_cbor) == field_lengths.mint
@@ -374,7 +355,6 @@ fn verify_midgard_transaction_field_preimage_against_source_v1(
     6 -> {
       expect bytearray.length(preimage_cbor) == field_lengths.script_witnesses
       let decoded = decode_midgard_tx_script_witnesses_preimage(
-        6,
         preimage_cbor,
         witness_set.script_tx_wits_hash,
       )
@@ -383,7 +363,6 @@ fn verify_midgard_transaction_field_preimage_against_source_v1(
     7 -> {
       expect bytearray.length(preimage_cbor) == field_lengths.address_witnesses
       let decoded = decode_midgard_tx_address_witnesses_preimage(
-        7,
         preimage_cbor,
         witness_set.addr_tx_wits_hash,
       )
@@ -392,7 +371,6 @@ fn verify_midgard_transaction_field_preimage_against_source_v1(
     8 -> {
       expect bytearray.length(preimage_cbor) == field_lengths.redeemers
       let decoded = decode_midgard_tx_redeemer_witnesses_preimage(
-        8,
         preimage_cbor,
         witness_set.redeemer_tx_wits_hash,
       )
@@ -402,33 +380,27 @@ fn verify_midgard_transaction_field_preimage_against_source_v1(
   }
 }
 
-fn transaction_field_commitment_v1(
-  verified: VerifiedMidgardNativeTxCompact,
-  witness_set: NativeTxWitnessSetCompact,
-  field_index: Int,
-) -> ByteArray {
-  let NativeTxCompact { body, .. } = verified.tx_compact
-  when field_index is {
-    0 -> body.spend_inputs_hash
-    1 -> body.reference_inputs_hash
-    2 -> body.outputs_hash
-    3 -> body.required_observers_hash
-    4 -> body.required_signers_hash
-    5 -> body.mint_hash
-    6 -> witness_set.script_tx_wits_hash
-    7 -> witness_set.addr_tx_wits_hash
-    8 -> witness_set.redeemer_tx_wits_hash
-    _ -> fail
-  }
-}
-
 /// Verifies one independently revealed V1 field against the compact
 /// transaction source. Each branch decodes and re-encodes the field so a hash
 /// match alone can never authenticate a non-canonical or unsupported shape.
+/// Field 5 is the one branch that walks in place instead of re-encoding —
+/// materialising a whole mint map as Plutus `Data` just to compare bytes does
+/// not fit the L1 execution-memory envelope — so its canonicality comes from
+/// the same §5.1 head decoder plus the ordering, width and non-zero-quantity
+/// rules `verify_canonical_mint_preimage_cbor` walks.
 ///
 /// Field indices are consensus ordered:
 /// 0 spend inputs, 1 reference inputs, 2 outputs, 3 observers, 4 signers,
 /// 5 mint, 6 script witnesses, 7 address witnesses, 8 redeemers.
+///
+/// **Not a field-access idiom** (AC2). This takes a whole revealed preimage
+/// and answers yes/no about it; it hands out no view and no item, and it never
+/// accepts a free-standing field hash — the expected hashes come from the
+/// tx-id-verified compact structures, satisfying §4. It has no production
+/// caller: what binds it today is the §5/§9.1 conformance suite, which needs
+/// exactly this decode-and-re-encode round trip to pin the canonical spelling
+/// of all nine fields. #570's machine walk core is what replaces it on the
+/// dispute path.
 pub fn verify_midgard_transaction_field_preimage_v1(
   transaction_id: ByteArray,
   transaction_commitment: ByteArray,
@@ -463,10 +435,56 @@ pub fn verify_midgard_transaction_field_preimage_v1(
   )
 }
 
-/// Verifies one bounded field chunk without revealing or hashing the complete
-/// field preimage. The proof is bound to the exact compact transaction,
-/// committed aggregate field length, field index, and proof-source
-/// commitment.
+/// The retired counted scheme's positional field lookup, kept only to feed
+/// `verify_midgard_transaction_field_chunk_v1` below. Live positional
+/// extraction now lives behind `authenticated_field_view`'s door and is
+/// deliberately not exported from anywhere.
+fn retired_counted_field_commitment_v1(
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
+  field_index: Int,
+) -> ByteArray {
+  let NativeTxCompact { body, .. } = verified.tx_compact
+  when field_index is {
+    0 -> body.spend_inputs_hash
+    1 -> body.reference_inputs_hash
+    2 -> body.outputs_hash
+    3 -> body.required_observers_hash
+    4 -> body.required_signers_hash
+    5 -> body.mint_hash
+    6 -> witness_set.script_tx_wits_hash
+    7 -> witness_set.addr_tx_wits_hash
+    8 -> witness_set.redeemer_tx_wits_hash
+    _ -> fail
+  }
+}
+
+/// **RETIRED counted-scheme surface — and one live caller still binds it.**
+///
+/// Under §4's plain hashing a field commitment is a single hash over the whole
+/// preimage, so there is nothing a per-item Merkle opening can be checked
+/// against: `bounded_collection_v1.verify_item` compares a counted-scheme
+/// Merkle root against a flat `blake2b_256` and is therefore unsatisfiable,
+/// and this predicate with it.
+///
+/// It is **not** true that nothing calls it. The user-events field-receipt
+/// mint (`midgard/user_events/tx_field_receipt_v1`, reached from
+/// `validators/user-events/tx-field-receipt-v1.ak`) gates its `PublishField`
+/// branch on this predicate, so that branch cannot succeed: the counted
+/// per-item/per-chunk receipt chain is dead surface until the §8 carriage
+/// tiers replace it. That fails closed — no receipt can be minted for a field
+/// that was never opened — which is why it is a liveness break and not a
+/// soundness one, and `tx-field-receipt-v1.test.ak` records it so the suite
+/// stops being silent about it.
+///
+/// Rebinding is not this ticket's: the receipt chain publishes *items and
+/// chunks*, and the replacement for that is the §8.6 permissionless
+/// chunk-certificate validator plus its publish/heal tooling (#573, #574),
+/// after the machine walk core lands (#570). This survives meanwhile only so
+/// the dispute machine and the proof families keep compiling until #570 and
+/// the Phase-5 family-rebind lanes delete their counted call sites. New
+/// surface uses `authenticated_field_view`
+/// (`midgard/native_tx_field_access_v1`).
 pub fn verify_midgard_transaction_field_chunk_v1(
   transaction_id: ByteArray,
   transaction_commitment: ByteArray,
@@ -492,7 +510,11 @@ pub fn verify_midgard_transaction_field_chunk_v1(
     collection_proof.item_index == proof.item_index,
     collection_proof.item_length == proof.total_length,
     bounded_collection_v1.verify_item(
-      transaction_field_commitment_v1(verified, witness_set, proof.field_index),
+      retired_counted_field_commitment_v1(
+        verified,
+        witness_set,
+        proof.field_index,
+      ),
       collection_proof,
     ),
     bounded_item_v1.verify_chunk(collection_proof.item_commitment, proof),
@@ -681,10 +703,10 @@ pub fn decode_midgard_transaction_body_data(
     validity_interval_end: builtin.un_i_data(validity_interval_end_data),
     required_observers: required_observers_preimage_cbor_data
       |> builtin.un_b_data
-      |> decode_midgard_tx_byte_list_preimage_cbor,
+      |> decode_midgard_tx_hash28_list_preimage_cbor,
     required_signers: required_signers_preimage_cbor_data
       |> builtin.un_b_data
-      |> decode_midgard_tx_byte_list_preimage_cbor,
+      |> decode_midgard_tx_hash28_list_preimage_cbor,
     mint: mint_preimage_cbor_data
       |> builtin.un_b_data
       |> decode_midgard_tx_mint_preimage_cbor,
@@ -781,9 +803,9 @@ fn decode_midgard_transaction_body_at(
       validity_interval_start,
       validity_interval_end,
       required_observers: required_observers_preimage_cbor
-        |> decode_midgard_tx_byte_list_preimage_cbor,
+        |> decode_midgard_tx_hash28_list_preimage_cbor,
       required_signers: required_signers_preimage_cbor
-        |> decode_midgard_tx_byte_list_preimage_cbor,
+        |> decode_midgard_tx_hash28_list_preimage_cbor,
       mint: mint_preimage_cbor |> decode_midgard_tx_mint_preimage_cbor,
       script_integrity_hash: expect_h32(script_integrity_hash),
       auxiliary_data_hash: expect_h32(auxiliary_data_hash),
@@ -913,79 +935,50 @@ pub fn partial_view_from_compact(
 }
 
 fn decode_optional_inputs_preimage(
-  field_index: Int,
   preimage_cbor: Option<ByteArray>,
   expected_hash: ByteArray,
 ) -> Option<List<MidgardTxInput>> {
   when preimage_cbor is {
     Some(preimage_cbor) ->
-      Some(
-        decode_midgard_tx_inputs_preimage(
-          field_index,
-          preimage_cbor,
-          expected_hash,
-        ),
-      )
+      Some(decode_midgard_tx_inputs_preimage(preimage_cbor, expected_hash))
     None -> None
   }
 }
 
 fn decode_optional_outputs_preimage(
-  field_index: Int,
   preimage_cbor: Option<ByteArray>,
   expected_hash: ByteArray,
 ) -> Option<List<MidgardTxOutput>> {
   when preimage_cbor is {
     Some(preimage_cbor) ->
-      Some(
-        decode_midgard_tx_outputs_preimage(
-          field_index,
-          preimage_cbor,
-          expected_hash,
-        ),
-      )
+      Some(decode_midgard_tx_outputs_preimage(preimage_cbor, expected_hash))
     None -> None
   }
 }
 
-fn decode_optional_byte_list_preimage(
-  field_index: Int,
+fn decode_optional_hash28_list_preimage(
   preimage_cbor: Option<ByteArray>,
   expected_hash: ByteArray,
 ) -> Option<List<ByteArray>> {
   when preimage_cbor is {
     Some(preimage_cbor) ->
-      Some(
-        decode_midgard_tx_byte_list_preimage(
-          field_index,
-          preimage_cbor,
-          expected_hash,
-        ),
-      )
+      Some(decode_midgard_tx_hash28_list_preimage(preimage_cbor, expected_hash))
     None -> None
   }
 }
 
 fn decode_optional_mint_preimage(
-  field_index: Int,
   preimage_cbor: Option<ByteArray>,
   expected_hash: ByteArray,
 ) -> Option<Data> {
   when preimage_cbor is {
     Some(preimage_cbor) ->
-      Some(
-        decode_midgard_tx_mint_preimage(
-          field_index,
-          preimage_cbor,
-          expected_hash,
-        ),
-      )
+      Some(decode_midgard_tx_mint_preimage(preimage_cbor, expected_hash))
     None -> None
   }
 }
 
 fn decode_optional_address_witnesses_preimage(
-  field_index: Int,
   preimage_cbor: Option<ByteArray>,
   expected_hash: ByteArray,
 ) -> Option<List<MidgardAddressWitness>> {
@@ -993,7 +986,6 @@ fn decode_optional_address_witnesses_preimage(
     Some(preimage_cbor) ->
       Some(
         decode_midgard_tx_address_witnesses_preimage(
-          field_index,
           preimage_cbor,
           expected_hash,
         ),
@@ -1003,7 +995,6 @@ fn decode_optional_address_witnesses_preimage(
 }
 
 fn decode_optional_script_witnesses_preimage(
-  field_index: Int,
   preimage_cbor: Option<ByteArray>,
   expected_hash: ByteArray,
 ) -> Option<List<MidgardScriptWitness>> {
@@ -1011,7 +1002,6 @@ fn decode_optional_script_witnesses_preimage(
     Some(preimage_cbor) ->
       Some(
         decode_midgard_tx_script_witnesses_preimage(
-          field_index,
           preimage_cbor,
           expected_hash,
         ),
@@ -1021,7 +1011,6 @@ fn decode_optional_script_witnesses_preimage(
 }
 
 fn decode_optional_redeemer_witnesses_preimage(
-  field_index: Int,
   preimage_cbor: Option<ByteArray>,
   expected_hash: ByteArray,
 ) -> Option<List<MidgardRedeemerWitness>> {
@@ -1029,7 +1018,6 @@ fn decode_optional_redeemer_witnesses_preimage(
     Some(preimage_cbor) ->
       Some(
         decode_midgard_tx_redeemer_witnesses_preimage(
-          field_index,
           preimage_cbor,
           expected_hash,
         ),
@@ -1044,34 +1032,29 @@ pub fn partial_body_view_from_compact_and_preimages(
 ) -> MidgardTransactionBodyPartialView {
   MidgardTransactionBodyPartialView {
     inputs: decode_optional_inputs_preimage(
-      0,
       preimages.inputs,
       body.spend_inputs_hash,
     ),
     reference_inputs: decode_optional_inputs_preimage(
-      1,
       preimages.reference_inputs,
       body.reference_inputs_hash,
     ),
     outputs: decode_optional_outputs_preimage(
-      2,
       preimages.outputs,
       body.outputs_hash,
     ),
     fee: Some(body.fee),
     validity_interval_start: Some(body.validity_interval_start),
     validity_interval_end: Some(body.validity_interval_end),
-    required_observers: decode_optional_byte_list_preimage(
-      3,
+    required_observers: decode_optional_hash28_list_preimage(
       preimages.required_observers,
       body.required_observers_hash,
     ),
-    required_signers: decode_optional_byte_list_preimage(
-      4,
+    required_signers: decode_optional_hash28_list_preimage(
       preimages.required_signers,
       body.required_signers_hash,
     ),
-    mint: decode_optional_mint_preimage(5, preimages.mint, body.mint_hash),
+    mint: decode_optional_mint_preimage(preimages.mint, body.mint_hash),
     script_integrity_hash: Some(body.script_integrity_hash),
     auxiliary_data_hash: Some(body.auxiliary_data_hash),
     network_id: Some(body.network_id),
@@ -1084,17 +1067,14 @@ pub fn partial_witness_set_view_from_compact_and_preimages(
 ) -> MidgardTransactionWitnessSetPartialView {
   MidgardTransactionWitnessSetPartialView {
     addr_tx_wits: decode_optional_address_witnesses_preimage(
-      7,
       preimages.addr_tx_wits,
       witness_set.addr_tx_wits_hash,
     ),
     script_tx_wits: decode_optional_script_witnesses_preimage(
-      6,
       preimages.script_tx_wits,
       witness_set.script_tx_wits_hash,
     ),
     redeemer_tx_wits: decode_optional_redeemer_witnesses_preimage(
-      8,
       preimages.redeemer_tx_wits,
       witness_set.redeemer_tx_wits_hash,
     ),

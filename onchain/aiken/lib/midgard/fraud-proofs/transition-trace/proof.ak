@@ -9,7 +9,6 @@ use cardano/address.{
 use cardano/assets.{AssetName, Value}
 use cardano/transaction.{InlineDatum, Input, Output, OutputReference}
 use env
-use midgard/bounded_collection_v1
 use midgard/common/types.{Proof}
 use midgard/common/utils
 use midgard/fraud_proof_catalogue
@@ -19,6 +18,7 @@ use midgard/fraud_proofs/native_tx/preimages as native_preimages
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/hub_oracle as hub
 use midgard/ledger_state
+use midgard/native_tx_field_access_v1
 use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/tx_order_v1 as tx_order
@@ -1135,15 +1135,9 @@ fn validate_l2_transaction_transition(
     outputs_preimage,
   )
   expect
-    bounded_collection_v1.from_items(
-      0,
-      spend_inputs |> list.map(native_components.encode_midgard_tx_input),
-    ) == compact.body.spend_inputs_hash
+    native_tx_field_access_v1.field_commitment_from_items(spend_inputs |> list.map(native_components.encode_midgard_tx_input)) == compact.body.spend_inputs_hash
   expect
-    bounded_collection_v1.from_items(
-      2,
-      outputs |> list.map(native_components.encode_midgard_tx_output),
-    ) == compact.body.outputs_hash
+    native_tx_field_access_v1.field_commitment_from_items(outputs |> list.map(native_components.encode_midgard_tx_output)) == compact.body.outputs_hash
   let after_spends = apply_l2_spends(
     trace_proof.value.pre_utxos_root,
     spend_inputs,

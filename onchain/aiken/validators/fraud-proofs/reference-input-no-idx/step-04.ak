@@ -2,7 +2,6 @@ use aiken/collection/list
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/bounded_collection_v1
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
@@ -10,6 +9,7 @@ use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_output}
 use midgard/fraud_proofs/reference_input_no_idx/step_04.{
   Args, Datum, SpendRedeemer, State,
 }
+use midgard/native_tx_field_access_v1
 
 validator main(
   computation_thread_token_policy_id: PolicyId,
@@ -74,10 +74,7 @@ validator main(
         //    native outputs hash. Each item is the node's canonical output CBOR
         //    under the consensus-ordered outputs field (2).
         expect
-          bounded_collection_v1.from_items(
-            2,
-            list.map(outputs_preimage, encode_midgard_tx_output),
-          ) == producing_tx_outputs_hash
+          native_tx_field_access_v1.field_commitment_from_items(list.map(outputs_preimage, encode_midgard_tx_output)) == producing_tx_outputs_hash
 
         // 3. With preimage of outputs verified, it must be shown its length is
         //    smaller than the output index passed down from previous step.

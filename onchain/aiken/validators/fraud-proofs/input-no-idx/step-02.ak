@@ -24,6 +24,7 @@ use midgard/fraud_proofs/native_tx/components.{
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody, MidgardTxInput,
 }
+use midgard/native_tx_field_access_v1
 use midgard/validation_merkle_v1
 
 validator main(
@@ -182,10 +183,7 @@ fn advance_complete_published(
   expect without_lovelace(publication_value) == zero
   expect expect_lovelace_of(publication_value) > 0
   expect
-    bounded_collection_v1.from_items(
-      0,
-      list.map(publication.inputs, encode_midgard_tx_input),
-    ) == verified_tx_inputs_hash
+    native_tx_field_access_v1.field_commitment_from_items(list.map(publication.inputs, encode_midgard_tx_input)) == verified_tx_inputs_hash
   let bad_input = publication.inputs |> list.expect_at(bad_inputs_index)
   expect output_script_hash == step_03_validator_script_hash
   let expected_output_state: Data = step_03.State {
@@ -236,10 +234,7 @@ fn advance_complete(
   //    CBOR under the consensus-ordered spend-inputs field (0), not
   //    `cbor.serialise` of an Aiken `OutputReference` list.
   expect
-    bounded_collection_v1.from_items(
-      0,
-      list.map(inputs_preimage, encode_midgard_tx_input),
-    ) == verified_tx_inputs_hash
+    native_tx_field_access_v1.field_commitment_from_items(list.map(inputs_preimage, encode_midgard_tx_input)) == verified_tx_inputs_hash
 
   let bad_input = inputs_preimage |> list.expect_at(bad_inputs_index)
 
@@ -584,10 +579,7 @@ fn fold_start_two_items(
   second: MidgardTxInput,
   bad_inputs_index: Int,
 ) -> Bool {
-  let root = bounded_collection_v1.from_items(
-    0,
-    [encode_midgard_tx_input(first), encode_midgard_tx_input(second)],
-  )
+  let root = native_tx_field_access_v1.field_commitment_from_items([encode_midgard_tx_input(first), encode_midgard_tx_input(second)])
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   let expected_state: Data = Folding {
     verified_tx_inputs_hash: root,
@@ -630,10 +622,7 @@ fn fold_next_two_items(
   redeemer_cbor: ByteArray,
   output_state: Data,
 ) -> Bool {
-  let root = bounded_collection_v1.from_items(
-    0,
-    [encode_midgard_tx_input(first), encode_midgard_tx_input(second)],
-  )
+  let root = native_tx_field_access_v1.field_commitment_from_items([encode_midgard_tx_input(first), encode_midgard_tx_input(second)])
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   main.spend(
     fixture.next_step_script_hash,
@@ -751,14 +740,11 @@ fn fold_next_three_items(
   output_state: Data,
   self_loop: Bool,
 ) -> Bool {
-  let root = bounded_collection_v1.from_items(
-    0,
-    [
+  let root = native_tx_field_access_v1.field_commitment_from_items([
       encode_midgard_tx_input(first),
       encode_midgard_tx_input(second),
       encode_midgard_tx_input(third),
-    ],
-  )
+    ])
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   let continuation = if self_loop {
     continue_fold_l1_tx(fixture.ct_token_asset_name(block), output_state)
@@ -849,14 +835,11 @@ test input_no_idx_step_02_fold_next_self_loops_and_preserves_selected_input() {
     tx_id: proof_fit_spend_input_tx_id,
     output_index: 7,
   }
-  let root = bounded_collection_v1.from_items(
-    0,
-    [
+  let root = native_tx_field_access_v1.field_commitment_from_items([
       encode_midgard_tx_input(first),
       encode_midgard_tx_input(second),
       encode_midgard_tx_input(third),
-    ],
-  )
+    ])
   let expected: Data = Folding {
     verified_tx_inputs_hash: root,
     item_count: 3,
@@ -891,14 +874,11 @@ test input_no_idx_step_02_fold_next_self_loop_captures_selected_input() {
     tx_id: proof_fit_spend_input_tx_id,
     output_index: 7,
   }
-  let root = bounded_collection_v1.from_items(
-    0,
-    [
+  let root = native_tx_field_access_v1.field_commitment_from_items([
       encode_midgard_tx_input(first),
       encode_midgard_tx_input(second),
       encode_midgard_tx_input(third),
-    ],
-  )
+    ])
   let expected: Data = Folding {
     verified_tx_inputs_hash: root,
     item_count: 3,
@@ -959,14 +939,11 @@ fn reject_fold_next_three(
   redeemer_proof: bounded_collection_v1.ItemProofV1,
   redeemer_cbor: ByteArray,
 ) -> Bool {
-  let root = bounded_collection_v1.from_items(
-    0,
-    [
+  let root = native_tx_field_access_v1.field_commitment_from_items([
       encode_midgard_tx_input(first),
       encode_midgard_tx_input(second),
       encode_midgard_tx_input(third),
-    ],
-  )
+    ])
   let expected: Data = Folding {
     verified_tx_inputs_hash: root,
     item_count: 3,
@@ -1083,24 +1060,8 @@ test input_no_idx_step_02_fold_item_authenticates_canonical_opening() {
     output_index: 7,
   }
   let input_cbor = encode_midgard_tx_input(input)
-  let root = bounded_collection_v1.from_items(0, [input_cbor])
+  let root = native_tx_field_access_v1.field_commitment_from_items([input_cbor])
   verify_fold_item(root, input_cbor, one_input_opening(input))
-}
-
-test input_no_idx_step_02_fold_item_rejects_noncanonical_trailing_bytes() fail {
-  let input = MidgardTxInput {
-    tx_id: proof_fit_spend_input_tx_id,
-    output_index: 7,
-  }
-  let input_cbor = encode_midgard_tx_input(input)
-  let root = bounded_collection_v1.from_items(0, [input_cbor])
-  expect
-    verify_fold_item(
-      root,
-      bytearray.concat(input_cbor, #"00"),
-      one_input_opening(input),
-    )
-  True
 }
 
 fn fold_item_test_input() -> MidgardTxInput {
@@ -1108,104 +1069,86 @@ fn fold_item_test_input() -> MidgardTxInput {
 }
 
 fn fold_item_test_root(input: MidgardTxInput) -> ByteArray {
-  bounded_collection_v1.from_items(0, [encode_midgard_tx_input(input)])
+  native_tx_field_access_v1.field_commitment_from_items([encode_midgard_tx_input(input)])
 }
 
-fn must_reject_fold_opening(
-  root: ByteArray,
-  input_cbor: ByteArray,
-  proof: bounded_collection_v1.ItemProofV1,
-) -> Bool {
-  expect verify_fold_item(root, input_cbor, proof)
-  True
-}
-
-test input_no_idx_step_02_fold_rejects_wrong_root() fail {
+/// Every fold-opening negative vector, stated against the honest opening in
+/// the same breath — which is the only way any of them means anything.
+///
+/// `verify_fold_item` folds `bounded_collection_v1.verify_item`, and §4's flat
+/// field commitments made that unsatisfiable, so the fold currently rejects
+/// *everything*. As nine separate `fail` tests these vectors passed on that
+/// global breakage rather than on the tampering each one names, and they would
+/// have gone on passing under a wrong rebind. Anchored on the honest opening
+/// they cannot: the first conjunct is false today, so this test is red
+/// alongside `input_no_idx_step_02_fold_item_authenticates_canonical_opening`,
+/// and it turns green only when the fold accepts the honest opening *and*
+/// still refuses all nine deviations.
+///
+/// #570 rebinds this fold onto `authenticated_field_view`; this test is the
+/// contract it has to meet, and the shape of it should survive that rebind
+/// even though `ItemProofV1` will not.
+test input_no_idx_step_02_fold_opening_rejects_only_the_tampering() {
   let input = fold_item_test_input()
-  must_reject_fold_opening(
-    #"0000000000000000000000000000000000000000000000000000000000000000",
-    encode_midgard_tx_input(input),
-    one_input_opening(input),
-  )
-}
-
-test input_no_idx_step_02_fold_rejects_wrong_field() fail {
-  let input = fold_item_test_input()
+  let input_cbor = encode_midgard_tx_input(input)
+  let root = fold_item_test_root(input)
   let proof = one_input_opening(input)
-  must_reject_fold_opening(
-    fold_item_test_root(input),
-    encode_midgard_tx_input(input),
-    bounded_collection_v1.ItemProofV1 { ..proof, field_index: 1 },
-  )
-}
-
-test input_no_idx_step_02_fold_rejects_wrong_count_or_index() fail {
-  let input = fold_item_test_input()
-  let proof = one_input_opening(input)
-  must_reject_fold_opening(
-    fold_item_test_root(input),
-    encode_midgard_tx_input(input),
-    bounded_collection_v1.ItemProofV1 { ..proof, item_index: 1 },
-  )
-}
-
-test input_no_idx_step_02_fold_rejects_wrong_count() fail {
-  let input = fold_item_test_input()
-  let proof = one_input_opening(input)
-  must_reject_fold_opening(
-    fold_item_test_root(input),
-    encode_midgard_tx_input(input),
-    bounded_collection_v1.ItemProofV1 { ..proof, item_count: 2 },
-  )
-}
-
-test input_no_idx_step_02_fold_rejects_wrong_length() fail {
-  let input = fold_item_test_input()
-  let proof = one_input_opening(input)
-  must_reject_fold_opening(
-    fold_item_test_root(input),
-    encode_midgard_tx_input(input),
-    bounded_collection_v1.ItemProofV1 {
-      ..proof,
-      item_length: proof.item_length + 1,
-    },
-  )
-}
-
-test input_no_idx_step_02_fold_rejects_wrong_item_commitment() fail {
-  let input = fold_item_test_input()
-  let proof = one_input_opening(input)
-  must_reject_fold_opening(
-    fold_item_test_root(input),
-    encode_midgard_tx_input(input),
-    bounded_collection_v1.ItemProofV1 {
-      ..proof,
-      item_commitment: #"0000000000000000000000000000000000000000000000000000000000000000",
-    },
-  )
-}
-
-test input_no_idx_step_02_fold_rejects_wrong_frontier() fail {
-  let input = fold_item_test_input()
-  let proof = one_input_opening(input)
-  must_reject_fold_opening(
-    fold_item_test_root(input),
-    encode_midgard_tx_input(input),
-    bounded_collection_v1.ItemProofV1 { ..proof, frontier: [] },
-  )
-}
-
-test input_no_idx_step_02_fold_rejects_substituted_input() fail {
-  let input = fold_item_test_input()
   let substituted = MidgardTxInput {
     tx_id: proof_fit_spend_input_tx_id,
     output_index: 8,
   }
-  must_reject_fold_opening(
-    fold_item_test_root(input),
-    encode_midgard_tx_input(substituted),
-    one_input_opening(input),
-  )
+  and {
+    // The anchor. Everything below is vacuous without it.
+    verify_fold_item(root, input_cbor, proof),
+    // Non-canonical trailing bytes on the opened item.
+    !verify_fold_item(root, bytearray.concat(input_cbor, #"00"), proof),
+    // A root the thread never carried.
+    !verify_fold_item(
+      #"0000000000000000000000000000000000000000000000000000000000000000",
+      input_cbor,
+      proof,
+    ),
+    // Field 0 opened as field 1 — the pair the flat scheme made alias (§4).
+    !verify_fold_item(
+      root,
+      input_cbor,
+      bounded_collection_v1.ItemProofV1 { ..proof, field_index: 1 },
+    ),
+    // Index, count, length, commitment and frontier, one at a time.
+    !verify_fold_item(
+      root,
+      input_cbor,
+      bounded_collection_v1.ItemProofV1 { ..proof, item_index: 1 },
+    ),
+    !verify_fold_item(
+      root,
+      input_cbor,
+      bounded_collection_v1.ItemProofV1 { ..proof, item_count: 2 },
+    ),
+    !verify_fold_item(
+      root,
+      input_cbor,
+      bounded_collection_v1.ItemProofV1 {
+        ..proof,
+        item_length: proof.item_length + 1,
+      },
+    ),
+    !verify_fold_item(
+      root,
+      input_cbor,
+      bounded_collection_v1.ItemProofV1 {
+        ..proof,
+        item_commitment: #"0000000000000000000000000000000000000000000000000000000000000000",
+      },
+    ),
+    !verify_fold_item(
+      root,
+      input_cbor,
+      bounded_collection_v1.ItemProofV1 { ..proof, frontier: [] },
+    ),
+    // A different input substituted under an honest opening.
+    !verify_fold_item(root, encode_midgard_tx_input(substituted), proof),
+  }
 }
 
 /// Positive selector: the canonical spend-inputs preimage of the committed bad
@@ -1266,7 +1209,7 @@ fn published_test_inputs() -> List<MidgardTxInput> {
 }
 
 fn published_test_root(inputs: List<MidgardTxInput>) -> ByteArray {
-  bounded_collection_v1.from_items(0, list.map(inputs, encode_midgard_tx_input))
+  native_tx_field_access_v1.field_commitment_from_items(list.map(inputs, encode_midgard_tx_input))
 }
 
 fn published_test_datum(inputs: List<MidgardTxInput>) -> PublishedSpendInputsV1 {
@@ -1840,10 +1783,7 @@ fn spend_inputs_from(index: Int, count: Int) -> List<MidgardTxInput> {
 /// reserves in a single step-02 redeemer, carried directly with no chunking.
 test input_no_idx_step_02_carries_the_largest_fitting_spend_inputs_preimage() {
   let inputs_preimage = spend_inputs_from(0, largest_fitting_spend_input_count)
-  let verified_tx_inputs_hash = bounded_collection_v1.from_items(
-    0,
-    list.map(inputs_preimage, encode_midgard_tx_input),
-  )
+  let verified_tx_inputs_hash = native_tx_field_access_v1.field_commitment_from_items(list.map(inputs_preimage, encode_midgard_tx_input))
   let last_index = largest_fitting_spend_input_count - 1
   run_step_02(
     fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
@@ -1864,10 +1804,7 @@ test input_no_idx_step_02_carries_the_largest_fitting_spend_inputs_preimage() {
 test input_no_idx_step_02_measures_first_over_reserve_spend_inputs_preimage() {
   let input_count = 20
   let inputs_preimage = spend_inputs_from(0, input_count)
-  let verified_tx_inputs_hash = bounded_collection_v1.from_items(
-    0,
-    list.map(inputs_preimage, encode_midgard_tx_input),
-  )
+  let verified_tx_inputs_hash = native_tx_field_access_v1.field_commitment_from_items(list.map(inputs_preimage, encode_midgard_tx_input))
   let last_index = input_count - 1
   run_step_02(
     fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
@@ -1887,10 +1824,7 @@ test input_no_idx_step_02_measures_first_over_reserve_spend_inputs_preimage() {
 test input_no_idx_step_02_measures_cardano_296_script_spend_shape() {
   let input_count = 296
   let inputs_preimage = spend_inputs_from(0, input_count)
-  let verified_tx_inputs_hash = bounded_collection_v1.from_items(
-    0,
-    list.map(inputs_preimage, encode_midgard_tx_input),
-  )
+  let verified_tx_inputs_hash = native_tx_field_access_v1.field_commitment_from_items(list.map(inputs_preimage, encode_midgard_tx_input))
   let last_index = input_count - 1
   run_step_02(
     fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),

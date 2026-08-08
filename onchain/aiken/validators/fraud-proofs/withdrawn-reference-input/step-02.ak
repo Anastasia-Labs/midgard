@@ -2,7 +2,6 @@ use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/bounded_collection_v1
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
@@ -10,6 +9,7 @@ use midgard/fraud_proofs/withdrawn_reference_input/step_02.{
   Args, Datum, SpendRedeemer, State,
 }
 use midgard/fraud_proofs/withdrawn_reference_input/step_03
+use midgard/native_tx_field_access_v1
 
 validator main(
   step_03_validator_script_hash: ScriptHash,
@@ -71,10 +71,7 @@ validator main(
         //    transaction's native reference-inputs collection (consensus
         //    field 1, canonical per-item CBOR).
         expect
-          bounded_collection_v1.from_items(
-            1,
-            list.map(reference_inputs_preimage, encode_midgard_tx_input),
-          ) == bad_tx_reference_inputs_hash
+          native_tx_field_access_v1.field_commitment_from_items(list.map(reference_inputs_preimage, encode_midgard_tx_input)) == bad_tx_reference_inputs_hash
         let missing_reference_input = reference_inputs_preimage
           |> list.expect_at(bad_reference_input_index)
 

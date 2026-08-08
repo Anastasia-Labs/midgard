@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
+use midgard/canonical_plutus_data_v1
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_output}
 use midgard/fraud_proofs/native_tx/types.{
   MidgardAddress, MidgardCredential, MidgardTxOutput, MidgardV1Script,
@@ -375,11 +376,13 @@ fn parse_script_ref(data: Data) -> Option<MidgardVersionedScript> {
   }
 }
 
+/// Spec section 6.2: canonicity is membership in the image of the Plutus
+/// serialiseData builtin, so every datum L1 would accept is canonical here
+/// too -- bignums at or above 2^64 and constructor alternatives at or above
+/// 128 included. The retired round-trip pin through the stdlib decoder
+/// rejected both and cost Midgard that parity.
 fn datum_is_canonical(datum_cbor: ByteArray) -> Bool {
-  when cbor.deserialise(datum_cbor) is {
-    None -> False
-    Some(datum) -> cbor.serialise(datum) == datum_cbor
-  }
+  canonical_plutus_data_v1.is_canonical_plutus_data_v1(datum_cbor)
 }
 
 fn parse_required_fields(

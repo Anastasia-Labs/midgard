@@ -65,6 +65,26 @@ aiken check \
   -e --plain-numbers
 ```
 
+To run **every** test in one module, the selector still needs the brace form,
+with `..` in place of a name:
+
+```bash
+aiken check -m 'midgard/native_tx_field_access_v1.{..}'
+```
+
+A bare module selector — `-m midgard/native_tx_field_access_v1`, with no
+`.{...}` — matches **zero test scenarios**. Aiken prints
+`Summary 0 errors` and exits 0, which reads exactly like a green module. The
+patched fork emits a `Suspicious test filter (-m) yielding no test scenarios`
+warning first, but the exit code is still 0, so a gate that checks only the
+status passes while running nothing. Any evidence gathered with the bare form
+is void; re-gather it with the brace form.
+
+`scripts/guard-focused-selector.mjs` takes bare module selectors on purpose and
+is safe with them, because it fails closed on a zero collected total — a
+stronger check than the selector shape. Prefer it, or
+`scripts/run-focused-check.mjs`, over hand-rolled `aiken check -m` lines.
+
 Evidence must report a nonzero collected total, not only the process exit code.
 
 ## Repo Workflow

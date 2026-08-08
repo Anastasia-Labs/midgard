@@ -41,6 +41,7 @@ use midgard/ledger_output_v1
 use midgard/mpf_proof_fold_v1
 use midgard/mpf_proof_v1
 use midgard/native_script_scan_v1
+use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
 use midgard/script_context_v1
 use midgard/script_language_views_v1
@@ -1388,10 +1389,7 @@ fn verify_canonical_decode_empty(
   )
   and {
     canonical_decode_control_is_bound(pre, witness, control, verified),
-    expected_field_commitment == bounded_collection_v1.from_items(
-      control.field_index,
-      [],
-    ),
+    expected_field_commitment == native_tx_field_access_v1.empty_field_commitment,
     control.item_index == 0,
     control.chunk_index == 0,
     control.item_count == -1,
@@ -1466,10 +1464,7 @@ fn verify_canonical_decode_chunk(
   let item_finished = control.chunk_index + 1 == chunk_count
   and {
     canonical_decode_control_is_bound(pre, witness, control, verified),
-    expected_field_commitment != bounded_collection_v1.from_items(
-      control.field_index,
-      [],
-    ),
+    expected_field_commitment != native_tx_field_access_v1.empty_field_commitment,
     or {
       first_chunk,
       continuing_chunk,
@@ -1708,10 +1703,7 @@ fn canonical_decode_item_observation_is_authentic(
     control.item_count
   }
   and {
-    source.expected_field_commitment != bounded_collection_v1.from_items(
-      control.field_index,
-      [],
-    ),
+    source.expected_field_commitment != native_tx_field_access_v1.empty_field_commitment,
     or {
       first_item,
       continuing_item,
@@ -2151,14 +2143,8 @@ fn input_sets_control_is_bound(
   verified: VerifiedMidgardNativeTxCompact,
 ) -> Bool {
   let body = verified.tx_compact.body
-  let spend_is_empty = body.spend_inputs_hash == bounded_collection_v1.from_items(
-    0,
-    [],
-  )
-  let reference_is_empty = body.reference_inputs_hash == bounded_collection_v1.from_items(
-    1,
-    [],
-  )
+  let spend_is_empty = body.spend_inputs_hash == native_tx_field_access_v1.empty_field_commitment
+  let reference_is_empty = body.reference_inputs_hash == native_tx_field_access_v1.empty_field_commitment
   let seen = control.spend_seen + control.reference_seen
   and {
     verified.version == 1,
@@ -2282,18 +2268,12 @@ fn input_sets_item_successor_is_exact(
         reject_invalid_validity_interval_format,
       )
     } else {
-      let address_count = if witness_set.addr_tx_wits_hash == bounded_collection_v1.from_items(
-        7,
-        [],
-      ) {
+      let address_count = if witness_set.addr_tx_wits_hash == native_tx_field_access_v1.empty_field_commitment {
         0
       } else {
         -1
       }
-      let required_count = if body.required_signers_hash == bounded_collection_v1.from_items(
-        4,
-        [],
-      ) {
+      let required_count = if body.required_signers_hash == native_tx_field_access_v1.empty_field_commitment {
         0
       } else {
         -1
@@ -2588,18 +2568,12 @@ fn verify_static_rules(
         )
       None -> {
         let body = verified.tx_compact.body
-        let spend_count = if body.spend_inputs_hash == bounded_collection_v1.from_items(
-          0,
-          [],
-        ) {
+        let spend_count = if body.spend_inputs_hash == native_tx_field_access_v1.empty_field_commitment {
           0
         } else {
           -1
         }
-        let reference_count = if body.reference_inputs_hash == bounded_collection_v1.from_items(
-          1,
-          [],
-        ) {
+        let reference_count = if body.reference_inputs_hash == native_tx_field_access_v1.empty_field_commitment {
           0
         } else {
           -1
@@ -2693,14 +2667,8 @@ fn signatures_control_is_bound(
   verified: VerifiedMidgardNativeTxCompact,
   witness_set: NativeTxWitnessSetCompact,
 ) -> Bool {
-  let address_is_empty = witness_set.addr_tx_wits_hash == bounded_collection_v1.from_items(
-    7,
-    [],
-  )
-  let required_is_empty = verified.tx_compact.body.required_signers_hash == bounded_collection_v1.from_items(
-    4,
-    [],
-  )
+  let address_is_empty = witness_set.addr_tx_wits_hash == native_tx_field_access_v1.empty_field_commitment
+  let required_is_empty = verified.tx_compact.body.required_signers_hash == native_tx_field_access_v1.empty_field_commitment
   let address_complete = and {
     control.address_count >= 0,
     control.address_seen == control.address_count,
@@ -3131,10 +3099,7 @@ fn verify_signatures_handoff(
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
   )
-  let script_count = if witness_set.script_tx_wits_hash == bounded_collection_v1.from_items(
-    6,
-    [],
-  ) {
+  let script_count = if witness_set.script_tx_wits_hash == native_tx_field_access_v1.empty_field_commitment {
     0
   } else {
     -1
@@ -3355,10 +3320,7 @@ fn phase_a_native_control_is_bound(
   verified: VerifiedMidgardNativeTxCompact,
   witness_set: NativeTxWitnessSetCompact,
 ) -> Bool {
-  let scripts_are_empty = witness_set.script_tx_wits_hash == bounded_collection_v1.from_items(
-    6,
-    [],
-  )
+  let scripts_are_empty = witness_set.script_tx_wits_hash == native_tx_field_access_v1.empty_field_commitment
   let is_late_continuation = control.continuation_cbor != #""
   and {
     verified.version == 1,
@@ -5687,10 +5649,7 @@ fn phase_a_script_preconditions_control_is_bound(
   control: PhaseAScriptPreconditionsControlV1,
   observer_commitment: ByteArray,
 ) -> Bool {
-  let observers_are_empty = observer_commitment == bounded_collection_v1.from_items(
-    3,
-    [],
-  )
+  let observers_are_empty = observer_commitment == native_tx_field_access_v1.empty_field_commitment
   and {
     native_tx_proof_commitment_v1(
       control.compact_cbor,
@@ -5831,11 +5790,8 @@ fn verify_phase_a_script_preconditions(
     control.field_preimage_lengths_cbor,
   )
   let observer_commitment = verified_source.tx_compact.body.required_observers_hash
-  let empty_observer_commitment = bounded_collection_v1.from_items(3, [])
-  let has_redeemers = witness_set.redeemer_tx_wits_hash != bounded_collection_v1.from_items(
-    8,
-    [],
-  )
+  let empty_observer_commitment = native_tx_field_access_v1.empty_field_commitment
+  let has_redeemers = witness_set.redeemer_tx_wits_hash != native_tx_field_access_v1.empty_field_commitment
   and {
     verified_source.version == 1,
     phase_a_script_preconditions_control_is_bound(
@@ -8004,7 +7960,7 @@ pub fn verify_script_sources_stage_zero_finish_semantics_v1(
     control.witness_set_compact_cbor,
   )
   let script_commitment = witness_set.script_tx_wits_hash
-  let empty_script_commitment = bounded_collection_v1.from_items(6, [])
+  let empty_script_commitment = native_tx_field_access_v1.empty_field_commitment
   let source_scan_is_complete = if script_commitment == empty_script_commitment {
     and {
       control.source_count == 0,
@@ -8219,7 +8175,7 @@ fn script_sources_stage_zero(
     control.field_preimage_lengths_cbor,
   )
   let script_commitment = witness_set.script_tx_wits_hash
-  let empty_script_commitment = bounded_collection_v1.from_items(6, [])
+  let empty_script_commitment = native_tx_field_access_v1.empty_field_commitment
   let common_control_is_initial = and {
     control.redeemer_count == 0,
     control.redeemer_total_count == 0,
@@ -8474,7 +8430,7 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
   let redeemer_peaks = decode_frontier_peaks(redeemer_peaks_data)
   let redeemer_total_count = builtin.un_i_data(redeemer_total_count_data)
   let redeemer_commitment = witness_set.redeemer_tx_wits_hash
-  let empty_redeemer_commitment = bounded_collection_v1.from_items(8, [])
+  let empty_redeemer_commitment = native_tx_field_access_v1.empty_field_commitment
   let scan_is_complete = if redeemer_commitment == empty_redeemer_commitment {
     and {
       redeemer_count == 0,
@@ -8555,7 +8511,7 @@ fn script_sources_stage_one(
     control.field_preimage_lengths_cbor,
   )
   let redeemer_commitment = witness_set.redeemer_tx_wits_hash
-  let empty_redeemer_commitment = bounded_collection_v1.from_items(8, [])
+  let empty_redeemer_commitment = native_tx_field_access_v1.empty_field_commitment
   let common_control_is_initial = and {
     control.source_total_count == control.source_count,
     control.resolved_item_peaks == [],
@@ -8965,7 +8921,7 @@ fn script_sources_stage_four(
     control.field_preimage_lengths_cbor,
   )
   let output_commitment = verified_source.tx_compact.body.outputs_hash
-  let empty_output_commitment = bounded_collection_v1.from_items(2, [])
+  let empty_output_commitment = native_tx_field_access_v1.empty_field_commitment
   if output_commitment == empty_output_commitment {
     and {
       auxiliary == NoAuxiliaryWitness,
@@ -9555,10 +9511,7 @@ fn script_sources_stage_six(
   )
   let expected_commitment = verified.tx_compact.body.mint_hash
   let fold = control.mint_fold
-  if fold.policy_count == -1 && expected_commitment == bounded_collection_v1.from_items(
-    5,
-    [],
-  ) {
+  if fold.policy_count == -1 && expected_commitment == native_tx_field_access_v1.empty_field_commitment {
     and {
       auxiliary == NoAuxiliaryWitness,
       script_sources_control_successor_is_exact(
@@ -9829,7 +9782,7 @@ fn script_sources_stage_seven_with_observer_commitment(
   control: ScriptSourcesControlV1,
   observer_commitment: ByteArray,
 ) -> Bool {
-  let empty_observer_commitment = bounded_collection_v1.from_items(3, [])
+  let empty_observer_commitment = native_tx_field_access_v1.empty_field_commitment
   let observer_scan_is_complete = if observer_commitment == empty_observer_commitment {
     control.observer_scan == empty_observer_purpose_scan_control()
   } else {
@@ -10047,7 +10000,7 @@ fn script_sources_stage_seven_observer_scan_is_complete(
   control: ScriptSourcesControlV1,
   observer_commitment: ByteArray,
 ) -> Bool {
-  if observer_commitment == bounded_collection_v1.from_items(3, []) {
+  if observer_commitment == native_tx_field_access_v1.empty_field_commitment {
     control.observer_scan == empty_observer_purpose_scan_control()
   } else {
     and {
@@ -10194,7 +10147,7 @@ pub fn verify_script_sources_stage_seven_observer_semantics_v1(
   let observer_hash = chunk_proof.chunk
   let common_is_valid = and {
     script_sources_stage_seven_control_is_bound(pre, witness, control),
-    observer_commitment != bounded_collection_v1.from_items(3, []),
+    observer_commitment != native_tx_field_access_v1.empty_field_commitment,
     !script_sources_stage_seven_observer_scan_is_complete(
       control,
       observer_commitment,
@@ -15579,7 +15532,7 @@ pub fn verify_cek_observer_context_step(
     native_control.field_preimage_lengths_cbor,
   )
   let observer_commitment = verified_source.tx_compact.body.required_observers_hash
-  let empty_observer_commitment = bounded_collection_v1.from_items(3, [])
+  let empty_observer_commitment = native_tx_field_access_v1.empty_field_commitment
   let midgard_encoding = context_control.language_tag == 128
   and {
     verified_source.version == 1,

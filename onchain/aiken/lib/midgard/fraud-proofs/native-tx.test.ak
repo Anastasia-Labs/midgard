@@ -4,8 +4,6 @@ use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/fuzz
 use aiken/primitive/bytearray
-use midgard/bounded_collection_v1
-use midgard/fraud_proofs/native_tx/codec.{encode_native_byte_list}
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_compact_v1, encode_native_tx_body_compact,
   encode_native_tx_compact_v1, native_tx_id_for_version,
@@ -22,10 +20,9 @@ use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_outputs_preimage_cbor,
   decode_midgard_tx_redeemer_witnesses_preimage_cbor,
   decode_midgard_tx_script_witnesses_preimage_cbor,
-  encode_address_witness_preimage, encode_input_preimage, encode_mint_preimage,
-  encode_output_preimage, encode_redeemer_witness_preimage,
-  encode_script_witness_preimage, spend_input_cbor_at,
-  verify_spend_inputs_preimage,
+  encode_address_witness_preimage, encode_hash28_list_preimage,
+  encode_input_preimage, encode_mint_preimage, encode_output_preimage,
+  encode_redeemer_witness_preimage, encode_script_witness_preimage,
 }
 use midgard/fraud_proofs/native_tx/transaction.{
   decode_midgard_transaction_v1, encode_midgard_transaction_body_full,
@@ -44,6 +41,7 @@ use midgard/fraud_proofs/native_tx/types.{
   NativeTxProofSourceCborV1, PlutusV3Script, PubKeyCredential, RewardRedeemer,
   SpendRedeemer, TxIsValid, native_tx_version_v1,
 }
+use midgard/native_tx_field_access_v1
 
 const golden_core_native_full_tx_cbor =
   #"84018c58278158248258201111111111111111111111111111111111111111111111111111111111111111005827815824825820222222222222222222222222222222222222222222222222222222222222222201585081584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405182a2018644180418041805820333333333333333333333333333333333333333333333333333333333333333358204444444444444444444444444444444444444444444444444444444444444444008341804180418000"
@@ -394,9 +392,11 @@ test midgard_transaction_full_decode_round_trip() {
     reference_inputs: Some(encode_input_preimage(tx.body.reference_inputs)),
     outputs: Some(encode_output_preimage(tx.body.outputs)),
     required_observers: Some(
-      encode_native_byte_list(tx.body.required_observers),
+      encode_hash28_list_preimage(tx.body.required_observers),
     ),
-    required_signers: Some(encode_native_byte_list(tx.body.required_signers)),
+    required_signers: Some(
+      encode_hash28_list_preimage(tx.body.required_signers),
+    ),
     mint: Some(encode_mint_preimage(tx.body.mint)),
   }
   let witness_set_compact = midgard_transaction_witness_set_to_compact(
@@ -434,14 +434,8 @@ test midgard_transaction_full_decode_round_trip() {
     verified_tx.transaction == tx,
     verified_tx.compact == compact,
     verified_tx.compact_cbor == encode_native_tx_compact_v1(compact),
-    witness_set_compact.addr_tx_wits_hash == bounded_collection_v1.from_items(
-      7,
-      list.map(tx.witness_set.addr_tx_wits, encode_midgard_address_witness),
-    ),
-    witness_set_compact.script_tx_wits_hash == bounded_collection_v1.from_items(
-      6,
-      list.map(tx.witness_set.script_tx_wits, encode_midgard_versioned_script),
-    ),
+    witness_set_compact.addr_tx_wits_hash == native_tx_field_access_v1.field_commitment_from_items(list.map(tx.witness_set.addr_tx_wits, encode_midgard_address_witness)),
+    witness_set_compact.script_tx_wits_hash == native_tx_field_access_v1.field_commitment_from_items(list.map(tx.witness_set.script_tx_wits, encode_midgard_versioned_script)),
     partial.version == Some(native_tx_version_v1),
     partial.validity == Some(TxIsValid),
     partial_body.inputs == Some(tx.body.inputs),
@@ -627,7 +621,7 @@ test golden_midgard_core_native_compact_tx_decodes() {
   }
 }
 
-test encode_native_byte_list_matches_node_preimage_shape() {
+test encode_field_preimage_matches_node_preimage_shape() {
   let input_0 = #"1111"
   let input_1 = #"222222"
   let spend_input_cbors = [input_0, input_1]
@@ -637,13 +631,31 @@ test encode_native_byte_list_matches_node_preimage_shape() {
     |> bytearray.concat(input_1)
 
   and {
-    encode_native_byte_list(spend_input_cbors) == preimage_cbor,
-    verify_spend_inputs_preimage(
+    native_tx_field_access_v1.encode_field_preimage(spend_input_cbors) == preimage_cbor,
+    native_tx_field_access_v1.field_commitment(preimage_cbor) == native_tx_field_access_v1.field_commitment_from_items(
       spend_input_cbors,
-      bounded_collection_v1.from_items(0, spend_input_cbors),
     ),
-    spend_input_cbor_at(spend_input_cbors, 1) == input_1,
   }
+}
+
+/// §5.1's count header has one admissible spelling per count, and every field
+/// decoder reads it through the same decoder as the door. `83` is canonical for
+/// three items; `98 03` decodes to three and is still refused.
+test byte_list_preimage_rejects_a_non_minimal_count_header() fail {
+  let items = [#"aa", #"bb", #"cc"]
+  let honest = native_tx_field_access_v1.encode_field_preimage(items)
+  let non_minimal = bytearray.concat(#"9803", bytearray.drop(honest, 1))
+  list.length(decode_midgard_tx_byte_list_preimage_cbor(non_minimal)) >= 0
+}
+
+/// The mint field is the one that never re-encodes to pin its bytes, so the
+/// shared §5.1 head decoder is the only thing standing between it and a second
+/// admissible spelling. `9a` is well-formed CBOR and outside the grammar.
+test mint_preimage_rejects_a_four_byte_count_header() fail {
+  let empty_mint: Data = []
+  let honest = encode_mint_preimage(empty_mint)
+  let four_byte = bytearray.concat(#"9a00000000", bytearray.drop(honest, 1))
+  decode_midgard_tx_mint_preimage_cbor(four_byte) == empty_mint
 }
 
 test empty_mint_map_data_rejects_canonical_preimage_encoding() fail {

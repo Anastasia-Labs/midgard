@@ -31,6 +31,7 @@ use midgard/fraud_proofs/native_tx/types.{
   NativeTxWitnessSetCompact, NonExistentInputUtxo, PlutusV3Script, TxIsValid,
   UnbalancedTx, native_tx_version_v1,
 }
+use midgard/native_tx_field_access_v1
 use midgard/validation_merkle_v1
 
 const zero_hash =
@@ -350,8 +351,12 @@ test v1_c20_6_c20_7_field_directory_and_witness_tuple_are_exact() {
     script_item,
   )
   let witness_set = NativeTxWitnessSetCompact {
-    addr_tx_wits_hash: bounded_collection_v1.from_items(7, [address_item]),
-    script_tx_wits_hash: bounded_collection_v1.from_items(6, [script_item]),
+    addr_tx_wits_hash: native_tx_field_access_v1.field_commitment_from_items(
+      [address_item],
+    ),
+    script_tx_wits_hash: native_tx_field_access_v1.field_commitment_from_items(
+      [script_item],
+    ),
     redeemer_tx_wits_hash: redeemer_hash,
   }
   let witness_set_cbor = encode_native_tx_witness_set_compact(witness_set)
@@ -705,27 +710,25 @@ fn c20_witness_proof_source(
   claimed_address_witnesses_length: Int,
 ) -> (ByteArray, ByteArray, ByteArray, ByteArray, ByteArray) {
   let witness_set = NativeTxWitnessSetCompact {
-    addr_tx_wits_hash: bounded_collection_v1.from_items(
-      7,
+    addr_tx_wits_hash: native_tx_field_access_v1.field_commitment_from_items(
       list.map(addr_wits, encode_midgard_address_witness),
     ),
-    script_tx_wits_hash: bounded_collection_v1.from_items(
-      6,
+    script_tx_wits_hash: native_tx_field_access_v1.field_commitment_from_items(
       list.map(script_wits, encode_midgard_versioned_script),
     ),
-    redeemer_tx_wits_hash: bounded_collection_v1.from_items(8, []),
+    redeemer_tx_wits_hash: native_tx_field_access_v1.empty_field_commitment,
   }
   let witness_set_cbor = encode_native_tx_witness_set_compact(witness_set)
   let compact = NativeTxCompact {
     ..sample_compact(),
     body: NativeTxBodyCompact {
       ..sample_compact().body,
-      spend_inputs_hash: bounded_collection_v1.from_items(0, []),
-      reference_inputs_hash: bounded_collection_v1.from_items(1, []),
-      outputs_hash: bounded_collection_v1.from_items(2, []),
-      required_observers_hash: bounded_collection_v1.from_items(3, []),
-      required_signers_hash: bounded_collection_v1.from_items(4, []),
-      mint_hash: bounded_collection_v1.from_items(5, []),
+      spend_inputs_hash: native_tx_field_access_v1.empty_field_commitment,
+      reference_inputs_hash: native_tx_field_access_v1.empty_field_commitment,
+      outputs_hash: native_tx_field_access_v1.empty_field_commitment,
+      required_observers_hash: native_tx_field_access_v1.empty_field_commitment,
+      required_signers_hash: native_tx_field_access_v1.empty_field_commitment,
+      mint_hash: native_tx_field_access_v1.empty_field_commitment,
     },
     witness_set_hash: blake2b_256(witness_set_cbor),
   }
@@ -1215,7 +1218,7 @@ test v1_c20_6_script_witness_arity_three_rejects() fail {
 }
 
 test v1_c20_6_language_tag_bijection_matches_typescript() {
-  let preimage = #"8382004082034082188040"
+  let preimage = #"8343820040438203404482188040"
   let decoded = decode_midgard_tx_script_witnesses_preimage_cbor(preimage)
   and {
     decoded == [
@@ -1231,19 +1234,19 @@ test v1_c20_6_language_tag_bijection_matches_typescript() {
 }
 
 test v1_c20_6_language_tag_one_rejects() fail {
-  decode_midgard_tx_script_witnesses_preimage_cbor(#"81820140") == []
+  decode_midgard_tx_script_witnesses_preimage_cbor(#"8143820140") == []
 }
 
 test v1_c20_6_language_tag_four_rejects() fail {
-  decode_midgard_tx_script_witnesses_preimage_cbor(#"81820440") == []
+  decode_midgard_tx_script_witnesses_preimage_cbor(#"8143820440") == []
 }
 
 test v1_c20_6_language_tag_127_rejects() fail {
-  decode_midgard_tx_script_witnesses_preimage_cbor(#"8182187f40") == []
+  decode_midgard_tx_script_witnesses_preimage_cbor(#"814482187f40") == []
 }
 
 test v1_c20_6_language_tag_129_rejects() fail {
-  decode_midgard_tx_script_witnesses_preimage_cbor(#"8182188140") == []
+  decode_midgard_tx_script_witnesses_preimage_cbor(#"814482188140") == []
 }
 
 // --- canonical-form guards: matching hashes cannot authenticate a
@@ -1268,8 +1271,17 @@ test v1_c20_6_noncanonical_language_tag_encoding_is_not_canonical() {
     bytearray.length(noncanonical_preimage),
     1,
   )
+  expect nc_tx_id == nc_tx_id
+  expect nc_commitment == nc_commitment
+  expect nc_compact == nc_compact
+  expect nc_witness_set == nc_witness_set
+  expect nc_lengths == nc_lengths
   and {
-    canonical_preimage == #"81820343010203",
+    // Field 6 now carries the same per-item byte envelope as every other
+    // field, so the single PlutusV3 script is wrapped in a `46` bytes(6)
+    // header rather than concatenated raw.
+    canonical_preimage == #"8146820343010203",
+    bytearray.length(noncanonical_preimage) == 8,
     transaction.verify_midgard_transaction_field_preimage_v1(
       tx_id,
       commitment,
@@ -1279,16 +1291,33 @@ test v1_c20_6_noncanonical_language_tag_encoding_is_not_canonical() {
       6,
       canonical_preimage,
     ),
-    !transaction.verify_midgard_transaction_field_preimage_v1(
-      nc_tx_id,
-      nc_commitment,
-      nc_compact,
-      nc_witness_set,
-      nc_lengths,
-      6,
-      noncanonical_preimage,
-    ),
   }
+}
+
+/// Under the flat scheme a non-canonical language-tag spelling no longer
+/// reaches the re-encode comparison: its bytes hash to something the compact
+/// structure never committed, so verification fails closed at the hash check.
+test v1_c20_6_noncanonical_language_tag_encoding_aborts() fail {
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: #"010203",
+  }
+  let noncanonical_preimage = #"814882180343010203"
+  let (nc_tx_id, nc_commitment, nc_compact, nc_witness_set, nc_lengths) = c20_witness_proof_source(
+    [],
+    [script],
+    bytearray.length(noncanonical_preimage),
+    1,
+  )
+  transaction.verify_midgard_transaction_field_preimage_v1(
+    nc_tx_id,
+    nc_commitment,
+    nc_compact,
+    nc_witness_set,
+    nc_lengths,
+    6,
+    noncanonical_preimage,
+  )
 }
 
 test v1_c20_7_noncanonical_item_wrapper_is_not_canonical() {
@@ -1308,7 +1337,14 @@ test v1_c20_7_noncanonical_item_wrapper_is_not_canonical() {
     1,
     bytearray.length(noncanonical_preimage),
   )
+  expect nc_tx_id == nc_tx_id
+  expect nc_commitment == nc_commitment
+  expect nc_compact == nc_compact
+  expect nc_witness_set == nc_witness_set
+  expect nc_lengths == nc_lengths
   and {
+    bytearray.length(canonical_preimage) == 104,
+    bytearray.length(noncanonical_preimage) == 105,
     transaction.verify_midgard_transaction_field_preimage_v1(
       tx_id,
       commitment,
@@ -1318,16 +1354,31 @@ test v1_c20_7_noncanonical_item_wrapper_is_not_canonical() {
       7,
       canonical_preimage,
     ),
-    !transaction.verify_midgard_transaction_field_preimage_v1(
-      nc_tx_id,
-      nc_commitment,
-      nc_compact,
-      nc_witness_set,
-      nc_lengths,
-      7,
-      noncanonical_preimage,
-    ),
   }
+}
+
+/// The wide `59 0065` wrapper spelling of a 101-byte item is a different byte
+/// string, so under flat hashing it fails closed at the hash check rather than
+/// surviving to the re-encode comparison.
+test v1_c20_7_noncanonical_item_wrapper_aborts() fail {
+  let witness = c20_addr_witness_1()
+  let noncanonical_preimage = #"81590065"
+    |> bytearray.concat(encode_midgard_address_witness(witness))
+  let (nc_tx_id, nc_commitment, nc_compact, nc_witness_set, nc_lengths) = c20_witness_proof_source(
+    [witness],
+    [],
+    1,
+    bytearray.length(noncanonical_preimage),
+  )
+  transaction.verify_midgard_transaction_field_preimage_v1(
+    nc_tx_id,
+    nc_commitment,
+    nc_compact,
+    nc_witness_set,
+    nc_lengths,
+    7,
+    noncanonical_preimage,
+  )
 }
 
 // --- accepted Cardano maximum: genuine boundary-fixture vectors ---
@@ -1487,7 +1538,7 @@ test v1_c20_7_accepted_cardano_maximum_matches_typescript_boundary_fixture() {
     bytearray.length(preimage) == c20_7_maximum_cardano_field_bytes,
     lengths.address_witnesses == c20_7_maximum_cardano_field_bytes,
     blake2b_256(preimage) == c20_7_maximum_cardano_preimage_hash,
-    bounded_collection_v1.from_items(7, item_cbors) == c20_7_maximum_cardano_collection_commitment,
+    native_tx_field_access_v1.field_commitment_from_items(item_cbors) == c20_7_maximum_cardano_collection_commitment,
     witness_set.addr_tx_wits_hash == c20_7_maximum_cardano_collection_commitment,
     encode_address_witness_preimage(decoded) == preimage,
     native_tx_canonical_size_v1(verified.tx_compact, lengths) == c20_7_maximum_cardano_canonical_bytes,
@@ -1575,7 +1626,7 @@ test v1_c20_6_accepted_cardano_maximum_matches_typescript_boundary_fixture() {
     bytearray.length(preimage) == c20_6_maximum_cardano_field_bytes,
     lengths.script_witnesses == c20_6_maximum_cardano_field_bytes,
     blake2b_256(preimage) == c20_6_maximum_cardano_preimage_hash,
-    bounded_collection_v1.from_items(6, item_cbors) == c20_6_maximum_cardano_collection_commitment,
+    native_tx_field_access_v1.field_commitment_from_items(item_cbors) == c20_6_maximum_cardano_collection_commitment,
     witness_set.script_tx_wits_hash == c20_6_maximum_cardano_collection_commitment,
     encode_script_witness_preimage(decoded) == preimage,
     native_tx_canonical_size_v1(verified.tx_compact, lengths) == c20_6_maximum_cardano_canonical_bytes,
