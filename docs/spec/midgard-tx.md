@@ -1,0 +1,526 @@
+# MidgardTx — compact transaction format, flat field commitments, and preimage carriage (V1)
+
+- **Status:** implementation-normative. This is the format authority for the
+  MidgardTx compact transaction type, its canonical encoding, the nine flat
+  blake2b-256 field commitments, the uniform enveloped preimage grammar, and
+  the three-tier field-preimage carriage convention.
+- **Authority:** per `docs/spec/README.md`, this document wins over
+  `technical-spec/` on concrete detail; `GOAL_SPEC.md` binds it by reference
+  at scheme altitude. Rationale lives in
+  `docs/midgard/decisions/0004-compact-tx-flat-field-hash-reversion.md`;
+  decision trail: wayfinder map
+  [#552](https://github.com/Anastasia-Labs/midgard/issues/552).
+- **Owner/approver:** repository owner (Philip DiSarro).
+- **Last reviewed:** 2026-08-08 (initial authoring, Phase 0 of the flat
+  reversion program).
+- **Version:** `native_tx_version_v1 = 1`. Pre-launch, this format replaces
+  the counted bounded-collection commitment scheme in place (GOAL_SPEC §3
+  invariant 13); there is no compatibility path to the retired scheme.
+- **Provisional values:** the constants marked _provisional_ in §8.3 are
+  pinned by analysis and are re-measured in Phase 4 of the reversion
+  program; falsification by measurement is an amendment-level erratum to
+  this document by design, and does not reopen GOAL_SPEC acceptance
+  criteria.
+
+## 1. Scope and notation
+
+This document defines, for canonical V1:
+
+1. the compact transaction types and their canonical CBOR encodings (§2);
+2. transaction identity — the two-level hash derivation (§3);
+3. the nine per-field commitments (§4);
+4. the uniform enveloped field-preimage grammar and the per-field item
+   encodings (§5);
+5. canonicality rules, including the datum/redeemer canonicity predicate
+   (§6);
+6. the mandatory access invariants every consumer of the nine commitments
+   observes (§7); and
+7. the three-tier publication-carriage convention for field preimages (§8).
+
+Byte strings are written in hex (`82`, `58 20 …`). `array(n)`, `map(n)`,
+`bytes(n)`, `uint`, `int` denote definite-length canonical CBOR heads:
+minimal-width length/value encodings with fail-closed rejection of any
+non-minimal form, except where this document explicitly pins a fixed-width
+form. `‖` is byte concatenation. `blake2b_256` is the Plutus builtin (32-byte
+digest). "Encoders" means both implementation twins — Aiken
+(`onchain/aiken/lib/midgard/fraud-proofs/native-tx/`) and TypeScript
+(`demo/midgard-core/src/codec/`) — which MUST emit byte-identical output for
+every value in this document's domain, pinned by cross-language golden
+vectors including the empty case for every field.
+
+## 2. Compact transaction types
+
+### 2.1 `NativeTxBodyCompact`
+
+Twelve fields, in declaration and wire order:
+
+| #   | field                     | type                             |
+| --- | ------------------------- | -------------------------------- |
+| 0   | `spend_inputs_hash`       | 32-byte hash                     |
+| 1   | `reference_inputs_hash`   | 32-byte hash                     |
+| 2   | `outputs_hash`            | 32-byte hash                     |
+| 3   | `fee`                     | uint                             |
+| 4   | `validity_interval_start` | int (`-1` = none)                |
+| 5   | `validity_interval_end`   | int (`-1` = none)                |
+| 6   | `required_observers_hash` | 32-byte hash                     |
+| 7   | `required_signers_hash`   | 32-byte hash                     |
+| 8   | `mint_hash`               | 32-byte hash                     |
+| 9   | `script_integrity_hash`   | 32-byte hash                     |
+| 10  | `auxiliary_data_hash`     | 32-byte hash                     |
+| 11  | `network_id`              | uint (`0`, `1`, or `255` = none) |
+
+Canonical encoding (`encode_native_tx_body_compact`): `8c` (array(12))
+followed by the twelve elements in order — every 32-byte hash as
+`58 20 ‖ h32`, the integers as canonical minimal CBOR.
+
+### 2.2 `NativeTxWitnessSetCompact`
+
+Three fields, in declaration and wire order: `addr_tx_wits_hash`,
+`script_tx_wits_hash`, `redeemer_tx_wits_hash` — each a 32-byte hash.
+Canonical encoding: `83 ‖ 58 20 addr ‖ 58 20 script ‖ 58 20 redeemer`.
+
+### 2.3 `NativeTxCompact`
+
+`{ body: NativeTxBodyCompact, witness_set_hash: 32-byte hash,
+validity_code: uint ≤ 5 }`. Versioned encoding
+(`encode_native_tx_compact_for_version`):
+`84 ‖ uint(version) ‖ body ‖ 58 20 witness_set_hash ‖ uint(validity_code)`.
+
+### 2.4 `NativeTxFieldPreimageLengthsV1`
+
+Nine byte lengths — **byte lengths only; item counts appear nowhere in this
+structure** (counts live solely in the preimage headers, §5.2). Wire order
+(`89` + nine uints):
+
+```
+spend_inputs, reference_inputs, outputs, required_observers,
+required_signers, mint, script_witnesses, address_witnesses, redeemers
+```
+
+Note the wire order places `script_witnesses` at position 6 and
+`address_witnesses` at position 7 (transposed relative to the record
+declaration); both twins already agree on this and MUST NOT change it.
+
+### 2.5 The nine committed fields
+
+Field indices are fixed and normative:
+
+| index | field                    | commitment slot                     |
+| ----- | ------------------------ | ----------------------------------- |
+| 0     | spend inputs             | `body.spend_inputs_hash`            |
+| 1     | reference inputs         | `body.reference_inputs_hash`        |
+| 2     | outputs                  | `body.outputs_hash`                 |
+| 3     | required observers       | `body.required_observers_hash`      |
+| 4     | required signers         | `body.required_signers_hash`        |
+| 5     | mint                     | `body.mint_hash`                    |
+| 6     | script witnesses         | `witness_set.script_tx_wits_hash`   |
+| 7     | address (vkey) witnesses | `witness_set.addr_tx_wits_hash`     |
+| 8     | redeemer witnesses       | `witness_set.redeemer_tx_wits_hash` |
+
+## 3. Transaction identity (unchanged derivation)
+
+The reversion changes the **definition and therefore the value** of the nine
+32-byte field hashes; it changes nothing about the shapes or the derivation
+order:
+
+- **Level 1 — witness-set hash:**
+  `witness_set_hash = blake2b_256(encode_native_tx_witness_set_compact(ws))`
+  over the §2.2 encoding.
+- **Level 2 — transaction id:**
+  `tx_id = blake2b_256("MidgardNativeTxBodyV1" ‖ uint(version) ‖ body_cbor)`
+  where `body_cbor` is the §2.1 encoding (domain string as raw ASCII bytes).
+- The full-transaction commitment (`"MidgardNativeTxFullV1"` domain) and the
+  proof-source commitment (`"MidgardNativeTxProofSourceV1"` domain, over
+  `83` followed by `bytes(compact_cbor)`,
+  `bytes(witness_set_compact_cbor)`, and
+  `bytes(field_preimage_lengths_cbor)`) keep their current forms.
+
+All fixtures and golden vectors that embed any of the nine hashes, the
+witness-set hash, or a tx-id regenerate under this document; none migrate.
+
+## 4. The nine field commitments
+
+For each field `i` in 0..8:
+
+```
+field_hash_i = blake2b_256(preimage_i)
+```
+
+**Plain hashing.** No domain tag, no version prefix, no field index in the
+hash input. The retired counted scheme's domains
+(`MidgardBoundedCollectionItemV1`, `MidgardBoundedCollectionCommitmentV1`,
+`MidgardBoundedItemChunkV1`, `MidgardBoundedItemCommitmentV1`,
+`MidgardValidationMerkle*V1`) are prohibited legacy surface.
+
+**Field identity is positional.** A field hash's meaning comes solely from
+its slot in `NativeTxBodyCompact` / `NativeTxWitnessSetCompact` (§2.5).
+Because fields 0/1 and 3/4 share item encoders, identical content aliases
+across those field pairs; this is an accepted consequence of plain hashing,
+made safe by the following invariant:
+
+> **Positional-identity invariant (normative).** Every rule that verifies a
+> preimage against a field hash MUST obtain the expected hash from the
+> committed compact structure in view (or from a value transitively
+> committed by the tx-id, e.g. a §8.6 certificate's redeemer-supplied
+> compact structures re-derived to the tx-id). Free-standing field-hash
+> arguments are prohibited in dispute entry points.
+
+## 5. The uniform enveloped preimage grammar
+
+### 5.1 Grammar (all nine fields)
+
+```
+preimage       = definite_array_header(N) ‖ wrapped_item_0 ‖ … ‖ wrapped_item_{N-1}
+wrapped_item_i = definite_bytes_header(len(enc_i)) ‖ enc_i
+```
+
+- `definite_array_header(N)`: `80+N` for N ≤ 23, `98 NN` for N ≤ 255,
+  `99 NNNN` for N ≤ 65,535 — minimal width, fail closed on wider forms.
+- `definite_bytes_header(L)`: `40+L` for L ≤ 23, `58 LL`, `59 LLLL` —
+  minimal width, fail closed.
+- An **empty field encodes as exactly `80`** — all nine fields, including
+  mint.
+- The per-item byte-string envelope applies to **all nine fields**. (Under
+  the retired scheme fields 6 and 8 concatenated raw item CBOR and field 5
+  hashed a raw map; those forms are prohibited. The envelope is what buys
+  O(1) top-level skips: one head decode plus a byte jump per item.)
+
+Decoders fail closed on any deviation: wrapper/length mismatch,
+non-minimal header, item count disagreeing with the walked content, or
+trailing bytes after item `N-1`.
+
+### 5.2 Item count
+
+`N` — the leading array header — is the **only** place a field's item count
+exists. It is mirrored nowhere: not in `NativeTxCompact`, not in
+`NativeTxFieldPreimageLengthsV1`. Count-consuming rules (count-fault
+variants, exact-count/order/dedup rules, input-set uniqueness) consume
+**reveal-derived counts**: they read `N` from the preimage after the
+(measured-free) hash check and, where the rule's semantics require it, walk
+the full field content.
+
+### 5.3 Per-field canonical item encodings
+
+| #   | field              | `enc_i`                                                                                                                                  | width       |
+| --- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 0   | spend inputs       | `82 ‖ 58 20 ‖ tx_id(32) ‖ 19 ‖ index_be16`                                                                                               | fixed 38 B  |
+| 1   | reference inputs   | same as field 0                                                                                                                          | fixed 38 B  |
+| 2   | outputs            | `encode_midgard_tx_output` (§5.5)                                                                                                        | variable    |
+| 3   | required observers | raw 28-byte hash                                                                                                                         | fixed 28 B  |
+| 4   | required signers   | raw 28-byte hash                                                                                                                         | fixed 28 B  |
+| 5   | mint               | `encode_mint_policy_item`: `82 ‖ 58 1C policy_id(28) ‖ map(k) ‖ assets` (§5.6)                                                           | variable    |
+| 6   | script witnesses   | `encode_midgard_versioned_script`: `82 ‖ uint(language_tag) ‖ bytes(script_bytes)`                                                       | variable    |
+| 7   | address witnesses  | `encode_midgard_address_witness`: `82 ‖ 58 20 vkey(32) ‖ 58 40 signature(64)`                                                            | fixed 101 B |
+| 8   | redeemer witnesses | `encode_midgard_redeemer_witness`: `84 ‖ uint(purpose_tag) ‖ uint(index) ‖ bytes(redeemer_cbor) ‖ 82 ‖ uint(ex_memory) ‖ uint(ex_steps)` | variable    |
+
+Item-level rules:
+
+- **Fields 0/1 — the fixed 3-byte output index.** The input's output index
+  is **always** encoded as the fixed 3-byte form `19 XXXX` (CBOR uint16
+  head, big-endian value 0–65,535), even for values 0–23. This is the sole
+  deliberately non-minimal encoding in the format. It makes every
+  spend/reference-input item exactly 38 bytes with wrapper `58 26`, giving
+  **stride 40** and pure arithmetic access:
+  `item_offset(i) = header_len + 40·i`, with `enc_i` at
+  `item_offset(i) + 2`. The fixed width picks a different canon; it does
+  not waive uniqueness — `18 XX`, minimal one-byte, and wider index forms
+  all reject.
+- **Fields 3/4 — asserted 28-byte width.** Every observer/signer item MUST
+  be exactly 28 bytes (wrapper `58 1C`, **stride 30**,
+  `item_offset(i) = header_len + 30·i`). Both encoder twins enforce the
+  width; decoders reject any other length.
+- **Field 7** items are structurally fixed at 101 bytes (wrapper `58 65`,
+  stride 103): the encoder asserts a 32-byte verification key and 64-byte
+  Ed25519 signature.
+- **Fields 2/5/6/8** are variable-width; top-level access is by enveloped
+  walk (one head decode + byte jump per skipped item). Their interior
+  encodings (`encode_midgard_tx_output`, mint policy items, versioned
+  scripts, redeemer witnesses) are unchanged from the current canonical
+  encoders except as §5.6 states for mint.
+- All integers other than the field-0/1 output index remain canonical
+  minimal CBOR.
+
+### 5.4 Field-level byte bounds
+
+- `maxTransactionAggregateFieldBytes = 32,768` (retained; owner ruling —
+  tightening it would be a capability change outside the reversion's
+  scope). No field preimage exceeds it; `maxSpendInputsPreimageBytes =
+32,768` equals it for field 0.
+- Admissible item cardinality per field is the minimum of the 16,384-item
+  consensus guardrail, the field's byte bound under this grammar (e.g.
+  fields 0/1: `header_len + 40·N ≤ 32,768` ⇒ N ≤ 819 at the preimage
+  bound), and any Cardano shape bound (spend inputs:
+  `maximum_cardano_spend_redeemer_count = 296`, the operative spend
+  maximum). Derived cardinality numbers are re-derived from this grammar,
+  never migrated from counted-era tables.
+
+### 5.5 Output items (field 2)
+
+`encode_midgard_tx_output` (unchanged): a definite CBOR map keyed `0..3` —
+`a2`/`a3`/`a4` by presence — with `0 → bytes(encode_midgard_address)`
+(raw Midgard address payload: 1 header byte ‖ 28-byte payment hash ‖
+optional 28-byte stake hash), `1 →` inline `encode_midgard_value`
+(`82 ‖ uint(lovelace) ‖ policy-asset map`), `2 → bytes(datum_cbor)` when an
+inline datum is present, `3 → encode_midgard_versioned_script` when a
+reference script is present. Within the Value's policy-asset map, policy
+groups and asset names appear in canonical key order (length-first, then
+byte-lexicographic compare), duplicates reject, and asset quantities are
+strictly positive; `datum_cbor` MUST satisfy the §6.2 canonicity
+predicate.
+
+### 5.6 Mint items (field 5)
+
+The field-5 preimage is the **enveloped list of per-policy items** under the
+§5.1 grammar — this replaces the retired raw-map `encode_mint_preimage`
+form. Each item is `encode_mint_policy_item`:
+`82 ‖ 58 1C policy_id ‖ map(k) ‖ asset entries`, where each asset entry is
+`bytes(asset_name ≤ 32) ‖ int(quantity ≠ 0)`. Policy items appear in
+canonical key order (length-first, then lexicographic byte compare), assets
+likewise within each policy; duplicates reject. An empty mint field encodes
+as `80` like every other field.
+
+## 6. Canonicality
+
+### 6.1 One valid byte form
+
+For every value in this format there is exactly one valid byte encoding, and
+decoders fail closed on all others. The field-0/1 fixed-width index (§5.3)
+picks a different canon — it does not create a second admissible spelling.
+
+### 6.2 Datum/redeemer canonicity predicate (L1 parity re-pin)
+
+The canonicity predicate for `datum_cbor` (output items) and
+`redeemer_cbor` (redeemer-witness items) is **membership in the image of
+the Plutus `serialiseData` builtin** — exactly the byte forms `serialiseData`
+emits and cardano-ledger's `decodeData` accepts. In particular, and
+overriding the retired Aiken-stdlib-v3.1.0 round-trip pin:
+
+- **canonical tag-2/3 bignums are canonical-acceptable**: integers with
+  `|i| ≥ 2⁶⁴`, minimal magnitude ≥ 9 bytes, no leading zero, 64-byte
+  chunking for long magnitudes; and
+- **tag-102 constructor encodings are canonical-acceptable**:
+  `d8 66 82 ‖ uint(alternative) ‖ args-list` for alternatives ≥ 128, with a
+  minimal uint64 alternative.
+
+The remaining grammar rows are unchanged: minimal integer heads below 2⁶⁴;
+definite byte strings ≤ 64 bytes, indefinite 64-byte chunking above;
+non-empty lists and constructor argument lists indefinite (`9f … ff`), empty
+exactly `80`; **maps definite-length** with entry order preserved; constr
+tags `d8 79+alt` (0–6) / `d9 0500+alt−7` (7–127) / tag 102 (≥ 128); exactly
+one item consuming exactly the declared bytes; no text, simple, float, or
+other tags. Any deviation is non-canonical and rejects (or is faultable at
+dispute time).
+
+## 7. Access invariants (normative for every consumer)
+
+Every consumer of the nine field commitments — dispute machine, proof
+families, watcher, builders — observes:
+
+1. **Authenticate-once, lazy per-field.** A consumer's first touch of field
+   `i` verifies `blake2b_256` over the full preimage against the
+   positionally-extracted `field_hash_i`; untouched fields are never
+   authenticated. Post-authentication access is offset-and-slice against
+   the authenticated bytes.
+2. **No offset table in the format.** Item boundaries are walk-derived (or
+   arithmetic, for fixed-stride fields) from the authenticated bytes
+   themselves; there is no second committed data structure to trust or
+   dispute.
+3. **Abort, never clamp.** An item accessor MUST fail unless
+   `0 ≤ i < N` and the item's full byte range lies within the preimage
+   length. Slice-primitive clamping must never reach a caller — two
+   clamped out-of-range reads are byte-equal and would fabricate equality
+   evidence from a valid block.
+4. **Count consistency at view construction.** For fixed-stride fields,
+   `header_len + stride·N == total_length` MUST hold (from the
+   authenticated header in tiers 1–2; against the mint-verified certificate
+   `total_length` in tier 3).
+5. **Positional identity** (§4): expected hashes only via positional
+   extraction from committed structures.
+6. **Positions, not bytes**, in any resumable state: checkpoints carry
+   offsets, indices, fixed-width scalars, and 32-byte digests — never
+   verbatim preimage content.
+
+## 8. Field-preimage carriage (three tiers)
+
+How preimage bytes reach a consuming (dispute) transaction. The tiering is
+mandated simplest-fitting-first (GOAL_SPEC §3.2): the direct and
+single-reference paths stay enabled wherever they fit, and the bounded
+fallback never becomes mandatory complexity for ordinary proofs. Certification
+exists only where flat hashing cannot otherwise authenticate a partial read.
+
+### 8.1 Tier 1 — redeemer carriage
+
+If the preimage fits the consuming transaction's byte budget
+(§8.3 `maxTier1RedeemerPreimageBytes`), the step carries the preimage bytes
+in its own redeemer, hashes them against the positionally-extracted field
+hash, and slices in place. No UTxO, no certificate.
+
+### 8.2 Tier 2 — single raw UTxO
+
+If the preimage fits one publication transaction (`preimage_len ≤ K`), it is
+published once as a **nothing-but-bytes inline datum** in a single output at
+the prover's own key address. Each consuming step references that output,
+hashes the whole preimage against the committed field hash (measured free at
+≤ 32 KB), and slices. No certificate — the flat hash is directly checkable.
+
+### 8.3 Constants
+
+| constant                            | value              | status          |
+| ----------------------------------- | ------------------ | --------------- |
+| `K` (chunk size / tier-2 bound)     | **15,900 bytes**   | **provisional** |
+| `maxTier1RedeemerPreimageBytes`     | **14,336 bytes**   | **provisional** |
+| `maxTransactionAggregateFieldBytes` | 32,768 bytes       | retained        |
+| maximum tier-3 chunk count          | `⌈32,768 / K⌉ = 3` | derived         |
+
+Basis (both provisional values are **provisional-pending-Phase-4
+measurement**; falsification is an erratum to this table, §Status):
+
+- **K = 15,900** — the #556 measured basis (prototype bench
+  `proto-556-flat-dispute-bench-v1`, 2026-08-06) exercised the maximal
+  two-chunk reconstruction at exactly this split: 15,900 + 484 = 16,384
+  bytes = the L1 `maxTxSize` envelope, i.e. per-publication capacity of
+  `maxTxSize` minus 484 bytes of publication-transaction overhead
+  (~15.9 KB working figure carried through #558). The certification
+  transaction re-carries no bytes, so it does not constrain K.
+- **maxTier1RedeemerPreimageBytes = 14,336** — `maxTxSize` (16,384) minus a
+  2,048-byte step-machinery allowance, the ~2 KB fixed per-step overhead
+  (thread continuity, control datum, script context) observed across the
+  #556-basis step-envelope analyses. Phase 4 re-measures the real step
+  transaction at the final grammar and re-pins.
+
+Execution-fit for any carriage-dependent path is judged at the single
+declared budget basis of GOAL_SPEC §3.3: 13,200,000 memory units.
+
+### 8.4 Tier 3 — chunked + certified digest-manifest
+
+For `preimage_len > K`: raw chunks at the prover's key address plus one
+small certified digest-manifest UTxO at script custody — the only tier with
+on-chain certification, because it is the only place per-chunk verification
+against a flat hash is otherwise impossible.
+
+**Deterministic split rule.** Chunk `j` = bytes `[j·K, (j+1)·K)`; the last
+chunk is ragged; minimum-necessary chunks by construction. Determinism makes
+independent publishers byte-compatible: identical chunks, identical digest
+vectors, interchangeable certificates — anyone's republication heals
+anyone's certificate.
+
+### 8.5 Custody
+
+- **Raw carriage (tiers 2–3) is unauthenticated data.** No consumer trusts
+  provenance; content is verified by hash at consumption — wrong bytes
+  simply fail. Raw chunk/preimage UTxOs live at the prover's own key
+  address, ada-only, min-Ada reclaimed by ordinary key spend. Carriage
+  UTxOs live under a signer whose UTxO set is managed exclusively by the
+  fault-proof tooling; step builders exclude them from inputs and
+  collateral.
+- **The certificate is authenticated data**: minting policy validates
+  content at mint, the token lands at the script address, and spending
+  requires burning the token plus the owner's signature.
+
+### 8.6 `FieldPreimageCertificateV1`
+
+```
+FieldPreimageCertificateV1 {
+  owner: VerificationKeyHash,        -- min-Ada reclaim authority, set by minter
+  tx_id: ByteArray,                  -- the L2 tx's id (32 B)
+  field_index: Int,                  -- 0..8
+  total_length: Int,                 -- preimage byte length (ragged-last + offset math)
+  chunk_digests: List<ByteArray>,    -- blake2b-256 per chunk, in order;
+                                     --   length = ceil(total_length / K)
+}
+```
+
+**Mint (certification).** The certification redeemer carries `compact_cbor`
+(and `witness_set_compact_cbor`). The policy re-derives the tx-id through
+the unchanged §3 derivation, extracts the expected field hash positionally
+from the supplied structures (satisfying §4 via the
+transitively-committed-by-tx-id clause), verifies
+`blake2b_256(chunk_0 ‖ … ‖ chunk_{n-1})` over the redeemer-ordered
+referenced raw chunks against that hash, and checks `total_length` and every
+per-chunk digest against the actual bytes. Order is supplied by the
+redeemer's reference-input indices and verified in one shot; per-chunk
+authentication at certification time is unnecessary.
+
+**Token.** Quantity 1; deterministic asset name derived from
+`(tx_id, field_index)` for indexer discovery. Duplicate certificates are
+permitted and harmless — each is independently sound.
+
+**One multi-handler validator.** The same script carries the `mint` and
+`spend` handlers, so the policy id and the spend credential are one script
+hash — mint sends to its own address; spend burns its own policy plus owner
+signature. No external reference-script bootstrap, no cyclic dependency.
+
+**Consumption.** A certificate serves any step, thread, or game disputing
+the same transaction, indefinitely; it is game-, block-, and
+source-agnostic. A consuming step matches the certificate's
+`(tx_id, field_index)` only against **authenticated** sources (the thread's
+already-authenticated disputed transaction) — never redeemer-supplied
+identity. Post-certification single-chunk access authenticates at O(one
+chunk hash) against the digest vector (worst case two chunk hashes on a
+straddling item); `count` derives from the mint-verified `total_length`
+with no chunk hash spent.
+
+### 8.7 Publisher, funding, reuse, cleanup
+
+Publication and certification are **permissionless** — the policy checks
+content, never identity; in practice the challenger publishes. Cleanup is
+owner-discretionary; no forced cleanup, no time-locks. A mid-game yank (raw
+chunk spend or certificate burn) is self-healing: republish identical bytes
+anywhere and/or re-certify from raws; worst case is fees and delay.
+**Content addressing is mandatory**: carriage is identified by digests,
+never by `OutputReference` — nothing in the dispute machine may reference
+carriage by UTxO identity.
+
+### 8.8 Carriage wire types (consumers outside the validation machine)
+
+The single access door (`authenticated_field_view` in the lib-level
+field-access module) speaks all three tiers through frozen sum types.
+**Constructor order is frozen consensus wire format** (Constr tags 0/1/2);
+off-chain builders emit exactly these tags:
+
+```aiken
+pub type FieldCarriageV1 {
+  Inline { preimage: ByteArray }                                              // tier 1
+  RawUtxo { ref_input_index: Int }                                            // tier 2
+  Certified { cert_ref_input_index: Int, chunk_ref_input_indices: List<Int> } // tier 3
+}
+
+pub type FieldViewV1 {
+  Whole { bytes: ByteArray, count: Int, stride: Int }                         // tiers 1–2
+  Chunked { chunks: List<ByteArray>, chunk_digests: List<ByteArray>,
+            count: Int, stride: Int }                                         // tier 3
+}
+```
+
+Tier-3 chunk lists are all-chunks-positional: element `k` is the
+reference-input index of chunk `k` (≤ 3 chunks under §8.3). Reference-input
+indexing is positional (redeemer-supplied indices). The §7 invariants
+(abort-never-clamp, count consistency, positional identity) are normative
+for the door and every accessor built on it.
+
+### 8.9 Relationship to adjacent machinery
+
+The MPF proof-chunk carriage (issue #545 idiom) remains a parallel
+convention with separate types; MPF trie roots, DA payload framing, and the
+`mpf-chunked-verify` validators are not field commitments and are untouched
+by this document. The counted-era carriage constants
+(`maxTransactionFieldChunkBytes = 4,095`,
+`maxSinglePublicationCompleteItemBytes = 14,396`) are superseded by §8.3 and
+are prohibited in new surface.
+
+## 9. Conformance
+
+1. Aiken and TypeScript twins emit byte-identical preimages, compact
+   encodings, and hashes for every value in this document's domain; shared
+   golden vectors pin every field including the empty (`80`) case, the
+   fixed-index boundary values (0, 23, 24, 255, 256, 65,535), the 28-byte
+   width assertion, mint policy/asset ordering, and the §6.2 acceptance
+   boundaries (2⁶⁴ ± 1 bignums, constructor alternatives 127/128).
+2. Decoders are fail-closed everywhere: non-minimal heads (outside the
+   pinned fixed-width index), wrapper/length mismatches, count/length
+   inconsistency, trailing bytes, non-canonical datum/redeemer payloads,
+   and any retired counted-scheme surface all reject.
+3. Negative-vector suites cover the §7 invariants: out-of-range index,
+   straddling-item reads, short/empty-slice equality attempts, certificate
+   `(tx_id, field_index)` mismatch, count/total_length inconsistency, and
+   wrong-field carriage.

@@ -438,6 +438,40 @@
 
 ## Decisions
 
+- 2026-08-08, **OWNER AMENDMENT — flat field-hash reversion bound at scheme
+  altitude; `docs/spec/` authority layer established (Philip DiSarro, via
+  the #552 map resolutions, executed by the Phase-0 lane per #565/#566).**
+  The nine compact-tx per-field commitments are flat blake2b-256 over
+  canonical enveloped field-preimage bytes. The format is defined once in
+  the new implementation-normative authority `docs/spec/midgard-tx.md`
+  (first document of `docs/spec/`; authority rule in `docs/spec/README.md`:
+  wins over `technical-spec/` on concrete detail); rationale in
+  `docs/midgard/decisions/0004-compact-tx-flat-field-hash-reversion.md`
+  (survey + 19–36x node-side benchmark + #556 dispute-cost measurements;
+  decision trail via map #552). GOAL_SPEC edits, all scheme-altitude:
+  §0 amendment note, §1 authority list (new item 3, technical-spec now
+  item 9), §3.1(2) offset-and-slice fallback vocabulary, §3.2 ladder
+  re-derived as the three named carriage tiers, §3.3 basis note declaring
+  the single 13,200,000-mem execution-budget basis (20% off live mainnet
+  `maxTxExUnits` 16.5M, epoch 648), §8.2 preamble + C21/CG2 rows, §9.1
+  output 3, §9.2 Q00, §10.3 W27, §12 (first-ever §12 edit, acknowledged
+  in place: AC-Q12/AC-C20/AC-C21 rebound without weakening), §13.2 item
+  pointer, §13.3 evidence enumeration. **Provisional pins in the spec
+  doc (pending Phase-4 measurement; falsification = erratum):**
+  K = 15,900 bytes (the #556 case-3 measured two-chunk split
+  15,900 + 484 = 16,384) and tier-1 redeemer-carriage bound =
+  14,336 bytes (`maxTxSize` − 2,048-byte step-machinery allowance from
+  the #556-basis step-envelope analyses); tier-3 worst case 3 chunks at
+  the retained 32,768-byte aggregate cap. **Deliberate non-edits:**
+  §3.1(5)/Q58 DA framing, MPF trie roots/`mpf-chunked-verify`, §3.3
+  thresholds. **Superseded-not-deleted (§3 invariant 14):** counted-scheme
+  evidence rows keep their text as provenance — 36 F05 manifest rows
+  (Q00, Q10–Q22, Q31, C20-0–C20-8, C21–C26, C29–C33, W27) now lead with a
+  COUNTED-SCHEME SURFACE SUPERSEDED anchor; the task-queue/validation
+  ledger counted measurements and the Q1x Q10/Q11 output-5 cells are
+  covered by the Phase-0 supersession section at the end of this file
+  (the Q1x cells stay OPEN for the #563 re-measurement, per #559). Gates
+  green after the edit: F05 manifest quality gate 186/186, 0 defects.
 - 2026-08-01, **OWNER AMENDMENT — the self-referential hash bookkeeping is
   deleted (Philip DiSarro, in session).** The owner challenged whether the
   hash machinery around `GOAL_SPEC.md` and the evidence artifacts had ever
@@ -1225,6 +1259,7 @@
 | F40/F41 verification-plan and closure-foundation self-checks                                                                                                                                                                                                                            | HEAD `7a952e99` plus worktree; 8 exact package scripts; 46-command serial plan; 2 one-selector guarded Aiken runs; 35 exact AC entries; 12 protected paths                                                                                                                                                      | IN_PROGRESS and fail closed; plan, seven hostile decoder mutations, and in-progress schema/hash verification pass. Unarmed testnet invocation exits nonzero before local or live work, and release verification exits nonzero because revision/bindings/commands/criteria/secrets/digest are incomplete. No open status is promoted.                                                                                       | plan verifier PASS; closure self-test 7/7; closure schema/hash verifier PASS; testnet guard exit 1; release guard exit 1                                                                                  |
 | Checkpoint-1 journey replay with operator-schedule advancement assertion                                                                                                                                                                                                                 | HEAD `4acf6821` plus 2026-07-29 worktree; pinned Node `22.22.2`/pnpm `9.15.9`; exact named emulator selector; disposable `midgard_test` PostgreSQL schema recreated after the first attempt correctly rejected its stale pre-goal checksum; 360-second hard timeout                                                                                                               | PASS. The journey starts from `INITIAL_SCHEDULER_DATUM`, proves the first real commit changes the scheduler and appoints the fixture operator, then completes reference-script publication, operator registration/activation, deposit ingestion, a signed canonical L2 transfer, commit/confirmation/recovery/merge cycles, withdrawal discovery/commit/merge, scheduler rewind, reserve funding, and payout conclusion. The corrected run remained live and exited normally. | Exact named emulator test 1/1; 12 intentionally skipped; 199.31 s test body / 202.04 s process; exit 0.                                                                                                   |
 | Checkpoint-1 post-journey trace and strict node compilation replay                                                                                                                                                                                                                       | HEAD `4acf6821` plus 2026-07-29 worktree; pinned Node `22.22.2`/pnpm `9.15.9`; transition-trace focused suite and node package typecheck                                                                                                                                                                                                                                      | PASS after one fail-closed repair. The first typecheck identified that the `reconcile da-attested` CLI path requested only the database layer even though canonical L1 evidence requires `Lucid` and `MidgardContracts`; routing it through the existing database/transaction service provider restores the exact runtime dependency boundary.                                                                                                                         | Transition trace 20/20 in 2.47 s; repaired typecheck exit 0 in 29.68 s.                                                                                                                                   |
+| Flat-reversion Phase 0 gate reruns (2026-08-08): `node demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs`; `…-fault-proof-reconciliation.mjs`; `…-status-role-control.mjs`; `…-cg4-fund-safety-classification-gate.mjs`; `…-capability-reconciliation.mjs`                     | HEAD `b6e600f6` plus the Phase-0 worktree (GOAL_SPEC.md, GOAL_PROGRESS.md, the F05 manifest, `docs/spec/`, `docs/midgard/decisions/0004`); Aiken `v1.1.23+6d14ab2` fork per the owner rule                                                                                                                                                                                     | PASS on all five, run after the F05 edit per that row's self-invalidation trigger. No gate state moved: CG2/QG1/IG2 remain open exactly as before the amendment, which is the expected signature of a docs-and-manifest-only change. Known pre-existing red, NOT introduced here and unchanged on the pristine tree: `…-goal-task-manifest-quality-self-test.mjs` fails its seeded F41-drop assertion because F41's queue promotion made that defect undetectable — ticketed to the F40/F41 lane. | manifest quality 186/186 rows, 0 defects; fault-proof reconciliation 70 rows / 49 open; status-role control PASS (3 decorated rows, 6 dependents); CG4 exit 0; capability reconciliation 22 P2 tasks, 17 pass, 115/115 manifest-declared Aiken selectors across 12 modules in one batched invocation, 71.5 s, 0 excluded |
 
 | IG1 dependent-pin cascade completed for the Option A blueprint (2026-08-01) | CI-equivalent committed-tree blueprint `ea4bceeb…` (368 validators, built in the isolated worktree at `b7cacd85`, the last commit touching `onchain/aiken/`) installed locally; production `buildFaultProofContracts` compared against the Aiken resolver fixture | **21 applied semantic-resolver hashes moved and are rebound.** Option A and VM-DEFECT-7 both edit `validation-machine-v1.ak`, which every dispute validator compiles in, so the applied hashes of the `phase_a_script_precondition_resolvers` pair and 19 of the 28 `script_source_resolvers` shifted. `onchain/aiken/lib/midgard/validation-resolver-v1.test.ak` carried the pre-change values; each was replaced with the value the production builder derives from the CI-equivalent blueprint (old→new mapping computed programmatically, not by hand). The 8 unchanged entries were left untouched, which is the expected signature of a shared-module change rather than a wholesale regeneration. | SDK `validation-resolver-applied-hashes` 1/1 and the full SDK package 118/118 (24 files) pass against the CI-equivalent blueprint under pinned Node 22.22.2 — this was the Midgard Node CI failure at `248777a0`. Aiken-side execution of the fixture module remains pending the Aiken-CI decision below. Earlier local SDK replays that reported green used the overlay blueprint and did not cover this suite; committed-tree blueprint parity is now the standing rule for pin verification. |
 | EVIDENCE-CIRCULARITY defect found and fixed (2026-08-01) | Repeated Evidence Integrity CI failures on `authority result content tree is stale` across three consecutive heads, each after a correct-looking rebind | **The two evidence gates were mutually unsatisfiable.** `canonical-v1-goal-closure-v1.json` binds the sha256 of `canonical-v1-watcher-dependency-map-v1.json` in `fixtureSets`, while the map binds `authority.resultContentTreeSha256` over an index that *included* the closure manifest. Rebinding either invalidated the other, with no fixpoint: each round changed 64 hex characters on both sides. This is why the local closure gate was already red at session start and why three successive tree rebinds each went stale before the commit landed. | Fixed structurally by adding the closure manifest to `contentTreeExclusions` in both the verifier and the map's declared list, joining `GOAL_PROGRESS.md` and the map itself — the existing design already excludes evidence artifacts that describe the tree from the tree they describe. **Nothing is weakened:** the closure manifest keeps its own verifier, schema, and self-test, and still binds the map. Both gates now pass simultaneously for the first time in this branch's history (dependency map 8 classes, closure `current-tree-valid`, verifier node:test 19/19, closure self-test exit 0). |
@@ -6682,3 +6717,94 @@ harvest the next non-ABI ready set (F40 continuation after the
 branch-name ruling; W-family after re-scoping W27 post-amendment);
 fire the reversion Phase-1 lane the moment the GOAL_SPEC amendment
 lands.
+
+## Flat reversion Phase 0: spec authority, GOAL_SPEC amendment, decision record, F05 supersession (2026-08-08)
+
+Executed per issue #566 (Phase 0 of spec #565; decision trail: map #552).
+All four deliverables landed in one coherent checkpoint on this branch:
+
+- **`docs/spec/` authority layer established.** `docs/spec/README.md`
+  states the authority rule (component specs win over `technical-spec/`
+  on concrete detail; GOAL_SPEC binds by reference at scheme altitude;
+  decisions records carry rationale only). `docs/spec/midgard-tx.md` is
+  the first document: MidgardTx compact types and canonical encodings,
+  unchanged two-level tx-id derivation, the nine flat blake2b-256 field
+  commitments (plain hashing, positional identity), the uniform enveloped
+  preimage grammar (counts only in the preimage header; empty field =
+  `80`; per-item byte-string envelope on all nine fields including the
+  newly enveloped 5/6/8), fixed 3-byte output index giving 38-byte
+  spend/reference-input items at stride 40 with arithmetic access,
+  asserted 28-byte observer/signer items at stride 30, the §6.2 datum
+  canonicity re-pin to `serialiseData`'s image (#564: tag-2/3 bignums and
+  tag-102 constrs canonical-acceptable), the normative access invariants
+  (authenticate-once, abort-never-clamp, count consistency), and the
+  three-tier carriage convention with `FieldPreimageCertificateV1` and
+  the frozen `FieldCarriageV1`/`FieldViewV1` wire types.
+- **Provisional pins (provisional-pending-Phase-4-measurement,
+  falsification = amendment-level erratum):** K = 15,900 bytes — the
+  #556 case-3 measured basis (maximal two-chunk reconstruction at the
+  exact 15,900 + 484 = 16,384 split; publication capacity = `maxTxSize`
+  − 484 B measured publication overhead); tier-1 redeemer-carriage bound
+  = 14,336 bytes (`maxTxSize` − 2,048 B step-machinery allowance, the
+  ~2 KB fixed per-step overhead carried through the #556-basis
+  step-envelope analyses on #557). Tier-3 worst case is 3 chunks at the
+  retained 32,768-byte aggregate cap.
+- **GOAL_SPEC amended at scheme altitude** — touch-point list and the
+  first-ever §12 edit acknowledged in the §0 amendment note and the
+  2026-08-08 Decisions bullet above; the §3.3 basis note declares the
+  single 13,200,000-mem execution-budget basis (20% off live mainnet
+  `maxTxExUnits` 16,500,000, verified epoch 648).
+- **`docs/midgard/decisions/0004-compact-tx-flat-field-hash-reversion.md`**
+  records rationale only (survey `docs/research/l2-tx-commitment-survey-2026-08-06.md`;
+  19–36x / ~760 µs node-side benchmark; #556 split verdict; revert-now
+  timing and the Aug-28 owner override) and points at the spec doc for
+  every format fact.
+- **F05 manifest re-scoped (invariant 14).** 36 rows now lead
+  `sourceAnchors` with the COUNTED-SCHEME SURFACE SUPERSEDED note (Q00,
+  Q10–Q22, Q31, C20-0–C20-8, C21–C26, C29–C33, W27 — the C-row set
+  matching the #561 resolution's C21–C26/C29–C33 enumeration; W27's
+  counted 8,273/8,274-byte carriage prescription was already flagged
+  deferred at the quiesce); superseded text retained verbatim below each
+  note as provenance; `lastUpdated` 2026-08-08. Per F05's
+  self-invalidation trigger the full quality gate was rerun after the
+  edit:
+  `node demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs`
+  → PASS, 186/186 rows, 0 defects. Also rerun green on the edited
+  trio (this file, GOAL_SPEC.md, the manifest):
+  `verify-canonical-v1-fault-proof-reconciliation.mjs` (70 rows, 49
+  open), `verify-canonical-v1-status-role-control.mjs` (PASS), and the
+  CG4 gate (exit 0, pre-existing BLOCKED states unchanged). Known
+  pre-existing red, not introduced here: the manifest quality gate's
+  *self-test* (`verify-canonical-v1-goal-task-manifest-quality-self-test.mjs`)
+  fails on the pristine tree too — its seeded F41-drop defect is no
+  longer detectable after F41's queue promotion; ticket it to the F40/F41
+  lane.
+
+**Supersession statement (§3 invariant 14) — counted-scheme evidence
+rows.** This section supersedes, wherever they record counted
+bounded-collection/Merkle/chunk commitments, frontier-and-siblings
+witness vectors, counted carriage frontiers (8,273 / 13,282 / 14,396 /
+4,095), or counted-scheme invalidation triggers: the task-queue rows
+C20-0–C20-8, C21–C26, and Q13; the validation-ledger rows "C21 maximum
+general-field bounded-chunk auxiliary" and "C26 unary Plutus Data depth
+boundary"; and the C29–C33-premised counted-scheme cells tracked through
+the quiesced B06/B07 lanes. Nothing is deleted or hollowed out: every
+row keeps its text and its historical PASS standing as provenance; what
+is withdrawn is only its forward evidentiary force for the flat format,
+which Phases 1–8 of #563 re-derive against `docs/spec/midgard-tx.md` at
+the 13.2M-mem basis. The Q1x artifact's Q10/Q11 output-5 cells and
+finding Q1X-F6 are deliberately NOT superseded here: per #559 they stay
+OPEN under the verifier's derived-cell rules until the Phase-7
+re-measured lifecycle lands — the artifact, not the issue, is the honest
+gate. MPF trie roots, DA payload framing, `mpf-chunked-verify`, and
+block-level header/event roots are out of reversion scope and keep full
+evidentiary force.
+
+## Superseding current next action (2026-08-08, Phase 0 landed)
+
+The GOAL_SPEC amendment is landed: the #562 quiesce condition is
+satisfied and the reversion trunk is open. Fire the Phase-1 lane (core
+scheme swap, serialized on the shared Aiken lib surface) per the #563
+phase order; B-series re-anchoring comments (#561 decision 4) may post
+in parallel, each citing `docs/spec/midgard-tx.md` as the format
+authority.

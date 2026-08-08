@@ -15,6 +15,27 @@
   program's history, produced six divergent recorded hashes and fifteen
   rebinding commits, and left the capability-reconciliation gate failing on
   a stale copy of its own bookkeeping.)
+- **Owner amendment 2026-08-08 (flat field-hash reversion, scheme
+  altitude):** the nine compact-tx per-field commitments are flat
+  blake2b-256 hashes over canonical enveloped field-preimage bytes, defined
+  normatively in `docs/spec/midgard-tx.md` and bound here by reference at
+  scheme altitude — scheme names in this file, primitives in that document;
+  primitive-level corrections to it are errata and do not reopen §12
+  acceptance criteria. This amendment edits §1, §3.1(2), §3.2, §3.3 (basis
+  note), §8.2 (preamble and the C21/CG2 rows), §9.1 output 3, §9.2 Q00,
+  §10.3 W27, §12, §13.2 (renumbered §1 item pointer), and §13.3. It is the
+  first amendment to touch §12 itself: AC-Q12, AC-C20, and AC-C21
+  named the retired counted/typed-root scheme, and criteria stability yields
+  to scheme truth. Deliberate non-edits, stated to prevent scope creep:
+  §3.1(5)/Q58 DA payload framing, MPF trie roots and `mpf-chunked-verify`,
+  and the §3.3 thresholds themselves — all out of reversion scope; the §3.3
+  thresholds continue to govern every reversion measurement.
+  Counted-scheme evidence rows (the C21–C26 and C29–C33 cells) are
+  superseded-not-deleted per §3 invariant 14, with dispositions ledgered in
+  `GOAL_PROGRESS.md`; the Q1x artifact's Q10/Q11 output-5 cells are not
+  superseded — they stay OPEN under the verifier's derived-cell rules until
+  the sequencing re-measurement lands, because the artifact, not the issue,
+  is the honest gate. Rationale: `docs/midgard/decisions/0004`.
 
 This document is the complete and authoritative execution specification for
 one repository Goal with three inseparable outcomes:
@@ -96,24 +117,33 @@ dependency order, task granularity, and completion decision.
 
 1. `GOAL_SPEC.md`.
 2. `docs/midgard/decisions/0001-cardano-l1-transaction-capability-floor.md`.
-3. `docs/consensus-profile-v1.md` and the exact compiled canonical V1 profile.
-4. `docs/exec-plans/cardano-capability-proof-completion.md`.
-5. `docs/exec-plans/cardano-capability-p2-closure-matrix-2026-07-26.md`.
-6. `docs/fault-proofs/execution-plan.md`,
+3. `docs/spec/midgard-tx.md` — the implementation-normative format authority
+   for the MidgardTx type, canonical encoding, the nine flat field
+   commitments, the enveloped preimage grammar, and the field-preimage
+   carriage convention. Per `docs/spec/README.md`, a `docs/spec/` component
+   specification wins over the technical specification on concrete detail.
+4. `docs/consensus-profile-v1.md` and the exact compiled canonical V1 profile.
+5. `docs/exec-plans/cardano-capability-proof-completion.md`.
+6. `docs/exec-plans/cardano-capability-p2-closure-matrix-2026-07-26.md`.
+7. `docs/fault-proofs/execution-plan.md`,
    `docs/fault-proofs/coverage-matrix.md`, and
    `docs/fault-proofs/catalogue-status.md`.
-7. `demo/midgard-watcher/midgard-watcher-architecture.md` and
+8. `demo/midgard-watcher/midgard-watcher-architecture.md` and
    `demo/midgard-watcher/watcher-plan-adversarial-review.md`.
-8. The normative technical specification: `technical-spec/`, entry point
+9. The normative technical specification: `technical-spec/`, entry point
    `technical-spec/midgard.tex`, built into `technical-spec/midgard.pdf` by
    the root `make spec` target.
-9. Current source, generated validators, and tests as implementation evidence.
+10. Current source, generated validators, and tests as implementation
+    evidence.
 
 Precedence by claim type:
 
 - **Protocol semantics and on-chain rules:** the normative technical
-  specification and the accepted decision/plan documents (items 2–7), with
-  current deployed source as implementation evidence, in that order.
+  specification and the accepted decision/plan/component-spec documents
+  (items 2–8), with current deployed source as implementation evidence, in
+  that order. On concrete format detail covered by a `docs/spec/` component
+  specification (item 3), that specification wins over the technical
+  specification; divergences are technical-spec errata.
 - **Execution scope, task granularity, dependency order, evidence
   obligations, and the completion decision:** this file (item 1).
 - **Implementation status:** current source plus executable final-tree
@@ -351,9 +381,12 @@ resolves them as follows so parallel tasks do not select incompatible designs:
    policy/asset identity, map key/value identity, child order, counts, and
    terminal summaries are preserved. The complete canonical Value or Data is
    accepted directly or through an authenticated inline-datum input/reference
-   input whenever the applied path fits. Authenticated incremental folds are a
-   fallback only where the necessity gate in §3.2 proves they are required. No
-   flattened, lossy, or round-number substitute is allowed.
+   input whenever the applied path fits. Authenticated offset-and-slice
+   access over the flat-committed field preimage — the resumable walk, the
+   Value bookmark, and the Canonical-Data Acceptor per
+   `docs/spec/midgard-tx.md` — is a fallback only where the necessity gate
+   in §3.2 proves it is required. No flattened, lossy, or round-number
+   substitute is allowed.
 3. **Duplicate vkey hashes are noncanonical and reject.** Signer and witness
    collections use the sole canonical V1 encoding and strict ordering/dedup
    semantics on-chain and off-chain.
@@ -430,18 +463,30 @@ to construct chunk proofs, offsets, fold controls, or incremental state by
 hand merely because an exceptional maximum shape may require them.
 
 For each proof item, builders and validators use the simplest authenticated
-representation that fits, in this order:
+representation that fits, in this order (the three carriage tiers are
+defined normatively in `docs/spec/midgard-tx.md`):
 
-1. carry the complete item directly in the proof transaction;
-2. publish the complete item as an inline datum in a dedicated authenticated
-   output, then consume or reference that output from the proof transaction;
-3. when one publication transaction cannot carry the complete item, accept the
-   same complete logical item at the public API and transparently publish it
-   across the minimum necessary ordered, commitment-bound inline-datum outputs
-   for later input/reference-input use; and
+1. **Tier 1 — redeemer carriage:** carry the complete item or field preimage
+   directly in the proof transaction, verified in place against its flat
+   commitment;
+2. **Tier 2 — single raw UTxO:** publish the complete preimage once as a
+   nothing-but-bytes inline datum in a single dedicated output, then
+   consume or reference that output from the proof transaction, verifying
+   the whole preimage against its flat commitment;
+3. **Tier 3 — chunked + certified digest-manifest:** when one publication
+   transaction cannot carry the complete preimage, accept the same complete
+   logical item at the public API and transparently publish it as
+   deterministic fixed-size chunks plus one certified digest-manifest bound
+   to the disputed transaction's committed identity, for later
+   reference-input use; and
 4. introduce stateful chunk-by-chunk or incremental on-chain traversal only
    when complete logical reconstruction and verification from those referenced
    outputs still cannot fit the execution or other live protocol limits.
+
+Both tiered representations of the same item authenticate the same flat
+commitment; the tiering keeps the simplest fitting path enabled wherever it
+fits and never turns the bounded fallback into mandatory complexity for
+ordinary proofs.
 
 `maxTxSize` applies to the complete serialized publication or proof
 transaction. The full inline datum of an already-created input/reference input
@@ -489,7 +534,15 @@ are:
    below the deployment's measured `maxTxSize`.
 2. **Execution fit:** execution memory and CPU are at or below the
    deployment's measured protocol limits with at least a 20% reserve
-   (`docs/consensus-profile-v1.md` §10).
+   (`docs/consensus-profile-v1.md` §10). *Basis note (owner amendment
+   2026-08-08):* every flat-reversion measurement is judged against one
+   declared execution-budget basis of **13,200,000 memory units** — the 20%
+   reserve off the live Cardano mainnet `maxTxExUnits` memory cap of
+   16,500,000, verified at epoch 648 — never the 11,200,000 figure earlier
+   benches derived from the stale Conway 14,000,000 cap. No prior
+   measurement verdict flips under the declared basis; the single basis
+   exists so every re-measured PASS/FAIL is comparable and none is ambiguous
+   by a 2M-unit basis gap.
 3. **Maturity fit:** the complete measured worst-case correction path — DA
    fetch, evidence construction, every proof step including 32 interactive
    rounds where applicable, settlement, L1 confirmations, retries, rollback
@@ -747,13 +800,13 @@ shape rather than retrofitting it later.
 ### 8.2 P2 proof-item capability tasks
 
 Each task must prove retained normal and forced sources, exact typed
-count/length, complete-item direct or inline-datum input/reference-input
-carriage wherever that path fits, exhaustive TypeScript terminal, Aiken
-terminal agreement, accepted Cardano maximum, and immediately adjacent
-rejection where Cardano defines a boundary. Multi-output, chunked, or
-incremental evidence is required only for a family with a §3.2 necessity
-artifact, and must coexist with the complete-item path for ordinary fitting
-items.
+count/length, complete-item tier-1 direct or tier-2 single raw-UTxO
+reference carriage (§3.2) wherever that path fits, exhaustive TypeScript
+terminal, Aiken terminal agreement, accepted Cardano maximum, and
+immediately adjacent rejection where Cardano defines a boundary. Tier-3
+chunked or incremental evidence is required only for a family with a §3.2
+necessity artifact, and must coexist with the complete-item path for
+ordinary fitting items.
 
 #### Ordered fields
 
@@ -773,7 +826,7 @@ items.
 
 | ID  | Family                                      | Depends on   | Additional acceptance                                                                                                                                                                                                                                                                                                                                 |
 | --- | ------------------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| C21 | Complete proof-item carriage                | F10          | Public tooling accepts the complete canonical item; direct and inline-datum input/reference-input paths are constructed and measured first. Any multi-output, chunked, or incremental fallback has a §3.2 necessity artifact, preserves the ordinary complete-item path, and rejects omission, duplication, reorder, substitution, and trailing data. |
+| C21 | Complete proof-item carriage                | F10          | Public tooling accepts the complete canonical item; the tier-1 direct and tier-2 single raw-UTxO reference paths (§3.2, per `docs/spec/midgard-tx.md`) are constructed and measured first. Any tier-3 chunked or incremental fallback has a §3.2 necessity artifact, preserves the ordinary complete-item path, and rejects omission, duplication, reorder, substitution, and trailing data. |
 | C22 | Nested output Value                         | F10          | Exact policy/asset identity, signed quantities, 5,000/5,001 Cardano Value boundary, terminal equality, and complete-Value input/reference-input proof-fit before any incremental fallback.                                                                                                                                                            |
 | C23 | Plutus Data constructor breadth             | C20-2, C20-8 | Signed accepted `<= 16,384` and adjacent `> 16,384`; exact constructor children and terminal summary; complete-Data direct/reference proof-fit is tested first.                                                                                                                                                                                       |
 | C24 | Plutus Data list breadth                    | C20-2, C20-8 | Exact child identities/count/order and adjacent boundary; complete-Data direct/reference proof-fit is tested first.                                                                                                                                                                                                                                   |
@@ -786,7 +839,7 @@ items.
 | C31 | Strict forced retained-DA reconstruction    | C20-0–C29    | Forced preimage authentication returns the exact canonical source; substitution, count, root, verdict, classification, and representation mismatches reject.                                                                                                                                                                                          |
 | C32 | Maximum-specific TS/Aiken agreement         | C20-0–C31    | Every maximum task has applied/terminal vectors for its complete-item path and any necessity-justified fallback; focused Aiken selectors collect and pass a nonzero exact test count.                                                                                                                                                                 |
 | C33 | Genuine Cardano vs schema projection labels | C23–C28      | Genuine signed Cardano emulator acceptance remains distinct from canonical Midgard schema projection; collateralized reverse bridge stays fail closed; projected integrity is recomputed rather than emptied.                                                                                                                                         |
-| CG2 | Proof-item capability gate                  | C20-0–C33    | Every required P2 matrix row and every cell is `PASS`; complete-item carriage remains available wherever it fits; every bounded fallback has a measured §3.2 necessity artifact and exact semantic-equivalence tests; production searches and ABI tests reject unjustified bounded-only paths.                                                        |
+| CG2 | Proof-item capability gate                  | C20-0–C33    | Every required P2 matrix row and every cell is `PASS`; complete-item carriage through the simplest fitting §3.2 tier remains available wherever it fits; every tier-3 or incremental fallback has a measured §3.2 necessity artifact and exact semantic-equivalence tests; production searches and ABI tests reject unjustified bounded-only paths.                                                        |
 
 Tasks `C20-*`, `C23`–`C26`, and `C27`–`C29` are logically independent
 after their named prerequisites, but any pair sharing a codec or the large
@@ -883,7 +936,8 @@ A family task is `LOCAL_PASS` only when all applicable outputs exist:
 
 1. Normative rule and violation identifier.
 2. Canonical evidence schema and strict TypeScript/Aiken codec agreement.
-3. Correct native counted-root/typed-commitment binding.
+3. Correct flat field-hash/preimage-grammar binding per
+   `docs/spec/midgard-tx.md`.
 4. Aiken proof steps with positive and valid-block negative tests.
 5. Maximum/adversarial proof-fit fixture.
 6. Catalogue identifier, first-step hash, membership proof, deployment and
@@ -907,7 +961,7 @@ surface, and a precise matrix `N/A`; prose alone is insufficient.
 
 | ID  | Deliverable                   | Depends on | Acceptance                                                                                                                                                        |
 | --- | ----------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Q00 | Native V1 proof binding       | F20, F02   | Every family binds the exact current counted/typed roots and canonical native codec; legacy PlutusData/root paths and witness-encoding splits are absent.         |
+| Q00 | Native V1 proof binding       | F20, F02   | Every family binds the exact flat blake2b-256 field commitments over canonical enveloped preimage bytes per `docs/spec/midgard-tx.md`, and the canonical native codec; legacy PlutusData/root paths, witness-encoding splits, and the retired counted `bounded_collection_v1` field-commitment paths are absent.         |
 | Q01 | Common proof-state safety     | Q00        | Computation-thread init/continue/finalize/cancel, duplicate init, token coupling, catalogue immutability, reference inputs, and valid-block rejection are tested. |
 | Q02 | Family scaffold generator     | Q00–Q01    | Shared generator may create boilerplate only; generated families retain explicit schemas/tests and no dynamic “accept any” dispatch.                              |
 | Q03 | Canonical evidence-source API | Q00        | Builders consume verified `DaPayloadV1`/proof bundles and authenticated L1 observations, not operator-private REST/DB/files except labelled diagnostics.          |
@@ -1042,7 +1096,7 @@ outcome must be exactly one of:
 | W24 | Phase A verifier                   | W21–W23, CG3     | Reuses canonical validation semantics and produces exact deterministic rejection/evidence, not a looser watcher-only implementation.                                                                                                                                                                        |
 | W25 | Phase B/block replay               | W14–W16, W21–W24 | Reconstructs prior state, dependencies, spends/references/scripts/value/events, every intermediate root, and exact post-state.                                                                                                                                                                              |
 | W26 | Event/classification verifier      | W15–W16, W23–W25 | Due/omitted/out-of-window/fabricated/duplicate events, withdrawal validity, and forced classification match canonical semantics.                                                                                                                                                                            |
-| W27 | Proof-bundle materializer          | W21–W26, Q03     | Produces complete canonical inputs for the selected family and prefers complete direct or inline-datum input/reference-input carriage: roots/roles/counts, membership/non-membership/deletion proofs, complete fields/items, any necessity-justified chunk openings, publication L1 refs, and ABI versions. |
+| W27 | Proof-bundle materializer          | W21–W26, Q03     | Produces complete canonical inputs for the selected family and prefers complete direct or inline-datum input/reference-input carriage: roots/roles/counts, membership/non-membership/deletion proofs, complete fields/items, any necessity-justified tier-3 chunked carriage (§3.2, per `docs/spec/midgard-tx.md`), publication L1 refs, and ABI versions. |
 | W28 | Deterministic violation classifier | W22–W27, Q55     | Stable first-fault/priority rule maps to exact family and evidence; unsupported maps to `unprovable_gap`.                                                                                                                                                                                                   |
 | W29 | Block decision engine              | W22–W28          | Exactly one of `verified`, `pending_da`, `unprovable_gap`, `fault_detected`, `fault_proven`, `removed_or_resolved`; only complete replay yields `verified`.                                                                                                                                                 |
 
@@ -1138,6 +1192,14 @@ Never substitute a previous deployment, stale artifact, or emulator result.
 
 Every criterion is mandatory.
 
+(Owner amendment 2026-08-08: this is the first amendment to edit §12 itself.
+Every previous amendment left §12 byte-identical and said so; this one
+cannot, because AC-Q12, AC-C20, and AC-C21 named the retired counted/typed
+commitment scheme and the pre-reversion carriage vocabulary. Criteria
+stability yields to scheme truth: the edits below rebind those criteria to
+the flat field commitments and §3.2 carriage tiers per
+`docs/spec/midgard-tx.md` without weakening any acceptance obligation.)
+
 ### Repository and identity
 
 - **AC-00:** `GOAL_PROGRESS.md` contains a complete criterion/task/evidence
@@ -1157,16 +1219,18 @@ Every criterion is mandatory.
 - **AC-C10:** P0/P1 gates CG1 pass using actual parameterized publication
   transactions.
 - **AC-C20:** Every P2 family and cell passes CG2: authenticated normal/forced
-  source, exact typed count/length, complete-item direct or inline-datum
-  input/reference-input proof-fit, exhaustive TS terminal, Aiken terminal, and
-  applicable maximum/adjacent Cardano boundary. Any multi-output, chunked, or
+  source, exact typed count/length, complete-item proof-fit through the
+  simplest fitting §3.2 carriage tier (tier-1 direct or tier-2 single
+  raw-UTxO reference), exhaustive TS terminal, Aiken terminal, and
+  applicable maximum/adjacent Cardano boundary. Any tier-3 chunked or
   incremental fallback has a measured §3.2 necessity artifact.
 - **AC-C21:** Production searches, ABI tests, and applied proof-fit evidence
   prove that public tooling accepts complete canonical proof items and that
-  every fitting item uses a direct or inline-datum input/reference-input path
-  without mandatory prover-managed chunking. Every bounded fallback is limited
-  to a concretely justified family/shape, preserves the complete-item path for
-  fitting cases, and is semantically identical.
+  every fitting item uses a tier-1 direct or tier-2 single raw-UTxO
+  reference path without mandatory prover-managed chunking. Every tier-3 or
+  incremental fallback is limited to a concretely justified family/shape,
+  preserves the complete-item path for fitting cases, and is semantically
+  identical.
 - **AC-C30:** Every enabled validation instruction and rejection has a narrow,
   semantic, proof-fit L1 resolver; CG3 passes.
 - **AC-C31:** Scripts, redeemers, reference inputs/scripts, script
@@ -1191,7 +1255,8 @@ Every criterion is mandatory.
   row remains.
 - **AC-Q11:** Every proof family satisfies the atomic closure contract in
   §9.1, including valid-block negative and maximum proof-fit tests.
-- **AC-Q12:** All proof decoders bind canonical native V1 counted/typed roots;
+- **AC-Q12:** All proof decoders bind the canonical native V1 flat field
+  commitments and enveloped preimage grammar per `docs/spec/midgard-tx.md`;
   on-chain/off-chain accepted encodings are equivalent.
 - **AC-Q13:** Catalogue root, IDs, first-step hashes, membership proofs,
   applied validators, reference scripts, and manifest inspection are exact and
@@ -1329,7 +1394,7 @@ The aggregate scripts must include, at minimum, equivalent coverage for:
 # versions and record them.
 nix develop ./demo --command bash -c 'node --version && pnpm --version'
 
-# The normative technical specification (§1 item 8) must build from the
+# The normative technical specification (§1 item 9) must build from the
 # repository root. Skip it when technical-spec/ is unchanged in the diff.
 make spec
 
@@ -1387,9 +1452,9 @@ The testnet acceptance must record:
 - DA peers, public retrieval identities, payload/proof-bundle hashes, and
   retention policy;
 - maximum/adjacent Cardano fixtures and all measured proof paths;
-- complete-item direct and inline-datum publication/input/reference-input
-  transaction identities, plus every §3.2 necessity artifact and any
-  justified multi-output/chunked/incremental path;
+- complete-item tier-1 direct and tier-2 single raw-UTxO
+  publication/reference transaction identities, plus every §3.2 necessity
+  artifact and any justified tier-3 chunked or incremental path;
 - watcher L1-source observations/finality depths and deterministic decisions;
 - every proof transaction, computation-thread transition, proof token,
   removal, slash, reward, and corrected queue state;
