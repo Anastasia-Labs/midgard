@@ -37,6 +37,19 @@ This document defines, for canonical V1:
    observes (§7); and
 7. the three-tier publication-carriage convention for field preimages (§8).
 
+**Deferred by design (Phase 3).** The dispute-side mechanisms that _consume_
+this format are deliberately not defined here: the resumable walk and its
+checkpoint encoding, the Value bookmark, and the Canonical-Data Acceptor.
+They are Phase-3 deliverables of the reversion program and are added to this
+document as **§10 — resumable walk and checkpoints** by
+[#570](https://github.com/Anastasia-Labs/midgard/issues/570) and **§11 —
+Value bookmark and Canonical-Data Acceptor** by
+[#571](https://github.com/Anastasia-Labs/midgard/issues/571). Until those
+sections land, §7 governs every consumer, and §7 invariant 6 in particular
+binds any resumable state to positions rather than verbatim bytes. Documents
+that bind those mechanisms by reference — `GOAL_SPEC.md` §3.1(2) — name them
+against this note, not against a definition that exists today.
+
 Byte strings are written in hex (`82`, `58 20 …`). `array(n)`, `map(n)`,
 `bytes(n)`, `uint`, `int` denote definite-length canonical CBOR heads:
 minimal-width length/value encodings with fail-closed rejection of any
@@ -232,11 +245,55 @@ Item-level rules:
 - **Field 7** items are structurally fixed at 101 bytes (wrapper `58 65`,
   stride 103): the encoder asserts a 32-byte verification key and 64-byte
   Ed25519 signature.
+- **Field 6 — the `language_tag` value set.** Exactly three values are
+  admissible, and the canonical encoder emits exactly these byte forms:
+
+  | value | language        | canonical bytes | script-hash prefix |
+  | ----- | --------------- | --------------- | ------------------ |
+  | 0     | `NativeCardano` | `00`            | `0x00`             |
+  | 3     | `PlutusV3`      | `03`            | `0x03`             |
+  | 128   | `MidgardV1`     | `18 80`         | `0x80`             |
+
+  Any other value rejects. Twins:
+  `midgard_script_language_to_tag` / `midgard_script_language_from_tag` in
+  `onchain/aiken/lib/midgard/fraud-proofs/native-tx/components.ak`, and
+  `MidgardVersionedScriptTags` / `MidgardScriptHashPrefixes` in
+  `demo/midgard-core/src/codec/versioned-script.ts`. For `NativeCardano`,
+  `script_bytes` carries the canonical Midgard native-script CBOR; for
+  `PlutusV3` and `MidgardV1` it carries the raw script payload.
+
+- **Field 8 — the `purpose_tag` value set.** Exactly seven values are
+  admissible. Every one is ≤ 23, so each occupies exactly one byte equal to
+  its value:
+
+  | value | bytes | purpose   |
+  | ----- | ----- | --------- |
+  | 0     | `00`  | `Spend`   |
+  | 1     | `01`  | `Mint`    |
+  | 2     | `02`  | `Cert`    |
+  | 3     | `03`  | `Reward`  |
+  | 4     | `04`  | `Vote`    |
+  | 5     | `05`  | `Propose` |
+  | 6     | `06`  | `Receive` |
+
+  Values 0–5 reuse Cardano's own `RedeemerTag` numbering; 6 (`Receive`) is
+  Midgard-only. Any other value rejects
+  (`midgard_redeemer_purpose_from_tag`, same Aiken module). Two narrower
+  sets sit inside this one and are deliberately not the format's bound: the
+  Midgard builder emits only `Spend`, `Mint`, `Reward`, and `Receive`
+  (`RedeemerTags`, `demo/lucid-midgard/src/builder/script-materialization.ts`),
+  and the Cardano↔Midgard conversion bridge admits only `Spend`, `Mint`,
+  and `Reward`, rejecting the rest as lossy
+  (`ensureSupportedCardanoRedeemerTag`,
+  `demo/midgard-core/src/codec/native-redeemer.ts`). `index`, `ex_memory`,
+  and `ex_steps` are canonical minimal CBOR uints and MUST be non-negative.
+
 - **Fields 2/5/6/8** are variable-width; top-level access is by enveloped
   walk (one head decode + byte jump per skipped item). Their interior
   encodings (`encode_midgard_tx_output`, mint policy items, versioned
   scripts, redeemer witnesses) are unchanged from the current canonical
-  encoders except as §5.6 states for mint.
+  encoders except as §5.6 states for mint and as the two tag tables above
+  pin for fields 6 and 8.
 - All integers other than the field-0/1 output index remain canonical
   minimal CBOR.
 
@@ -244,8 +301,8 @@ Item-level rules:
 
 - `maxTransactionAggregateFieldBytes = 32,768` (retained; owner ruling —
   tightening it would be a capability change outside the reversion's
-  scope). No field preimage exceeds it; `maxSpendInputsPreimageBytes =
-32,768` equals it for field 0.
+  scope). No field preimage exceeds it, and
+  `maxSpendInputsPreimageBytes = 32,768` equals it for field 0.
 - Admissible item cardinality per field is the minimum of the 16,384-item
   consensus guardrail, the field's byte bound under this grammar (e.g.
   fields 0/1: `header_len + 40·N ≤ 32,768` ⇒ N ≤ 819 at the preimage
@@ -343,10 +400,11 @@ families, watcher, builders — observes:
 ## 8. Field-preimage carriage (three tiers)
 
 How preimage bytes reach a consuming (dispute) transaction. The tiering is
-mandated simplest-fitting-first (GOAL_SPEC §3.2): the direct and
-single-reference paths stay enabled wherever they fit, and the bounded
+mandated simplest-fitting-first (GOAL_SPEC §3.2): the tier-1 direct and
+tier-2 single-reference paths stay enabled wherever they fit, and the tier-3
 fallback never becomes mandatory complexity for ordinary proofs. Certification
-exists only where flat hashing cannot otherwise authenticate a partial read.
+exists only where flat hashing does not otherwise authenticate a partial
+read.
 
 ### 8.1 Tier 1 — redeemer carriage
 
@@ -363,7 +421,11 @@ the prover's own key address. Each consuming step references that output,
 hashes the whole preimage against the committed field hash (measured free at
 ≤ 32 KB), and slices. No certificate — the flat hash is directly checkable.
 
-### 8.3 Constants
+### 8.3 Carriage constants
+
+These sit between the tier-2 and tier-3 definitions on purpose: tier 2's
+bound _is_ `K`, and tier 3 is defined as the `preimage_len > K` case, so both
+neighbours read against this table.
 
 | constant                            | value              | status          |
 | ----------------------------------- | ------------------ | --------------- |
@@ -372,21 +434,66 @@ hashes the whole preimage against the committed field hash (measured free at
 | `maxTransactionAggregateFieldBytes` | 32,768 bytes       | retained        |
 | maximum tier-3 chunk count          | `⌈32,768 / K⌉ = 3` | derived         |
 
-Basis (both provisional values are **provisional-pending-Phase-4
-measurement**; falsification is an erratum to this table, §Status):
+Basis. Both values are **provisional-pending-Phase-4-measurement**: each is
+pinned by analysis over existing measurements, not by a measurement of the
+final publication or step transaction — neither of which exists yet.
+Falsification by Phase-4 measurement is an amendment-level erratum to this
+table (the _Provisional values_ bullet in this document's front matter) and
+does not reopen any GOAL_SPEC acceptance criterion.
 
-- **K = 15,900** — the #556 measured basis (prototype bench
-  `proto-556-flat-dispute-bench-v1`, 2026-08-06) exercised the maximal
-  two-chunk reconstruction at exactly this split: 15,900 + 484 = 16,384
-  bytes = the L1 `maxTxSize` envelope, i.e. per-publication capacity of
-  `maxTxSize` minus 484 bytes of publication-transaction overhead
-  (~15.9 KB working figure carried through #558). The certification
-  transaction re-carries no bytes, so it does not constrain K.
+- **K = 15,900** — the split the #556 prototype bench
+  (`proto-556-flat-dispute-bench-v1`, 2026-08-06, case 3) actually
+  exercised: a maximal two-chunk reconstruction of 15,900 + 484 = 16,384
+  bytes — one `maxTxSize` envelope — hashed in a single `blake2b_256` at
+  1,341 mem / 17.4M CPU. What #556 establishes is that **reconstruction
+  cost never constrains K**; #558 then carried 15.9 KB forward as the
+  working chunk size. #556 did _not_ measure publication capacity, and the
+  484-byte remainder is that bench's ragged tail, not a measured
+  publication-transaction overhead. The capacity claim behind K is
+  analysis: a tier-2/3 chunk is a bare nothing-but-bytes inline datum at a
+  key address, and the measured framing for that shape is small —
+  `maxFieldPublicationDatumBytes` 4,574 →
+  `maxFieldPublicationUnsignedTransactionBytes` 4,675, i.e. 101 bytes of
+  unsigned framing (`MIDGARD_V1_ENVELOPE_MEASUREMENTS`,
+  `demo/midgard-core/src/consensus-profile-v1.ts`) — leaving room for a
+  15,900-byte chunk plus datum envelope, output, fee, and one vkey witness
+  inside 16,384. **Phase-4 cross-check, mandatory:** the counted-era
+  _complete-item_ publication — a heavier script-custody shape — measured
+  two item-size frontiers: `maxExactCompleteItemPublicationBytes` 15,489,
+  the largest item whose signed publication lands exactly on `maxTxSize`
+  (16,384), and `maxReliableCompleteItemPublicationBytes` 14,993, the
+  largest whose publication lands on `maxTxSize` minus the 512-byte
+  `proofItemEnvelopeReliabilityReserveBytes`. The reserve is a
+  **transaction-side** budget, not an item-side one: the two frontiers are
+  496 item bytes apart because that shape's non-item framing is itself 16
+  bytes lighter at the smaller size (895 B at 15,489 → 879 B at 14,993).
+  Both frontiers are pinned by the "pins the exact applied publication
+  frontiers and reliability reserve" case in
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`.
+  K = 15,900 exceeds both. That is expected, because the tier-2/3
+  publication drops the counted proof envelope and the script address, but
+  Phase 4 MUST measure the real signed key-address chunk publication and
+  re-pin K downward if that transaction does not clear `maxTxSize` with the
+  same 512-byte reserve. The certification transaction re-carries no chunk
+  bytes and so never constrains K.
 - **maxTier1RedeemerPreimageBytes = 14,336** — `maxTxSize` (16,384) minus a
-  2,048-byte step-machinery allowance, the ~2 KB fixed per-step overhead
-  (thread continuity, control datum, script context) observed across the
-  #556-basis step-envelope analyses. Phase 4 re-measures the real step
-  transaction at the final grammar and re-pins.
+  round 2,048-byte allowance for step machinery (thread-continuity input
+  and continuing output, control datum, redeemer framing, reference-input
+  entries, script context). This allowance is **an engineering choice, not
+  a measurement**: no bench has measured the flat-format step transaction's
+  fixed byte overhead. That measurement is #557's pending M2 ("fixed
+  per-step overhead in the real thread harness"), executed in Phase 4. It
+  is set between two measured anchors — bare Conway proof-transaction
+  framing of 395 bytes (`concreteConwayProofTransactionFramingBytes`:
+  14,546 argument bytes in a 14,941-byte transaction) and the counted-era
+  direct-carriage bound of 8,273 raw item bytes
+  (`maxReliableDirectCompleteItemBytes`, in a 15,872-byte proof
+  transaction, i.e. ~7.6 KB of overhead). The counted figure is far heavier
+  only because that redeemer also carried chunk proofs, frontiers, and
+  sibling vectors, all of which the flat format deletes; 2,048 is ~5x the
+  measured bare framing and well inside the deleted counted overhead.
+  Phase 4 measures the real step transaction at the final grammar and
+  re-pins.
 
 Execution-fit for any carriage-dependent path is judged at the single
 declared budget basis of GOAL_SPEC §3.3: 13,200,000 memory units.
@@ -395,8 +502,10 @@ declared budget basis of GOAL_SPEC §3.3: 13,200,000 memory units.
 
 For `preimage_len > K`: raw chunks at the prover's key address plus one
 small certified digest-manifest UTxO at script custody — the only tier with
-on-chain certification, because it is the only place per-chunk verification
-against a flat hash is otherwise impossible.
+on-chain certification, because a flat field hash authenticates the whole
+preimage and nothing smaller. Once the preimage is split across
+publications, the design provides no other way to verify an individual
+chunk before reconstruction, so the certificate supplies that binding.
 
 **Deterministic split rule.** Chunk `j` = bytes `[j·K, (j+1)·K)`; the last
 chunk is ragged; minimum-necessary chunks by construction. Determinism makes

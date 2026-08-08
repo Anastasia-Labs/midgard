@@ -452,26 +452,39 @@
   §0 amendment note, §1 authority list (new item 3, technical-spec now
   item 9), §3.1(2) offset-and-slice fallback vocabulary, §3.2 ladder
   re-derived as the three named carriage tiers, §3.3 basis note declaring
-  the single 13,200,000-mem execution-budget basis (20% off live mainnet
-  `maxTxExUnits` 16.5M, epoch 648), §8.2 preamble + C21/CG2 rows, §9.1
+  the single 13,200,000-mem execution-budget basis (20% off mainnet
+  `maxTxExUnits` 16.5M; captured provenance is decision 0001's Conway
+  epoch-645 snapshot, with the epoch-648 report recorded as #552/#563
+  corroboration rather than a captured artifact), §8.2 preamble + C21/CG2
+  rows, §9.1
   output 3, §9.2 Q00, §10.3 W27, §12 (first-ever §12 edit, acknowledged
   in place: AC-Q12/AC-C20/AC-C21 rebound without weakening), §13.2 item
   pointer, §13.3 evidence enumeration. **Provisional pins in the spec
   doc (pending Phase-4 measurement; falsification = erratum):**
-  K = 15,900 bytes (the #556 case-3 measured two-chunk split
-  15,900 + 484 = 16,384) and tier-1 redeemer-carriage bound =
-  14,336 bytes (`maxTxSize` − 2,048-byte step-machinery allowance from
-  the #556-basis step-envelope analyses); tier-3 worst case 3 chunks at
-  the retained 32,768-byte aggregate cap. **Deliberate non-edits:**
+  K = 15,900 bytes (the split #556 case 3 actually exercised —
+  15,900 + 484 = 16,384 hashed free at 1,341 mem — which bounds
+  reconstruction cost, not publication capacity) and tier-1
+  redeemer-carriage bound = 14,336 bytes (`maxTxSize` − a round
+  2,048-byte step-machinery allowance, an engineering choice rather
+  than a measurement); tier-3 worst case 3 chunks at the retained
+  32,768-byte aggregate cap. Both bases were tightened during the #566
+  audit so neither claims a measurement that does not exist: see the
+  spec doc §8.3, which now carries the mandatory Phase-4 cross-checks
+  (K vs the counted-era 15,489/14,993 publication measurements; the
+  tier-1 allowance vs #557's pending M2). **Deliberate non-edits:**
   §3.1(5)/Q58 DA framing, MPF trie roots/`mpf-chunked-verify`, §3.3
   thresholds. **Superseded-not-deleted (§3 invariant 14):** counted-scheme
   evidence rows keep their text as provenance — 36 F05 manifest rows
   (Q00, Q10–Q22, Q31, C20-0–C20-8, C21–C26, C29–C33, W27) now lead with a
-  COUNTED-SCHEME SURFACE SUPERSEDED anchor; the task-queue/validation
-  ledger counted measurements and the Q1x Q10/Q11 output-5 cells are
-  covered by the Phase-0 supersession section at the end of this file
-  (the Q1x cells stay OPEN for the #563 re-measurement, per #559). Gates
-  green after the edit: F05 manifest quality gate 186/186, 0 defects.
+  COUNTED-SCHEME SURFACE SUPERSEDED anchor, and the four rows whose
+  `acceptance` actually named the retired scheme (Q00, C21, W27, plus the
+  CG2 gate row) are re-scoped to their amended GOAL_SPEC wording with the
+  superseded acceptance retained verbatim inside the field; the
+  task-queue/validation ledger counted measurements and the Q1x Q10/Q11
+  output-5 cells are covered by the Phase-0 supersession section at the
+  end of this file (the Q1x cells stay OPEN for the #563 re-measurement,
+  per #559). Gates green after the edit: F05 manifest quality gate
+  186/186, 0 defects.
 - 2026-08-01, **OWNER AMENDMENT — the self-referential hash bookkeeping is
   deleted (Philip DiSarro, in session).** The owner challenged whether the
   hash machinery around `GOAL_SPEC.md` and the evidence artifacts had ever
@@ -6741,19 +6754,47 @@ All four deliverables landed in one coherent checkpoint on this branch:
   three-tier carriage convention with `FieldPreimageCertificateV1` and
   the frozen `FieldCarriageV1`/`FieldViewV1` wire types.
 - **Provisional pins (provisional-pending-Phase-4-measurement,
-  falsification = amendment-level erratum):** K = 15,900 bytes — the
-  #556 case-3 measured basis (maximal two-chunk reconstruction at the
-  exact 15,900 + 484 = 16,384 split; publication capacity = `maxTxSize`
-  − 484 B measured publication overhead); tier-1 redeemer-carriage bound
-  = 14,336 bytes (`maxTxSize` − 2,048 B step-machinery allowance, the
-  ~2 KB fixed per-step overhead carried through the #556-basis
-  step-envelope analyses on #557). Tier-3 worst case is 3 chunks at the
-  retained 32,768-byte aggregate cap.
+  falsification = amendment-level erratum).** K = 15,900 bytes and the
+  tier-1 redeemer-carriage bound = 14,336 bytes. **Both bases were
+  corrected during the #566 audit**, because the first drafting
+  attributed each number to a measurement that does not exist:
+  - K: #556 case 3 exercised a 15,900 + 484 = 16,384-byte two-chunk
+    reconstruction hashed in one `blake2b_256` at 1,341 mem / 17.4M CPU.
+    That measures **reconstruction cost, not publication capacity**, and
+    the 484-byte remainder is the bench's ragged tail, not a measured
+    publication overhead. The capacity claim is analysis, anchored on the
+    measured bare-publication framing in `MIDGARD_V1_ENVELOPE_MEASUREMENTS`
+    (`maxFieldPublicationDatumBytes` 4,574 → unsigned tx 4,675 = 101 B of
+    framing). Spec §8.3 now carries a **mandatory Phase-4 cross-check**:
+    the counted-era complete-item publication measured item-size frontiers
+    of 15,489 (publication lands exactly on `maxTxSize`) and 14,993
+    (publication lands on `maxTxSize` − the 512-byte transaction-side
+    `proofItemEnvelopeReliabilityReserveBytes`; the item-side gap is 496
+    because that shape's non-item framing is 16 B lighter at the smaller
+    size). Both are below K, so Phase 4 must measure the real signed
+    key-address chunk publication and re-pin K downward if that transaction
+    does not clear `maxTxSize` at the same 512-byte reserve.
+  - Tier-1: 2,048 B is a round engineering allowance for step machinery,
+    **explicitly not a measurement** — no bench has measured the
+    flat-format step transaction's fixed byte overhead; that is #557's
+    pending M2, executed in Phase 4. It is bracketed by two real measured
+    anchors now cited in §8.3: `concreteConwayProofTransactionFramingBytes`
+    395 B of bare framing, and the counted-era
+    `maxReliableDirectCompleteItemBytes` 8,273 (≈7.6 KB of overhead, heavy
+    only because the counted redeemer also carried chunk proofs, frontiers,
+    and sibling vectors that the flat format deletes).
+
+  Tier-3 worst case is 3 chunks at the retained 32,768-byte aggregate cap.
 - **GOAL_SPEC amended at scheme altitude** — touch-point list and the
   first-ever §12 edit acknowledged in the §0 amendment note and the
   2026-08-08 Decisions bullet above; the §3.3 basis note declares the
-  single 13,200,000-mem execution-budget basis (20% off live mainnet
-  `maxTxExUnits` 16,500,000, verified epoch 648).
+  single 13,200,000-mem execution-budget basis (20% off mainnet
+  `maxTxExUnits` 16,500,000) and now states that cap's provenance exactly:
+  the captured in-repo artifact is decision 0001's Conway epoch-645 mainnet
+  snapshot (observed 2026-07-24, reproduction URIs included), carried as the
+  supported floor `minSupportedL1MaxTxMemoryUnits`; the "unchanged at epoch
+  648" report is #552/#563 corroboration, not a captured artifact, and CG5's
+  target-network parameter binding is what pins the live cap for release.
 - **`docs/midgard/decisions/0004-compact-tx-flat-field-hash-reversion.md`**
   records rationale only (survey `docs/research/l2-tx-commitment-survey-2026-08-06.md`;
   19–36x / ~760 µs node-side benchmark; #556 split verdict; revert-now
@@ -6765,7 +6806,8 @@ All four deliverables landed in one coherent checkpoint on this branch:
   matching the #561 resolution's C21–C26/C29–C33 enumeration; W27's
   counted 8,273/8,274-byte carriage prescription was already flagged
   deferred at the quiesce); superseded text retained verbatim below each
-  note as provenance; `lastUpdated` 2026-08-08. Per F05's
+  note as provenance; `lastUpdated` 2026-08-08. The `acceptance` half of
+  the re-scope landed in the round-2 review-response pass below. Per F05's
   self-invalidation trigger the full quality gate was rerun after the
   edit:
   `node demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs`
@@ -6779,6 +6821,310 @@ All four deliverables landed in one coherent checkpoint on this branch:
   fails on the pristine tree too — its seeded F41-drop defect is no
   longer detectable after F41's queue promotion; ticket it to the F40/F41
   lane.
+
+**Phase-0 audit pass (2026-08-08, second agent, #566 acceptance
+re-check).** Every number in the spec doc was re-derived from its cited
+source rather than taken on trust, and three defects were corrected:
+
+1. **§8.3 K basis overstated a measurement.** The draft read the #556
+   case-3 split as "per-publication capacity = `maxTxSize` − 484 B
+   measured publication overhead". #556 measured no publication
+   transaction; 484 B is that bench's ragged tail. Rewritten to state
+   what #556 actually establishes (reconstruction cost never constrains
+   K, 1,341 mem / 17.4M CPU) and to carry a **mandatory Phase-4
+   cross-check**: the counted-era complete-item publication measured
+   15,489 exact / 14,993 reliable, both *below* K = 15,900, so Phase 4
+   must re-pin K downward if the real signed key-address chunk
+   publication does not clear `maxTxSize` at the same 512-byte reserve.
+2. **§8.3 tier-1 basis cited a nonexistent measurement.** The draft
+   attributed the 2,048-byte allowance to "the ~2 KB fixed per-step
+   overhead observed across the #556-basis step-envelope analyses". No
+   such observation exists — the only "~2K" on #557 is *mem per slice*,
+   not bytes, and #557's M2 explicitly lists fixed per-step byte
+   overhead as still-unmeasured. Restated as an explicit engineering
+   choice bracketed by two real anchors
+   (`concreteConwayProofTransactionFramingBytes` 395;
+   `maxReliableDirectCompleteItemBytes` 8,273), with M2 named as the
+   Phase-4 measurement that settles it.
+3. **GOAL_SPEC §3.2 said "Both tiered representations"** over a
+   four-entry ladder; corrected to "Every tiered representation".
+
+Verified as correct and left unchanged: the 13.2M/16.5M basis
+(corroborated independently by
+`MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits` = 16,500,000
+in `demo/midgard-core/src/consensus-profile-v1.ts`; the epoch-648
+attribution was re-scoped in the review-response pass below); the 32,768
+aggregate
+cap, 4,095 counted chunk bytes, and 14,396 single-publication bytes; the
+§2.4 wire-order transposition (`encode_native_tx_field_preimage_lengths_v1`
+really does serialise `script_witnesses` before `address_witnesses`); the
+§2.5 field-index table (matches `transaction_field_commitment_v1` 0–8
+exactly); the §4 retired-domain list (all six are real ASCII hash-domain
+constants, and `MidgardBoundedBlob*V1` is correctly *not* listed, since
+#560 stands the CEK blob machinery); and the 36-row F05 supersession set,
+whose diff is **purely additive — zero deletion lines**, which is
+invariant 14 satisfied mechanically rather than by assertion.
+
+Gates re-run green after the audit edits, fork pinned via
+`MIDGARD_AIKEN_BIN`/`MIDGARD_FORK_AIKEN_BIN` =
+`~/.local/bin/aiken-fork`: manifest quality PASS 186/186, 0 defects;
+fault-proof reconciliation 70 rows / 49 open; status-role control PASS;
+CG4 exit 0 (BLOCKED states unchanged); capability reconciliation 22 P2
+tasks, 17 pass, 115/115 Aiken selectors across 12 modules under
+`aiken v1.1.23+6d14ab2`, 63.1 s wall, 0 excluded. The self-test red above
+was confirmed pre-existing by running it in a detached worktree at
+`b6e600f6` (pre-Phase-0): it fails there with the identical
+`ERR_ASSERTION` on the seeded F41-drop assertion. `prettier --check`
+passes on `docs/spec/` and `docs/midgard/decisions/0004`; GOAL_SPEC.md
+and GOAL_PROGRESS.md are outside the `demo/` format-check glob and were
+already non-prettier-formatted before this work, so they were left in
+their existing hand-wrapped style rather than reflowed.
+
+**Phase-0 review-response pass (2026-08-08, #566 two-axis code review).**
+Applied on the working tree over `df573d28`; no commit rewritten.
+
+1. **Dangling normative pointer (standards, MAJOR).** GOAL_SPEC §3.1(2)
+   bound "the resumable walk, the Value bookmark, and the Canonical-Data
+   Acceptor per `docs/spec/midgard-tx.md`" — all three occur zero times in
+   that document, because they are P3a/P3b deliverables (#570/#571), not P0
+   scope. Fixed without pre-empting those tickets: §3.1(2) now binds the
+   access that _does_ exist (the §5 enveloped grammar and §7 access
+   invariants), names the three mechanisms explicitly as "named here and
+   defined later", and points at a new **deferred-sections note in
+   `docs/spec/midgard-tx.md` §1** that reserves §10 (resumable walk and
+   checkpoints, #570) and §11 (Value bookmark and Canonical-Data Acceptor,
+   #571) and makes §7 invariant 6 the binding constraint meanwhile. The
+   by-reference design is preserved; no format definition was written early.
+2. **Authority-layer contradiction (standards, MAJOR).**
+   `docs/DOCUMENTATION_POLICY.md` §Source hierarchy still named the
+   technical specification as the only normative design target while
+   `docs/spec/README.md` asserted component-spec precedence on concrete
+   detail. The policy now carries `docs/spec/` component specifications as
+   hierarchy item 2 (implementation-normative on concrete detail; divergence
+   = technical-spec erratum), items 2–5 renumbered 3–6, `Last reviewed`
+   bumped; `docs/spec/README.md` cites the policy back.
+3. **Half-converted carriage vocabulary (standards, MINOR).** §10.3 W27,
+   §3.2's necessity-artifact preamble and steps 2–4, and §3.2's two closing
+   paragraphs now use the tier-1/tier-2/tier-3 names throughout. Left
+   deliberately unconverted: §3.1(5)/Q58 DA framing and §2's outcome bullets
+   — the former is a declared non-edit of this amendment, the latter is not
+   in the amendment's touch-point list and converting it would silently
+   widen that list.
+4. **Broken references (standards, MINOR).** Spec §8.3's "(§Status)" now
+   points at the front-matter _Provisional values_ bullet; §5.4's
+   column-0 continuation line is re-indented into its list item.
+5. **§8.3 placement (standards, MINOR, judgement) — REBUTTED, mitigated.**
+   Renumbering Constants out from between tiers 2 and 3 would invalidate 36
+   F05 manifest supersession notices plus this file's §8.3 pointers, for a
+   presentational gain. The constants must also precede §8.4, which is
+   _defined_ as the `preimage_len > K` case. Retitled "Carriage constants"
+   with a one-line note stating why it sits there.
+6. **Arithmetic mislabel (spec, MINOR).** "15,489 and 14,993 (a 512-byte
+   reliability reserve)" invited a subtraction yielding 496. Reworded: 512
+   is the transaction-side `proofItemEnvelopeReliabilityReserveBytes`; the
+   two figures are item-size frontiers 496 bytes apart because that shape's
+   non-item framing is 16 B lighter at the smaller size (895 → 879), and
+   both are pinned by the named emulator case. Mirrored here.
+7. **Unsourced module counts (spec, MINOR).** "roughly 46 Aiken modules and
+   15 TypeScript modules" is now counted against this tree at `df573d28` and
+   cited with the reproducing commands: **46 Aiken** (35 non-test) and
+   **30 TypeScript source** modules — the 15 was wrong, not merely uncited.
+   The 19–36x / ~760 µs figures now cite #554 directly.
+8. **Epoch-648 provenance (spec, MINOR) — capture REBUTTED, language
+   fixed.** Capturing a live mainnet protocol-params artifact is not
+   possible from this offline environment, and inventing one would be worse
+   than the imprecision. Instead GOAL_SPEC §3.3 and this file now state the
+   provenance exactly: the captured in-repo artifact is decision 0001's
+   Conway epoch-645 snapshot (2026-07-24, reproduction URIs included),
+   carried as `minSupportedL1MaxTxMemoryUnits` = 16,500,000 and
+   `docs/consensus-profile-v1.md` §10; the epoch-648 report is #552/#563
+   corroboration, not a captured artifact; CG5's target-network parameter
+   binding pins the live cap for release.
+9. **Baseline smells.** Fixed: decision 0004 now carries the `Date:` field
+   0001 and 0002 carry (the review also asked for `Last reviewed:`, which no
+   decision record in this directory uses — adding it to 0004 alone would
+   have created the inconsistency it was meant to remove, so the house
+   `Date:` field was used instead), and no longer restates format
+   primitives — the
+   "13.2M-mem basis" cites GOAL_SPEC §3.3 and the "296-item spend-inputs
+   field" cites spec §5.4; `docs/spec/README.md` gained `Status:` and lost
+   its speculative "future component specs" paragraph (its one load-bearing
+   clause — that the authority rule is a directory property — was folded
+   into the rule itself). **Rebutted:** (a) the 36x-duplicated F05
+   supersession notice — the manifest is a flat evidence artifact whose rows
+   are read standalone by the quality verifier and by human auditors; a
+   shared reference would make a row's provenance unreadable without a
+   second lookup, and invariant 14 wants the retained text beside the text
+   it supersedes; (b) GOAL_SPEC §3.2's tier paraphrase — GOAL_SPEC is the
+   acceptance authority and must state the ordering rule it gates on; the
+   paraphrase stays at scheme altitude and already carries the normative
+   pointer, which is exactly the by-reference split the README defines.
+
+Gates re-run after this pass, all green and unchanged from the values
+above: `node demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs`
+PASS 186/186, 0 defects;
+`node demo/scripts/verify-canonical-v1-fault-proof-reconciliation.mjs`
+70 rows / 49 open;
+`node demo/scripts/verify-canonical-v1-status-role-control.mjs` PASS;
+`node demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate.mjs`
+exit 0, gateStatus BLOCKED with the same pre-existing BLOCKED states.
+`demo/node_modules/.bin/prettier --check` passes on `docs/spec/README.md`,
+`docs/spec/midgard-tx.md`, `docs/midgard/decisions/0004-…md`, and
+`docs/DOCUMENTATION_POLICY.md`.
+
+**Phase-0 review-response pass 2 (2026-08-08, #566 round-2 findings).**
+Applied on the working tree over `df573d28`; no commit rewritten. Two
+majors and six minors.
+
+1. **AC6's re-scope half was never done (MAJOR).** The F05 edit had
+   landed supersession notes and 36 `sourceAnchors` insertions but had
+   re-scoped zero `acceptance` strings, so the manifest still instructed
+   an implementer to bind the retired scheme while GOAL_SPEC's rewritten
+   rows said the opposite. The divergence was enumerated mechanically
+   rather than eyeballed — every manifest `acceptance` compared against
+   its GOAL_SPEC §7–§10 table cell — which found **exactly four**
+   reversion-attributable divergences: `Q00`, `C21`, `W27`, and the
+   `CG2` gate row. All four are now re-scoped to their amended GOAL_SPEC
+   wording, each retaining the superseded counted-scheme acceptance
+   verbatim inside the field under a `SUPERSEDED COUNTED-SCHEME
+   ACCEPTANCE, retained verbatim as provenance per GOAL_SPEC §3
+   invariant 14:` clause, so the row is re-scoped without deleting
+   anything. The shared 36-row note now also states how acceptance is
+   handled. `CG2` additionally quoted its own GOAL_SPEC row verbatim in
+   `sourceAnchors[0]` and `evidenceOutputs[0]`; both quotes now track the
+   amended row. The **other 33 superseded rows needed no acceptance
+   edit** (36 noted rows less Q00/C21/W27; CG2 was never in the noted
+   set), and this is a fact about the manifest rather than a
+   convenience: 23 of them read "See section preamble for the family
+   acceptance contract." and inherit the re-scope through the amended
+   §8.2 / §9.1 preambles, and the remaining ten (`C22`–`C26`,
+   `C29`–`C33`) quote GOAL_SPEC cells the amendment deliberately did not
+   rewrite, so re-scoping them would have put the manifest *out* of sync
+   with its authority. Five further acceptance divergences exist (`F00`,
+   `F04`, `C83`, `W13`, `W44`) and were left alone: they predate this
+   amendment and belong to their own lanes. Structure verified after the
+   edit: the file still parses, still has exactly 186 rows, and the id
+   sequence is byte-identical to before.
+2. **§3.3's "no verdict flips" claim was falsified by our own artifact
+   (MAJOR).** Raising the basis 11.2M→13.2M does move two recorded
+   results, both verified against
+   `docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json`
+   `spendInputCardinalityBound.measured` before being written down: Q10's
+   step-04 first-over-reserve point at **40** spend inputs
+   (**11,312,784** memory units) and Q11's step-02 point at **41**
+   (**11,465,641**). Both sit inside the 11.2M–13.2M band and flip
+   FAIL→PASS at those cardinalities. §3.3 now says so explicitly, and
+   states why neither flip is load-bearing: the headline Q1X-F6 verdict
+   is taken at the admissible **296**-input Cardano spend shape, where
+   the artifact records that neither family's proof can be evaluated at
+   all because it exceeds the ledger's own memory cap (the test asserts
+   `over budget` at that cardinality), so a reserve-basis change does not
+   move it; and the Q10/Q11 output-5 cells are deliberately held OPEN
+   here for the Phase-7 re-measurement rather than closed on either
+   basis. The "none is ambiguous by a 2M-unit basis gap" clause is now
+   scoped "apart from those two boundary points", and that residual claim
+   was checked rather than assumed: a mechanical sweep of every JSON and
+   Markdown artifact under `docs/exec-plans/evidence/` for integers in
+   (11,200,000, 13,200,000] returns 93 hits, of which the only two
+   *measurements* are the Q10/Q11 pair above. Every other hit is either
+   the 13,200,000 ceiling itself or a reserve **margin** computed against
+   it — notably `necessity/input-no-idx-spend-input-proof-v1.md`, which
+   was already authored at the 13,200,000 ceiling (its 19-input row
+   passes with a 360,324-unit margin, its 20-input row fails it by
+   166,688), so it cannot flip. This is the same conflict the #560 prep
+   flagged, now resolved in the authoritative file rather than only in
+   prep notes.
+3. **§0's superseded-set enumeration was too narrow (MINOR).** It named
+   "the C21–C26 and C29–C33 cells" (11 ids) for a note applied to 36
+   rows. §0 now carries the full set (Q00, Q10–Q22, Q31, C20-0–C20-8,
+   C21–C26, C29–C33, W27) plus the task-queue/validation-ledger cells,
+   matching this file.
+4. **Tier-vocabulary conversion finished (MINOR).** The four sites the
+   review named plus the §3.2 heading are converted: §2.1's G1 carriage
+   bullets, §3 invariant 2, §3 invariant 5, §13.1's
+   `goal:verify:capability` line, and the heading, which now reads
+   "Complete proof-item carriage and tier-3 necessity gate". §3.1(2)'s
+   remaining "inline-datum input/reference input" was converted in the
+   same pass since §3.1(2) was already a declared edit site. §0's
+   touch-point list is widened **explicitly** to name §2.1, §3
+   invariants 2 and 5, and §13.1 — the round-1 pass declined this
+   conversion because it would have widened that list silently, which is
+   the objection this fixes. Still deliberately unconverted and still
+   declared: §3.1(5)/Q58 DA framing and the §3.2/§13.1 references to
+   invariant 5's own title ("unjustified bounded-only"), which is the
+   invariant's name rather than carriage vocabulary. One knock-on
+   accepted: the W27 manifest row's retained provenance anchor still
+   spells the old §3.2 heading, which is correct — it is retained
+   provenance, not a live pointer, and §3.2 still resolves by number.
+5. **Tag value-sets enumerated (MINOR, fixed rather than rebutted).**
+   §5.3 rows 6 and 8 named `language_tag` and `purpose_tag` without
+   giving their admissible values, so AC1's "every byte-level format
+   question" was answerable only by reading code. Both sets are stable
+   and pinned in both twins, so they are now enumerated with their exact
+   canonical byte forms: `language_tag` ∈ {0 `NativeCardano` → `00`, 3
+   `PlutusV3` → `03`, 128 `MidgardV1` → `18 80`} with the matching
+   script-hash prefixes, and `purpose_tag` ∈ {0..6} = Spend, Mint, Cert,
+   Reward, Vote, Propose, Receive, each a single byte because all seven
+   are ≤ 23. Two narrower sets sitting inside the format's bound are
+   recorded as such rather than confused with it: the Midgard builder
+   emits only Spend/Mint/Reward/Receive
+   (`demo/lucid-midgard/src/builder/script-materialization.ts`), and the
+   Cardano↔Midgard conversion bridge admits only Spend/Mint/Reward
+   (`demo/midgard-core/src/codec/native-redeemer.ts`). Sources for the
+   admissible sets: `midgard_script_language_from_tag` and
+   `midgard_redeemer_purpose_from_tag` in
+   `onchain/aiken/lib/midgard/fraud-proofs/native-tx/components.ak`
+   (both `expect` the final value, so anything else rejects) and
+   `MidgardVersionedScriptTags` in
+   `demo/midgard-core/src/codec/versioned-script.ts`.
+6. **Categorical "impossible" removed (MINOR).** Spec §8.4 said
+   certification exists at tier 3 because per-chunk verification against
+   a flat hash is "otherwise impossible" — named explicitly in
+   `docs/DOCUMENTATION_POLICY.md` §Security and normative language as a
+   claim to avoid. Restated as the mechanism: a flat field hash
+   authenticates the whole preimage and nothing smaller, so once the
+   preimage is split the design provides no other way to verify an
+   individual chunk before reconstruction. §8's preamble lost the same
+   pattern ("cannot otherwise authenticate" → "does not otherwise
+   authenticate") and its stale "bounded fallback" wording.
+7. **Duplicated measurement given one authority (MINOR).** "1,341 mem /
+   17.4M CPU" appears in both decision 0004 §3 and spec §8.3. Removing
+   it from 0004 would hollow out the rationale that section exists to
+   carry, so instead 0004 now names spec §8.3 as the single authority
+   for that measurement and the `K` split it pins, making a correction
+   there a correction to both.
+8. **Authority-rule scope reconciled (MINOR).** `docs/spec/README.md`
+   granted component specs "concrete detail (types, encodings,
+   constants, byte-level behavior)" while `docs/DOCUMENTATION_POLICY.md`
+   item 2 also granted "the security properties stated with them" — two
+   answers to whether `docs/spec/` wins on security properties. The
+   README now carries the policy's exact scope and says the two are one
+   rule, and its scheme-altitude bullet defines "primitives" as exactly
+   that concrete detail, which was the third phrasing.
+
+Gates re-run after this pass, all green and unchanged from the values
+above — the manifest edit re-triggers F05's self-invalidation, so all four
+were rerun, not just the manifest one:
+`node demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs`
+PASS, 186/186 rows, 186 unique IDs, 119 first-queue IDs, 0 defects;
+`node demo/scripts/verify-canonical-v1-fault-proof-reconciliation.mjs`
+70 rows / 49 open;
+`node demo/scripts/verify-canonical-v1-status-role-control.mjs` PASS
+(3 decorated ledger rows — Q24, Q25, Q44 — governing 6 dependent manifest
+tasks);
+`node demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate.mjs`
+exit 0, `gateStatus` BLOCKED with the same pre-existing BLOCKED states
+(9 rows reconciled, 0 PASS, 6 absent prescribed surfaces, IG2 BLOCKED with
+11 violations). `demo/node_modules/.bin/prettier --check` passes on
+`docs/spec/README.md`, `docs/spec/midgard-tx.md`,
+`docs/midgard/decisions/0004-…md`, `docs/DOCUMENTATION_POLICY.md`, and the
+F05 manifest JSON. Manifest structure re-checked independently of the
+gate: parses, exactly 186 rows, 186 unique ids, id sequence byte-identical
+to the pre-edit snapshot, and the diff is 42 changed lines against 42
+removed — every one a paired rewrite, zero net deletions, which is
+invariant 14 satisfied mechanically. Out of scope and untouched per the
+#579 fence: `onchain/aiken/plutus.json`, the catalogue/deployment
+registries, the ABI-freeze artifact, and blueprint regeneration.
 
 **Supersession statement (§3 invariant 14) — counted-scheme evidence
 rows.** This section supersedes, wherever they record counted
