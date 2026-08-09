@@ -3,7 +3,6 @@ use midgard/fraud_proofs/common.{NativeTxInclusionCarriage}
 
 pub type State {
   verified_tx1_id: ByteArray,
-  verified_tx1_spend_inputs_hash: ByteArray,
 }
 
 pub type Datum =

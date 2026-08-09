@@ -46,8 +46,8 @@ validator main(
             output_script_hash,
             output_state_data,
             header,
-            _bad_tx_id,
-            bad_tx_view
+            bad_tx_id,
+            _bad_tx_view
           <- pass_native_tx_to_next_step(
           computation_thread_token_policy_id,
           hub_oracle,
@@ -63,7 +63,7 @@ validator main(
         //    unwrap the counted root for the withdrawal membership check).
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
-          bad_tx_reference_inputs_hash: bad_tx_view.tx_compact.body.reference_inputs_hash,
+          bad_tx_id,
           blocks_withdrawals_root: header.withdrawals_root,
           blocks_withdrawal_count: header.withdrawal_count,
         }
@@ -87,7 +87,7 @@ validator main(
 test withdrawn_reference_input_step_01_binds_native_v1_block_fixture() {
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   let expected_output_state: Data = step_02.State {
-    bad_tx_reference_inputs_hash: block.compact.body.reference_inputs_hash,
+    bad_tx_id: block.tx_id,
     blocks_withdrawals_root: block.header.withdrawals_root,
     blocks_withdrawal_count: block.header.withdrawal_count,
   }

@@ -62,7 +62,8 @@ validator main(
         expect
             Some(State {
               expected_missing_script_hash,
-              verified_script_wits_hash,
+              bad_tx_id,
+              bad_tx_witness_set_hash,
             })
           = m_input_state_data
 
@@ -82,7 +83,8 @@ validator main(
         expect output_script_hash == step_06_validator_script_hash
         let expected_output_state: Data = step_06.State {
           expected_missing_script_hash,
-          verified_script_wits_hash,
+          bad_tx_id,
+          bad_tx_witness_set_hash,
         }
         expect output_state_data == expected_output_state
 

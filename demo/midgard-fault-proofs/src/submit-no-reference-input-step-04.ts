@@ -1,4 +1,9 @@
 /**
+ * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
+ * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
+ * divergences, and why they are not re-derived in this lane are explained once
+ * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ *
  * `no-reference-input` step-04 submitter (Goal task `Q18`, §9.1 output 8).
  *
  * Structural mirror of the `non-existent-input` chain's step 04

@@ -114,6 +114,17 @@ jobs:
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
         run: node scripts/verify-carriage-exec-ledger-v1.mjs
+      # Issue #575, the Q1x family-rebind wave of #565. Same reasoning as the
+      # step above, applied to the lane's own exit criterion: the Q1x steps'
+      # execution costs at the 13,200,000-mem GOAL_SPEC §3.3 basis, and the
+      # Q1X-F6 claim (#551) that a step's cost no longer scales with the
+      # disputed transaction's spend-input count. That claim is the whole point
+      # of the rebind, so it is asserted here rather than reported once and
+      # trusted afterwards.
+      - name: Pin the Q1x family execution ledger
+        env:
+          MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
+        run: node scripts/verify-q1x-exec-ledger-v1.mjs
       # Issue #521. The released compiler keys generated expect-decoders by
       # local type name only, so two same-named types in different modules
       # share one decoder and the shipped blueprint silently gets a decoder

@@ -48,8 +48,8 @@ validator main(
             output_script_hash,
             output_state_data,
             _header,
-            _bad_tx_id,
-            bad_tx_view
+            bad_tx_id,
+            _bad_tx_view
           <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
@@ -64,9 +64,7 @@ validator main(
         //    the proof by comparing it against the hash of an empty input list,
         //    so no block roots need to be threaded forward.
         expect output_script_hash == step_02_validator_script_hash
-        let expected_output_state: Data = step_02.State {
-          bad_tx_spend_inputs_hash: bad_tx_view.tx_compact.body.spend_inputs_hash,
-        }
+        let expected_output_state: Data = step_02.State { bad_tx_id }
         expect output_state_data == expected_output_state
 
         // Done.
@@ -93,9 +91,7 @@ fn zero_input_bad_tx() -> MidgardTransaction {
 /// the first step and forwards its canonical spend-inputs hash.
 test zero_input_step_01_binds_native_v1_block_fixture() {
   let block = fixture.native_block_fixture_v1(zero_input_bad_tx())
-  let expected_output_state: Data = step_02.State {
-    bad_tx_spend_inputs_hash: block.compact.body.spend_inputs_hash,
-  }
+  let expected_output_state: Data = step_02.State { bad_tx_id: block.tx_id }
   let l1_tx = fixture.continue_step_l1_tx_v1(
     block,
     expected_output_state,
@@ -145,9 +141,7 @@ fn run_zero_input_step_01_published(
   claim_chunk_count: Int,
   steps: mpf.Proof,
 ) -> Bool {
-  let expected_output_state: Data = step_02.State {
-    bad_tx_spend_inputs_hash: block.compact.body.spend_inputs_hash,
-  }
+  let expected_output_state: Data = step_02.State { bad_tx_id: block.tx_id }
   main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -226,7 +220,7 @@ test zero_input_step_01_rejects_forged_transactions_root() fail {
   )
   let forged_block = fixture.native_block_fixture_v1(zero_input_bad_tx())
   let expected_output_state: Data = step_02.State {
-    bad_tx_spend_inputs_hash: forged_block.compact.body.spend_inputs_hash,
+    bad_tx_id: forged_block.tx_id,
   }
   // The prover claims the forged bad tx under the valid block's header by
   // supplying the forged raw root; the counted-root unwrap must reject it.

@@ -1,4 +1,9 @@
 /**
+ * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
+ * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
+ * divergences, and why they are not re-derived in this lane are explained once
+ * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ *
  * `invalid-signature` step-01 submitter (Goal task `Q15`, §9.1 output 8).
  *
  * Nothing in the prepared JSON is trusted. Before a transaction is built this
@@ -8,7 +13,12 @@
  *   view, which the on-chain step re-opens against the block header's counted
  *   `transactions_root`; and
  * - the committed `witness_set_hash`, by re-encoding the supplied witness-set
- *   compact exactly as `verify_native_tx_witness_set` does on-chain.
+ *   compact exactly as the on-chain §8.8 field-access door does. The standalone
+ *   `verify_native_tx_witness_set` helper this mirrored was deleted by #575;
+ *   `authenticated_field_view`
+ *   (`onchain/aiken/lib/midgard/native-tx-field-access-v1.ak`) now makes the
+ *   same `blake2b_256(encode_native_tx_witness_set_compact(...))` check inline
+ *   and will not read any of fields 6–8 until it passes.
  *
  * A prepared file whose witness-set compact is not the preimage of the
  * committed hash is therefore rejected locally, before any submission: a valid
@@ -233,8 +243,12 @@ export const submitInvalidSignatureStep01 = async ({
   }
 
   requireNativeTxMatchesCompactCbor(txInclusion);
-  // Twin of the on-chain `verify_native_tx_witness_set`: the supplied compact
-  // must re-encode to the `witness_set_hash` the committed transaction pins.
+  // Twin of the on-chain §8.8 field-access door: the supplied compact must
+  // re-encode to the `witness_set_hash` the committed transaction pins. The
+  // standalone `verify_native_tx_witness_set` helper is gone as of #575;
+  // `authenticated_field_view` makes the identical check before it will read
+  // any of fields 6–8, and for a downstream step the hash it checks against is
+  // the anchored one thread state carries in `WitnessAnchor`.
   // The signature itself cannot be tested yet — the transaction commits its
   // address witnesses only as a hash, whose preimage step 02 supplies.
   const badTxWitnessSetHash = txInclusion.nativeTx.witness_set_hash;

@@ -31,12 +31,15 @@ use midgard/fraud_proofs/chunked_inclusion_v1
 use midgard/fraud_proofs/common.{
   NativeTxInclusionArgs, NativeTxInclusionCarriage,
 }
+use midgard/fraud_proofs/field_opening_v1
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/hub_oracle
 use midgard/ledger_state
 use midgard/mpf_chunked_proof_v1
+use midgard/native_tx_carriage_v1 as native_carriage
+use midgard/native_tx_field_access_v1 as field_access
 use midgard/state_queue
 use midgard/transition_trace
 
@@ -299,6 +302,250 @@ pub fn miskeyed_block_fixture_v1(
 
 pub fn ct_token_asset_name(fixture: NativeBlockFixtureV1) -> ByteArray {
   fraud_category_id |> builtin.append_bytearray(fixture.header_hash)
+}
+
+/// The compact structure the same block would have committed had `tx`'s witness
+/// set been `witness_set` — genuine body, prover-chosen tail.
+///
+/// This is the forgery §3's two-level split makes possible and the transaction
+/// id cannot see. The id preimage is `encode_native_tx_body_compact(body)`
+/// alone, so replacing the compact structure's trailing `witness_set_hash`
+/// leaves `tx_id` **exactly** as it was: the returned fixture's
+/// `compact_cbor` re-derives to the committed transaction's id, and any check
+/// that only re-derives the id accepts it. `header`/`transactions_phas_root` are
+/// deliberately left committing the *honest* bytes, because a finalize step does
+/// not re-open the block — the whole point is that the forgery never has to
+/// survive an inclusion proof.
+///
+/// The useful choice of `witness_set` is the empty one
+/// (`empty_witness_set_compact`): it makes the §2.5 absence rules over fields 6
+/// and 7 vacuously true, which is a slashing proof against an honest operator.
+pub fn forged_witness_set_block_v1(
+  base: NativeBlockFixtureV1,
+  witness_set: native_types.NativeTxWitnessSetCompact,
+) -> NativeBlockFixtureV1 {
+  let compact = native_types.NativeTxCompact {
+    ..base.compact,
+    witness_set_hash: blake2b_256(
+      native_compact.encode_native_tx_witness_set_compact(witness_set),
+    ),
+  }
+  NativeBlockFixtureV1 {
+    ..base,
+    compact,
+    compact_cbor: native_compact.encode_native_tx_compact_v1(compact),
+    witness_set_compact: witness_set,
+  }
+}
+
+/// The canonical three-hash compact form of an arbitrary witness set — the
+/// prover's side of a forgery, built exactly as an honest block builder would
+/// build it.
+pub fn witness_set_compact_v1(
+  witness_set: native_types.MidgardTransactionWitnessSet,
+) -> native_types.NativeTxWitnessSetCompact {
+  native_transaction.midgard_transaction_witness_set_to_compact(witness_set)
+}
+
+/// A compact witness set whose three §2.5 collection hashes are taken over
+/// items the caller supplies **already encoded**, canonical or not.
+///
+/// `witness_set_compact_v1` goes through the typed `MidgardTransactionWitnessSet`
+/// and can therefore only ever commit canonical items. A selector that has to
+/// commit a *non*-canonical one — to show that a step's item-level §6.1 check is
+/// load-bearing rather than decorative — must bypass the type, and this is the
+/// only place that does.
+pub fn witness_set_compact_of_items(
+  addr_tx_wits: List<ByteArray>,
+  script_tx_wits: List<ByteArray>,
+  redeemer_tx_wits: List<ByteArray>,
+) -> native_types.NativeTxWitnessSetCompact {
+  native_types.NativeTxWitnessSetCompact {
+    addr_tx_wits_hash: blake2b_256(
+      field_access.encode_field_preimage(addr_tx_wits),
+    ),
+    script_tx_wits_hash: blake2b_256(
+      field_access.encode_field_preimage(script_tx_wits),
+    ),
+    redeemer_tx_wits_hash: blake2b_256(
+      field_access.encode_field_preimage(redeemer_tx_wits),
+    ),
+  }
+}
+
+/// The canonical compact witness set of a transaction that witnesses nothing:
+/// all three §2.5 collections empty. Every `field_item_count` over it is 0, so
+/// every absence claim over fields 6–8 holds vacuously — which is what makes it
+/// the forgery a missing-signature or missing-script prover wants.
+pub fn empty_witness_set_compact() -> native_types.NativeTxWitnessSetCompact {
+  witness_set_compact_v1(
+    native_types.MidgardTransactionWitnessSet {
+      addr_tx_wits: [],
+      script_tx_wits: [],
+      redeemer_tx_wits: [],
+    },
+  )
+}
+
+// ## Shared family-selector fixtures
+//
+// Every `validators/fraud-proofs/**` selector needs the same two things: a
+// §8 certificate policy to parameterise its validator with, and a tier-1
+// carriage of one field's preimage. They lived as a per-file constant and a
+// per-file `inline_*_opening` before #575's review; one copy each is enough,
+// and a single copy is the only way a change to the §8 opening shape reaches
+// every selector at once.
+
+/// The §8 field-preimage certificate policy the selectors parameterise their
+/// validators with.
+///
+/// Tier-1 (`Inline`) carriage never consults a certificate, so for every
+/// selector but the tier-3 ones below this value's job is to be *unusable*: no
+/// reference input in their L1 transactions carries it, and a selector that
+/// silently fell through to a tier-2 or tier-3 path would therefore fail rather
+/// than pass against an unchecked policy. The tier-3 fixtures below deliberately
+/// mint under it, because their whole claim is about what a *well-formed*
+/// certificate can and cannot authorise.
+pub const test_certificate_policy_id: assets.PolicyId =
+  #"77777777777777777777777777777777777777777777777777777777"
+
+/// Tier-1 carriage of a **body** field's preimage (§2.5 fields 0–5), over items
+/// the caller has already canonically encoded.
+pub fn inline_body_opening(
+  compact_cbor: ByteArray,
+  encoded_items: List<ByteArray>,
+) -> field_opening_v1.FieldOpeningV1 {
+  field_opening_v1.BodyFieldOpening {
+    native_tx_compact_cbor: compact_cbor,
+    carriage: field_access.Inline {
+      preimage: field_access.encode_field_preimage(encoded_items),
+    },
+  }
+}
+
+/// Tier-1 carriage of a **witness-set** field's preimage (§2.5 fields 6–8),
+/// paired with the witness set the door checks against the anchored
+/// `witness_set_hash`.
+pub fn inline_witness_opening(
+  compact_cbor: ByteArray,
+  witness_set: native_types.NativeTxWitnessSetCompact,
+  encoded_items: List<ByteArray>,
+) -> field_opening_v1.FieldOpeningV1 {
+  field_opening_v1.WitnessFieldOpening {
+    native_tx_compact_cbor: compact_cbor,
+    witness_set,
+    carriage: field_access.Inline {
+      preimage: field_access.encode_field_preimage(encoded_items),
+    },
+  }
+}
+
+// ## Tier-3 (§8.4 Certified) carriage fixtures
+//
+// A §8.6 certificate is the *only* thing binding a tier-3 preimage to the
+// disputed transaction — the door has no preimage to hash, which is what tier 3
+// is for. These builders produce a certificate that is honest in every
+// mechanical respect: real byte length, real per-chunk digests, minted under
+// the policy the selector parameterises its validator with, named for the
+// committed transaction's own `(tx_id, field_index)`. Whether the *field* it
+// certifies is the one that transaction committed is a separate question, and
+// for fields 6–8 it is a question nothing on chain can answer — see
+// `field_opening_v1.carriage_reaches_the_anchor` and §8.3 erratum E2 limit 3.
+
+const carriage_holder_script_hash =
+  #"91919191919191919191919191919191919191919191919191919191"
+
+/// The §8.4 chunk carriage of `preimage`, as reference inputs at slots
+/// `1 ..= n`. §8.5: inert bytes at an arbitrary address, no token, no ordering
+/// claim beyond the index the redeemer names.
+fn certified_chunk_input(index: Int, chunk: ByteArray) -> Input {
+  Input {
+    output_reference: OutputReference {
+      transaction_id: blake2b_256(cbor.serialise(index)),
+      output_index: index + 1,
+    },
+    output: Output {
+      address: address.from_script(carriage_holder_script_hash),
+      value: assets.from_lovelace(2_000_000),
+      datum: InlineDatum(builtin.b_data(chunk)),
+      reference_script: None,
+    },
+  }
+}
+
+/// Certificate at slot 0, chunks at slots `1 ..= n` — the layout
+/// `certified_carriage_v1` names.
+pub fn certified_reference_inputs_v1(
+  tx_id: ByteArray,
+  field_index: Int,
+  preimage: ByteArray,
+) -> List<Input> {
+  let certificate: Data = native_carriage.field_preimage_certificate_v1(
+    fraud_prover_key_hash,
+    tx_id,
+    field_index,
+    preimage,
+  )
+  let certificate_input = Input {
+    output_reference: OutputReference { transaction_id: tx_id, output_index: 0 },
+    output: Output {
+      address: address.from_script(test_certificate_policy_id),
+      value: assets.from_lovelace(2_000_000)
+        |> assets.add(
+            test_certificate_policy_id,
+            field_access.field_preimage_certificate_asset_name(
+              tx_id,
+              field_index,
+            ),
+            1,
+          ),
+      datum: InlineDatum(certificate),
+      reference_script: None,
+    },
+  }
+  [
+    certificate_input,
+    ..native_carriage.split_field_preimage(preimage)
+      |> list.indexed_map(certified_chunk_input)
+  ]
+}
+
+/// The carriage naming the layout `certified_reference_inputs_v1` builds.
+pub fn certified_carriage_v1(
+  preimage: ByteArray,
+) -> field_access.FieldCarriageV1 {
+  field_access.Certified {
+    cert_ref_input_index: 0,
+    chunk_ref_input_indices: list.range(
+      1,
+      list.length(native_carriage.split_field_preimage(preimage)),
+    ),
+  }
+}
+
+/// Tier-3 carriage of a **witness-set** field (§2.5 fields 6–8), paired with
+/// the witness set the door checks against the anchored `witness_set_hash`.
+pub fn certified_witness_opening(
+  compact_cbor: ByteArray,
+  witness_set: native_types.NativeTxWitnessSetCompact,
+  preimage: ByteArray,
+) -> field_opening_v1.FieldOpeningV1 {
+  field_opening_v1.WitnessFieldOpening {
+    native_tx_compact_cbor: compact_cbor,
+    witness_set,
+    carriage: certified_carriage_v1(preimage),
+  }
+}
+
+/// Tier-3 carriage of a **body** field (§2.5 fields 0–5).
+pub fn certified_body_opening(
+  compact_cbor: ByteArray,
+  preimage: ByteArray,
+) -> field_opening_v1.FieldOpeningV1 {
+  field_opening_v1.BodyFieldOpening {
+    native_tx_compact_cbor: compact_cbor,
+    carriage: certified_carriage_v1(preimage),
+  }
 }
 
 /// The prover-side inclusion arguments matching `continue_step_l1_tx_v1`.
@@ -799,6 +1046,17 @@ pub fn continue_mid_step_l1_tx_v1(
     inputs: [ct_thread_input(asset_name)],
     outputs: [next_step_output(asset_name, output_state_data)],
   }
+}
+
+/// `finalize_step_l1_tx_v1` with carriage reference inputs attached — the shape
+/// a step that opens a field under tier 2 or tier 3 has to be run against,
+/// because the carriage lives in the L1 transaction's `reference_inputs` and
+/// the redeemer names slots into it.
+pub fn finalize_step_l1_tx_with_reference_inputs_v1(
+  asset_name: ByteArray,
+  reference_inputs: List<Input>,
+) -> Transaction {
+  Transaction { ..finalize_step_l1_tx_v1(asset_name), reference_inputs }
 }
 
 /// L1 transaction that finalizes a computation thread into a fraud-proof NFT

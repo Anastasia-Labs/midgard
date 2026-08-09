@@ -29,8 +29,10 @@ onchain/plutarch/                 # LEGACY parallel MPF validators (not deployed
 ```
 
 Note: `lib/midgard/fraud-proofs/<type>/step-NN.ak` files are thin type re-exports; the
-logic lives under `validators/`. Exceptions with real logic in `lib/`:
-`double-spend/input-witness.ak` and `native-tx/*`.
+logic lives under `validators/`. The one exception with real logic in `lib/` is
+`native-tx/*`. (`double-spend/input-witness.ak` was deleted by #575's Q1x rebind:
+the spend-input read it performed is now `field_opening_v1`'s door plus
+`native_tx_machine_walk_v1.spend_input_at`.)
 
 ## 2. Generic machinery
 
@@ -92,7 +94,7 @@ min_fee_a, min_fee_b, prev_header_hash, operator_vkey, protocol_version
 | --------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `zero-input`                | 2                    | native counted-root membership in step 01; `bad_tx_spend_inputs_hash == blake2b_256(encode_native_byte_list([]))` (`zero-input/step-02.ak:17-25,79-82`). This deliberately does not use the PlutusData `env.empty_list_hash`. |
 | `no-input`                  | 4                    | preimage-hash check (`step-02.ak:71`); `pexcludes` vs `prev_utxos_root` (`step-03.ak:71-78`); `pexcludes` vs `transactions_root` (`step-04.ak:69-76`)                                                                         |
-| `double-spend`              | 4 (+`input-witness`) | `tx1_id != tx2_id` (`step-02.ak:57`); `double_spent_input == tx2_double_spent_input` (`step-04.ak:82`); witness recovery `lib/.../double-spend/input-witness.ak:7-22`                                                         |
+| `double-spend`              | 4 | `tx1_id != tx2_id` (`step-02.ak:57`); `double_spent_input == tx2_double_spent_input` (`step-04.ak:82`); spend-input read through the §8.8 door (`lib/midgard/fraud-proofs/field-opening-v1.ak`)                                                         |
 | `input-no-idx`              | 4                    | `producing_tx_id == bad_input_tx_id` (`step-03.ak:66`); `bad_input_output_index >= list.length(outputs_preimage)` (`step-04.ak:74`)                                                                                           |
 | `invalid-range`             | 2                    | `normalize_native_validity_range` (`step-01.ak:20-44`, inline tests `:140-155`); block-range comparison incl. inverted-interval branch (`step-02.ak:82-92`)                                                                   |
 | `invalid-signature`         | 2                    | `verify_ed25519_signature(vkey, bad_tx_id, sig) == False` (`step-02.ak:82-87`); duplicate-vkey TODO `:75-76`                                                                                                                  |

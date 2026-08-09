@@ -46,8 +46,8 @@ validator main(
             output_script_hash,
             output_state_data,
             header,
-            _bad_tx_id,
-            bad_tx_view
+            bad_tx_id,
+            _bad_tx_view
           <- pass_native_tx_to_next_step(
           computation_thread_token_policy_id,
           hub_oracle,
@@ -67,7 +67,7 @@ validator main(
         //    non-membership check runs against a real MPF root.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
-          bad_tx_reference_inputs_hash: bad_tx_view.tx_compact.body.reference_inputs_hash,
+          bad_tx_id,
           blocks_prev_utxos_root: prev_utxos_root,
           blocks_transactions_root: tx_inclusion_args.transactions_phas_root,
         }
@@ -91,7 +91,7 @@ validator main(
 test no_reference_input_step_01_binds_native_v1_block_fixture() {
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   let expected_output_state: Data = step_02.State {
-    bad_tx_reference_inputs_hash: block.compact.body.reference_inputs_hash,
+    bad_tx_id: block.tx_id,
     blocks_prev_utxos_root: block.header.prev_utxos_root,
     blocks_transactions_root: block.transactions_phas_root,
   }
@@ -131,7 +131,7 @@ test no_reference_input_step_01_rejects_forged_transactions_root() fail {
     }
   }
   let expected_output_state: Data = step_02.State {
-    bad_tx_reference_inputs_hash: forged_block.compact.body.reference_inputs_hash,
+    bad_tx_id: forged_block.tx_id,
     blocks_prev_utxos_root: forged_block.header.prev_utxos_root,
     blocks_transactions_root: forged_block.transactions_phas_root,
   }

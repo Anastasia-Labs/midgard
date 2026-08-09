@@ -11,9 +11,8 @@ use midgard/computation_thread as ct
 use midgard/fraud_proof
 use midgard/fraud_proofs/common
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
 use midgard/fraud_proofs/native_tx/types.{
-  MidgardTransaction, MidgardTransactionBody, NativeTxWitnessSetCompact,
+  MidgardTransaction, MidgardTransactionBody,
 }
 
 const other_policy = #"99999999999999999999999999999999999999999999999999999999"
@@ -489,23 +488,15 @@ test common_native_binding_rejects_substituted_hub_oracle() fail {
     },
   )
 }
-
 // ## 6. Witness-set binding at the shared layer
-
-/// The committed witness-set compact preimage authenticates.
-test common_witness_set_binding_accepts_committed_preimage() {
-  let block = valid_block()
-  let view = verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor)
-  common.verify_native_tx_witness_set(view, block.witness_set_compact) == block.witness_set_compact
-}
-
-/// Fabricated witness evidence for a valid block rejects.
-test common_witness_set_binding_rejects_forged_preimage() fail {
-  let block = valid_block()
-  let view = verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor)
-  let forged = NativeTxWitnessSetCompact {
-    ..block.witness_set_compact,
-    addr_tx_wits_hash: forged_root,
-  }
-  common.verify_native_tx_witness_set(view, forged) == forged
-}
+//
+// Retired by #575. The two selectors that lived here exercised
+// `common.verify_native_tx_witness_set`, which is gone: the derivation it ran is
+// now a precondition inside `authenticated_field_view`, against a
+// `witness_set_hash` the *thread* anchored rather than one the redeemer's own
+// compact bytes carried. The equivalent assertions live where the guard does —
+// `midgard/fraud_proofs/field_opening_v1.test`'s
+// `forged_witness_set_and_compact_is_refused_under_the_anchor` and the
+// per-family both-sides forgery selectors — and they are strictly stronger,
+// because the helper here could only ever catch a witness set forged on one
+// side.

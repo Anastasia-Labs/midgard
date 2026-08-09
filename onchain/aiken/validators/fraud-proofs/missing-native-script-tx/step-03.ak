@@ -41,7 +41,7 @@ validator main(
             output_state_data,
             _header,
             producing_tx_id,
-            producing_tx_view
+            _producing_tx_view
           <- pass_native_tx_to_next_step(
           computation_thread_token_policy_id,
           hub_oracle,
@@ -52,7 +52,11 @@ validator main(
         )
 
         expect
-            Some(State { input_with_missing_script, verified_script_wits_hash })
+            Some(State {
+              input_with_missing_script,
+              bad_tx_id,
+              bad_tx_witness_set_hash,
+            })
           = m_input_state_data
 
         // 2. The producing tx must correspond to the bad input's transaction
@@ -60,13 +64,15 @@ validator main(
         expect producing_tx_id == input_with_missing_script.tx_id
 
         // 3. The UTxO must be produced at next step's script hash with the
-        //    producing transaction's native outputs hash and the bad input's
-        //    output index.
+        //    producing transaction's verified id and the bad input's output
+        //    index. Step-04 opens the producing transaction's field 2 through
+        //    the §8.8 door from that id.
         expect output_script_hash == step_04_validator_script_hash
         let expected_output_state: Data = step_04.State {
-          producing_tx_outputs_hash: producing_tx_view.tx_compact.body.outputs_hash,
+          producing_tx_id,
           bad_input_output_index: input_with_missing_script.output_index,
-          verified_script_wits_hash,
+          bad_tx_id,
+          bad_tx_witness_set_hash,
         }
         expect output_state_data == expected_output_state
 

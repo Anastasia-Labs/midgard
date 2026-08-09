@@ -40,70 +40,38 @@
  * `--update` rewrites the ledger from the measurement. It is how a legitimate
  * re-take is recorded — and it is the only way, so the spec table and the ledger
  * move together or the check that follows fails.
+ *
+ * **`--update` is not a bypass.** It absorbs measurement drift and nothing else:
+ * a selector that did not run, a referenced claim that does not exist, or a
+ * binding axis the fresh measurement contradicts fails in update mode too, and
+ * the ledger is not rewritten when it does.
  */
 
-import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { measureModule } from "./exec-ledger-measure-v1.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const ledgerPath = resolve(
   scriptDirectory,
   "native-tx-carriage-exec-ledger-v1.json",
 );
-const focusedCheckPath = resolve(scriptDirectory, "run-focused-check.mjs");
 
 const update = process.argv.includes("--update");
 const ledger = JSON.parse(readFileSync(ledgerPath, "utf8"));
 
+// Two classes of complaint. A **drift** is a measured number that no longer
+// matches the recorded one — the thing `--update` exists to absorb. A
+// **structural** failure is anything else: a selector that did not run, a
+// referenced claim that does not exist, a derived binding axis the measurement
+// contradicts. None of those is a number to re-pin, so `--update` must not
+// swallow one. See the note above the exit sequence at the foot of this file.
 const failures = [];
+const drifts = [];
 const fail = (message) => failures.push(message);
-
-/**
- * One module's readings, taken through `run-focused-check.mjs` rather than by
- * spawning Aiken directly. That script already asserts the collected module is
- * the one asked for and that every selected test passed, so reusing it means
- * this verifier cannot accept a report assembled from a different module or one
- * containing a failure.
- */
-const measureModule = (moduleName, testNames) => {
-  const result = spawnSync(
-    process.execPath,
-    [focusedCheckPath, moduleName, ...testNames],
-    {
-      cwd: resolve(scriptDirectory, ".."),
-      encoding: "utf8",
-      maxBuffer: 64 * 1024 * 1024,
-    },
-  );
-  if (result.status !== 0) {
-    if (result.stderr) {
-      process.stderr.write(result.stderr);
-    }
-    throw new Error(
-      `focused check for '${moduleName}' exited with status ${String(result.status)}`,
-    );
-  }
-  let report;
-  try {
-    report = JSON.parse(result.stdout);
-  } catch {
-    throw new Error(
-      `focused check for '${moduleName}' did not return a structured report`,
-    );
-  }
-  const readings = new Map();
-  for (const module of report.modules ?? []) {
-    for (const test of module.tests ?? []) {
-      readings.set(test.title, {
-        mem: test.execution_units.mem,
-        cpu: test.execution_units.cpu,
-      });
-    }
-  }
-  return readings;
-};
+const drifted = (message) => drifts.push(message);
 
 const measured = new Map();
 
@@ -139,7 +107,7 @@ for (const entry of ledger.modules) {
       continue;
     }
     if (actual.mem !== expected.mem || actual.cpu !== expected.cpu) {
-      fail(
+      drifted(
         `${entry.module}: '${name}' drifted — ledger mem=${String(expected.mem)} cpu=${String(expected.cpu)}, ` +
           `measured mem=${String(actual.mem)} cpu=${String(actual.cpu)}`,
       );
@@ -162,7 +130,7 @@ for (const derived of ledger.derived) {
     continue;
   }
   if (mem !== derived.mem || cpu !== derived.cpu) {
-    fail(
+    drifted(
       `derived '${derived.claim}' drifted — ledger mem=${String(derived.mem)} cpu=${String(derived.cpu)}, ` +
         `measured mem=${String(mem)} cpu=${String(cpu)}`,
     );
@@ -191,7 +159,7 @@ if (openCost === undefined || perRead === undefined) {
     budget.bindingAxis = bindingAxis;
   } else {
     if (round(byMemory) !== budget.byMemory || round(byCpu) !== budget.byCpu) {
-      fail(
+      drifted(
         `read budget drifted — ledger memory=${String(budget.byMemory)} cpu=${String(budget.byCpu)}, ` +
           `measured memory=${String(round(byMemory))} cpu=${String(round(byCpu))}`,
       );
@@ -204,6 +172,24 @@ if (openCost === undefined || perRead === undefined) {
   }
 }
 
+// Structural failures are fatal in **both** modes, and they are checked before
+// anything is written: a `--update` run that could not find a neutralisation
+// selector must not leave a rewritten ledger behind as evidence that it
+// succeeded. This file's own header refuses that shape for the spec table; it
+// had not been applied to the flag itself until #575's round-2 review.
+if (failures.length > 0) {
+  for (const failure of failures) {
+    console.error(failure);
+  }
+  console.error(
+    `\n§8.10 carriage execution ledger: ${String(failures.length)} structural failure(s). ` +
+      (update
+        ? "The ledger was NOT rewritten. `--update` absorbs measurement drift and nothing else."
+        : "These are not re-takeable numbers; resolve them in the source or in the ledger."),
+  );
+  process.exit(1);
+}
+
 if (update) {
   writeFileSync(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`);
   process.stdout.write(
@@ -212,12 +198,12 @@ if (update) {
   process.exit(0);
 }
 
-if (failures.length > 0) {
-  for (const failure of failures) {
-    console.error(failure);
+if (drifts.length > 0) {
+  for (const drift of drifts) {
+    console.error(drift);
   }
   console.error(
-    `\n§8.10 carriage execution ledger: ${String(failures.length)} drift(s). ` +
+    `\n§8.10 carriage execution ledger: ${String(drifts.length)} drift(s). ` +
       "If the re-take is legitimate, re-run with --update and move " +
       "docs/spec/midgard-tx.md §8.10 in the same commit.",
   );

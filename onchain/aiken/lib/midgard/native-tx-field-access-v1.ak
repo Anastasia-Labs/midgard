@@ -12,8 +12,18 @@
 ////     the committed compact structures, never a free-standing field hash, so
 ////     the positional-identity invariant cannot be side-stepped at a dispute
 ////     entry point. For the three witness-set fields the door re-derives the
-////     witness-set hash and checks it against the tx-id-committed compact
-////     structure before it will read anything.
+////     witness-set hash and checks it against the `witness_set_hash` the
+////     supplied compact structure carries, before it will read anything.
+////     **That check is half of the binding, not all of it**: §3's transaction
+////     id preimage is the body alone, so a compact structure's trailing
+////     `witness_set_hash` is *not* covered by the id and a caller that
+////     re-derived the structure from redeemer bytes has authenticated nothing
+////     about it. The other half is the caller's, and
+////     `midgard/fraud_proofs/field_opening_v1`'s `WitnessAnchor` is where a
+////     downstream family step gets it: the value its own step-01 read off the
+////     block-committed structure. A caller holding structures straight from
+////     `pass_native_tx_to_next_step` already has them authenticated and owes
+////     nothing further.
 ////   * **Abort, never clamp** (§7.3). `bytearray.slice` clamps, and two
 ////     clamped out-of-range reads are byte-equal — which would fabricate
 ////     equality evidence out of a perfectly valid block. Every read here goes
@@ -415,8 +425,11 @@ pub fn authenticated_field_view(
 ) -> FieldViewV1 {
   expect _field_index = expect_field_index(field_index)
   let NativeTxCompact { body, witness_set_hash, .. } = verified.tx_compact
-  // Positional identity (§4): the witness-set fields are only readable once
-  // the supplied witness set is shown to be the one the tx-id committed.
+  // Positional identity (§4): the witness-set fields are only readable once the
+  // supplied witness set re-derives to the `witness_set_hash` these compact
+  // structures carry. Whether *that* hash is itself authenticated is the
+  // caller's to establish — see the module header — because §3's id preimage is
+  // the body and does not reach it.
   expect or {
       field_index < 6,
       blake2b_256(encode_native_tx_witness_set_compact(witness_set)) == witness_set_hash,

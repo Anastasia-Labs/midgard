@@ -19,7 +19,8 @@
   mint-redeemer wire format by
   [#573](https://github.com/Anastasia-Labs/midgard/issues/573); §8.10 and
   erratum E1 in Phase 4 by
-  [#574](https://github.com/Anastasia-Labs/midgard/issues/574)).
+  [#574](https://github.com/Anastasia-Labs/midgard/issues/574); erratum E2 in
+  Phase 5 by [#575](https://github.com/Anastasia-Labs/midgard/issues/575)).
 - **Version:** `native_tx_version_v1 = 1`. Pre-launch, this format replaces
   the counted bounded-collection commitment scheme in place (GOAL_SPEC §3
   invariant 13); there is no compatibility path to the retired scheme.
@@ -32,7 +33,15 @@
   of preimage lengths that carry no admissible carriage until the re-pin lands.
   `maxTier1RedeemerPreimageBytes` remains provisional and unmeasured, though E1
   narrows the headroom it was reasoned from.
-- **Errata:** §8.3 erratum E1 — `K` re-pinned by Phase-4 measurement.
+- **Errata:** §8.3 erratum E1 — `K` re-pinned by Phase-4 measurement; §8.3
+  erratum E2 — three limits on faulting the witness-set fields (§2.5 fields
+  6–8): field 6 is not faultable at C20.6's admissible script-witness
+  cardinality, on execution and on carriage, and **no** witness-set field may be
+  carried under tier 3 at all, because a §8.6 certificate cannot be bound to a
+  transaction id that does not commit the witness set. Raised by the Phase-5 Q1x
+  rebind ([#575](https://github.com/Anastasia-Labs/midgard/issues/575)); the
+  tier-3 repair is assigned to
+  [#579](https://github.com/Anastasia-Labs/midgard/issues/579).
 
 ## 1. Scope and notation
 
@@ -767,6 +776,152 @@ neither was stated in the first revision of this erratum:
   materially tighter than the allowance was reasoned about, and #557's M2 should
   be taken with it in view. It is a caution, not a re-pin: no step transaction
   has been measured, and this erratum does not measure one.
+
+#### Erratum E2 — limits on faulting the witness-set fields (2026-08-09)
+
+**Amendment-level erratum**, raised by
+[#575](https://github.com/Anastasia-Labs/midgard/issues/575) under the
+_Provisional values_ clause. It re-pins nothing; it records three limits that a
+reader of §8 and §10 would otherwise have to discover by running out of budget —
+or, for limit 3, by being slashed.
+
+Two family steps prove an **absence** over a witness-set field:
+`missing-native-script-tx` step-06 over field 6 — "the required native script is
+not among the transaction's script witnesses" — and `missing-signature` step-04
+over field 7. An absence claim is the one shape that has to see every item, so
+each means a walk (`fold_opened_field`) over the whole field.
+
+Limit 1 is theirs and it is about **budget**: both walks pass the GOAL_SPEC §3.3
+basis before their field's admissible cardinality is reached. Limit 2 is about
+field 6 in particular, where being variable-width costs it its authenticated
+item count under tier-3 carriage. Limit 3 is neither: it applies to all three
+witness-set fields whether or not anything walks them, and it is a **soundness**
+limit rather than a budget one.
+
+**Limit 1 — execution.** Both of the wave's unbounded walks are measured
+through the real step at both ends of their admissible range and pinned in
+`onchain/aiken/scripts/native-tx-q1x-exec-ledger-v1.json`, where each
+high-cardinality row is recorded as `basisFit: "exceeds"` with an
+`infeasibility` note and a cross-reference back to this erratum:
+
+| reading                          | memory         | cpu                |
+| -------------------------------- | -------------- | ------------------ |
+| step-06 at 1 script witness      | 615,106        | 200,166,521        |
+| step-06 at 224 script witnesses  | **35,571,780** | **11,888,712,125** |
+| step-04 at 1 address witness     | 578,001        | 186,623,451        |
+| step-04 at 318 address witnesses | **40,230,476** | **12,839,235,525** |
+| GOAL_SPEC §3.3 basis             | 13,200,000     | 8,000,000,000      |
+
+`missing-native-script-tx` step-06 walks field 6 at C20.6's 224-witness Cardano
+envelope: ≈ 2.7× the memory basis and ≈ 1.5× the cpu basis. From the two
+readings the marginal cost is ≈ 156,800 memory and ≈ 52,400,000 cpu per witness,
+so the walk fits the memory basis at roughly **81** witnesses and the cpu basis
+at roughly **150**; memory is the binding axis. Above ≈ 81 native script
+witnesses a missing-native-script fault cannot be finalized in one L1
+transaction.
+
+`missing-signature` step-04 walks field 7 at 318 address witnesses — the widest
+field 7 §5.4's aggregate cap admits at §5.3's 103-byte stride: ≈ 3.0× the memory
+basis and ≈ 1.6× the cpu basis, marginal cost ≈ 125,100 memory and ≈ 39,900,000
+cpu per witness, fitting the memory basis at roughly **101** witnesses and the
+cpu basis at roughly **196**. Memory is the binding axis here too.
+
+The two together separate the walk from what it walks: field 7 is fixed-stride
+and field 6 is variable-width, so step-04 pays no per-item envelope decode and
+is still O(N). The linear cost is the **visiting**, which an absence claim
+cannot avoid, not the decoding — which is why carriage cannot remedy it and
+§10's resumable walk can.
+
+**Where the field-7 row sits relative to carriage, stated plainly.** 318 address
+witnesses is a 32,757-byte field 7, which is over the §8.3 tier-1 redeemer bound
+and over `K`, so on L1 that preimage would have to travel under tier 3 — which
+limit 3 below now refuses for a witness-set field. The row is therefore taken
+under tier-1 carriage in the harness at a width tier 1 could not carry, and it
+is published as a *walk-cost* reading rather than as a reachable configuration;
+`q1x_f6_address_witness_fixture_sits_at_the_admissible_cardinality` asserts
+exactly that, so the fact cannot go unnoticed. It does not soften the limit,
+because execution binds first and by a wide margin: the widest field 7 tier-2
+carriage can deliver is ≈ 154 witnesses, and the walk leaves the memory basis at
+≈ 101. The operative statement is **≈ 101 address witnesses**, and it is reached
+before either carriage bound.
+
+**Limit 2 — carriage.** The walk needs the field's *authenticated* item count,
+and for a variable-width field that count is authenticated only under tiers 1
+and 2. Under tier 3 (Certified) the §5.1 header's number is the prover's own
+assertion, so `field_item_count` aborts rather than return it. A field-6
+preimage too large for tier-2 carriage therefore cannot be walked at all — the
+step aborts, loudly and unconditionally, rather than clamping.
+
+**Limit 3 — a witness-set field may not be carried under tier 3 at all.** This
+one is not about budget. It is a **soundness** limit, found by the #575 round-2
+review, and the refusal that enforces it is part of #575.
+
+Tiers 1 and 2 put the whole preimage in the consumer's hands, so the §8.8 door
+hashes it against `field_commitment_at(body, witness_set, field_index)` and the
+content is bound to structures the disputing thread already anchored. Tier 3
+exists precisely because the preimage is too large to hold, so the door never
+hashes it: the §8.6 certificate is the binding instead, and the certificate's
+authority is a token named `(tx_id, field_index)`.
+
+For fields 0–5 that name is enough. The minting policy re-derives the
+transaction id from the body it was handed and takes `expected_hash` off that
+same body, and §3's id preimage **is** the body — so a certificate can only be
+minted for the field the named transaction actually committed.
+
+For fields 6–8 it is not enough, for the same reason §2.5's anchor has two arms.
+The minter reads `witness_set_hash` off the *tail* of its own redeemer's
+`native_tx_compact_cbor`, and §3's id preimage does not reach that tail. A
+certifier may therefore present the committed transaction's genuine body — so
+the token is minted under the committed transaction's own name — followed by the
+`witness_set_hash` of any witness set it chooses, and certify a field 6, 7 or 8
+preimage that transaction never committed. Both directions of the §2.5 absence
+rules follow: an empty field 7 makes "the required signature is absent" true of
+every transaction, and a fabricated field 7 makes an invalid-signature fault
+provable against a signature that was never carried. Both slash an honest
+operator.
+
+Until the wire format changes, a witness-set field is therefore **refused tier-3
+carriage** at `fraud_proofs/field_opening_v1.carriage_reaches_the_anchor`, the
+one seam every family step reaches the door through. The cost is that fields 6–8
+cannot be carried above the §8.3 tier-2 bound, so a fault over a witness-set
+field whose preimage exceeds that bound cannot be proved at all. The abort is
+unconditional and loud, in keeping with §7.3.
+
+**The assigned resolution is to fold the field commitment into the §8.6 asset
+name**, so that a certificate token cannot be borrowed for a preimage the named
+transaction did not commit and the door's own `expected_hash` becomes checkable
+against the name. That is a change to a frozen wire format (§8.6) and to a
+landed minting policy, so it is **assigned to
+[#579](https://github.com/Anastasia-Labs/midgard/issues/579)**, not to #575.
+Vectors: `field_opening_v1.test`'s tier-3 block states the premise in both
+directions — the minting predicate accepts the fabrication on a witness field
+and refuses it on a body field — and
+`missing_signature_step_04_rejects_certified_carriage` asserts the refusal at a
+real step.
+
+**What these are not.** Limits 1 and 2 are not introduced by the #575 rebind:
+the retired idiom needed the same item count, and it reproduced and re-hashed
+the whole script-witness collection inside the step, so it is not credible that
+it was cheaper — but that comparison has **not been measured**, no counted-era
+step-06 row exists, and nothing here should be read as a measured claim about
+the retired idiom's cost. What is measured is the row above. Limit 3 is likewise
+not introduced by the rebind — the tier-3 ladder and the §8.6 certificate are
+#573/#574 surfaces and the gap is in the wire format, not in the rebind — but it
+was **found** by #575's review and closed by #575's refusal.
+
+Nor is any of the three remediable by carriage choice: limit 1 is execution, not
+wire size, and limits 2 and 3 are precisely statements about carriage. The
+resolution for limits 1 and 2 is §10's resumable walk — a checkpoint in thread
+state and a fault spread over several transactions — which is
+[#565](https://github.com/Anastasia-Labs/midgard/issues/565)'s work, with the
+deployed-identity half in
+[#579](https://github.com/Anastasia-Labs/midgard/issues/579); the resolution for
+limit 3 is the §8.6 asset-name change above, which is #579's. What #575 owed and
+has delivered is that the limits are **measured and asserted** rather than
+latent: the ledger row above goes red if the figure moves in either direction,
+including if the step ever starts fitting, and limit 3's refusal is pinned from
+both sides — neutralise it and the forgery selectors flip; widen it into a ban
+on tier 3 and the body-field control flips.
 
 ### 8.4 Tier 3 — chunked + certified digest-manifest
 

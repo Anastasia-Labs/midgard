@@ -49,8 +49,8 @@ validator main(
             output_script_hash,
             output_state_data,
             _header,
-            _bad_tx_id,
-            bad_tx_view
+            bad_tx_id,
+            _bad_tx_view
           <- pass_native_tx_to_next_step(
           computation_thread_token_policy_id,
           hub_oracle,
@@ -64,8 +64,8 @@ validator main(
         //    verified bad transaction's native spend-inputs hash included in
         //    its datum.
         expect output_script_hash == step_02_validator_script_hash
-        let expected_output_state: Data = step_02.Direct {
-          verified_tx_inputs_hash: bad_tx_view.tx_compact.body.spend_inputs_hash,
+        let expected_output_state: Data = step_02.State {
+          verified_tx_id: bad_tx_id,
         }
         expect output_state_data == expected_output_state
 
@@ -101,8 +101,8 @@ test input_no_idx_step_01_binds_native_v1_block_fixture() {
   let block = fixture.native_block_fixture_v1(
     input_no_idx_bad_tx(producing.tx_id),
   )
-  let expected_output_state: Data = step_02.Direct {
-    verified_tx_inputs_hash: block.compact.body.spend_inputs_hash,
+  let expected_output_state: Data = step_02.State {
+    verified_tx_id: block.tx_id,
   }
   let l1_tx = fixture.continue_step_l1_tx_v1(
     block,
@@ -132,8 +132,8 @@ test input_no_idx_step_01_rejects_forged_transactions_root() fail {
   let forged_block = fixture.native_block_fixture_v1(
     input_no_idx_bad_tx(valid_block.tx_id),
   )
-  let expected_output_state: Data = step_02.Direct {
-    verified_tx_inputs_hash: forged_block.compact.body.spend_inputs_hash,
+  let expected_output_state: Data = step_02.State {
+    verified_tx_id: forged_block.tx_id,
   }
   let claimed_block = fixture.NativeBlockFixtureV1 {
     ..forged_block,

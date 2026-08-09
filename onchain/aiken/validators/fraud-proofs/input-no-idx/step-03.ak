@@ -44,7 +44,7 @@ validator main(
             output_state_data,
             _header,
             producing_tx_id,
-            producing_tx_view
+            _producing_tx_view
           <- pass_native_tx_to_next_step(
           computation_thread_token_policy_id,
           hub_oracle,
@@ -61,13 +61,13 @@ validator main(
         expect producing_tx_id == bad_input_tx_id
 
         // 3. The UTxO must be produced at next step's script hash with the
-        //    verified producing transaction's native outputs hash included in
-        //    its datum, and the non-existent input's output index (which is
-        //    expected to be larger than the last output in the provided
-        //    preimage).
+        //    verified producing transaction's id, and the non-existent input's
+        //    output index (which is expected to be at or beyond the producing
+        //    transaction's authenticated output count). Step-04 opens field 2
+        //    through the §8.8 door from that id.
         expect output_script_hash == step_04_validator_script_hash
         let expected_output_state: Data = step_04.State {
-          producing_tx_outputs_hash: producing_tx_view.tx_compact.body.outputs_hash,
+          producing_tx_id,
           bad_input_output_index,
         }
         expect output_state_data == expected_output_state
@@ -87,8 +87,8 @@ validator main(
 //
 // Step-03 re-enters the block binding for a second committed transaction: the
 // producing transaction of the input forwarded by step-02. It may only forward
-// the outputs commitment of a transaction whose canonical id is exactly the
-// forwarded `bad_input_tx_id`.
+// the id of a transaction whose canonical id is exactly the forwarded
+// `bad_input_tx_id`.
 
 fn run_step_03(
   producing: fixture.NativeBlockFixtureV1,
@@ -96,7 +96,7 @@ fn run_step_03(
   bad_input_output_index: Int,
 ) -> Bool {
   let expected_output_state: Data = step_04.State {
-    producing_tx_outputs_hash: producing.compact.body.outputs_hash,
+    producing_tx_id: producing.tx_id,
     bad_input_output_index,
   }
   let l1_tx = fixture.continue_step_l1_tx_v1(
@@ -124,9 +124,8 @@ fn run_step_03(
 
 /// Positive selector: the producing transaction named by the forwarded input
 /// is genuinely committed under the same block's counted `transactions_root`,
-/// so its canonical outputs commitment and the challenged output index reach
-/// step-04.
-test input_no_idx_step_03_forwards_the_producing_tx_outputs_hash() {
+/// so its verified id and the challenged output index reach step-04.
+test input_no_idx_step_03_forwards_the_producing_tx_id() {
   let producing = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   run_step_03(producing, producing.tx_id, 7)
 }

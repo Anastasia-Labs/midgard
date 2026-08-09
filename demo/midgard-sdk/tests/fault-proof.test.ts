@@ -441,8 +441,10 @@ describe("fault-proof ABI", () => {
       script_tx_wits_hash: h32b,
       redeemer_tx_wits_hash: "77".repeat(32),
     };
-    // Mirrors `blake2b_256(encode_native_tx_witness_set_compact(...))` in the
-    // on-chain `verify_native_tx_witness_set`, in positional order.
+    // Mirrors `blake2b_256(encode_native_tx_witness_set_compact(...))` as the
+    // on-chain §8.8 field-access door computes it, in positional order. The
+    // standalone `verify_native_tx_witness_set` helper was deleted by #575; the
+    // check now lives inside `authenticated_field_view`.
     expect(SDK.invalidSignatureWitnessSetCommitmentV1(witnessSet)).toBe(
       computeHash32(
         encodeCbor([

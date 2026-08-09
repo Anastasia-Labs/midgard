@@ -9,14 +9,14 @@
 //// This is meant to take place in four transactions:
 //// 1. First transaction spends the initialized fraud proof UTxO (which has no
 ////    `data`) and reproduces the UTxO at the next step's script address with
-////    `data` containing the first verified bad transaction's ID and inputs
-////    hash.
+////    `data` containing the first verified bad transaction's ID.
 //// 2. Second transaction spends the UTxO produced in the first transaction and
 ////    produces the UTxO at the next step's script address with `data`
-////    containing both verified bad transactions' inputs hashes.
-//// 3. Third transaction provides the first bad transaction's inputs preimage and
-////    carries the double-spent output reference to the next step.
-//// 4. Fourth transaction provides the second bad transaction's inputs preimage
+////    containing both verified bad transactions' IDs.
+//// 3. Third transaction opens the first bad transaction's field-0 preimage
+////    through the §8.8 door and carries the double-spent output reference to
+////    the next step.
+//// 4. Fourth transaction opens the second bad transaction's field-0 preimage
 ////    and finalizes the fraud proof.
 
 use aiken/collection/list
@@ -66,7 +66,7 @@ validator main(
             output_state_data,
             _header,
             bad_tx_id,
-            bad_tx_view
+            _bad_tx_view
           <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
@@ -79,12 +79,13 @@ validator main(
         expect None = m_input_state_data
 
         // 2. The UTxO must be produced at next step's script hash with the
-        //    verified first bad transaction ID and native spend-input hash in
-        //    the `data` field of its `StepDatum`.
+        //    verified first bad transaction ID in the `data` field of its
+        //    `StepDatum`. The id is the whole of what step-03 needs: it re-opens
+        //    field 0 through the §8.8 door, which extracts the commitment
+        //    positionally from the compact structures this id authenticates.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
           verified_tx1_id: bad_tx_id,
-          verified_tx1_spend_inputs_hash: bad_tx_view.tx_compact.body.spend_inputs_hash,
         }
         expect output_state_data == expected_output_state
 
@@ -123,7 +124,6 @@ fn first_step_datum() -> Datum {
 fn run_step_01(claimed: fixture.NativeBlockFixtureV1) -> Bool {
   let expected_output_state: Data = step_02.State {
     verified_tx1_id: claimed.tx_id,
-    verified_tx1_spend_inputs_hash: claimed.compact.body.spend_inputs_hash,
   }
   let l1_tx = fixture.continue_step_l1_tx_v1(
     claimed,
@@ -144,8 +144,8 @@ fn run_step_01(claimed: fixture.NativeBlockFixtureV1) -> Bool {
 }
 
 /// Positive selector: the first conflicting transaction is genuinely committed
-/// under the block's counted `transactions_root`, so its id and canonical
-/// spend-inputs commitment reach step-02.
+/// under the block's counted `transactions_root`, so its verified id reaches
+/// step-02.
 test double_spend_step_01_binds_native_v1_block_fixture() {
   run_step_01(fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()))
 }
@@ -182,7 +182,6 @@ fn run_step_01_published(
 ) -> Bool {
   let expected_output_state: Data = step_02.State {
     verified_tx1_id: block.tx_id,
-    verified_tx1_spend_inputs_hash: block.compact.body.spend_inputs_hash,
   }
   main.spend(
     fixture.next_step_script_hash,

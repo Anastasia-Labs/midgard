@@ -51,8 +51,8 @@ validator main(
             output_script_hash,
             output_state_data,
             header,
-            _bad_tx_id,
-            bad_tx_view
+            bad_tx_id,
+            _bad_tx_view
           <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
@@ -65,14 +65,18 @@ validator main(
         let ledger_state.HeaderV1 { prev_utxos_root, .. } = header
 
         // 2. The UTxO must be produced at next step's script hash with the
-        //    native spend-inputs hash of the bad transaction, and relevant
-        //    block roots. The authenticated raw transactions phas root (verified
+        //    verified id of the bad transaction, and relevant block roots.
+        //    Step-02 re-opens field 0 from that id through the §8.8 door, so
+        //    what travels forward is the transaction's identity rather than one
+        //    of its nine commitments — under §4's plain hashing a field hash
+        //    names no slot, and a slice-only read needs the compact structures
+        //    anyway. The authenticated raw transactions phas root (verified
         //    against the header's counted `transactions_root` inside
         //    `pass_native_tx_to_next_step`) is threaded forward so step-04's
         //    non-membership check runs against a real MPF root.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
-          bad_tx_inputs_hash: bad_tx_view.tx_compact.body.spend_inputs_hash,
+          bad_tx_id,
           blocks_prev_utxos_root: prev_utxos_root,
           blocks_transactions_root: carriage_transactions_phas_root(
             tx_inclusion_args,
@@ -95,7 +99,7 @@ validator main(
 
 fn run_step_01(claimed: fixture.NativeBlockFixtureV1) -> Bool {
   let expected_output_state: Data = step_02.State {
-    bad_tx_inputs_hash: claimed.compact.body.spend_inputs_hash,
+    bad_tx_id: claimed.tx_id,
     blocks_prev_utxos_root: claimed.header.prev_utxos_root,
     blocks_transactions_root: claimed.transactions_phas_root,
   }
@@ -156,7 +160,7 @@ fn run_step_01_published(
   steps: mpf.Proof,
 ) -> Bool {
   let expected_output_state: Data = step_02.State {
-    bad_tx_inputs_hash: block.compact.body.spend_inputs_hash,
+    bad_tx_id: block.tx_id,
     blocks_prev_utxos_root: block.header.prev_utxos_root,
     blocks_transactions_root: carriage_block.transactions_phas_root,
   }

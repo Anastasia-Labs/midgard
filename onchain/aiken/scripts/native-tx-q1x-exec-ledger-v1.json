@@ -1,0 +1,178 @@
+{
+  "measurement": "q1x-family-rebind-exec-ledger",
+  "issue": "#575 — Flat reversion P5, Q1x family rebind (first wave), on spec #565",
+  "spec": "docs/spec/midgard-tx.md §5.3, §7.1, §8.3, §10.5 — arithmetic item access under authenticate-once",
+  "note": "The Q1x lane's rolling re-measurement, attached as a lane exit criterion per #565's measurement-slotting rule. Regenerate with `MIDGARD_AIKEN_BIN=<fork> node scripts/verify-q1x-exec-ledger-v1.mjs --update`, and move any reported number in the same commit. Provisional: formal closure of #551 is Phase 7's, against the Phase-6 blueprint. `--update` rewrites raw rows, derived figures and the Q1X-F6 growth readings; it does NOT rewrite `basisFit`, `infeasibility`, `errata` or the Q1X-F6 bands, because those are judgements and a re-take must not be able to launder one. `--update` is also not a bypass: structural failures (a selector that did not run, a missing block, a judgement the fresh measurement contradicts, a Q1X-F6 band the fresh reading falls outside) fail in update mode too and the ledger is not rewritten.",
+  "basis": {
+    "memoryUnits": 13200000,
+    "cpuUnits": 8000000000,
+    "source": "GOAL_SPEC §3.3 — 20% margin off the live mainnet maxTxExUnits of 16,500,000 mem (epoch 648)"
+  },
+  "modules": [
+    {
+      "module": "fraud-proofs/q1x-spend-input-cardinality.test",
+      "neutralisation": [
+        "q1x_f6_fixture_sits_at_the_admissible_cardinality",
+        "q1x_f6_step_at_the_admissible_maximum_refuses_a_tampered_preimage",
+        "q1x_f6_compact_structure_length_is_cardinality_independent",
+        "q1x_f6_step_06_at_the_admissible_maximum_refuses_a_present_script",
+        "q1x_f6_step_04_at_the_admissible_maximum_refuses_a_present_signature",
+        "q1x_f6_address_witness_fixture_sits_at_the_admissible_cardinality"
+      ],
+      "rows": {
+        "q1x_f6_no_input_step_02_control_at_one_spend_input": {
+          "mem": 779586,
+          "cpu": 343861267
+        },
+        "q1x_f6_no_input_step_02_at_one_spend_input": {
+          "mem": 1245905,
+          "cpu": 489675556
+        },
+        "q1x_f6_no_input_step_02_control_at_the_admissible_maximum": {
+          "mem": 16815183,
+          "cpu": 6914531939
+        },
+        "q1x_f6_no_input_step_02_at_the_admissible_maximum": {
+          "mem": 17169421,
+          "cpu": 7055398870
+        },
+        "q1x_f6_double_spend_step_04_control_at_one_spend_input": {
+          "mem": 782194,
+          "cpu": 344034414
+        },
+        "q1x_f6_double_spend_step_04_at_one_spend_input": {
+          "mem": 1259479,
+          "cpu": 495035630
+        },
+        "q1x_f6_double_spend_step_04_control_at_the_admissible_maximum": {
+          "mem": 16817791,
+          "cpu": 6914705086
+        },
+        "q1x_f6_double_spend_step_04_at_the_admissible_maximum": {
+          "mem": 17182995,
+          "cpu": 7060758944
+        },
+        "q1x_f6_missing_native_script_tx_step_06_control_at_one_script_witness": {
+          "mem": 787321,
+          "cpu": 347041284
+        },
+        "q1x_f6_missing_native_script_tx_step_06_at_one_script_witness": {
+          "mem": 1402427,
+          "cpu": 547207805
+        },
+        "q1x_f6_missing_native_script_tx_step_06_control_at_the_admissible_maximum": {
+          "mem": 17916149,
+          "cpu": 8337646886
+        },
+        "q1x_f6_missing_native_script_tx_step_06_at_the_admissible_maximum": {
+          "mem": 53487929,
+          "cpu": 20226359011
+        },
+        "q1x_f6_missing_signature_step_04_control_at_one_address_witness": {
+          "mem": 789276,
+          "cpu": 345456371
+        },
+        "q1x_f6_missing_signature_step_04_at_one_address_witness": {
+          "mem": 1367277,
+          "cpu": 532079822
+        },
+        "q1x_f6_missing_signature_step_04_control_at_the_admissible_maximum": {
+          "mem": 32112833,
+          "cpu": 12746769250
+        },
+        "q1x_f6_missing_signature_step_04_at_the_admissible_maximum": {
+          "mem": 72343309,
+          "cpu": 25586004775
+        }
+      }
+    }
+  ],
+  "derived": [
+    {
+      "claim": "Q11 no-input step-02 at 1 spend input",
+      "minus": "q1x_f6_no_input_step_02_control_at_one_spend_input",
+      "from": "q1x_f6_no_input_step_02_at_one_spend_input",
+      "mem": 466319,
+      "cpu": 145814289,
+      "basisFit": "fits"
+    },
+    {
+      "claim": "Q11 no-input step-02 at 296 spend inputs",
+      "minus": "q1x_f6_no_input_step_02_control_at_the_admissible_maximum",
+      "from": "q1x_f6_no_input_step_02_at_the_admissible_maximum",
+      "mem": 354238,
+      "cpu": 140866931,
+      "basisFit": "fits"
+    },
+    {
+      "claim": "Q10 double-spend step-04 at 1 spend input",
+      "minus": "q1x_f6_double_spend_step_04_control_at_one_spend_input",
+      "from": "q1x_f6_double_spend_step_04_at_one_spend_input",
+      "mem": 477285,
+      "cpu": 151001216,
+      "basisFit": "fits"
+    },
+    {
+      "claim": "Q10 double-spend step-04 at 296 spend inputs",
+      "minus": "q1x_f6_double_spend_step_04_control_at_the_admissible_maximum",
+      "from": "q1x_f6_double_spend_step_04_at_the_admissible_maximum",
+      "mem": 365204,
+      "cpu": 146053858,
+      "basisFit": "fits"
+    },
+    {
+      "claim": "Q17 missing-native-script-tx step-06 at 1 script witness",
+      "minus": "q1x_f6_missing_native_script_tx_step_06_control_at_one_script_witness",
+      "from": "q1x_f6_missing_native_script_tx_step_06_at_one_script_witness",
+      "mem": 615106,
+      "cpu": 200166521,
+      "basisFit": "fits",
+      "infeasibility": "Field 6 is variable-width and the rule is an absence claim, so step-06's `fold_opened_field` walks every script witness: the cost is O(N) by construction, not flat like the Q10/Q11 reads above. At C20.6's 224-witness Cardano envelope the walk is ~2.7x the GOAL_SPEC 3.3 memory basis and ~1.5x the cpu basis, so a missing-native-script fault over a transaction with that many native script witnesses cannot be finalized on L1 in one transaction. Memory is the binding axis: from the two readings the marginal cost is ~156,800 mem and ~52,400,000 cpu per witness, so the walk fits 13,200,000 mem at roughly 81 witnesses and 8,000,000,000 cpu at roughly 150. UNMEASURED COMPARISON, STATED AS SUCH: the retired counted idiom reproduced and re-hashed the whole collection inside the step and needed the same item count, so there is no reason to think it was cheaper - but no counted-era step-06 row exists, this ledger contains no measurement of it, and nothing here should be read as one. What IS measured is this row. The limit is not remediable by carriage, because the cost is execution, and doubly not by tier 3, which docs/spec/midgard-tx.md 8.3 erratum E2 limit 3 refuses outright for witness-set fields. Resolution is #565's resumable-walk work with a checkpoint in thread state (docs/spec/midgard-tx.md 10) and #579's; this ledger's job is to stop it being unmeasured. Separately measured at the pre-round-3 code state, the 6.1 canonicality re-encode restored in step-06 accounts for ~7% of the figure: 33,192,807 mem without it against 35,566,087 with, so removing the check would not bring the walk near the basis."
+    },
+    {
+      "claim": "Q17 missing-native-script-tx step-06 at 224 script witnesses",
+      "minus": "q1x_f6_missing_native_script_tx_step_06_control_at_the_admissible_maximum",
+      "from": "q1x_f6_missing_native_script_tx_step_06_at_the_admissible_maximum",
+      "mem": 35571780,
+      "cpu": 11888712125,
+      "basisFit": "exceeds",
+      "infeasibility": "Field 6 is variable-width and the rule is an absence claim, so step-06's `fold_opened_field` walks every script witness: the cost is O(N) by construction, not flat like the Q10/Q11 reads above. At C20.6's 224-witness Cardano envelope the walk is ~2.7x the GOAL_SPEC 3.3 memory basis and ~1.5x the cpu basis, so a missing-native-script fault over a transaction with that many native script witnesses cannot be finalized on L1 in one transaction. Memory is the binding axis: from the two readings the marginal cost is ~156,800 mem and ~52,400,000 cpu per witness, so the walk fits 13,200,000 mem at roughly 81 witnesses and 8,000,000,000 cpu at roughly 150. UNMEASURED COMPARISON, STATED AS SUCH: the retired counted idiom reproduced and re-hashed the whole collection inside the step and needed the same item count, so there is no reason to think it was cheaper - but no counted-era step-06 row exists, this ledger contains no measurement of it, and nothing here should be read as one. What IS measured is this row. The limit is not remediable by carriage, because the cost is execution, and doubly not by tier 3, which docs/spec/midgard-tx.md 8.3 erratum E2 limit 3 refuses outright for witness-set fields. Resolution is #565's resumable-walk work with a checkpoint in thread state (docs/spec/midgard-tx.md 10) and #579's; this ledger's job is to stop it being unmeasured. Separately measured at the pre-round-3 code state, the 6.1 canonicality re-encode restored in step-06 accounts for ~7% of the figure: 33,192,807 mem without it against 35,566,087 with, so removing the check would not bring the walk near the basis.",
+      "errata": "docs/spec/midgard-tx.md §8.3 erratum E2 — limit 1 (execution), the field-6 half"
+    },
+    {
+      "claim": "Q16 missing-signature step-04 at 1 address witness",
+      "minus": "q1x_f6_missing_signature_step_04_control_at_one_address_witness",
+      "from": "q1x_f6_missing_signature_step_04_at_one_address_witness",
+      "mem": 578001,
+      "cpu": 186623451,
+      "basisFit": "fits"
+    },
+    {
+      "claim": "Q16 missing-signature step-04 at 318 address witnesses",
+      "minus": "q1x_f6_missing_signature_step_04_control_at_the_admissible_maximum",
+      "from": "q1x_f6_missing_signature_step_04_at_the_admissible_maximum",
+      "mem": 40230476,
+      "cpu": 12839235525,
+      "basisFit": "exceeds",
+      "infeasibility": "The wave's second unbounded walk, added at the #575 round-2 review's request. Field 7 is fixed-stride, so unlike field 6 the walk pays no per-item envelope decode - and it is still O(N), because the rule is an absence claim and `fold_opened_field` must visit every item to assert it. That isolates the cost to the walk itself rather than to variable-width decoding. At 318 address witnesses (the widest field 7 the 5.4 aggregate cap admits at the 5.3 stride of 103) the step is ~3.0x the GOAL_SPEC 3.3 memory basis and ~1.6x the cpu basis. From the two readings the marginal cost is ~125,100 mem and ~39,900,000 cpu per witness, so the walk fits 13,200,000 mem at roughly 101 witnesses and 8,000,000,000 cpu at roughly 196; memory is the binding axis. Above ~101 address witnesses a missing-signature fault cannot be finalized in one L1 transaction. Not remediable by carriage - the cost is execution - and doubly not by tier 3, which 8.3 erratum E2 limit 3 refuses outright for witness-set fields. Resolution is #565's resumable walk with a checkpoint in thread state (docs/spec/midgard-tx.md 10), with the deployed-identity half in #579. Carriage interaction, stated rather than glossed: 318 witnesses is a 32,757-byte field 7, over the 8.3 tier-1 redeemer bound and over K, so on L1 those bytes would have to travel under tier 3 - which 8.3 erratum E2 limit 3 now refuses for a witness-set field. This row is therefore taken under tier-1 carriage in the harness at a width tier 1 could not carry, and it is published as a walk-cost reading rather than as a reachable configuration; the neutralisation selector `q1x_f6_address_witness_fixture_sits_at_the_admissible_cardinality` asserts that the preimage exceeds the tier-1 bound so the fact cannot go unnoticed. Execution binds first regardless: the widest field 7 tier-2 carriage delivers is ~154 witnesses and the walk leaves the memory basis at ~101.",
+      "errata": "docs/spec/midgard-tx.md §8.3 erratum E2 — limit 1 (execution), the field-7 half"
+    }
+  ],
+  "q1xF6": {
+    "defect": "#551 — Q10/Q11 exceeded the ledger memory cap at the admissible spend-input cardinality because the step reproduced the whole authenticated collection to re-hash it. Measured then: Q10 step-04 fit the 20% reserve only to 39 inputs, Q11 step-02 to 40, and at 296 neither proof could be evaluated.",
+    "claim": "Under the §8.8 door the step's cost does not scale with the disputed transaction's spend-input count: the preimage is hashed once (§7.1) and item n is located by §5.3 arithmetic (§10.5).",
+    "status": "provisional-expected-resolved",
+    "lowCardinalityClaim": "Q10 double-spend step-04 at 1 spend input",
+    "highCardinalityClaim": "Q10 double-spend step-04 at 296 spend inputs",
+    "maxMemoryGrowth": 250000,
+    "maxCpuGrowth": 100000000,
+    "memoryGrowth": -112081,
+    "cpuGrowth": -4947358,
+    "memoryHeadroom": 12834796,
+    "cpuHeadroom": 7853946142,
+    "toleranceRationale": "The door pays one blake2b_256 over a preimage that does grow with cardinality - 43 bytes at one input, 11,843 at 296 - so the honest growth is the hash of ~11.8 KB more and nothing else, measured at ~4,600 mem. The band has to hold that plus the control-subtraction artifact described in `deltaAttribution` (|112,081| mem, |4,947,358| cpu), and has to sit far below any per-item regression. Both were measured rather than assumed: a step regressed to walk the whole 296-item collection costs +25,127,050 mem / +8,363,297,421 cpu against the same control, and one regressed to walk only half of it +12,129,016 mem / +4,062,287,469 cpu. The bands below are therefore ~2.2x the observed artifact and ~48x (mem) and ~40x (cpu) below the cheapest regression measured, so neither a half-collection walk nor anything dearer can hide inside them. cpu is carried as its own two-sided band because it is the axis a walk regression moves proportionally hardest against its own tolerance.",
+    "minMemoryGrowth": -250000,
+    "minCpuGrowth": -100000000,
+    "deltaAttribution": "The measured growth is negative on both axes (-112,081 mem, -4,947,358 cpu). That is not the step getting cheaper with cardinality - execution units are deterministic integers and a step whose only cardinality-dependent work is one hash over a larger preimage cannot cost less at 296 inputs than at 1. The cause is the subtraction, not the step. A control row and a measured row are two separately compiled UPLC programs that happen to share source for the fixture; Aiken inlines and prunes each against its own uses, so the shared prefix is not compiled identically in the two, and the difference between them is the validator's cost PLUS a compilation difference over a fixture whose own cost is cardinality-dependent. That residue is what the negative sign is. It was localised rather than asserted: an isolated pair of probes around `verify_native_tx_compact_cbor_v1` alone - a function whose entire input is the 2.5 compact structure, which is nine field commitments plus fixed scalars and therefore the SAME LENGTH at both cardinalities (pinned by the neutralisation selector `q1x_f6_compact_structure_length_is_cardinality_independent`) - measured 195,736 mem at 1 input and 77,736 at 296 by exactly this style of subtraction. A function that cannot vary with cardinality 'varied' by -118,000 mem and -18,880,000 cpu, which is the whole of the anomaly and then some. What the rows do establish, and establish decisively, is the bound: the step costs 469,098 mem at one input and 357,017 at 296, both under 3.6% of the 13,200,000 basis, where the retired idiom could not be evaluated at 296 at all. The exact-equality pins make any future movement visible; the two-sided bands make a movement that matters fail."
+  }
+}

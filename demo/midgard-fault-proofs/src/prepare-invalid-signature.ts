@@ -1,4 +1,9 @@
 /**
+ * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
+ * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
+ * divergences, and why they are not re-derived in this lane are explained once
+ * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ *
  * `invalid-signature` evidence builder (Goal task `Q15`).
  *
  * Harvested from PR #474 (`fp/invalid-signature`) and reconciled against the
@@ -10,7 +15,13 @@
  * The two openings the chain walks are, in order:
  *
  * 1. the witness-set compact, whose `blake2b_256` re-encoding must equal the
- *    committed `witness_set_hash` (step 01, `verify_native_tx_witness_set`); and
+ *    committed `witness_set_hash` (step 01). #575 deleted the standalone
+ *    `verify_native_tx_witness_set` helper that used to make this check; it now
+ *    lives inside the §8.8 field-access door, where `authenticated_field_view`
+ *    (`onchain/aiken/lib/midgard/native-tx-field-access-v1.ak`) refuses to read
+ *    any of fields 6–8 unless
+ *    `blake2b_256(encode_native_tx_witness_set_compact(witness_set))` equals the
+ *    `witness_set_hash` the compact transaction carries; and
  * 2. the address-witness list, whose `bounded_collection_v1.from_items(7, ...)`
  *    commitment must equal the `addr_tx_wits_hash` step 01 forwarded (step 02).
  *

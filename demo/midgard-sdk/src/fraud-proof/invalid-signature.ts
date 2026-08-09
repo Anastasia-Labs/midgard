@@ -1,4 +1,9 @@
 /**
+ * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
+ * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
+ * divergences, and why they are not re-derived in this lane are explained once
+ * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ *
  * `invalid-signature` fault-proof family (Goal task `Q15`).
  *
  * **Rule.** Every address witness of every committed transaction must carry an
@@ -155,10 +160,17 @@ export const decodeAddressWitnessPreimage = (
 
 /**
  * The `witness_set_hash` a native transaction commits, recomputed from the three
- * witness-category hashes. Mirrors the on-chain
- * `verify_native_tx_witness_set`, which checks
- * `blake2b_256(encode_native_tx_witness_set_compact(witness_set))` against the
- * compact transaction's committed value.
+ * witness-category hashes. Mirrors the check the on-chain §8.8 field-access door
+ * makes: `authenticated_field_view`
+ * (`onchain/aiken/lib/midgard/native-tx-field-access-v1.ak`) will not read any of
+ * fields 6–8 unless
+ * `blake2b_256(encode_native_tx_witness_set_compact(witness_set))` equals the
+ * `witness_set_hash` the compact transaction carries. The standalone
+ * `verify_native_tx_witness_set` helper this used to mirror was deleted by #575.
+ * For a downstream step the hash that check runs against is the anchored one
+ * from thread state — `WitnessAnchor` in
+ * `onchain/aiken/lib/midgard/fraud-proofs/field-opening-v1.ak` — because §3's
+ * transaction-id preimage is the body alone and so does not cover it.
  */
 export const invalidSignatureWitnessSetCommitmentV1 = (
   witnessSet: NativeTxWitnessSetCompactData,

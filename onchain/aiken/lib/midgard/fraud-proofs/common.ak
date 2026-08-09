@@ -1,5 +1,5 @@
 use aiken/collection/list
-use aiken/crypto.{ScriptHash, VerificationKeyHash, blake2b_256}
+use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/address.{Address, Script, VerificationKey}
@@ -18,12 +18,8 @@ use midgard/computation_thread as ct
 use midgard/fraud_proof
 use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/chunked_inclusion_v1.{PublishedProofCarriage}
-use midgard/fraud_proofs/native_tx/compact.{
-  encode_native_tx_witness_set_compact, verify_native_tx_compact_cbor_v1,
-}
-use midgard/fraud_proofs/native_tx/types.{
-  NativeTxWitnessSetCompact, VerifiedMidgardNativeTxCompact,
-} as native_tx_types
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
+use midgard/fraud_proofs/native_tx/types.{VerifiedMidgardNativeTxCompact} as native_tx_types
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{HeaderV1}
 use midgard/state_queue
@@ -848,20 +844,6 @@ pub fn verify_native_tx_in_state_queue_node_with(
     )
 
   return(native_tx_id, state_queue_datum, native_tx_view)
-}
-
-/// Authenticates a prover-supplied witness-set compact against the verified
-/// native transaction's committed `witness_set_hash` (canonical native codec:
-/// `blake2b_256` of the encoded three-hash witness-set compact). After this
-/// check the individual witness collection hashes are as trustworthy as the
-/// transaction commitment itself.
-pub fn verify_native_tx_witness_set(
-  native_tx_view: VerifiedMidgardNativeTxCompact,
-  witness_set: NativeTxWitnessSetCompact,
-) -> NativeTxWitnessSetCompact {
-  expect
-    blake2b_256(encode_native_tx_witness_set_compact(witness_set)) == native_tx_view.tx_compact.witness_set_hash
-  witness_set
 }
 
 pub fn validate_output_to_fraud_prover(
