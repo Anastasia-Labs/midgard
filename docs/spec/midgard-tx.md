@@ -584,6 +584,46 @@ per-chunk digest against the actual bytes. Order is supplied by the
 redeemer's reference-input indices and verified in one shot; per-chunk
 authentication at certification time is unnecessary.
 
+The redeemer is consensus wire format on the same footing as §8.8's carriage
+types — **constructor order is frozen** (Constr tags 0/1), because an
+off-chain minter emits these tags and the compiled policy branches on them:
+
+```aiken
+pub type FieldPreimageCertificateMintRedeemerV1 {
+  Certify {
+    compact_cbor: ByteArray,
+    witness_set_compact_cbor: ByteArray,
+    chunk_ref_input_indices: List<Int>,   // all-chunks-positional, ≤ 3 (§8.3)
+    output_index: Int,                    // the certificate output
+  }
+  Retire                                  // burn; the spend handler holds authority
+}
+```
+
+`Certify` carries no identity — publication and certification are
+permissionless (§8.7), so the policy checks content and never who supplied it.
+The certificate itself is read from the named output's inline datum rather than
+from the redeemer, so every field a consumer relies on is proved rather than
+asserted: `tx_id` against the §3 re-derivation, `field_index` and `tx_id`
+against the asset-name derivation's bounds, `total_length` and every
+`chunk_digests` entry against the referenced bytes. `owner` is the exception
+and is only length-checked (28 bytes), because it is the minter's own choice of
+min-Ada reclaim authority and no consuming step reads it — it has to be a
+spendable key hash or the output is dead, and that is the whole of the
+requirement. `witness_set_compact_cbor` is required for all nine fields, not
+only 6–8, because certification happens once per field and one unconditional
+code path is worth more than one saved hash.
+
+**Certificate output shape.** The output the redeemer names carries the
+certificate as an inline datum, no reference script, and exactly one asset of
+the certificate policy — the `(tx_id, field_index)` name at quantity 1, stated
+as the whole per-policy asset list, because the design requires that no second
+name of the policy ride in alongside the proved one. Its address is the
+certificate script's own payment credential with **no stake credential**, so
+certificates live at one enumerable address and the design requires the
+deposit's staking rights to stay unassigned rather than being pointed elsewhere
+on the way past.
+
 **Token.** Quantity 1; deterministic asset name derived from
 `(tx_id, field_index)` for indexer discovery. Duplicate certificates are
 permitted and harmless — each is independently sound.
@@ -616,6 +656,21 @@ identity. Post-certification single-chunk access authenticates at O(one
 chunk hash) against the digest vector (worst case two chunk hashes on a
 straddling item); for a fixed-stride field `count` derives from the
 mint-verified `total_length` with no chunk hash spent.
+
+**Wiring constraint (normative, for whoever wires a consumer).** The
+`certificate_policy_id` that the access door checks the manifest UTxO's token
+against MUST reach the consuming script as a **compile-time validator
+parameter**, the same applied-parameter mechanism every other cross-script hash
+in this system uses. It MUST NOT arrive in a redeemer, a datum, or any other
+run-time argument, and no consuming script may accept it from one. That single
+value is the whole of tier 3's authentication: the door trusts a certificate
+because a token of that policy sits on the reference input carrying it, and the
+mint that proved the certificate's content is that policy. A redeemer-supplied
+policy id lets a prover name a policy they control, mint a token of it over a
+datum nobody checked, and hand the door a fully-formed "certificate" for a
+field the transaction never committed — collapsing the §8.4 binding without
+tripping a single check the door runs. It is the one parameter in §8 where a
+run-time source is not a weaker check but no check at all.
 
 **A variable-width field has no tier-3 count.** Fields 2, 5, 6 and 8 have no
 arithmetic count, so theirs lives only in the §5.1 header, and no affordable

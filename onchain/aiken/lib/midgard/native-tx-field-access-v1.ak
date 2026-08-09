@@ -549,6 +549,28 @@ pub fn expected_chunk_count(total_length: Int) -> Int {
   ( total_length + chunk_bytes_k - 1 ) / chunk_bytes_k
 }
 
+/// The §8.4 split's shape on the consumer side: every chunk but the last is
+/// exactly `K`, the last accounts for whatever remains.
+///
+/// **This is a partial check that presumes its caller's guards, and its twin in
+/// `native_tx_carriage_v1` (`chunk_shape_matches`) is not.** The two differ in
+/// exactly two places: on the empty list this answers `total_length == 0` where
+/// the producer's answers `False`, and on the last chunk this checks only
+/// `length == total_length` where the producer's also requires
+/// `0 < total_length <= K`. Neither difference is reachable. `certified_view`
+/// has already established `total_length > K`, `chunk_count ==
+/// expected_chunk_count(total_length)` and a chunk list of exactly
+/// `chunk_count` elements before it calls this, so `ceil(total_length / K) >= 2`
+/// makes the empty case unreachable, and by the last element the remainder is
+/// `total_length - (n-1)·K`, which lies in `(0, K]` by arithmetic. The producer
+/// side is written total because it is what a *minting* policy runs; this side
+/// is the per-read hot path and does not re-derive what its caller just proved.
+///
+/// The consequence for anyone editing `certified_view`: those three guards are
+/// load-bearing for this function, not merely for the ones they appear to
+/// guard. Do not reorder them below this call or relax them without making this
+/// function total first. Consolidating the two into one shared form is a
+/// Phase-1-surface change tracked in the #565 lane.
 fn chunk_lengths_match(chunks: List<ByteArray>, total_length: Int) -> Bool {
   when chunks is {
     [] -> total_length == 0
