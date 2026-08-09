@@ -72,7 +72,58 @@ const indefinite_additional_info: Int = 31
 pub fn is_canonical_plutus_data_v1(cbor_bytes: ByteArray) -> Bool {
   when scan_data(cbor_bytes, 0) is {
     None -> False
-    Some(offset) -> offset == bytearray.length(cbor_bytes)
+    Some(Pair(offset, _materialisable)) ->
+      offset == bytearray.length(cbor_bytes)
+  }
+}
+
+/// Canonical **and** materialisable: every construct inside it is one the
+/// Aiken-stdlib `cbor.deserialise` path can turn into `Data` — spec §11.2.
+///
+/// Two canonical forms are not. Both are §6.2-acceptable and neither is
+/// reachable through `deserialise`:
+///
+///   * **tag-2/3 bignums.** The stdlib's major-6 arm computes
+///     `constr_data(tag − 121, ..)` with no tag-range guard, so `c2`/`c3`
+///     produce a negative alternative. Under PlutusV3 builtin semantics variant
+///     E — mainnet protocol major version 11 — that alternative is a `Word64`,
+///     so a negative one fails the machine on real L1. This is an **abort**,
+///     not a decline, which is why a caller has to screen *before* asking.
+///   * **tag-102 constructors** (alternatives ≥ 128), which the stdlib declines
+///     outright.
+///
+/// This is the recursive form the §6.2 re-pin left owing. The head-byte screen
+/// it replaces — #567's, which this change removes from
+/// `midgard/script_context_v1` — read byte zero only, so a bignum nested at any
+/// depth inside an otherwise ordinary datum still reached `deserialise` and
+/// still aborted. The flag threaded through `scan_data` is set at every tag site
+/// the walk passes, so depth is not a way around it.
+///
+/// **Declining to materialise is not declaring non-canonical.**
+/// `is_canonical_plutus_data_v1` still accepts every byte string this rejects;
+/// the two predicates answer different questions and #567's AC4 requires that
+/// they keep doing so.
+pub fn is_materialisable_plutus_data_v1(cbor_bytes: ByteArray) -> Bool {
+  when scan_data(cbor_bytes, 0) is {
+    None -> False
+    Some(Pair(offset, materialisable)) -> and {
+        offset == bytearray.length(cbor_bytes),
+        materialisable,
+      }
+  }
+}
+
+/// The offset just past the one canonical `Data` item starting at `offset`, or
+/// `None` if the bytes there are not canonical.
+///
+/// The interior-access primitive of spec §11.2: navigating to a datum's `k`-th
+/// child means skipping its earlier siblings, and skipping a sibling is exactly
+/// this. Exposed rather than re-derived so that the acceptor and the predicate
+/// keep one grammar and one verdict (§6.1).
+pub fn canonical_data_end_at_v1(bytes: ByteArray, offset: Int) -> Option<Int> {
+  when scan_data(bytes, offset) is {
+    None -> None
+    Some(Pair(next, _materialisable)) -> Some(next)
   }
 }
 
@@ -172,7 +223,12 @@ fn major_of(first: Int) -> Int {
   first / 32
 }
 
-fn scan_data(bytes: ByteArray, offset: Int) -> Option<Int> {
+/// The scan returns `(offset just past the item, materialisable)`. The second
+/// component is the §11.2 flag: `False` as soon as any construct the stdlib
+/// `deserialise` path cannot take is passed, at any depth. Structure and
+/// materialisability are decided in the same pass because they read the same
+/// tags, and a caller that needs both should not pay for two walks.
+fn scan_data(bytes: ByteArray, offset: Int) -> Option<Pair<Int, Bool>> {
   when byte_at(bytes, offset) is {
     None -> None
     Some(first) -> {
@@ -185,10 +241,10 @@ fn scan_data(bytes: ByteArray, offset: Int) -> Option<Int> {
         // `scan_tagged` instead.
         when scan_head(bytes, offset) is {
           None -> None
-          Some(Pair(next, _value)) -> Some(next)
+          Some(Pair(next, _value)) -> Some(Pair(next, True))
         }
       } else if major == 2 {
-        scan_byte_string(bytes, offset)
+        lift(scan_byte_string(bytes, offset), True)
       } else if major == 4 {
         scan_list(bytes, offset)
       } else if major == 5 {
@@ -200,6 +256,16 @@ fn scan_data(bytes: ByteArray, offset: Int) -> Option<Int> {
         None
       }
     }
+  }
+}
+
+/// Lifts a leaf scan — one with no `Data` inside it, so nothing that could
+/// carry the §11.2 flag down — into the flagged form, with the flag the leaf
+/// deserves stated rather than set and then corrected.
+fn lift(scanned: Option<Int>, materialisable: Bool) -> Option<Pair<Int, Bool>> {
+  when scanned is {
+    None -> None
+    Some(next) -> Some(Pair(next, materialisable))
   }
 }
 
@@ -293,27 +359,32 @@ fn scan_byte_chunks(bytes: ByteArray, offset: Int, seen: Int) -> Option<Int> {
 
 /// Lists and constructor argument lists share one rule: empty is exactly `80`,
 /// non-empty is indefinite `9f … ff`.
-fn scan_list(bytes: ByteArray, offset: Int) -> Option<Int> {
+fn scan_list(bytes: ByteArray, offset: Int) -> Option<Pair<Int, Bool>> {
   when byte_at(bytes, offset) is {
     None -> None
     Some(first) ->
       if first == 0x80 {
-        Some(offset + 1)
+        Some(Pair(offset + 1, True))
       } else if first == 0x9f {
-        scan_list_items(bytes, offset + 1, 0)
+        scan_list_items(bytes, offset + 1, 0, True)
       } else {
         None
       }
   }
 }
 
-fn scan_list_items(bytes: ByteArray, offset: Int, seen: Int) -> Option<Int> {
+fn scan_list_items(
+  bytes: ByteArray,
+  offset: Int,
+  seen: Int,
+  ok: Bool,
+) -> Option<Pair<Int, Bool>> {
   when byte_at(bytes, offset) is {
     None -> None
     Some(first) ->
       if first == break_byte {
         if seen >= 1 {
-          Some(offset + 1)
+          Some(Pair(offset + 1, ok))
         } else {
           // An empty indefinite list would be `9f ff`; `80` is the only
           // canonical spelling.
@@ -322,17 +393,22 @@ fn scan_list_items(bytes: ByteArray, offset: Int, seen: Int) -> Option<Int> {
       } else {
         when scan_data(bytes, offset) is {
           None -> None
-          Some(next) -> scan_list_items(bytes, next, seen + 1)
+          Some(Pair(next, item_ok)) ->
+            scan_list_items(bytes, next, seen + 1, and {
+                ok,
+                item_ok,
+              })
         }
       }
   }
 }
 
 /// Maps are definite-length with entry order preserved as authored.
-fn scan_map(bytes: ByteArray, offset: Int) -> Option<Int> {
+fn scan_map(bytes: ByteArray, offset: Int) -> Option<Pair<Int, Bool>> {
   when scan_head(bytes, offset) is {
     None -> None
-    Some(Pair(next, entry_count)) -> scan_map_entries(bytes, next, entry_count)
+    Some(Pair(next, entry_count)) ->
+      scan_map_entries(bytes, next, entry_count, True)
   }
 }
 
@@ -340,23 +416,28 @@ fn scan_map_entries(
   bytes: ByteArray,
   offset: Int,
   remaining: Int,
-) -> Option<Int> {
+  ok: Bool,
+) -> Option<Pair<Int, Bool>> {
   if remaining <= 0 {
-    Some(offset)
+    Some(Pair(offset, ok))
   } else {
     when scan_data(bytes, offset) is {
       None -> None
-      Some(after_key) ->
+      Some(Pair(after_key, key_ok)) ->
         when scan_data(bytes, after_key) is {
           None -> None
-          Some(after_value) ->
-            scan_map_entries(bytes, after_value, remaining - 1)
+          Some(Pair(after_value, value_ok)) ->
+            scan_map_entries(bytes, after_value, remaining - 1, and {
+                ok,
+                key_ok,
+                value_ok,
+              })
         }
     }
   }
 }
 
-fn scan_tagged(bytes: ByteArray, offset: Int) -> Option<Int> {
+fn scan_tagged(bytes: ByteArray, offset: Int) -> Option<Pair<Int, Bool>> {
   when byte_at(bytes, offset) is {
     None -> None
     Some(first) ->
@@ -377,12 +458,18 @@ fn scan_tagged(bytes: ByteArray, offset: Int) -> Option<Int> {
             } {
               scan_list(bytes, next)
             } else if tag == generic_constr_tag {
-              scan_generic_constr(bytes, next)
+              // §11.2: canonical, and declined by the stdlib decoder — so the
+              // whole enclosing datum is unmaterialisable, however deep this
+              // sits.
+              unmaterialisable(scan_generic_constr(bytes, next))
             } else if or {
               tag == positive_bignum_tag,
               tag == negative_bignum_tag,
             } {
-              scan_bignum_magnitude(bytes, next)
+              // §11.2: canonical, and an *abort* rather than a decline on the
+              // stdlib path. This is the site the #567 head-byte screen could
+              // not reach at depth.
+              lift(scan_bignum_magnitude(bytes, next), False)
             } else {
               None
             }
@@ -391,10 +478,19 @@ fn scan_tagged(bytes: ByteArray, offset: Int) -> Option<Int> {
   }
 }
 
+/// Clears the §11.2 flag while preserving the structural verdict: these bytes
+/// are canonical, and they are not materialisable.
+fn unmaterialisable(scanned: Option<Pair<Int, Bool>>) -> Option<Pair<Int, Bool>> {
+  when scanned is {
+    None -> None
+    Some(Pair(next, _)) -> Some(Pair(next, False))
+  }
+}
+
 /// §6.2: `d8 66 82 ‖ uint(alternative) ‖ args-list`, with a minimal uint64
 /// alternative that must be ≥ 128 — below that the tag-121/1280 spellings are
 /// the canonical ones.
-fn scan_generic_constr(bytes: ByteArray, offset: Int) -> Option<Int> {
+fn scan_generic_constr(bytes: ByteArray, offset: Int) -> Option<Pair<Int, Bool>> {
   when byte_at(bytes, offset) is {
     None -> None
     Some(first) ->

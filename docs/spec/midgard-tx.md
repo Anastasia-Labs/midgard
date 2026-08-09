@@ -13,7 +13,8 @@
 - **Owner/approver:** repository owner (Philip DiSarro).
 - **Last reviewed:** 2026-08-08 (initial authoring, Phase 0 of the flat
   reversion program; §10 added in Phase 3 by
-  [#570](https://github.com/Anastasia-Labs/midgard/issues/570)).
+  [#570](https://github.com/Anastasia-Labs/midgard/issues/570), §11 by
+  [#571](https://github.com/Anastasia-Labs/midgard/issues/571)).
 - **Version:** `native_tx_version_v1 = 1`. Pre-launch, this format replaces
   the counted bounded-collection commitment scheme in place (GOAL_SPEC §3
   invariant 13); there is no compatibility path to the retired scheme.
@@ -37,19 +38,18 @@ This document defines, for canonical V1:
 6. the mandatory access invariants every consumer of the nine commitments
    observes (§7);
 7. the three-tier publication-carriage convention for field preimages (§8);
-   and
-8. the resumable walk and its checkpoint encoding (§10).
+8. the resumable walk and its checkpoint encoding (§10); and
+9. intra-item access — the Value bookmark, the Canonical-Data Acceptor, and
+   the native-script checkpointable pushdown (§11).
 
-**Still deferred by design (Phase 3).** One dispute-side mechanism that
-_consumes_ this format remains undefined here: the intra-item package — the
-Value bookmark and the Canonical-Data Acceptor — added to this document as
-**§11** by [#571](https://github.com/Anastasia-Labs/midgard/issues/571).
-§10 (resumable walk and checkpoints) landed with
-[#570](https://github.com/Anastasia-Labs/midgard/issues/570) and is below.
-Until §11 lands, §7 governs intra-item consumers, and §7 invariant 6 in
-particular binds any resumable state to positions rather than verbatim bytes.
-Documents that bind those mechanisms by reference — `GOAL_SPEC.md` §3.1(2) —
-name them against this note, not against a definition that exists today.
+**Nothing in this document is deferred.** §10 (resumable walk and checkpoints)
+landed with [#570](https://github.com/Anastasia-Labs/midgard/issues/570) and
+§11 (intra-item access) with
+[#571](https://github.com/Anastasia-Labs/midgard/issues/571); documents that
+bind either by reference — `GOAL_SPEC.md` §3.1(2) — now name a definition
+rather than a note. §7 continues to govern every consumer of the nine
+commitments, and §11 is the layer below it: §7 and §10 reach one item's bytes,
+and §11 says what a rule may do inside them.
 
 Byte strings are written in hex (`82`, `58 20 …`). `array(n)`, `map(n)`,
 `bytes(n)`, `uint`, `int` denote definite-length canonical CBOR heads:
@@ -322,9 +322,13 @@ optional 28-byte stake hash), `1 →` inline `encode_midgard_value`
 inline datum is present, `3 → encode_midgard_versioned_script` when a
 reference script is present. Within the Value's policy-asset map, policy
 groups and asset names appear in canonical key order (length-first, then
-byte-lexicographic compare), duplicates reject, and asset quantities are
+byte-lexicographic compare), duplicates reject, every policy group is
+non-empty, an asset name is at most 32 bytes, and asset quantities are
 strictly positive; `datum_cbor` MUST satisfy the §6.2 canonicity
-predicate.
+predicate. The group-emptiness and name-width clauses restate conditions
+`decode_canonical_output` has always enforced on this field; they are written
+here because §11.1 reads the same value without materialising it and a
+refusal needs a basis in the field's own grammar, not in field 5's.
 
 ### 5.6 Mint items (field 5)
 
@@ -725,6 +729,16 @@ are prohibited in new surface.
 
    An implementation whose guard set does not partition this way has not met
    this clause.
+6. The §11 intra-item mechanisms are held to the same two clauses, one level
+   down. Their refusals partition into isolated-or-backstop exactly as item 5
+   requires, and §11.5 is that table; their cost claims are established from
+   runner measurements exactly as item 4 requires, and §11.4 is that report,
+   including the controls that show what each mechanism is an alternative to.
+   Two §11-specific conditions join them: a §11.2 implementation MUST keep
+   canonicity and materialisability as separate predicates, so that the §6.2
+   forms stay canonical while the materialisation path declines them; and a
+   §11.1 implementation MUST NOT answer "absent" without both halves of §11.1's
+   evidence — the structural pass and the monotone floor — in place.
 
 ## 10. The resumable walk and its checkpoints
 
@@ -1024,3 +1038,486 @@ re-encode load-bearing — and three of them are the reason guards 4, 5 and 7 ar
 backstops. They are not separately vectored, because each is the same condition
 as the guard it makes redundant, checked one step earlier: no fixture can
 attribute a refusal to one site rather than the other.
+
+## 11. Intra-item access
+
+Normative for the dispute machine. §7 says what every consumer of the nine
+commitments observes; §10 says how a consumer that cannot finish carries its
+place to the next transaction. Both stop at the same place: **one item's
+bytes**. This section says what a rule may do inside them.
+
+Three item interiors have structure a rule needs to reach into, and each needs
+a different mechanism because each is a different shape:
+
+| case | interior | §5 origin | mechanism |
+| --- | --- | --- | --- |
+| A | a multiasset value | §5.5, inside a field-2 output item | the **Value bookmark** (§11.1) |
+| B | a datum or redeemer | §5.5/§5.3, field-2 and field-8 items | the **Canonical-Data Acceptor** (§11.2) |
+| C | a native script | §5.3, a field-6 item at `language_tag` 0 | the **checkpointable pushdown** (§11.3) |
+
+The reference implementations are
+`onchain/aiken/lib/midgard/native-tx-intra-item-v1.ak` (cases A and B) and
+`onchain/aiken/lib/midgard/native-tx-script-pushdown-v1.ak` (case C), with
+their seam suites at the same paths plus `.test.ak`. The §6.2 predicate and its
+recursive companion live in
+`onchain/aiken/lib/midgard/canonical-plutus-data-v1.ak`.
+
+All three interiors are three grammars spelled in one CBOR — a definite head of
+a known major type, minimal width, then bytes at an offset — so §6.1's
+one-grammar-one-verdict rule applies across them and not merely within each.
+The reference implementation reads all three through a single
+`onchain/aiken/lib/midgard/intra-item-bytes-v1.ak`; an implementation that gave
+each mechanism its own copy of the head reader would have three chances for one
+logical number to acquire a second spelling, and §11.5's guards 14–16 would have
+to be established three times over.
+
+**What authenticates these bytes.** Nothing in §11 hashes a field. An item
+reaches an intra-item mechanism from §10's `walk_next` or from
+`field_item_at`, both of which read it through the §8.8 door after the door's
+§7.1 hash check. §11 is therefore a pure function of bytes §7 already
+authenticated, and it never takes a `FieldViewV1`: re-reading interior bytes
+through the view would make every byte pay tier-3's per-read chunk
+verification, which is the opposite of what §8.4's guarantee is for.
+
+**Where §7.6 applies, and where it does not.** §7.6 binds *resumable* state —
+what a thread carries between transactions — to positions rather than verbatim
+bytes. Case C is resumable and pays §7.6 in full (§11.3). Cases A and B are
+not: they live and die inside one transaction, and a bookmark that carries the
+item it was opened on is how the format makes it impossible to pair a position
+with bytes it did not come from. An implementation that thread-carries a §11.1
+bookmark or a §11.2 path has left this document's domain and owes §7.6 an
+answer of its own.
+
+**Opacity, wherever a position is state.** §10.6's clause applies unchanged to
+the intra-item positions that *are* state: a caller must not be able to
+construct one. Case A's bookmark and case C's cursor are opaque types whose
+constructors are private, case C's wire-form decoder is private, and case C's
+only exported resume is the commitment-taking one. A public constructor for
+either would let a prover place a position at a byte offset of its choosing
+*inside* an item's payload and read from there with nothing checked — which is
+the same capability the §10.6 clause withholds, one level down.
+
+It does **not** extend to every offset a §11.2 reader will accept, and this
+document does not claim it does. The three typed leaf readers each take a raw
+caller-chosen offset, deliberately. They carry no state, they are pure functions
+of bytes §7 has already authenticated, and they answer `None` — never a clamped
+or partial answer, and never an abort — for an offset that does not begin an
+item of the kind asked for. That last word is load-bearing and is not free: the
+shared interior head reader is §7.3 abort-never-clamp, so it *aborts* on a head
+§6.1 does not admit, and a leaf reader that read the head first would abort on
+`d9 0079 80` rather than decline it. Each of the three therefore decides the item
+with §6.2's scan before reading it. There is nothing there to forge because
+there is nothing there to resume:
+an offset only *means* something by having come from the path accessor, and a
+caller that invents one learns exactly what those bytes say and no more.
+
+### 11.1 The Value bookmark (case A)
+
+A **Value bookmark** is a validated position inside the §5.5 policy-asset map
+of one output item. It has one operation — look up the quantity of a
+`(policy_id, asset_name)` unit — and that operation is **monotone**: each
+lookup must name a unit strictly after the last one looked up, and the position
+only ever moves forward.
+
+Monotonicity is the whole mechanism. A per-asset conservation rule (§1's user
+story 11) reads `k` units of an `n`-unit value in canonical order; without a
+bookmark each lookup restarts the scan and the rule is `O(n·k)`, and with one
+the rule is `O(n + k)`.
+
+**What makes a zero answer evidence.** A lookup that returns `0` is claiming
+the unit is absent, and two things have to hold for that to be true rather than
+merely unobserved:
+
+1. **The whole value is canonically ordered**, established by a structural pass
+   when the bookmark is opened. That pass enforces §5.5 in place:
+   minimal-width heads, the 28-byte policy width, the 32-byte asset-name cap,
+   strictly increasing policy keys and strictly increasing asset keys within a
+   group, non-empty policy groups, and strictly positive quantities. Strictness
+   is what makes a duplicate key a refusal rather than a silently shadowed
+   entry. Without this pass the sweep could pass a unit and then meet it.
+2. **The requested unit is ahead of the bookmark**, established by the monotone
+   floor. Without it, re-asking for a unit the sweep has already passed would
+   sweep forward, find only larger keys, and report `0` — fabricating absence
+   evidence for an asset the value holds. A backwards or repeated request
+   therefore **aborts**; it does not answer.
+
+Both halves are mandatory and neither is a performance choice. The structural
+pass is the analogue, one level down, of §7 invariant 4's count-consistency
+check: the container is validated once, and reads against it are then cheap.
+
+The bookmark's byte-level movement is offset-and-slice throughout — no part of
+the value is materialised as `Data` — and §7.3's abort-never-clamp applies to
+every read.
+
+### 11.2 The Canonical-Data Acceptor (case B)
+
+The acceptor is the recursive companion to §6.2's predicate. §6.2 decides
+**canonicity** — is this a byte form `serialiseData` emits. The acceptor adds
+the second question §6.2's re-pin created, and the interior access that makes
+the answer usable.
+
+**Canonicity and materialisability are different questions.** §6.2 re-pinned
+two forms as canonical that the Aiken-stdlib `cbor.deserialise` path cannot
+produce `Data` from:
+
+- **tag-2/3 bignums** (`|i| ≥ 2⁶⁴`). The stdlib's major-6 arm computes
+  `constr_data(tag − 121, …)` with no tag-range guard, so `c2`/`c3` yield a
+  negative alternative. Under PlutusV3 builtin semantics variant E — mainnet
+  protocol major version 11, enacted 2026-07-18 — that alternative is a
+  `Word64`, so a negative one **fails the machine on real L1**. Asking is an
+  abort, not a decline.
+- **tag-102 constructors** (alternatives ≥ 128), which the stdlib declines
+  outright.
+
+`is_materialisable_plutus_data_v1` is canonicity **and** the absence of either
+form at any depth, decided in the same walk. Every materialisation entry point
+MUST screen with it before calling `deserialise`; a datum that fails the screen
+is **declined**, and declining to materialise is **not** declaring
+non-canonical. §6.2 still accepts these bytes and MUST continue to — that
+acceptance is the L1 parity the re-pin exists to restore, and an implementation
+that made bignums non-canonical to make them convenient would have given it
+back.
+
+**The screen is recursive, and that is the point.** The head-byte screen this
+replaces read byte zero only, so a bignum nested inside an otherwise ordinary
+canonical datum still reached the decoder and still aborted. That residual is
+closed here: the flag is set at every tag site the walk passes, so depth is not
+a way around it, and the materialisation path is total on canonical input.
+
+**Interior access.** A rule reaches a datum's child by **path**: a list of
+indices, each an index into the item at the current position counted in reading
+order — a constructor's arguments, a list's elements, and for a map its keys
+and values interleaved, so `0` is entry 0's key and `1` its value. One rule for
+all three containers means a path never depends on knowing which container it
+is walking through. The empty path addresses the datum itself. An index out of
+range, a path through a leaf, and a non-canonical datum all yield no answer;
+there is no clamping and no partial answer, and the datum's canonicity is
+decided before any path step is taken, for the same reason §11.1 validates the
+value before serving a lookup.
+
+Three typed leaf readers accompany it, and each reads a form the `Data` route
+cannot: the **integer** reader covers majors 0/1 *and* canonical tag-2/3
+bignums, definite or 64-byte chunked; the **byte-string** reader covers
+definite and chunked payloads; the **alternative** reader covers all three §6.2
+constructor spellings including tag 102. Between them a rule about a datum the
+materialisation path declines is still a rule that can be stated.
+
+**What the acceptor is for.** Not speed. §11.4 measures interior access as
+*more* expensive than `cbor.deserialise` on every datum the builtin can take,
+because the builtin is a builtin and the acceptor is interpreted. It is for the
+datums the builtin cannot take at all, where it is the only route, and its
+budget claim is only that it fits — which it does with two orders of magnitude
+to spare. Ordinary datum access SHOULD continue to materialise.
+
+### 11.3 The native-script checkpointable pushdown (case C)
+
+A field-6 item at `language_tag` 0 carries a **recursive** script. Two things
+follow, and they are the whole of this subsection.
+
+**The recursion is data, not call depth.** The traversal carries an explicit
+frame stack, so where it has got to is a value rather than a shape of the
+evaluator. A recursive checker cannot stop in the middle and cannot say where
+it stopped; a pushdown does both, which is what makes a script traversal
+interruptible on the same terms §10.4 gives a field walk.
+
+The three compound node kinds reduce to one **threshold** frame — `all` is "all
+of them", `any` is "one of them", `n-of-k` is "n" — so the fold that pops a
+frame has one rule rather than three:
+
+```
+NativeScriptFrameV1 { kind, remaining, satisfied, required }
+```
+
+A step either reads the next node (pushing a frame for a compound node,
+resolving a leaf or a childless compound to a verdict) or folds a finished
+subtree's verdict into its parent. The verdict is the one
+`midgard/native_script_v1` computes recursively over materialised `Data`; that
+module remains the definition of what a native script means, and this one is
+how a dispute affords it. `after`/`before` and signature semantics are
+unchanged.
+
+**A tree position is not one offset.** Resuming needs the pending frames as
+well as the byte cursor, and §7.6 forbids carrying them verbatim. They travel
+as a **hash chain**:
+
+```
+empty_stack_root = blake2b_256("MidgardNativeScriptFrameV1")
+stack_root_i     = blake2b_256("MidgardNativeScriptFrameV1" ‖ stack_root_{i-1} ‖ frame_wire_i)
+frame_wire       = kind(1) ‖ remaining(3) ‖ satisfied(3) ‖ required(3)
+```
+
+with the domain strings as raw ASCII bytes, folded bottom-to-top, and the
+scalars fixed-width for the §10.3 reason: two stacks at the same logical
+position commit identically whatever scripts produced them.
+
+**Cursor wire form.** Exactly **87 bytes, always** — independent of the script,
+its depth and the position:
+
+```
+87
+  58 20 ‖ script_digest(32)
+  58 20 ‖ stack_root(32)
+  43    ‖ script_length(3, big-endian)
+  43    ‖ offset(3, big-endian)
+  43    ‖ stack_depth(3, big-endian)
+  43    ‖ nodes_visited(3, big-endian)
+  41    ‖ pending(1)
+```
+
+The head is `87` because the array has seven elements, and that is a
+requirement rather than a formality. On-chain the structure is written and read
+by one encoder and one decoder, so a header disagreeing with the element count
+would round-trip and the commitment would still be sound; a CBOR reader would
+run off the end of the input looking for an element that is not there. §7.6's
+carried state is a **wire** form, so an off-chain twin has to be able to decode
+it, and a conforming implementation MUST emit bytes a CBOR decoder accepts.
+
+`pending` is `0` (no verdict awaiting a parent), `1` (false) or `2` (true).
+Decoding is fail-closed and canonical in the §6.1 sense: the decoder re-encodes
+what it read and requires the input back, which is simultaneously the canonicity
+check, the range check, **and** the check on the re-supplied frames, because the
+stack-root element is computed from them. The thread-carried commitment is
+
+```
+cursor_hash = blake2b_256("MidgardNativeScriptWalkV1" ‖ cursor_wire)
+```
+
+New surface: neither domain reuses any of §4's prohibited counted-scheme
+domains.
+
+**What a resume verifies.** Three independent things, and the traversal is
+unsound without any one:
+
+1. the 87 carried bytes hash to the digest the previous step committed, so the
+   position is one a traversal actually reached;
+2. the re-supplied payload re-digests to the cursor's `script_digest` and has
+   its length, so the position belongs to *this* script;
+3. the re-supplied frames re-derive to the committed stack root, so the pending
+   thresholds are the ones the traversal built rather than ones chosen to make
+   an unsatisfied script pass.
+
+**Authenticate-once, per transaction.** The payload is digested when a walk is
+opened or resumed and not again; the budgeted fold checks it once and the steps
+under it do not. A traversal taking a thousand steps in one transaction pays one
+`blake2b_256` over the script, on the same terms §7.1 gives a field.
+
+**Bounds.** `max_native_script_depth` and `max_native_script_node_count` are
+`midgard/native_script_v1`'s, unchanged, and both are enforced during the
+traversal rather than assumed: a script cannot be made expensive by being made
+big or deep. The node reader additionally holds a compound's **child count** to
+`max_native_script_node_count`, which is the node bound one step early rather
+than a third bound of this document's own: a compound with more children than
+that has more nodes than that, and `check_native_script` answers `None` for it,
+so refusing costs no verdict the definition would have given. That
+distinction — a bound the definition also has, against one it does not — is what
+the two paragraphs below turn on.
+
+**Both bounds are the definition's, in the definition's units, and this is where
+a pushdown silently diverges.** `midgard/native_script_v1` measures depth over
+**nodes**, counting a leaf as depth 1, so a node read with `d` frames open sits
+at depth `d + 1`. A frame is only ever pushed with a child still to read — a
+childless compound resolves on the spot, and a partly-consumed frame is
+re-pushed only while children remain — so a stack of `d` frames commits to
+reading a node at depth `d + 2`. The frame bound is therefore
+`max_native_script_depth − 1`, and an implementation that writes
+`frames < max_native_script_depth` instead admits scripts one level deeper than
+the definition: sixteen nested `all` nodes around one signature is depth 17 in
+17 nodes, inside the node bound, refused by `check_native_script` — and a
+pushdown with that off-by-one returns a verdict for it. That is a divergence in
+the **permissive** direction, which is the one thing §11.3's equivalence claim
+must not permit, and a conforming implementation's seam suite MUST carry vectors
+at the bound on both sides of it, not merely on shallow scripts.
+
+**A bound the definition does not have is a divergence too, and it costs more
+than it saves.** The paragraph above is the permissive direction; `n-of-k`'s
+threshold is the other one. A script's bytes carry `n` with no ceiling of their
+own, and `check_native_script` answers `Some(valid: False)` for
+`at_least(33, [signature])` exactly as it does for `at_least(2, [signature])` —
+two nodes at depth two, inside every bound it has. An implementation that
+asserted `n ≤ max_native_script_node_count` on the frame **aborts** on those
+bytes instead, and an abort is not a verdict: a script the definition calls
+invalid becomes one no dispute can resolve, which in a fraud proof is a lost
+capability rather than a safety margin.
+
+The threshold is therefore **capped, not bounded**. A frame carries
+`min(n, max_native_script_node_count + 1)`, and the cap moves no verdict: `n` is
+read exactly once, as `satisfied ≥ n` when the frame pops, and `satisfied`
+starts at zero and rises by at most one per child, so it can never exceed the
+frame's child count, which is held to `max_native_script_node_count`. Every
+threshold at or above the cap is unmet for every reachable `satisfied`, so
+mapping them all onto one value is a change of representation and not of
+meaning. What it buys is that the frame's wire scalar stays three bytes wide for
+any `n` an eight-byte CBOR uint head can spell. A conforming implementation's
+seam suite MUST carry equivalence vectors with `n` above the child count and
+above the node bound, on both verdicts, and MUST show a capped threshold
+surviving a checkpoint — the cap is part of what the hash chain commits, so an
+implementation that applied it on one side of a resume and not the other would
+fail to resume rather than answer wrongly.
+
+A completed traversal MUST have consumed the payload exactly — a script with
+trailing bytes evaluated to nothing, so the verdict refuses rather than
+reporting the prefix's answer. `budget` counts steps and MUST be non-negative,
+for §10.4's reason: the recursion stops at zero, so a negative budget would mean
+"no limit".
+
+### 11.4 Cost claims
+
+Every claim §11 makes about cost is established by measurement against the
+GOAL_SPEC §3.3 basis of 13,200,000 memory units, not asserted. The reference
+measurements are the two seam suites' runner report at the grammar of this
+document; they are re-taken whenever the grammar moves, and every number below
+is a row of that report, so a re-take is reading twelve rows rather than
+reconstructing a comparison by hand. Each mechanism's row is paired with the
+control that shows what a rule would otherwise have had to do, on the same
+fixture, for the same answer.
+
+| # | seam test | what it does | memory |
+| --- | --- | --- | --- |
+| 1 | `budget_value_bookmark_sweeps_64_units` | 64 ordered lookups over a 64-unit value through one bookmark | **12.22 M** |
+| 2 | `budget_materialised_value_reads_64_units` | control: the same 64 answers via `decode_canonical_output` | **20.15 M** |
+| 3 | `budget_value_bookmark_single_unit` | one lookup into the same value | 7.14 M |
+| 4 | `budget_datum_interior_access` | a child at depth two of a small datum | 0.93 M |
+| 5 | `budget_datum_materialised_access` | control: the same child via `cbor.deserialise` | 0.18 M |
+| 6 | `budget_wide_datum_interior_access` | the last leaf of a 24-leaf datum | 4.87 M |
+| 7 | `budget_wide_datum_materialised_access` | control: the same leaf via `cbor.deserialise` | 1.07 M |
+| 8 | `budget_native_script_pushdown_traversal` | an eight-node three-level script, whole traversal | 1.42 M |
+| 9 | `budget_native_script_recursive_control` | control: `native_script_v1.check_native_script` | 1.26 M |
+| 10 | `budget_native_script_checkpoint_and_resume` | the same traversal interrupted at five steps, committed, resumed and finished | 1.79 M |
+| 11 | `budget_value_bookmark_open_only` | the bookmark's structural pass over the same value, no lookup after it | 4.77 M |
+| 12 | `budget_materialised_value_decode_only` | control: `decode_canonical_output` on the same item, no lookup after it | 10.87 M |
+
+Three readings, and the third is the one a re-take must not lose:
+
+1. **Case A is a cost case, and the cost is mostly fixed.** Rows 1 and 2 are the
+   same 64 answers over the same fixture: 12.22 M inside the basis against
+   20.15 M outside it. Rows 11 and 12 decompose that 7.93 M gap rather than
+   leaving it to a story. **6.10 M** of it is what the two paths pay before
+   answering anything: `decode_canonical_output` deserialises the output to
+   `Data` *and re-encodes the whole thing* to prove canonicity (10.87 M), where
+   the bookmark reads the value in place with offset-and-slice (4.77 M). The
+   remaining **1.83 M** is the sweep — 64 lookups cost 7.45 M through the
+   bookmark against 9.28 M of searching the materialised asset list, so the
+   bookmark is ahead at the margin too, by much less than the headline suggests.
+
+   The two fixed passes are **not** the same proof, and this document does not
+   claim they are. `decode_canonical_output` also decides the output's datum and
+   its reference script, which `open_value_bookmark` never looks at; what the
+   bookmark's pass establishes is §11.1's own precondition — canonical order
+   over the whole value — and nothing wider. The comparison is legitimate
+   because row 2 is the cheapest way a rule could have obtained the same 64
+   answers without §11.1, not because the two passes prove the same things.
+2. **Case C's discipline is affordable.** Row 10 against row 8 is what
+   interruption costs: one extra cursor encode, one digest, one chain
+   re-derivation and one extra payload digest, for 0.37 M. Row 9 shows the
+   pushdown is not buying its interruptibility with a worse verdict path
+   either — 1.42 M against the recursive checker's 1.26 M is the price of
+   carrying the stack explicitly, and it is small.
+3. **Case B is a capability case, not a cost case, and the rows say so.** Rows
+   5 and 7 are *cheaper* than rows 4 and 6, at both sizes and by roughly 4x.
+   `cbor.deserialise` is a builtin; the acceptor is interpreted Aiken. §11.2's
+   justification is that the builtin cannot be asked at all about §6.2's
+   re-pinned forms — on a bignum it aborts the machine — and that the acceptor
+   fits the basis with two orders of magnitude to spare. Anyone re-taking these
+   rows and finding the same ordering has reproduced the design, not found a
+   regression.
+
+### 11.5 Guard coverage
+
+§9's conformance item 6 requires every refusal on §11's operational paths to be
+either isolated by a vector or listed as a backstop with the check that makes it
+unreachable named, on the same terms §10.8 states for the walk. This is that
+list. **Thirty-six refusals: twenty-nine isolated, seven backstops.**
+
+| # | refusal | isolated by / backstop because |
+| --- | --- | --- |
+| 1 | §5.5 — the output map head is `a2`/`a3`/`a4` | `value_bookmark_refuses_a_non_output_map_head` |
+| 2 | §5.5 — key `0`, the address, comes first | `value_bookmark_refuses_a_first_key_that_is_not_the_address` |
+| 3 | §5.5 — the address wrapper is the two-byte `58 LL` form | `value_bookmark_refuses_a_non_two_byte_address_wrapper` |
+| 4 | §5.5 — the address payload is 29 or 57 bytes | `value_bookmark_refuses_a_non_canonical_address_width` |
+| 5 | §5.5 — key `1`, the value, follows the address | `value_bookmark_refuses_a_second_key_that_is_not_the_value` |
+| 6 | §5.5 — the value is the two-element `[coin, multiasset]` | `value_bookmark_refuses_a_value_that_is_not_a_pair` |
+| 7 | §5.5 — a policy id is 28 bytes | `value_bookmark_refuses_a_short_policy_id` |
+| 8 | §5.5 — policy keys strictly increase | `value_bookmark_refuses_unordered_policies`, `value_bookmark_refuses_a_duplicate_policy` |
+| 9 | §5.5 — a policy group is non-empty | `value_bookmark_refuses_an_empty_policy_group` |
+| 10 | §5.5 — an asset name is at most 32 bytes | `value_bookmark_refuses_an_oversized_asset_name` |
+| 11 | §5.5 — asset keys strictly increase within a group | `value_bookmark_refuses_unordered_asset_names` |
+| 12 | §5.5 — quantities are strictly positive | `value_bookmark_refuses_a_zero_quantity` |
+| 13 | §11.1 — the structural pass ends inside the item | backstop: every read it makes goes through the shared reader below, which bound-checks before it reads, so a pass that would end past the item has already refused at the read that took it there. Kept, and not only for §9.5's reason: the scan's end offset has no other consumer, so an implementation that deletes this line deletes the pass |
+| 14 | §6.1 — an interior head is minimal-width | `value_bookmark_refuses_a_non_minimal_interior_head`, `…_two_byte_head`, `…_four_byte_head`, `…_eight_byte_head` — one vector per wide form, because a bound that only runs at the width the fixtures happen to reach is a bound nobody has checked |
+| 15 | §6.1 — an interior head is one of the five definite widths | `value_bookmark_refuses_an_indefinite_interior_head` |
+| 16 | §6.1 — an interior head's major type is the one the call site names | `value_bookmark_refuses_an_interior_head_of_the_wrong_major_type` |
+| 17 | §5.5 — a lookup names a 28-byte policy id | `value_quantity_refuses_a_short_policy_id` |
+| 18 | §5.5 — a lookup names an asset name of at most 32 bytes | `value_quantity_refuses_an_oversized_asset_name` |
+| 19 | §11.1 — the monotone floor | `value_bookmark_refuses_a_repeated_lookup`, `value_bookmark_refuses_a_backwards_lookup` |
+| 20 | §6.2 — a byte-string chunk is at most the chunk size | backstop: the stitch is reached only through the §6.2 scan, which has already decided the chunked string and caps a chunk there, so the stitch never meets a longer one |
+| 21 | §11.3 — a walk is opened over a non-empty payload | `open_refuses_an_empty_payload` |
+| 22 | §11.3 — a payload is at most 2²⁴ − 1 bytes | backstop: the cursor encoder asserts the same condition on the same field, which is a three-byte wire scalar, and §5.4's field byte bound is orders of magnitude below it — no §5-admissible payload reaches either. It is the line that notices if those two constants stop agreeing |
+| 23 | §11.3 — a node's array header agrees with its tag | `run_refuses_a_node_whose_arity_disagrees_with_its_tag` |
+| 24 | §5.3 — a signature node's key hash is 28 bytes | `run_refuses_a_signature_of_the_wrong_key_width` |
+| 25 | §11.3 — the tag is one of the six node kinds | `run_refuses_an_unknown_node_tag` |
+| 26 | §11.3 — the node bound | `run_refuses_more_nodes_than_the_bound_without_a_wide_child` |
+| 27 | §11.3 — the depth bound, in the definition's units | `run_refuses_a_script_one_level_past_the_depth_bound` |
+| 28 | §11.3 — a fold has a parent to fold into, and `remaining` never goes negative | backstop: the budgeted fold stops at a complete walk, which is exactly the state with an empty stack and a pending verdict, so the fold is never entered without a parent; `remaining` is positive when a frame is pushed and the frame is popped at zero |
+| 29 | §11.3 resume 1 — the cursor hashes to the thread's commitment | `resume_rejects_a_position_the_thread_did_not_commit` |
+| 30 | §11.3 — the carried bytes are `native_script_cursor_bytes` long | backstop: guard 31's re-encode produces exactly that many bytes, so an input of any other length cannot equal it. This check refuses the same inputs a step sooner and keeps the reads under it in range |
+| 31 | §11.3 — the wire form has one admissible spelling, which is also the frame-stack check | backstop: the commitment check (guard 29) re-encodes the same walk from the same fields and the same re-supplied frames, so every input this would refuse also hashes to something other than the committed digest |
+| 32 | §11.3 resume 2 — the payload re-digests to the cursor's script | `resume_rejects_a_same_length_different_script` |
+| 33 | §11.3 resume 2 — the payload's length matches the cursor's | backstop: guard 32 pins the payload by digest, and a payload of a different length has a different digest |
+| 34 | §11.3 — a fold's payload is the one the walk was opened on | `run_rejects_a_payload_the_walk_was_not_opened_on` |
+| 35 | §11.3 — `budget` is a count of steps | `run_refuses_a_negative_budget` |
+| 36 | §11.3 — a completed traversal consumed the payload exactly | `verdict_refuses_a_script_with_trailing_bytes` |
+
+Four vectors in the suites are composites. They are marked as such and are not
+counted above, because each is the *natural* shape of an attack and the
+isolating vector is the contrived one:
+
+* `resume_rejects_a_substituted_frame_stack` and
+  `resume_rejects_a_shortened_frame_stack` trip guards 29 and 31 at once —
+  either alone refuses them, which is what makes guard 31 unisolable;
+* `resume_rejects_a_different_script` trips guards 32 and 33 at once, because a
+  differently-shaped script is also a differently-sized one;
+* `run_refuses_more_nodes_than_the_bound` — 33 signatures under one `any` — is
+  the ordinary shape of guard 26, and the child-count bound refuses it before
+  the running node count can. An earlier revision of this table cited that as
+  the reason guard 26 could not be isolated. It was wrong: a script gets big by
+  being *bushy*, not only by having one enormous node, and guard 26's vector is
+  49 nodes with no child count above sixteen.
+
+Every "isolated by" row above is verified by neutralising the named check and
+confirming that exactly the listed vectors turn red — run, not asserted; every
+"backstop" row is a neutralisation that turned **nothing** red, which is what
+put it in that column rather than an argument that it should be there. That
+distinction is not pedantic: the entry this table previously carried for guard
+26 was an *argued* backstop, and arguing is how it came to be false.
+
+Two families of assertion are not itemised, for §10.8's reason — they are the
+construction domain of a value some other guard already fixes, and no fixture
+can attribute a refusal to one site rather than the other. Neutralising each of
+them turns nothing red. §11's three modules — the shared interior reader and the
+two mechanism modules — carry **71** assertions in all; the thirty-six rows above
+account for **41** of them, and these two families are the remaining **30**.
+
+* The range assertions in the frame and cursor encoders, which are re-run on
+  every decode, together with the compound reader's `child_count` bounds and its
+  `required ≥ 0`, one step earlier on the value that becomes a frame. Each names
+  something another guard already fixes: `kind` by guard 25's tag domain;
+  `remaining` and `satisfied` by the child-count bound, since a frame is pushed
+  with `remaining = child_count` and `satisfied` starts at zero and rises once
+  per child; the cursor's scalars by the traversal that produced them and by
+  guards 21–22 on the two that have their own rows. The frame's `required` bound
+  is fixed **by the cap** rather than by an earlier assertion of the same
+  condition, which is the one place this family's argument differs: §11.3 caps
+  `n` at `max_native_script_node_count + 1` instead of refusing it, so the
+  encoder's `required` range is met by construction on every frame the traversal
+  builds, and a resume handed a frame outside it fails the stack-root
+  re-derivation. That distinction matters because the same line written as a
+  *bound* on `n` would not be in this family at all — it would be an
+  unaccounted-for refusal, and a §11.3-conforming one does not exist.
+* The offset and length bounds in the shared interior reader's byte and slice
+  primitives (§7.3's abort-never-clamp), which run on every read all three
+  mechanisms make.
+
+Both families are kept rather than deleted for the reason §7.3 gives: the
+failure that replaces a stated bound is a machine error with nothing
+attributable said — a three-byte wire scalar handed a wider number fails inside
+the integer-to-bytes builtin, and a fraud proof cannot cite that.
