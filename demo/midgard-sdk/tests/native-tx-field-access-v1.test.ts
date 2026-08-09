@@ -304,15 +304,15 @@ describe("§4/§8.6 values a builder must reproduce", () => {
     );
   });
 
-  it("records the zero-input residual #575–#578 and #579 close together", () => {
+  it("computes the empty spend-inputs hash under the counted scheme, not the flat §4 empty-field commitment", () => {
     // The `fraud_proofs/zero_input/step_02` *source* requires the flat §4
     // commitment. `EMPTY_SPEND_INPUTS_HASH` is the value the *codec* computes,
     // and it is still the counted one: #569 added the flat per-field producers
     // and their cross-language vectors, but the nine-field consumer path
     // (`deriveNativeTxBodyCompact` and its downstream callers) has not
-    // re-pointed — that is the Phase-5 family rebind (#575–#578) — and the
-    // blueprint has not been regenerated (#579). See the constant's own note
-    // for why moving it before both would break the fault-proof emulator.
+    // re-pointed (#585), and the blueprint has not been regenerated (#579).
+    // See the constant's own note for why moving it before both would break
+    // the fault-proof emulator.
     // Asserting the gap keeps it visible instead of letting a builder quietly
     // emit a datum the validator rejects.
     expect(EMPTY_SPEND_INPUTS_HASH).not.toBe(EMPTY_FIELD_COMMITMENT_HEX_V1);

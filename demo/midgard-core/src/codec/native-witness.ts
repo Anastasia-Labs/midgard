@@ -63,6 +63,14 @@ export const decodeNativeTxWitnessSetCanonicalValue = (
   };
 };
 
+/**
+ * The three witness-set field commitments — fields 7, 6 and 8 in that tuple
+ * order.
+ *
+ * **RETIRED counted-scheme derivation, still live here — owner #585.** Same
+ * residual as {@link deriveNativeTxBodyCompact}'s, for the same reason and with
+ * the same blocking edge onto #579; the note there is the full one.
+ */
 export const deriveNativeTxWitnessSetCompact = (
   witnessSet: MidgardNativeTxWitnessSetCanonicalV1,
 ): MidgardNativeTxWitnessSetCompactV1 => ({

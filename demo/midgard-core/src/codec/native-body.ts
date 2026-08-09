@@ -164,6 +164,41 @@ export const decodeNativeTxBodyCanonicalValue = (
   };
 };
 
+/**
+ * The six body field commitments.
+ *
+ * **RETIRED counted-scheme derivation, still live here — owner #585.** This is
+ * the one place the residual is written out in full; the other sites that carry
+ * it (`deriveNativeTxWitnessSetCompact` and `@al-ft/midgard-sdk`'s
+ * `EMPTY_SPEND_INPUTS_HASH`) point here.
+ *
+ * `docs/spec/midgard-tx.md` §4 makes every field commitment a flat
+ * `blake2b_256` over the field's §5.1 preimage bytes; the Aiken side has
+ * derived them that way since #567. The flat twin that would replace the six
+ * calls below is `midgardFieldCommitmentV1`
+ * (`native-tx-field-access-v1.ts`), which hashes preimage bytes — the same
+ * commitment reached from a field's *items* is
+ * `midgardFieldCommitmentForFieldV1` (`native-tx-field-items-v1.ts`), so a note
+ * naming either one means this scheme. What is still here instead is the
+ * counted bounded-collection Merkle root: each preimage decomposed into items,
+ * every item hashed under a domain tag with its field and item index, the
+ * leaves folded into a frontier, and *that* committed.
+ *
+ * It is deliberate, not an oversight, and it is why `EMPTY_SPEND_INPUTS_HASH`
+ * still reads `eb25ed4a…` where §4 requires `45b0cfc2…`. The swap cannot be
+ * made here alone: it also kills the counted per-item publication receipt chain
+ * in `consensus-validation-v1.ts` — whose Aiken twin
+ * `verify_midgard_transaction_field_chunk_v1` is already documented as
+ * unsatisfiable under §4 — and it requires the §5.3/§5.6 item grammar to be
+ * re-pointed in the `midgard-validation` and `lucid-midgard` producers, which
+ * changes the bytes of every transaction TypeScript builds. #585 owns all of
+ * it, and blocks #579's blueprint regeneration; #578 carries the measurement
+ * that decomposed it.
+ *
+ * Until then this stays counted so that the codec, its fixtures and the
+ * publication chain remain mutually consistent; a half-swap is the one state
+ * that is worse than either end.
+ */
 export const deriveNativeTxBodyCompact = (
   body: MidgardNativeTxBodyCanonicalV1,
 ): MidgardNativeTxBodyCompactV1 => ({

@@ -109,12 +109,17 @@ export {
  * roughly twenty downstream callers (validation machine, watcher indexer, node,
  * fault-proof tooling) still route through the retired counted
  * `deriveMidgardNativeFieldCollectionV1`, which is what the expression below
- * calls and why it still yields `eb25ed4a…`. That consumer swap is the Phase-5
- * family-rebind lane work (#575–#578), not the vector fan-out.
+ * calls and why it still yields `eb25ed4a…`.
+ *
+ * **Owner of that consumer path: #585.** It is not a family-rebind lane's to
+ * make — the swap also retires the counted per-item publication chain and needs
+ * the §5.3/§5.6 item grammar re-pointed in the producers first. The residual
+ * note on `deriveNativeTxBodyCompact` (`@al-ft/midgard-core`'s
+ * `codec/native-body.ts`) is the full one.
  *
  * So the re-pin still needs two halves that must land together:
  *
- *   1. the nine-field consumer path swaps to the flat commitment (#575–#578),
+ *   1. the nine-field consumer path swaps to the flat commitment (#585),
  *      which is what makes this constant `45b0cfc2…`; and
  *   2. the blueprint is regenerated so the deployed script agrees (#579, the
  *      identity re-derivation batch).
