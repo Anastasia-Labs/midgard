@@ -11,19 +11,28 @@
   decision trail: wayfinder map
   [#552](https://github.com/Anastasia-Labs/midgard/issues/552).
 - **Owner/approver:** repository owner (Philip DiSarro).
-- **Last reviewed:** 2026-08-08 (initial authoring, Phase 0 of the flat
-  reversion program; §10 added in Phase 3 by
+- **Last reviewed:** 2026-08-09 (initial authoring 2026-08-08, Phase 0 of the
+  flat reversion program; §10 added in Phase 3 by
   [#570](https://github.com/Anastasia-Labs/midgard/issues/570), §11 by
   [#571](https://github.com/Anastasia-Labs/midgard/issues/571), §12 by
-  [#572](https://github.com/Anastasia-Labs/midgard/issues/572)).
+  [#572](https://github.com/Anastasia-Labs/midgard/issues/572); §8.6's frozen
+  mint-redeemer wire format by
+  [#573](https://github.com/Anastasia-Labs/midgard/issues/573); §8.10 and
+  erratum E1 in Phase 4 by
+  [#574](https://github.com/Anastasia-Labs/midgard/issues/574)).
 - **Version:** `native_tx_version_v1 = 1`. Pre-launch, this format replaces
   the counted bounded-collection commitment scheme in place (GOAL_SPEC §3
   invariant 13); there is no compatibility path to the retired scheme.
-- **Provisional values:** the constants marked _provisional_ in §8.3 are
+- **Provisional values:** the constants marked _provisional_ in §8.3 were
   pinned by analysis and are re-measured in Phase 4 of the reversion
   program; falsification by measurement is an amendment-level erratum to
   this document by design, and does not reopen GOAL_SPEC acceptance
-  criteria.
+  criteria. **One has been falsified**: `K` is superseded by §8.3 erratum E1
+  (2026-08-09), which re-pins it from 15,900 to 15,148 bytes and opens a window
+  of preimage lengths that carry no admissible carriage until the re-pin lands.
+  `maxTier1RedeemerPreimageBytes` remains provisional and unmeasured, though E1
+  narrows the headroom it was reasoned from.
+- **Errata:** §8.3 erratum E1 — `K` re-pinned by Phase-4 measurement.
 
 ## 1. Scope and notation
 
@@ -451,19 +460,30 @@ These sit between the tier-2 and tier-3 definitions on purpose: tier 2's
 bound _is_ `K`, and tier 3 is defined as the `preimage_len > K` case, so both
 neighbours read against this table.
 
-| constant                            | value              | status          |
-| ----------------------------------- | ------------------ | --------------- |
-| `K` (chunk size / tier-2 bound)     | **15,900 bytes**   | **provisional** |
-| `maxTier1RedeemerPreimageBytes`     | **14,336 bytes**   | **provisional** |
-| `maxTransactionAggregateFieldBytes` | 32,768 bytes       | retained        |
-| maximum tier-3 chunk count          | `⌈32,768 / K⌉ = 3` | derived         |
+| constant                            | value                               | status                                                                                                                                                                                     |
+| ----------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `K` (chunk size / tier-2 bound)     | ~~15,900 bytes~~ → **15,148 bytes** | **FALSIFIED and re-pinned — erratum E1 below is normative for this row.** 15,900 is what `chunk_bytes_k` still reads in code, pending #565's serialized patch; it is not the value of `K`. |
+| `maxTier1RedeemerPreimageBytes`     | **14,336 bytes**                    | **provisional** (not yet measured); E1 narrows its headroom                                                                                                                                |
+| `maxTransactionAggregateFieldBytes` | 32,768 bytes                        | retained                                                                                                                                                                                   |
+| maximum tier-3 chunk count          | `⌈32,768 / K⌉ = 3`                  | derived; unchanged by the re-pin                                                                                                                                                           |
 
-Basis. Both values are **provisional-pending-Phase-4-measurement**: each is
-pinned by analysis over existing measurements, not by a measurement of the
-final publication or step transaction — neither of which exists yet.
+**Every number below this table that is quoted at `K` is quoted at the
+superseded 15,900**, because the fixtures and the compiled validator are still
+pinned there — the §8.10 three-chunk corner splits `[15,900, 15,900, 963]`, and
+the §11.4 and §12.5 rows sit at `chunk_bytes_k`. They are labelled where they
+appear. Re-taking them is part of the serialized re-pin, not of this table.
+
+Basis. Both values were pinned **provisional-pending-Phase-4-measurement**: each
+by analysis over existing measurements, not by a measurement of the final
+publication or step transaction — neither of which existed at the time.
 Falsification by Phase-4 measurement is an amendment-level erratum to this
 table (the _Provisional values_ bullet in this document's front matter) and
 does not reopen any GOAL_SPEC acceptance criterion.
+
+**The `K` bullet below is the superseded analysis and is retained, not
+corrected, because erratum E1 is partly a statement about where it went wrong.**
+Read it as the reasoning that was falsified; the measurement and the re-pinned
+value are in E1 immediately after this list.
 
 - **K = 15,900** — the split the #556 prototype bench
   (`proto-556-flat-dispute-bench-v1`, 2026-08-06, case 3) actually
@@ -521,6 +541,232 @@ does not reopen any GOAL_SPEC acceptance criterion.
 
 Execution-fit for any carriage-dependent path is judged at the single
 declared budget basis of GOAL_SPEC §3.3: 13,200,000 memory units.
+
+#### Erratum E1 — `K` is falsified by Phase-4 measurement (2026-08-09)
+
+**Amendment-level erratum**, raised by
+[#574](https://github.com/Anastasia-Labs/midgard/issues/574) under the
+_Provisional values_ clause in this document's front matter. It does not reopen
+any GOAL_SPEC acceptance criterion.
+
+The mandatory Phase-4 cross-check demanded above — "Phase 4 MUST measure the
+real signed key-address chunk publication and re-pin `K` downward if that
+transaction does not clear `maxTxSize` with the same 512-byte reserve" — has
+been taken, and `K = 15,900` does not clear `maxTxSize` **at all**, reserve or
+no reserve.
+
+| reading                                                                    | measured                                             |
+| -------------------------------------------------------------------------- | ---------------------------------------------------- |
+| signed publication of a 15,900-byte chunk                                  | **16,648 B**                                         |
+| overrun against `maxTxSize` (16,384)                                       | **+264 B**                                           |
+| largest publishable preimage (signed transaction lands **on** `maxTxSize`) | **15,644 B** — 16,384 B signed                       |
+| largest publishable preimage with the 512-byte reserve                     | **15,148 B** — 15,872 B signed                       |
+| non-payload framing at the exact frontier                                  | **740 B** (245 B fixed + 3 B datum head + 492 B payload-proportional) |
+
+Every row is a real signed emulator transaction at mainnet
+`coinsPerUtxoByte` (4,310); the measurement is
+`§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound` in
+`demo/midgard-validation/tests/field-preimage-carriage-fit-emulator-v1.test.ts`,
+and §8.10 states how to re-take it.
+
+**The frontiers are pinned at one-byte resolution.** They are frontiers, so a
+sweep quantised to anything coarser reports the largest quantised preimage under
+the frontier rather than the frontier itself. An earlier revision of this
+erratum swept at the field-1 stride of 40 bytes and published 15,643 / 15,123
+— one and twenty-five bytes short respectively, and the exact row's stated
+property ("lands on `maxTxSize`") was false of the 16,383-byte transaction it
+reported. Both rows above are the real thing: 15,645 bytes is the first payload
+that does not fit, and 15,149 the first that does not clear the reserve.
+
+**Framing is not a constant, and that is the shape of the whole result.** The
+740 bytes above decompose into exactly three terms:
+
+- **245 bytes of fixed transaction framing** — body, one input, the change
+  output, the fee, one vkey witness. Genuinely payload-independent.
+- **The CBOR head of the inline datum's byte-string wrapper** — 1 byte below a
+  24-byte datum, 2 below 256, **3 below 65,536** and 5 above it. Across the
+  whole of the carriage ladder the datum sits in the third band and this term
+  is a flat 3, which is why an earlier revision of this erratum folded it into
+  the first and published "248 bytes of fixed, payload-independent framing".
+  That band is bounded on both sides. Below it the collapsed model *overstates*
+  by up to two bytes, which refuses nothing that would have fitted; above it the
+  collapsed model *understates* by two, which is the direction that hands a
+  builder a transaction the ledger rejects. It is modelled rather than
+  documented around.
+- **≈ 3.125 % of the payload.** Above 64 bytes a Plutus Data byte string is
+  serialised as an indefinite-length string of 64-byte definite chunks
+  (`5f 5840 … ff`), and each chunk pays a two-byte head. At the exact frontier
+  that is 492 bytes; at 15,900 it is 500; at 14,336 it is 450.
+
+`midgardCarriagePublicationBytesV1` in
+`demo/midgard-core/src/codec/native-tx-carriage-v1.ts` is that decomposition as
+a function, and the emulator measurement asserts it reproduces the real signed
+transaction size **to the byte at every payload size it is sampled at**, on both
+sides of the 24-, 64- and 256-byte boundaries as well as across the ladder. The
+two publishable frontiers above are **derived from it** rather than written
+down, so the cost model and the bound cannot drift apart.
+
+**Where the analysis went wrong.** The 15,900 estimate was carried forward from
+#556's *reconstruction* bench and justified by the 101 bytes of framing measured
+for an **unsigned** 4,574-byte publication. A real publication is signed and has
+change, and the datum it carries is not the payload. #556's 101 bytes are the
+gap between a 4,574-byte *datum* and the 4,675-byte *unsigned* transaction
+holding it; the 248 bytes of fixed framing measured here are that envelope plus
+a vkey witness, an input, a change output and the fee, and the remaining 492 of
+the 740 are the payload's own Plutus Data encoding, which the 4,574-byte figure
+had already absorbed and the analysis therefore never re-applied at carriage
+scale. #556 never measured a publication and said so; the error was in reading
+its silence as an absence of cost.
+
+**The re-pin.** `K` becomes **15,148 bytes** — the reserve-clearing frontier,
+chosen over the 15,644-byte exact frontier for the same reason the counted era
+chose `maxReliableCompleteItemPublicationBytes` over
+`maxExactCompleteItemPublicationBytes`: a bound that lands on the limit to the
+byte is not a bound anyone can build against. `⌈32,768 / 15,148⌉ = 3`, so the
+maximum tier-3 chunk count is unchanged and no other constant in this table
+moves. (The floor below which the chunk count would become 4 is 10,923; the
+re-pin is nowhere near it.)
+
+**Nothing above 15,148 bytes is carriable on L1 today, and tier 3 is
+inoperative.** This is the operative consequence of the measurement, and it is
+much larger than the gap between the two values of `K`. Under the **compiled**
+constants:
+
+- **Tier 2** carries a whole preimage in one publication, so a preimage in
+  `(15,148, 15,900]` publishes as a transaction over the reserve — a 15,500-byte
+  preimage publishes as 16,235 bytes, 363 over the reserve and 149 under
+  `maxTxSize` even without one — and above 15,644 it does not fit `maxTxSize` at
+  all.
+- **Tier 3** fares worse, not better. The chunker cuts at `chunk_bytes_k` =
+  15,900 and the §8.3 guard is a refusal, **not a re-split**, so *every* tier-3
+  plan — at every preimage length from 15,901 bytes to the §5.4 cap — has a
+  first chunk of exactly 15,900 bytes, which publishes as 16,648 bytes and is
+  264 over `maxTxSize`. There is no tier-3 preimage whose carriage can be
+  published.
+
+The unpublishable window is therefore the whole of **(15,148, 32,768]** — every
+size above the reliable frontier up to the §5.4 aggregate cap — and not the
+`(15,148, 15,900]` sliver a previous revision of this erratum named. That
+revision was wrong by a factor of about 23 in the width of the outage and wrong
+in kind about tier 3, which it described as merely mis-partitioned when in fact
+it does not function. **Tier 3 is inoperative on L1 until #565 re-pins `K`.**
+An implementation MUST NOT publish carriage larger than 15,148 bytes, and MUST
+fail closed rather than build such a publication.
+
+**The prohibition is on publication, not on planning.** A previous revision told
+implementations not to *plan* a field into the affected window. That is the
+wrong instrument, and under the real window it is incoherent: since every
+tier-3 plan is affected, a plan-time refusal would refuse every tier-3 preimage
+that exists, and with it the certificate derivation, the content-addressed
+healing check and the §8.10 corner measurement — all of which are correct today
+and are precisely the part of the ladder that still works. A plan is a statement
+about bytes and the §8.4 split is the pure function that healing and
+certification are defined over; it stays total. The refusal belongs where a
+transaction is built.
+
+**The mitigation is enforced by default — and it is a refusal, not a repair.**
+A caller may raise the builder's limit (bounded by the §5.4 cap) for
+measurement work, so the guard is a fail-closed default rather than an
+inescapable invariant. The tooling fails closed unless so overridden:
+`midgardFieldCarriagePublishabilityV1` reports
+every chunk of a plan that `maxTxSize` will not accept and by how much, and
+`buildUnsignedFieldPreimagePublicationV1Program` refuses to build one, naming
+this erratum. The guard is deliberately not a re-split, because the §8.4 chunk
+boundaries are verified on-chain against `chunk_bytes_k` and re-cutting them
+off-schedule would produce carriage the compiled validator rejects. Refusal is
+the only sound behaviour available to the off-chain half. It is therefore
+correct **and it does not restore tier 3**: what it buys is that the failure is
+now visible at build time instead of at submission, which is the whole of what
+this lane can deliver without the serialized patch.
+
+**Why the constant in code still reads 15,900, and what that costs.**
+`chunk_bytes_k` is declared in `native_tx_field_access_v1`, which #573 froze as
+a shared surface, and changing it re-cuts every chunk boundary in the system:
+the #569 cross-language straddle vector (`chunkLengths [15900, 103]`), the #568
+chunk-count goldens, the §11.4 and §12.5 measured rows whose fixtures are pinned
+*at* `chunk_bytes_k`, and the §8.10 corner below. That is a serialized
+Phase-1-surface change under #565's sequencing, not a local edit by the lane
+that found it, and re-deriving two landed lanes' evidence from this one would be
+the larger error.
+
+The price of that freeze is stated plainly, because AGENTS.md's pre-mainnet rule
+is to converge divergences rather than carry them: **this document's normative
+`K` = 15,148 and the compiled `chunk_bytes_k` = 15,900 disagree, live, in the
+tree.** `expect total_length > chunk_bytes_k` is compiled into
+`native_tx_field_access_v1`'s tier-3 view construction and into
+`native_tx_carriage_v1`'s certification, precisely so §8.4's partition is a
+property of the format rather than a convention — so the disagreement is not
+cosmetic: for a preimage in `(15,148, 15,900]` the spec says tier 3 and the
+deployed validator says tier 2. Carrying a live spec/code divergence is a real
+cost, accepted here only because the alternative is an unserialized edit to a
+frozen shared surface, and bounded by the fact that no preimage in the disputed
+range can be carried under either value. Both `K` doc comments — the Aiken
+`chunk_bytes_k` in `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak` and
+the TypeScript `MIDGARD_CHUNK_BYTES_K_V1` in
+`demo/midgard-core/src/codec/native-tx-field-access-v1.ts` — point here.
+
+**What #574 discharges, and what it defers.** #574's AC-1 asks that publish
+tooling carry a preimage of any size up to the §5.4 cap. **Half of that is not
+discharged and cannot be by this lane.** Only `[1, 15,148]` is carriable at the
+real `maxTxSize`; the tier-3 end-to-end exercise is demonstrated on an emulator
+configured with an inflated `maxTxSize`, which is honest as a measurement of the
+*format* and is not evidence that the carriage is publishable on L1. The
+full-cap half of AC-1 is dischargeable only by #565's serialized re-pin of `K`.
+What **is** discharged today and stands on its own: correct fail-closed publish
+tooling; tier-invisible reads through one authenticated view; healing at every
+publishable size; and a byte-exact publication cost model derived from, and
+pinned against, real signed transactions. When `K` is re-pinned, the tests that
+turn red are known and named — the §8.10 corner rows in
+`onchain/aiken/lib/midgard/native-tx-carriage-v1.test.ak` and
+`onchain/aiken/validators/field-preimage-certificate-handlers.test.ak` (whose
+`[15,900, 15,900, 963]` split becomes a different split), the #569 straddle
+vector, the #568 chunk-count goldens, the §8.10 execution ledger
+(`onchain/aiken/scripts/native-tx-carriage-exec-ledger-v1.json`, which must be
+re-taken with `--update` in the same commit as the spec table), and the
+emulator suite's raised-limit blocks, which stop needing to be raised. Two
+further limits of the discharge, stated so silence does not imply them: no
+dispute transaction is built for any tier — every read in these tests is an
+in-process codec call over an authenticated view, not an on-chain step — and
+tier 1 never reaches a ledger at all, so E1's tier-1 wire-cost caution rests
+on arithmetic, not on a submitted transaction.
+
+**Scope note.** §9's conformance rewrite, the SDK golden generator, the wire
+golden tests and the CI step that gates them are #568/#573 surface, not #574's.
+They were crossed into deliberately: #573 froze the shared surface with a
+carry-forward obligation that any lane adding a cross-language wire type extends
+the golden channel rather than starting a parallel one, and #574 adds the §8.6
+certificate and §8.8 carriage wire types. Adding them to the existing channel is
+the discharge of that obligation; a second channel would have been the defect.
+The §8.10 execution ledger and its CI step are a second, smaller crossing, taken
+for the same reason: a ledger no workflow runs would reproduce in a new place
+exactly the unfalsifiable-cost-claim defect it was added to close.
+
+**The tier-1 bound is not falsified by this erratum, but it is not untouched by
+it either.** `maxTier1RedeemerPreimageBytes` is a bound on the *step*
+transaction, not on a publication, and its measurement is #557's pending M2
+("fixed per-step overhead in the real thread harness"). Nothing in #574 measures
+a step transaction, so nothing here falsifies or confirms 14,336; it remains
+provisional on its original footing. Two things measured here do bear on it, and
+neither was stated in the first revision of this erratum:
+
+- **The 740-byte framing is not a floor.** It was published as "a lower bound on
+  any transaction of this family", and the same measurement contradicts that:
+  framing is 723 bytes at a 15,123-byte payload and 698 bytes at 14,336, because
+  most of it is the payload-proportional term. What is payload-independent is
+  245 bytes; the datum's CBOR head adds a further flat 3 across the ladder's
+  band (the decomposition above).
+- **The Plutus-Data chunking cost applies to tier-1 redeemer carriage too, and
+  it is the larger half of what the tier-1 allowance is spent on.** Tier 1
+  carries its preimage as a `ByteArray` field of a redeemer, which is Plutus
+  Data like any other, so a 14,336-byte preimage occupies **14,786 bytes** on
+  the wire — 450 bytes of chunking overhead before any step machinery exists at
+  all. Against the 2,048-byte allowance that is 22 % already spent on the
+  encoding of the payload itself, leaving ≈ 1,598 bytes for the
+  thread-continuity input, the continuing output, the control datum, the
+  redeemer framing, the reference-input entries and the script context. That is
+  materially tighter than the allowance was reasoned about, and #557's M2 should
+  be taken with it in view. It is a caution, not a re-pin: no step transaction
+  has been measured, and this erratum does not measure one.
 
 ### 8.4 Tier 3 — chunked + certified digest-manifest
 
@@ -744,6 +990,244 @@ by this document. The counted-era carriage constants
 `maxSinglePublicationCompleteItemBytes = 14,396`) are superseded by §8.3 and
 are prohibited in new surface.
 
+### 8.10 Cost claims — the carriage exit measurements
+
+This is the **Phase-4 lane exit criterion**, and like every other number in this
+document it is established by measurement rather than asserted. Execution
+figures are taken against the GOAL_SPEC §3.3 basis of 13,200,000 memory units
+and 8,000,000,000 CPU units; byte figures are taken against the deployment floor
+`minSupportedL1MaxTxBytes = 16,384`. All of it is **provisional pending Phase-7
+confirmation**: Phase 7 re-takes the execution rows against the final blueprint,
+and what is below is the Phase-4 signal.
+
+Three measurements were owed, and the third produced erratum E1 (§8.3).
+
+#### The three-chunk corner
+
+#556 established a two-chunk reconstruction *in fixture*. What was still owed is
+the three-chunk corner opened through the real door with the four reference
+inputs a consuming step carries — one certificate and three chunks. The fixture
+is field 1 (stride 40) at 819 items and 32,763 bytes, the largest fixed-stride
+preimage under the §5.4 cap; it splits `[15,900, 15,900, 963]` — **at the
+superseded `K`** (§8.3 E1), which is where the compiled validator and every
+fixture still sit — both chunk boundaries fall inside an item, and
+`tier3_corner_fixture_sits_at_the_three_chunk_corner` asserts every one of those
+so the rows stay quoted where they were taken.
+
+The rows are a controlled family: each builds the same fixture and opens the
+same door, and they differ **only** in which items are read. Row 0 stops before
+opening the door at all, so the fixture — which dominates every absolute figure,
+exactly as §12.5 found — subtracts out.
+
+| #   | seam test                             | what it adds                  | memory  | CPU         |
+| --- | ------------------------------------- | ----------------------------- | ------- | ----------- |
+| 0   | `tier3_corner_fixture_only`           | fixture only, door unopened   | 406,217 | 195,100,192 |
+| 1   | `tier3_corner_open_only`              | + the door                    | 637,162 | 264,352,699 |
+| 2   | `tier3_corner_one_read`               | + one item in chunk 0         | 792,404 | 360,784,354 |
+| 3   | `tier3_corner_two_reads`              | + a second item in chunk 0    | 949,150 | 457,631,357 |
+| 4   | `tier3_corner_straddling_read`        | one item across chunks 0/1    | 830,057 | 388,512,657 |
+| 5   | `tier3_corner_second_straddling_read` | one item across chunks 1/2    | 853,002 | 380,048,287 |
+| 6   | `tier3_corner_last_chunk_read`        | one item in the 963-byte tail | 825,111 | 323,895,098 |
+
+Absolute units, not rounded figures, because the readings are **differences** and
+a difference of rounded numbers is not a measurement. Every row is the
+`execution_units` field of the structured `aiken check` report for that test.
+
+**Every execution figure in this section is pinned, not transcribed.** An
+earlier revision of §8.10 wrote these numbers into the table by hand and nothing
+in the repository asserted them — a grep for any of them returned hits only in
+this document, so the validator could have drifted arbitrarily far from the
+published cost without a suite going red. A cost claim nothing can falsify is
+not a measurement. The rows, the derived deltas below, and the binding axis of
+the read budget now live in
+`onchain/aiken/scripts/native-tx-carriage-exec-ledger-v1.json` and are checked
+against a fresh measurement by
+
+```
+MIDGARD_AIKEN_BIN=<fork> node scripts/verify-carriage-exec-ledger-v1.mjs
+```
+
+from `onchain/aiken/`, which re-runs both modules through
+`run-focused-check.mjs`, compares every reading to the unit, recomputes every
+subtraction this section publishes, and re-derives which axis binds. A
+legitimate re-take is recorded with `--update`, which rewrites the ledger and so
+requires this table to move in the same commit. Aiken tests cannot assert their
+own execution units — the units are the check report's observation of the test,
+not a value in scope — which is why the pin lives one level up rather than
+inside the tests, as the byte-level constants' pins do.
+
+The rows are neutralisation-pinned rather than merely green, and the ledger runs
+the neutralisation selectors in the same invocation as the rows so a re-take
+cannot quietly drop one: `tier3_corner_refuses_a_tampered_tail_chunk` is the
+same fixture with one byte of the ragged tail changed, and it is refused — so
+the reads being measured are reads that consult the certificate's digest vector,
+not reads that would have returned something for any bytes at all.
+
+Four readings.
+
+1. **Opening the corner costs 230,945 mem / 69.25 M CPU and no chunk hash**
+   (row 1 − row 0). That is 1.75 % of the memory basis and 0.87 % of the CPU
+   basis, for four reference inputs resolved, the certificate's token and
+   `(tx_id, field_index)` matched, the split shape checked and the count derived.
+   §8.6's "no chunk hash spent" for a fixed-stride count is not a figure of
+   speech: three 15.9 KB chunks sit in the view unhashed.
+2. **One item read costs 155,242 mem / 96.43 M CPU** (row 2 − row 1) — a wrapper
+   read and a payload read, each re-verifying the 15,900-byte chunk they land in.
+3. **Reads are linear and there is nothing to amortise.** Row 3 − row 2 is
+   156,746 mem / 96.85 M CPU, within 1 % of the first read. Tier 3 re-verifies
+   per read exactly as §8.4 says, and a re-take that found a cheaper second read
+   would be finding a bug, not an improvement.
+4. **Per-read cost tracks the chunk touched, not the preimage.** Against row 2:
+   a straddling read at boundary 0/1 adds 37,653 mem / 27.73 M CPU (one further
+   full-chunk verification); at boundary 1/2 it adds 60,598 mem / 19.26 M CPU,
+   less CPU because the third chunk is 963 bytes rather than 15,900; and reading
+   wholly inside that ragged tail **saves** 36.89 M CPU. This is the property
+   tier 3 is sold on, and it is now measured rather than argued. The saving is
+   on the CPU axis only, and the two axes disagree: row 6 costs 32,707 memory
+   units *more* than row 2 (825,111 against 792,404) while costing 36.89 M CPU
+   less, because the read still allocates a view over three chunks and only the
+   hashing shrinks. Quoting the CPU saving without the memory rise would be
+   quoting half a measurement — the tail read is cheaper on the axis that is
+   quoted and dearer on the other one.
+
+**The per-step read budget at the corner is ≈ 82 items**, and the two axes agree
+almost exactly: `(13,200,000 − 230,945) / 155,242 = 83.5` by memory and
+`(8,000,000,000 − 69,252,507) / 96,431,655 = 82.2` by CPU. **CPU is the binding
+axis** — 82.2 is the smaller of the two, so the ≈ 82 figure is the CPU one and a
+budget taken from the memory axis alone would be optimistic by a read and a
+half. The margin between the axes is thin enough (1.6 %) that a re-take could
+swap them, which is why both are published rather than only the binding one. A
+dispute needing more reads than that over one field at the corner is a dispute
+that must checkpoint (§10), which is what §10 is for.
+
+#### Certificate mint and spend
+
+Each figure is paired with a control that builds the same transaction and does
+not run the handler, so what is published is the handler's own work. These rows
+are in the same ledger and are checked by the same command as the corner rows
+above; the ledger names their module and selectors, so the table below and the
+measurement cannot drift apart.
+
+The neutralisation here is `certificate_mint_rejects_a_tampered_corner_chunk`:
+the corner certification with one byte of the ragged tail changed, refused.
+Without it the corner row would be a measurement of a handler that might have
+returned `True` for anything.
+
+Both `mint` rows are taken at the **superseded** `K` = 15,900 (§8.3 E1): the
+smaller is a `K + 1` two-chunk certification and the corner splits
+`[15,900, 15,900, 963]`. Re-taking them at the re-pinned `K` = 15,148 is part of
+#565's serialized patch.
+
+| handler          | size               | control mem | measured mem | control CPU | measured CPU | **handler cost**                  | % of basis      |
+| ---------------- | ------------------ | ----------- | ------------ | ----------- | ------------ | --------------------------------- | --------------- |
+| `mint` (Certify) | `K + 1`, 2 chunks  | 688,584     | 1,331,699    | 297,698,461 | 562,080,595  | **643,115 mem / 264,382,134 CPU** | 4.87 % / 3.30 % |
+| `mint` (Certify) | 32,763 B, 3 chunks | 642,305     | 1,381,528    | 333,486,628 | 692,292,303  | **739,223 mem / 358,805,675 CPU** | 5.60 % / 4.49 % |
+| `spend` (retire) | any                | 519,960     | 756,635      | 257,372,750 | 371,882,883  | **236,675 mem / 114,510,133 CPU** | 1.79 % / 1.43 % |
+
+Both axes carry their control and their measured reading, so every published
+cost is a subtraction the reader can perform. The earlier revision of this table
+published the CPU deltas alone, which made them un-recomputable and therefore
+un-checkable — the one thing a controlled measurement is for.
+
+Certification at the corner is 5.60 % of the memory basis and 4.49 % of the CPU
+basis, so it fits its transaction with an order of magnitude to spare, and the
+step from two chunks to three costs 96,108 mem — one more chunk digest and 16 KB
+more reconstruction hash. Retirement is size-independent by construction: the
+spend handler reads the datum, derives the name and checks the token does not
+survive, and never touches carriage.
+
+**Min-Ada, at mainnet `coinsPerUtxoByte` = 4,310.** From
+`§8.6 Phase-4 exit measurement — certificate min-Ada and the one-transaction question`:
+
+| output                                          | payload  | inline datum | min-Ada (lovelace) | min-Ada         |
+| ----------------------------------------------- | -------- | ------------ | ------------------ | --------------- |
+| certificate manifest (3 digests)                | —        | 176 B        | 1,939,500          | **1.9395 ADA**  |
+| full chunk (`K` bytes, superseded `K` = 15,900) | 15,900 B | 16,400 B     | 71,576,170         | **71.5762 ADA** |
+| ragged tail chunk                               | 963 B    | 996 B        | 5,184,930          | **5.1849 ADA**  |
+
+The payload and datum columns are separate on purpose: min-Ada is charged on the
+serialised output, so it is the **datum** column it is proportional to, and the
+gap between the two is the §8.3 E1 Plutus-Data chunking cost (≈ 3.125 %) turning
+up as deposit. An earlier revision of this table labelled the 16,400-byte datum
+"15,900 B datum", which is the payload.
+
+The asymmetry is the point of tier 3: certifying is nearly free, and the deposit
+that is actually large sits on raw carriage the publisher reclaims by an ordinary
+key spend (§8.5). A three-chunk corner ties up ≈ 150 ADA in reclaimable deposits
+for the life of the dispute — **derived**, as the sum of the measured rows above
+(2 × 71.5762 + 5.1849 + 1.9395 = 150.2768), and stated to the ADA because that
+is the resolution the claim is made at. The four rows it sums are the pinned
+quantities; this total is a convenience.
+
+**Last-chunk publication and certification do not fit one transaction, and the
+reason is structural rather than budgetary.** §8.6 resolves chunks from
+*reference inputs*, and the Cardano ledger resolves reference inputs against the
+UTxO set as it stands **before** the transaction; an output the same transaction
+creates is therefore not available to it, at any size and under any protocol
+parameters. A second and independent reason is measured: a signed full-`K`
+publication is already 16,648 bytes on its own (erratum E1), and adding the
+§8.6 redeemer (531 B over a 400-byte compact structure and a 100-byte witness
+set) and the manifest output (176 B) puts a lower bound of 17,355 bytes on the
+combination against a
+16,384-byte limit — over budget even before the minting-policy witness. **A
+tier-3 publication is therefore always `n + 1` transactions**, and builders
+must not be written expecting otherwise.
+
+#### The tier-2 raw-UTxO bound
+
+The flat successor to the counted era's `maxSinglePublicationCompleteItemBytes`
+= 14,396. Measured as real signed emulator transactions by
+`§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound` in
+`demo/midgard-validation/tests/field-preimage-carriage-fit-emulator-v1.test.ts`,
+run by `pnpm --dir demo/midgard-validation exec vitest run
+tests/field-preimage-carriage-fit-emulator-v1.test.ts`:
+
+| bound                        | preimage     | signed transaction |
+| ---------------------------- | ------------ | ------------------ |
+| exact (lands on `maxTxSize`) | **15,644 B** | 16,384 B           |
+| reliable (512-byte reserve)  | **15,148 B** | 15,872 B           |
+
+Both are swept at **one-byte resolution**: 15,645 is the first payload that does
+not fit and 15,149 the first that does not clear the reserve. Non-payload
+framing at the exact frontier is **740 bytes**, of which 245 is
+payload-independent and 3 is the datum's own CBOR head (§8.3 E1).
+
+The framing and chunking figures §8.3 E1 and this section quote inline — 740,
+723 and 698 bytes of non-payload framing at 15,644, 15,123 and 14,336; 492, 500
+and 450 bytes of Plutus-Data chunking overhead; and the 16,235 / 363 / 149
+worked tier-2 example — are **derivations of the cost model, and are asserted**
+in `demo/midgard-core/tests/native-tx-carriage-v1.test.ts` rather than left as
+prose a reader has to recompute.
+
+**What the flat bound actually beats, measured like for like.** The counted era's
+two frontiers are `maxExactCompleteItemPublicationBytes` = 15,489 and
+`maxReliableCompleteItemPublicationBytes` = 14,993, and those are the
+comparable numbers: they are frontiers, found the same way, judged against the
+same 16,384-byte floor and the same 512-byte reserve. Against them the flat
+bound is **+155 B at the exact end and +155 B at the reliable end** — the same
+gain twice, which is what one expects when the deleted proof envelope is a fixed
+cost. The counted reliable publication's transaction measured 15,872 bytes, the
+same figure the flat reliable frontier lands on; the flat format buys 155 more
+payload bytes inside an identical transaction budget.
+
+A previous revision of this section compared against
+`maxSinglePublicationCompleteItemBytes` = 14,396 and reported **+1,247 B** exact
+and **+727 B** reliable, attributing the difference to "the deleted proof
+envelope and script custody showing up as capacity". That is wrong by about
+8×, and the stated cause is not the cause: 14,396 is an **applied policy cap**
+the counted publisher was configured with, not a measured frontier — at that cap
+the counted publisher produced a 15,256-byte transaction and retained 1,128
+bytes of unused headroom below the deployment floor. Comparing a frontier to a
+cap measures the size of the cap's safety margin, not the format's gain. (Those
+last two are **counted-era** figures, quoted from that format's own publisher
+and not derivable from the flat cost model above; 1,128 is `16,384 − 15,256`.
+They are illustrative of why the comparison was wrong, and nothing in the flat
+format depends on them.)
+
+This is also the measurement that produced **erratum E1**: `K = 15,900` overruns
+`maxTxSize` by 264 bytes and is re-pinned to the reliable frontier, 15,148. See
+§8.3.
+
 ## 9. Conformance
 
 1. Aiken and TypeScript twins emit byte-identical preimages, compact
@@ -752,10 +1236,43 @@ are prohibited in new surface.
    fixed-index boundary values (0, 23, 24, 255, 256, 65,535), the 28-byte
    width assertion, mint policy/asset ordering, and the §6.2 acceptance
    boundaries (2⁶⁴ ± 1 bignums, constructor alternatives 127/128).
+   The **frozen wire types** are held to the same standard and by the same
+   means: the §8.8 `FieldCarriageV1`/`FieldViewV1` sums, the §8.6
+   `FieldPreimageCertificateV1` datum and the §8.6
+   `FieldPreimageCertificateMintRedeemerV1` are pinned by shared vectors that
+   the off-chain producer encodes and the on-chain decoder both **decodes and
+   re-serialises** — decoding alone would miss an encoder emitting a shape the
+   decoder tolerates. Every constructor tag is pinned positionally against the
+   Aiken declaration order rather than restated, and the 64-byte Plutus Data
+   chunking boundary — the one place two Data encoders agree on everything
+   short and still diverge — is pinned from **both** sides rather than merely
+   crossed: vectors at 63 and 64 bytes that MUST remain a single definite byte
+   string, and vectors above it that MUST become an indefinite-length string of
+   64-byte definite chunks, so a `>=` written where the rule says `>` is caught
+   at the exact width where it is the only difference. Every wire type whose
+   shape can reach that width carries a crossing vector.
+   `FieldPreimageCertificateV1` is the sole exception and is one structurally,
+   not by omission: each of its fields is fixed-width and at most 32 bytes
+   (owner 28, tx-id 32, each digest 32), so no value of that type can carry a
+   byte string wide enough to chunk.
 2. Decoders are fail-closed everywhere: non-minimal heads (outside the
    pinned fixed-width index), wrapper/length mismatches, count/length
    inconsistency, trailing bytes, non-canonical datum/redeemer payloads,
-   and any retired counted-scheme surface all reject.
+   and any retired counted-scheme surface all reject. Each of the four §8.6/§8.8
+   frozen wire types carries at least one trailing-bytes vector and at least two
+   wrong-shape vectors, and each negative vector names the layer that must
+   refuse it, so a vector that would be rejected by the CBOR parse anyway
+   cannot be counted as coverage of the type cast.
+
+   **One known asymmetry, recorded rather than glossed.** On the consensus side
+   this holds outright: `cbor.deserialise` returns `None` unless the payload is
+   exactly one CBOR item, so trailing bytes are refused. Off-chain, the
+   `Data.from` path in `@lucid-evolution/lucid` is **not** fail-closed on
+   trailing bytes — it decodes the leading item and discards the remainder. The
+   golden channel pins that behaviour explicitly (the decoded value must
+   re-encode to a strictly shorter prefix of the vector) rather than asserting a
+   refusal that does not happen. Closing it needs a canonicality guard on the
+   off-chain decode path and is not carried by the vector set alone.
 3. Negative-vector suites cover the §7 invariants: out-of-range index,
    straddling-item reads, short/empty-slice equality attempts, certificate
    `(tx_id, field_index)` mismatch, count/total_length inconsistency, and

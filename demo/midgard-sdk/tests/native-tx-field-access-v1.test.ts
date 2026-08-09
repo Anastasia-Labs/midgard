@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 
+import { MIDGARD_MAX_TIER3_CHUNK_COUNT_V1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -7,9 +8,11 @@ import { EMPTY_SPEND_INPUTS_HASH } from "../src/fraud-proof/zero-input.js";
 import {
   EMPTY_FIELD_COMMITMENT_HEX_V1,
   FIELD_CARRIAGE_V1_CONSTRUCTOR_INDEXES,
+  FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_V1_CONSTRUCTOR_INDEXES,
   FIELD_VIEW_V1_CONSTRUCTOR_INDEXES,
   FieldCarriageV1,
   fieldPreimageCertificateAssetNameHexV1,
+  FieldPreimageCertificateMintRedeemerV1,
   FieldPreimageCertificateV1,
   FieldViewV1,
 } from "../src/native-tx-field-access-v1.js";
@@ -25,6 +28,13 @@ import {
 
 const repositoryRoot = new URL("../../../", import.meta.url);
 const AIKEN_MODULE = "onchain/aiken/lib/midgard/native-tx-field-access-v1.ak";
+/**
+ * §8.6's producer half lives with the carriage producer rather than behind the
+ * access door, so the mint redeemer's declaration order is read from a second
+ * module.
+ */
+const AIKEN_CARRIAGE_MODULE =
+  "onchain/aiken/lib/midgard/native-tx-carriage-v1.ak";
 
 const readRepositoryFile = (relativePath: string): string =>
   readFileSync(new URL(relativePath, repositoryRoot), "utf8");
@@ -36,22 +46,32 @@ const readRepositoryFile = (relativePath: string): string =>
  * constructor by its *position*, so reordering the declaration silently
  * re-points every encoded carriage at a different tier — a change no type
  * checker on either side would catch.
+ *
+ * Nullary constructors (`Retire`) are matched as well as record ones, because a
+ * parser that only saw `Name {` would read a two-variant sum as a one-variant
+ * one and agree with any tag assignment at all.
  */
-const aikenConstructorOrder = (typeName: string): readonly string[] => {
-  const source = readRepositoryFile(AIKEN_MODULE);
+const aikenConstructorOrderIn = (
+  module: string,
+  typeName: string,
+): readonly string[] => {
+  const source = readRepositoryFile(module);
   const opening = new RegExp(`^pub type ${typeName} \\{$`, "mu").exec(source);
   if (opening?.index === undefined) {
-    throw new Error(`${typeName} is no longer declared in ${AIKEN_MODULE}`);
+    throw new Error(`${typeName} is no longer declared in ${module}`);
   }
   const body = source.slice(opening.index + opening[0].length);
   const end = body.indexOf("\n}");
   if (end === -1) {
     throw new Error(`${typeName} has no closing brace`);
   }
-  return [...body.slice(0, end).matchAll(/^ {2}([A-Z][A-Za-z0-9]*) \{/gmu)].map(
-    (match) => match[1] as string,
-  );
+  return [
+    ...body.slice(0, end).matchAll(/^ {2}([A-Z][A-Za-z0-9]*)(?: \{|\s*$)/gmu),
+  ].map((match) => match[1] as string);
 };
+
+const aikenConstructorOrder = (typeName: string): readonly string[] =>
+  aikenConstructorOrderIn(AIKEN_MODULE, typeName);
 
 /** Plutus constructor tag for index `i` (i < 7): 121 + i, CBOR tag `d879 + i`. */
 const constructorTagPrefix = (index: number): string =>
@@ -80,7 +100,10 @@ describe("§8.8 FieldCarriageV1 wire contract", () => {
     // `Constr 0 [B]`, never `Constr 0 [Constr 0 [B]]`. A `Data.Tuple` payload
     // would produce the second shape and this assertion is what catches it.
     const inline = Data.to({ Inline: { preimage: "80" } }, FieldCarriageV1);
-    const rawUtxo = Data.to({ RawUtxo: { ref_input_index: 3n } }, FieldCarriageV1);
+    const rawUtxo = Data.to(
+      { RawUtxo: { ref_input_index: 3n } },
+      FieldCarriageV1,
+    );
     const certified = Data.to(
       {
         Certified: {
@@ -106,7 +129,10 @@ describe("§8.8 FieldCarriageV1 wire contract", () => {
       RawUtxo: { ref_input_index: 3n },
     });
     expect(Data.from(certified, FieldCarriageV1)).toEqual({
-      Certified: { cert_ref_input_index: 1n, chunk_ref_input_indices: [2n, 3n] },
+      Certified: {
+        cert_ref_input_index: 1n,
+        chunk_ref_input_indices: [2n, 3n],
+      },
     });
   });
 });
@@ -137,9 +163,7 @@ describe("§8.8 FieldViewV1 wire contract", () => {
       FieldViewV1,
     );
     expect(whole).toBe("d8799f4180001828ff");
-    expect(chunked).toBe(
-      `d87a9f9f4180ff9f5820${h32("ab")}ff0000ff`,
-    );
+    expect(chunked).toBe(`d87a9f9f4180ff9f5820${h32("ab")}ff0000ff`);
     expect(whole.startsWith(constructorTagPrefix(0))).toBe(true);
     expect(chunked.startsWith(constructorTagPrefix(1))).toBe(true);
     expect(Data.from(whole, FieldViewV1)).toEqual({
@@ -162,9 +186,9 @@ describe("§8.6 FieldPreimageCertificateV1 datum", () => {
     const declaration =
       /^pub type FieldPreimageCertificateV1 \{\n([\s\S]*?)\n\}/mu.exec(source);
     expect(declaration).not.toBeNull();
-    const fields = [
-      ...declaration![1].matchAll(/^ {2}([a-z_]+):/gmu),
-    ].map((match) => match[1]);
+    const fields = [...declaration![1].matchAll(/^ {2}([a-z_]+):/gmu)].map(
+      (match) => match[1],
+    );
     expect(fields).toEqual([
       "owner",
       "tx_id",
@@ -184,6 +208,91 @@ describe("§8.6 FieldPreimageCertificateV1 datum", () => {
     };
     const encoded = Data.to(certificate, FieldPreimageCertificateV1);
     expect(Data.from(encoded, FieldPreimageCertificateV1)).toEqual(certificate);
+  });
+});
+
+describe("§8.6 FieldPreimageCertificateMintRedeemerV1 wire contract", () => {
+  it("keeps the frozen Certify/Retire order the Aiken producer declares", () => {
+    expect(
+      aikenConstructorOrderIn(
+        AIKEN_CARRIAGE_MODULE,
+        "FieldPreimageCertificateMintRedeemerV1",
+      ),
+    ).toEqual(["Certify", "Retire"]);
+    expect(
+      FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_V1_CONSTRUCTOR_INDEXES,
+    ).toEqual({ Certify: 0, Retire: 1 });
+  });
+
+  it("keeps the Aiken Certify arm's field order", () => {
+    const source = readRepositoryFile(AIKEN_CARRIAGE_MODULE);
+    const declaration = /^ {2}Certify \{\n([\s\S]*?)\n {2}\}/mu.exec(source);
+    expect(declaration).not.toBeNull();
+    const fields = [...declaration![1].matchAll(/^ {4}([a-z_]+):/gmu)].map(
+      (match) => match[1],
+    );
+    expect(fields).toEqual([
+      "compact_cbor",
+      "witness_set_compact_cbor",
+      "chunk_ref_input_indices",
+      "output_index",
+    ]);
+  });
+
+  it("encodes Certify at Constr 0 with its four fields flat", () => {
+    // Exact CBOR, not a prefix check — the same `Data.Object` vs `Data.Tuple`
+    // hazard the §8.8 carriage assertions guard. `Certify` carries named
+    // fields, so its payload sits directly in the constructor.
+    const certify = Data.to(
+      {
+        Certify: {
+          compact_cbor: "a1",
+          witness_set_compact_cbor: "b2",
+          chunk_ref_input_indices: [0n, 1n, 2n],
+          output_index: 0n,
+        },
+      },
+      FieldPreimageCertificateMintRedeemerV1,
+    );
+    expect(certify).toBe("d8799f41a141b29f000102ff00ff");
+    expect(certify.startsWith(constructorTagPrefix(0))).toBe(true);
+    expect(Data.from(certify, FieldPreimageCertificateMintRedeemerV1)).toEqual({
+      Certify: {
+        compact_cbor: "a1",
+        witness_set_compact_cbor: "b2",
+        chunk_ref_input_indices: [0n, 1n, 2n],
+        output_index: 0n,
+      },
+    });
+  });
+
+  it("encodes Retire as a bare Constr 1", () => {
+    const retire = Data.to("Retire", FieldPreimageCertificateMintRedeemerV1);
+    expect(retire).toBe("d87a80");
+    expect(retire.startsWith(constructorTagPrefix(1))).toBe(true);
+    expect(Data.from(retire, FieldPreimageCertificateMintRedeemerV1)).toBe(
+      "Retire",
+    );
+  });
+
+  it("bounds chunk_ref_input_indices at the §8.3 three-chunk ladder", () => {
+    // The wire schema is a plain list — the bound is the policy's, not the
+    // codec's — so the assertion here is that the *core* constant the builders
+    // clamp against is still three, and that a redeemer naming more is a thing
+    // an off-chain builder has to refuse rather than something the schema does.
+    expect(MIDGARD_MAX_TIER3_CHUNK_COUNT_V1).toBe(3);
+    const overlong = Data.to(
+      {
+        Certify: {
+          compact_cbor: "a1",
+          witness_set_compact_cbor: "b2",
+          chunk_ref_input_indices: [0n, 1n, 2n, 3n],
+          output_index: 0n,
+        },
+      },
+      FieldPreimageCertificateMintRedeemerV1,
+    );
+    expect(overlong.startsWith(constructorTagPrefix(0))).toBe(true);
   });
 });
 

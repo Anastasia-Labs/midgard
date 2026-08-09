@@ -4,6 +4,7 @@ export * from "./contracts.js";
 export * from "./da-hash-preimage.js";
 export * from "./double-spend.js";
 export * from "./evidence-source-v1.js";
+export * from "./field-preimage-carriage-v1.js";
 export * from "./input-no-idx.js";
 export * from "./invalid-range.js";
 export * from "./invalid-signature.js";

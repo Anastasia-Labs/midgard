@@ -53,10 +53,11 @@ use midgard/native_tx_carriage_v1.{
   split_field_preimage, verify_field_preimage_certificate_v1,
 }
 use midgard/native_tx_field_access_v1.{
-  Certified, FieldPreimageCertificateV1, authenticated_field_view, chunk_bytes_k,
-  expected_chunk_count, field_commitment, field_item_at, field_item_count,
-  field_item_extent, field_preimage_certificate_asset_name,
+  Certified, FieldPreimageCertificateV1, FieldViewV1, authenticated_field_view,
+  chunk_bytes_k, expected_chunk_count, field_commitment, field_item_at,
+  field_item_count, field_item_extent, field_preimage_certificate_asset_name,
   max_tier3_chunk_count, max_transaction_aggregate_field_bytes,
+  spend_input_stride,
 }
 
 // ---------------------------------------------------------------------------
@@ -840,4 +841,294 @@ test certified_carriage_opens_through_the_access_door() {
     field_item_extent(view, 397) == Pair(15885, 38),
     field_item_at(view, 397) == #"825820f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1190007",
   }
+}
+
+// ---------------------------------------------------------------------------
+// Phase-4 exit measurement — the three-chunk corner (spec §8.10, rows 1–6)
+// ---------------------------------------------------------------------------
+//
+// #556's dispute bench established the two-chunk reconstruction; the corner
+// this lane owes is the *three*-chunk one, opened through the real door with
+// the four reference inputs a consuming step would actually carry (one
+// certificate, three chunks). The rows below come in a controlled family: every
+// one of them builds the same fixture and opens the same door, and they differ
+// only in which items are read, so a difference between two rows is one read
+// and nothing else. Absolute figures are dominated by fixture construction and
+// are not budget verdicts — spec §8.10 says which differences are the
+// measurement.
+
+/// Nine of the straddle vector's items — 360 bytes, item-aligned at the
+/// stride fields 0 and 1 share. Doubling a nine-item block keeps every
+/// power-of-two multiple item-aligned, which is what lets the corner fixture be
+/// built in seven concatenations instead of eight hundred.
+fn nine_item_block() -> ByteArray {
+  bytearray.take(straddle_block, 9 * spend_input_stride)
+}
+
+/// The largest field-1 preimage that fits the §5.4 aggregate cap: 819 items
+/// behind the §5.1 `99 0333` header, 32,763 bytes, five short of 32,768.
+///
+/// It is the three-chunk corner because 819 items is the first item count whose
+/// preimage exceeds `2 · K` and the last that does not exceed the cap: the
+/// split is `[15,900, 15,900, 963]`, both chunk boundaries fall inside items,
+/// and the ragged tail is the smallest of the three. A fixed-stride field is
+/// used on purpose — §8.6 refuses a variable-width field's tier-3 count, so a
+/// variable-width corner could not be opened and read at all.
+///
+/// The certification side has its own corner, `mint_corner_preimage` in
+/// `validators/field-preimage-certificate-handlers.test.ak`: the same length,
+/// but opaque filler, because certification never looks inside an item. The
+/// two are named apart so each is greppable to the claim it serves.
+fn door_corner_preimage() -> ByteArray {
+  let items = bytearray.take(grow(nine_item_block(), 32760), 32760)
+  bytearray.concat(#"990333", items)
+}
+
+/// Item `index`'s 38 payload bytes, derived from the nine-item block rather
+/// than from the preimage the door reads — a second derivation, so a read that
+/// lands one item off is a failure and not a coincidence.
+fn corner_item(index: Int) -> ByteArray {
+  let block_index = index % 9
+  bytearray.slice(
+    nine_item_block(),
+    block_index * spend_input_stride + 2,
+    block_index * spend_input_stride + 39,
+  )
+}
+
+/// The corner's four reference inputs, in the order a step's redeemer names
+/// them: the certificate at 0, then chunks 0..2 at 1..3.
+fn corner_reference_inputs(tx_id: ByteArray) -> List<Input> {
+  expect [chunk_0,
+        chunk_1, chunk_2] = split_field_preimage(door_corner_preimage())
+  let certificate_datum: Data = field_preimage_certificate_v1(
+    owner_hash,
+    tx_id,
+    1,
+    door_corner_preimage(),
+  )
+  [
+    input_of(
+      0,
+      Output {
+        address: address.from_script(certificate_policy_id),
+        value: assets.from_lovelace(2000000)
+          |> assets.add(
+              certificate_policy_id,
+              field_preimage_certificate_asset_name(tx_id, 1),
+              1,
+            ),
+        datum: InlineDatum(certificate_datum),
+        reference_script: None,
+      },
+    ),
+    input_of(1, key_output(builtin.b_data(chunk_0))),
+    input_of(2, key_output(builtin.b_data(chunk_1))),
+    input_of(3, key_output(builtin.b_data(chunk_2))),
+  ]
+}
+
+fn door_corner_body() -> NativeTxBodyCompact {
+  NativeTxBodyCompact {
+    spend_inputs_hash: zero_hash32,
+    reference_inputs_hash: field_commitment(door_corner_preimage()),
+    outputs_hash: zero_hash32,
+    fee: 0,
+    validity_interval_start: 0,
+    validity_interval_end: 0,
+    required_observers_hash: zero_hash32,
+    required_signers_hash: zero_hash32,
+    mint_hash: zero_hash32,
+    script_integrity_hash: zero_hash32,
+    auxiliary_data_hash: zero_hash32,
+    network_id: 255,
+  }
+}
+
+/// Everything a consuming step holds *before* it opens the door: the
+/// authenticated compact transaction, its witness set, and the four reference
+/// inputs. Factored out so the control row below can build exactly this and
+/// stop, which is what makes the door open itself an attributable difference
+/// rather than a figure dominated by a 32 KB fixture.
+fn corner_step_inputs() -> (
+  VerifiedMidgardNativeTxCompact,
+  NativeTxWitnessSetCompact,
+  List<Input>,
+) {
+  let witness_set = NativeTxWitnessSetCompact {
+    addr_tx_wits_hash: zero_hash32,
+    script_tx_wits_hash: zero_hash32,
+    redeemer_tx_wits_hash: zero_hash32,
+  }
+  let body = door_corner_body()
+  let tx_id = tx_id_of(body)
+  (
+    VerifiedMidgardNativeTxCompact {
+      tx_id,
+      version: native_tx_version_v1,
+      tx_compact: NativeTxCompact {
+        body,
+        witness_set_hash: blake2b_256(
+          encode_native_tx_witness_set_compact(witness_set),
+        ),
+        validity_code: 0,
+      },
+    },
+    witness_set,
+    corner_reference_inputs(tx_id),
+  )
+}
+
+/// Opens the corner through `authenticated_field_view` exactly as a step would:
+/// tier-3 carriage, positional reference-input indices, the certificate policy
+/// id arriving as a parameter (§8.6's wiring constraint).
+fn corner_view() -> FieldViewV1 {
+  let (verified, witness_set, reference_inputs) = corner_step_inputs()
+  authenticated_field_view(
+    verified,
+    witness_set,
+    1,
+    Certified { cert_ref_input_index: 0, chunk_ref_input_indices: [1, 2, 3] },
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
+/// Row 0 — the control. Builds the whole corner fixture the way row 1 does —
+/// the 32,763-byte preimage, the §8.4 split, the certificate (three
+/// `blake2b_256` over the preimage), the four reference inputs, the committed
+/// body and its §3 tx-id — and then stops without opening the door. Row 1
+/// against this row is the door open proper; every absolute figure in the table
+/// is otherwise dominated by this fixture, exactly as #556's bench found and
+/// spec §12.5 restates.
+test tier3_corner_fixture_only() {
+  let (verified, witness_set, reference_inputs) = corner_step_inputs()
+  and {
+    verified.version == native_tx_version_v1,
+    witness_set.addr_tx_wits_hash == zero_hash32,
+    list.length(reference_inputs) == max_tier3_chunk_count + 1,
+  }
+}
+
+/// The fixture is the corner it is quoted as, asserted rather than described:
+/// three chunks, both boundaries interior to an item, five bytes of headroom
+/// under the §5.4 cap. Spec §8.10's rows are quoted at these numbers, so this
+/// is what keeps them quoted where they were taken.
+test tier3_corner_fixture_sits_at_the_three_chunk_corner() {
+  let preimage = door_corner_preimage()
+  let total_length = bytearray.length(preimage)
+  and {
+    total_length == 32763,
+    total_length > 2 * chunk_bytes_k,
+    total_length + 5 == max_transaction_aggregate_field_bytes,
+    total_length + spend_input_stride > max_transaction_aggregate_field_bytes,
+    list.map(split_field_preimage(preimage), bytearray.length) == [
+      chunk_bytes_k, chunk_bytes_k, 963,
+    ],
+    expected_chunk_count(total_length) == max_tier3_chunk_count,
+    field_item_count(corner_view()) == 819,
+    // Both boundaries fall *inside* an item, which is what makes rows 4 and 5
+    // straddling reads rather than aligned ones: item 397's payload spans
+    // 15,885..15,923 across chunk 0's end at 15,900, and item 794's spans
+    // 31,765..31,803 across chunk 1's end at 31,800. Item 818 is the last, and
+    // it lies wholly inside the 963-byte ragged tail.
+    field_item_extent(corner_view(), 397) == Pair(15885, 38),
+    field_item_extent(corner_view(), 794) == Pair(31765, 38),
+    field_item_extent(corner_view(), 818) == Pair(32725, 38),
+  }
+}
+
+/// Row 1 — the door alone. Four reference inputs resolved, the certificate's
+/// token and `(tx_id, field_index)` matched, the split shape checked, the count
+/// derived arithmetically from the mint-verified `total_length`. No chunk is
+/// hashed: §8.6's "no chunk hash spent" for a fixed-stride count is what this
+/// row is the control for.
+test tier3_corner_open_only() {
+  field_item_count(corner_view()) == 819
+}
+
+/// Row 2 — one item read wholly inside chunk 0.
+test tier3_corner_one_read() {
+  let view = corner_view()
+  and {
+    field_item_count(view) == 819,
+    field_item_at(view, 0) == corner_item(0),
+  }
+}
+
+/// Row 3 — two item reads, both wholly inside chunk 0. Row 3 against row 2 is
+/// one repeated in-chunk read, which is what makes tier 3's per-read
+/// re-verification visible as a number.
+test tier3_corner_two_reads() {
+  let view = corner_view()
+  and {
+    field_item_count(view) == 819,
+    field_item_at(view, 0) == corner_item(0),
+    field_item_at(view, 1) == corner_item(1),
+  }
+}
+
+/// Row 4 — the first boundary. Item 397's payload begins at 15,885 and ends at
+/// 15,923, so it is stitched out of chunk 0 and chunk 1.
+test tier3_corner_straddling_read() {
+  let view = corner_view()
+  and {
+    field_item_count(view) == 819,
+    field_item_at(view, 397) == corner_item(397),
+  }
+}
+
+/// Row 5 — the second boundary, the one a two-chunk fixture cannot reach. Item
+/// 794's payload begins at 31,765 and crosses 31,800 into the ragged tail.
+test tier3_corner_second_straddling_read() {
+  let view = corner_view()
+  and {
+    field_item_count(view) == 819,
+    field_item_at(view, 794) == corner_item(794),
+  }
+}
+
+/// Row 6 — the last item, wholly inside the 963-byte ragged tail. Against row 2
+/// this is the same read against a chunk sixteen times smaller, which is what
+/// shows the per-read cost is the chunk's size and not the preimage's.
+test tier3_corner_last_chunk_read() {
+  let view = corner_view()
+  and {
+    field_item_count(view) == 819,
+    field_item_at(view, 818) == corner_item(818),
+  }
+}
+
+/// The corner rows are not vacuous. Rows 2–6 measure reads that returned the
+/// right bytes; this is the same fixture with one byte of the **ragged tail**
+/// changed, and the read is refused because `read_chunked_range` verifies the
+/// chunk it lands in against the certificate's mint-verified digest vector. It
+/// neutralises row 6 specifically — the tail is the chunk only row 6 touches —
+/// so a digest vector that stopped being consulted for the last chunk would
+/// turn this red and nothing else.
+test tier3_corner_refuses_a_tampered_tail_chunk() fail {
+  let (verified, witness_set, reference_inputs) = corner_step_inputs()
+  expect [chunk_0,
+        chunk_1, chunk_2] = split_field_preimage(door_corner_preimage())
+  let tampered_tail = bytearray.concat(
+    bytearray.take(chunk_2, bytearray.length(chunk_2) - 1),
+    #"ff",
+  )
+  expect bytearray.length(tampered_tail) == bytearray.length(chunk_2)
+  expect tampered_tail != chunk_2
+  expect [certificate_input, ..] = reference_inputs
+  let view = authenticated_field_view(
+    verified,
+    witness_set,
+    1,
+    Certified { cert_ref_input_index: 0, chunk_ref_input_indices: [1, 2, 3] },
+    [
+      certificate_input,
+      input_of(1, key_output(builtin.b_data(chunk_0))),
+      input_of(2, key_output(builtin.b_data(chunk_1))),
+      input_of(3, key_output(builtin.b_data(tampered_tail))),
+    ],
+    certificate_policy_id,
+  )
+  field_item_at(view, 818) == corner_item(818)
 }

@@ -144,6 +144,64 @@ export const FieldPreimageCertificateV1 =
   FieldPreimageCertificateV1Schema as unknown as FieldPreimageCertificateV1;
 
 /**
+ * §8.6. The `Certify` arm of the certification redeemer — the committed
+ * structures the field hash is extracted from, plus the positional order of the
+ * raw chunks.
+ *
+ * It carries no identity. Publication and certification are permissionless
+ * (§8.7), so the policy checks content and never who supplied it: there is no
+ * signer, no owner and no publisher field here, and the `owner` a certificate
+ * records is read from the named output's inline datum rather than from this
+ * redeemer.
+ *
+ * `compact_cbor` is the disputed L2 transaction's compact CBOR — the policy
+ * re-derives the tx-id from it through the unchanged §3 derivation and never
+ * accepts one. `witness_set_compact_cbor` is required for all nine fields, not
+ * only 6–8, because certification happens once per field and one unconditional
+ * code path is worth more than one saved hash. `chunk_ref_input_indices` is
+ * all-chunks-positional and bounded at three by §8.3.
+ */
+export const CertifyFieldPreimageCertificateMintRedeemerV1Schema = Data.Object({
+  compact_cbor: Data.Bytes(),
+  witness_set_compact_cbor: Data.Bytes(),
+  chunk_ref_input_indices: Data.Array(Data.Integer()),
+  output_index: Data.Integer(),
+});
+export type CertifyFieldPreimageCertificateMintRedeemerV1 = Data.Static<
+  typeof CertifyFieldPreimageCertificateMintRedeemerV1Schema
+>;
+export const CertifyFieldPreimageCertificateMintRedeemerV1 =
+  CertifyFieldPreimageCertificateMintRedeemerV1Schema as unknown as CertifyFieldPreimageCertificateMintRedeemerV1;
+
+/**
+ * §8.6 `FieldPreimageCertificateMintRedeemerV1` — the frozen mint-redeemer wire
+ * format of the permissionless certificate validator.
+ *
+ * **Constructor order is frozen consensus wire format**: `Certify` is Constr 0
+ * and `Retire` is Constr 1, because this off-chain minter emits the tag and the
+ * compiled policy branches on it. Aiken source of truth:
+ * `onchain/aiken/lib/midgard/native-tx-carriage-v1.ak` — a different module
+ * from the rest of this file's twins, because §8.6's producer half lives with
+ * the carriage producer rather than behind the access door.
+ *
+ * `Retire` is nullary, so it is spelled `Data.Literal` and encodes as a bare
+ * `Constr 1 []`. It is the burn path; the owner's authority is checked by the
+ * validator's `spend` handler, and all this arm owes is that a burn redeemer
+ * cannot mint.
+ */
+export const FieldPreimageCertificateMintRedeemerV1Schema = Data.Enum([
+  Data.Object({
+    Certify: CertifyFieldPreimageCertificateMintRedeemerV1Schema,
+  }),
+  Data.Literal("Retire"),
+]);
+export type FieldPreimageCertificateMintRedeemerV1 = Data.Static<
+  typeof FieldPreimageCertificateMintRedeemerV1Schema
+>;
+export const FieldPreimageCertificateMintRedeemerV1 =
+  FieldPreimageCertificateMintRedeemerV1Schema as unknown as FieldPreimageCertificateMintRedeemerV1;
+
+/**
  * The frozen §8.8 Constr indexes, exported so a test can pin them rather than
  * trusting that nobody reorders the `Data.Enum` arrays above.
  */
@@ -154,6 +212,14 @@ export const FIELD_CARRIAGE_V1_CONSTRUCTOR_INDEXES: Readonly<
 export const FIELD_VIEW_V1_CONSTRUCTOR_INDEXES: Readonly<
   Record<(typeof MIDGARD_FIELD_VIEW_CONSTRUCTORS_V1)[number], number>
 > = Object.freeze({ Whole: 0, Chunked: 1 });
+
+/**
+ * The frozen §8.6 mint-redeemer Constr indexes. Same reason as the two above:
+ * the tag is positional, and a reorder is a change no type checker sees.
+ */
+export const FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_V1_CONSTRUCTOR_INDEXES: Readonly<
+  Record<"Certify" | "Retire", number>
+> = Object.freeze({ Certify: 0, Retire: 1 });
 
 /**
  * §4/§5.1. The commitment every empty field carries: `blake2b_256(#"80")`.

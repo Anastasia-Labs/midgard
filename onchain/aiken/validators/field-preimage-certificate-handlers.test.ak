@@ -667,3 +667,208 @@ test field_preimage_certificate_handler_retire_rejects_a_mint() fail {
     ),
   )
 }
+
+// ---------------------------------------------------------------------------
+// Phase-4 exit measurement — certificate mint and spend (spec §8.10, rows 7–12)
+// ---------------------------------------------------------------------------
+//
+// What a certification and a retirement actually cost, at both sizes the ladder
+// really uses: the smallest legally tier-3 preimage (`K + 1`, two chunks) that
+// every other test in this module runs on, and the three-chunk corner at the
+// §5.4 aggregate cap. Each is paired with a control that builds the same
+// transaction and does not run the handler, so the published figure is the
+// handler's own work rather than the fixture's.
+
+/// The three-chunk corner, as certification sees it. Certification checks chunk
+/// *shape*, digests and the reconstruction hash and never looks inside an item,
+/// so the corner only has to be the right length here — 32,763 bytes, the
+/// largest §5.3 stride-40 preimage under the §5.4 cap, splitting `[15,900,
+/// 15,900, 963]`. The door-side corner is `door_corner_preimage` in
+/// `lib/midgard/native-tx-carriage-v1.test.ak`: the same length, but built out
+/// of real items, because that is the side that reads them. The two are named
+/// apart on purpose — they are different bytes serving different claims, and a
+/// shared name would make either one un-greppable.
+fn mint_corner_preimage() -> ByteArray {
+  bytearray.take(grow(#"b7e214", 32763), 32763)
+}
+
+fn mint_corner_body() -> NativeTxBodyCompact {
+  NativeTxBodyCompact {
+    ..body(),
+    spend_inputs_hash: field_commitment(mint_corner_preimage()),
+  }
+}
+
+fn corner_compact_cbor() -> ByteArray {
+  encode_native_tx_compact_v1(
+    NativeTxCompact {
+      body: mint_corner_body(),
+      witness_set_hash: blake2b_256(witness_set_compact_cbor()),
+      validity_code: 0,
+    },
+  )
+}
+
+fn corner_tx_id() -> ByteArray {
+  native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(mint_corner_body()),
+  )
+}
+
+fn corner_certificate() -> FieldPreimageCertificateV1 {
+  field_preimage_certificate_v1(
+    publisher_hash,
+    corner_tx_id(),
+    disputed_field,
+    mint_corner_preimage(),
+  )
+}
+
+/// Raw §8.5 carriage inputs for a list of chunks, in the order given.
+///
+/// Written once and taken as a parameter rather than reading the corner
+/// fixture, because the neutralisation below needs *the same* inputs with one
+/// byte changed. Two copies of this builder would leave the tampered fixture
+/// free to differ from the measured one in some second way, and then the
+/// refusal it asserts would not be attributable to the tampering.
+fn carriage_inputs(chunks: List<ByteArray>) -> List<Input> {
+  list.indexed_map(
+    chunks,
+    fn(index, chunk) {
+      Input {
+        output_reference: OutputReference {
+          transaction_id: carriage_utxo_id,
+          output_index: index,
+        },
+        output: Output {
+          address: address.from_verification_key(publisher_hash),
+          value: assets.from_lovelace(2000000),
+          datum: InlineDatum(builtin.b_data(chunk)),
+          reference_script: None,
+        },
+      }
+    },
+  )
+}
+
+fn corner_chunk_inputs() -> List<Input> {
+  carriage_inputs(split_field_preimage(mint_corner_preimage()))
+}
+
+fn corner_certify_redeemer() -> FieldPreimageCertificateMintRedeemerV1 {
+  Certify {
+    compact_cbor: corner_compact_cbor(),
+    witness_set_compact_cbor: witness_set_compact_cbor(),
+    chunk_ref_input_indices: [0, 1, 2],
+    output_index: 0,
+  }
+}
+
+fn corner_certification_tx() -> Transaction {
+  let name = field_preimage_certificate_asset_name(
+    corner_tx_id(),
+    disputed_field,
+  )
+  certification_tx(
+    [certificate_output(corner_certificate(), certificate_value(name, 1))],
+    assets.from_asset(certificate_script_hash, name, 1),
+    corner_chunk_inputs(),
+  )
+}
+
+/// The corner fixture is the corner it is quoted as. Three chunks, the §8.4
+/// shape, five bytes of headroom under the §5.4 cap — asserted so spec §8.10's
+/// rows 9 and 10 stay quoted where they were taken.
+test certificate_corner_fixture_sits_at_the_three_chunk_corner() {
+  let preimage = mint_corner_preimage()
+  let total_length = bytearray.length(preimage)
+  and {
+    total_length == 32763,
+    total_length + 5 == 32768,
+    list.map(split_field_preimage(preimage), bytearray.length) == [
+      chunk_bytes_k, chunk_bytes_k, 963,
+    ],
+    list.length(corner_certificate().chunk_digests) == 3,
+    list.length(corner_chunk_inputs()) == 3,
+  }
+}
+
+/// Row 7 — the control for row 8. Builds the smallest tier-3 certification
+/// transaction (two chunks at `K + 1` bytes, the certificate, the mint) and
+/// stops without running the policy.
+test certificate_mint_fixture_only_smallest_tier3() {
+  let tx = honest_certification_tx()
+  and {
+    list.length(tx.reference_inputs) == 2,
+    list.length(tx.outputs) == 1,
+  }
+}
+
+/// Row 8 — one certification at the smallest legally tier-3 size.
+test certificate_mint_cost_at_the_smallest_tier3() {
+  run_certify(honest_certification_tx())
+}
+
+/// Row 9 — the control for row 10, at the corner.
+test certificate_mint_fixture_only_at_the_corner() {
+  let tx = corner_certification_tx()
+  and {
+    list.length(tx.reference_inputs) == 3,
+    list.length(tx.outputs) == 1,
+  }
+}
+
+/// Row 10 — one certification at the three-chunk corner. This is the whole of
+/// what certification costs at the largest preimage the format admits: three
+/// chunk digests, one `blake2b_256` over the 32,763-byte reconstruction, the §3
+/// tx-id re-derivation, and the transaction-shape checks.
+test certificate_mint_cost_at_the_corner() {
+  run_mint(corner_certify_redeemer(), corner_certification_tx())
+}
+
+/// Row 11 — the control for row 12.
+test certificate_spend_fixture_only() {
+  let tx = honest_burn_tx()
+  and {
+    list.length(tx.inputs) == 1,
+    tx.extra_signatories == [publisher_hash],
+  }
+}
+
+/// Row 12 — one retirement. Size-independent by construction: the spend handler
+/// reads the datum's `(tx_id, field_index)`, derives the name, and checks the
+/// token does not survive — it never touches carriage, so there is one figure
+/// rather than one per size.
+test certificate_spend_cost() {
+  run_spend(Some(certificate_for(publisher_hash)), honest_burn_tx())
+}
+
+/// The corner rows are not vacuous. Row 10 measures a `mint` that returned
+/// `True`, and a measurement of a handler that would have returned `True` for
+/// any input at all is not a measurement of anything. This is the same
+/// transaction with one byte of the *last* chunk changed — the ragged tail, the
+/// chunk a boundary error is likeliest to leave unchecked — and it is refused.
+test certificate_mint_rejects_a_tampered_corner_chunk() fail {
+  expect [chunk_0,
+        chunk_1, chunk_2] = split_field_preimage(mint_corner_preimage())
+  let tampered_tail = bytearray.concat(
+    bytearray.take(chunk_2, bytearray.length(chunk_2) - 1),
+    #"ff",
+  )
+  expect bytearray.length(tampered_tail) == bytearray.length(chunk_2)
+  expect tampered_tail != chunk_2
+  let tampered_inputs = carriage_inputs([chunk_0, chunk_1, tampered_tail])
+  let name = field_preimage_certificate_asset_name(
+    corner_tx_id(),
+    disputed_field,
+  )
+  run_mint(
+    corner_certify_redeemer(),
+    certification_tx(
+      [certificate_output(corner_certificate(), certificate_value(name, 1))],
+      assets.from_asset(certificate_script_hash, name, 1),
+      tampered_inputs,
+    ),
+  )
+}

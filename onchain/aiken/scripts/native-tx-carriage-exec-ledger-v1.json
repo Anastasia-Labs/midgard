@@ -1,0 +1,115 @@
+{
+  "measurement": "native-tx-carriage-v1-exec-ledger",
+  "spec": "docs/spec/midgard-tx.md §8.10 — Cost claims: the carriage exit measurements",
+  "note": "Every execution figure §8.10 publishes is a row or a derivation here. Regenerate with `node scripts/verify-carriage-exec-ledger-v1.mjs --update`, and move the spec in the same commit.",
+  "basis": {
+    "memoryUnits": 13200000,
+    "cpuUnits": 8000000000
+  },
+  "modules": [
+    {
+      "module": "midgard/native-tx-carriage-v1.test",
+      "neutralisation": [
+        "tier3_corner_fixture_sits_at_the_three_chunk_corner",
+        "tier3_corner_refuses_a_tampered_tail_chunk"
+      ],
+      "rows": {
+        "tier3_corner_fixture_only": { "mem": 406217, "cpu": 195100192 },
+        "tier3_corner_open_only": { "mem": 637162, "cpu": 264352699 },
+        "tier3_corner_one_read": { "mem": 792404, "cpu": 360784354 },
+        "tier3_corner_two_reads": { "mem": 949150, "cpu": 457631357 },
+        "tier3_corner_straddling_read": { "mem": 830057, "cpu": 388512657 },
+        "tier3_corner_second_straddling_read": { "mem": 853002, "cpu": 380048287 },
+        "tier3_corner_last_chunk_read": { "mem": 825111, "cpu": 323895098 }
+      }
+    },
+    {
+      "module": "field-preimage-certificate-handlers.test",
+      "neutralisation": [
+        "certificate_corner_fixture_sits_at_the_three_chunk_corner",
+        "certificate_mint_rejects_a_tampered_corner_chunk"
+      ],
+      "rows": {
+        "certificate_mint_fixture_only_smallest_tier3": { "mem": 688584, "cpu": 297698461 },
+        "certificate_mint_cost_at_the_smallest_tier3": { "mem": 1331699, "cpu": 562080595 },
+        "certificate_mint_fixture_only_at_the_corner": { "mem": 642305, "cpu": 333486628 },
+        "certificate_mint_cost_at_the_corner": { "mem": 1381528, "cpu": 692292303 },
+        "certificate_spend_fixture_only": { "mem": 519960, "cpu": 257372750 },
+        "certificate_spend_cost": { "mem": 756635, "cpu": 371882883 }
+      }
+    }
+  ],
+  "derived": [
+    {
+      "claim": "opening the three-chunk corner",
+      "minus": "tier3_corner_fixture_only",
+      "from": "tier3_corner_open_only",
+      "mem": 230945,
+      "cpu": 69252507
+    },
+    {
+      "claim": "one item read at the corner",
+      "minus": "tier3_corner_open_only",
+      "from": "tier3_corner_one_read",
+      "mem": 155242,
+      "cpu": 96431655
+    },
+    {
+      "claim": "a second item read in the same chunk",
+      "minus": "tier3_corner_one_read",
+      "from": "tier3_corner_two_reads",
+      "mem": 156746,
+      "cpu": 96847003
+    },
+    {
+      "claim": "straddling read at chunk boundary 0/1",
+      "minus": "tier3_corner_one_read",
+      "from": "tier3_corner_straddling_read",
+      "mem": 37653,
+      "cpu": 27728303
+    },
+    {
+      "claim": "straddling read at chunk boundary 1/2",
+      "minus": "tier3_corner_one_read",
+      "from": "tier3_corner_second_straddling_read",
+      "mem": 60598,
+      "cpu": 19263933
+    },
+    {
+      "claim": "read wholly inside the 963-byte ragged tail",
+      "minus": "tier3_corner_one_read",
+      "from": "tier3_corner_last_chunk_read",
+      "mem": 32707,
+      "cpu": -36889256
+    },
+    {
+      "claim": "mint (Certify) handler at K+1, two chunks",
+      "minus": "certificate_mint_fixture_only_smallest_tier3",
+      "from": "certificate_mint_cost_at_the_smallest_tier3",
+      "mem": 643115,
+      "cpu": 264382134
+    },
+    {
+      "claim": "mint (Certify) handler at the 32,763-byte corner, three chunks",
+      "minus": "certificate_mint_fixture_only_at_the_corner",
+      "from": "certificate_mint_cost_at_the_corner",
+      "mem": 739223,
+      "cpu": 358805675
+    },
+    {
+      "claim": "spend (Retire) handler",
+      "minus": "certificate_spend_fixture_only",
+      "from": "certificate_spend_cost",
+      "mem": 236675,
+      "cpu": 114510133
+    }
+  ],
+  "readBudget": {
+    "claim": "per-step read budget at the corner (§8.10) — CPU is the binding axis",
+    "openCost": "opening the three-chunk corner",
+    "perRead": "one item read at the corner",
+    "byMemory": 83.54,
+    "byCpu": 82.24,
+    "bindingAxis": "cpu"
+  }
+}

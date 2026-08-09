@@ -77,11 +77,30 @@ pub const max_field_item_count: Int = 65535
 
 /// §8.3 tier-2 bound and tier-3 chunk size.
 ///
-/// **PROVISIONAL, pending Phase-4 measurement.** Pinned by analysis over
-/// existing measurements, not by a measurement of the real signed key-address
-/// chunk publication. Falsification by Phase-4 measurement is an
-/// amendment-level erratum to the spec's §8.3 table. Declared once here;
-/// callers name this constant rather than repeating the literal.
+/// **FALSIFIED — this literal is not the value of `K`.** The Phase-4
+/// measurement this constant was declared provisional pending has been taken,
+/// and it refuted 15,900: a real signed key-address publication of a
+/// 15,900-byte chunk measures 16,648 bytes against a 16,384-byte `maxTxSize`.
+/// `K` is re-pinned to **15,148** by the spec's §8.3 erratum E1, which is
+/// normative for this constant and should be read before relying on it.
+///
+/// The literal still reads 15,900 because it is compiled into an acceptance
+/// predicate — `total_length > chunk_bytes_k` — and into every chunk boundary
+/// in the system, so re-cutting it is #565's serialized Phase-1-surface patch
+/// rather than a local edit.
+///
+/// **This is a live spec/code divergence, and E1 states it as the accepted
+/// price of the #573 freeze** rather than as a discrepancy to be discovered
+/// here. Read E1 for the cost. Two consequences while the two values disagree:
+/// preimages in (15,148, 15,900] have no admissible carriage, since this
+/// validator refuses them as tier 3 and they cannot be published as tier 2;
+/// and, because the chunker cuts at this literal, **no tier-3 preimage of any
+/// length can be published at all** — every tier-3 plan's first chunk is a full
+/// 15,900 bytes, 264 over `maxTxSize`. The unpublishable window is the whole of
+/// (15,148, 32,768], not the tier-2 sliver.
+///
+/// Declared once here; callers name this constant rather than repeating the
+/// literal.
 pub const chunk_bytes_k: Int = 15900
 
 /// §8.3 tier-1 bound. **PROVISIONAL** on the same footing as `chunk_bytes_k`:
@@ -283,8 +302,10 @@ pub fn decode_field_array_header_at(
     Pair(offset + 2, count)
   } else {
     expect tag == 153
-    let count =
-      bytearray.at(bytes, offset + 1) * 256 + bytearray.at(bytes, offset + 2)
+    let count = bytearray.at(bytes, offset + 1) * 256 + bytearray.at(
+      bytes,
+      offset + 2,
+    )
     expect count > 0xff
     Pair(offset + 3, count)
   }

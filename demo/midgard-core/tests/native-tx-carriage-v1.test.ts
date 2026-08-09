@@ -1,0 +1,501 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  healMidgardFieldCarriageV1,
+  layOutMidgardFieldCarriageV1,
+  MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES_V1,
+  MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1,
+  MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
+  midgardCarriageDataByteStringBytesV1,
+  midgardCarriagePublicationBytesV1,
+  midgardCarriagePublicationFramingBytesV1,
+  midgardFieldCarriageBoundsV1,
+  midgardFieldCarriagePlansAreInterchangeableV1,
+  midgardFieldCarriagePublishabilityV1,
+  planMidgardFieldCarriageV1,
+} from "../src/codec/native-tx-carriage-v1.js";
+import {
+  authenticatedMidgardFieldViewV1,
+  MIDGARD_CHUNK_BYTES_K_V1,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+  midgardFieldCommitmentV1,
+  midgardFieldItemAtV1,
+  midgardFieldPreimageCertificateAssetNameV1,
+  splitMidgardFieldPreimageIntoChunksV1,
+} from "../src/codec/native-tx-field-access-v1.js";
+
+/**
+ * The publication half of the §8 ladder, at its own seam.
+ *
+ * The end-to-end exercise — real transactions, a real ledger, a real yank and
+ * heal — lives in
+ * `demo/midgard-validation/tests/field-preimage-carriage-fit-emulator-v1.test.ts`.
+ * What is here is what does not need a ledger: that the tier is a total
+ * function of length, that a plan is a pure function of its inputs, and that
+ * the layout and the reference inputs it indexes are emitted together and
+ * cannot disagree.
+ */
+
+const OWNER = Buffer.alloc(28, 0x11);
+const HEALER = Buffer.alloc(28, 0x22);
+const TX_ID = Buffer.alloc(32, 0x5a);
+const FIELD_INDEX = 1;
+const STRIDE = 40;
+
+/** A §5.1 preimage of `itemCount` well-formed field-1 items. */
+const preimageOf = (itemCount: number): Buffer => {
+  const header =
+    itemCount <= 23
+      ? Buffer.from([0x80 + itemCount])
+      : itemCount <= 255
+        ? Buffer.from([0x98, itemCount])
+        : Buffer.from([0x99, itemCount >> 8, itemCount & 0xff]);
+  const items = Array.from({ length: itemCount }, (_unused, index) =>
+    Buffer.concat([
+      Buffer.from([0x58, 0x26, 0x82, 0x58, 0x20]),
+      Buffer.from(
+        Array.from(
+          { length: 32 },
+          (_byte, offset) => (index * 7 + offset) & 0xff,
+        ),
+      ),
+      Buffer.from([0x19, (index >> 8) & 0xff, index & 0xff]),
+    ]),
+  );
+  return Buffer.concat([header, ...items]);
+};
+
+/** The largest §5.1 preimage at or under `bytes`. */
+const preimageUnder = (bytes: number): Buffer => {
+  for (let count = Math.floor(bytes / STRIDE) + 1; count >= 0; count -= 1) {
+    const candidate = preimageOf(count);
+    if (candidate.length <= bytes) {
+      return candidate;
+    }
+  }
+  throw new Error("no item count fits");
+};
+
+const plan = (preimage: Buffer, owner: Uint8Array = OWNER) =>
+  planMidgardFieldCarriageV1({
+    owner,
+    txId: TX_ID,
+    fieldIndex: FIELD_INDEX,
+    preimage,
+  });
+
+describe("§8 carriage plan — the tier is a total function of length", () => {
+  it("partitions the ladder at the §8.3 bounds", () => {
+    expect(plan(preimageOf(1)).tier).toBe("Inline");
+    expect(
+      plan(preimageUnder(MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1)).tier,
+    ).toBe("Inline");
+    expect(
+      plan(preimageUnder(MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 + STRIDE))
+        .tier,
+    ).toBe("RawUtxo");
+    expect(plan(preimageUnder(MIDGARD_CHUNK_BYTES_K_V1)).tier).toBe("RawUtxo");
+    expect(plan(preimageUnder(MIDGARD_CHUNK_BYTES_K_V1 + STRIDE)).tier).toBe(
+      "Certified",
+    );
+  });
+
+  it("publishes nothing under tier 1 and exactly one UTxO under tier 2", () => {
+    const tier1 = plan(preimageOf(1));
+    expect(tier1.publications).toEqual([]);
+    expect(tier1.certificate).toBeNull();
+    expect(tier1.inlinePreimage).not.toBeNull();
+
+    const tier2 = plan(preimageUnder(MIDGARD_CHUNK_BYTES_K_V1));
+    expect(tier2.publications.length).toBe(1);
+    expect(tier2.certificate).toBeNull();
+    expect(tier2.inlinePreimage).toBeNull();
+    // Under tier 2 the publication's own digest *is* the §4 field commitment,
+    // because the published bytes are the whole preimage.
+    expect(tier2.publications[0]?.digest).toEqual(tier2.commitment);
+  });
+
+  it("splits the three-chunk corner exactly as the §8.4 rule does", () => {
+    const preimage = preimageUnder(
+      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+    );
+    const corner = plan(preimage);
+    expect(corner.tier).toBe("Certified");
+    expect(corner.publications.map((entry) => entry.bytes)).toEqual([
+      ...splitMidgardFieldPreimageIntoChunksV1(preimage),
+    ]);
+    expect(corner.publications.map((entry) => entry.chunkIndex)).toEqual([
+      0, 1, 2,
+    ]);
+    // Each publication's digest is the digest of its own bytes, and the
+    // certificate's vector is those digests in order — the two cannot drift
+    // because the plan builds them from one split.
+    expect(corner.publications.map((entry) => entry.digest)).toEqual([
+      ...(corner.certificate?.chunkDigests ?? []),
+    ]);
+    for (const entry of corner.publications) {
+      expect(entry.digest).toEqual(midgardFieldCommitmentV1(entry.bytes));
+    }
+    expect(corner.certificateAssetName).toEqual(
+      midgardFieldPreimageCertificateAssetNameV1({
+        txId: TX_ID,
+        fieldIndex: FIELD_INDEX,
+      }),
+    );
+  });
+
+  it("is fail-closed on inputs no tier would catch for it", () => {
+    // An empty preimage: the §5.1 empty field is one byte (`80`), never zero.
+    expect(() => plan(Buffer.alloc(0))).toThrow();
+    // Above the §5.4 aggregate cap.
+    expect(() =>
+      plan(Buffer.alloc(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1 + 1)),
+    ).toThrow();
+    // Out-of-range field index and a short tx id, on a *tier-1* preimage —
+    // the tier that derives no certificate and would otherwise never check.
+    expect(() =>
+      planMidgardFieldCarriageV1({
+        owner: OWNER,
+        txId: TX_ID,
+        fieldIndex: 9,
+        preimage: preimageOf(1),
+      }),
+    ).toThrow();
+    expect(() =>
+      planMidgardFieldCarriageV1({
+        owner: OWNER,
+        txId: Buffer.alloc(31, 0x5a),
+        fieldIndex: FIELD_INDEX,
+        preimage: preimageOf(1),
+      }),
+    ).toThrow();
+  });
+});
+
+describe("§8.7 healing — content addressing, checked rather than trusted", () => {
+  it("makes a second identity's plan interchangeable with the first", () => {
+    const preimage = preimageUnder(
+      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+    );
+    const original = plan(preimage, OWNER);
+    const healed = healMidgardFieldCarriageV1({
+      healer: HEALER,
+      txId: TX_ID,
+      fieldIndex: FIELD_INDEX,
+      preimage,
+    });
+
+    expect(
+      midgardFieldCarriagePlansAreInterchangeableV1(original, healed),
+    ).toBe(true);
+    // Interchangeable, and yet demonstrably a different party: the owner is the
+    // one thing that differs, and it is the one thing no consuming step reads.
+    expect(healed.certificate?.owner).toEqual(HEALER);
+    expect(original.certificate?.owner).toEqual(OWNER);
+    expect(healed.certificateAssetName).toEqual(original.certificateAssetName);
+    expect(healed.publications.map((entry) => entry.bytes)).toEqual(
+      original.publications.map((entry) => entry.bytes),
+    );
+  });
+
+  it("refuses to call two plans over different content interchangeable", () => {
+    const left = plan(
+      preimageUnder(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1),
+    );
+    // One item shorter: same tier, same field, same transaction, different
+    // bytes. This is the case a comparison that only checked the metadata would
+    // wave through, and it is the one that matters — a certificate accepted
+    // over the wrong chunks is the whole failure mode tier 3 exists to prevent.
+    const right = plan(
+      preimageUnder(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1 - STRIDE),
+    );
+    expect(midgardFieldCarriagePlansAreInterchangeableV1(left, right)).toBe(
+      false,
+    );
+    // And a plan for another field is not interchangeable either, even over
+    // byte-identical carriage.
+    const otherField = planMidgardFieldCarriageV1({
+      owner: OWNER,
+      txId: TX_ID,
+      fieldIndex: 0,
+      preimage: preimageUnder(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1),
+    });
+    expect(
+      midgardFieldCarriagePlansAreInterchangeableV1(left, otherField),
+    ).toBe(false);
+  });
+});
+
+describe("§8.8 layout — carriage and its reference inputs, emitted together", () => {
+  it("indexes the manifest first and the chunks in §8.4 order", () => {
+    const corner = plan(
+      preimageUnder(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1),
+    );
+    const layout = layOutMidgardFieldCarriageV1({ plan: corner, baseIndex: 4 });
+    expect(layout.carriage).toEqual({
+      carriage: "Certified",
+      certRefInputIndex: 4,
+      chunkRefInputIndices: [5, 6, 7],
+    });
+    expect(layout.referenceInputIndices).toEqual([4, 5, 6, 7]);
+    // The list the indices point into is the same length and in the same order,
+    // which is the property that makes an off-by-one impossible rather than
+    // merely unlikely.
+    expect(layout.referenceInputs.length).toBe(4);
+    expect(layout.referenceInputs[0]?.certificate).toEqual(corner.certificate);
+    expect(layout.referenceInputs[1]?.inlineDatumBytes).toEqual(
+      corner.publications[0]?.bytes,
+    );
+    expect(layout.referenceInputs[3]?.inlineDatumBytes).toEqual(
+      corner.publications[2]?.bytes,
+    );
+  });
+
+  it("hands every tier to the same door with the same three arguments", () => {
+    const cases = [
+      preimageOf(4),
+      preimageUnder(MIDGARD_CHUNK_BYTES_K_V1),
+      preimageUnder(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1),
+    ];
+    const tiers = new Set<string>();
+    for (const preimage of cases) {
+      const current = plan(preimage);
+      tiers.add(current.tier);
+      const layout = layOutMidgardFieldCarriageV1({ plan: current });
+      // No tier branch here, and none anywhere downstream of it.
+      const view = authenticatedMidgardFieldViewV1({
+        fieldIndex: current.fieldIndex,
+        txId: current.txId,
+        expectedCommitment: current.commitment,
+        carriage: layout.carriage,
+        referenceInputs: layout.referenceInputs,
+      });
+      const headerLength =
+        preimage[0] === 0x99 ? 3 : preimage[0] === 0x98 ? 2 : 1;
+      const lastIndex = (current.totalLength - headerLength) / STRIDE - 1;
+      const expectedItem = preimage.subarray(
+        headerLength + STRIDE * lastIndex + 2,
+        headerLength + STRIDE * lastIndex + 40,
+      );
+      expect(midgardFieldItemAtV1(view, lastIndex)).toEqual(expectedItem);
+    }
+    // The loop really did span the ladder rather than running one tier thrice.
+    expect([...tiers].sort()).toEqual(["Certified", "Inline", "RawUtxo"]);
+  });
+
+  it("refuses a negative reference-input base", () => {
+    const corner = plan(
+      preimageUnder(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1),
+    );
+    expect(() =>
+      layOutMidgardFieldCarriageV1({ plan: corner, baseIndex: -1 }),
+    ).toThrow();
+  });
+});
+
+describe("§8.3 bounds", () => {
+  it("re-exports the table callers must not restate", () => {
+    expect(midgardFieldCarriageBoundsV1).toEqual({
+      maxTier1RedeemerPreimageBytes:
+        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      chunkBytesK: MIDGARD_CHUNK_BYTES_K_V1,
+      maxTransactionAggregateFieldBytes:
+        MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+      maxTier3ChunkCount: 3,
+      maxPublishableCarriageBytes: MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
+      exactPublishableCarriageBytes:
+        MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1,
+    });
+    // The derived relationship §8.3 states, asserted rather than assumed: the
+    // chunk count ceiling really is the ceiling of the aggregate cap over K.
+    expect(
+      Math.ceil(
+        MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1 /
+          MIDGARD_CHUNK_BYTES_K_V1,
+      ),
+    ).toBe(midgardFieldCarriageBoundsV1.maxTier3ChunkCount);
+  });
+});
+
+describe("§8.3 erratum E1 — the publishable frontier", () => {
+  it("encodes a Plutus Data byte string at, below and above the 64-byte boundary", () => {
+    // At or below 64 bytes a definite byte string; strictly above it, an
+    // indefinite-length string of 64-byte chunks. The `>` vs `>=` at exactly 64
+    // is the one place this can be wrong without being obvious.
+    expect(midgardCarriageDataByteStringBytesV1(0)).toBe(1);
+    expect(midgardCarriageDataByteStringBytesV1(23)).toBe(24);
+    expect(midgardCarriageDataByteStringBytesV1(24)).toBe(26);
+    expect(midgardCarriageDataByteStringBytesV1(63)).toBe(65);
+    expect(midgardCarriageDataByteStringBytesV1(64)).toBe(66);
+    // 65 is 5f + (5840 + 64) + (41 + 1) + ff.
+    expect(midgardCarriageDataByteStringBytesV1(65)).toBe(70);
+    // Exactly divisible: no ragged chunk head at all.
+    expect(midgardCarriageDataByteStringBytesV1(14_336)).toBe(14_786);
+    expect(midgardCarriageDataByteStringBytesV1(15_900)).toBe(16_400);
+  });
+
+  it("refuses a nonsensical payload length rather than returning a plausible size", () => {
+    expect(() => midgardCarriageDataByteStringBytesV1(-1)).toThrow();
+    expect(() => midgardCarriageDataByteStringBytesV1(1.5)).toThrow();
+  });
+
+  it("splits a publication into fixed framing, the datum head and the payload's own encoding", () => {
+    for (const payloadBytes of [1_000, 8_000, 14_336, 15_148, 15_644, 15_900]) {
+      const datumBytes = midgardCarriageDataByteStringBytesV1(payloadBytes);
+      expect(
+        midgardCarriagePublicationBytesV1(payloadBytes) - datumBytes,
+      ).toBe(midgardCarriagePublicationFramingBytesV1(datumBytes));
+      // Across the whole ladder the datum sits in [256, 65_536) and the framing
+      // is the flat 248 §8.3 E1 publishes.
+      expect(midgardCarriagePublicationFramingBytesV1(datumBytes)).toBe(248);
+    }
+    // The three figures §8.3 E1 publishes, as the function reproduces them. The
+    // emulator suite is what proves these are the *real* signed sizes; this is
+    // what proves the constants below are derived from them and not typed in.
+    expect(midgardCarriagePublicationBytesV1(15_900)).toBe(16_648);
+    expect(midgardCarriagePublicationBytesV1(15_644)).toBe(16_384);
+    expect(midgardCarriagePublicationBytesV1(15_148)).toBe(15_872);
+  });
+
+  it("pins the framing step function on both sides of every head boundary", () => {
+    // The flat 248 an earlier revision published as a constant is a plateau
+    // between two steps, and only one of the two edges is safe to be wrong
+    // about. Both are pinned here, at the byte, so the collapse cannot be
+    // reintroduced silently.
+    expect(midgardCarriagePublicationFramingBytesV1(23)).toBe(246);
+    expect(midgardCarriagePublicationFramingBytesV1(24)).toBe(247);
+    expect(midgardCarriagePublicationFramingBytesV1(255)).toBe(247);
+    expect(midgardCarriagePublicationFramingBytesV1(256)).toBe(248);
+    expect(midgardCarriagePublicationFramingBytesV1(65_535)).toBe(248);
+    expect(midgardCarriagePublicationFramingBytesV1(65_536)).toBe(250);
+
+    // The same boundaries expressed in payload bytes, which is what a caller
+    // holds. 22 and 63,548 are the two payloads at which the collapsed model
+    // was wrong; the emulator suite measures the low one against a real signed
+    // transaction, and the high one is above the §5.4 cap so it can only be
+    // modelled — which is exactly why it has to be modelled correctly.
+    expect(midgardCarriagePublicationBytesV1(22)).toBe(269);
+    expect(midgardCarriagePublicationBytesV1(23)).toBe(271);
+    expect(midgardCarriagePublicationBytesV1(245)).toBe(502);
+    expect(midgardCarriagePublicationBytesV1(246)).toBe(504);
+    expect(midgardCarriageDataByteStringBytesV1(63_547)).toBe(65_535);
+    expect(midgardCarriageDataByteStringBytesV1(63_548)).toBe(65_536);
+    expect(midgardCarriagePublicationBytesV1(63_547)).toBe(65_783);
+    // Two bytes larger than the collapsed model would have said — the
+    // understatement that would have handed a caller an oversized transaction.
+    expect(midgardCarriagePublicationBytesV1(63_548)).toBe(65_786);
+  });
+
+  it("pins the payload-proportional and framing figures §8.3 E1 quotes in prose", () => {
+    // §8.3 E1 and §8.10 quote these inline. They are derivations of the cost
+    // model, so they are asserted here rather than left as prose a reader has
+    // to recompute — the same footing as the frontiers themselves.
+    const chunkingOverhead = (payloadBytes: number): number =>
+      midgardCarriageDataByteStringBytesV1(payloadBytes) - payloadBytes;
+    expect(chunkingOverhead(15_644)).toBe(492);
+    expect(chunkingOverhead(15_900)).toBe(500);
+    expect(chunkingOverhead(14_336)).toBe(450);
+
+    const nonPayloadFraming = (payloadBytes: number): number =>
+      midgardCarriagePublicationBytesV1(payloadBytes) - payloadBytes;
+    expect(nonPayloadFraming(15_644)).toBe(740);
+    expect(nonPayloadFraming(15_123)).toBe(723);
+    expect(nonPayloadFraming(14_336)).toBe(698);
+
+    // The worked tier-2 example E1 uses to show that the (15,148, 15,900]
+    // window is unpublishable: 363 over the reserve, 149 under `maxTxSize`.
+    expect(midgardCarriagePublicationBytesV1(15_500)).toBe(16_235);
+    expect(
+      midgardCarriagePublicationBytesV1(15_500) -
+        (16_384 - MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES_V1),
+    ).toBe(363);
+    expect(16_384 - midgardCarriagePublicationBytesV1(15_500)).toBe(149);
+
+    // And the tier-3 half of the outage: every tier-3 plan's first chunk is a
+    // full K, which is 264 bytes over `maxTxSize`. This is the figure that
+    // makes the window (15,148, 32,768] rather than (15,148, 15,900].
+    expect(
+      midgardCarriagePublicationBytesV1(MIDGARD_CHUNK_BYTES_K_V1) - 16_384,
+    ).toBe(264);
+  });
+
+  it("derives both frontiers as the largest payload inside each budget", () => {
+    expect(MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1).toBe(15_644);
+    expect(MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1).toBe(15_148);
+    // A frontier is the *last* payload inside the budget, so the byte after it
+    // must be outside — asserted rather than assumed, because an off-by-one in
+    // the search would be invisible from the value alone.
+    expect(
+      midgardCarriagePublicationBytesV1(
+        MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1,
+      ),
+    ).toBe(16_384);
+    expect(
+      midgardCarriagePublicationBytesV1(
+        MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1 + 1,
+      ),
+    ).toBeGreaterThan(16_384);
+    expect(
+      midgardCarriagePublicationBytesV1(
+        MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
+      ),
+    ).toBe(16_384 - MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES_V1);
+    expect(
+      midgardCarriagePublicationBytesV1(
+        MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1 + 1,
+      ),
+    ).toBeGreaterThan(16_384 - MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES_V1);
+  });
+
+  it("reports a tier-3 plan as unpublishable and names the chunks", () => {
+    const corner = plan(
+      preimageUnder(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1),
+    );
+    const report = midgardFieldCarriagePublishabilityV1({ plan: corner });
+    // The live defect §8.3 E1 records: at the currently-pinned `K`, every
+    // tier-3 plan has full-`K` chunks that cannot be published at all.
+    expect(report.publishable).toBe(false);
+    expect(report.unpublishableChunks.map((chunk) => chunk.chunkIndex)).toEqual([
+      0, 1,
+    ]);
+    expect(report.unpublishableChunks[0]).toEqual({
+      chunkIndex: 0,
+      byteLength: MIDGARD_CHUNK_BYTES_K_V1,
+      publicationBytes: 16_648,
+      overrunBytes: 16_648 - report.budgetBytes,
+    });
+  });
+
+  it("reports a plan at or under the frontier as publishable", () => {
+    const atFrontier = plan(
+      preimageUnder(MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1),
+    );
+    expect(atFrontier.tier).toBe("RawUtxo");
+    expect(
+      midgardFieldCarriagePublishabilityV1({ plan: atFrontier }).publishable,
+    ).toBe(true);
+    // Tier 1 publishes nothing, so there is nothing to be unpublishable.
+    const inline = plan(preimageUnder(4_000));
+    expect(inline.tier).toBe("Inline");
+    expect(
+      midgardFieldCarriagePublishabilityV1({ plan: inline }),
+    ).toEqual({
+      publishable: true,
+      budgetBytes: 16_384 - MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES_V1,
+      unpublishableChunks: [],
+    });
+  });
+
+  it("takes an explicit budget, so a measurement can raise it deliberately", () => {
+    const corner = plan(
+      preimageUnder(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1),
+    );
+    expect(
+      midgardFieldCarriagePublishabilityV1({
+        plan: corner,
+        budgetBytes: 65_536,
+      }).publishable,
+    ).toBe(true);
+  });
+});

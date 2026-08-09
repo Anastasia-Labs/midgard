@@ -132,6 +132,16 @@ jobs:
       # both language suites while no longer being what the producers emit.
       - name: Check native V1 per-field item golden vectors
         run: pnpm --dir demo/midgard-core run fixtures:native-tx-field-items-v1:check
+      # The §8.6/§8.8 **wire** channel (#574). It lives in the SDK rather than
+      # midgard-core because what it pins is Plutus Data encoding and the
+      # producer of that is `Data.to` against the SDK schemas, but it gates on
+      # exactly the footing of the two above, and it needs the gate more than
+      # either: one generator run emits both the JSON fixture and the generated
+      # Aiken module, so an edited producer plus a `:sync` re-greens the vitest
+      # suite and the Aiken suite in the same stroke. Without this step the
+      # cross-language claim is unfalsifiable.
+      - name: Check native V1 carriage wire golden vectors
+        run: pnpm --dir demo/midgard-sdk run fixtures:native-tx-carriage-wire-v1:check
       - name: Build, typecheck, and test Midgard SDK
         run: pnpm --dir demo/midgard-sdk run build && pnpm --dir demo/midgard-sdk run typecheck && pnpm --dir demo/midgard-sdk test
       - name: Build, typecheck, and test Midgard validation

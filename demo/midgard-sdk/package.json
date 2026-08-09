@@ -12,6 +12,8 @@
     "clean": "rimraf dist",
     "reset": "rimraf dist node_modules *.tgz",
     "build": "tsup src/index.ts --minify --format esm,cjs --dts --clean",
+    "fixtures:native-tx-carriage-wire-v1:sync": "pnpm run build && node scripts/generate-native-tx-carriage-wire-v1-goldens.mjs",
+    "fixtures:native-tx-carriage-wire-v1:check": "pnpm run build && node scripts/generate-native-tx-carriage-wire-v1-goldens.mjs --check",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
