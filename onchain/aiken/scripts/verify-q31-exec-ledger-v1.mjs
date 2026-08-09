@@ -21,15 +21,24 @@
  * the readings through `run-focused-check.mjs` (so a row for a test that did
  * not run, or one that did not pass, cannot be published) and compares.
  *
- * **What is checked.**
+ * **What is checked** is the within-basis shape defined by
+ * `exec-ledger-within-basis-v1.mjs`, which is where the checking lives: the
+ * declared basis, the raw rows, the `within` judgements against fresh readings,
+ * the neutralisation selectors, and that anything was measured at all. Nothing
+ * about that shape is Q31-specific, so nothing about it is spelled out again
+ * here — this file is the lane's three facts: which ledger, which label, and
+ * which basis the lane's judgements are made at.
  *
- *   1. Every row's raw reading matches the ledger to the unit.
- *   2. Every row the ledger judges `within` is measured within the basis on
- *      both axes. A fresh reading that contradicts that judgement is a
- *      structural failure, not a drift.
- *   3. The neutralisation selectors still run and still pass, so the rows are a
- *      measurement of a validator that discriminates rather than one that
- *      returns `True` for anything.
+ * **Why it is a lane file rather than a second copy.** It was the second copy,
+ * and it carried the two defects the shared module was written to close: it
+ * read `memoryUnits`/`cpuUnits` out of `native-tx-q31-exec-ledger-v1.json` and
+ * then judged that file's rows against them — so raising the number in the
+ * ledger made every `within` verdict vacuous while this gate stayed green — and
+ * it had no guard against measuring nothing at all, so a ledger whose `modules`
+ * array was emptied printed `"rows": 0` and exited 0. Both are the
+ * gate-that-cannot-fail shape of #519/#523. #577 moved this file onto the
+ * shared checker rather than patching two copies of one judgement, and its
+ * ledger's rows are byte-identical across the move.
  *
  * Usage, from `onchain/aiken/`:
  *
@@ -43,133 +52,22 @@
  * not rewritten when it does.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { measureModule } from "./exec-ledger-measure-v1.mjs";
+import {
+  GOAL_SPEC_EXECUTION_BASIS_V1,
+  checkWithinBasisExecLedger,
+} from "./exec-ledger-within-basis-v1.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const ledgerPath = resolve(scriptDirectory, "native-tx-q31-exec-ledger-v1.json");
 
-const update = process.argv.includes("--update");
-const ledger = JSON.parse(readFileSync(ledgerPath, "utf8"));
-
-// A **drift** is a measured number that no longer matches the recorded one —
-// what `--update` exists to absorb. A **structural** failure is anything else:
-// a selector or row that did not run, or a `within` judgement the measurement
-// contradicts. None of those is a number to re-pin, so `--update` must not
-// swallow one.
-const failures = [];
-const drifts = [];
-const fail = (message) => failures.push(message);
-const drifted = (message) => drifts.push(message);
-
-const { memoryUnits, cpuUnits } = ledger.basis;
-let rowCount = 0;
-
-for (const entry of ledger.modules) {
-  const rowNames = Object.keys(entry.rows);
-  const neutralisation = entry.neutralisation ?? [];
-  // The neutralisation selectors run in the same invocation as the rows, so a
-  // re-take cannot quietly drop one and still publish the rows it guards. An
-  // empty list would disarm check #3 silently, so it is refused.
-  if (neutralisation.length === 0) {
-    fail(`${entry.module}: ledger entry declares no neutralisation selectors`);
-    continue;
-  }
-  const readings = measureModule(entry.module, [...rowNames, ...neutralisation]);
-  for (const name of neutralisation) {
-    if (!readings.has(name)) {
-      fail(`${entry.module}: neutralisation selector '${name}' did not run`);
-    }
-  }
-  for (const [name, expected] of Object.entries(entry.rows)) {
-    const actual = readings.get(name);
-    if (actual === undefined) {
-      fail(`${entry.module}: row '${name}' did not run`);
-      continue;
-    }
-    rowCount += 1;
-
-    // The judgement check runs against the *fresh* reading in both modes, and
-    // before any write: a re-take that pushes a `within` row past the basis is
-    // a structural change to the lane's feasibility claim, not a number to
-    // re-pin, so `--update` must not launder it.
-    const within = actual.mem <= memoryUnits && actual.cpu <= cpuUnits;
-    if (expected.basisFit === "within" && !within) {
-      fail(
-        `${entry.module}: '${name}' is recorded 'within' but measured ` +
-          `mem=${String(actual.mem)} cpu=${String(actual.cpu)} exceeds the ` +
-          `basis mem=${String(memoryUnits)} cpu=${String(cpuUnits)}`,
-      );
-      continue;
-    }
-    if (expected.basisFit !== "within") {
-      fail(
-        `${entry.module}: '${name}' has unexpected basisFit ` +
-          `'${String(expected.basisFit)}' — this lane records only 'within' rows`,
-      );
-      continue;
-    }
-
-    if (update) {
-      entry.rows[name] = { ...expected, mem: actual.mem, cpu: actual.cpu };
-      continue;
-    }
-    if (actual.mem !== expected.mem || actual.cpu !== expected.cpu) {
-      drifted(
-        `${entry.module}: '${name}' drifted — ledger mem=${String(expected.mem)} cpu=${String(expected.cpu)}, ` +
-          `measured mem=${String(actual.mem)} cpu=${String(actual.cpu)}`,
-      );
-    }
-  }
-}
-
-// Structural failures are fatal in **both** modes, and are checked before
-// anything is written: a `--update` run that could not find a selector, or one
-// whose fresh reading broke a feasibility judgement, must not leave a rewritten
-// ledger behind as evidence that it succeeded.
-if (failures.length > 0) {
-  for (const failure of failures) {
-    console.error(failure);
-  }
-  console.error(
-    `\nQ31 reference-input-no-idx execution ledger: ${String(failures.length)} structural failure(s). ` +
-      (update
-        ? "The ledger was NOT rewritten. `--update` absorbs measurement drift and nothing else."
-        : "These are not re-takeable numbers; resolve them in the source or in the ledger."),
-  );
-  process.exit(1);
-}
-
-if (update) {
-  writeFileSync(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`);
-  process.stdout.write(
-    `${JSON.stringify({ status: "updated", ledger: ledgerPath }, null, 2)}\n`,
-  );
-  process.exit(0);
-}
-
-if (drifts.length > 0) {
-  for (const drift of drifts) {
-    console.error(drift);
-  }
-  console.error(
-    `\nQ31 reference-input-no-idx execution ledger: ${String(drifts.length)} drift(s). ` +
-      "If the re-take is legitimate, re-run with --update.",
-  );
-  process.exit(1);
-}
-
-process.stdout.write(
-  `${JSON.stringify(
-    {
-      status: "pass",
-      rows: rowCount,
-      basis: { memoryUnits, cpuUnits },
-    },
-    null,
-    2,
-  )}\n`,
-);
+// Set rather than `process.exit(code)`: the checker is synchronous and has
+// nothing pending, so letting the process end on its own cannot truncate the
+// report it just wrote.
+process.exitCode = checkWithinBasisExecLedger({
+  ledgerPath: resolve(scriptDirectory, "native-tx-q31-exec-ledger-v1.json"),
+  lane: "Q31 reference-input-no-idx",
+  declaredBasis: GOAL_SPEC_EXECUTION_BASIS_V1,
+  update: process.argv.includes("--update"),
+});

@@ -1,5 +1,4 @@
 use aiken/cbor
-use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry.{Leaf}
 use aiken/merkle_patricia_forestry as mpf
@@ -41,6 +40,15 @@ const h32_c =
 
 const h64_a =
   #"44444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444"
+
+/// The `transaction_commitment` a vector supplies when it does not read the
+/// field — see `raw_l2_source_membership`, which takes it as an argument rather
+/// than choosing it, so that "this vector does not read the retired field" is
+/// stated per vector instead of assumed for all of them.
+///
+/// Deliberately one of the module's generic filler hashes and not a real
+/// commitment: a value that *looked* derived would invite a reader to trust it.
+const unread_source_commitment = h32_b
 
 const fraud_category_id = #"00000004"
 
@@ -334,19 +342,44 @@ fn validation_descriptor_membership(
   }
 }
 
+/// An L2 transaction source committed under the transactions root, with the
+/// retired proof-source `transaction_commitment` supplied by the caller.
+///
+/// Under §4's flat reversion the L2 transition authenticates the compact bytes
+/// against the tx-id anchor through the §8.8 door, so it no longer reads
+/// `transaction_commitment` at all. The field survives on the parent
+/// `ledger_state.L2TransactionSourceV1` type, and every vector in this module
+/// passes `unread_source_commitment` for it: L2 source membership is verified
+/// over raw key/value bytes, which do not care what the field holds.
+///
+/// It is an **argument** rather than a constant inside this function because it
+/// is not safe for every caller, and the unsafe caller does not exist yet.
+/// `validation_claim_v1`'s `NormalValidationSource` arm still requires this
+/// field to be the real `native_tx_proof_commitment_v1` of the proof-source
+/// triple; a vector that wired a validation claim to a source built here with a
+/// placeholder would abort inside the claim rather than at the point of
+/// interest, and would do so for a reason no one reading the vector could see.
+/// Baking the placeholder in would hand that state to the next vector silently.
+/// Passing it makes each vector say which it is relying on — and gives the one
+/// that needs a real commitment somewhere to put it without editing this helper.
+///
+/// Aiken has no default arguments (`fn f(a: Int, b: Int = 3)` is a parse error
+/// under both the released compiler and the fork), so "explicit at the call
+/// site" is the whole of the available isolation. Retiring the field from
+/// `L2TransactionSourceV1` outright is
+/// [#584](https://github.com/Anastasia-Labs/midgard/issues/584)'s
+/// serialized-surface work, which is also where the surviving
+/// `validation_claim_v1` reader is resolved.
 fn raw_l2_source_membership(
   tx_id: ByteArray,
   compact_cbor: ByteArray,
+  transaction_commitment: ByteArray,
 ) -> transition_trace.RootMembershipProof<ByteArray, ByteArray> {
   let witness_set_compact_cbor = native_l2_witness_set_compact_cbor()
   let field_preimage_lengths_cbor = native_l2_field_preimage_lengths_cbor()
   let source = ledger_state.L2TransactionSourceV1 {
     tx_id,
-    transaction_commitment: native_compact.native_tx_proof_commitment_v1(
-      compact_cbor,
-      witness_set_compact_cbor,
-      field_preimage_lengths_cbor,
-    ),
+    transaction_commitment,
     source: ledger_state.NativeTxProofSourceV1 {
       compact_cbor,
       witness_set_compact_cbor,
@@ -758,22 +791,31 @@ fn accepted_forced_transition_case(
   )
 }
 
+/// The block-committed compact transaction for an L2 transition vector.
+///
+/// Fields 0 and 2 commit to `field_commitment(preimage)` — §4's flat hash over
+/// the raw enveloped bytes, which is what the door checks. It used to decode
+/// each preimage back into items and re-derive the commitment from those, and
+/// dropping that round trip is not only shorter: it is the difference between a
+/// fixture that can only express preimages the decoder accepts and one that can
+/// commit **any** bytes. A miscounted §5.1 header is exactly the case worth
+/// committing (see the §7.3 abort-never-clamp vector below), and the old shape
+/// could not build it — the fixture aborted before the validator ever saw the
+/// bytes.
 fn native_l2_compact_cbor(
   spend_inputs_preimage: ByteArray,
   outputs_preimage: ByteArray,
 ) -> ByteArray {
-  let spend_inputs = native_preimages.decode_midgard_tx_inputs_preimage_cbor(
-    spend_inputs_preimage,
-  )
-  let outputs = native_preimages.decode_midgard_tx_outputs_preimage_cbor(
-    outputs_preimage,
-  )
   native_compact.encode_native_tx_compact_v1(
     native_types.NativeTxCompact {
       body: native_types.NativeTxBodyCompact {
-        spend_inputs_hash: native_tx_field_access_v1.field_commitment_from_items(spend_inputs |> list.map(native_components.encode_midgard_tx_input)),
+        spend_inputs_hash: native_tx_field_access_v1.field_commitment(
+          spend_inputs_preimage,
+        ),
         reference_inputs_hash: h32_b,
-        outputs_hash: native_tx_field_access_v1.field_commitment_from_items(outputs |> list.map(native_components.encode_midgard_tx_output)),
+        outputs_hash: native_tx_field_access_v1.field_commitment(
+          outputs_preimage,
+        ),
         fee: 0,
         validity_interval_start: -1,
         validity_interval_end: -1,
@@ -1043,12 +1085,13 @@ test accepts_l2_mapped_event_missing_from_source_fault() {
 
 test accepts_l2_source_event_missing_trace_fault() {
   let tx_id = h32_c
-  // native_l2_compact_cbor decodes both arguments as canonical preimage CBOR
-  // (decode_midgard_tx_{inputs,outputs}_preimage_cbor), so they must be
-  // encoded preimages, not raw 32-byte hashes. Passing h32_a/h32_b made the
-  // definite-array header decoder abort on `expect tag == 154` before the
-  // fault under test was ever exercised; every other caller of this helper
-  // passes encode_{input,output}_preimage output.
+  // native_l2_compact_cbor takes §5.1 field *preimages*, not raw 32-byte
+  // hashes. It no longer decodes them — under §4 it hashes them flat — so
+  // passing h32_a/h32_b would no longer abort here; it would commit two
+  // well-formed-looking hashes over nonsense bytes and the failure would
+  // surface much later, inside the door, as a fault that fails for the wrong
+  // reason. Every caller of this helper passes encode_{input,output}_preimage
+  // output, and the two negative vectors that deliberately do otherwise say so.
   let spend_inputs_preimage = native_preimages.encode_input_preimage(
     [native_input(h32_a, 0)],
   )
@@ -1058,6 +1101,7 @@ test accepts_l2_source_event_missing_trace_fault() {
   let source_membership = raw_l2_source_membership(
     tx_id,
     native_l2_compact_cbor(spend_inputs_preimage, outputs_preimage),
+    unread_source_commitment,
   )
   let event_to_step_non_membership = empty_non_membership(
     transition_trace.EventToStepRootDomain,
@@ -1388,7 +1432,11 @@ test accepts_normal_transaction_classified_as_forced_fault() {
     h32_b,
   )
   let trace_proof = trace_membership(opened_step)
-  let source_membership = raw_l2_source_membership(h32_a, #"d87980")
+  let source_membership = raw_l2_source_membership(
+    h32_a,
+    #"d87980",
+    unread_source_commitment,
+  )
   let header = ledger_state.HeaderV1 {
     ..base_header(),
     transactions_root: source_membership.root,
@@ -1639,7 +1687,11 @@ test accepts_valid_l2_transaction_no_op_transition_fault() {
   let produced_key = native_components.encode_midgard_tx_input(
     native_input(tx_id, 0),
   )
-  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
+  let source_membership = raw_l2_source_membership(
+    tx_id,
+    compact_cbor,
+    unread_source_commitment,
+  )
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
   let expected_post_root = proof.insert_root(
     proof.delete_root(pre_root, spent_key, spent_value, []),
@@ -1713,7 +1765,11 @@ test rejects_l2_transaction_when_trace_matches_expected_post_root() {
   let produced_key = native_components.encode_midgard_tx_input(
     native_input(tx_id, 0),
   )
-  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
+  let source_membership = raw_l2_source_membership(
+    tx_id,
+    compact_cbor,
+    unread_source_commitment,
+  )
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
   let expected_post_root = proof.insert_root(
     proof.delete_root(pre_root, spent_key, spent_value, []),
@@ -1786,7 +1842,11 @@ test rejects_l2_transaction_with_wrong_authenticated_transaction_id() fail {
   let produced_key = native_components.encode_midgard_tx_input(
     native_input(wrong_tx_id, 0),
   )
-  let source_membership = raw_l2_source_membership(wrong_tx_id, compact_cbor)
+  let source_membership = raw_l2_source_membership(
+    wrong_tx_id,
+    compact_cbor,
+    unread_source_commitment,
+  )
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
   let event_key = ledger_state.L2TransactionEventKey { tx_id: wrong_tx_id }
   let opened_step = step(
@@ -1852,7 +1912,11 @@ test rejects_l2_transaction_with_uncommitted_spend_preimage() fail {
   let produced_key = native_components.encode_midgard_tx_input(
     native_input(tx_id, 0),
   )
-  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
+  let source_membership = raw_l2_source_membership(
+    tx_id,
+    compact_cbor,
+    unread_source_commitment,
+  )
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
   let event_key = ledger_state.L2TransactionEventKey { tx_id }
   let opened_step = step(
@@ -1894,6 +1958,204 @@ test rejects_l2_transaction_with_uncommitted_spend_preimage() fail {
         },
       },
     ),
+    asset_name_for(header),
+  )
+}
+
+/// A one-input/one-output L2 transition fault whose ledger witnesses are built
+/// from the items the **supplied** preimages carry, rather than from the ones
+/// the block committed.
+///
+/// That inversion is the whole point of the shape, and it is what the older
+/// `rejects_l2_transaction_with_uncommitted_spend_preimage` vector above does
+/// not do. `apply_l2_spends` matches each walked input against its delete
+/// witness and `apply_l2_outputs` matches each walked output against its insert
+/// witness, so a vector that substitutes a preimage and leaves the committed
+/// witnesses in place is refused by *those* checks whether the door is there or
+/// not: it goes red for a reason that has nothing to do with §7.1, and would
+/// stay red if the authenticate-once hash were deleted outright.
+///
+/// Deriving the witnesses from the supplied items removes every such reason.
+/// The fault is internally consistent end to end and the post-root inequality
+/// it claims still holds, so the door's hash of the supplied preimage against
+/// the committed `spend_inputs_hash`/`outputs_hash` is the only thing standing
+/// between a prover and a `True` — which is what makes these neutralisation
+/// selectors rather than merely failing tests.
+///
+/// Verified by mutation, not by argument. Neutralising the door's
+/// authenticate-once check alone (`whole_view`'s
+/// `expect field_commitment(preimage) == expected_hash`) turns exactly the two
+/// substitution vectors below red and nothing else in this module — while
+/// `rejects_l2_transaction_with_uncommitted_spend_preimage` above stays green
+/// under that same mutation, because `apply_l2_spends` rejects its mismatched
+/// delete witness first. That is the concrete reason these two exist alongside
+/// it rather than instead of it, and it is why they, not it, are the selectors
+/// the Q21 execution ledger names.
+///
+/// `post_utxos_root` is a root the transition cannot produce, so the fault's own
+/// `expected_post_root != post_utxos_root` claim is satisfied for the right
+/// reason.
+fn substituted_preimage_l2_fault(
+  compact_cbor: ByteArray,
+  supplied_spend_inputs_preimage: ByteArray,
+  supplied_outputs_preimage: ByteArray,
+  supplied_spend_input: native_types.MidgardTxInput,
+  supplied_output: native_types.MidgardTxOutput,
+) -> Pair<ledger_state.HeaderV1, proof.TransitionFault> {
+  let spent_key = native_components.encode_midgard_tx_input(
+    supplied_spend_input,
+  )
+  let spent_value = native_output_cbor()
+  let produced_value = native_components.encode_midgard_tx_output(
+    supplied_output,
+  )
+  let tx_id = native_l2_tx_id(compact_cbor)
+  let produced_key = native_components.encode_midgard_tx_input(
+    native_input(tx_id, 0),
+  )
+  let source_membership = raw_l2_source_membership(
+    tx_id,
+    compact_cbor,
+    unread_source_commitment,
+  )
+  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
+  let event_key = ledger_state.L2TransactionEventKey { tx_id }
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.L2Transaction,
+    pre_root,
+    h32_b,
+  )
+  let trace_proof = trace_membership(opened_step)
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.L2Transaction,
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transactions_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    l2_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+  Pair(
+    header,
+    proof.InvalidOneStepTransition {
+      witness: proof.L2TransactionTransition {
+        trace_proof,
+        event_to_step,
+        source_membership,
+        spend_inputs_preimage: supplied_spend_inputs_preimage,
+        outputs_preimage: supplied_outputs_preimage,
+        spent_utxos: [ledger_delete_witness(spent_key, spent_value)],
+        produced_utxos: [ledger_insert_witness(produced_key, produced_value)],
+      },
+    },
+  )
+}
+
+/// §7.1 on field 0. The prover hands the door a well-formed spend-inputs
+/// preimage for a transaction the block never committed, with every ledger
+/// witness consistent with it.
+test rejects_l2_transaction_with_a_substituted_spend_inputs_preimage() fail {
+  let substituted_spend_input = native_input(h32_c, 0)
+  let produced_output = native_output()
+  let outputs_preimage = native_preimages.encode_output_preimage(
+    [produced_output],
+  )
+  let compact_cbor = native_l2_compact_cbor(
+    native_preimages.encode_input_preimage([native_input(h32_a, 0)]),
+    outputs_preimage,
+  )
+  let Pair(header, fault) = substituted_preimage_l2_fault(
+    compact_cbor,
+    native_preimages.encode_input_preimage([substituted_spend_input]),
+    outputs_preimage,
+    substituted_spend_input,
+    produced_output,
+  )
+  proof.validate_accepted_transaction_fault_proof(
+    prove(header, fault),
+    asset_name_for(header),
+  )
+}
+
+/// §7.1 on field 2 — the second of the two openings, which the field-0 vector
+/// above cannot reach. Without it, an opening that named field 0 twice, or one
+/// that skipped the outputs door entirely, would keep the whole suite green.
+test rejects_l2_transaction_with_a_substituted_outputs_preimage() fail {
+  let spent_input = native_input(h32_a, 0)
+  let substituted_output = native_deposit_output(0)
+  let spend_inputs_preimage = native_preimages.encode_input_preimage(
+    [spent_input],
+  )
+  let compact_cbor = native_l2_compact_cbor(
+    spend_inputs_preimage,
+    native_preimages.encode_output_preimage([native_output()]),
+  )
+  let Pair(header, fault) = substituted_preimage_l2_fault(
+    compact_cbor,
+    spend_inputs_preimage,
+    native_preimages.encode_output_preimage([substituted_output]),
+    spent_input,
+    substituted_output,
+  )
+  proof.validate_accepted_transaction_fault_proof(
+    prove(header, fault),
+    asset_name_for(header),
+  )
+}
+
+/// §7.3 abort-never-clamp, on a preimage the block itself committed.
+///
+/// The committed field-0 preimage declares two items in its §5.1 header and
+/// carries one. Because the block committed these exact bytes the door's
+/// authenticate-once hash *matches* — the two substitution vectors above cannot
+/// reach this state — and the question becomes what a family does with a field
+/// whose commitment is honest and whose contents are malformed. The required
+/// answer is: abort. Clamping to the one item actually present would let a
+/// malformed commitment be disputed as though it were well-formed, and the
+/// walked spend-input list is fed straight into the ledger-root recomputation.
+///
+/// What this pins is that behaviour, not any single line of the door, and the
+/// distinction is why it is cited as §7.3 rather than §7.4. A miscounted header
+/// is §7.4's subject — count consistency at view construction — but mutation
+/// puts the boundary precisely, and §7.4 is not the guard that fires:
+/// neutralising `whole_view`'s arithmetic
+/// `header_len + stride * count == total_length` check does **not** turn this
+/// vector red, because the walk then runs off the end of the bytes and the
+/// §7.3 out-of-range item read aborts instead. Two independent guards refuse it,
+/// which is the right outcome for a fail-closed property but means this test is
+/// deliberately *not* listed as a Q21 neutralisation selector — it does not
+/// isolate one check, and a selector that cannot say which check it is watching
+/// is not one.
+test rejects_l2_transaction_with_a_miscounted_committed_spend_inputs_preimage() fail {
+  let spent_input = native_input(h32_a, 0)
+  let produced_output = native_output()
+  let miscounted_spend_inputs_preimage = bytearray.concat(
+    native_tx_field_access_v1.encode_field_array_header(2),
+    bytearray.drop(native_preimages.encode_input_preimage([spent_input]), 1),
+  )
+  let outputs_preimage = native_preimages.encode_output_preimage(
+    [produced_output],
+  )
+  let compact_cbor = native_l2_compact_cbor(
+    miscounted_spend_inputs_preimage,
+    outputs_preimage,
+  )
+  let Pair(header, fault) = substituted_preimage_l2_fault(
+    compact_cbor,
+    miscounted_spend_inputs_preimage,
+    outputs_preimage,
+    spent_input,
+    produced_output,
+  )
+  proof.validate_accepted_transaction_fault_proof(
+    prove(header, fault),
     asset_name_for(header),
   )
 }

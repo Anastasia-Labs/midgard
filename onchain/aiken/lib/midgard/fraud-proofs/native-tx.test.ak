@@ -442,8 +442,12 @@ test midgard_transaction_full_decode_round_trip() {
     verified_tx.transaction == tx,
     verified_tx.compact == compact,
     verified_tx.compact_cbor == encode_native_tx_compact_v1(compact),
-    witness_set_compact.addr_tx_wits_hash == native_tx_field_access_v1.field_commitment_from_items(list.map(tx.witness_set.addr_tx_wits, encode_midgard_address_witness)),
-    witness_set_compact.script_tx_wits_hash == native_tx_field_access_v1.field_commitment_from_items(list.map(tx.witness_set.script_tx_wits, encode_midgard_versioned_script)),
+    witness_set_compact.addr_tx_wits_hash == native_tx_field_access_v1.field_commitment_from_items(
+      list.map(tx.witness_set.addr_tx_wits, encode_midgard_address_witness),
+    ),
+    witness_set_compact.script_tx_wits_hash == native_tx_field_access_v1.field_commitment_from_items(
+      list.map(tx.witness_set.script_tx_wits, encode_midgard_versioned_script),
+    ),
     partial.version == Some(native_tx_version_v1),
     partial.validity == Some(TxIsValid),
     partial_body.inputs == Some(tx.body.inputs),

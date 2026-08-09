@@ -158,15 +158,14 @@ pub fn open_field_walk(
   reference_inputs: List<Input>,
   certificate_policy_id: PolicyId,
 ) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {
-  let view =
-    authenticated_field_view(
-      verified,
-      witness_set,
-      field_index,
-      carriage,
-      reference_inputs,
-      certificate_policy_id,
-    )
+  let view = authenticated_field_view(
+    verified,
+    witness_set,
+    field_index,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
   Pair(view, walk_at_start(verified.tx_id, field_index, view))
 }
 
@@ -219,15 +218,14 @@ fn resume_field_walk(
   certificate_policy_id: PolicyId,
 ) -> FieldViewV1 {
   expect checkpoint.tx_id == verified.tx_id
-  let view =
-    authenticated_field_view(
-      verified,
-      witness_set,
-      checkpoint.field_index,
-      carriage,
-      reference_inputs,
-      certificate_policy_id,
-    )
+  let view = authenticated_field_view(
+    verified,
+    witness_set,
+    checkpoint.field_index,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
   expect checkpoint_is_bound_to_view(view, checkpoint)
   view
 }
@@ -259,15 +257,14 @@ pub fn resume_field_walk_from_commitment(
 ) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {
   let checkpoint = decode_field_walk_checkpoint(checkpoint_bytes)
   expect field_walk_checkpoint_hash(checkpoint) == committed
-  let view =
-    resume_field_walk(
-      verified,
-      witness_set,
-      checkpoint,
-      carriage,
-      reference_inputs,
-      certificate_policy_id,
-    )
+  let view = resume_field_walk(
+    verified,
+    witness_set,
+    checkpoint,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
   Pair(view, checkpoint)
 }
 
@@ -319,8 +316,10 @@ fn checkpoint_is_bound_to_view(
       // decodable §5.1 head whose item ends inside the authenticated bytes.
       // `resume_rejects_a_position_whose_item_runs_past_the_field` isolates the
       // extent comparison; the head decode belongs to the door.
-      let Pair(payload_offset, length) =
-        field_item_header_at(view, checkpoint.next_offset)
+      let Pair(payload_offset, length) = field_item_header_at(
+        view,
+        checkpoint.next_offset,
+      )
       payload_offset + length <= checkpoint.total_length
     },
   }
@@ -391,8 +390,10 @@ pub fn walk_next(
   // fourth way to obtain one — so the head read below would refuse anything
   // this line does. It is the line that notices if that ever stops being true.
   expect !walk_is_complete(checkpoint)
-  let Pair(payload_offset, length) =
-    field_item_header_at(view, checkpoint.next_offset)
+  let Pair(payload_offset, length) = field_item_header_at(
+    view,
+    checkpoint.next_offset,
+  )
   let stride = field_view_stride(view)
   // §7.2: arithmetic locates an item, it does not excuse reading its wrapper.
   // For a fixed-stride field the stride pins the wrapper's one admissible
@@ -409,12 +410,12 @@ pub fn walk_next(
   // fail. It stays because that implication lives in another module's head
   // reader, and this is the line that notices if it ever stops holding.
   expect or {
-    stride == walk_derived_stride,
-    and {
-      payload_offset == checkpoint.next_offset + fixed_item_wrapper_bytes,
-      length == stride - fixed_item_wrapper_bytes,
-    },
-  }
+      stride == walk_derived_stride,
+      and {
+        payload_offset == checkpoint.next_offset + fixed_item_wrapper_bytes,
+        length == stride - fixed_item_wrapper_bytes,
+      },
+    }
   let next_offset = payload_offset + length
   let next_item_index = checkpoint.next_item_index + 1
   // §7.3 abort, never clamp — and §5.1's no-trailing-bytes rule at the end.
@@ -426,9 +427,9 @@ pub fn walk_next(
   // `walk_next_refuses_a_final_advance_that_misses_the_end` isolates it.
   expect next_offset <= checkpoint.total_length
   expect or {
-    next_item_index < checkpoint.item_count,
-    next_offset == checkpoint.total_length,
-  }
+      next_item_index < checkpoint.item_count,
+      next_offset == checkpoint.total_length,
+    }
   Pair(
     field_read_range(view, payload_offset, length),
     FieldWalkCheckpointV1 { ..checkpoint, next_item_index, next_offset },
@@ -571,9 +572,13 @@ pub fn encode_field_walk_checkpoint(
     |> bytearray.concat(#"5820")
     |> bytearray.concat(checkpoint.tx_id)
     |> bytearray.concat(#"41")
-    |> bytearray.concat(bytearray.from_int_big_endian(checkpoint.field_index, 1))
+    |> bytearray.concat(
+        bytearray.from_int_big_endian(checkpoint.field_index, 1),
+      )
     |> bytearray.concat(#"43")
-    |> bytearray.concat(bytearray.from_int_big_endian(checkpoint.total_length, 3))
+    |> bytearray.concat(
+        bytearray.from_int_big_endian(checkpoint.total_length, 3),
+      )
     |> bytearray.concat(#"43")
     |> bytearray.concat(bytearray.from_int_big_endian(checkpoint.item_count, 3))
     |> bytearray.concat(#"43")
@@ -581,7 +586,9 @@ pub fn encode_field_walk_checkpoint(
         bytearray.from_int_big_endian(checkpoint.next_item_index, 3),
       )
     |> bytearray.concat(#"43")
-    |> bytearray.concat(bytearray.from_int_big_endian(checkpoint.next_offset, 3))
+    |> bytearray.concat(
+        bytearray.from_int_big_endian(checkpoint.next_offset, 3),
+      )
 }
 
 /// Fail-closed inverse of `encode_field_walk_checkpoint`. The bounds are not
@@ -597,17 +604,14 @@ pub fn encode_field_walk_checkpoint(
 /// to a digest and to the §10.2 binding check.
 fn decode_field_walk_checkpoint(bytes: ByteArray) -> FieldWalkCheckpointV1 {
   expect bytearray.length(bytes) == field_walk_checkpoint_bytes
-  let checkpoint =
-    FieldWalkCheckpointV1 {
-      tx_id: bytearray.slice(bytes, 3, 34),
-      field_index: bytearray.at(bytes, 36),
-      total_length: bytearray.to_int_big_endian(bytearray.slice(bytes, 38, 40)),
-      item_count: bytearray.to_int_big_endian(bytearray.slice(bytes, 42, 44)),
-      next_item_index: bytearray.to_int_big_endian(
-        bytearray.slice(bytes, 46, 48),
-      ),
-      next_offset: bytearray.to_int_big_endian(bytearray.slice(bytes, 50, 52)),
-    }
+  let checkpoint = FieldWalkCheckpointV1 {
+    tx_id: bytearray.slice(bytes, 3, 34),
+    field_index: bytearray.at(bytes, 36),
+    total_length: bytearray.to_int_big_endian(bytearray.slice(bytes, 38, 40)),
+    item_count: bytearray.to_int_big_endian(bytearray.slice(bytes, 42, 44)),
+    next_item_index: bytearray.to_int_big_endian(bytearray.slice(bytes, 46, 48)),
+    next_offset: bytearray.to_int_big_endian(bytearray.slice(bytes, 50, 52)),
+  }
   expect encode_field_walk_checkpoint(checkpoint) == bytes
   checkpoint
 }

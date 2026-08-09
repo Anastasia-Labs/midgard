@@ -77,8 +77,8 @@ use midgard/native_tx_machine_walk_v1.{
   FieldWalkCheckpointV1, encode_field_walk_checkpoint,
   field_walk_checkpoint_bytes, field_walk_checkpoint_hash, open_field_walk,
   resume_field_walk_from_commitment, spend_input_at, spend_input_count,
-  walk_field_index, walk_fold, walk_is_complete, walk_next,
-  walk_next_item_index, walk_remaining, walk_skip, walk_tx_id,
+  walk_field_index, walk_fold, walk_is_complete, walk_next, walk_next_item_index,
+  walk_remaining, walk_skip, walk_tx_id,
 }
 
 // ---------------------------------------------------------------------------
@@ -103,7 +103,8 @@ const item_tx_id_a: ByteArray =
 const item_tx_id_b: ByteArray =
   #"5555555555555555555555555555555555555555555555555555555555555555"
 
-const owner_hash: ByteArray = #"66666666666666666666666666666666666666666666666666666666"
+const owner_hash: ByteArray =
+  #"66666666666666666666666666666666666666666666666666666666"
 
 /// A field-0/1 item at `index`: 38 bytes whatever `index` is, because §5.3
 /// spells the output index in the fixed three-byte `19 XXXX` form. Built from
@@ -119,10 +120,7 @@ fn script_item(index: Int) -> ByteArray {
   encode_midgard_versioned_script(
     MidgardVersionedScript {
       language: PlutusV3Script,
-      script_bytes: bytearray.take(
-        item_tx_id_a,
-        4 + index % 7,
-      ),
+      script_bytes: bytearray.take(item_tx_id_a, 4 + index % 7),
     },
   )
 }
@@ -136,10 +134,7 @@ fn other_script_item(index: Int) -> ByteArray {
   encode_midgard_versioned_script(
     MidgardVersionedScript {
       language: NativeCardanoScript,
-      script_bytes: bytearray.take(
-        item_tx_id_b,
-        4 + index % 7,
-      ),
+      script_bytes: bytearray.take(item_tx_id_b, 4 + index % 7),
     },
   )
 }
@@ -164,10 +159,7 @@ fn other_script_items(next: Int, remaining: Int) -> List<ByteArray> {
   if remaining <= 0 {
     []
   } else {
-    [
-      other_script_item(next),
-      ..other_script_items(next + 1, remaining - 1)
-    ]
+    [other_script_item(next), ..other_script_items(next + 1, remaining - 1)]
   }
 }
 
@@ -181,35 +173,32 @@ fn source(
   preimage: ByteArray,
 ) -> Pair<VerifiedMidgardNativeTxCompact, NativeTxWitnessSetCompact> {
   let committed = field_commitment(preimage)
-  let slot =
-    fn(index: Int) -> ByteArray {
-      if index == field_index {
-        committed
-      } else {
-        zero_hash32
-      }
+  let slot = fn(index: Int) -> ByteArray {
+    if index == field_index {
+      committed
+    } else {
+      zero_hash32
     }
-  let witness_set =
-    NativeTxWitnessSetCompact {
-      addr_tx_wits_hash: slot(7),
-      script_tx_wits_hash: slot(6),
-      redeemer_tx_wits_hash: slot(8),
-    }
-  let body =
-    NativeTxBodyCompact {
-      spend_inputs_hash: slot(0),
-      reference_inputs_hash: slot(1),
-      outputs_hash: slot(2),
-      fee: 0,
-      validity_interval_start: -1,
-      validity_interval_end: -1,
-      required_observers_hash: slot(3),
-      required_signers_hash: slot(4),
-      mint_hash: slot(5),
-      script_integrity_hash: zero_hash32,
-      auxiliary_data_hash: zero_hash32,
-      network_id: 255,
-    }
+  }
+  let witness_set = NativeTxWitnessSetCompact {
+    addr_tx_wits_hash: slot(7),
+    script_tx_wits_hash: slot(6),
+    redeemer_tx_wits_hash: slot(8),
+  }
+  let body = NativeTxBodyCompact {
+    spend_inputs_hash: slot(0),
+    reference_inputs_hash: slot(1),
+    outputs_hash: slot(2),
+    fee: 0,
+    validity_interval_start: -1,
+    validity_interval_end: -1,
+    required_observers_hash: slot(3),
+    required_signers_hash: slot(4),
+    mint_hash: slot(5),
+    script_integrity_hash: zero_hash32,
+    auxiliary_data_hash: zero_hash32,
+    network_id: 255,
+  }
   Pair(
     VerifiedMidgardNativeTxCompact {
       tx_id,
@@ -250,14 +239,13 @@ fn certificate_for(
   preimage: ByteArray,
   chunks: List<ByteArray>,
 ) -> Input {
-  let datum: Data =
-    FieldPreimageCertificateV1 {
-      owner: owner_hash,
-      tx_id: sample_tx_id,
-      field_index,
-      total_length: bytearray.length(preimage),
-      chunk_digests: list.map(chunks, blake2b_256),
-    }
+  let datum: Data = FieldPreimageCertificateV1 {
+    owner: owner_hash,
+    tx_id: sample_tx_id,
+    field_index,
+    total_length: bytearray.length(preimage),
+    chunk_digests: list.map(chunks, blake2b_256),
+  }
   Input {
     output_reference: OutputReference {
       transaction_id: item_tx_id_a,
@@ -348,11 +336,10 @@ fn open_certified(
   field_index: Int,
   preimage: ByteArray,
 ) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {
-  let chunks =
-    [
-      bytearray.take(preimage, chunk_bytes_k),
-      bytearray.drop(preimage, chunk_bytes_k),
-    ]
+  let chunks = [
+    bytearray.take(preimage, chunk_bytes_k),
+    bytearray.drop(preimage, chunk_bytes_k),
+  ]
   expect [chunk_0, chunk_1] = chunks
   open(
     sample_tx_id,
@@ -383,7 +370,9 @@ fn walk_preimage() -> ByteArray {
 const authenticate_once_item_count: Int = 64
 
 fn authenticate_once_preimage() -> ByteArray {
-  encode_field_preimage(input_items(item_tx_id_a, 0, authenticate_once_item_count))
+  encode_field_preimage(
+    input_items(item_tx_id_a, 0, authenticate_once_item_count),
+  )
 }
 
 fn spend_input_preimage() -> ByteArray {
@@ -497,8 +486,13 @@ test authenticate_once_one_open_every_read() {
   let preimage = authenticate_once_preimage()
   let committed = source(sample_tx_id, 0, preimage)
   let Pair(view, start) = open_inline_from(committed, 0, preimage)
-  let Pair(total, done) =
-    walk_fold(view, start, authenticate_once_item_count, 0, tally)
+  let Pair(total, done) = walk_fold(
+    view,
+    start,
+    authenticate_once_item_count,
+    0,
+    tally,
+  )
   and {
     walk_is_complete(done),
     total == expected_tally(0, authenticate_once_item_count),
@@ -604,8 +598,13 @@ fn expected_tally_from(state: Int, index: Int, remaining: Int) -> Int {
 test authenticate_once_holds_under_tier_two() {
   let preimage = authenticate_once_preimage()
   let Pair(view, start) = open_raw_utxo(0, preimage)
-  let Pair(total, done) =
-    walk_fold(view, start, authenticate_once_item_count, 0, tally)
+  let Pair(total, done) = walk_fold(
+    view,
+    start,
+    authenticate_once_item_count,
+    0,
+    tally,
+  )
   and {
     walk_is_complete(done),
     total == expected_tally(0, authenticate_once_item_count),
@@ -617,11 +616,10 @@ test authenticate_once_holds_under_tier_two() {
 /// walk's per-item cost is a chunk verify, and the seam is identical.
 test authenticate_once_holds_under_tier_three() {
   let item_count = chunk_bytes_k / spend_input_stride + 1
-  let preimage =
-    bytearray.concat(
-      encode_field_array_header(item_count),
-      repeat_bytes(wrapped_input_item(), item_count),
-    )
+  let preimage = bytearray.concat(
+    encode_field_array_header(item_count),
+    repeat_bytes(wrapped_input_item(), item_count),
+  )
   let Pair(view, start) = open_certified(0, preimage)
   let checkpoint = walk_skip(view, start, item_count - 1)
   let Pair(item, done) = walk_next(view, checkpoint)
@@ -661,7 +659,13 @@ fn repeat_bytes(unit: ByteArray, times: Int) -> ByteArray {
 fn uninterrupted_tally() -> Int {
   let preimage = walk_preimage()
   let Pair(view, start) = open_inline(6, preimage)
-  let Pair(total, done) = walk_fold(view, start, walk_field_item_count, 0, tally)
+  let Pair(total, done) = walk_fold(
+    view,
+    start,
+    walk_field_item_count,
+    0,
+    tally,
+  )
   expect walk_is_complete(done)
   total
 }
@@ -688,24 +692,22 @@ test resume_finishes_an_interrupted_walk_across_a_carriage_change() {
 
   // ---- transaction two: tier 2, the rest, from the committed position ----
   let Pair(verified, witness_set) = source(sample_tx_id, 6, preimage)
-  let Pair(view_two, resumed) =
-    resume_field_walk_from_commitment(
-      verified,
-      witness_set,
-      thread_commitment,
-      carried,
-      RawUtxo { ref_input_index: 0 },
-      [input_of(0, key_output(builtin.b_data(preimage)))],
-      certificate_policy_id,
-    )
-  let Pair(total, done) =
-    walk_fold(
-      view_two,
-      resumed,
-      walk_field_item_count - budget_one,
-      partial,
-      tally,
-    )
+  let Pair(view_two, resumed) = resume_field_walk_from_commitment(
+    verified,
+    witness_set,
+    thread_commitment,
+    carried,
+    RawUtxo { ref_input_index: 0 },
+    [input_of(0, key_output(builtin.b_data(preimage)))],
+    certificate_policy_id,
+  )
+  let Pair(total, done) = walk_fold(
+    view_two,
+    resumed,
+    walk_field_item_count - budget_one,
+    partial,
+    tally,
+  )
   and {
     !walk_is_complete(paused),
     walk_remaining(paused) == walk_field_item_count - budget_one,
@@ -721,17 +723,21 @@ test resume_survives_two_interruptions() {
   let Pair(view_one, start) = open_inline(6, preimage)
   let Pair(state_one, pause_one) = walk_fold(view_one, start, 4, 0, tally)
   let Pair(view_two, resume_one) = resume_at(preimage, pause_one)
-  let Pair(state_two, pause_two) =
-    walk_fold(view_two, resume_one, 9, state_one, tally)
+  let Pair(state_two, pause_two) = walk_fold(
+    view_two,
+    resume_one,
+    9,
+    state_one,
+    tally,
+  )
   let Pair(view_three, resume_two) = resume_at(preimage, pause_two)
-  let Pair(total, done) =
-    walk_fold(
-      view_three,
-      resume_two,
-      walk_field_item_count - 13,
-      state_two,
-      tally,
-    )
+  let Pair(total, done) = walk_fold(
+    view_three,
+    resume_two,
+    walk_field_item_count - 13,
+    state_two,
+    tally,
+  )
   and {
     walk_remaining(pause_one) == walk_field_item_count - 4,
     walk_remaining(pause_two) == walk_field_item_count - 13,
@@ -767,10 +773,20 @@ test resume_does_not_re_read_completed_items() {
   let Pair(view_one, start) = open_inline(6, preimage)
   let Pair(_partial, paused) = walk_fold(view_one, start, 7, 0, tally)
   let Pair(view_two, resumed) = resume_at(preimage, paused)
-  let Pair(_a, exact) =
-    walk_fold(view_two, resumed, walk_field_item_count - 7, 0, tally)
-  let Pair(_b, one_short) =
-    walk_fold(view_two, resumed, walk_field_item_count - 8, 0, tally)
+  let Pair(_a, exact) = walk_fold(
+    view_two,
+    resumed,
+    walk_field_item_count - 7,
+    0,
+    tally,
+  )
+  let Pair(_b, one_short) = walk_fold(
+    view_two,
+    resumed,
+    walk_field_item_count - 8,
+    0,
+    tally,
+  )
   and {
     walk_is_complete(exact),
     !walk_is_complete(one_short),
@@ -785,16 +801,15 @@ test resume_works_on_a_fixed_stride_field() {
   let Pair(view_one, start) = open_inline(0, preimage)
   let Pair(_partial, paused) = walk_fold(view_one, start, 40, 0, tally)
   let Pair(verified, witness_set) = source(sample_tx_id, 0, preimage)
-  let Pair(view_two, resumed) =
-    resume_field_walk_from_commitment(
-      verified,
-      witness_set,
-      field_walk_checkpoint_hash(paused),
-      encode_field_walk_checkpoint(paused),
-      Inline { preimage },
-      [],
-      certificate_policy_id,
-    )
+  let Pair(view_two, resumed) = resume_field_walk_from_commitment(
+    verified,
+    witness_set,
+    field_walk_checkpoint_hash(paused),
+    encode_field_walk_checkpoint(paused),
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
   let Pair(item, _next) = walk_next(view_two, resumed)
   and {
     walk_remaining(resumed) == authenticate_once_item_count - 40,
@@ -822,8 +837,9 @@ test resume_works_on_a_fixed_stride_field() {
 /// fixture cannot weaken without the test noticing.
 test no_preimage_bytes_reach_the_checkpoint() {
   let preimage_a = encode_field_preimage(input_items(item_tx_id_a, 0, 12))
-  let preimage_b =
-    encode_field_preimage(input_items(item_tx_id_b, disjoint_index_base, 12))
+  let preimage_b = encode_field_preimage(
+    input_items(item_tx_id_b, disjoint_index_base, 12),
+  )
   let Pair(view_a, start_a) = open_inline(0, preimage_a)
   let Pair(view_b, start_b) = open_inline(0, preimage_b)
   let Pair(_a, paused_a) = walk_fold(view_a, start_a, 5, 0, tally)
@@ -853,8 +869,9 @@ const disjoint_index_base: Int = 300
 /// and the width-forced byte-string head.
 test no_preimage_bytes_reach_a_variable_width_checkpoint() {
   let preimage_a = walk_preimage()
-  let preimage_b =
-    encode_field_preimage(other_script_items(0, walk_field_item_count))
+  let preimage_b = encode_field_preimage(
+    other_script_items(0, walk_field_item_count),
+  )
   let Pair(view_a, start_a) = open_inline(6, preimage_a)
   let Pair(view_b, start_b) = open_inline(6, preimage_b)
   let Pair(_a, paused_a) = walk_fold(view_a, start_a, 11, 0, tally)
@@ -929,15 +946,14 @@ fn script_items_are_content_disjoint(index: Int, remaining: Int) -> Bool {
 test checkpoint_wire_form_is_constant_width() {
   let fixed = authenticate_once_preimage()
   let variable = walk_preimage()
-  let widths =
-    [
-      checkpoint_width(0, fixed, 0),
-      checkpoint_width(0, fixed, 63),
-      checkpoint_width(0, fixed, authenticate_once_item_count),
-      checkpoint_width(6, variable, 0),
-      checkpoint_width(6, variable, 13),
-      checkpoint_width(6, variable, walk_field_item_count),
-    ]
+  let widths = [
+    checkpoint_width(0, fixed, 0),
+    checkpoint_width(0, fixed, 63),
+    checkpoint_width(0, fixed, authenticate_once_item_count),
+    checkpoint_width(6, variable, 0),
+    checkpoint_width(6, variable, 13),
+    checkpoint_width(6, variable, walk_field_item_count),
+  ]
   list.all(widths, fn(width) { width == field_walk_checkpoint_bytes })
 }
 
@@ -1012,14 +1028,13 @@ test spend_input_lookup_at_index_295() {
 test spend_input_extent_is_pure_arithmetic() {
   let Pair(view, _start) = open_inline(0, spend_input_preimage())
   let header_len = 3
-  let extent_matches =
-    fn(index: Int) -> Bool {
-      let Pair(offset, length) = field_item_extent(view, index)
-      and {
-        offset == header_len + spend_input_stride * index + 2,
-        length == spend_input_item_bytes,
-      }
+  let extent_matches = fn(index: Int) -> Bool {
+    let Pair(offset, length) = field_item_extent(view, index)
+    and {
+      offset == header_len + spend_input_stride * index + 2,
+      length == spend_input_item_bytes,
     }
+  }
   and {
     spend_input_count(view) == maximum_cardano_spend_redeemer_count,
     extent_matches(0),
@@ -1091,16 +1106,15 @@ test resume_rejects_a_checkpoint_from_another_transaction() fail {
   let Pair(view, start) = open_inline(6, preimage)
   let Pair(_state, paused) = walk_fold(view, start, 5, 0, tally)
   let Pair(verified, witness_set) = source(other_tx_id, 6, preimage)
-  let Pair(resumed, resumed_checkpoint) =
-    resume_field_walk_from_commitment(
-      verified,
-      witness_set,
-      field_walk_checkpoint_hash(paused),
-      encode_field_walk_checkpoint(paused),
-      Inline { preimage },
-      [],
-      certificate_policy_id,
-    )
+  let Pair(resumed, resumed_checkpoint) = resume_field_walk_from_commitment(
+    verified,
+    witness_set,
+    field_walk_checkpoint_hash(paused),
+    encode_field_walk_checkpoint(paused),
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
   resumed_item(resumed, resumed_checkpoint) == script_item(5)
 }
 
@@ -1114,16 +1128,15 @@ test resume_rejects_a_position_the_thread_did_not_commit() fail {
   let Pair(_state, paused) = walk_fold(view, start, 5, 0, tally)
   let Pair(_item, advanced) = walk_next(view, paused)
   let Pair(verified, witness_set) = source(sample_tx_id, 6, preimage)
-  let Pair(resumed_view, resumed_checkpoint) =
-    resume_field_walk_from_commitment(
-      verified,
-      witness_set,
-      field_walk_checkpoint_hash(paused),
-      encode_field_walk_checkpoint(advanced),
-      Inline { preimage },
-      [],
-      certificate_policy_id,
-    )
+  let Pair(resumed_view, resumed_checkpoint) = resume_field_walk_from_commitment(
+    verified,
+    witness_set,
+    field_walk_checkpoint_hash(paused),
+    encode_field_walk_checkpoint(advanced),
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
   resumed_item(resumed_view, resumed_checkpoint) == script_item(6)
 }
 
@@ -1141,16 +1154,15 @@ test resume_accepts_the_position_the_thread_committed() {
   let Pair(view, start) = open_inline(6, preimage)
   let Pair(_state, paused) = walk_fold(view, start, 5, 0, tally)
   let Pair(verified, witness_set) = source(sample_tx_id, 6, preimage)
-  let Pair(resumed_view, resumed_checkpoint) =
-    resume_field_walk_from_commitment(
-      verified,
-      witness_set,
-      field_walk_checkpoint_hash(paused),
-      encode_field_walk_checkpoint(paused),
-      Inline { preimage },
-      [],
-      certificate_policy_id,
-    )
+  let Pair(resumed_view, resumed_checkpoint) = resume_field_walk_from_commitment(
+    verified,
+    witness_set,
+    field_walk_checkpoint_hash(paused),
+    encode_field_walk_checkpoint(paused),
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
   and {
     thread_commitment(encode_field_walk_checkpoint(paused)) == field_walk_checkpoint_hash(
       paused,
@@ -1169,12 +1181,11 @@ test resume_rejects_a_forged_fixed_stride_offset() fail {
   let Pair(view, start) = open_inline(0, preimage)
   let Pair(_state, paused) = walk_fold(view, start, 5, 0, tally)
   let carried = encode_field_walk_checkpoint(paused)
-  let forged =
-    patch_wire_scalar(
-      carried,
-      wire_next_offset_at,
-      wire_scalar(carried, wire_next_offset_at) + spend_input_stride,
-    )
+  let forged = patch_wire_scalar(
+    carried,
+    wire_next_offset_at,
+    wire_scalar(carried, wire_next_offset_at) + spend_input_stride,
+  )
   let Pair(resumed_view, resumed) = resume_wire(0, preimage, forged)
   resumed_item(resumed_view, resumed) == input_item(item_tx_id_a, 6)
 }
@@ -1192,12 +1203,11 @@ test resume_rejects_a_forged_total_length() fail {
   let Pair(view, start) = open_inline(0, preimage)
   let Pair(_state, paused) = walk_fold(view, start, 5, 0, tally)
   let carried = encode_field_walk_checkpoint(paused)
-  let forged =
-    patch_wire_scalar(
-      carried,
-      wire_total_length_at,
-      wire_scalar(carried, wire_total_length_at) + 1,
-    )
+  let forged = patch_wire_scalar(
+    carried,
+    wire_total_length_at,
+    wire_scalar(carried, wire_total_length_at) + 1,
+  )
   let Pair(resumed_view, resumed) = resume_wire(0, preimage, forged)
   resumed_item(resumed_view, resumed) == input_item(item_tx_id_a, 5)
 }
@@ -1215,12 +1225,11 @@ test resume_rejects_a_forged_item_count() fail {
   let Pair(view, start) = open_inline(0, preimage)
   let Pair(_state, paused) = walk_fold(view, start, 5, 0, tally)
   let carried = encode_field_walk_checkpoint(paused)
-  let forged =
-    patch_wire_scalar(
-      carried,
-      wire_item_count_at,
-      wire_scalar(carried, wire_item_count_at) - 1,
-    )
+  let forged = patch_wire_scalar(
+    carried,
+    wire_item_count_at,
+    wire_scalar(carried, wire_item_count_at) - 1,
+  )
   let Pair(resumed_view, resumed) = resume_wire(0, preimage, forged)
   resumed_item(resumed_view, resumed) == input_item(item_tx_id_a, 5)
 }
@@ -1239,8 +1248,11 @@ test resume_rejects_a_reshaped_view() fail {
   let shorter = encode_field_preimage(input_items(item_tx_id_a, 0, 12))
   let Pair(view, start) = open_inline(0, preimage)
   let Pair(_state, paused) = walk_fold(view, start, 5, 0, tally)
-  let Pair(resumed_view, resumed) =
-    resume_wire(0, shorter, encode_field_walk_checkpoint(paused))
+  let Pair(resumed_view, resumed) = resume_wire(
+    0,
+    shorter,
+    encode_field_walk_checkpoint(paused),
+  )
   resumed_item(resumed_view, resumed) == input_item(item_tx_id_a, 5)
 }
 
@@ -1259,8 +1271,11 @@ test resume_rejects_a_reshaped_view() fail {
 test resume_rejects_an_offset_inside_the_array_header() fail {
   let preimage = encode_field_preimage(script_items(0, header_probe_item_count))
   let Pair(_view, start) = open_inline(6, preimage)
-  let forged =
-    patch_wire_scalar(encode_field_walk_checkpoint(start), wire_next_offset_at, 1)
+  let forged = patch_wire_scalar(
+    encode_field_walk_checkpoint(start),
+    wire_next_offset_at,
+    1,
+  )
   let Pair(_view, resumed) = resume_wire(6, preimage, forged)
   walk_remaining(resumed) == header_probe_item_count
 }
@@ -1285,12 +1300,11 @@ test resume_rejects_a_walk_that_declares_itself_finished_early() fail {
   let Pair(view, start) = open_inline(6, preimage)
   let Pair(_state, paused) = walk_fold(view, start, 5, 0, tally)
   let carried = encode_field_walk_checkpoint(paused)
-  let forged =
-    patch_wire_scalar(
-      carried,
-      wire_next_item_index_at,
-      wire_scalar(carried, wire_item_count_at),
-    )
+  let forged = patch_wire_scalar(
+    carried,
+    wire_next_item_index_at,
+    wire_scalar(carried, wire_item_count_at),
+  )
   let Pair(_view, resumed) = resume_wire(6, preimage, forged)
   walk_is_complete(resumed)
 }
@@ -1324,12 +1338,11 @@ test resume_rejects_a_position_whose_item_runs_past_the_field() fail {
   let preimage = overrunning_item_preimage()
   let Pair(view, start) = open_inline(6, preimage)
   let Pair(_item, advanced) = walk_next(view, start)
-  let forged =
-    patch_wire_scalar(
-      encode_field_walk_checkpoint(advanced),
-      wire_next_offset_at,
-      overrunning_item_offset,
-    )
+  let forged = patch_wire_scalar(
+    encode_field_walk_checkpoint(advanced),
+    wire_next_offset_at,
+    overrunning_item_offset,
+  )
   let Pair(_view, resumed) = resume_wire(6, preimage, forged)
   walk_remaining(resumed) == 1
 }
@@ -1348,7 +1361,13 @@ test resume_rejects_a_position_whose_item_runs_past_the_field() fail {
 test walk_next_refuses_to_step_past_the_end() fail {
   let preimage = walk_preimage()
   let Pair(view, start) = open_inline(6, preimage)
-  let Pair(_state, done) = walk_fold(view, start, walk_field_item_count, 0, tally)
+  let Pair(_state, done) = walk_fold(
+    view,
+    start,
+    walk_field_item_count,
+    0,
+    tally,
+  )
   let Pair(_item, _next) = walk_next(view, done)
   True
 }
@@ -1381,12 +1400,11 @@ test walk_next_refuses_a_final_advance_that_misses_the_end() fail {
   let preimage = short_final_advance_preimage()
   let Pair(view, start) = open_inline(6, preimage)
   let Pair(_item, advanced) = walk_next(view, start)
-  let forged =
-    patch_wire_scalar(
-      encode_field_walk_checkpoint(advanced),
-      wire_next_offset_at,
-      short_final_advance_offset,
-    )
+  let forged = patch_wire_scalar(
+    encode_field_walk_checkpoint(advanced),
+    wire_next_offset_at,
+    short_final_advance_offset,
+  )
   let Pair(resumed_view, resumed) = resume_wire(6, preimage, forged)
   resumed_item(resumed_view, resumed) == #"cc"
 }
@@ -1514,8 +1532,10 @@ test walk_fold_refuses_a_negative_budget() fail {
 /// item is 38 bytes and decodes to a `MidgardTxInput` — and only the stride
 /// tells field 6 from field 0.
 test spend_input_at_refuses_a_variable_width_view_of_input_shaped_items() fail {
-  let Pair(view, _start) =
-    open_inline(6, encode_field_preimage(input_items(item_tx_id_a, 0, 2)))
+  let Pair(view, _start) = open_inline(
+    6,
+    encode_field_preimage(input_items(item_tx_id_a, 0, 2)),
+  )
   let input = spend_input_at(view, 0)
   and {
     input.output_index == 0,
@@ -1535,8 +1555,10 @@ test spend_input_at_refuses_an_out_of_range_index() fail {
 /// nothing about this one. A field-6 view of input-shaped items would otherwise
 /// report a spend-input count for a field that has no spend inputs in it.
 test spend_input_count_refuses_a_variable_width_view() fail {
-  let Pair(view, _start) =
-    open_inline(6, encode_field_preimage(input_items(item_tx_id_a, 0, 2)))
+  let Pair(view, _start) = open_inline(
+    6,
+    encode_field_preimage(input_items(item_tx_id_a, 0, 2)),
+  )
   spend_input_count(view) == 2
 }
 
@@ -1560,16 +1582,15 @@ test checkpoint_decode_refuses_a_non_canonical_spelling() fail {
   // and stopped there would accept it.
   let respelled = bytearray.concat(#"85", bytearray.drop(carried, 1))
   let Pair(verified, witness_set) = source(sample_tx_id, 6, preimage)
-  let Pair(_view, resumed) =
-    resume_field_walk_from_commitment(
-      verified,
-      witness_set,
-      field_walk_checkpoint_hash(paused),
-      respelled,
-      Inline { preimage },
-      [],
-      certificate_policy_id,
-    )
+  let Pair(_view, resumed) = resume_field_walk_from_commitment(
+    verified,
+    witness_set,
+    field_walk_checkpoint_hash(paused),
+    respelled,
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
   and {
     bytearray.length(respelled) == field_walk_checkpoint_bytes,
     walk_remaining(resumed) == walk_field_item_count - 5,
@@ -1583,11 +1604,10 @@ test tier_three_variable_width_field_cannot_be_walked() fail {
   let item = script_item(0)
   let wrapped = bytearray.concat(#"48", bytearray.take(item, 8))
   let count = chunk_bytes_k / bytearray.length(wrapped) + 1
-  let preimage =
-    bytearray.concat(
-      encode_field_array_header(count),
-      repeat_bytes(wrapped, count),
-    )
+  let preimage = bytearray.concat(
+    encode_field_array_header(count),
+    repeat_bytes(wrapped, count),
+  )
   let Pair(_view, _start) = open_certified(6, preimage)
   True
 }
@@ -1635,8 +1655,13 @@ test walk_next_item_index_counts_the_items_consumed() {
   let Pair(_item, after_one) = walk_next(view, start)
   let Pair(_state, after_fold) = walk_fold(view, after_one, 4, 0, tally)
   let relocated = walk_skip(view, after_fold, 3)
-  let Pair(_rest, finished) =
-    walk_fold(view, relocated, walk_field_item_count - 8, 0, tally)
+  let Pair(_rest, finished) = walk_fold(
+    view,
+    relocated,
+    walk_field_item_count - 8,
+    0,
+    tally,
+  )
   and {
     walk_next_item_index(start) == 0,
     walk_next_item_index(after_one) == 1,
@@ -1662,19 +1687,23 @@ test walk_tx_id_reports_the_authenticated_transaction() {
   let preimage = walk_preimage()
   let Pair(view, start) = open_inline(6, preimage)
   let Pair(_state, paused) = walk_fold(view, start, 5, 0, tally)
-  let Pair(_other_view, other_start) =
-    open(other_tx_id, 6, preimage, Inline { preimage }, [])
+  let Pair(_other_view, other_start) = open(
+    other_tx_id,
+    6,
+    preimage,
+    Inline { preimage },
+    [],
+  )
   let Pair(verified, witness_set) = source(sample_tx_id, 6, preimage)
-  let Pair(_resumed_view, resumed) =
-    resume_field_walk_from_commitment(
-      verified,
-      witness_set,
-      field_walk_checkpoint_hash(paused),
-      encode_field_walk_checkpoint(paused),
-      Inline { preimage },
-      [],
-      certificate_policy_id,
-    )
+  let Pair(_resumed_view, resumed) = resume_field_walk_from_commitment(
+    verified,
+    witness_set,
+    field_walk_checkpoint_hash(paused),
+    encode_field_walk_checkpoint(paused),
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
   and {
     walk_tx_id(start) == sample_tx_id,
     walk_tx_id(paused) == sample_tx_id,

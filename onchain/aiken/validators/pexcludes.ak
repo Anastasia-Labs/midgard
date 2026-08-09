@@ -48,8 +48,11 @@ const unproven_root =
 
 fn redeemer_of(root: ByteArray, key: ByteArray, proof: mpf.Proof) -> Data {
   let proof_data: Data = proof
-  let fields: List<Data> =
-    [builtin.b_data(root), builtin.b_data(key), proof_data]
+  let fields: List<Data> = [
+    builtin.b_data(root),
+    builtin.b_data(key),
+    proof_data,
+  ]
   let redeemer: Data = fields
   redeemer
 }

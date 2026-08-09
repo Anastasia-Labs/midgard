@@ -6,7 +6,7 @@
   "basis": {
     "memoryUnits": 13200000,
     "cpuUnits": 8000000000,
-    "source": "GOAL_SPEC §3.3 — 20% margin off the live mainnet maxTxExUnits of 16,500,000 mem (epoch 648)"
+    "source": "GOAL_SPEC §3.3 — 20% margin off the supported L1 floor MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits of 16,500,000 mem. Provenance, exactly as §3.3 states it: the captured in-repo artifact is the mainnet parameter snapshot in docs/midgard/decisions/0001-cardano-l1-transaction-capability-floor.md, Conway epoch 645, observed 2026-07-24. The report that the cap is unchanged at epoch 648 is corroboration only — no protocol-params artifact in this repository pins epoch 648."
   },
   "modules": [
     {

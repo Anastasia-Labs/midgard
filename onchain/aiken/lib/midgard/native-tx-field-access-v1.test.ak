@@ -46,10 +46,9 @@ use midgard/native_tx_field_access_v1.{
   Certified, Chunked, FieldCarriageV1, FieldPreimageCertificateV1, FieldViewV1,
   Inline, RawUtxo, Whole, authenticated_field_view, chunk_bytes_k,
   empty_field_commitment, encode_field_array_header, encode_field_preimage,
-  field_commitment, field_commitment_from_items, field_item_at,
-  field_item_count, field_item_extent, field_preimage_certificate_asset_name,
-  field_read_range, field_stride, field_total_length, hash28_stride,
-  spend_input_stride,
+  field_commitment, field_commitment_from_items, field_item_at, field_item_count,
+  field_item_extent, field_preimage_certificate_asset_name, field_read_range,
+  field_stride, field_total_length, hash28_stride, spend_input_stride,
 }
 
 // ---------------------------------------------------------------------------
@@ -1368,9 +1367,9 @@ fn miscounted_over_k_preimage(field_index: Int) -> ByteArray {
 }
 
 test tier_three_fixed_stride_count_ignores_a_miscounted_header() {
-  field_item_count(
-    two_chunk_certified_view(3, miscounted_over_k_preimage(3)),
-  ) == over_k_item_count(3)
+  field_item_count(two_chunk_certified_view(3, miscounted_over_k_preimage(3))) == over_k_item_count(
+    3,
+  )
 }
 
 test tier_one_refuses_that_same_miscounted_header() fail {
@@ -1417,20 +1416,16 @@ test field_carriage_wire_layout_matches_the_offchain_twin() {
     cbor.serialise(Inline { preimage: #"80" }) == #"d8799f4180ff",
     cbor.serialise(RawUtxo { ref_input_index: 3 }) == #"d87a9f03ff",
     cbor.serialise(
-      Certified {
-        cert_ref_input_index: 1,
-        chunk_ref_input_indices: [2, 3],
-      },
+      Certified { cert_ref_input_index: 1, chunk_ref_input_indices: [2, 3] },
     ) == #"d87b9f019f0203ffff",
   }
 }
 
 test field_view_wire_layout_matches_the_offchain_twin() {
-  let chunked_wire =
-    bytearray.concat(
-      #"d87a9f9f4180ff9f5820abababababababababababababababababababababababababababababababab",
-      #"ff0000ff",
-    )
+  let chunked_wire = bytearray.concat(
+    #"d87a9f9f4180ff9f5820abababababababababababababababababababababababababababababababab",
+    #"ff0000ff",
+  )
   and {
     cbor.serialise(Whole { bytes: #"80", count: 0, stride: 40 }) == #"d8799f4180001828ff",
     cbor.serialise(

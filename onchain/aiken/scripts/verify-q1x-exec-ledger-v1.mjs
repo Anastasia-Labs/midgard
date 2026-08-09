@@ -20,7 +20,11 @@
  * **What is checked.**
  *
  *   1. Every raw row matches to the unit, at the GOAL_SPEC §3.3 declared basis
- *      of 13,200,000 memory units.
+ *      of 13,200,000 memory units — taken from
+ *      `exec-ledger-within-basis-v1.mjs`'s exported constant, never from the
+ *      ledger being judged, and the ledger's own `basis` block is checked
+ *      against it. A basis read out of the hand-edited file whose verdicts it
+ *      decides is not a basis. The run must also have measured at least one row.
  *   2. Every derived figure is the subtraction it claims to be. A control row
  *      and a measured row that both drifted by the same amount would leave the
  *      delta right and the readings wrong.
@@ -100,6 +104,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { measureModule } from "./exec-ledger-measure-v1.mjs";
+import { GOAL_SPEC_EXECUTION_BASIS_V1 } from "./exec-ledger-within-basis-v1.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const ledgerPath = resolve(scriptDirectory, "native-tx-q1x-exec-ledger-v1.json");
@@ -219,8 +224,40 @@ for (const derived of ledger.derived ?? []) {
 // control row exists precisely so the harness can be subtracted out; asserting
 // the basis against the raw row would be asserting it against a number the
 // validator is not responsible for.
-const basisMemory = ledger.basis.memoryUnits;
-const basisCpu = ledger.basis.cpuUnits;
+//
+// The basis is a constant of the *program*, not a number read out of the file
+// whose judgements it validates. Read from the ledger — as this file did until
+// #577's round-2 review — raising `basis.memoryUnits` in
+// `native-tx-q1x-exec-ledger-v1.json` makes every `fits` verdict below vacuous
+// while this gate stays green, which is the gate-that-cannot-fail shape of
+// #519/#523 dressed as a data-driven check. So the constant is the authority and
+// the ledger's own declaration is checked against it.
+const basisMemory = GOAL_SPEC_EXECUTION_BASIS_V1.memoryUnits;
+const basisCpu = GOAL_SPEC_EXECUTION_BASIS_V1.cpuUnits;
+if (
+  ledger.basis?.memoryUnits !== basisMemory ||
+  ledger.basis?.cpuUnits !== basisCpu
+) {
+  fail(
+    `ledger basis mem=${String(ledger.basis?.memoryUnits)} cpu=${String(ledger.basis?.cpuUnits)} ` +
+      `is not the GOAL_SPEC §3.3 basis this lane is judged at, mem=${String(basisMemory)} ` +
+      `cpu=${String(basisCpu)}`,
+  );
+}
+
+// And a run that judged nothing is a run that passed for free. The per-module
+// selector guard cannot see it: a ledger with no modules has no module to guard.
+// The `derived` checks below already refuse most of this shape by name, but they
+// do so as a side effect of a claim's rows not resolving, which is a confusing
+// way to report "this ledger measured nothing" — and it would stop being true
+// the moment a derived block ever became optional.
+if (measured.size === 0) {
+  fail(
+    "the ledger produced no measured rows at all — an execution pin that " +
+      "measures nothing passes for free",
+  );
+}
+
 const derivedByClaim = new Map(
   (ledger.derived ?? []).map((entry) => [entry.claim, entry]),
 );
@@ -417,7 +454,10 @@ process.stdout.write(
   `${JSON.stringify(
     {
       status: "pass",
-      basis: ledger.basis,
+      // The authoritative pair, not the ledger's `basis` block: that block
+      // carries a paragraph of provenance prose, and echoing the number this
+      // run actually judged against is the point of printing it at all.
+      basis: { memoryUnits: basisMemory, cpuUnits: basisCpu },
       rows: measured.size,
       derived: (ledger.derived ?? []).length,
       q1xF6:

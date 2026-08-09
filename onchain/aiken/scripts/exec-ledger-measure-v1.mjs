@@ -3,13 +3,15 @@
 /**
  * The one way an execution ledger takes a reading.
  *
- * Two ledgers pin execution units in this tree — `verify-carriage-exec-ledger-v1.mjs`
- * (the #574 Phase-4 §8 carriage rows) and `verify-q1x-exec-ledger-v1.mjs` (the
- * #575 Q1x family rows) — and what they assert about their numbers differs a
- * lot. How they *obtain* a number must not: a reading taken two ways is two
- * measurements, and the whole point of pinning to the unit is that the pin and
- * the re-take mean the same thing. This module is that shared half, and it is
- * the only part of the two verifiers that was ever byte-identical.
+ * Four ledgers pin execution units in this tree — `verify-carriage-exec-ledger-v1.mjs`
+ * (the #574 Phase-4 §8 carriage rows), `verify-q1x-exec-ledger-v1.mjs` (the
+ * #575 Q1x family rows), and the two within-basis lanes #576 (Q31) and #577
+ * (Q21), which judge through `exec-ledger-within-basis-v1.mjs`. What they
+ * assert about their numbers differs a lot. How they *obtain* a number must
+ * not: a reading taken two ways is two measurements, and the whole point of
+ * pinning to the unit is that the pin and the re-take mean the same thing.
+ * This module is that shared half, and it is the only part of the verifiers
+ * that was ever byte-identical.
  *
  * Readings are taken through `run-focused-check.mjs` rather than by spawning
  * Aiken directly. That script already asserts the collected module is the one

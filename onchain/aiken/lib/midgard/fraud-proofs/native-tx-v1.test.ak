@@ -121,11 +121,10 @@ fn c20_verified(
   witness_set: NativeTxWitnessSetCompact,
 ) -> VerifiedMidgardNativeTxCompact {
   let witness_set_cbor = encode_native_tx_witness_set_compact(witness_set)
-  let compact =
-    NativeTxCompact {
-      ..sample_compact(),
-      witness_set_hash: blake2b_256(witness_set_cbor),
-    }
+  let compact = NativeTxCompact {
+    ..sample_compact(),
+    witness_set_hash: blake2b_256(witness_set_cbor),
+  }
   VerifiedMidgardNativeTxCompact {
     tx_id: native_tx_id_for_version(
       native_tx_version_v1,
@@ -150,17 +149,15 @@ fn c20_item_at(
   field_index: Int,
   item: ByteArray,
 ) -> ByteArray {
-  let preimage =
-    native_tx_field_access_v1.encode_field_preimage([item])
-  let Pair(view, start) =
-    native_tx_machine_walk_v1.open_field_walk(
-      c20_verified(witness_set),
-      witness_set,
-      field_index,
-      native_tx_field_access_v1.Inline { preimage },
-      [],
-      zero_28,
-    )
+  let preimage = native_tx_field_access_v1.encode_field_preimage([item])
+  let Pair(view, start) = native_tx_machine_walk_v1.open_field_walk(
+    c20_verified(witness_set),
+    witness_set,
+    field_index,
+    native_tx_field_access_v1.Inline { preimage },
+    [],
+    zero_28,
+  )
   let Pair(read_back, done) = native_tx_machine_walk_v1.walk_next(view, start)
   expect native_tx_machine_walk_v1.walk_is_complete(done)
   read_back
@@ -393,7 +390,8 @@ fn c20_wide_script_item() -> ByteArray {
   )
 }
 
-const zero_28: ByteArray = #"00000000000000000000000000000000000000000000000000000000"
+const zero_28: ByteArray =
+  #"00000000000000000000000000000000000000000000000000000000"
 
 /// **Rebound to the flat scheme by #570.** The ABI half of this vector — the
 /// witness-set tuple order and the field-length directory — is unchanged and
@@ -403,32 +401,36 @@ const zero_28: ByteArray = #"000000000000000000000000000000000000000000000000000
 /// against their own positionally-extracted hash, and each item reads back
 /// byte-identically.
 test v1_c20_6_c20_7_field_directory_and_witness_tuple_are_exact() {
-  let witness_set =
-    c20_witness_set(c20_script_item, c20_address_item, c20_redeemer_hash)
+  let witness_set = c20_witness_set(
+    c20_script_item,
+    c20_address_item,
+    c20_redeemer_hash,
+  )
   let witness_set_cbor = encode_native_tx_witness_set_compact(witness_set)
-  let lengths =
-    NativeTxFieldPreimageLengthsV1 {
-      spend_inputs: 0,
-      reference_inputs: 0,
-      outputs: 0,
-      required_observers: 0,
-      required_signers: 0,
-      mint: 0,
-      address_witnesses: 7,
-      script_witnesses: 6,
-      redeemers: 8,
-    }
+  let lengths = NativeTxFieldPreimageLengthsV1 {
+    spend_inputs: 0,
+    reference_inputs: 0,
+    outputs: 0,
+    required_observers: 0,
+    required_signers: 0,
+    mint: 0,
+    address_witnesses: 7,
+    script_witnesses: 6,
+    redeemers: 8,
+  }
   let lengths_cbor = encode_native_tx_field_preimage_lengths_v1(lengths)
   let decoded_lengths = decode_native_tx_field_preimage_lengths_v1(lengths_cbor)
-  let expected_witness_set_cbor =
-    #"835820"
-      |> bytearray.concat(witness_set.addr_tx_wits_hash)
-      |> bytearray.concat(#"5820")
-      |> bytearray.concat(witness_set.script_tx_wits_hash)
-      |> bytearray.concat(#"5820")
-      |> bytearray.concat(c20_redeemer_hash)
-  let wide_witness_set =
-    c20_witness_set(c20_wide_script_item(), c20_address_item, c20_redeemer_hash)
+  let expected_witness_set_cbor = #"835820"
+    |> bytearray.concat(witness_set.addr_tx_wits_hash)
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(witness_set.script_tx_wits_hash)
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(c20_redeemer_hash)
+  let wide_witness_set = c20_witness_set(
+    c20_wide_script_item(),
+    c20_address_item,
+    c20_redeemer_hash,
+  )
 
   and {
     // The named witness-set tuple ABI remains [address, script, redeemer].
@@ -459,8 +461,11 @@ test v1_c20_6_c20_7_field_directory_and_witness_tuple_are_exact() {
 /// against `script_tx_wits_hash` and fails — no counted proof required, and no
 /// way to spend a field-7 opening on a field-6 rule.
 test v1_c20_address_item_does_not_open_as_field_6() fail {
-  let witness_set =
-    c20_witness_set(c20_script_item, c20_address_item, c20_redeemer_hash)
+  let witness_set = c20_witness_set(
+    c20_script_item,
+    c20_address_item,
+    c20_redeemer_hash,
+  )
   c20_item_at(witness_set, 6, c20_address_item) == c20_address_item
 }
 
@@ -472,8 +477,11 @@ test v1_c20_address_item_does_not_open_as_field_6() fail {
 /// refused only because `field_commitment` of its preimage is not
 /// `addr_tx_wits_hash`.
 test v1_c20_script_item_does_not_open_as_field_7() fail {
-  let witness_set =
-    c20_witness_set(c20_wide_script_item(), c20_address_item, c20_redeemer_hash)
+  let witness_set = c20_witness_set(
+    c20_wide_script_item(),
+    c20_address_item,
+    c20_redeemer_hash,
+  )
   c20_item_at(witness_set, 7, c20_wide_script_item()) == c20_wide_script_item()
 }
 

@@ -32,6 +32,13 @@
  *      rows could be a measurement of something that returns `True` for
  *      anything.
  *
+ * Two conditions sit underneath all three, and neither is data the ledger gets
+ * to supply about itself: the basis the read budget is computed against is
+ * `exec-ledger-within-basis-v1.mjs`'s exported GOAL_SPEC §3.3 constant rather
+ * than a number read out of this ledger, and the run must have measured at
+ * least one row. A basis read from the file being judged, or a pin that
+ * measured nothing, is a gate that cannot fail (#519, #523).
+ *
  * Usage, from `onchain/aiken/`:
  *
  *   MIDGARD_AIKEN_BIN=<fork> node scripts/verify-carriage-exec-ledger-v1.mjs
@@ -52,6 +59,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { measureModule } from "./exec-ledger-measure-v1.mjs";
+import { GOAL_SPEC_EXECUTION_BASIS_V1 } from "./exec-ledger-within-basis-v1.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const ledgerPath = resolve(
@@ -137,6 +145,40 @@ for (const derived of ledger.derived) {
   }
 }
 
+// The basis the read budget is computed against is a constant of the *program*,
+// not a number read out of the file whose figures it validates. Read from the
+// ledger — as this file did until #577's round-2 review — raising
+// `basis.memoryUnits` in `native-tx-carriage-exec-ledger-v1.json` moves the
+// published per-step read budget without any gate noticing, which is the
+// gate-that-cannot-fail shape of #519/#523 dressed as a data-driven check. So
+// the constant is the authority and the ledger's own declaration is checked
+// against it.
+const basisMemory = GOAL_SPEC_EXECUTION_BASIS_V1.memoryUnits;
+const basisCpu = GOAL_SPEC_EXECUTION_BASIS_V1.cpuUnits;
+if (
+  ledger.basis?.memoryUnits !== basisMemory ||
+  ledger.basis?.cpuUnits !== basisCpu
+) {
+  fail(
+    `ledger basis mem=${String(ledger.basis?.memoryUnits)} cpu=${String(ledger.basis?.cpuUnits)} ` +
+      `is not the GOAL_SPEC §3.3 basis §8.10 is published at, mem=${String(basisMemory)} ` +
+      `cpu=${String(basisCpu)}`,
+  );
+}
+
+// A run that measured nothing is a run that passed for free. The per-module
+// selector guard cannot see it — a ledger with no modules has no module to
+// guard — and while the `derived` lookups above happen to fail in that state
+// today, they do so as a side effect of a claim's rows not resolving, which is
+// a confusing way to report "this ledger measured nothing" and stops being true
+// the moment `derived` is ever emptied alongside `modules`.
+if (measured.size === 0) {
+  fail(
+    "the ledger produced no measured rows at all — an execution pin that " +
+      "measures nothing passes for free",
+  );
+}
+
 // §8.10 publishes a per-step read budget and names an axis as binding. Both are
 // derived from two of the rows above, so both are checked rather than restated:
 // a re-take that moved the binding axis without moving the prose is exactly the
@@ -149,8 +191,8 @@ const perRead = ledger.derived.find((entry) => entry.claim === budget.perRead);
 if (openCost === undefined || perRead === undefined) {
   fail("read budget references a derived claim that does not exist");
 } else {
-  const byMemory = (ledger.basis.memoryUnits - openCost.mem) / perRead.mem;
-  const byCpu = (ledger.basis.cpuUnits - openCost.cpu) / perRead.cpu;
+  const byMemory = (basisMemory - openCost.mem) / perRead.mem;
+  const byCpu = (basisCpu - openCost.cpu) / perRead.cpu;
   const bindingAxis = byCpu <= byMemory ? "cpu" : "memory";
   const round = (value) => Math.round(value * 100) / 100;
   if (update) {

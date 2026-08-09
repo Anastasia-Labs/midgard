@@ -11,12 +11,21 @@ on:
 
 env:
   # github.com/colll78/aiken, reporting v1.1.23+6d14ab2. Pinned by commit
-  # rather than branch so the toolchain is reproducible. This is the exact
-  # commit every published measurement was taken on: full `aiken check` in
-  # 735.9 s / 819 tests / 0 failures on 4 vCPU, which is the GitHub-hosted
-  # runner size for this public repo. Do not advance this pin without
-  # re-running that measurement — the branch tip (2a78108c) is one clippy
-  # commit ahead and was never validated.
+  # rather than branch so the toolchain is reproducible. The full-suite timing
+  # this pin was chosen on was taken here: `aiken check` in 735.9 s / 819 tests
+  # / 0 failures on 4 vCPU, the GitHub-hosted runner size for this public repo.
+  # Do not advance this pin without re-running that measurement.
+  #
+  # The branch tip is 2a78108c, exactly one commit ahead: `chore: satisfy
+  # clippy 1.97`, whose whole diff is lint idiom across the LSP, blueprint,
+  # telemetry and `tx simulate` paths plus one `Display` helper in
+  # `uplc::flat` — no file under code generation or evaluation is touched.
+  # Some execution-ledger rows in `onchain/aiken/scripts/` were therefore
+  # *taken* on 2a78108 locally rather than on this pin, and the equivalence is
+  # verified rather than only argued: the #574 §8.10 carriage ledger, pinned
+  # under 6d14ab2, re-verifies to the unit under 2a78108. What has NOT been
+  # re-measured on the tip is the wall-clock figure above, which is the reason
+  # the pin has not moved.
   AIKEN_FORK_REV: 6d14ab2dd63633db6a7d626c4ad129d87c0f108c
 
 jobs:
@@ -76,6 +85,32 @@ jobs:
         run: |
           ./scripts/generate-user-events-witness-script-prefix.sh
           git diff --name-only --exit-code onchain/aiken/env/default.ak onchain/aiken/env/testnet.ak
+      # The two guard self-tests run BEFORE the formatter check, and the
+      # position is deliberate. They are the gates that prove the other gates
+      # can fail; they need no compiler, no cache and no toolchain, and they
+      # finish in seconds. Behind the formatter check they were conditional on
+      # it: every step after the first failure is `skipped`, so a formatting
+      # drift in any one of the 408 tracked .ak files took the gate-can-fail
+      # evidence offline along with the suite — which is exactly what had
+      # happened, in nine files, when #577's round-2 review looked. Nothing is
+      # weakened by the move: `aiken fmt` still runs below and still fails the
+      # job, and the steps that genuinely need a compiler still sit after it.
+      #
+      # Issue #523. A focused `aiken check -m <selector>` whose selector matches
+      # nothing prints an empty report and exits 0, so every gate citing it
+      # reports success while running no tests. scripts/guard-focused-selector.mjs
+      # turns that into a nonzero exit naming the selector; its self-test
+      # includes the negative case, and an unguarded guard is worth nothing.
+      - name: Self-test the fail-closed focused-selector guard
+        run: node --test scripts/guard-focused-selector.test.mjs
+      # Issue #577. Same reasoning one level up: the execution-ledger pins below
+      # decide their verdicts in scripts/exec-ledger-within-basis-v1.mjs, so a
+      # ledger that measured nothing, a basis edited away from the one the lane
+      # is judged at, or a `within` row the fresh reading exceeds must all leave
+      # that module returning nonzero. Stubbing the reading source proves it
+      # here, in seconds, without a compile.
+      - name: Self-test the within-basis execution-ledger checker
+        run: node --test scripts/exec-ledger-within-basis-v1.test.mjs
       - name: Run normalized Aiken auto-formatter check
         run: |
           # The two formerly excluded lib files were another task's in-flight
@@ -87,13 +122,6 @@ jobs:
           # Normalize only that formatter artifact before comparing sources.
           git ls-files -z '*.ak' | xargs -0 sed -i 's/[[:space:]]\+$//'
           git diff --name-only --exit-code -- '*.ak'
-      # Issue #523. A focused `aiken check -m <selector>` whose selector matches
-      # nothing prints an empty report and exits 0, so every gate citing it
-      # reports success while running no tests. scripts/guard-focused-selector.mjs
-      # turns that into a nonzero exit naming the selector; its self-test
-      # includes the negative case, and an unguarded guard is worth nothing.
-      - name: Self-test the fail-closed focused-selector guard
-        run: node --test scripts/guard-focused-selector.test.mjs
       # Type/compile check with the released authority compiler, then execute
       # the suite with the patched one. Both must pass.
       - name: Compile Aiken code with the released compiler
@@ -125,6 +153,26 @@ jobs:
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
         run: node scripts/verify-q1x-exec-ledger-v1.mjs
+      # Issue #576, the Q31 reference-input-no-idx lane. Its ledger was written
+      # with a verifier and no step, so nothing ran it: the lane's exit
+      # criterion existed as a file. All four ledgers in scripts/ are pinned
+      # here now, on the same terms, so "which ledgers are enforced" stops being
+      # a per-lane accident.
+      - name: Pin the Q31 reference-input-no-idx family execution ledger
+        env:
+          MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
+        run: node scripts/verify-q31-exec-ledger-v1.mjs
+      # Issue #577, the Q21 transition-trace lane of the same wave. Pinned here
+      # for the reason the three steps above are, plus one specific to this
+      # lane: its two rebound call sites moved in opposite directions — the
+      # forced-order path got cheaper, the two-field L2 path got dearer because
+      # opening two fields re-derives the transaction id twice over. A
+      # regression that is understood and accepted still has to be held to the
+      # number it was accepted at, and only a step that runs can do that.
+      - name: Pin the Q21 transition-trace family execution ledger
+        env:
+          MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
+        run: node scripts/verify-q21-exec-ledger-v1.mjs
       # Issue #521. The released compiler keys generated expect-decoders by
       # local type name only, so two same-named types in different modules
       # share one decoder and the shipped blueprint silently gets a decoder

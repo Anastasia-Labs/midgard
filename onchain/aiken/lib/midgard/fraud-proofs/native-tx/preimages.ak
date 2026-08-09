@@ -116,10 +116,7 @@ pub fn encode_redeemer_witness_preimage(
 pub fn decode_midgard_tx_byte_list_preimage_cbor(
   preimage_cbor: ByteArray,
 ) -> List<ByteArray> {
-  let Pair(offset, item_count) = decode_field_array_header_at(
-    preimage_cbor,
-    0,
-  )
+  let Pair(offset, item_count) = decode_field_array_header_at(preimage_cbor, 0)
   let Pair(offset, items) = decode_byte_items_at(
     preimage_cbor,
     offset,
@@ -280,10 +277,7 @@ fn decode_redeemer_witness_items_at(
 pub fn decode_midgard_tx_inputs_preimage_cbor(
   preimage_cbor: ByteArray,
 ) -> List<MidgardTxInput> {
-  let Pair(offset, item_count) = decode_field_array_header_at(
-    preimage_cbor,
-    0,
-  )
+  let Pair(offset, item_count) = decode_field_array_header_at(preimage_cbor, 0)
   let Pair(offset, inputs) = decode_input_cbor_items_at(
     preimage_cbor,
     offset,
@@ -296,10 +290,7 @@ pub fn decode_midgard_tx_inputs_preimage_cbor(
 pub fn decode_midgard_tx_outputs_preimage_cbor(
   preimage_cbor: ByteArray,
 ) -> List<MidgardTxOutput> {
-  let Pair(offset, item_count) = decode_field_array_header_at(
-    preimage_cbor,
-    0,
-  )
+  let Pair(offset, item_count) = decode_field_array_header_at(preimage_cbor, 0)
   let Pair(offset, outputs) = decode_output_cbor_items_at(
     preimage_cbor,
     offset,
@@ -312,10 +303,7 @@ pub fn decode_midgard_tx_outputs_preimage_cbor(
 pub fn decode_midgard_tx_address_witnesses_preimage_cbor(
   preimage_cbor: ByteArray,
 ) -> List<MidgardAddressWitness> {
-  let Pair(offset, item_count) = decode_field_array_header_at(
-    preimage_cbor,
-    0,
-  )
+  let Pair(offset, item_count) = decode_field_array_header_at(preimage_cbor, 0)
   let Pair(offset, witnesses) = decode_address_witness_cbor_items_at(
     preimage_cbor,
     offset,
@@ -328,10 +316,7 @@ pub fn decode_midgard_tx_address_witnesses_preimage_cbor(
 pub fn decode_midgard_tx_script_witnesses_preimage_cbor(
   preimage_cbor: ByteArray,
 ) -> List<MidgardScriptWitness> {
-  let Pair(offset, item_count) = decode_field_array_header_at(
-    preimage_cbor,
-    0,
-  )
+  let Pair(offset, item_count) = decode_field_array_header_at(preimage_cbor, 0)
   let Pair(offset, witnesses) = decode_script_items_at(
     preimage_cbor,
     offset,
@@ -344,10 +329,7 @@ pub fn decode_midgard_tx_script_witnesses_preimage_cbor(
 pub fn decode_midgard_tx_redeemer_witnesses_preimage_cbor(
   preimage_cbor: ByteArray,
 ) -> List<MidgardRedeemerWitness> {
-  let Pair(offset, item_count) = decode_field_array_header_at(
-    preimage_cbor,
-    0,
-  )
+  let Pair(offset, item_count) = decode_field_array_header_at(preimage_cbor, 0)
   let Pair(offset, witnesses) = decode_redeemer_witness_items_at(
     preimage_cbor,
     offset,
@@ -465,10 +447,7 @@ pub fn encode_mint_preimage(mint: Data) -> ByteArray {
 /// widths, non-empty policies and non-zero quantities are all checked on the
 /// way through, so a decoded mint is a canonical mint.
 pub fn decode_midgard_tx_mint_preimage_cbor(preimage_cbor: ByteArray) -> Data {
-  let Pair(offset, item_count) = decode_field_array_header_at(
-    preimage_cbor,
-    0,
-  )
+  let Pair(offset, item_count) = decode_field_array_header_at(preimage_cbor, 0)
   let Pair(offset, policy_pairs) = decode_mint_policy_items_at(
     preimage_cbor,
     offset,
@@ -669,10 +648,7 @@ pub fn verify_canonical_mint_preimage_cbor(
   expected_hash: ByteArray,
 ) -> Bool {
   expect field_commitment(preimage_cbor) == expected_hash
-  let Pair(offset, item_count) = decode_field_array_header_at(
-    preimage_cbor,
-    0,
-  )
+  let Pair(offset, item_count) = decode_field_array_header_at(preimage_cbor, 0)
   verify_canonical_mint_items_at(preimage_cbor, offset, item_count, None) == bytearray.length(
     preimage_cbor,
   )
