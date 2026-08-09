@@ -77,7 +77,8 @@ use midgard/native_tx_machine_walk_v1.{
   FieldWalkCheckpointV1, encode_field_walk_checkpoint,
   field_walk_checkpoint_bytes, field_walk_checkpoint_hash, open_field_walk,
   resume_field_walk_from_commitment, spend_input_at, spend_input_count,
-  walk_fold, walk_is_complete, walk_next, walk_remaining, walk_skip,
+  walk_field_index, walk_fold, walk_is_complete, walk_next,
+  walk_next_item_index, walk_remaining, walk_skip, walk_tx_id,
 }
 
 // ---------------------------------------------------------------------------
@@ -1589,4 +1590,97 @@ test tier_three_variable_width_field_cannot_be_walked() fail {
     )
   let Pair(_view, _start) = open_certified(6, preimage)
   True
+}
+
+// ---------------------------------------------------------------------------
+// §10.4 the checkpoint's readers
+//
+// `walk_field_index`, `walk_next_item_index` and `walk_tx_id` are the three
+// scalars a consumer may read out of an opaque position. §12's adjudications
+// bind accusations with all three, so each is pinned here against a value the
+// suite already knows independently — the slot the fixture was opened over, the
+// count the walk has consumed, and the transaction the door authenticated —
+// rather than against another call to the same accessor.
+// ---------------------------------------------------------------------------
+
+/// The field index is the slot the walk was *opened* over, and it survives
+/// advancing: a fold that consumed five items is still a walk over field 6.
+///
+/// Fields 0 and 1 alias on identical content under §4's plain hashing, which is
+/// what makes this reader load-bearing rather than cosmetic — so the same
+/// preimage is opened over both slots and the accessor is required to tell them
+/// apart when nothing else can.
+test walk_field_index_reports_the_slot_the_walk_was_opened_over() {
+  let preimage = walk_preimage()
+  let Pair(view, start) = open_inline(6, preimage)
+  let Pair(_state, advanced) = walk_fold(view, start, 5, 0, tally)
+  let inputs = spend_input_preimage()
+  let Pair(_spend_view, spend_start) = open_inline(0, inputs)
+  let Pair(_reference_view, reference_start) = open_inline(1, inputs)
+  and {
+    walk_field_index(start) == 6,
+    walk_field_index(advanced) == 6,
+    // Same bytes, same commitment, two slots — and only the checkpoint knows.
+    walk_field_index(spend_start) == 0,
+    walk_field_index(reference_start) == 1,
+  }
+}
+
+/// The next-item index counts what the walk has consumed: `0` at the start, one
+/// per `walk_next`, `n` after a fold of `n`, and the item count once complete.
+/// `walk_remaining` is its complement, and the two are required to agree.
+test walk_next_item_index_counts_the_items_consumed() {
+  let preimage = walk_preimage()
+  let Pair(view, start) = open_inline(6, preimage)
+  let Pair(_item, after_one) = walk_next(view, start)
+  let Pair(_state, after_fold) = walk_fold(view, after_one, 4, 0, tally)
+  let relocated = walk_skip(view, after_fold, 3)
+  let Pair(_rest, finished) =
+    walk_fold(view, relocated, walk_field_item_count - 8, 0, tally)
+  and {
+    walk_next_item_index(start) == 0,
+    walk_next_item_index(after_one) == 1,
+    walk_next_item_index(after_fold) == 5,
+    // Relocation moves the index without reading the items it passes.
+    walk_next_item_index(relocated) == 8,
+    walk_next_item_index(finished) == walk_field_item_count,
+    walk_is_complete(finished),
+    walk_remaining(after_fold) == walk_field_item_count - 5,
+    walk_remaining(after_fold) == walk_field_item_count - walk_next_item_index(
+      after_fold,
+    ),
+  }
+}
+
+/// The tx id is the one the §8.8 door authenticated against, and it survives
+/// advancing and a commitment resume — including a resume that changes carriage
+/// tier, since the transaction is the same one either way.
+///
+/// Two transactions carrying the *same* field bytes are opened, so the accessor
+/// cannot be reporting anything derived from the preimage.
+test walk_tx_id_reports_the_authenticated_transaction() {
+  let preimage = walk_preimage()
+  let Pair(view, start) = open_inline(6, preimage)
+  let Pair(_state, paused) = walk_fold(view, start, 5, 0, tally)
+  let Pair(_other_view, other_start) =
+    open(other_tx_id, 6, preimage, Inline { preimage }, [])
+  let Pair(verified, witness_set) = source(sample_tx_id, 6, preimage)
+  let Pair(_resumed_view, resumed) =
+    resume_field_walk_from_commitment(
+      verified,
+      witness_set,
+      field_walk_checkpoint_hash(paused),
+      encode_field_walk_checkpoint(paused),
+      Inline { preimage },
+      [],
+      certificate_policy_id,
+    )
+  and {
+    walk_tx_id(start) == sample_tx_id,
+    walk_tx_id(paused) == sample_tx_id,
+    walk_tx_id(resumed) == sample_tx_id,
+    // Same bytes, different transaction — the position says which.
+    walk_tx_id(other_start) == other_tx_id,
+    other_tx_id != sample_tx_id,
+  }
 }

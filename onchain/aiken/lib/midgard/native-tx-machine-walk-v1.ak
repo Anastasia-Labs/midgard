@@ -339,6 +339,43 @@ pub fn walk_remaining(checkpoint: FieldWalkCheckpointV1) -> Int {
   checkpoint.item_count - checkpoint.next_item_index
 }
 
+/// Which of §2.5's nine slots this walk is over.
+///
+/// A reader, not a route in: §10.6's clause withholds the *constructor* and the
+/// decoder, because those turn caller-chosen data into a position. Reading a
+/// scalar out of a position a caller already holds grants nothing — the position
+/// was derived, advanced, or commitment-resumed to get there — and a consumer
+/// that cannot ask has to carry the field index alongside the checkpoint, which
+/// is a second copy of a fact the checkpoint exists to hold. §12's fault
+/// statements ask, so that a statement about field 0 cannot be adjudicated
+/// against a walk over field 1: §4's plain hashing removed field-index domain
+/// separation, so nothing else would notice.
+pub fn walk_field_index(checkpoint: FieldWalkCheckpointV1) -> Int {
+  checkpoint.field_index
+}
+
+/// The index of the item this walk will read next — items
+/// `[0, walk_next_item_index)` are done.
+pub fn walk_next_item_index(checkpoint: FieldWalkCheckpointV1) -> Int {
+  checkpoint.next_item_index
+}
+
+/// The L2 transaction this walk is over.
+///
+/// `walk_field_index`'s reasoning, one axis over: the field index says *which
+/// slot*, this says *whose*. Both were set from the tx-id-verified compact
+/// structures at open (`open_field_walk`) or re-checked against them at resume
+/// (`resume_field_walk`), so what comes back is the transaction the door
+/// authenticated and not a caller's assertion about it.
+///
+/// §12's adjudications ask, so that an accusation is bound to the transaction
+/// it accuses: without this a fault statement is a claim about *some* field of
+/// *some* transaction, and the same bytes would prove against any transaction
+/// whose field happened to hold a matching item.
+pub fn walk_tx_id(checkpoint: FieldWalkCheckpointV1) -> ByteArray {
+  checkpoint.tx_id
+}
+
 /// The item the checkpoint points at, plus the checkpoint one past it.
 ///
 /// This is the walk's single step and the only place a position advances. It

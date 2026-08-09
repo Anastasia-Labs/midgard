@@ -238,6 +238,19 @@ fn scan_policy_groups(
   }
 }
 
+/// §5.5's asset map, scanned as part of the structural pass over one output.
+///
+/// **Why §12.4's `scan_mint_assets` is a separate reader** and not this one
+/// re-used: §5.5 and §5.6 spell asset maps alike but do not agree on what they
+/// contain. A value quantity here is strictly *positive*; a mint quantity there
+/// is a signed `int` whose only forbidden value is zero, because §5.6 admits
+/// burns. And this scan runs over every group of the item as part of the
+/// bookmark's one-pass validation, where that one is entered only for the single
+/// group a §12.4 sweep matched. Folding the two together would mean one reader
+/// parameterised by which sign rule to apply and by who owns the cursor — one
+/// function holding two verdicts about two grammars, which is the shape §6.1
+/// exists to keep out. The divergence is recorded at both sites so neither can
+/// drift into the other by looking similar.
 fn scan_assets(
   item: ByteArray,
   offset: Int,
@@ -249,10 +262,12 @@ fn scan_assets(
     offset
   } else {
     let Pair(after_name, name_length) = head_at(item, offset, 2)
+    // §5.3 — an asset name is at most 32 bytes.
     expect name_length <= max_asset_name_bytes
     let asset_name = slice_exact(item, after_name, name_length)
-    // The empty asset name is legal, so "have we seen one yet" cannot be
-    // inferred from `previous_name` and is carried explicitly.
+    // §5.5 — keys strictly increase inside a group. `seen_any` rather than an
+    // empty `previous_name`, because §5.3 admits the empty asset name and it
+    // would otherwise be indistinguishable from "no predecessor".
     expect or {
         !seen_any,
         canonical_key_precedes_v1(previous_name, asset_name),

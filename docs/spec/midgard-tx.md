@@ -14,7 +14,8 @@
 - **Last reviewed:** 2026-08-08 (initial authoring, Phase 0 of the flat
   reversion program; §10 added in Phase 3 by
   [#570](https://github.com/Anastasia-Labs/midgard/issues/570), §11 by
-  [#571](https://github.com/Anastasia-Labs/midgard/issues/571)).
+  [#571](https://github.com/Anastasia-Labs/midgard/issues/571), §12 by
+  [#572](https://github.com/Anastasia-Labs/midgard/issues/572)).
 - **Version:** `native_tx_version_v1 = 1`. Pre-launch, this format replaces
   the counted bounded-collection commitment scheme in place (GOAL_SPEC §3
   invariant 13); there is no compatibility path to the retired scheme.
@@ -38,18 +39,22 @@ This document defines, for canonical V1:
 6. the mandatory access invariants every consumer of the nine commitments
    observes (§7);
 7. the three-tier publication-carriage convention for field preimages (§8);
-8. the resumable walk and its checkpoint encoding (§10); and
+8. the resumable walk and its checkpoint encoding (§10);
 9. intra-item access — the Value bookmark, the Canonical-Data Acceptor, and
-   the native-script checkpointable pushdown (§11).
+   the native-script checkpointable pushdown (§11); and
+10. witness-minimal fault statements, including per-asset conservation (§12).
 
 **Nothing in this document is deferred.** §10 (resumable walk and checkpoints)
-landed with [#570](https://github.com/Anastasia-Labs/midgard/issues/570) and
-§11 (intra-item access) with
-[#571](https://github.com/Anastasia-Labs/midgard/issues/571); documents that
-bind either by reference — `GOAL_SPEC.md` §3.1(2) — now name a definition
-rather than a note. §7 continues to govern every consumer of the nine
-commitments, and §11 is the layer below it: §7 and §10 reach one item's bytes,
-and §11 says what a rule may do inside them.
+landed with [#570](https://github.com/Anastasia-Labs/midgard/issues/570), §11
+(intra-item access) with
+[#571](https://github.com/Anastasia-Labs/midgard/issues/571) and §12 (fault
+statements) with
+[#572](https://github.com/Anastasia-Labs/midgard/issues/572); documents that
+bind any of them by reference — `GOAL_SPEC.md` §3.1(2) — now name a definition
+rather than a note. The four sections stack: §7 governs every consumer of the
+nine commitments, §10 reaches one item's bytes and carries the place between
+transactions, §11 says what a rule may do inside those bytes, and §12 says what
+a challenger may claim from what it found there.
 
 Byte strings are written in hex (`82`, `58 20 …`). `array(n)`, `map(n)`,
 `bytes(n)`, `uint`, `int` denote definite-length canonical CBOR heads:
@@ -739,6 +744,16 @@ are prohibited in new surface.
    forms stay canonical while the materialisation path declines them; and a
    §11.1 implementation MUST NOT answer "absent" without both halves of §11.1's
    evidence — the structural pass and the monotone floor — in place.
+7. §12's fault statements are held to items 4, 5 and 6 on the same terms:
+   §12.6 is their guard table and §12.5 is their measured report. Three
+   §12-specific conditions join them. A statement MUST NOT carry preimage
+   content, and the implementation MUST make that checkable rather than
+   conventional — the wire length is a function of the named unit alone, and
+   two statements about one logical fault over content-disjoint preimages
+   serialise identically. A per-asset statement MUST name exactly one unit and
+   its adjudication MUST read only that unit. And an adjudication MUST re-run
+   the per-code shape rule: §12.1's type is deliberately public, so a statement
+   may reach it without having passed through the §12.2 decoder.
 
 ## 10. The resumable walk and its checkpoints
 
@@ -1521,3 +1536,470 @@ Both families are kept rather than deleted for the reason §7.3 gives: the
 failure that replaces a stated bound is a machine error with nothing
 attributable said — a three-byte wire scalar handed a wider number fails inside
 the integer-to-bytes builtin, and a fraud proof cannot cite that.
+
+## 12. Fault statements
+
+Normative for the dispute machine. §10 says how a consumer reaches one item's
+bytes and carries its place between transactions; §11 says what a rule may do
+inside them. This section says what a challenger **claims**, and it exists
+because the two layers below it make a much smaller claim possible than the
+counted scheme did.
+
+The reference implementation is
+`onchain/aiken/lib/midgard/native-tx-fault-statement-v1.ak`, and its seam suite
+is the same path with `.test.ak`.
+
+### 12.1 What a statement is
+
+A **fault statement** names one wrong thing about one transaction. It carries:
+
+- `tx_id`, `field_index` and `item_index` — the **address** of the fault, for
+  the fault kind that has one;
+- for a per-asset fault, exactly one `(policy_id, asset_name)` unit, which is
+  that kind's whole address; and
+- `claimed`, the quantity the operator committed, for the arithmetic to
+  disagree with.
+
+It carries **no preimage bytes**, and that is the whole of witness minimality
+here. The fraudulent item's bytes reach the adjudication from the authenticated
+`FieldViewV1` — through §10's walk, which read them from bytes the §8.8 door
+had already hashed against the positionally-extracted field commitment (§7.1).
+A step therefore pays the authenticate-once check for the fields it touches and
+**nothing beyond it**: there is no re-supply of the field, of the item, or of
+any digest over either.
+
+The property is structural rather than conventional, and it is checkable. A
+statement's wire length is `fault_statement_frame_bytes` plus the two name
+encodings and nothing else, so it is a function of the **named unit** alone;
+the `fault_item_predicate` form names no unit and is therefore a constant 55
+bytes whatever the field holds. And a single statement's wire bytes adjudicate
+the same logical fault in **two transactions that share no item at any index**,
+proving against both — which a witness carrying the fraudulent item could not
+do, since the item it carried would be wrong for one of the two. The seam suite
+runs exactly that, from one encoding decoded twice, rather than claiming it.
+
+**A statement is an accusation, not state, and its type is public.** §10.6
+withholds `FieldWalkCheckpointV1`'s constructor because a caller that could
+write a position would be reading authenticated bytes at an offset nobody
+checked. A statement is the opposite: an accusation anybody may write is what a
+permissionless dispute game needs, and nothing here is believed because it was
+stated. The §12.3/§12.4 adjudications hold a statement against authenticated
+bytes, and a false accusation simply fails to prove. An implementation that made
+this type opaque would restrict who can accuse without making any accusation
+safer.
+
+**One statement, one accusation.** The per-code shape rule is normative: a
+`fault_item_predicate` statement MUST carry no unit and no claimed quantity, and
+a `fault_asset_conservation` statement MUST carry a full 28-byte policy id and
+an asset name of at most 32 bytes. A statement carrying both a bad item and a
+unit would be two accusations in one witness, and a refusal could not be
+attributed to either.
+
+**Every scalar a code does not use has exactly one spelling**, and this is
+normative for the same reason, one turn further. §12.4 reads fields 2 and 5 from
+item 0 of each and consults the statement's own `field_index` and `item_index`
+for nothing, so a `fault_asset_conservation` statement MUST carry
+`field_index = 2` and `item_index = 0`. Left free they would be bytes that enter
+`statement_hash` without entering any verdict: two statements differing only
+there would be two distinct thread commitments that adjudicate identically off
+the same evidence, which is a statement that does not say what it commits to.
+The rule is enforced by the encoder **and** re-run at adjudication, because a
+statement is a plain type a challenger may write by hand.
+
+### 12.2 Statement wire form
+
+```
+87
+  58 20 ‖ tx_id(32)
+  41    ‖ code(1)
+  41    ‖ field_index(1)
+  43    ‖ item_index(3, big-endian)
+  bytes(policy_id)      -- minimal-width §5.1 head; `40` when absent
+  bytes(asset_name)     -- minimal-width §5.1 head; `40` when absent
+  49    ‖ sign(1) ‖ magnitude(8, big-endian)
+```
+
+Seven elements, so the head is `87` — a requirement rather than a formality, for
+§11.3's reason: §7.6's carried state is a **wire** form, and an off-chain twin
+has to be able to decode it.
+
+`claimed` is signed where every quantity in this format is not, so it travels as
+a sign byte (`00`/`01`) and an eight-byte magnitude rather than as a CBOR `int`:
+two's complement would spend a ninth byte to say the same thing, and a CBOR
+`int` would be variable-width, which is the one property this form exists to
+deny. Decoding is fail-closed and canonical in the §6.1 sense — the decoder
+re-encodes what it read and requires the input back, which is simultaneously the
+canonicity check, the range check **and** the per-code shape check.
+
+The thread-carried commitment is
+
+```
+statement_hash = blake2b_256("MidgardNativeTxFaultStatementV1" ‖ statement_wire)
+```
+
+with the domain string as raw ASCII bytes. New surface: it reuses none of §4's
+prohibited counted-scheme domains and neither §10.3's nor §11.3's.
+
+### 12.3 Proving a single bad item
+
+`prove_item_fault` adjudicates a `fault_item_predicate` statement: is the item
+at `item_index` of `field_index` one the caller's predicate refuses?
+
+**Exactly one item is read.** The walk relocates to the named index — one
+multiplication on a fixed-stride field (§10.5), a walk on a variable-width one —
+and one `walk_next` reads that item. The returned checkpoint sits one past the
+accused index, so "exactly one item was consumed" is observable at the seam
+rather than argued, and an adjudication that runs out of budget composes with
+§10.4's fold instead of starting over.
+
+Three conditions are normative and none is redundant:
+
+1. **The statement's transaction is the walk's.** The checkpoint reports the
+   tx id the §8.8 door authenticated against, and it MUST equal the statement's.
+   Without this check a statement is a claim about *some* transaction: the same
+   bytes would prove against any transaction whose field happened to hold a
+   refused item at the named index, and the accusation would name no one.
+2. **The statement's field is the walk's.** §4's plain hashing removed
+   field-index domain separation, so a view of field 1 answers every read a view
+   of field 0 would. Without this check a statement about a spend input could be
+   adjudicated against the reference inputs.
+3. **Relocation is forward-only**, inherited from §10.4. An adjudication that
+   has already passed the accused item cannot go back for it, which is what stops
+   a statement from being re-adjudicated at a position the walk has left.
+
+The predicate itself is the **caller's**. This section adjudicates one; it does
+not define the protocol's per-item rules, which live with the families that own
+them.
+
+### 12.4 Per-asset conservation
+
+A conservation statement names exactly one unit, and every read its
+adjudication makes names that unit.
+
+- **The outputs side** folds the next `budget` field-2 items into a running
+  total, opening each as a §11.1 Value bookmark and asking it for the named unit
+  once. No output is materialised and no other asset is touched. The fold is
+  budgeted like every other §10 fold, so a caller may take the field in as many
+  rounds as it likes and no round re-reads another's items.
+- **The mint side** sweeps field 5's per-policy items (§5.6) monotonically,
+  stopping at the first policy key that sorts at or after the requested one, and
+  reads into that one group only. Every other group is skipped by the §5.1
+  envelope without its assets being decoded at all. It is budgeted on the outputs
+  fold's terms, and it carries the last policy key it read across **budget
+  rounds** so that the order check spans the boundary between two of them.
+
+**Both sides begin at item 0, and this is normative.** A sweep is an assertion
+about a *field*, not about a range of it: the mint side's `0` means "this
+transaction does not mint this unit", and the outputs side's total means "this is
+what these outputs hold". A sweep opened part-way through a field asserts neither.
+The attack is concrete and cheap, because §10.4's forward relocation is public
+and free: stand the walk past the policy group that carries the accused unit,
+open a mint sweep there, and the very next key sorts after the request — the
+monotone early stop fires, the sweep reports a **finished** `0` for a unit the
+transaction really minted, and every other condition below is satisfied. An
+implementation MUST refuse to open a sweep at any position other than item 0 of
+its field.
+
+**A conservation adjudication is one invocation's work**, and this is the
+contract rather than an implementation limit. The two sweeps deliberately have no
+wire form, no decoder and no commitment-resume constructor — the exact opposite
+of §10.3's checkpoint — because a sweep is a running *measurement* and not a
+position, and the §10.6 apparatus that makes a position safe to carry would have
+to be repeated over state that §12.5's own measurement (reading 2) says a
+variable-width field near the tier-2 bound cannot afford to re-authenticate per
+step in any case. Fields 2 and 5 are both variable-width. What follows, and is
+stated rather than left to be discovered: **re-opening a sweep in a follow-on
+transaction is a fresh whole-field measurement, never a resume of a partial
+one** — the item-0 rule above makes it so — and a transaction whose fields 2 and
+5 cannot both be swept within one invocation's budget is outside this
+adjudication's reach. A family that needs conservation over such a transaction
+carries the residue itself; §12 does not pretend to.
+
+**The two sides are two types.** An implementation MUST NOT let one measurement
+stand for the other: the outputs fold's value is not a mint sweep's, they answer
+about different fields, and only one of them carries an order key. In the
+reference implementation `OutputUnitSweepV1` and `MintUnitSweepV1` are separate
+opaque types, which turns three of this section's conditions — an outputs fold
+cannot be advanced by the mint sweep, a mint sweep cannot be advanced by the
+outputs fold, and the adjudication's two arguments cannot be exchanged — from
+runtime refusals into signatures.
+
+The transaction's own committed fields account for a net creation of the unit
+equal to `outputs_total − mint_total`, and the statement is **proven** when that
+disagrees with `claimed`.
+
+**What this equation deliberately excludes.** The resolved-input half of a full
+conservation law is not in this document's domain — it lives in the machine's
+ledger state, against UTxOs this transaction only references. It is therefore
+not admitted here as a redeemer argument, because that would be exactly the
+full-field re-supply §12.1 forbids. A family that needs the full law composes
+this statement with its own authenticated input accounting.
+
+**A zero answer is evidence, on both sides, and for §11.1's reasons.** Absence is
+only observable if the container is ordered, and both sweeps enforce the order
+**as they go** rather than assuming it: §5.5's, inside the Value bookmark's
+structural pass, and §5.6's, across the mint field's policy items and within the
+matched group. The mint field's order check spans **budget rounds** — the last
+policy key travels in the sweep rather than in a call argument, so a round
+compares its first key against the previous round's last, and an unordered field
+cannot slip a key past a sweep that paused. Two further §5.6 conditions are
+load-bearing for the same reason
+and are enforced here rather than left to the encoder: a policy group is
+non-empty, and a mint quantity is non-zero. A zero-quantity entry would be a
+second spelling of an absent asset — which is precisely the shape a
+conservation fault would hide behind.
+
+The order check reaches exactly the prefix the sweep reads, which is what
+licenses stopping early and is all that licenses it: no key at or after the
+stopping point is examined, so a §5.6 violation *there* — the requested policy
+repeated after the matched group — is out of the sweep's reach. Curing that
+inside the sweep means reading every remaining item, which is the early stop the
+monotone design exists for.
+
+**Name the residue rather than a mitigation for it.** A field that repeats the
+accused policy after the matched group would have its second entry's quantity
+dropped, which understates `mint_total` and can make an honest `claimed`
+disagree. This section does not establish the whole field's order and MUST NOT be
+read as doing so. What it relies on is that such a field is a **§5.6 format
+fault, not a conservation fault**: the ordering rule is the encoder's (§5.6), it
+is checked whole where a transaction is canonically decoded before admission —
+adjacent machinery in §8.9's sense, outside this document — and a field that
+reached a commitment without satisfying it is faultable by the family that proves
+format faults, not by this one. A §12.4 verdict is therefore sound *relative to a
+field that satisfies §5.6*, and this sweep re-checks for free the part of that
+premise it can reach. §11.1's `sweep_to_unit` carries the identical residue one
+level down, and neither is discharged by the other.
+
+**Budget exhaustion is not absence.** Each side's measurement carries whether it
+*finished*, and a sweep that stopped because it ran out of budget carries
+`is_final = false`. This is the distinction the section turns on: a mint sweep
+that has not yet reached the requested policy holds a running `0`, and read as an
+answer it says the transaction minted none of a unit it may well have minted —
+which makes `outputs_total − mint_total` disagree with an honest `claimed` and
+"proves" a fault that does not exist. Three states end a mint sweep and each is a
+verdict: the unit's group was found, a key sorting at or after it was met, or the
+field ran out. Running out of budget is none of them. The outputs fold finishes
+exactly when its walk does, since every output holds a value and there is no
+sound early stop on that side.
+
+**The two totals are evidence, not arithmetic.** They are not integers the
+adjudication accepts from a caller. Each arrives as the sweep that produced it,
+carrying the transaction it was taken over, the field, the unit, the quantity and
+`is_final`; and the adjudication MUST refuse a statement unless both sides were
+measured over the accused transaction, over fields 2 and 5 respectively, from
+item 0 of each, about the statement's own `(policy_id, asset_name)`, and to a
+verdict. Accepting two bare integers would readmit through the back door exactly
+the full-field re-supply §12.1 forbids: a caller could assert any pair of totals
+it liked, including the fabricated `0` of an unfinished sweep. Two of those
+conditions need not be checks at all: "over fields 2 and 5 respectively" is
+discharged by the two types above, and "from item 0" by the constructor that is
+the only way to obtain either of them.
+
+### 12.5 Cost claims — the tier-2 per-step full-preimage re-hash
+
+This is the **Phase-3 lane exit criterion**, and like every other number in this
+document it is established by measurement against the GOAL_SPEC §3.3 basis of
+13,200,000 memory units rather than asserted. It is
+**provisional pending Phase-7 confirmation**: Phase 7 re-takes it against the
+final blueprint, and the rows below are the Phase-3 signal.
+
+§10.2 makes a resuming transaction pay its own §7.1 hash check — "it holds
+different bytes in a different script context and has no way not to." The
+question this criterion answers is what that costs at the tier-2 bound, where it
+is largest. The rows are four, in two pairs; each pair holds the fixture, the
+field and the reads constant and varies **only** how many times the §8.8 door is
+opened, so the difference within a pair is one step's re-open and nothing else.
+Both fixtures sit at `chunk_bytes_k` (§8.3) rather than merely being large, and
+the suite asserts that so the numbers stay quoted where they were taken.
+
+| # | seam test | field | preimage | opens | memory |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `tier2_fixed_stride_one_open` | 1 (stride 40, 397 items) | 15,883 B | 1 | 10,523,057 (10.52 M) |
+| 2 | `tier2_fixed_stride_two_opens` | 1 (stride 40, 397 items) | 15,883 B | 2 | 10,614,754 (10.61 M) |
+| 3 | `tier2_variable_width_one_open` | 6 (variable, 1,442 items) | 15,865 B | 1 | 61,807,864 (61.80 M) |
+| 4 | `tier2_variable_width_two_opens` | 6 (variable, 1,442 items) | 15,865 B | 2 | 91,106,622 (91.10 M) |
+
+Absolute units, not only the rounded figures, because the readings below are
+**differences** and a difference of rounded numbers is not a measurement. Every
+row is the `execution_units.mem` field of the structured `aiken check` report
+for that test, taken by
+
+```
+MIDGARD_AIKEN_BIN=<fork> node scripts/run-focused-check.mjs \
+  midgard/native-tx-fault-statement-v1.test \
+  tier2_fixtures_sit_at_the_tier_two_bound \
+  tier2_fixed_stride_one_open tier2_fixed_stride_two_opens \
+  tier2_variable_width_one_open tier2_variable_width_two_opens
+```
+
+from `onchain/aiken/`. That helper is the repository's runner-report path: it
+requires the report to name exactly the declared module and to collect exactly
+the declared tests, so a selector that silently matched nothing cannot be
+published as a measurement.
+
+Three readings, and the third is the one a re-take must not lose.
+
+1. **The re-hash proper is free at the tier-2 bound, and now measurably so.**
+   Row 2 against row 1 is **91,697 units (≈ 0.09 M)** — one tier-2 carriage
+   extraction, one `blake2b_256` over 15,883 bytes, and §7 invariant 4's
+   arithmetic count check. That is **0.70 % of the basis**, which is what §8.2's
+   "measured free at ≤ 32 KB" had been asserting and had never been shown. A
+   dispute over a fixed-stride field may therefore be spread over as many steps
+   as its item budget needs without the re-authentication becoming the
+   constraint.
+2. **A variable-width field's step re-pays much more than the hash.** Row 4
+   against row 3 is **29,298,758 units (≈ 29.30 M)** — 2.22× the basis on its
+   own. The hash is the
+   same 0.09 M; the remaining 29,207,061 (≈ 29.21 M) is §7 invariant 4's
+   **full-content walk**,
+   which `whole_view` must run at construction for a variable-width field because
+   that walk is the only way to know where its items end. At 1,442 items that is
+   ≈ 20,255 units per item, and it is re-paid in full by every step.
+
+   The consequence is a design conclusion, not a caveat: **a variable-width field
+   near the tier-2 bound cannot be resumed across steps under tier-2 carriage.**
+   Either the field is small enough that its walk fits the step's budget, or it
+   is carried under tier 3 — where `certified_view` deliberately does not run the
+   walk (§8.4) and pays per-read chunk verification instead. §8's
+   simplest-fitting-first mandate therefore has a second, measured edge to it:
+   for variable-width fields the ladder's rungs differ in what a *step* costs, not
+   only in what a publication costs. §12.4 is where this conclusion is spent:
+   fields 2 and 5 are both variable-width, which is why a conservation
+   adjudication is one invocation's work and its sweeps have no wire form.
+3. **Rows 3 and 4 are not budget verdicts, and a re-take must not read them as
+   such.** Both exceed the basis outright, because building a 1,442-item fixture
+   inside a test dominates both arms. Only the **difference** within a pair is
+   attributable to the door, which is why the rows come in pairs at all and why
+   neither pair's absolute figure is quoted as a fit. The same caution applies to
+   rows 1 and 2, whose 10.5 M is likewise mostly fixture.
+
+Phase 7 re-takes all four rows against the final blueprint. Should the
+variable-width delta move materially, the conclusion in reading 2 — not merely
+the number — is what has to be re-examined.
+
+### 12.6 Guard coverage
+
+§9's conformance items 5 and 6 require every refusal on an operational path to
+be either isolated by a vector or listed as a backstop with the earlier check
+that makes it unreachable. This is that list for §12. **Thirty-eight refusals:
+twenty-one isolated, three composite, fourteen backstops.** Three further
+conditions are not refusals at all — the two sweep types discharge them at
+compile time. One of the three held a row here and keeps its number, marked; the
+other two are named in the note below the table.
+
+| # | refusal | isolated by / backstop because |
+| --- | --- | --- |
+| 1 | §12.1 — an item-fault statement names no unit | `encode_refuses_an_item_fault_that_names_a_unit` |
+| 2 | §12.1 — an item-fault statement claims no quantity | `encode_refuses_an_item_fault_that_claims_a_quantity` |
+| 3 | §12.1 — a conservation statement names a 28-byte policy id | `encode_refuses_a_short_policy_id` |
+| 4 | §12.2 — the wire form has one admissible spelling (the decoder re-encodes and demands the input back) | `decode_refuses_an_unvalidated_wrapper_byte` |
+| 5 | §12.3 — the statement's field is the walk's | `item_fault_refuses_a_statement_about_another_field` |
+| 6 | §12.3 — the code is an item-fault code | `item_fault_refuses_a_conservation_statement` |
+| 7 | §12.3 — the statement is well-shaped at adjudication | `item_fault_refuses_a_malformed_statement` |
+| 8 | §12.4 — an outputs sweep opens only on a field-2 walk | `conservation_refuses_a_walk_over_another_field` (composite: the guard is the first refusal, but §11.1's structural pass also declines a field-6 item, so the vector cannot attribute to one site) |
+| 9 | §12.4 — a mint sweep opens only on a field-5 walk | `mint_unit_quantity_refuses_a_walk_over_another_field` (composite with guard 23, on the same terms) |
+| 10 | §12.4 — the code is a conservation code | `conservation_refuses_an_item_statement` |
+| 11 | §12.4 — the statement is well-shaped at adjudication | `conservation_refuses_a_malformed_statement` |
+| 12 | §5.6 — mint policy keys strictly increase | `mint_unit_quantity_refuses_an_unordered_field` |
+| 13 | §5.6 — a mint quantity is non-zero | `mint_unit_quantity_refuses_a_zero_quantity` |
+| 14 | §10.4 — relocation is forward-only | `item_fault_refuses_a_backwards_statement` (composite with §10.8 guard 19, which it re-uses rather than re-establishes) |
+| 15 | §12.2 — the quantity element's `49` wrapper | backstop: guard 4's re-encode produces that byte, so an input carrying any other cannot equal it |
+| 16 | §12.2 — the sign byte is `00` or `01` | backstop **confirmed by neutralisation**: removing it turns nothing red, because guard 4's re-encode spells the sign from the decoded value's own sign. `decode_refuses_a_non_canonical_spelling` is the composite vector over the pair |
+| 17 | §12.2 — `claimed`'s magnitude fits eight bytes | backstop: the wire scalar's construction domain, kept for §7.3's reason — a wider number fails inside the integer-to-bytes builtin with nothing attributable said |
+| 18 | §12.2 — a name encoding is at most 32 bytes | backstop: guards 1–3's shape rule already fixes both names, one step earlier and on the same values |
+| 19 | §12.4 — the outputs fold's unit is a 28-byte policy id | backstop: §11.1's own lookup asserts the same condition on the same value (§11.5 guard 17) |
+| 20 | §12.4 — the outputs fold's asset name is at most 32 bytes | backstop: same, §11.5 guard 18 |
+| 21 | §12.4 — the mint sweep's unit is a 28-byte policy id | backstop: the §5.6 item's own policy width (guard 23) refuses every group the request could match, so a malformed request answers absent rather than wrongly |
+| 22 | §12.4 — the mint sweep's asset name is at most 32 bytes | backstop: the group scan's own name bound (guard 25) on the values it compares against |
+| 23 | §5.6 — a mint item is `82 ‖ 58 1C policy_id ‖ …` | backstop: the item reached the sweep through §10's `walk_next`, and a field-5 item that is not this shape has no §5.6 spelling at all; kept as the line that notices if §5.6 and this reader stop agreeing |
+| 24 | §5.6 — a policy group is non-empty | backstop: §5.5/§5.6's encoders give an empty group no spelling, and §11.5 guard 9 isolates the same condition one level down |
+| 25 | §5.6 — a mint asset name is at most 32 bytes | backstop: §11.5 guard 10 isolates the same condition on the same grammar |
+| 26 | §5.6 — asset keys strictly increase within a group | backstop: §11.5 guard 11 isolates the same condition on the same grammar |
+| 27 | §12.4 — a fold's budget is a count of items | backstop: §10.8 guard 20 isolates the same condition on `walk_fold`, and these folds stop on the same zero |
+| 28 | §12.4 — a mint sweep's budget is a count of items | backstop: same |
+| 29 | §12.3 — the statement's transaction is the walk's | `item_fault_refuses_a_statement_about_another_transaction` |
+| 30 | §12.4 — both sweeps were taken over the accused transaction | `conservation_refuses_sweeps_of_another_transaction` |
+| 31 | §12.4 — both sweeps are about the statement's own unit | `conservation_refuses_a_sweep_about_another_unit` |
+| 32 | §12.4 — the outputs argument is an outputs sweep and the mint argument a mint sweep | **not a refusal**: `asset_conservation_fault_is_proven` takes an `OutputUnitSweepV1` and a `MintUnitSweepV1`, so a transposed call does not compile. `conservation_refuses_the_two_sides_transposed` was this row's vector and has been deleted — a `fail` test cannot be written against a type error |
+| 33 | §12.4 — the adjudication refuses an unfinished mint sweep | `conservation_refuses_a_budget_exhausted_mint_sweep` |
+| 34 | §12.4 — the adjudication refuses an unfinished outputs fold | `conservation_refuses_a_budget_exhausted_outputs_fold` |
+| 35 | §12.4 — an unfinished sweep will not report a quantity | `conservation_refuses_the_running_total_of_an_unfinished_fold` and `mint_unit_quantity_refuses_a_budget_exhausted_sweep`, on the two sides |
+| 36 | §5.6 — mint policy keys strictly increase **across budget rounds** | `mint_unit_quantity_refuses_an_unordered_field_across_budget_rounds` (guard 12 is the single-round vector; this is the one an order key scoped to a single `sweep_mint_unit` call would not catch. Renamed from `…_across_steps`: a sweep does not cross a step, and the old name claimed a protocol this section does not have) |
+| 37 | §12.4 — a sweep begins at item 0 of its field | `conservation_refuses_a_fold_opened_past_the_start` and `mint_unit_quantity_refuses_a_sweep_opened_past_the_target`, on the two sides. The mint vector is the sharp one: opened one `walk_skip` past the accused policy's group, a neutralised sweep returns `is_final` with a fabricated `0` that guards 30, 31 and 33 all accept |
+| 38 | §12.1 — a conservation statement's `field_index` has one spelling | `encode_refuses_a_conservation_statement_that_names_another_field` and `conservation_refuses_a_statement_that_names_another_field`, at the encoder and at the adjudication |
+| 39 | §12.1 — a conservation statement's `item_index` has one spelling | `encode_refuses_a_conservation_statement_that_names_a_starting_item` and `conservation_refuses_a_statement_that_names_a_starting_item`, on the same two seams |
+
+Guards 29–36 were added by the first review of this section and guards 37–39 by
+the second. Each was confirmed by neutralisation — removing the check turns the
+named vector or vectors red and nothing else — which is the standard §9 item 6
+asks for and the reason none of them is listed as a backstop.
+
+**Two conditions this table used to count as refusals are now signatures.**
+`accumulate_output_unit` takes an `OutputUnitSweepV1`, so a mint sweep driven as
+outputs does not compile, and `conservation_refuses_a_mint_sweep_driven_as_outputs`
+has been deleted alongside guard 32's vector; symmetrically, `sweep_mint_unit`
+takes a `MintUnitSweepV1`, so an outputs fold driven as mint does not compile
+either — that condition never had a vector, because no fixture could reach it
+past §11.1's structural pass. The two deleted vectors were previously composites —
+§11.1's Value bookmark declines a §5.6 policy item one step later, so no fixture
+could attribute either refusal to its own site — and a condition a fixture cannot
+isolate but a type can hold is better held by the type. What that costs is the
+"line that notices if the two sides stop being distinguishable at the seam"; what
+replaces it is that they cannot stop, because they are no longer one type.
+
+**What the first neutralisation sweep established.** Every refusal this module
+implemented at the time — guards 1–13 and 16 — was weakened one at a time, the
+module's vectors were re-run under the fork runner after each weakening, and the
+vectors that turned red were recorded. The sweep collected 33 tests on all
+fifteen runs — the module's whole count then; it now has 48 — so no result is a
+zero-collection artifact. Its findings, all three of which changed this table:
+
+- Guards 1–7 and 10–13 each turned **exactly** their own named vector red and
+  nothing else. Those eleven rows are isolated in the strong sense.
+- Guard 16 turned **nothing** red, which is what a backstop looks like from the
+  outside and is now recorded as measured rather than argued. The same run also
+  showed that `decode_refuses_a_non_canonical_spelling` — the sign-byte vector,
+  and the row-4 entry this table previously carried — is a composite over guards
+  16 and 4 rather than an isolator of either, since either check alone refuses
+  it. `decode_refuses_an_unvalidated_wrapper_byte` was added to isolate guard 4
+  and re-swept: the decoder reads `code`, `field_index` and `item_index` at
+  fixed offsets and never inspects the `87` head or the `41`/`43` wrappers, so a
+  corrupted wrapper decodes to a well-formed statement and only the re-encode
+  notices.
+- Guards 8 and 9 also turned nothing red. Their vectors still pass, and in a
+  real run the field guard is the **first** refusal — but §11.1's structural
+  pass and §5.6's item shape refuse the same fixtures one step later, so no
+  fixture can attribute to the guard. Both rows are now marked composite rather
+  than isolated, which is what the sweep showed and what the table previously
+  got wrong.
+
+**What the second sweep established.** Guards 37, 38 and 39 were each weakened
+alone and the module's 48 vectors re-run under the same runner. Each turned
+**exactly** its own two vectors red and nothing else, and all three runs
+collected 48 tests:
+
+| weakened guard | vectors that turned red |
+| --- | --- |
+| 37 — a sweep begins at item 0 | `conservation_refuses_a_fold_opened_past_the_start`, `mint_unit_quantity_refuses_a_sweep_opened_past_the_target` |
+| 38 — `field_index` has one spelling | `encode_refuses_a_conservation_statement_that_names_another_field`, `conservation_refuses_a_statement_that_names_another_field` |
+| 39 — `item_index` has one spelling | `encode_refuses_a_conservation_statement_that_names_a_starting_item`, `conservation_refuses_a_statement_that_names_a_starting_item` |
+
+Two vectors per row rather than one because each of these conditions is met at
+two seams — the encoder and the adjudication for 38 and 39, the two sides of the
+equation for 37 — and a vector at one seam says nothing about the other.
+
+Three of this section's own backstops — rows 15, 17 and 18 — were **not** swept:
+each is refused by guard 4's re-encode or by guards 1–3's shape rule one step
+earlier, so neutralising it alone changes no verdict and the sweep would report
+the empty result it reports for guard 16 without distinguishing "backstop" from
+"dead". The cross-section backstops (19–28) are argued for the same reason plus
+a second one: weakening them means editing sections this one does not own. That
+residue is Phase-7 work; §11.5's own history — an *argued* backstop, its guard
+26, that was simply false — is why it is named here instead of left implicit.
+
+Two families of assertion are not itemised, for §10.8's and §11.5's reason —
+they are the construction domain of a value another guard already fixes, and no
+fixture can attribute a refusal to one site rather than the other: the range
+assertions inside `fault_statement_shape_is_exact` that guards 1–3 and 7/11
+already run, and the offset and length bounds in the shared interior reader
+(§11.5's second family), which run on every read this section makes.
