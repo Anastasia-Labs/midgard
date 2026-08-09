@@ -6,12 +6,13 @@
 //// in the block), yet its output index is larger than the last output of its
 //// producing transaction.
 ////
-//// This first step commits the bad transaction's native **reference**-inputs
-//// hash instead of its spend-inputs hash, and step-02 opens consensus field 1
-//// rather than field 0. Steps 03-04 differ from their `input-no-idx`
-//// counterparts only in record field names, which PlutusData erases, so they
-//// compile to the same UPLC and the two families share those two applied
-//// scripts — as the `no-input`/`no-reference-input` pair already do.
+//// This first step forwards the bad transaction's verified id exactly as
+//// `input-no-idx` does; the two families diverge only at step-02, which opens
+//// consensus field 1 (**reference** inputs) through the §8.8 door rather than
+//// field 0. Steps 03-04 differ from their `input-no-idx` counterparts only in
+//// record field names, which PlutusData erases, so they compile to the same
+//// UPLC and the two families share those two applied scripts — as the
+//// `no-input`/`no-reference-input` pair already do.
 
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
@@ -58,8 +59,8 @@ validator main(
             output_script_hash,
             output_state_data,
             _header,
-            _bad_tx_id,
-            bad_tx_view
+            bad_tx_id,
+            _bad_tx_view
           <- pass_native_tx_to_next_step(
           computation_thread_token_policy_id,
           hub_oracle,
@@ -69,12 +70,14 @@ validator main(
           tx,
         )
 
-        // 2. The UTxO must be produced at next step's script hash with the
-        //    verified bad transaction's native reference-inputs hash included in
-        //    its datum.
+        // 2. The UTxO must be produced at next step's script hash carrying the
+        //    verified bad transaction's id, so step-02 can re-open its field-1
+        //    (reference-inputs) preimage through the §8.8 door. The id anchors
+        //    all body fields under §4's flat scheme; step-02 supplies the
+        //    reference-inputs field index at its own call site.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
-          verified_tx_reference_inputs_hash: bad_tx_view.tx_compact.body.reference_inputs_hash,
+          verified_tx_id: bad_tx_id,
         }
         expect output_state_data == expected_output_state
 
@@ -107,14 +110,14 @@ fn reference_input_no_idx_bad_tx(
 
 /// Positive binding selector: the bad native-V1 transaction committed under
 /// the block's counted `transactions_root` passes the first step and forwards
-/// its canonical reference-inputs hash.
+/// its verified id, which step-02 re-opens field 1 against through the door.
 test reference_input_no_idx_step_01_binds_native_v1_block_fixture() {
   let producing = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   let block = fixture.native_block_fixture_v1(
     reference_input_no_idx_bad_tx(producing.tx_id),
   )
   let expected_output_state: Data = step_02.State {
-    verified_tx_reference_inputs_hash: block.compact.body.reference_inputs_hash,
+    verified_tx_id: block.tx_id,
   }
   let l1_tx = fixture.continue_step_l1_tx_v1(
     block,
@@ -145,7 +148,7 @@ test reference_input_no_idx_step_01_rejects_forged_transactions_root() fail {
     reference_input_no_idx_bad_tx(valid_block.tx_id),
   )
   let expected_output_state: Data = step_02.State {
-    verified_tx_reference_inputs_hash: forged_block.compact.body.reference_inputs_hash,
+    verified_tx_id: forged_block.tx_id,
   }
   let claimed_block = fixture.NativeBlockFixtureV1 {
     ..forged_block,

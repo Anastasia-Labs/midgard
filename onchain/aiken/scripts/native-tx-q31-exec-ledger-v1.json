@@ -1,0 +1,41 @@
+{
+  "measurement": "q31-reference-input-no-idx-family-rebind-exec-ledger",
+  "issue": "#576 — Flat reversion P5, family rebind lane B, reference-input-no-idx (Q31), on spec #565",
+  "spec": "docs/spec/midgard-tx.md §5.3, §7.1, §8.8, §10.5 — field 1 reference inputs read through the §8.8 door by arithmetic at field 0's shared 38-byte stride, under authenticate-once",
+  "note": "Lane B's rolling re-measurement, attached as this lane's exit criterion per #565's measurement-slotting rule (AC3). The Q31 rebind swaps the counted `field_commitment_from_items` re-hash of a prover-reproduced item list for a single authenticate-once hash plus an O(1) arithmetic read (field 1, step-02) and an authenticated item-count read (field 2, step-04). It introduces NO new unbounded walk: step-02 is fixed-stride arithmetic and step-04 reads the §5.1 authenticated count, so there is no `basisFit:\"exceeds\"` row and no infeasibility string. Q31's cardinality-growth bound is the parent-owned Q1x envelope (`native-tx-q1x-exec-ledger-v1.json`): field 1 shares field 0's 38-byte stride, so that ledger's field-0/1 stride rows and step-04 outputs-count rows apply unchanged. Regenerate with `MIDGARD_AIKEN_BIN=<fork> node scripts/verify-q31-exec-ledger-v1.mjs --update`, and move any reported number in the same commit. Provisional: formal closure is Phase 7's, against the Phase-6 blueprint. `--update` rewrites the raw mem/cpu rows; it does NOT rewrite `basisFit`, and it is not a bypass — structural failures (a row or selector that did not run, or a fresh reading that contradicts a `within` judgement by exceeding the basis) fail in update mode too and the ledger is not rewritten.",
+  "basis": {
+    "memoryUnits": 13200000,
+    "cpuUnits": 8000000000,
+    "source": "GOAL_SPEC §3.3 — 20% margin off the live mainnet maxTxExUnits of 16,500,000 mem (epoch 648)"
+  },
+  "modules": [
+    {
+      "module": "fraud_proofs/reference_input_no_idx/step_02",
+      "neutralisation": [
+        "reference_input_no_idx_step_02_rejects_a_forged_inputs_preimage",
+        "reference_input_no_idx_step_02_rejects_an_out_of_range_reference_input_index"
+      ],
+      "rows": {
+        "reference_input_no_idx_step_02_forwards_the_committed_out_of_range_input": {
+          "mem": 1849702,
+          "cpu": 778226511,
+          "basisFit": "within"
+        }
+      }
+    },
+    {
+      "module": "fraud_proofs/reference_input_no_idx/step_04",
+      "neutralisation": [
+        "reference_input_no_idx_step_04_rejects_valid_block_challenge",
+        "reference_input_no_idx_step_04_rejects_a_truncated_outputs_preimage"
+      ],
+      "rows": {
+        "reference_input_no_idx_step_04_accepts_out_of_range_index": {
+          "mem": 1832278,
+          "cpu": 775413678,
+          "basisFit": "within"
+        }
+      }
+    }
+  ]
+}

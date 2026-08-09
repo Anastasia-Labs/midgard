@@ -1,25 +1,26 @@
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/native_tx/types.{MidgardTxOutput}
-use midgard/ledger_state.{MidgardOutputsHash}
+use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
+use midgard/ledger_state.{MidgardTxId}
 
+/// Same shape as `input-no-idx` step-04's `State` — `MidgardTxId` then `Int` —
+/// so the two families' step-03/step-04 pair keeps compiling to the same UPLC
+/// (PlutusData erases the field names), exactly as step-01's header records.
 pub type State {
-  producing_tx_outputs_hash: MidgardOutputsHash,
+  producing_tx_id: MidgardTxId,
   bad_reference_input_output_index: Int,
 }
 
 pub type Datum =
   ct.StepDatum<State>
 
-/// `outputs_preimage` is the producing transaction's native outputs list. It is
-/// re-committed with `bounded_collection_v1.from_items` under consensus field 2
-/// — the same commitment the native codec builds — so a preimage that opens the
-/// forwarded `producing_tx_outputs_hash` also fixes the exact output count, and
-/// the out-of-range check is sound without decoding each output structurally.
 pub type Args {
   input_index: Int,
   output_index: Int,
   fraud_proof_mint_redeemer_index: Int,
-  outputs_preimage: List<MidgardTxOutput>,
+  /// The prover's chosen §8 carriage for the producing transaction's field-2
+  /// preimage. Its authenticated item count is the output count the
+  /// out-of-range verdict rests on (§5.2).
+  outputs_opening: FieldOpeningV1,
 }
 
 pub type SpendRedeemer =
