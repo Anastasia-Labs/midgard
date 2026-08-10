@@ -33,11 +33,7 @@
  * bytes that get committed.
  */
 
-import {
-  compareBytes,
-  encodeCborInteger,
-  encodeCborUnsigned,
-} from "./cbor.js";
+import { compareBytes, encodeCborInteger, encodeCborUnsigned } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import {
   encodeMidgardDefiniteBytesV1,
@@ -208,11 +204,13 @@ export type MidgardMintPolicyItemV1 = {
  * §5.6's canonical key order: length first, then byte-lexicographic. Twin of
  * `canonical_bytes_key_precedes`.
  *
- * Module-private: callers assemble mints through
- * {@link encodeMidgardFieldItemsV1}, which enforces the order rather than
- * asking a builder to reproduce the comparator.
+ * Exported because §5.5's Value maps and §5.6's mint items share this one
+ * ordering, and the Cardano→Midgard bridge has to sort CML's iteration order
+ * into it *before* handing items to {@link encodeMidgardFieldItemsV1} — which
+ * enforces the order rather than trusting it. One comparator, so a producer and
+ * the decoder that checks it can never disagree about what "canonical" means.
  */
-const compareMidgardCanonicalKeyBytesV1 = (
+export const compareMidgardCanonicalKeyBytesV1 = (
   left: Uint8Array,
   right: Uint8Array,
 ): number => left.length - right.length || compareBytes(left, right);
