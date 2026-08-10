@@ -1,8 +1,11 @@
 module Midgard.Contracts.Utils (
   LinkedListInfo (..),
+  hashPlutusData224,
+  findSpendingRedeemerIndex,
   nextOutIx,
   slotToBeginUTCTime,
   slotToEndUTCTime,
+  slotToEndUTCTimePure,
   utcTimeToEnclosingSlot,
   findOutputIndexWithAsset,
   findMintRedeemerIndex,
@@ -41,10 +44,31 @@ import PlutusLedgerApi.Common (BuiltinData, FromData, ToData, fromBuiltin)
 
 import Midgard.Types.LinkedList (NodeKey (NodeKey), nodeKey, nodeKeyToAssetName)
 import Midgard.Types.LinkedList qualified as LinkedList
+import PlutusTx.Builtins qualified as PlutusTx
+import PlutusTx.IsData qualified as PlutusTx
+
+-- | This is for hashing Midgard block headers. Those use blake2b 224 instead of blake2b 256 (usualy Plutus Data).
+hashPlutusData224 :: (ToData a) => a -> ByteString
+hashPlutusData224 = PlutusTx.fromBuiltin . PlutusTx.blake2b_224 . PlutusTx.serialiseData . PlutusTx.toBuiltinData
 
 -- | Index of the next output to be added into the tx.
 nextOutIx :: C.TxBodyContent v era -> Int
 nextOutIx = length . view L.txOuts
+
+findSpendingRedeemerIndex :: C.TxIn -> C.TxBodyContent C.BuildTx era -> Int
+findSpendingRedeemerIndex targetTxIn txBody =
+  case elemIndex targetTxIn scriptSpendingInputs of
+    Just ix -> ix
+    Nothing -> error "missing required script spending input"
+  where
+    scriptSpendingInputs =
+      sort
+        [ txIn
+        | (txIn, C.BuildTxWith witness) <- C.txIns txBody
+        , case witness of
+            C.ScriptWitness _ _ -> True
+            _ -> False
+        ]
 
 -- | Convert slot to its beginning UTC time.
 slotToBeginUTCTime :: (MonadError String m, MonadBlockchain era m) => C.SlotNo -> m UTCTime
@@ -56,6 +80,14 @@ slotToBeginUTCTime slotNo = do
 -- | Convert slot to its very last UTC time millisecond.
 slotToEndUTCTime :: (MonadError String f, MonadBlockchain era f) => C.SlotNo -> f UTCTime
 slotToEndUTCTime slotNo = addUTCTime (-oneMs) <$> slotToBeginUTCTime (slotNo + 1)
+  where
+    oneMs :: NominalDiffTime
+    oneMs = 0.001
+
+slotToEndUTCTimePure :: C.EraHistory -> C.SystemStart -> C.SlotNo -> Either String UTCTime
+slotToEndUTCTimePure eraHistory systemStart slotNo =
+  addUTCTime (-oneMs)
+    <$> Convex.slotToUtcTime eraHistory systemStart (slotNo + 1)
   where
     oneMs :: NominalDiffTime
     oneMs = 0.001
@@ -211,6 +243,19 @@ listAssetNameFromUTxO policyId (C.TxOut _ txOutValue _ _) = do
     _ -> error "absurd: UTxO contains multiple assets under owner policy"
 
 -- | Like 'addMintWithTxBody' but tailored towards easy usage with ref minting.
+mintPlutusWithRedeemerFinal ::
+  (ToData redeemer, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang, MonadBuildTx era m, C.IsMaryBasedEra era) =>
+  C.PlutusScript lang ->
+  C.PolicyId ->
+  C.AssetName ->
+  C.Quantity ->
+  (C.TxBodyContent C.BuildTx era -> redeemer) ->
+  m ()
+mintPlutusWithRedeemerFinal plutusScript policyId assetName quantity redeemerF =
+  addMintWithTxBody policyId assetName quantity $
+    buildScriptWitness plutusScript C.NoScriptDatumForMint . redeemerF
+
+-- | Like 'addMintWithTxBody' but tailored towards easy usage with ref minting.
 mintPlutusRefWithRedeemerFinal ::
   (ToData redeemer, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang, MonadBuildTx era m, C.IsMaryBasedEra era) =>
   C.TxIn ->
@@ -223,20 +268,6 @@ mintPlutusRefWithRedeemerFinal ::
 mintPlutusRefWithRedeemerFinal refIn scriptVersion policyId assetName quantity redeemerF =
   addMintWithTxBody policyId assetName quantity $
     buildRefScriptWitness refIn scriptVersion C.NoScriptDatumForMint . redeemerF
-
--- | Like 'addMintWithTxBody' but tailored towards easier usage.
-mintPlutusWithRedeemerFinal ::
-  (ToData redeemer, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang, MonadBuildTx era m, C.IsMaryBasedEra era) =>
-  C.PlutusScript lang ->
-  C.AssetName ->
-  C.Quantity ->
-  (C.TxBodyContent C.BuildTx era -> redeemer) ->
-  m ()
-mintPlutusWithRedeemerFinal script assetName quantity redeemerF =
-  addMintWithTxBody policyId assetName quantity $
-    buildScriptWitness script C.NoScriptDatumForMint . redeemerF
-  where
-    policyId = C.PolicyId . C.hashScript $ C.PlutusScript C.plutusScriptVersion script
 
 -- | Like 'addInputWithTxBody' but tailored towards easy usage with inline datum script spending.
 spendPlutusInlineDatumWithRedeemerFinal ::

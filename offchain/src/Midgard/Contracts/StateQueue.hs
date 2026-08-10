@@ -1,0 +1,534 @@
+module Midgard.Contracts.StateQueue (
+  initStateQueue,
+  NewBlock (..),
+  commitBlockHeader,
+  mergeToConfirmedState,
+) where
+
+import Control.Monad.Except (MonadError (throwError))
+import Control.Monad.Reader (runReaderT)
+import Data.Time (addUTCTime)
+import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
+
+import Cardano.Api qualified as C
+import Convex.BuildTx (
+  MonadBuildTx,
+  TxBuilder,
+  addBtx,
+  addReference,
+  addRequiredSignature,
+  assetValue,
+  execBuildTx,
+  findIndexReference,
+  findIndexSpending,
+  payToScriptInlineDatum,
+  setMinAdaDepositAll,
+  spendPlutusInlineDatum,
+ )
+import Convex.Class (
+  MonadBlockchain (queryNetworkId, queryProtocolParameters, querySlotNo),
+  MonadUtxoQuery,
+  utxosByPaymentCredential,
+ )
+import Convex.PlutusLedger.V1 (transPOSIXTime, unTransPOSIXTime, unTransPubKeyHash)
+import Convex.PlutusLedger.V3 (transTxOutRef)
+import Convex.Utils (utcTimeToPosixTime)
+import Convex.Utxos (toTxOut)
+import PlutusLedgerApi.Common (fromBuiltin, toBuiltin)
+import PlutusLedgerApi.V3 (POSIXTime, PubKeyHash (getPubKeyHash))
+
+import Midgard.Constants (hubOracleAssetName, hubOracleMintingPolicyId, hubOracleScriptHash, maturityDuration)
+import Midgard.Contracts.Scheduler (currentScheduleInfo)
+import Midgard.Contracts.Utils (
+  LinkedListInfo (..),
+  findFinalUTxONode,
+  findMintRedeemerIndex,
+  findOutputIndexWithAsset,
+  findSpendingRedeemerIndex,
+  findUTxOWithAsset,
+  hashPlutusData224,
+  inlineDatumFromUTxO,
+  listAssetNameFromUTxO,
+  mintPlutusRefWithRedeemerFinal,
+  slotToEndUTCTime,
+  slotToEndUTCTimePure,
+  spendPlutusInlineDatumWithRedeemerFinal,
+ )
+import Midgard.ScriptUtils (mintingPolicyId, plutusVersion, toValidator, validatorHash)
+import Midgard.Scripts (
+  MidgardRefScripts (MidgardRefScripts, stateQueuePolicyRef),
+  MidgardScripts (
+    MidgardScripts,
+    activeOperatorsPolicy,
+    activeOperatorsValidator,
+    stateQueuePolicy,
+    stateQueueValidator
+  ),
+ )
+import Midgard.Types.ActiveOperators qualified as ActiveOperators
+import Midgard.Types.LedgerState qualified as LedgerState
+import Midgard.Types.LinkedList qualified as LinkedList
+import Midgard.Types.StateQueue qualified as StateQueue
+
+data NewBlock = NewBlock
+  { utxosRoot :: LedgerState.MidgardLedgerRoot
+  , transactionsRoot :: LedgerState.MidgardTxsRoot
+  , depositsRoot :: LedgerState.DepositsRoot
+  , withdrawalsRoot :: LedgerState.WithdrawalsRoot
+  }
+
+-- | Initialize the state queue and return the start time for committing blocks.
+initStateQueue ::
+  forall era m.
+  ( C.HasScriptLanguageInEra C.PlutusScriptV3 era
+  , MonadBuildTx era m
+  , C.IsBabbageBasedEra era
+  ) =>
+  C.NetworkId ->
+  C.EraHistory ->
+  C.SystemStart ->
+  C.SlotNo ->
+  MidgardScripts ->
+  MidgardRefScripts ->
+  m POSIXTime
+initStateQueue
+  netId
+  eraHistory
+  systemStart
+  currentSlot
+  MidgardScripts {stateQueueValidator, stateQueuePolicy}
+  MidgardRefScripts {stateQueuePolicyRef} = do
+    let C.PolicyId policyId = mintingPolicyId stateQueuePolicy
+        -- In 5 minutes.
+        validityUpperBoundExclusive = currentSlot + 300
+        validityUpperBoundTime =
+          transPOSIXTime
+            . utcTimeToPOSIXSeconds
+            . either error id
+            $ slotToEndUTCTimePure eraHistory systemStart
+            $ validityUpperBoundExclusive - 1
+        datum :: StateQueue.Datum
+        datum =
+          LinkedList.Element
+            { elementData =
+                LinkedList.Root $
+                  LedgerState.ConfirmedState
+                    { confirmedHeaderHash = LedgerState.genesisHeaderHash
+                    , confirmedPrevHeaderHash = LedgerState.genesisHeaderHash
+                    , confirmedUtxoRoot = LedgerState.genesisUtxoRoot
+                    , confirmedStartTime = validityUpperBoundTime
+                    , confirmedEndTime = validityUpperBoundTime
+                    , confirmedProtocolVersion = LedgerState.genesisProtocolVersion
+                    }
+            , elementLink = Nothing
+            }
+    -- Use reference script to mint.
+    addReference stateQueuePolicyRef
+    mintPlutusRefWithRedeemerFinal
+      stateQueuePolicyRef
+      (plutusVersion stateQueuePolicy)
+      (mintingPolicyId stateQueuePolicy)
+      StateQueue.confirmedStateAssetName
+      1
+      -- Constraint: mint the confirmed-state root NFT and point the redeemer
+      -- at the produced root output.
+      $ \txBody ->
+        StateQueue.Init
+          { outputIndex =
+              toInteger $
+                findOutputIndexWithAsset
+                  (mintingPolicyId stateQueuePolicy)
+                  StateQueue.confirmedStateAssetName
+                  txBody
+          }
+    payToScriptInlineDatum
+      netId
+      (validatorHash stateQueueValidator)
+      datum
+      C.NoStakeAddress
+      -- Constraint: produce the state-queue root UTxO with genesis confirmed
+      -- state data under the state-queue validator.
+      (assetValue policyId StateQueue.confirmedStateAssetName 1)
+    addBtx $ \txBody ->
+      -- Constraint: state-queue init requires a short closed validity range;
+      -- the upper bound also determines the initial confirmed-state times.
+      txBody
+        { C.txValidityLowerBound = C.TxValidityLowerBound (C.allegraBasedEra @era) currentSlot
+        , C.txValidityUpperBound =
+            C.TxValidityUpperBound (C.shelleyBasedEra @era) $ Just validityUpperBoundExclusive
+        }
+    -- Add one ms to signal the start time (exclusively after the confirmed end slot) for block commits.
+    pure . transPOSIXTime $ unTransPOSIXTime validityUpperBoundTime + 0.001
+
+commitBlockHeader ::
+  forall era m.
+  ( MonadError String m
+  , MonadBlockchain era m
+  , MonadUtxoQuery m
+  , C.HasScriptLanguageInEra C.PlutusScriptV3 era
+  , C.IsBabbageBasedEra era
+  ) =>
+  MidgardScripts ->
+  MidgardRefScripts ->
+  NewBlock ->
+  m (TxBuilder era, POSIXTime)
+commitBlockHeader
+  ms@MidgardScripts
+    { stateQueueValidator
+    , stateQueuePolicy
+    , activeOperatorsValidator
+    , activeOperatorsPolicy
+    }
+  MidgardRefScripts {stateQueuePolicyRef}
+  NewBlock {utxosRoot, transactionsRoot, depositsRoot, withdrawalsRoot} = do
+    params <- queryProtocolParameters
+    netId <- queryNetworkId
+    (currentSlot, _, _) <- querySlotNo
+    let C.PolicyId stateQueuePolicyId = mintingPolicyId stateQueuePolicy
+        validityUpperBoundExclusive = currentSlot + 300
+        stateQueuePolicies = [mintingPolicyId stateQueuePolicy]
+    validityUpperBoundPosixInclusive <- slotToEndUTCTime $ validityUpperBoundExclusive - 1
+    let headerEndTime = utcTimeToPosixTime validityUpperBoundPosixInclusive
+        newBondUnlockTime = utcTimeToPosixTime $ addUTCTime maturityDuration validityUpperBoundPosixInclusive
+
+    hubOracleUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript hubOracleScriptHash
+    (hubOracleTxIn, _) <-
+      maybe (throwError "No hub oracle found") pure $
+        findUTxOWithAsset hubOracleUtxos $
+          C.AssetId hubOracleMintingPolicyId hubOracleAssetName
+
+    -- Need to figure out the currently scheduled operator
+    (schedulerTxIn, currentOperatorInfoM) <- currentScheduleInfo ms
+    (currentOperator, _) <- maybe (throwError "No operator scheduled") pure currentOperatorInfoM
+    let currentOperatorBytes = fromBuiltin $ getPubKeyHash currentOperator
+        activeOperatorAssetName =
+          C.UnsafeAssetName $ ActiveOperators.nodeAssetNamePrefix <> currentOperatorBytes
+
+    -- Find the anchor node in the state queue (i.e final node).
+    stateQueueUtxos <-
+      utxosByPaymentCredential $
+        C.PaymentCredentialByScript $
+          validatorHash stateQueueValidator
+    (latestBlockTxIn, (latestBlockUtxoAnyEra, _)) <-
+      maybe (throwError "No final state queue node found") pure
+        . flip
+          runReaderT
+          LinkedListInfo
+            { ownerPolicyId = mintingPolicyId stateQueuePolicy
+            , rootAssetName = StateQueue.confirmedStateAssetName
+            , nodeAssetNamePrefix = StateQueue.blockAssetNamePrefix
+            }
+        $ findFinalUTxONode stateQueueUtxos
+    let latestBlockTxOut = toTxOut @era latestBlockUtxoAnyEra
+    latestBlockAssetName <-
+      maybe (throwError "Latest state queue node missing NFT") pure $
+        listAssetNameFromUTxO (mintingPolicyId stateQueuePolicy) latestBlockTxOut
+    latestBlockDatum <-
+      maybe (throwError "Invalid state queue datum") pure $
+        inlineDatumFromUTxO @StateQueue.Datum latestBlockTxOut
+
+    -- Need to update the active operator's bond hold state.
+    activeOperatorsUtxos <-
+      utxosByPaymentCredential $
+        C.PaymentCredentialByScript $
+          validatorHash activeOperatorsValidator
+    (activeOperatorTxIn, (activeOperatorUtxoAnyEra, _)) <-
+      maybe (throwError "No active operator node found") pure $
+        findUTxOWithAsset activeOperatorsUtxos $
+          C.AssetId (mintingPolicyId activeOperatorsPolicy) activeOperatorAssetName
+    let activeOperatorTxOut = toTxOut @era activeOperatorUtxoAnyEra
+    activeOperatorDatum <-
+      maybe (throwError "Invalid active operator datum") pure $
+        inlineDatumFromUTxO @ActiveOperators.Datum activeOperatorTxOut
+
+    -- Compute the new block header and its hash based on the anchor our new block.
+    let (prevHeaderHash, prevUtxosRoot, blockStartTime, blockProtocolVersion) =
+          case latestBlockDatum of
+            LinkedList.Element {elementData = LinkedList.Root confirmedState} ->
+              ( confirmedState.confirmedHeaderHash
+              , confirmedState.confirmedUtxoRoot
+              , confirmedState.confirmedEndTime
+              , confirmedState.confirmedProtocolVersion
+              )
+            LinkedList.Element {elementData = LinkedList.Node StateQueue.StateQueueNode {header}} ->
+              ( toBuiltin $ LinkedList.nodeKeyFromAssetName' StateQueue.blockAssetNamePrefixLen latestBlockAssetName
+              , header.utxosRoot
+              , header.endTime
+              , header.protocolVersion
+              )
+        headerDatum =
+          LedgerState.Header
+            { prevUtxosRoot = prevUtxosRoot
+            , utxosRoot = utxosRoot
+            , withdrawalsRoot = withdrawalsRoot
+            , forcedTransactionsRoot = LedgerState.genesisUtxoRoot
+            , transactionsRoot = transactionsRoot
+            , depositsRoot = depositsRoot
+            , transitionTraceRoot = LedgerState.genesisUtxoRoot
+            , eventToStepRoot = LedgerState.genesisUtxoRoot
+            , withdrawalCount = 0
+            , forcedTransactionCount = 0
+            , l2TransactionCount = 0
+            , depositCount = 0
+            , totalEventCount = 0
+            , transitionStepCount = 0
+            , startTime = blockStartTime
+            , endTime = headerEndTime
+            , prevHeaderHash = prevHeaderHash
+            , operatorVkey = currentOperator
+            , protocolVersion = blockProtocolVersion
+            }
+        newBlockHash = hashPlutusData224 headerDatum
+        newBlockKey = LinkedList.nodeKey newBlockHash
+        newBlockAssetName = C.UnsafeAssetName $ StateQueue.blockAssetNamePrefix <> newBlockHash
+
+    pure . (,headerEndTime) . execBuildTx $ do
+      -- The committing operator must sign off.
+      currentOperatorC <- either (error . show) pure $ unTransPubKeyHash currentOperator
+      addRequiredSignature currentOperatorC
+      -- The hub oracle needs to be witnessed.
+      addReference hubOracleTxIn
+      -- The scheduler needs to be witnessed (to ensure current operator).
+      addReference schedulerTxIn
+      -- Use reference script to mint.
+      addReference stateQueuePolicyRef
+      -- Append the new block.
+      spendPlutusInlineDatum
+        latestBlockTxIn
+        (toValidator stateQueueValidator)
+        StateQueue.LinkedListMutation
+      -- Update the link to point to the new block.
+      let continuedLatestBlockDatum = latestBlockDatum {LinkedList.elementLink = Just newBlockKey}
+      payToScriptInlineDatum
+        netId
+        (validatorHash stateQueueValidator)
+        continuedLatestBlockDatum
+        C.NoStakeAddress
+        (txOutValue latestBlockTxOut)
+      let newBlockOutputDatum :: StateQueue.Datum =
+            LinkedList.Element
+              { elementData =
+                  LinkedList.Node $
+                    StateQueue.StateQueueNode
+                      { header = headerDatum
+                      , -- Must start with no DA attestation.
+                        daAttestation = mempty
+                      }
+              , elementLink = Nothing
+              }
+      payToScriptInlineDatum
+        netId
+        (validatorHash stateQueueValidator)
+        newBlockOutputDatum
+        C.NoStakeAddress
+        (assetValue stateQueuePolicyId newBlockAssetName 1)
+      -- The new block needs its unique NFT minted.
+      mintPlutusRefWithRedeemerFinal
+        stateQueuePolicyRef
+        (plutusVersion stateQueuePolicy)
+        (mintingPolicyId stateQueuePolicy)
+        newBlockAssetName
+        1
+        $ \txBody ->
+          StateQueue.CommitBlockHeader
+            { newBlockOutputIndex =
+                toInteger $
+                  findOutputIndexWithAsset
+                    (mintingPolicyId stateQueuePolicy)
+                    newBlockAssetName
+                    txBody
+            , continuedLatestBlockOutputIndex =
+                toInteger $
+                  findOutputIndexWithAsset
+                    (mintingPolicyId stateQueuePolicy)
+                    latestBlockAssetName
+                    txBody
+            , operator = currentOperator
+            , schedulerRefInputIndex = toInteger $ findIndexReference schedulerTxIn txBody
+            , activeOperatorsInputIndex = toInteger $ findIndexSpending activeOperatorTxIn txBody
+            , activeOperatorsRedeemerIndex = toInteger $ findSpendingRedeemerIndex activeOperatorTxIn txBody
+            }
+
+      -- Update the active operator node for the current operator.
+      spendPlutusInlineDatumWithRedeemerFinal
+        (toValidator activeOperatorsValidator)
+        activeOperatorTxIn
+        $ \txBody ->
+          ActiveOperators.UpdateBondHoldNewState
+            { activeOperator = currentOperator
+            , activeNodeInputIndex = toInteger $ findIndexSpending activeOperatorTxIn txBody
+            , activeNodeOutputIndex =
+                toInteger $
+                  findOutputIndexWithAsset
+                    (mintingPolicyId activeOperatorsPolicy)
+                    activeOperatorAssetName
+                    txBody
+            , hubOracleRefInputIndex = toInteger $ findIndexReference hubOracleTxIn txBody
+            , stateQueueMintRedeemerIndex =
+                toInteger $
+                  findMintRedeemerIndex
+                    stateQueuePolicies
+                    txBody
+                    (mintingPolicyId stateQueuePolicy)
+            }
+      let activeOperatorInactivityStrikes = case LinkedList.elementData activeOperatorDatum of
+            LinkedList.Node ActiveOperators.NodeData {inactivityStrikes} -> inactivityStrikes
+            _ -> error "absurd: Active Operator node is Root"
+          updatedActiveOperatorDatum :: ActiveOperators.Datum =
+            activeOperatorDatum
+              { LinkedList.elementData =
+                  LinkedList.Node $
+                    ActiveOperators.NodeData
+                      { bondUnlockTime = Just newBondUnlockTime
+                      , inactivityStrikes = activeOperatorInactivityStrikes
+                      }
+              }
+      payToScriptInlineDatum
+        netId
+        (validatorHash activeOperatorsValidator)
+        updatedActiveOperatorDatum
+        C.NoStakeAddress
+        (txOutValue activeOperatorTxOut)
+
+      -- Set the validity bounds.
+      addBtx $ \txBody ->
+        txBody
+          { C.txValidityLowerBound = C.TxValidityLowerBound (C.allegraBasedEra @era) currentSlot
+          , C.txValidityUpperBound =
+              C.TxValidityUpperBound (C.shelleyBasedEra @era) $ Just validityUpperBoundExclusive
+          }
+      setMinAdaDepositAll params
+    where
+      txOutValue (C.TxOut _ val _ _) = C.txOutValueToValue val
+
+mergeToConfirmedState ::
+  forall era m.
+  ( MonadError String m
+  , MonadBlockchain era m
+  , MonadUtxoQuery m
+  , C.HasScriptLanguageInEra C.PlutusScriptV3 era
+  , C.IsBabbageBasedEra era
+  ) =>
+  MidgardScripts ->
+  MidgardRefScripts ->
+  m (TxBuilder era)
+mergeToConfirmedState
+  MidgardScripts {stateQueueValidator, stateQueuePolicy}
+  MidgardRefScripts {stateQueuePolicyRef} = do
+    params <- queryProtocolParameters
+    netId <- queryNetworkId
+    (currentSlot, _, _) <- querySlotNo
+    stateQueueUtxos <-
+      utxosByPaymentCredential $
+        C.PaymentCredentialByScript $
+          validatorHash stateQueueValidator
+    (confirmedStateTxIn, (confirmedStateUtxoAnyEra, _)) <-
+      maybe (throwError "No confirmed state found") pure $
+        findUTxOWithAsset stateQueueUtxos $
+          C.AssetId (mintingPolicyId stateQueuePolicy) StateQueue.confirmedStateAssetName
+    let confirmedStateTxOut = toTxOut @era confirmedStateUtxoAnyEra
+    confirmedStateDatum <-
+      maybe (throwError "Invalid confirmed state datum") pure $
+        inlineDatumFromUTxO @StateQueue.Datum confirmedStateTxOut
+    headerNodeKey <-
+      maybe (throwError "No header node linked from confirmed state") pure $
+        LinkedList.elementLink confirmedStateDatum
+    let headerAssetName = LinkedList.nodeKeyToAssetName StateQueue.blockAssetNamePrefix headerNodeKey
+    (headerNodeTxIn, (headerNodeUtxoAnyEra, _)) <-
+      maybe (throwError "Linked header node not found") pure $
+        findUTxOWithAsset stateQueueUtxos $
+          C.AssetId (mintingPolicyId stateQueuePolicy) headerAssetName
+    headerNodeDatum <-
+      maybe (throwError "Invalid header node datum") pure $
+        inlineDatumFromUTxO @StateQueue.Datum (toTxOut @era headerNodeUtxoAnyEra)
+    mergedHeader <-
+      case headerNodeDatum of
+        LinkedList.Element {elementData = LinkedList.Node StateQueue.StateQueueNode {header}} -> pure header
+        _ -> throwError "Malformed header node datum"
+
+    let mergedConfirmedStateDatum :: StateQueue.Datum =
+          case (confirmedStateDatum, headerNodeDatum) of
+            ( LinkedList.Element {elementData = LinkedList.Root confirmedState}
+              , LinkedList.Element
+                  { elementData = LinkedList.Node StateQueue.StateQueueNode {header}
+                  , elementLink = remainingLink
+                  }
+              ) ->
+                LinkedList.Element
+                  { elementData =
+                      LinkedList.Root $
+                        LedgerState.ConfirmedState
+                          { confirmedHeaderHash = toBuiltin $ LinkedList.getNodeKey headerNodeKey
+                          , confirmedPrevHeaderHash = confirmedState.confirmedHeaderHash
+                          , confirmedUtxoRoot = header.utxosRoot
+                          , confirmedStartTime = confirmedState.confirmedStartTime
+                          , confirmedEndTime = header.endTime
+                          , confirmedProtocolVersion = header.protocolVersion
+                          }
+                  , elementLink = remainingLink
+                  }
+            _ -> error "absurd: malformed confirmed-state merge"
+
+    pure . execBuildTx $ do
+      -- Use reference script to mint.
+      addReference stateQueuePolicyRef
+      -- Constraint: fold the first queued block into the confirmed-state root by
+      -- spending both the root and the linked header node.
+      spendPlutusInlineDatum
+        confirmedStateTxIn
+        (toValidator stateQueueValidator)
+        StateQueue.LinkedListMutation
+      spendPlutusInlineDatum
+        headerNodeTxIn
+        (toValidator stateQueueValidator)
+        StateQueue.LinkedListMutation
+      payToScriptInlineDatum
+        netId
+        (validatorHash stateQueueValidator)
+        mergedConfirmedStateDatum
+        C.NoStakeAddress
+        -- Constraint: reproduce only the confirmed-state root, carrying forward
+        -- the root NFT and the merged confirmed-state datum.
+        (txOutValue confirmedStateTxOut)
+      mintPlutusRefWithRedeemerFinal
+        stateQueuePolicyRef
+        (plutusVersion stateQueuePolicy)
+        (mintingPolicyId stateQueuePolicy)
+        headerAssetName
+        (-1)
+        -- Constraint: burn the merged block-header NFT and provide final-body
+        -- indices for the root input, header input, and continued root output.
+        $ \txBody ->
+          StateQueue.MergeToConfirmedState
+            { headerNodeKey = toBuiltin $ LinkedList.getNodeKey headerNodeKey
+            , confirmedStateInputOutref = transTxOutRef confirmedStateTxIn
+            , confirmedStateOutputIndex =
+                toInteger $
+                  findOutputIndexWithAsset
+                    (mintingPolicyId stateQueuePolicy)
+                    StateQueue.confirmedStateAssetName
+                    txBody
+            , mSettlementRedeemerIndex = Nothing
+            , mergedBlockWithdrawalsRoot = mergedHeader.withdrawalsRoot
+            , mergedBlockForcedTransactionsRoot = mergedHeader.forcedTransactionsRoot
+            , mergedBlockTransactionsRoot = mergedHeader.transactionsRoot
+            , mergedBlockDepositsRoot = mergedHeader.depositsRoot
+            , mergedBlockTransitionTraceRoot = mergedHeader.transitionTraceRoot
+            , mergedBlockEventToStepRoot = mergedHeader.eventToStepRoot
+            , mergedBlockWithdrawalCount = mergedHeader.withdrawalCount
+            , mergedBlockForcedTransactionCount = mergedHeader.forcedTransactionCount
+            , mergedBlockL2TransactionCount = mergedHeader.l2TransactionCount
+            , mergedBlockDepositCount = mergedHeader.depositCount
+            , mergedBlockTotalEventCount = mergedHeader.totalEventCount
+            , mergedBlockTransitionStepCount = mergedHeader.transitionStepCount
+            }
+      addBtx $ \txBody ->
+        -- Constraint: merging requires the tx lower bound to be at or after the
+        -- block's maturity threshold; we use the current slot after time has
+        -- been advanced by the caller/test.
+        txBody
+          { C.txValidityLowerBound = C.TxValidityLowerBound (C.allegraBasedEra @era) currentSlot
+          }
+      setMinAdaDepositAll params
+    where
+      txOutValue (C.TxOut _ val _ _) = C.txOutValueToValue val
