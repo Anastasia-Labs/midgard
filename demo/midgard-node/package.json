@@ -114,6 +114,7 @@
   "author": "Anastasia Labs",
   "license": "ISC",
   "dependencies": {
+    "@cardano-ogmios/client": "6.9.0",
     "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
     "@al-ft/lucid-midgard": "workspace:*",
     "@al-ft/midgard-core": "workspace:*",

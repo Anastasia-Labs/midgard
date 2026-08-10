@@ -227,6 +227,9 @@ importers:
       '@al-ft/midgard-validation':
         specifier: workspace:*
         version: link:../midgard-validation
+      '@cardano-ogmios/client':
+        specifier: 6.9.0
+        version: 6.9.0(encoding@0.1.13)
       '@chainsafe/libp2p-noise':
         specifier: 17.0.0
         version: 17.0.0

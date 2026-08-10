@@ -103,8 +103,8 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_da_payloads_created_at",
   "idx_da_payload_publications_retry",
   "idx_da_payload_announcements_retry",
-  "idx_deposit_submission_attempts_deposit_event_id",
-  "idx_deposit_submission_attempts_status_submitted_at",
+  "idx_deposit_submission_attempts_status_prepared_at",
+  "idx_deposit_submission_attempts_active_event_id",
 ] as const;
 
 export const migrationByVersion = new Map(
