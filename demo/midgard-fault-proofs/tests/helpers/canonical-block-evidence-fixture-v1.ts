@@ -17,6 +17,7 @@ import {
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardSpendInputItemV1,
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_V1_VERSION,
@@ -25,7 +26,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, Data } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
@@ -37,12 +38,10 @@ export const h28 = (byte: number): string =>
   byte.toString(16).padStart(2, "0").repeat(28);
 
 export const outRefCbor = (txIdByte: number, index: bigint): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(h32(txIdByte)),
-      index,
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItemV1({
+    txId: Buffer.from(h32(txIdByte), "hex"),
+    outputIndex: Number(index),
+  });
 
 export type FixtureTransactionInputV1 = {
   readonly spendInputs: readonly Buffer[];

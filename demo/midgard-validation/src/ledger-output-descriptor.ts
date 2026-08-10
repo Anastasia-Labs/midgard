@@ -2,7 +2,6 @@ import {
   buildMidgardBoundedItemV1,
   buildMidgardLedgerOutputAssetFrontierV1,
   buildMidgardLedgerOutputMaterialV1,
-  encodeCbor,
   ensureHash32,
   MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
   type MidgardLedgerOutputCommitmentV1,
@@ -14,6 +13,7 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
+  MIDGARD_MAX_OUTPUT_INDEX_V1,
   type MidgardTxOutput,
   midgardValueToCmlValue,
   MidgardVersionedScriptTags,
@@ -25,6 +25,17 @@ import { decodeMidgardOutRefBytes } from "./ledger-tx/codec.js";
 import { commitMidgardScriptContextTxOutV1 } from "./script-context-proof.js";
 
 const MAX_LEDGER_OUTPUT_INDEX_V1 = 65_535n;
+
+// §5.3's out-ref item spells the output index as a fixed CBOR uint16, and
+// `decodeMidgardOutRefBytes` is the only door onto those bytes, so a decoded
+// index is already inside this descriptor's domain — a per-call range check
+// would be a gate that cannot fail. What can still go wrong is the two domains
+// drifting apart, so that is what is asserted, once, at load time.
+if (MAX_LEDGER_OUTPUT_INDEX_V1 !== BigInt(MIDGARD_MAX_OUTPUT_INDEX_V1)) {
+  throw new Error(
+    "ledger output-index domain has drifted from the §5.3 out-ref index domain",
+  );
+}
 
 const exactSummary = ({
   root,
@@ -143,8 +154,13 @@ export const buildCanonicalMidgardLedgerOutputMaterialV1 = ({
 
 /**
  * Converts persisted full output material into its compact consensus-ledger
- * value. The out-ref is checked for exact canonical Cardano encoding because
- * its output index selects the bounded-item commitment domain.
+ * value.
+ *
+ * `decodeMidgardOutRefBytes` is the exact-form gate: it accepts only §5.3's
+ * 38-byte fixed-index item and throws on every other shape, which is what these
+ * bytes have to be — they are ledger trie keys, the same value on-chain
+ * `ledger_outref_key` derives — and the decoded output index is what selects the
+ * bounded-item commitment domain below.
  */
 export const buildCanonicalMidgardLedgerEntryOutputMaterialV1 = ({
   outRef,
@@ -154,13 +170,6 @@ export const buildCanonicalMidgardLedgerEntryOutputMaterialV1 = ({
   readonly outputCbor: Uint8Array;
 }): MidgardLedgerOutputMaterialV1 => {
   const decoded = decodeMidgardOutRefBytes(outRef);
-  const canonicalOutRef = encodeCbor([decoded.txId, decoded.index]);
-  if (!canonicalOutRef.equals(Buffer.from(outRef))) {
-    throw new Error("ledger out-ref must use exact canonical Cardano CBOR");
-  }
-  if (decoded.index < 0n || decoded.index > MAX_LEDGER_OUTPUT_INDEX_V1) {
-    throw new Error("ledger output index exceeds the V1 descriptor domain");
-  }
   return buildCanonicalMidgardLedgerOutputMaterialV1({
     outputIndex: Number(decoded.index),
     outputCbor,

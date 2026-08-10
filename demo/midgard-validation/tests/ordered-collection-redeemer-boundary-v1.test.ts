@@ -80,13 +80,13 @@ const maximumRedeemerTerminalFoldVectorV1 = {
   fieldPreimageHashHex:
     "680079f9aebb6ab20240bf0a4b46a9b607181843413e0cdfbb293942aebe3d0a",
   transactionIdHex:
-    "82c56f324a18a66255e3d48ddcf80a86f5b7db89dd8f5b1e0c3d3cce02668b40",
+    "bb9eefcba3b233b08c3969d7e72dd6911353f5ae4fb0f78dd4fa94bec151e203",
   transactionCommitmentHex:
-    "d44e343be6c481bf241cc393197ddbba3e8909f2d01ba9501486585bd412a04c",
+    "c4670fb733c631fe5d11bfce0c8b70eeca201c074ed5aa3cba55f81c29755d7b",
   preWorkRootHex:
-    "e8d2c995785e73b5f3d4343d33adf421bd003019c9116f689a1478e5e886400a",
+    "c54966df530e3156a5d0312b2a4d441490dbd1996c3778cebc94f2e35ee22c62",
   postWorkRootHex:
-    "c95c88e209891c909d9a4d8ac18883caa51d432efd150613ed904c0cb74f7036",
+    "1e375126f821f3794f40887267a40a9d9b4cf1bc4b77a9e08b60eb46fa1e5051",
   encodedLengthBeforeItem: 5_035,
   collectionProof: {
     fieldIndex: 8,
@@ -454,6 +454,32 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
     expect(productionRetainedDa.forced.reconstructedCanonicalBytes).toBe(
       retainedProjection.canonicalTransactionCbor.length,
     );
+    // The producing channel for the Aiken twins of this boundary. Two of them
+    // — `maximum_cardano_compact_cbor` and
+    // `maximum_cardano_witness_set_compact_cbor` in
+    // `lib/midgard/fraud-proofs/native-tx.max-redeemers.test.ak` and in the two
+    // `validators/fraud-proofs/da-hash-preimage` steps — are not covered by the
+    // pinned object below, so print them on demand rather than re-deriving them
+    // by hand. Same contract as the sibling boundary suites.
+    if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
+      console.info(
+        JSON.stringify(
+          {
+            compactCborHex: redeemerField.terminalFoldVector.compactCborHex,
+            witnessSetCompactCborHex:
+              redeemerField.terminalFoldVector.witnessSetCompactCborHex,
+            fieldPreimageLengthsCborHex:
+              redeemerField.terminalFoldVector.fieldPreimageLengthsCborHex,
+            fieldBytes: redeemerField.fieldBytes,
+            fieldPreimageHashHex: redeemerField.fieldPreimageHashHex,
+            fieldCommitmentHex: redeemerField.fieldCommitmentHex,
+            itemCount: redeemerField.itemCount,
+          },
+          null,
+          2,
+        ),
+      );
+    }
     expect({
       fieldCommitmentHex: redeemerField.fieldCommitmentHex,
       fieldPreimageHashHex: redeemerField.fieldPreimageHashHex,

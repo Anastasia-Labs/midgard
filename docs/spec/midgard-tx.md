@@ -262,6 +262,41 @@ Item-level rules:
   `item_offset(i) + 2`. The fixed width picks a different canon; it does
   not waive uniqueness — `18 XX`, minimal one-byte, and wider index forms
   all reject.
+- **Fields 0/1 — this encoding is also the ledger out-ref key.** An
+  out-ref has exactly one byte form in Midgard, and it is the field-0/1
+  item above. The same 38 bytes serve three consumers, and they are
+  required to be identical:
+
+  | consumer | derivation |
+  | --- | --- |
+  | field-0/1 preimage items | `enc_0` / `enc_1` (this row) |
+  | ledger MPF trie key | the same bytes, unchanged |
+  | ledger database `outref` column / primary key | the same bytes, unchanged |
+
+  On-chain this is literal: `ledger_outref_key`
+  (`onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak`) is a
+  direct call to `encode_midgard_tx_input`, the field-0/1 item encoder. In
+  TypeScript the one spelling is
+  `encodeMidgardSpendInputItemV1`
+  (`demo/midgard-core/src/codec/native-tx-field-items-v1.ts`), reached
+  through `outRefToCbor` / `utxoOutRefCbor`
+  (`demo/lucid-midgard/src/core/output.ts`) and `midgardOutRefToCbor`
+  (`demo/midgard-validation/src/validation-candidate.ts`). CML's
+  `TransactionInput` CBOR is **not** an admissible spelling: it minimises
+  the index and so yields 36 bytes for indices 0–23 and 37 for 24–255, keys
+  the on-chain side never computes. (From 256 up the minimal index is
+  already `19 XXXX`, so the two agree there and only indices below 256 can
+  carry a stale key.) Decoders of a trie key or `outref` column are
+  `decode_midgard_tx_input_cbor` / `decodeMidgardSpendInputItemV1`, which
+  both enforce the exact 38-byte width and the `0x19` index head — the
+  width is what rejects a non-minimal `59 0020` tx_id header, which a
+  positional reader would otherwise decode to the same out-ref.
+
+  Consequences that follow from the table rather than from any separate
+  rule: `maxTransactionAggregateFieldBytes` bounds trie keys too (§5.4);
+  the 0–65,535 index domain is the ledger's index domain; and a
+  development ledger written under any other spelling must be reset, not
+  migrated (pre-mainnet, per `AGENTS.md`).
 - **Fields 3/4 — asserted 28-byte width.** Every observer/signer item MUST
   be exactly 28 bytes (wrapper `58 1C`, **stride 30**,
   `item_offset(i) = header_len + 30·i`). Both encoder twins enforce the

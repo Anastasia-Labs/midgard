@@ -8,6 +8,7 @@ import {
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardSpendInputItemV1,
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
   midgardAddressFromText,
@@ -53,7 +54,10 @@ import { Lucid as LucidService } from "@/services/lucid.js";
 import { ContractDeploymentIdentity } from "@/services/midgard-contracts.js";
 import { WriteBehind, WriteBehindService } from "@/services/write-behind.js";
 
-import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
+import {
+  makeMidgardTxOutput,
+  makeOutRefCbor,
+} from "./midgard-output-helpers.js";
 
 const TEST_SEED =
   "cupboard digital guitar diesel critic will afford salon game dolphin phrase baby dad urban machine barely rack acoustic blood vote misery enemy salute depart";
@@ -91,12 +95,7 @@ const mkNodeUtxo = ({
   readonly address: string;
   readonly assets: { readonly [unit: string]: bigint };
 }): NodeUtxo => {
-  const outrefCbor = Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHash),
-      BigInt(outputIndex),
-    ).to_cbor_bytes(),
-  );
+  const outrefCbor = makeOutRefCbor(txHash, outputIndex);
   const outputCbor = Buffer.from(
     makeMidgardTxOutput(
       CML.Address.from_bech32(address),
@@ -302,11 +301,14 @@ describe("submit-l2-transfer tx building", () => {
     });
 
     const nativeTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(built.txCbor);
+    // Field-0 items are §5.3's fixed-index form, so they must be read with the
+    // field-item decoder — CML's `TransactionInput` decoder tolerates the
+    // non-minimal `19 0000` index but is not the contract these bytes obey.
     const spendInputs = decodeMidgardNativeByteListPreimage(
       nativeTx.body.spendInputsPreimageCbor,
     ).map((bytes) => {
-      const input = CML.TransactionInput.from_cbor_bytes(bytes);
-      return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+      const input = decodeMidgardSpendInputItemV1(bytes);
+      return `${Buffer.from(input.txId).toString("hex")}#${input.outputIndex.toString()}`;
     });
     expect(spendInputs).toEqual([
       `${"11".repeat(32)}#0`,

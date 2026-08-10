@@ -6,6 +6,7 @@ import { encodeCbor } from "../src/codec/cbor.js";
 import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
+  encodeMidgardSpendInputItemV1,
   encodeMidgardTxOutput,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_V1_VERSION,
@@ -268,7 +269,12 @@ describe("script proof primitives", () => {
   });
 
   it("resolves historical reference programs from exact ledger outrefs", () => {
-    const outRef = encodeCbor([Buffer.alloc(32, 0x44), 2n]);
+    // The ledger out-ref, in its one Midgard spelling: §5.3's fixed-index
+    // field-0/1 item, so index 2 is `19 0002` and the key is 38 bytes.
+    const outRef = encodeMidgardSpendInputItemV1({
+      txId: Buffer.alloc(32, 0x44),
+      outputIndex: 2,
+    });
     const envelope = encodeMidgardCekProgramEnvelopeV1({
       uplcVersion: [1n, 1n, 0n],
       termRoot: Buffer.alloc(32, 0x55),
@@ -376,9 +382,23 @@ describe("script proof primitives", () => {
     expect(() =>
       collectMidgardV1ReferencedProgramEnvelopes(tx, new Map()),
     ).toThrow(/no resolved ledger output/u);
+    // A 31-byte tx_id: the wrapper lies about a 38-byte key's contents, so the
+    // §5.3 decoder rejects it.
     expect(() =>
-      referenceLeafInput(encodeCbor([Buffer.alloc(31, 0x44), 2n])),
-    ).toThrow();
+      referenceLeafInput(
+        Buffer.concat([
+          Buffer.from("82581f", "hex"),
+          Buffer.alloc(31, 0x44),
+          Buffer.from("190002", "hex"),
+        ]),
+      ),
+    ).toThrow(/source key is not an output reference/u);
+    // The retired minimal-index spelling — CML's `TransactionInput` CBOR, 36
+    // bytes. §5.3 does not admit it, in either language.
+    expect(() =>
+      referenceLeafInput(encodeCbor([Buffer.alloc(32, 0x44), 2n])),
+    ).toThrow(/source key is not an output reference/u);
+    // `18 XX` one-byte-argument index.
     expect(() =>
       referenceLeafInput(
         Buffer.concat([
@@ -387,9 +407,50 @@ describe("script proof primitives", () => {
           Buffer.from("1802", "hex"),
         ]),
       ),
-    ).toThrow(/Non-minimal CBOR integer or length encoding/u);
+    ).toThrow(/source key is not an output reference/u);
+    // Right length, wrong canon: a `1a` index head in the 38-byte envelope.
     expect(() =>
-      referenceLeafInput(encodeCbor([Buffer.alloc(32, 0x44), 65_536n])),
-    ).toThrow(/source key/u);
+      referenceLeafInput(
+        Buffer.concat([
+          Buffer.from("825820", "hex"),
+          Buffer.alloc(32, 0x44),
+          Buffer.from("1a0002", "hex"),
+        ]),
+      ),
+    ).toThrow(/source key is not an output reference/u);
+    // A non-minimal `59 0020` byte-string header for the 32-byte tx_id: 39
+    // bytes, and the one shape a positional on-chain reader will happily walk
+    // (`decode_definite_bytes_at` accepts the wide header), so the width guard
+    // is what makes the two twins agree that this is not an out-ref.
+    expect(() =>
+      referenceLeafInput(
+        Buffer.concat([
+          Buffer.from("82590020", "hex"),
+          Buffer.alloc(32, 0x44),
+          Buffer.from("190002", "hex"),
+        ]),
+      ),
+    ).toThrow(/source key is not an output reference/u);
+    // Index 65,536 is outside the ledger's uint16 index domain, so it has no
+    // §5.3 encoding at all — the encoder cannot even build the bytes.
+    expect(() =>
+      encodeMidgardSpendInputItemV1({
+        txId: Buffer.alloc(32, 0x44),
+        outputIndex: 65_536,
+      }),
+    ).toThrow(/output index must be 0\.\.65,535/u);
+    // So the leaf path's own rejection of an out-of-domain index has to be
+    // reached with hand-built bytes: index 65,536 spelled as a minimal uint32,
+    // a 41-byte key. Without this the reference-leaf path was only ever shown
+    // rejecting *shapes*, never an index outside the domain.
+    expect(() =>
+      referenceLeafInput(
+        Buffer.concat([
+          Buffer.from("825820", "hex"),
+          Buffer.alloc(32, 0x44),
+          Buffer.from("1a00010000", "hex"),
+        ]),
+      ),
+    ).toThrow(/source key is not an output reference/u);
   });
 });

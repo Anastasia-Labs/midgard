@@ -1,3 +1,4 @@
+import { outRefToCbor } from "@al-ft/lucid-midgard";
 import * as SDK from "@al-ft/midgard-sdk";
 import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -44,7 +45,9 @@ const insertGenesisUtxos: Effect.Effect<
     const core = utxoToCore(utxo);
     return {
       [LedgerColumns.TX_ID]: Buffer.from(utxo.txHash, "hex"),
-      [LedgerColumns.OUTREF]: Buffer.from(core.input().to_cbor_bytes()),
+      // §5.3 field-0/1 item encoding — the ledger key on-chain
+      // `ledger_outref_key` derives, not CML's minimal-index form.
+      [LedgerColumns.OUTREF]: outRefToCbor(utxo),
       [LedgerColumns.OUTPUT]: Buffer.from(core.output().to_cbor_bytes()),
       [LedgerColumns.ADDRESS]: utxo.address,
     };

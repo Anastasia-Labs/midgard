@@ -14,7 +14,9 @@ const OUTPUT_CBOR =
   "a400581d68aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" +
   "01821a0012d687a1581c111111111111111111111111111111111111111111111" +
   "11111111111a1422233070246d87b9f182aff03820343010203";
-const INPUT_CBOR = `825820${"bb".repeat(32)}02`;
+// §5.3 fields 0/1: the out-ref is the fixed-index item
+// `82 ‖ 58 20 tx_id ‖ 19 index_be16`, so index 2 is `190002`, never `02`.
+const INPUT_CBOR = `825820${"bb".repeat(32)}190002`;
 
 describe("V1 script-context output commitments", () => {
   it("matches the Aiken Cardano and Midgard address-view roots", () => {

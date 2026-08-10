@@ -200,6 +200,23 @@ describe("§5.3 item readers fail closed", () => {
     ).toThrow();
   });
 
+  it("rejects a non-minimal `59 0020` header for the 32-byte tx_id", () => {
+    // The one shape the Aiken twin will *read*: `decode_definite_bytes_at`
+    // accepts the wide two-byte length header, so a 39-byte item names the same
+    // `(tx_id, index)` as the canonical 38-byte one. Two byte strings for one
+    // out-ref would mean two ledger trie keys for one UTxO, so both twins have
+    // to reject it, and on both sides the exact-38 width is what does it.
+    const wideHeader = Buffer.concat([
+      Buffer.of(0x82, 0x59, 0x00, 0x20),
+      spendInput.subarray(3, 35),
+      spendInput.subarray(35),
+    ]);
+    expect(wideHeader.length).toBe(39);
+    // Same out-ref underneath: only the tx_id's length header differs.
+    expect(wideHeader.subarray(4, 36)).toEqual(spendInput.subarray(3, 35));
+    expect(() => decodeMidgardSpendInputItemV1(wideHeader)).toThrow();
+  });
+
   it("rejects observer/signer items that are not 28 bytes", () => {
     expect(() => decodeMidgardHash28ItemV1(Buffer.alloc(27))).toThrow();
     expect(() => decodeMidgardHash28ItemV1(Buffer.alloc(29))).toThrow();

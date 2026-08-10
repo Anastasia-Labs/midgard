@@ -47,6 +47,7 @@ import {
   hashMidgardV1Script,
   hashPlutusV3Script,
   makeMidgardTxOutput,
+  makeOutRefCbor,
   protectOutputAddressBytes,
 } from "./midgard-output-helpers.js";
 
@@ -276,14 +277,7 @@ const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
   Buffer.from(encode(items.map((item) => Buffer.from(item))));
 
 const makeOutRef = (txHashByte: number, outputIndex: bigint): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(
-        Buffer.alloc(32, txHashByte).toString("hex"),
-      ),
-      outputIndex,
-    ).to_cbor_bytes(),
-  );
+  makeOutRefCbor(txHashByte, outputIndex);
 
 const makeOutput = (address: string, lovelace: bigint): Buffer =>
   Buffer.from(
@@ -3865,12 +3859,7 @@ describe("native transaction integration", () => {
     const result = await Effect.runPromise(
       findSpentAndProducedUTxOs(txCbor, txId),
     );
-    const expectedOutRef = Buffer.from(
-      CML.TransactionInput.new(
-        CML.TransactionHash.from_raw_bytes(txId),
-        0n,
-      ).to_cbor_bytes(),
-    );
+    const expectedOutRef = makeOutRefCbor(txId, 0);
 
     expect(result.spent).toHaveLength(1);
     expect(result.spent[0].equals(inputOutRef)).toBe(true);
@@ -3884,13 +3873,8 @@ describe("native transaction integration", () => {
     const result = await Effect.runPromise(
       findSpentAndProducedUTxOs(txCbor, txId),
     );
-    const txHash = CML.TransactionHash.from_raw_bytes(txId);
-    const expectedOutRef0 = Buffer.from(
-      CML.TransactionInput.new(txHash, 0n).to_cbor_bytes(),
-    );
-    const expectedOutRef1 = Buffer.from(
-      CML.TransactionInput.new(txHash, 1n).to_cbor_bytes(),
-    );
+    const expectedOutRef0 = makeOutRefCbor(txId, 0);
+    const expectedOutRef1 = makeOutRefCbor(txId, 1);
 
     expect(result.produced).toHaveLength(2);
     expect(result.produced[0].outref.equals(expectedOutRef0)).toBe(true);

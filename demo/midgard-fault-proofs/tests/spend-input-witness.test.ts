@@ -1,5 +1,5 @@
+import { encodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core/codec";
 import {
-  CML,
   Emulator,
   generateEmulatorAccount,
   getAddressDetails,
@@ -28,12 +28,10 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 } as const;
 
 const inputCbor = (index: number): string =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(index.toString(16).padStart(64, "0")),
-      BigInt(index),
-    ).to_cbor_bytes(),
-  ).toString("hex");
+  encodeMidgardSpendInputItemV1({
+    txId: Buffer.from(index.toString(16).padStart(64, "0"), "hex"),
+    outputIndex: index,
+  }).toString("hex");
 
 describe("spend-input reference witnesses", () => {
   it("publishes high-cardinality witnesses with calculated min ADA", async () => {

@@ -5,6 +5,7 @@ import {
 } from "@al-ft/midgard-core/assets";
 import {
   decodeMidgardAddressText,
+  decodeMidgardSpendInputItemV1,
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
   midgardValueToCmlValue,
@@ -12,7 +13,7 @@ import {
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { Assets, UTxO } from "@lucid-evolution/lucid";
-import { CML, Data as LucidData, valueToAssets } from "@lucid-evolution/lucid";
+import { Data as LucidData, valueToAssets } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
 import { DatabaseError } from "@/database/utils/common.js";
@@ -178,15 +179,16 @@ export const decodeLedgerUtxo = ({
 }): Effect.Effect<UTxO, DatabaseError, never> =>
   Effect.try({
     try: () => {
-      const input = CML.TransactionInput.from_cbor_bytes(outRef);
+      // Ledger out-refs are the §5.3 field-0/1 item form — 38 bytes,
+      // `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16` — matching on-chain
+      // `ledger_outref_key`, not CML's minimal-index `TransactionInput` CBOR.
+      // The decoder bounds the index to a CBOR uint16, so no safe-integer
+      // check is needed on the way out.
+      const input = decodeMidgardSpendInputItemV1(outRef);
       const decodedOutput = decodeMidgardTxOutput(output);
-      const outputIndex = Number(input.index());
-      if (!Number.isSafeInteger(outputIndex)) {
-        throw new Error("output index exceeds JavaScript safe integer range");
-      }
       return {
-        txHash: input.transaction_id().to_hex(),
-        outputIndex,
+        txHash: Buffer.from(input.txId).toString("hex"),
+        outputIndex: input.outputIndex,
         address: encodeMidgardAddressText(decodedOutput.address),
         assets: valueToAssets(
           midgardValueToCmlValue(decodedOutput.value),

@@ -7,6 +7,7 @@ import { type MidgardNativeTxCanonicalV1 } from "./native.js";
 import { EMPTY_NULL_ROOT } from "./native-constants.js";
 import { cardanoRedeemersToMidgardPreimageCbor } from "./native-redeemer.js";
 import { decodeMidgardNativeScript } from "./native-script.js";
+import { encodeMidgardSpendInputItemV1 } from "./native-tx-field-items-v1.js";
 import { encodeMidgardTxOutput, type MidgardTxOutput } from "./output.js";
 import { type MidgardValue } from "./value.js";
 import {
@@ -107,6 +108,39 @@ const cmlCollectionToPreimageCbor = (
   const entries: Buffer[] = [];
   for (let i = 0; i < collection.len(); i++) {
     entries.push(cmlObjectToBytes(collection.get(i), `${fieldName}[${i}]`));
+  }
+  return encodeCbor(entries);
+};
+
+/**
+ * Fields 0/1 carry §5.3 items (`82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed
+ * 38 bytes), not CML's minimal-index `TransactionInput` CBOR — so a Cardano
+ * input list must be re-encoded through the field-item encoder rather than
+ * serialized as-is. This is the exact twin of `decodeNativeInputsToCardano`,
+ * which decodes these items back into `CML.TransactionInput`s.
+ */
+const cmlInputsToSpendInputPreimageCbor = (
+  collection: CmlCollectionLike | undefined,
+  fieldName: string,
+): Buffer => {
+  if (collection === undefined) {
+    return encodeCbor([]);
+  }
+  const entries: Buffer[] = [];
+  for (let i = 0; i < collection.len(); i++) {
+    const input = collection.get(i);
+    if (!(input instanceof CML.TransactionInput)) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.SchemaMismatch,
+        `Cannot serialize CML value in ${fieldName}[${i}]`,
+      );
+    }
+    entries.push(
+      encodeMidgardSpendInputItemV1({
+        txId: input.transaction_id().to_raw_bytes(),
+        outputIndex: Number(input.index()),
+      }),
+    );
   }
   return encodeCbor(entries);
 };
@@ -465,11 +499,11 @@ export const cardanoTxBytesToMidgardNativeTxCanonicalV1 = (
   const txWitnessSet = tx.witness_set();
   const txOutputs = txBody.outputs();
 
-  const spendInputsPreimageCbor = cmlCollectionToPreimageCbor(
+  const spendInputsPreimageCbor = cmlInputsToSpendInputPreimageCbor(
     asCollectionLike(txBody.inputs()),
     "transaction_body.inputs",
   );
-  const referenceInputsPreimageCbor = cmlCollectionToPreimageCbor(
+  const referenceInputsPreimageCbor = cmlInputsToSpendInputPreimageCbor(
     asCollectionLike(txBody.reference_inputs()),
     "transaction_body.reference_inputs",
   );

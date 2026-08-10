@@ -5,13 +5,15 @@ use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
 use midgard/fraud_proofs/native_tx/components.{
-  encode_midgard_redeemer_witness, encode_midgard_versioned_script,
+  decode_midgard_tx_input_cbor, encode_midgard_redeemer_witness,
+  encode_midgard_tx_input, encode_midgard_versioned_script,
+  midgard_tx_input_item_bytes,
 }
 use midgard/fraud_proofs/native_tx/types.{
   CertRedeemer, MidgardRedeemerPurpose, MidgardRedeemerWitness,
-  MidgardScriptLanguage, MidgardV1Script, MidgardVersionedScript, MintRedeemer,
-  NativeCardanoScript, PlutusV3Script, ProposeRedeemer, ReceiveRedeemer,
-  RewardRedeemer, SpendRedeemer, VoteRedeemer,
+  MidgardScriptLanguage, MidgardTxInput, MidgardV1Script, MidgardVersionedScript,
+  MintRedeemer, NativeCardanoScript, PlutusV3Script, ProposeRedeemer,
+  ReceiveRedeemer, RewardRedeemer, SpendRedeemer, VoteRedeemer,
 }
 
 /// Canonical Midgard V1 script-proof commitments.
@@ -57,51 +59,30 @@ pub fn versioned_script_hash(script: MidgardVersionedScript) -> ByteArray {
     |> blake2b_224
 }
 
-fn data_is_list(data: Data) -> Bool {
-  builtin.choose_data(data, False, False, True, False, False)
-}
-
-fn data_is_integer(data: Data) -> Bool {
-  builtin.choose_data(data, False, False, False, True, False)
-}
-
-fn data_is_bytes(data: Data) -> Bool {
-  builtin.choose_data(data, False, False, False, False, True)
-}
-
-/// The sole V1 reference-script source key is the exact canonical CBOR
-/// encoding of `[32-byte transaction id, uint16 output index]`.
+/// The sole V1 reference-script source key is the ledger out-ref, and an
+/// out-ref has exactly one byte form in Midgard: §5.3's fixed-index field-0/1
+/// item `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, 38 bytes.
+///
+/// So this is a round-trip against `encode_midgard_tx_input` itself rather than
+/// a second statement of the grammar — the fixed width is what lets the two
+/// components be read positionally, and re-encoding rejects every deviation
+/// (a minimal `02` index head, `18 XX`, a wider `1a`-form index, a short
+/// `tx_id`) because each of those changes the length or the bytes. Total by
+/// construction so the twin stays a predicate; callers `expect` it.
+/// Twin of `decodeCanonicalReferenceScriptSourceKeyV1`.
 pub fn canonical_reference_source_key(source_key: ByteArray) -> Bool {
-  when cbor.deserialise(source_key) is {
-    None -> False
-    Some(data) ->
-      if data_is_list(data) {
-        when builtin.un_list_data(data) is {
-          [transaction_id_data, output_index_data] ->
-            if and {
-              data_is_bytes(transaction_id_data),
-              data_is_integer(output_index_data),
-            } {
-              let transaction_id = builtin.un_b_data(transaction_id_data)
-              let output_index = builtin.un_i_data(output_index_data)
-              and {
-                bytearray.length(transaction_id) == 32,
-                output_index >= 0,
-                output_index <= 65535,
-                (
-                  #"825820"
-                    |> bytearray.concat(transaction_id)
-                    |> bytearray.concat(cbor.serialise(output_index))
-                ) == source_key,
-              }
-            } else {
-              False
-            }
-          _ -> False
-        }
-      } else {
-        False
-      }
+  if bytearray.length(source_key) == midgard_tx_input_item_bytes {
+    encode_midgard_tx_input(
+      MidgardTxInput {
+        tx_id: bytearray.slice(source_key, 3, 34),
+        output_index: bytearray.at(source_key, 36) * 256 + bytearray.at(
+          source_key,
+          37,
+        ),
+      },
+    ) == source_key
+  } else {
+    False
   }
 }
 
@@ -155,10 +136,20 @@ pub fn source_leaf_hash(
       bounded_item_v1.from_bytes(6, source_index, script_cbor),
     )
   } else {
-    expect canonical_reference_source_key(source_key)
-    expect Some(source_key_data) = cbor.deserialise(source_key)
-    expect [_, output_index_data] = builtin.un_list_data(source_key_data)
-    let output_index = builtin.un_i_data(output_index_data)
+    // The §5.3 decoder twin is the authenticated door onto the out-ref's two
+    // components, and its exact-38 width guard means it accepts precisely the
+    // keys `canonical_reference_source_key` accepts: both admit one spelling per
+    // out-ref, so nothing that reaches the leaf below could have failed the
+    // predicate here.
+    //
+    // That is an invariant between two functions, not a property of either, so
+    // `reference_source_leaf_hash` still re-asserts the predicate: it is public
+    // and reachable with a caller-supplied `source_key` that never passed
+    // through this branch, and it is the function whose *hash* commits the key.
+    // The re-assert is what makes the leaf domain safe on its own terms.
+    let MidgardTxInput { output_index, .. } = decode_midgard_tx_input_cbor(
+      source_key,
+    )
     let script_cbor = encode_midgard_versioned_script(script)
     reference_source_leaf_hash(
       source_key,

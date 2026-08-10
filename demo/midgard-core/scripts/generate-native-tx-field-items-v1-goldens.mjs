@@ -403,6 +403,21 @@ const buildGolden = () => {
       outputIndex,
       encodedHex: hex(encodeMidgardFixedOutputIndexV1(outputIndex)),
     })),
+    // §5.3: an out-ref's field-0/1 item *is* its ledger MPF trie key and its
+    // ledger database `outref` column. These vectors are what the on-chain
+    // `ledger_outref_key` is pinned against, and what the TypeScript trie-key
+    // producers (`outRefToCbor`, `midgardOutRefToCbor`) are pinned against — one
+    // vector, both languages, so the key cannot diverge in one of them. The
+    // index set spans both sides of the minimal-CBOR boundary at 23/24, which is
+    // the only place a minimal-index encoder and this one disagree in width.
+    ledgerOutRefKeys: FIXED_INDEX_BOUNDARIES.map((outputIndex) => {
+      const txId = filler(32, 0x11 + outputIndex);
+      return {
+        txIdHex: hex(txId),
+        outputIndex,
+        keyHex: hex(encodeMidgardSpendInputItemV1({ txId, outputIndex })),
+      };
+    }),
     datumCanonicityBoundaries: DATUM_CANONICITY_BOUNDARIES.map(
       ([label, cborHex]) => ({ label, cborHex }),
     ),
@@ -533,13 +548,14 @@ const renderAiken = (golden) => {
     "use aiken/collection/list",
     "use aiken/crypto.{blake2b_256}",
     "use aiken/primitive/bytearray",
+    "use cardano/transaction.{OutputReference}",
     "use midgard/fraud_proofs/native_tx/compact.{",
     "  encode_native_tx_field_preimage_lengths_v1,",
     "}",
     "use midgard/fraud_proofs/native_tx/components.{",
-    "  encode_fixed_output_index, encode_midgard_address_witness,",
-    "  encode_midgard_redeemer_witness, encode_midgard_tx_input,",
-    "  encode_midgard_versioned_script,",
+    "  decode_midgard_tx_input_cbor, encode_fixed_output_index,",
+    "  encode_midgard_address_witness, encode_midgard_redeemer_witness,",
+    "  encode_midgard_tx_input, encode_midgard_versioned_script,",
     "}",
     "use midgard/fraud_proofs/native_tx/preimages.{",
     "  decode_midgard_tx_address_witnesses_preimage_cbor,",
@@ -561,6 +577,7 @@ const renderAiken = (golden) => {
     "  NativeTxFieldPreimageLengthsV1, PlutusV3Script, ProposeRedeemer,",
     "  ReceiveRedeemer, RewardRedeemer, SpendRedeemer, VoteRedeemer,",
     "}",
+    "use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}",
     "use midgard/native_tx_field_access_v1.{",
     "  Chunked, Whole, chunk_bytes_k, decode_field_array_header,",
     "  encode_field_preimage, field_commitment, field_commitment_from_items,",
@@ -730,6 +747,20 @@ const renderAiken = (golden) => {
       `encode_midgard_tx_input(MidgardTxInput { tx_id: ${aikenBytes(hex(filler(31, 1)))}, output_index: 0 })`,
     ),
     ...widthNegative(
+      "golden_f0_f1_decoder_rejects_a_non_minimal_tx_id_header",
+      [
+        "/// Fields 0/1, the decode side of the same width. `59 0020` is a second,",
+        "/// wider spelling of \"32 bytes\" that `decode_definite_bytes_at` will read,",
+        "/// so a 39-byte item would otherwise decode to the *same* out-ref as the",
+        "/// canonical 38-byte one — two trie keys naming one out-ref. The exact-38",
+        "/// guard in `decode_midgard_tx_input_cbor` is what rejects it, and its",
+        "/// TypeScript twin `decodeMidgardSpendInputItemV1` rejects it on width too.",
+      ],
+      `encode_midgard_tx_input(decode_midgard_tx_input_cbor(${aikenBytes(
+        `82590020${hex(filler(32, 1))}190002`,
+      )}))`,
+    ),
+    ...widthNegative(
       "golden_f7_item_rejects_a_short_verification_key",
       ["/// Field 7 is structurally fixed at 101 bytes: 32-byte key, 64-byte signature."],
       `encode_midgard_address_witness(MidgardAddressWitness { verification_key: ${aikenBytes(hex(filler(31, 1)))}, signature: ${aikenBytes(hex(filler(64, 2)))} })`,
@@ -799,6 +830,24 @@ const renderAiken = (golden) => {
     ...golden.fixedOutputIndexes.map(
       (entry) =>
         `    encode_fixed_output_index(${entry.outputIndex}) == ${aikenBytes(entry.encodedHex)},`,
+    ),
+    "  }",
+    "}",
+    "",
+    "/// §5.3 fields 0/1: an out-ref's item encoding *is* its ledger MPF trie key and",
+    "/// its ledger database `outref` column. `ledger_outref_key` is pinned here",
+    "/// against bytes produced by the TypeScript trie-key producers, so the two",
+    "/// languages cannot key the ledger differently. The index set spans both sides",
+    "/// of the minimal-CBOR boundary at 23/24 — the only place where a minimal-index",
+    "/// encoder and this one differ in width, and therefore the only place a",
+    "/// regression would hide.",
+    "test golden_ledger_outref_key_matches_typescript() {",
+    "  and {",
+    ...golden.ledgerOutRefKeys.map(
+      (entry) =>
+        `    ledger_outref_key(OutputReference { transaction_id: ${aikenBytes(
+          entry.txIdHex,
+        )}, output_index: ${entry.outputIndex} }) == ${aikenBytes(entry.keyHex)},`,
     ),
     "  }",
     "}",

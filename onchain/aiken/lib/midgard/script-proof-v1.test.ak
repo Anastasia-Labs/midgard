@@ -40,11 +40,13 @@ test script_proof_source_and_redeemer_vectors_are_stable() {
     #"0102",
   )
   let script_cbor = encode_midgard_versioned_script(script)
+  // The reference source key is the ledger out-ref: §5.3's fixed-index item,
+  // so index 2 is `19 0002` and the key is 38 bytes, never 36.
   let reference_key = #"825820"
     |> bytearray.concat(
         #"4444444444444444444444444444444444444444444444444444444444444444",
       )
-    |> bytearray.concat(#"02")
+    |> bytearray.concat(#"190002")
   let reference_leaf = script_proof_v1.source_leaf_hash(
     1,
     reference_key,
@@ -78,22 +80,44 @@ test script_proof_source_and_redeemer_vectors_are_stable() {
       bounded_item_v1.from_bytes(2, 2, script_cbor),
     ),
     script_proof_v1.canonical_reference_source_key(reference_key),
+    // 31-byte tx_id: the width is right for a 38-byte key only if the wrapper
+    // lies, so the re-encode disagrees.
     !script_proof_v1.canonical_reference_source_key(
       #"82581f"
         |> bytearray.concat(
             #"44444444444444444444444444444444444444444444444444444444444444",
           )
-        |> bytearray.concat(#"02"),
+        |> bytearray.concat(#"190002"),
     ),
+    // Trailing byte.
     !script_proof_v1.canonical_reference_source_key(
       reference_key |> bytearray.concat(#"00"),
     ),
+    // The retired minimal-index spelling — 36 bytes, the CML `TransactionInput`
+    // form that §5.3 does not admit.
+    !script_proof_v1.canonical_reference_source_key(
+      #"825820"
+        |> bytearray.concat(
+            #"4444444444444444444444444444444444444444444444444444444444444444",
+          )
+        |> bytearray.concat(#"02"),
+    ),
+    // `18 XX` one-byte-argument index.
     !script_proof_v1.canonical_reference_source_key(
       #"825820"
         |> bytearray.concat(
             #"4444444444444444444444444444444444444444444444444444444444444444",
           )
         |> bytearray.concat(#"1802"),
+    ),
+    // A 38-byte key whose index head is `1a` rather than `19`: right length,
+    // wrong canon.
+    !script_proof_v1.canonical_reference_source_key(
+      #"825820"
+        |> bytearray.concat(
+            #"4444444444444444444444444444444444444444444444444444444444444444",
+          )
+        |> bytearray.concat(#"1a0002"),
     ),
     !script_proof_v1.canonical_reference_source_key(
       #"825820"

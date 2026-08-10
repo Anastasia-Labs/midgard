@@ -11,6 +11,8 @@ import {
   decodeMidgardNativeByteListPreimage,
   type MidgardNativeTxCanonicalV1,
 } from "./codec/native.js";
+import { decodeMidgardSpendInputItemV1 } from "./codec/native-tx-field-item-decoders-v1.js";
+import { encodeMidgardSpendInputItemV1 } from "./codec/native-tx-field-items-v1.js";
 import { decodeMidgardTxOutput } from "./codec/output.js";
 import {
   decodeMidgardVersionedScriptListPreimage,
@@ -51,36 +53,36 @@ const hash32 = (bytes: Uint8Array): Hash32 =>
   ensureHash32(blake2b(bytes, { dkLen: 32 }), "script_proof_hash");
 
 /**
- * Decodes the only canonical V1 reference-script source key: the exact CBOR
- * `[32-byte transaction id, uint16 output index]` encoding.
+ * Decodes the only canonical V1 reference-script source key. That key *is* the
+ * ledger out-ref, and an out-ref has exactly one byte form in Midgard: §5.3's
+ * fixed-index field-0/1 item `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, 38 bytes
+ * (`docs/spec/midgard-tx.md` §5.3). So this goes through the §5.3 decoder twin
+ * rather than a local CBOR shape check — `19 0000` is deliberately non-minimal
+ * and a generic minimal-CBOR reader rejects it.
+ *
+ * The re-encode is what makes the key canonical rather than merely well-formed:
+ * the decoder is injective, so equality against the original bytes admits one
+ * spelling per out-ref. Twin of `canonical_reference_source_key`.
  */
 const decodeCanonicalReferenceScriptSourceKeyV1 = (
   sourceKeyBytes: Uint8Array,
 ): { readonly outputIndex: bigint } => {
-  const sourceKey = decodeSingleCbor(sourceKeyBytes);
-  if (
-    !Array.isArray(sourceKey) ||
-    sourceKey.length !== 2 ||
-    !(sourceKey[0] instanceof Uint8Array) ||
-    sourceKey[0].length !== 32
-  ) {
-    throw new Error("reference script source key is not an output reference");
+  let decoded;
+  try {
+    decoded = decodeMidgardSpendInputItemV1(sourceKeyBytes);
+  } catch (cause) {
+    throw new Error(
+      `reference script source key is not an output reference: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+    );
   }
-  const outputIndex =
-    typeof sourceKey[1] === "number" && Number.isSafeInteger(sourceKey[1])
-      ? BigInt(sourceKey[1])
-      : sourceKey[1];
   if (
-    typeof outputIndex !== "bigint" ||
-    outputIndex < 0n ||
-    outputIndex > 65_535n ||
-    !encodeCbor([Buffer.from(sourceKey[0]), outputIndex]).equals(
-      Buffer.from(sourceKeyBytes),
-    )
+    !encodeMidgardSpendInputItemV1(decoded).equals(Buffer.from(sourceKeyBytes))
   ) {
     throw new Error("reference script source key is not canonical");
   }
-  return { outputIndex };
+  return { outputIndex: BigInt(decoded.outputIndex) };
 };
 
 /**

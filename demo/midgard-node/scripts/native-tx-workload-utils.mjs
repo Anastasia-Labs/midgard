@@ -7,6 +7,7 @@ import {
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardSpendInputItemV1,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
@@ -47,13 +48,14 @@ export const makeWalletsFromEnv = (env) => {
 const encodeByteListPreimage = (items) =>
   encodeCbor(items.map((item) => Buffer.from(item)));
 
+// These bytes become a §5.3 field-0/1 spend-input item, so they must be the
+// fixed 38-byte `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16` form — never CML's
+// minimal-index `TransactionInput` CBOR.
 export const toOutRefCbor = (txId, outputIndex) =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_raw_bytes(txId),
-      BigInt(outputIndex),
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItemV1({
+    txId: Buffer.from(txId),
+    outputIndex: Number(outputIndex),
+  });
 
 export const decodeCoin = (outputHex) => {
   const output = CML.TransactionOutput.from_cbor_bytes(

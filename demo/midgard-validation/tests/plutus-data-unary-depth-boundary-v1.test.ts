@@ -125,8 +125,8 @@ const maximumUnaryRedeemerDepthTerminalVectorV1 = {
     dataNodeCount: 3_996,
     traverseSteps: 15_999,
     maximumSourceSpan: 14,
-    sourceCanonicalTransactionBytes: 16_348,
-    canonicalTransactionBytes: 16_273,
+    sourceCanonicalTransactionBytes: 16_352,
+    canonicalTransactionBytes: 16_277,
     redeemerFieldBytes: 15_997,
     redeemerFieldChunkCount: 4,
     completeFoldStepCount: 8,
@@ -526,8 +526,10 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
       maximumDatumCborHex,
     );
     // Canonical maximum-shape byte count pinned by the C26 investigation
-    // record's depth-4,043 row.
-    expect(canonical.length).toBe(16_470);
+    // record's depth-4,043 row, re-measured for §5.3's fixed 38-byte
+    // spend-input item (one input, so two bytes wider than the depth-4,043 row
+    // measured against CML's minimal-index out-ref CBOR).
+    expect(canonical.length).toBe(16_472);
     const completeFoldStepCount =
       deriveMidgardV1TxFieldChunks(canonical).length;
     expect(completeFoldStepCount).toBe(6);

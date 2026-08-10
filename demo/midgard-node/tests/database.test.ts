@@ -161,7 +161,10 @@ import {
   resolveTxDeltaForCommit,
 } from "../src/workers/utils/mpf.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
-import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
+import {
+  makeMidgardTxOutput,
+  makeOutRefCbor,
+} from "./midgard-output-helpers.js";
 import {
   deterministicFixtureBytes,
   deterministicFixtureOutputReferenceId,
@@ -374,13 +377,9 @@ const makeMaterialProofSubmitTx = (nonce: number) => {
 
 const makeReferenceMaterialProofSubmitTx = (nonce: number) => {
   const attached = makeMaterialProofSubmitTx(nonce);
-  const referenceOutRef = Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_raw_bytes(
-        databaseTxHash(`accepted-reference-material-${nonce.toString()}`),
-      ),
-      0n,
-    ).to_cbor_bytes(),
+  const referenceOutRef = makeOutRefCbor(
+    databaseTxHash(`accepted-reference-material-${nonce.toString()}`),
+    0,
   );
   const attachedCanonical = decodeMidgardNativeTxFullV1FromCanonicalCbor(
     attached.txCanonicalCbor,
@@ -7694,14 +7693,7 @@ describe("Phase 3 MPF durable state", () => {
           const address = CML.Address.from_bech32(address1);
           const entry = (byte: number): LedgerUtils.Entry => ({
             [LedgerUtils.Columns.TX_ID]: Buffer.alloc(32, byte),
-            [LedgerUtils.Columns.OUTREF]: Buffer.from(
-              CML.TransactionInput.new(
-                CML.TransactionHash.from_hex(
-                  byte.toString(16).padStart(2, "0").repeat(32),
-                ),
-                0n,
-              ).to_cbor_bytes(),
-            ),
+            [LedgerUtils.Columns.OUTREF]: makeOutRefCbor(byte, 0),
             [LedgerUtils.Columns.OUTPUT]: Buffer.from(
               makeMidgardTxOutput(
                 address,
@@ -8135,14 +8127,7 @@ describe("Phase 3 MPF durable state", () => {
           const address = CML.Address.from_bech32(address1);
           const entry = (byte: number): LedgerUtils.Entry => ({
             [LedgerUtils.Columns.TX_ID]: Buffer.alloc(32, byte),
-            [LedgerUtils.Columns.OUTREF]: Buffer.from(
-              CML.TransactionInput.new(
-                CML.TransactionHash.from_hex(
-                  byte.toString(16).padStart(2, "0").repeat(32),
-                ),
-                0n,
-              ).to_cbor_bytes(),
-            ),
+            [LedgerUtils.Columns.OUTREF]: makeOutRefCbor(byte, 0),
             [LedgerUtils.Columns.OUTPUT]: Buffer.from(
               makeMidgardTxOutput(
                 address,

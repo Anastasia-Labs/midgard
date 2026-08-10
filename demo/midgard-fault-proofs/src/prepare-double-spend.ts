@@ -13,16 +13,19 @@ import {
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardSpendInputItemV1,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardNativeTxCompactV1,
+  encodeMidgardSpendInputItemV1,
   formatUnknownError,
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFullV1,
+  type MidgardTxInputV1,
 } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
@@ -31,7 +34,6 @@ import {
   type OutputReference as OutputReferenceData,
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
-import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -271,13 +273,16 @@ export const fetchNodeBlockTransactions = async ({
 const bytesHex = (bytes: Uint8Array): string =>
   Buffer.from(bytes).toString("hex");
 
+/**
+ * The §5.3 field-0/1 item encoding — `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`,
+ * a fixed 38 bytes — matching on-chain `ledger_outref_key` /
+ * `encode_midgard_tx_input`, not CML's minimal-index `TransactionInput` CBOR.
+ */
 const transactionInputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHash),
-      outputIndex,
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItemV1({
+    txId: Buffer.from(txHash, "hex"),
+    outputIndex: Number(outputIndex),
+  });
 
 const sampleNativeTx = (
   inputs: readonly Buffer[],
@@ -336,25 +341,27 @@ export const makeSampleDoubleSpendTransactions =
     ];
   };
 
+/**
+ * Decodes the §5.3 field-0/1 item form — `82 ‖ 58 20 tx_id(32) ‖ 19
+ * index_be16`, a fixed 38 bytes — the same bytes on-chain
+ * `decode_midgard_tx_input_cbor` accepts. CML's minimal-index
+ * `TransactionInput` CBOR is deliberately rejected.
+ */
 const outputReferenceFromNativeInput = (
   bytes: Uint8Array,
   label: string,
 ): OutputReferenceData => {
-  let input: CML.TransactionInput;
+  let input: MidgardTxInputV1;
   try {
-    input = CML.TransactionInput.from_cbor_bytes(bytes);
+    input = decodeMidgardSpendInputItemV1(bytes);
   } catch (cause) {
     throw new Error(
-      `${label} is not a valid Cardano TxOutRef CBOR: ${formatUnknownError(cause)}`,
+      `${label} is not a valid Midgard §5.3 TxOutRef CBOR: ${formatUnknownError(cause)}`,
     );
   }
-  const outputIndex = input.index();
-  if (outputIndex < 0n) {
-    throw new Error(`${label}.outputIndex must be non-negative.`);
-  }
   return {
-    transactionId: input.transaction_id().to_hex(),
-    outputIndex,
+    transactionId: Buffer.from(input.txId).toString("hex"),
+    outputIndex: BigInt(input.outputIndex),
   };
 };
 

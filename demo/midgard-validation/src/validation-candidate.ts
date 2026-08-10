@@ -1,10 +1,10 @@
 import {
   decodeMidgardAddressBytes,
   encodeMidgardAddressText,
+  encodeMidgardSpendInputItemV1,
   encodeMidgardTxOutput,
   type MidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
-import { CML } from "@lucid-evolution/lucid";
 
 import { LedgerColumns, type LedgerEntry, type ProcessedTx } from "./ledger.js";
 import type {
@@ -80,19 +80,22 @@ const projectAddress = (address: Buffer): AddressProjection => {
   return projection;
 };
 
-export const midgardOutRefToCbor = (outRef: MidgardOutRef): Buffer => {
-  const transactionId = CML.TransactionHash.from_raw_bytes(outRef.txId);
-  try {
-    const input = CML.TransactionInput.new(transactionId, outRef.index);
-    try {
-      return Buffer.from(input.to_cbor_bytes());
-    } finally {
-      input.free();
-    }
-  } finally {
-    transactionId.free();
-  }
-};
+/**
+ * The out-ref's canonical Midgard bytes, and therefore the ledger MPF trie key
+ * and the ledger DB `outref` column: the §5.3 field-0/1 item encoding
+ * `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes.
+ *
+ * On-chain `ledger_outref_key` derives the same trie key through
+ * `encode_midgard_tx_input`, so this must stay the §5.3 encoder rather than
+ * CML's minimal-index `TransactionInput` CBOR — that spells indices 0–23 in one
+ * byte and would produce a 36-byte key the on-chain side never computes. See
+ * `docs/spec/midgard-tx.md` §5.3.
+ */
+export const midgardOutRefToCbor = (outRef: MidgardOutRef): Buffer =>
+  encodeMidgardSpendInputItemV1({
+    txId: outRef.txId,
+    outputIndex: Number(outRef.index),
+  });
 
 export const midgardOutRefToCborHex = (outRef: MidgardOutRef): string =>
   midgardOutRefToCbor(outRef).toString("hex");

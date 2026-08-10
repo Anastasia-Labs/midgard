@@ -32,13 +32,13 @@ const maximumMintTerminalFoldVectorV1 = {
   fieldCommitmentHex:
     "7dc0480f6a10748bc18aed966ef23ca7dd70cd929f5a88b056d427e2f9453c32",
   transactionIdHex:
-    "fb8384370f1f3b2c4543567ee9d2bd0d3c9a4152b505c8eecd540cf99e78bcd2",
+    "8a2947f98b0c56a59b8c7eb2d33ab74b759f45f7c10c86ae35060383bce149f2",
   transactionCommitmentHex:
-    "346193b5f63533c46919d8dddd78bcb99777a9a5d87c00ca49a26242c0e4e086",
+    "6cf2bfa302c7980b51114944079713aacc1b95fefbdb9d47a1c27aef40eeea74",
   preWorkRootHex:
-    "fb84741314c90a947da6e44eee2d225d2f80a61bf0ab36e84b378f41881ad49a",
+    "e841b45df4501bc51ac727186bc83c99405008ffed6b9acd10b6a560f1ba70a8",
   postWorkRootHex:
-    "9c2c4e915e7d0f502fa3070c90c9eafb2f59526f9e02c21e8a2cbf756457e83a",
+    "6392d6588e7c2bcdf78961d270a0254f1f0bed0052fcace9f2bb1de59ad400e1",
   encodedLengthBeforeItem: 5_420,
   collectionProof: {
     fieldIndex: 5,
@@ -343,6 +343,23 @@ describe("canonical V1 mint Cardano boundary", () => {
       collectionProof: mintField.terminalFoldVector.collectionProof,
       chunkProof: mintField.terminalFoldVector.chunkProof,
     }).toEqual(maximumMintTerminalFoldVectorV1);
+    // The producing channel for this boundary's Aiken twin. The compact
+    // transaction, its witness-set compact form and the nine field-preimage
+    // lengths are mirrored by the fixture in
+    // `onchain/aiken/lib/midgard/validation-machine-v1.test.ak` but are not
+    // covered by the pinned object above, so print them on demand rather than
+    // re-deriving them by hand. Same contract as the sibling boundary suites.
+    if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
+      console.info(
+        JSON.stringify({
+          compactCborHex: mintField.terminalFoldVector.compactCborHex,
+          witnessSetCompactCborHex:
+            mintField.terminalFoldVector.witnessSetCompactCborHex,
+          fieldPreimageLengthsCborHex:
+            mintField.terminalFoldVector.fieldPreimageLengthsCborHex,
+        }),
+      );
+    }
 
     const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);

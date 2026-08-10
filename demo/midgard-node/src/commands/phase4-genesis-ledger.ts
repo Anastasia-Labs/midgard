@@ -1,5 +1,6 @@
 import { isAbsolute } from "node:path";
 
+import { outRefToCbor } from "@al-ft/lucid-midgard";
 import { SqlClient } from "@effect/sql";
 import {
   type Address,
@@ -312,7 +313,9 @@ const toLedgerRow = (utxo: UTxO): Phase4GenesisLedgerRow => {
   const core = utxoToCore(utxo);
   return {
     [Ledger.Columns.TX_ID]: Buffer.from(utxo.txHash, "hex"),
-    [Ledger.Columns.OUTREF]: Buffer.from(core.input().to_cbor_bytes()),
+    // §5.3 field-0/1 item encoding — the ledger key on-chain
+    // `ledger_outref_key` derives, not CML's minimal-index form.
+    [Ledger.Columns.OUTREF]: outRefToCbor(utxo),
     [Ledger.Columns.OUTPUT]: Buffer.from(core.output().to_cbor_bytes()),
     [Ledger.Columns.ADDRESS]: utxo.address,
     [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: null,

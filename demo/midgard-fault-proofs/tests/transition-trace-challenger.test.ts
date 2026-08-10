@@ -6,6 +6,7 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardSpendInputItemV1,
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_V1_VERSION,
@@ -245,8 +246,14 @@ const tag4OutputWithOpaqueNativeScript = (): Buffer =>
     encodeCbor(Buffer.from([0xde, 0xad, 0xff])),
   ]);
 
+const spendInputItem = (txIdHex: string, outputIndex: number): Buffer =>
+  encodeMidgardSpendInputItemV1({
+    txId: Buffer.from(txIdHex, "hex"),
+    outputIndex,
+  });
+
 const rawLedgerEntry = (byte: number): SDK.DaPayloadEntry => [
-  `825820${h32(byte)}00`,
+  spendInputItem(h32(byte), 0).toString("hex"),
   LEDGER_OUTPUT_CBOR,
 ];
 
@@ -541,8 +548,7 @@ const buildL2ReplayFixture = async ({
   readonly replayedOutputCbor?: Buffer;
   readonly includeProducedPayloadUtxo?: boolean;
 }): Promise<L2ReplayFixture> => {
-  const spentKey =
-    spendInputCbor ?? encodeCbor([Buffer.from(h32(81), "hex"), 0n]);
+  const spentKey = spendInputCbor ?? spendInputItem(h32(81), 0);
   const spentValue = Buffer.from(LEDGER_OUTPUT_CBOR, "hex");
   const sourceOutput = outputCbor ?? Buffer.from(LEDGER_OUTPUT_CBOR, "hex");
   const producedValue = replayedOutputCbor ?? sourceOutput;
@@ -550,10 +556,10 @@ const buildL2ReplayFixture = async ({
     spendInputsPreimageCbor: encodeCbor([spentKey]),
     outputsPreimageCbor: encodeCbor([sourceOutput]),
   });
-  const producedKey = encodeCbor([Buffer.from(material.txId, "hex"), 0n]);
+  const producedKey = spendInputItem(material.txId, 0);
   const survivors = withBranchProof
     ? Array.from({ length: 16 }, (_, index) => ({
-        key: encodeCbor([Buffer.from(h32(100 + index), "hex"), BigInt(index)]),
+        key: spendInputItem(h32(100 + index), index),
         value: Buffer.from(LEDGER_OUTPUT_CBOR, "hex"),
       }))
     : [];
@@ -1190,13 +1196,27 @@ describe("transition-trace challenger tooling", () => {
     ).rejects.toMatchObject({ code: "missingWitnessData" });
   });
 
+  // §5.3 fields 0/1 fix the item at `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a
+  // FIXED 38 bytes with a non-minimal 3-byte index head. Every other spelling
+  // of the same out-ref — including the minimal-index CBOR that CML's
+  // `TransactionInput` emits, and the one-byte `18 XX` form — is a distinct,
+  // rejected encoding, and 65,536 is outside the admissible index domain
+  // altogether so it has no canonical spelling at all.
   it.each([
     {
       label: "malformed native spend input",
       spendInputCbor: Buffer.from([0]),
     },
     {
-      label: "non-canonical native spend input",
+      label: "minimal-index native spend input (CML's 36-byte spelling)",
+      spendInputCbor: Buffer.concat([
+        Buffer.from([0x82, 0x58, 0x20]),
+        Buffer.from(h32(88), "hex"),
+        Buffer.from([0x00]),
+      ]),
+    },
+    {
+      label: "one-byte-index native spend input",
       spendInputCbor: Buffer.concat([
         Buffer.from([0x82, 0x58, 0x20]),
         Buffer.from(h32(88), "hex"),
@@ -1204,8 +1224,13 @@ describe("transition-trace challenger tooling", () => {
       ]),
     },
     {
-      label: "oversize native spend index",
-      spendInputCbor: encodeCbor([Buffer.from(h32(89), "hex"), 65_536n]),
+      label: "native spend index above the §5.3 uint16 domain",
+      spendInputCbor: Buffer.concat([
+        Buffer.from([0x82, 0x58, 0x20]),
+        Buffer.from(h32(89), "hex"),
+        // 65,536 needs a four-byte payload; the fixed form cannot express it.
+        Buffer.from([0x1a, 0x00, 0x01, 0x00, 0x00]),
+      ]),
     },
   ])("rejects $label before MPF replay", async ({ spendInputCbor }) => {
     const fixture = await buildL2ReplayFixture({
@@ -1313,7 +1338,7 @@ describe("transition-trace challenger tooling", () => {
         spentUtxos: [
           {
             ...fixture.evidence.spentUtxos[0]!,
-            key: encodeCbor([Buffer.from(h32(84), "hex"), 0n]).toString("hex"),
+            key: spendInputItem(h32(84), 0).toString("hex"),
           },
         ],
       }),
@@ -1337,7 +1362,7 @@ describe("transition-trace challenger tooling", () => {
         producedUtxos: [
           {
             ...fixture.evidence.producedUtxos[0]!,
-            key: encodeCbor([Buffer.from(h32(86), "hex"), 0n]).toString("hex"),
+            key: spendInputItem(h32(86), 0).toString("hex"),
           },
         ],
       }),

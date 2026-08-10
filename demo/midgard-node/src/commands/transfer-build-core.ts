@@ -11,6 +11,7 @@ import {
 } from "@al-ft/midgard-core/assets";
 import {
   decodeMidgardNativeByteListPreimage,
+  decodeMidgardSpendInputItemV1,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
@@ -218,8 +219,11 @@ const selectedInputsFromCompletedTx = (
   return decodeMidgardNativeByteListPreimage(
     completed.tx.body.spendInputsPreimageCbor,
   ).map((bytes) => {
-    const input = CML.TransactionInput.from_cbor_bytes(bytes);
-    const label = `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+    // Each field-0 preimage item is the §5.3 field-0/1 item form (38 bytes,
+    // `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`) matching on-chain
+    // `ledger_outref_key`, not CML's minimal-index `TransactionInput` CBOR.
+    const input = decodeMidgardSpendInputItemV1(bytes);
+    const label = `${Buffer.from(input.txId).toString("hex")}#${input.outputIndex.toString()}`;
     const utxo = byLabel.get(label);
     if (utxo === undefined) {
       throw new Error(`Built transfer selected unknown input ${label}.`);

@@ -1,6 +1,8 @@
 import {
+  decodeMidgardSpendInputItemV1,
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
+  encodeMidgardSpendInputItemV1,
   midgardAddressFromText,
   midgardValueToCmlValue,
 } from "@al-ft/midgard-core/codec";
@@ -187,19 +189,25 @@ export const parseTxOutRefLabel = (
     throw new Error(`${fieldName} must be a string.`);
   }
   let parsed: OutRefLike;
+  let cbor: Buffer;
   try {
     parsed = parseOutRefLabel(value);
+    // The §5.3 field-0/1 item encoding — `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`,
+    // a fixed 38 bytes with a deliberately non-minimal output index. These are
+    // the ledger MPF trie key / `outref` column bytes that on-chain
+    // `ledger_outref_key` derives through `encode_midgard_tx_input`, not CML's
+    // minimal-index `TransactionInput` CBOR.
+    cbor = encodeMidgardSpendInputItemV1({
+      txId: hexToBytes(parsed.txHash, { fieldName: `${fieldName}.txHash` }),
+      outputIndex: parsed.outputIndex,
+    });
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : String(cause);
     throw new Error(`${fieldName}: ${detail}`);
   }
-  const input = CML.TransactionInput.new(
-    CML.TransactionHash.from_hex(parsed.txHash),
-    BigInt(parsed.outputIndex),
-  );
   return {
     ...parsed,
-    cbor: Buffer.from(input.to_cbor_bytes()),
+    cbor,
   };
 };
 
@@ -209,8 +217,11 @@ export const parseTxOutRefCborHex = (
 ): Buffer => {
   const bytes = parseHexBytes(value, fieldName);
   try {
-    const parsed = CML.TransactionInput.from_cbor_bytes(bytes);
-    return Buffer.from(parsed.to_cbor_bytes());
+    // §5.3 field-0/1 item form, not CML's minimal-index `TransactionInput`
+    // CBOR: the decoder asserts the fixed 38-byte width and the `0x19` index
+    // head, so a minimal-index spelling is rejected rather than re-canonicalized.
+    // Re-encoding proves the round trip lands on the one admissible spelling.
+    return encodeMidgardSpendInputItemV1(decodeMidgardSpendInputItemV1(bytes));
   } catch (cause) {
     throw new Error(
       `Invalid ${fieldName}: failed to decode TxOutRef CBOR (${String(cause)}).`,
@@ -327,11 +338,14 @@ export const parseNodeUtxoResponse = (
 export const decodeNodeUtxo = (raw: RawNodeUtxo): NodeUtxo => {
   const outrefCbor = parseHexBytes(raw.outref, "outref");
   const outputCbor = parseHexBytes(raw.outputCbor, "outputCbor");
-  const input = CML.TransactionInput.from_cbor_bytes(outrefCbor);
+  // §5.3 field-0/1 item form (fixed 38 bytes, `19 XXXX` output index) — the
+  // ledger out-ref encoding matching on-chain `ledger_outref_key`, not CML's
+  // minimal-index `TransactionInput` CBOR.
+  const input = decodeMidgardSpendInputItemV1(outrefCbor);
   const output = decodeMidgardTxOutput(outputCbor);
   return {
-    txHash: input.transaction_id().to_hex(),
-    outputIndex: Number(input.index()),
+    txHash: Buffer.from(input.txId).toString("hex"),
+    outputIndex: input.outputIndex,
     outrefCbor,
     outputCbor,
     address: encodeMidgardAddressText(output.address),

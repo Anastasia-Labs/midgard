@@ -43,6 +43,8 @@ import {
   classifyForcedTransactionsV1,
 } from "@/workers/utils/mpf.js";
 
+import { makeOutRefCbor } from "./midgard-output-helpers.js";
+
 const canonicalTransaction = (
   version: bigint = MIDGARD_NATIVE_TX_V1_VERSION,
 ): MidgardNativeTxCanonicalV1 => ({
@@ -90,13 +92,7 @@ const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
 const outputReferenceFromHash = (
   transactionId: Buffer,
   outputIndex = 0n,
-): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_raw_bytes(transactionId),
-      outputIndex,
-    ).to_cbor_bytes(),
-  );
+): Buffer => makeOutRefCbor(transactionId, outputIndex);
 
 const makeOutput = (lovelace: bigint): Buffer =>
   encodeMidgardTxOutput({

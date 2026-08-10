@@ -649,7 +649,16 @@ fn ledger_trie(root: ByteArray) {
   }
 }
 
-fn ledger_outref_key(outref: OutputReference) -> ByteArray {
+/// The ledger MPF trie key for an out-ref: spec §5.3's field-0/1 item,
+/// `82 ‖ 58 20 tx_id ‖ 19 index_be16`, a fixed 38 bytes.
+///
+/// This is deliberately the *same* encoder the field-0/1 preimage items use, so
+/// a trie key and a spend-input item are the identical bytes and there is only
+/// one out-ref spelling in the protocol. `pub` so the cross-language golden
+/// channel can pin it directly against the TypeScript producers
+/// (`outRefToCbor`, `midgardOutRefToCbor`) rather than pinning
+/// `encode_midgard_tx_input` and arguing the rest by inspection.
+pub fn ledger_outref_key(outref: OutputReference) -> ByteArray {
   native_components.encode_midgard_tx_input(
     native_types.MidgardTxInput {
       tx_id: outref.transaction_id,

@@ -961,6 +961,38 @@
       "encodedHex": "19ffff"
     }
   ],
+  "ledgerOutRefKeys": [
+    {
+      "txIdHex": "121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4eb",
+      "outputIndex": 0,
+      "keyHex": "825820121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4eb190000"
+    },
+    {
+      "txIdHex": "dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4",
+      "outputIndex": 23,
+      "keyHex": "825820dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4190017"
+    },
+    {
+      "txIdHex": "fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3",
+      "outputIndex": 24,
+      "keyHex": "825820fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3190018"
+    },
+    {
+      "txIdHex": "f3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5cc",
+      "outputIndex": 255,
+      "keyHex": "825820f3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5cc1900ff"
+    },
+    {
+      "txIdHex": "121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4eb",
+      "outputIndex": 256,
+      "keyHex": "825820121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4eb190100"
+    },
+    {
+      "txIdHex": "f3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5cc",
+      "outputIndex": 65535,
+      "keyHex": "825820f3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5cc19ffff"
+    }
+  ],
   "datumCanonicityBoundaries": [
     {
       "label": "unit",

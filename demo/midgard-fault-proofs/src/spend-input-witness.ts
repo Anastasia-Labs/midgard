@@ -5,6 +5,11 @@
  * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
 
+import {
+  decodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItemV1,
+  type MidgardTxInputV1,
+} from "@al-ft/midgard-core/codec";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { type MidgardTxInput, MidgardTxInputList } from "@al-ft/midgard-sdk";
@@ -100,22 +105,29 @@ export const minimumLovelaceForInlineDatumOutput = ({
   );
 };
 
+/**
+ * The one canonical byte form is the §5.3 field-0/1 item —
+ * `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes — the bytes on-chain
+ * `ledger_outref_key` / `encode_midgard_tx_input` derive and
+ * `decode_midgard_tx_input_cbor` accepts. CML's minimal-index
+ * `TransactionInput` CBOR is deliberately rejected.
+ */
 const requireCanonicalInputCbor = (
   inputCborHex: string,
   label: string,
-): CML.TransactionInput => {
-  let input: CML.TransactionInput;
+): MidgardTxInputV1 => {
+  let input: MidgardTxInputV1;
   const inputCbor = Buffer.from(inputCborHex, "hex");
   try {
-    input = CML.TransactionInput.from_cbor_bytes(inputCbor);
+    input = decodeMidgardSpendInputItemV1(inputCbor);
   } catch (cause) {
     throw new Error(
-      `${label} is not valid Cardano TxOutRef CBOR: ${formatUnknownError(cause)}`,
+      `${label} is not valid Midgard §5.3 TxOutRef CBOR: ${formatUnknownError(cause)}`,
     );
   }
-  const canonical = Buffer.from(input.to_cbor_bytes());
+  const canonical = encodeMidgardSpendInputItemV1(input);
   if (!canonical.equals(inputCbor)) {
-    throw new Error(`${label} must be canonical Cardano TxOutRef CBOR.`);
+    throw new Error(`${label} must be canonical Midgard §5.3 TxOutRef CBOR.`);
   }
   return input;
 };
@@ -125,19 +137,15 @@ export const spendInputsWitnessFromCbors = (
   label: string,
 ): SpendInputsWitness => {
   const inputs = inputCbors.map((inputCbor, index) => {
+    // The §5.3 fixed uint16 output index bounds `output_index` to 0..65,535 by
+    // construction, so the on-chain 16-bit range needs no separate check here.
     const input = requireCanonicalInputCbor(
       inputCbor,
       `${label}[${index.toString()}]`,
     );
-    const outputIndex = input.index();
-    if (outputIndex > 65_535n) {
-      throw new Error(
-        `${label}[${index.toString()}].output_index exceeds the on-chain 16-bit range.`,
-      );
-    }
     return {
-      tx_id: input.transaction_id().to_hex(),
-      output_index: outputIndex,
+      tx_id: Buffer.from(input.txId).toString("hex"),
+      output_index: BigInt(input.outputIndex),
     };
   });
 

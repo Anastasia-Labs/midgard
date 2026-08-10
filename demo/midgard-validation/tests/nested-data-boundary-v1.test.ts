@@ -91,7 +91,7 @@ const maximumNestedDataTerminalVectorV1 = {
   adjacentLeafCount: 5_388,
   adjacentDatumCborBytes: 16_174,
   adjacentSignedCardanoBytes: 16_385,
-  nativeCanonicalBytes: 16_468,
+  nativeCanonicalBytes: 16_470,
   outputItemBytes: 16_220,
   outputProofSteps: 129_324,
   datumTraverseSteps: 129_311,

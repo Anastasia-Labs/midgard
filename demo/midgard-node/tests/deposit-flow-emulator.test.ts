@@ -182,7 +182,10 @@ import {
 import { deriveEmulatorSubmitSlotSnapshot } from "./helpers/emulator-submit-slot-snapshot.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { collectSortedInputOutRefs } from "./helpers/tx-inspection.js";
-import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
+import {
+  makeMidgardTxOutput,
+  makeOutRefCbor,
+} from "./midgard-output-helpers.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
@@ -3435,12 +3438,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       const sourceLedger: LedgerUtils.Entry[] = [];
       for (let index = 0; index < 8; index += 1) {
         const txHash = (index + 1).toString(16).padStart(64, "0");
-        const outrefCbor = Buffer.from(
-          CML.TransactionInput.new(
-            CML.TransactionHash.from_hex(txHash),
-            0n,
-          ).to_cbor_bytes(),
-        );
+        const outrefCbor = makeOutRefCbor(txHash, 0);
         const outputCbor = Buffer.from(
           makeMidgardTxOutput(
             CML.Address.from_bech32(sender.address),

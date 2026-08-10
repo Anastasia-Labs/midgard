@@ -80,8 +80,10 @@ import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxCompactV1,
   decodeMidgardNativeTxWitnessSetCompactV1,
+  decodeMidgardSpendInputItemV1,
   decodeMidgardTxOutput,
   decodeSingleCbor,
+  encodeMidgardSpendInputItemV1,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
   type MidgardValue,
@@ -1774,13 +1776,15 @@ export const buildDeterministicValidationMachineTrace = (
       };
     });
     const boundedItemForScriptSource = (source: ScriptSourceProofEntry) => {
-      const decodedSourceKey = decodeSingleCbor(source.sourceKey);
+      // The two origin kinds carry two different keys, and each has exactly one
+      // decoder. An inline key is a bare canonical CBOR index; a reference key
+      // *is* the ledger out-ref, i.e. §5.3's fixed-index 38-byte item, whose
+      // `19 0000` head a minimal-CBOR reader rejects — so it goes through the
+      // §5.3 twin, never `decodeSingleCbor`. See `docs/spec/midgard-tx.md` §5.3.
       const itemIndexValue =
         source.originKind === "inline"
-          ? decodedSourceKey
-          : Array.isArray(decodedSourceKey)
-            ? decodedSourceKey[1]
-            : undefined;
+          ? decodeSingleCbor(source.sourceKey)
+          : decodeMidgardSpendInputItemV1(source.sourceKey).outputIndex;
       const itemIndex =
         typeof itemIndexValue === "number"
           ? itemIndexValue
@@ -7317,10 +7321,15 @@ export const buildDeterministicValidationMachineTrace = (
                   );
                 }
                 const mutationStep = input.ledgerMutationSteps[mutationIndex];
-                const outputKey = encodeCbor([
-                  input.transactionId,
-                  BigInt(outputIndex),
-                ]);
+                // The ledger trie key is §5.3's fixed-index input item
+                // (`82 ‖ 58 20 tx_id ‖ 19 index_be16`, 38 bytes) — the same
+                // bytes on-chain `ledger_outref_key` derives. `encodeCbor([txId,
+                // index])` would spell indices 0–23 minimally and miss every key
+                // the trie actually holds.
+                const outputKey = encodeMidgardSpendInputItemV1({
+                  txId: input.transactionId,
+                  outputIndex,
+                });
                 if (
                   mutationStep === undefined ||
                   mutationStep.operation.type !== "insert" ||

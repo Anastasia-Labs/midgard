@@ -9,6 +9,7 @@ import {
   encodeMidgardAddressText,
   encodeMidgardNativeScript,
   encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardSpendInputItemV1,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScriptListPreimage,
   hashMidgardVersionedScript,
@@ -82,21 +83,19 @@ export type NativeTxFixture = {
 export const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
   encodeCbor(items.map((item) => Buffer.from(item)));
 
+// Out-ref bytes are §5.3's fixed-index field-0/1 item (38 bytes), which is also
+// the ledger MPF trie key on-chain `ledger_outref_key` derives. Fixtures have to
+// build them with the same encoder the production producers use: CML's
+// minimal-index TransactionInput CBOR would make every fixture transaction
+// re-encode to a different tx id than the one it was built with.
 export const outRefFromByte = (byte: number, index = 0n): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(Buffer.alloc(32, byte).toString("hex")),
-      index,
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItemV1({
+    txId: Buffer.alloc(32, byte),
+    outputIndex: Number(index),
+  });
 
 export const outRefFromTxId = (txId: Buffer, index = 0n): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_raw_bytes(txId),
-      index,
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItemV1({ txId, outputIndex: Number(index) });
 
 export const makeOutput = (
   lovelace: bigint,

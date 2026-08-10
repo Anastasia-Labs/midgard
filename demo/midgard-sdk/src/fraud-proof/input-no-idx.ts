@@ -41,10 +41,11 @@ import {
   buildMidgardBoundedCollectionItemProofV1,
   buildMidgardBoundedCollectionV1,
   encodeCbor,
+  encodeMidgardSpendInputItemV1,
   type MidgardBoundedCollectionItemProofV1,
   verifyMidgardBoundedCollectionItemProofV1,
 } from "@al-ft/midgard-core";
-import { CML, Data } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, PubKeyHashSchema, ScriptHashSchema } from "@/common.js";
 import {
@@ -613,16 +614,20 @@ export const encodeMidgardTxOutputCanonicalV1 = (
   ]);
 };
 
-/** Twin of `encode_midgard_tx_input`: canonical Cardano `TransactionInput`. */
+/**
+ * Twin of `encode_midgard_tx_input`: the §5.3 field-0/1 item form
+ * `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a FIXED 38 bytes. This is NOT CML's
+ * minimal-index `TransactionInput` CBOR — the non-minimal 3-byte index is what
+ * makes the item width constant, and `decode_midgard_tx_input_cbor` requires
+ * the `0x19` head. Delegating to the core twin keeps the two in lockstep.
+ */
 export const encodeMidgardTxInputCanonicalV1 = (
   input: MidgardTxInputData,
 ): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(input.tx_id),
-      input.output_index,
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItemV1({
+    txId: Buffer.from(input.tx_id, "hex"),
+    outputIndex: Number(input.output_index),
+  });
 
 /**
  * The `spend_inputs_hash` a native transaction body commits for `inputs`,

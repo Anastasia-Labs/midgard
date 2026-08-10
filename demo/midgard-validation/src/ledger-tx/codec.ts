@@ -2,6 +2,7 @@ import {
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardSpendInputItemV1,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
   deriveMidgardNativeTxCompactV1,
@@ -9,9 +10,11 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardSpendInputItemV1,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScriptListPreimage,
   hashMidgardVersionedScript,
+  MIDGARD_MAX_OUTPUT_INDEX_V1,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
@@ -38,7 +41,6 @@ import {
   redeemerDataFromCborHex,
 } from "../midgard-redeemers.js";
 import { plutusDataToCborHex } from "../plutus-data.js";
-import { decodeCanonicalTransactionInput } from "./canonical-cardano-fast-path.js";
 import type {
   MidgardAssetName,
   MidgardCredentialHash,
@@ -224,34 +226,50 @@ const copyNativeWitnessSetCompact = (
 const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
   encodeCbor(items.map((item) => copyBuffer(item)));
 
-const decodeOutRefWithCml = (inputBytes: Uint8Array): MidgardOutRef => {
-  const input = CML.TransactionInput.from_cbor_bytes(inputBytes);
-  try {
-    const transactionId = input.transaction_id();
-    try {
-      return {
-        txId: Buffer.from(transactionId.to_raw_bytes()),
-        index: BigInt(input.index()),
-      };
-    } finally {
-      transactionId.free();
-    }
-  } finally {
-    input.free();
-  }
-};
-
+/**
+ * §5.3 fields 0/1: `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes.
+ *
+ * A Midgard out-ref has exactly one byte spelling, and this is it — ledger MPF
+ * trie keys, field-0/1 preimage items and transition-effect source keys are all
+ * these same 38 bytes, so this is the inverse of `encodeOutRef` below and of
+ * on-chain `decode_midgard_tx_input_cbor`. Every other shape throws: a
+ * development ledger written under any other spelling must be reset, not
+ * migrated (`docs/spec/midgard-tx.md` §5.3). Tolerating a second shape here
+ * would be worse than useless — a stale 36-byte key would decode and re-encode
+ * to different bytes, silently re-keying the row instead of failing.
+ */
 export const decodeMidgardOutRefBytes = (
   inputBytes: Uint8Array,
-): MidgardOutRef =>
-  decodeCanonicalTransactionInput(inputBytes) ??
-  decodeOutRefWithCml(inputBytes);
+): MidgardOutRef => {
+  const decoded = decodeMidgardSpendInputItemV1(inputBytes);
+  return {
+    txId: Buffer.from(decoded.txId) as MidgardTxId,
+    index: BigInt(decoded.outputIndex),
+  };
+};
 
-const encodeOutRef = (outRef: MidgardOutRef, fieldName: string): Buffer =>
-  encodeCbor([
-    copyBuffer(assertHash32(outRef.txId, `${fieldName}.txId`)),
-    outRef.index,
-  ]);
+/**
+ * §5.3 fields 0/1: `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes.
+ *
+ * This must be the same encoder that produces the ledger MPF trie key
+ * (`midgardOutRefToCbor`), because `toNativeTx` re-encodes a decoded ledger
+ * transaction and asserts the recomputed tx id: a minimal output index here and
+ * a fixed one there would make every round trip fail. On-chain the two are
+ * literally one function — `ledger_outref_key` calls `encode_midgard_tx_input`,
+ * the field-0/1 item encoder. See `docs/spec/midgard-tx.md` §5.3.
+ */
+const encodeOutRef = (outRef: MidgardOutRef, fieldName: string): Buffer => {
+  if (outRef.index < 0n || outRef.index > BigInt(MIDGARD_MAX_OUTPUT_INDEX_V1)) {
+    failEncode(
+      `${fieldName}.index must be 0..65,535 (§5.3 fixed uint16 output index)`,
+      `index=${outRef.index.toString()}`,
+    );
+  }
+  return encodeMidgardSpendInputItemV1({
+    txId: copyBuffer(assertHash32(outRef.txId, `${fieldName}.txId`)),
+    outputIndex: Number(outRef.index),
+  });
+};
 
 const decodeOutRefList = (
   preimageCbor: Uint8Array,

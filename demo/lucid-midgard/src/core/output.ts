@@ -1,8 +1,10 @@
 import {
   decodeMidgardAddressBytes,
   decodeMidgardNativeScript,
+  decodeMidgardSpendInputItemV1,
   decodeMidgardTxOutput as decodeCoreMidgardTxOutput,
   encodeMidgardAddressText,
+  encodeMidgardSpendInputItemV1,
   encodeMidgardTxOutput as encodeCoreMidgardTxOutput,
   isProtectedMidgardAddress,
   MIDGARD_PROTECTED_ADDRESS_HEADER_MASK,
@@ -460,33 +462,42 @@ export const authoredOutput = ({
   };
 };
 
+/**
+ * The out-ref's canonical Midgard bytes: the §5.3 field-0/1 item encoding
+ * `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16` — a fixed 38 bytes, with the
+ * deliberately non-minimal 3-byte output index.
+ *
+ * One value, one spelling, three consumers: the field-0/1 preimage items
+ * (`sortedInputCbors`), the ledger MPF trie key, and the ledger DB `outref`
+ * column. On-chain `ledger_outref_key`
+ * (`onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak`) derives
+ * the trie key through `encode_midgard_tx_input`, the same encoder — so this
+ * must stay `encodeMidgardSpendInputItemV1` and never CML's minimal-index
+ * `TransactionInput` CBOR, which is 36 bytes for indices 0–23. See
+ * `docs/spec/midgard-tx.md` §5.3.
+ */
 export const outRefToCbor = (outRef: OutRef): Buffer => {
   const normalized = normalizeOutRef(outRef);
-  return Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(normalized.txHash),
-      BigInt(normalized.outputIndex),
-    ).to_cbor_bytes(),
-  );
+  return encodeMidgardSpendInputItemV1({
+    txId: hexToBytes(normalized.txHash, { fieldName: "outRef.txHash" }),
+    outputIndex: normalized.outputIndex,
+  });
 };
 
 const decodeOutRefCbor = (
   outRefCbor: Uint8Array,
 ): { readonly outRef: OutRef; readonly cbor: Buffer } => {
   try {
-    const decodedInput = CML.TransactionInput.from_cbor_bytes(outRefCbor);
-    const decodedIndex = decodedInput.index();
-    if (decodedIndex > BigInt(Number.MAX_SAFE_INTEGER)) {
-      throw new Error(
-        `output index exceeds JavaScript safe integer range: ${decodedIndex.toString()}`,
-      );
-    }
+    const decoded = decodeMidgardSpendInputItemV1(outRefCbor);
     return {
       outRef: normalizeOutRef({
-        txHash: decodedInput.transaction_id().to_hex(),
-        outputIndex: Number(decodedIndex),
+        txHash: Buffer.from(decoded.txId).toString("hex"),
+        outputIndex: decoded.outputIndex,
       }),
-      cbor: Buffer.from(decodedInput.to_cbor_bytes()),
+      // Re-encode rather than copy the input: the §5.3 form has exactly one
+      // spelling, so a decode that round-trips to different bytes is a bug in
+      // the caller's bytes, not a shape this builder should carry forward.
+      cbor: encodeMidgardSpendInputItemV1(decoded),
     };
   } catch (cause) {
     throw new BuilderInvariantError(

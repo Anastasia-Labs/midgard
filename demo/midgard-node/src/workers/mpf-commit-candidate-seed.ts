@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { inspect } from "node:util";
 
-import { CML } from "@lucid-evolution/lucid";
+import { encodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core/codec";
+import { hexToBytes } from "@al-ft/midgard-core/hex";
 import { Effect } from "effect";
 
 import { decodeNodeUtxo } from "@/commands/command-utils.js";
@@ -36,12 +37,13 @@ const sha256 = (bytes: Uint8Array): string =>
 const outrefCbor = (label: string): Buffer => {
   const match = /^([0-9a-f]{64})#(0|[1-9]\d*)$/u.exec(label.toLowerCase());
   if (match === null) throw new Error(`Invalid funding outref ${label}`);
-  return Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(match[1]!),
-      BigInt(match[2]!),
-    ).to_cbor_bytes(),
-  );
+  // The §5.3 field-0/1 item encoding — `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`,
+  // fixed 38 bytes — matching on-chain `ledger_outref_key`, not CML's
+  // minimal-index `TransactionInput` CBOR.
+  return encodeMidgardSpendInputItemV1({
+    txId: hexToBytes(match[1]!, { fieldName: "funding outref txHash" }),
+    outputIndex: Number(match[2]!),
+  });
 };
 
 const loadInput = async (): Promise<{

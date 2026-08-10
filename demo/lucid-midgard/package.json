@@ -20,6 +20,7 @@
     "clean": "rimraf dist",
     "prebuild": "pnpm --dir ../midgard-validation run build",
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "fixtures:native-high-cardinality:sync": "MIDGARD_SYNC_FIXTURES=1 vitest run tests/native-high-cardinality-fixture.test.ts",
     "fixtures:native-compact": "node scripts/generate-native-compact-aiken-goldens.mjs",
     "fixtures:native-compact:check": "node scripts/generate-native-compact-aiken-goldens.mjs --check",
     "lint": "eslint . --max-warnings=0",

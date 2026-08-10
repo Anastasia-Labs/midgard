@@ -40,7 +40,10 @@ import {
   buildTransferTxWithMinFee,
 } from "@/commands/submit-l2-transfer.js";
 
-import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
+import {
+  makeMidgardTxOutput,
+  makeOutRefCbor,
+} from "./midgard-output-helpers.js";
 
 class FanoutAcquisitionProbe extends Context.Tag("FanoutAcquisitionProbe")<
   FanoutAcquisitionProbe,
@@ -74,7 +77,7 @@ const nodeUtxo = ({
 }): NodeUtxo => ({
   txHash: txHashByte.repeat(32),
   outputIndex,
-  outrefCbor: Buffer.from(`${txHashByte}${outputIndex.toString(16)}`, "hex"),
+  outrefCbor: makeOutRefCbor(txHashByte.repeat(32), outputIndex),
   outputCbor: Buffer.from("00", "hex"),
   address,
   assets: { lovelace },
@@ -97,12 +100,7 @@ const prepareCanonicalNativeTransfer = async ({
 }) => {
   const wallet = walletFromSeed(sourceSeedPhrase, { network: "Preprod" });
   const txHash = txHashByte.repeat(32);
-  const outrefCbor = Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHash),
-      0n,
-    ).to_cbor_bytes(),
-  );
+  const outrefCbor = makeOutRefCbor(txHash, 0);
   const outputCbor = Buffer.from(
     makeMidgardTxOutput(
       CML.Address.from_bech32(sourceAddress),
@@ -1757,12 +1755,7 @@ describe("stress wallet commands", () => {
           {
             txHash: hash,
             outputIndex: 0,
-            outrefCbor: Buffer.from(
-              CML.TransactionInput.new(
-                CML.TransactionHash.from_hex(hash),
-                0n,
-              ).to_cbor_bytes(),
-            ),
+            outrefCbor: makeOutRefCbor(hash, 0),
             outputCbor: Buffer.from(
               makeMidgardTxOutput(
                 CML.Address.from_bech32(record.l2Address),
@@ -2126,12 +2119,7 @@ describe("stress wallet commands", () => {
             {
               txHash: hash,
               outputIndex: 0,
-              outrefCbor: Buffer.from(
-                CML.TransactionInput.new(
-                  CML.TransactionHash.from_hex(hash),
-                  0n,
-                ).to_cbor_bytes(),
-              ),
+              outrefCbor: makeOutRefCbor(hash, 0),
               outputCbor: Buffer.from(
                 makeMidgardTxOutput(
                   CML.Address.from_bech32(w.l2Address),
@@ -2295,12 +2283,7 @@ describe("stress wallet commands", () => {
         const canonicalSource: NodeUtxo = {
           txHash: initialHash,
           outputIndex: 0,
-          outrefCbor: Buffer.from(
-            CML.TransactionInput.new(
-              CML.TransactionHash.from_hex(initialHash),
-              0n,
-            ).to_cbor_bytes(),
-          ),
+          outrefCbor: makeOutRefCbor(initialHash, 0),
           outputCbor: Buffer.from(
             makeMidgardTxOutput(
               CML.Address.from_bech32(source.l2Address),

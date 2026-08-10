@@ -3,9 +3,10 @@ import { buildMidgardBoundedCollectionV1 } from "@al-ft/midgard-core";
 import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxCompactV1,
+  decodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItemV1,
 } from "@al-ft/midgard-core/codec";
 import {
-  encodeCbor,
   encodeCborBytes,
   encodeCborUnsigned,
   readCborArrayHeader,
@@ -13,7 +14,6 @@ import {
   readCborInteger,
 } from "@al-ft/midgard-core/codec/cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { decodeMidgardOutRefBytes } from "@al-ft/midgard-validation/ledger-tx/codec";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -812,13 +812,17 @@ const verifyProofRoot = ({
   }
 };
 
+/**
+ * The one valid byte form of a spend input here is the §5.3 field-0/1 item —
+ * `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes — which is what
+ * on-chain `ledger_outref_key` / `encode_midgard_tx_input` derives and what
+ * `decode_midgard_tx_input_cbor` accepts. `encodeCbor([txId, index])` would
+ * spell indices 0–23 minimally and reject every key the trie actually holds.
+ */
 const canonicalNativeSpendInput = (bytes: Buffer, label: string): Buffer => {
   try {
-    const input = decodeMidgardOutRefBytes(bytes);
-    if (input.txId.length !== 32 || input.index < 0n || input.index > 65_535n) {
-      throw new Error("input fields are outside the canonical V1 domain");
-    }
-    const canonical = encodeCbor([Buffer.from(input.txId), input.index]);
+    const input = decodeMidgardSpendInputItemV1(bytes);
+    const canonical = encodeMidgardSpendInputItemV1(input);
     if (!canonical.equals(bytes)) {
       throw new Error("input CBOR is not the exact canonical encoding");
     }
@@ -1414,7 +1418,14 @@ const replayL2TransactionTransition = (
     }
     const key = exactHexBytes(item.key, `${label}.key`);
     const value = exactHexBytes(item.value, `${label}.value`);
-    const expectedKey = encodeCbor([txId, BigInt(index)]);
+    // The ledger trie key is the §5.3 field-0/1 item form
+    // (`82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, 38 bytes), matching on-chain
+    // `ledger_outref_key` / `encode_midgard_tx_input` — not CML's or
+    // `encodeCbor`'s minimal-index shape.
+    const expectedKey = encodeMidgardSpendInputItemV1({
+      txId,
+      outputIndex: index,
+    });
     if (!key.equals(expectedKey) || !value.equals(outputs[index]!)) {
       throw transitionTraceError(
         "missingWitnessData",

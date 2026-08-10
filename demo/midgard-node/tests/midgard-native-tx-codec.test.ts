@@ -35,7 +35,10 @@ import { encode } from "cborg";
 import { describe, expect, it } from "vitest";
 
 import { makeConvertibleCardanoTxBytes } from "./helpers/cardano-native-fixtures.js";
-import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
+import {
+  makeMidgardTxOutput,
+  makeOutRefCbor,
+} from "./midgard-output-helpers.js";
 
 const mkHash = (tag: string): Buffer => computeHash32(Buffer.from(tag, "utf8"));
 
@@ -564,12 +567,7 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
   });
 
   it("maps Midgard observers into zero-lovelace Cardano withdrawals", () => {
-    const input = Buffer.from(
-      CML.TransactionInput.new(
-        CML.TransactionHash.from_hex("11".repeat(32)),
-        0n,
-      ).to_cbor_bytes(),
-    );
+    const input = makeOutRefCbor("11".repeat(32), 0);
     const output = Buffer.from(
       makeMidgardTxOutput(
         CML.Address.from_bech32(

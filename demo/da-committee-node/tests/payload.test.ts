@@ -19,6 +19,7 @@ import {
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1,
   encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardSpendInputItemV1,
   encodeMidgardVersionedScriptListPreimage,
   materializeMidgardNativeTxFromCanonicalV1,
 } from "@al-ft/midgard-core/codec";
@@ -435,7 +436,15 @@ describe("canonical V1 DA payload verification", () => {
         ...fixture.payload.block_body,
         utxos: [
           [
-            `825820${"01".repeat(32)}00`,
+            // The ledger key must stay *well formed* — the point of this case is
+            // a root mismatch, not a malformed member — so it is built by the
+            // §5.3 encoder rather than hand-written. CML's minimal-index form
+            // (`825820…00`, 36 bytes) is not an admissible out-ref spelling and
+            // would fail closed as `malformed_da` before the root comparison.
+            encodeMidgardSpendInputItemV1({
+              txId: Buffer.alloc(32, 0x01),
+              outputIndex: 0,
+            }).toString("hex"),
             "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
           ],
         ],

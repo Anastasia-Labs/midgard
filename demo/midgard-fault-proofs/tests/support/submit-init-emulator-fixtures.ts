@@ -21,6 +21,7 @@ import {
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardNativeTxCompactV1,
+  encodeMidgardSpendInputItemV1,
   encodeMidgardTxOutput,
   hashMidgardValidationMachineStateV1,
   MIDGARD_CONSENSUS_PROFILE_V1,
@@ -285,12 +286,10 @@ export const spendInputsOfCardinality = ({
 };
 
 export const outputReferenceCbor = (outRef: TestOutputReference): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(outRef.transactionId),
-      outRef.outputIndex,
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItemV1({
+    txId: Buffer.from(outRef.transactionId, "hex"),
+    outputIndex: Number(outRef.outputIndex),
+  });
 
 export const largeFittingOutputCbor = (
   inlineDatumPayloadBytes: number = 13_600,
@@ -1042,7 +1041,9 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
   const txOrderId = transitionTraceOutRef("f1");
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
   const finalUtxo = transitionTraceRawEntry(
-    `825820${h32("01")}00`,
+    outputReferenceCbor({ transactionId: h32("01"), outputIndex: 0n }).toString(
+      "hex",
+    ),
     "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
   );
   const finalDescriptor = buildCanonicalMidgardLedgerEntryOutputMaterialV1({

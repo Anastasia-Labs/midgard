@@ -231,27 +231,31 @@ describe("canonical V1 deep unary datum with stock CML", () => {
     const canonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
       buildSignedUnaryCandidate(1_024),
     );
-    expect(canonical.length).toBe(4_394);
+    // Re-pinned for §5.3 fields 0/1: the single spend-input item is now the
+    // fixed 38-byte `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16` form rather than
+    // CML's 36-byte minimal-index CBOR, so every canonical length below is the
+    // recursive-probe-era value plus exactly 2 bytes per spend input.
+    expect(canonical.length).toBe(4_396);
     expect(sha256Hex(canonical)).toBe(
-      "006323b169693e4ee90e58656a0bd4e6dba7590a1a4de65462e1ae43ae1c9d6f",
+      "095ce867b42241cb3850034b3e79dcd5b7209c2b9607189d7270f72dfb33549a",
     );
     exerciseRetainedReconstruction(canonical, 1_024);
   });
 
   it("carries the substituted depth-1,024 datum byte-identically to the recursive-probe era", () => {
     const canonical = canonicalWithSubstitutedDatum(1_024);
-    expect(canonical.length).toBe(4_394);
+    expect(canonical.length).toBe(4_396);
     expect(sha256Hex(canonical)).toBe(
-      "ae9f29c7b2adbc36daca28b22243b49a7eb1882dc4f011ea6559c54baf294b73",
+      "2e255354ae4e72561095ce253fdb7409b39f2bbe6ac7d3e0af6906873e3afbf3",
     );
     exerciseRetainedReconstruction(canonical, 1_024);
   });
 
   it("reaches the exact depth-4,043 maximum through decode, validation, and the retained fold", () => {
     const canonical = canonicalWithSubstitutedDatum(4_043);
-    expect(canonical.length).toBe(16_470);
+    expect(canonical.length).toBe(16_472);
     expect(sha256Hex(canonical)).toBe(
-      "81a330db0b6355a1dbd5d7f46e2cb9198cab407a94848567627d8071b1f2afd1",
+      "dc159679ba5c167fe4718ebc7c5c39d5a6ccdeb3f05b27cc0494d8bfd7867097",
     );
     const { revealStepCount } = exerciseRetainedReconstruction(
       canonical,

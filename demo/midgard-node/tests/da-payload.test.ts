@@ -24,6 +24,7 @@ import {
   ledgerOutputToInsertBatchOpV1,
 } from "@/workers/utils/mpf.js";
 
+import { makeOutRefCbor } from "./midgard-output-helpers.js";
 import { deterministicFixtureBytes } from "./utils.js";
 
 const fixture = (label: string, length: number): Buffer =>
@@ -144,10 +145,7 @@ const ledgerEntries = (
   count: number,
 ): readonly [Buffer, Buffer][] =>
   Array.from({ length: count }, (_, index) => [
-    Buffer.from(
-      `825820${fixture(`${label}-tx-id-${index}`, 32).toString("hex")}00`,
-      "hex",
-    ),
+    makeOutRefCbor(fixture(`${label}-tx-id-${index}`, 32)),
     Buffer.from(LEDGER_OUTPUT_CBOR),
   ]);
 

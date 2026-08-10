@@ -3,10 +3,10 @@ import {
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardSpendInputItemV1,
   encodeMidgardNativeTxCanonicalV1,
   type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core/codec";
-import { CML } from "@lucid-evolution/lucid";
 
 import { BuilderInvariantError, SigningError } from "../core/errors.js";
 import { compareOutRefs, type OutRef, outRefLabel } from "../core/out-ref.js";
@@ -81,19 +81,19 @@ const assertImportedAddressNetwork = (
   }
 };
 
+/**
+ * Field-0/1 items are §5.3's fixed-index form, so canonicality is decided by
+ * that decoder — it asserts the 38-byte width and the `0x19` index head, which
+ * is exactly the "one valid byte form" rule (§6.1). A CML round-trip cannot
+ * decide it: CML preserves whatever index width it was handed, so a minimal
+ * 36-byte item would round-trip equal and pass a check that must reject it.
+ */
 const outRefFromCbor = (inputCbor: Uint8Array, fieldName: string): OutRef => {
   try {
-    const input = CML.TransactionInput.from_cbor_bytes(inputCbor);
-    if (!Buffer.from(input.to_cbor_bytes()).equals(Buffer.from(inputCbor))) {
-      throw new Error("input CBOR is not canonical");
-    }
-    const outputIndex = Number(input.index());
-    if (!Number.isSafeInteger(outputIndex) || outputIndex < 0) {
-      throw new Error("input output index exceeds safe integer range");
-    }
+    const decoded = decodeMidgardSpendInputItemV1(inputCbor);
     return {
-      txHash: input.transaction_id().to_hex(),
-      outputIndex,
+      txHash: Buffer.from(decoded.txId).toString("hex"),
+      outputIndex: decoded.outputIndex,
     };
   } catch (cause) {
     throw new BuilderInvariantError(

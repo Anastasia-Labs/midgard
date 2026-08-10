@@ -1,5 +1,6 @@
 import { encodeCbor } from "@al-ft/midgard-core";
 import {
+  encodeMidgardSpendInputItemV1,
   encodeMidgardTxOutput,
   midgardAddressFromText,
   type MidgardValue,
@@ -107,12 +108,25 @@ const projectedDepositValue = (input: {
   return Object.freeze({ lovelace, assets: policies });
 };
 
+/**
+ * The out-ref in a transition effect is the ledger trie key, so its one valid
+ * byte form is §5.3's fixed-index item (`82 ‖ 58 20 tx_id ‖ 19 index_be16`,
+ * 38 bytes) — the same bytes on-chain `ledger_outref_key` derives. Re-encoding
+ * and requiring byte equality is what makes that "exact", so the encoder here
+ * must be the §5.3 one; `encodeCbor([txId, index])` would spell indices 0–23
+ * minimally and reject every key the trie actually holds.
+ */
 const canonicalOutRefCbor = (value: Uint8Array): Buffer => {
   const source = Buffer.from(value);
   const decoded = decodeMidgardOutRefBytes(source);
-  const canonical = encodeCbor([decoded.txId, decoded.index]);
+  const canonical = encodeMidgardSpendInputItemV1({
+    txId: decoded.txId,
+    outputIndex: Number(decoded.index),
+  });
   if (!canonical.equals(source)) {
-    throw new Error("transition effect out-ref must use exact canonical CBOR");
+    throw new Error(
+      "transition effect out-ref must use the exact §5.3 fixed-index CBOR",
+    );
   }
   return canonical;
 };
@@ -235,10 +249,10 @@ export const deriveCanonicalDepositTransitionEffectV1 = (input: {
           },
         }),
   });
-  const outRefCbor = encodeCbor([
-    Buffer.from(input.eventId.transactionId, "hex"),
-    input.eventId.outputIndex,
-  ]);
+  const outRefCbor = encodeMidgardSpendInputItemV1({
+    txId: Buffer.from(input.eventId.transactionId, "hex"),
+    outputIndex: Number(input.eventId.outputIndex),
+  });
   return canonicalDepositTransitionEffectV1({ outRefCbor, outputCbor });
 };
 

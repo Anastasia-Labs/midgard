@@ -17,13 +17,14 @@ use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
+use cardano/transaction.{OutputReference}
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_field_preimage_lengths_v1,
 }
 use midgard/fraud_proofs/native_tx/components.{
-  encode_fixed_output_index, encode_midgard_address_witness,
-  encode_midgard_redeemer_witness, encode_midgard_tx_input,
-  encode_midgard_versioned_script,
+  decode_midgard_tx_input_cbor, encode_fixed_output_index,
+  encode_midgard_address_witness, encode_midgard_redeemer_witness,
+  encode_midgard_tx_input, encode_midgard_versioned_script,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_address_witnesses_preimage_cbor,
@@ -44,6 +45,7 @@ use midgard/fraud_proofs/native_tx/types.{
   NativeTxFieldPreimageLengthsV1, PlutusV3Script, ProposeRedeemer,
   ReceiveRedeemer, RewardRedeemer, SpendRedeemer, VoteRedeemer,
 }
+use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
 use midgard/native_tx_field_access_v1.{
   Chunked, Whole, chunk_bytes_k, decode_field_array_header,
   encode_field_preimage, field_commitment, field_commitment_from_items,
@@ -1599,6 +1601,22 @@ test golden_f0_f1_item_rejects_a_short_tx_id() fail {
   ) >= 0
 }
 
+/// Fields 0/1, the decode side of the same width. `59 0020` is a second,
+/// wider spelling of "32 bytes" that `decode_definite_bytes_at` will read,
+/// so a 39-byte item would otherwise decode to the *same* out-ref as the
+/// canonical 38-byte one — two trie keys naming one out-ref. The exact-38
+/// guard in `decode_midgard_tx_input_cbor` is what rejects it, and its
+/// TypeScript twin `decodeMidgardSpendInputItemV1` rejects it on width too.
+test golden_f0_f1_decoder_rejects_a_non_minimal_tx_id_header() fail {
+  bytearray.length(
+    encode_midgard_tx_input(
+      decode_midgard_tx_input_cbor(
+        #"82590020222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb190002",
+      ),
+    ),
+  ) >= 0
+}
+
 /// Field 7 is structurally fixed at 101 bytes: 32-byte key, 64-byte signature.
 test golden_f7_item_rejects_a_short_verification_key() fail {
   bytearray.length(
@@ -1728,6 +1746,54 @@ test golden_fixed_output_index_matches_typescript() {
     encode_fixed_output_index(255) == #"1900ff",
     encode_fixed_output_index(256) == #"190100",
     encode_fixed_output_index(65535) == #"19ffff",
+  }
+}
+
+/// §5.3 fields 0/1: an out-ref's item encoding *is* its ledger MPF trie key and
+/// its ledger database `outref` column. `ledger_outref_key` is pinned here
+/// against bytes produced by the TypeScript trie-key producers, so the two
+/// languages cannot key the ledger differently. The index set spans both sides
+/// of the minimal-CBOR boundary at 23/24 — the only place where a minimal-index
+/// encoder and this one differ in width, and therefore the only place a
+/// regression would hide.
+test golden_ledger_outref_key_matches_typescript() {
+  and {
+    ledger_outref_key(
+      OutputReference {
+        transaction_id: #"121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4eb",
+        output_index: 0,
+      },
+    ) == #"825820121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4eb190000",
+    ledger_outref_key(
+      OutputReference {
+        transaction_id: #"dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4",
+        output_index: 23,
+      },
+    ) == #"825820dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4190017",
+    ledger_outref_key(
+      OutputReference {
+        transaction_id: #"fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3",
+        output_index: 24,
+      },
+    ) == #"825820fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3190018",
+    ledger_outref_key(
+      OutputReference {
+        transaction_id: #"f3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5cc",
+        output_index: 255,
+      },
+    ) == #"825820f3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5cc1900ff",
+    ledger_outref_key(
+      OutputReference {
+        transaction_id: #"121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4eb",
+        output_index: 256,
+      },
+    ) == #"825820121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4eb190100",
+    ledger_outref_key(
+      OutputReference {
+        transaction_id: #"f3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5cc",
+        output_index: 65535,
+      },
+    ) == #"825820f3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5cc19ffff",
   }
 }
 

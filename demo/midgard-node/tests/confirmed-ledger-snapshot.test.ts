@@ -11,7 +11,10 @@ import {
 } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "@/workers/utils/mpf.js";
 
-import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
+import {
+  makeMidgardTxOutput,
+  makeOutRefCbor,
+} from "./midgard-output-helpers.js";
 
 const VALID_ADDRESS =
   "addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs";
@@ -20,12 +23,7 @@ const BLOCK_START = new Date("2026-06-19T00:00:00.000Z");
 const BLOCK_END = new Date("2026-06-19T00:00:10.000Z");
 
 const txOutRefCbor = (txHashByte: string, outputIndex: bigint) =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHashByte.repeat(32)),
-      outputIndex,
-    ).to_cbor_bytes(),
-  );
+  makeOutRefCbor(txHashByte.repeat(32), outputIndex);
 
 const utxo = (
   txHashByte: string,

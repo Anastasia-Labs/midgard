@@ -12,6 +12,7 @@ import {
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardSpendInputItemV1,
   encodeMidgardTxOutput,
   findOutRefIndex,
   hashMidgardValidationLedgerDeltaV1,
@@ -1485,12 +1486,10 @@ export const EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1 =
   hashMidgardValidationLedgerDeltaV1([]);
 
 export const outRefCbor = (byte: number, index = 0n): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(Buffer.alloc(32, byte).toString("hex")),
-      index,
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItemV1({
+    txId: Buffer.alloc(32, byte),
+    outputIndex: Number(index),
+  });
 
 export const plainOutputCbor = (lovelace: bigint): Buffer =>
   encodeMidgardTxOutput({
@@ -1824,12 +1823,10 @@ export const buildHonestAcceptedValidationDisputeFixture = async ({
     },
     operator_validity: "TxIsValid" as const,
   };
-  const producedOutRef = Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_raw_bytes(transactionId),
-      0n,
-    ).to_cbor_bytes(),
-  );
+  const producedOutRef = encodeMidgardSpendInputItemV1({
+    txId: transactionId,
+    outputIndex: 0,
+  });
   const expectedLedgerOps = [
     { type: "delete" as const, key: spentOutRef },
     buildValidationMachineLedgerInsertOpV1({

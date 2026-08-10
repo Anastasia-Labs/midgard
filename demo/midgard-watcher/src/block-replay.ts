@@ -98,6 +98,7 @@ import {
   computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  encodeMidgardSpendInputItemV1,
 } from "@al-ft/midgard-core/codec";
 import {
   canonicalBlockEvidenceFromVerifiedPayloadV1,
@@ -1136,14 +1137,21 @@ const eventIdForKey = (
 const eventIdForKeyCborHex = (eventKey: EventKey): string =>
   LucidData.to(eventIdForKey(eventKey) as never, OutputReference as never);
 
+/**
+ * The ledger trie key / transition-effect out-ref: the §5.3 field-0/1 item form
+ * `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes, matching on-chain
+ * `ledger_outref_key` / `encode_midgard_tx_input`. CML's minimal-index
+ * `TransactionInput` CBOR would not compare equal to the effect out-refs
+ * `canonicalOutRefCbor` admits.
+ */
 const ledgerOutRefCborHex = (value: {
   readonly transactionId: string;
   readonly outputIndex: bigint;
 }): string =>
-  CML.TransactionInput.new(
-    CML.TransactionHash.from_hex(value.transactionId),
-    value.outputIndex,
-  ).to_cbor_hex();
+  encodeMidgardSpendInputItemV1({
+    txId: Buffer.from(value.transactionId, "hex"),
+    outputIndex: Number(value.outputIndex),
+  }).toString("hex");
 
 const l1AssetsFromOutputCborV1 = (
   outputCborHex: string,

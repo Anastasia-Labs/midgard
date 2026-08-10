@@ -1,10 +1,10 @@
 import {
+  decodeMidgardSpendInputItemV1,
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
 } from "@al-ft/midgard-core/codec";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { SqlClient } from "@effect/sql";
-import { CML } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
 import {
@@ -39,17 +39,17 @@ export const pendingUtxoMemberToConfirmedLedgerEntry = (
 ): Effect.Effect<Ledger.Entry, DatabaseError> =>
   Effect.try({
     try: () => {
-      const input = CML.TransactionInput.from_cbor_bytes(
+      // Snapshot `outref` bytes are the §5.3 field-0/1 item form — 38 bytes,
+      // `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16` — matching on-chain
+      // `ledger_outref_key`, not CML's minimal-index `TransactionInput` CBOR.
+      const input = decodeMidgardSpendInputItemV1(
         member[PendingBlockFinalizationsDB.UtxoColumns.OUTREF],
       );
       const output = decodeMidgardTxOutput(
         member[PendingBlockFinalizationsDB.UtxoColumns.OUTPUT],
       );
       return {
-        [Ledger.Columns.TX_ID]: Buffer.from(
-          input.transaction_id().to_hex(),
-          "hex",
-        ),
+        [Ledger.Columns.TX_ID]: Buffer.from(input.txId),
         [Ledger.Columns.OUTREF]: Buffer.from(
           member[PendingBlockFinalizationsDB.UtxoColumns.OUTREF],
         ),

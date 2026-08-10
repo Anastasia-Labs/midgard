@@ -3,8 +3,10 @@ import { createHash } from "node:crypto";
 import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  encodeMidgardSpendInputItemV1,
 } from "@al-ft/midgard-core/codec";
-import { CML, type Network } from "@lucid-evolution/lucid";
+import { hexToBytes } from "@al-ft/midgard-core/hex";
+import type { Network } from "@lucid-evolution/lucid";
 
 import {
   decodeNodeUtxo,
@@ -50,13 +52,14 @@ export type BuiltCorpusChain = {
 const sha256Hex = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 
+// The §5.3 field-0/1 item encoding — `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`,
+// fixed 38 bytes — which is what on-chain `ledger_outref_key` derives through
+// `encode_midgard_tx_input`, not CML's minimal-index `TransactionInput` CBOR.
 const outRefCborHex = (txHash: string, outputIndex: number): string =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHash),
-      BigInt(outputIndex),
-    ).to_cbor_bytes(),
-  ).toString("hex");
+  encodeMidgardSpendInputItemV1({
+    txId: hexToBytes(txHash, { fieldName: "outRef.txHash" }),
+    outputIndex,
+  }).toString("hex");
 
 export const nodeUtxoFromCorpusFunding = (
   funding: CorpusFundingUtxo,

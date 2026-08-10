@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { CML } from "@lucid-evolution/lucid";
+import { outRefToCbor } from "@al-ft/lucid-midgard";
 
 export const PHASE1_FORMAL_BINDING_SCHEMA =
   "midgard-phase1-live-corpus-binding-v1";
@@ -739,12 +739,14 @@ export const verifyPhase1LivePreflight = async ({ expected, fetchUtxos }) => {
   for (const entry of expected.entries) {
     const utxos = await fetchUtxos(entry.l2Address);
     const [transactionId, outputIndex] = entry.firstInputOutref.split("#");
-    const expectedOutrefCbor = Buffer.from(
-      CML.TransactionInput.new(
-        CML.TransactionHash.from_raw_bytes(Buffer.from(transactionId, "hex")),
-        BigInt(outputIndex),
-      ).to_cbor_bytes(),
-    ).toString("hex");
+    // The ledger `outref` column carries the §5.3 field-0/1 item bytes
+    // (`82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes), not CML's
+    // minimal-index `TransactionInput` CBOR — so the expected bytes must come
+    // from the shared encoder.
+    const expectedOutrefCbor = outRefToCbor({
+      txHash: transactionId,
+      outputIndex: Number(outputIndex),
+    }).toString("hex");
     const live = utxos.find(
       (utxo) => String(utxo.outref).toLowerCase() === expectedOutrefCbor,
     );

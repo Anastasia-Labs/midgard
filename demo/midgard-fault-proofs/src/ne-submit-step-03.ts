@@ -5,6 +5,7 @@
  * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
 
+import { encodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core/codec";
 import {
   type MidgardTxInput,
   NonExistentInputStep03Datum,
@@ -18,7 +19,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
-  CML,
   Data,
   type LucidEvolution,
   type Network,
@@ -52,17 +52,18 @@ export const PEXCLUDES_EXCLUSION_WITHDRAW_TITLE =
   "pexcludes.exclusion.withdraw";
 
 /**
- * Encodes a `MidgardTxInput` as the node's ledger MPF key: the Cardano
- * `TransactionInput` CBOR (`0x82 ‖ txid ‖ index`), matching the on-chain
- * `encode_midgard_tx_input`. This is NOT `cbor.serialise(OutputReference)`.
+ * Encodes a `MidgardTxInput` as the node's ledger MPF key: the §5.3 field-0/1
+ * item form `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes with a
+ * deliberately non-minimal uint16 output index. These are the bytes on-chain
+ * `ledger_outref_key` derives via `encode_midgard_tx_input`, not CML's
+ * minimal-index `TransactionInput` CBOR, and NOT
+ * `cbor.serialise(OutputReference)`.
  */
 export const ledgerKeyBytesHex = (input: MidgardTxInput): string =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(input.tx_id),
-      input.output_index,
-    ).to_cbor_bytes(),
-  ).toString("hex");
+  encodeMidgardSpendInputItemV1({
+    txId: Buffer.from(input.tx_id, "hex"),
+    outputIndex: Number(input.output_index),
+  }).toString("hex");
 
 export type NeSubmitStep03CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;

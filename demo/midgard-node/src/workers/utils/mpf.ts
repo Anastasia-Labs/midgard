@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { dirname } from "node:path";
 
 import { Proof, Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
+import { encodeMidgardTxOutput, outRefToCbor } from "@al-ft/lucid-midgard";
 import {
   encodeMidgardCekProgramMaterialSidecarV1,
   type MidgardCekProgramEnvelopeV1,
@@ -49,7 +49,7 @@ import {
 } from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql";
 import type { UTxO } from "@lucid-evolution/lucid";
-import { CML, Data as LucidData } from "@lucid-evolution/lucid";
+import { Data as LucidData } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Data, Effect, Fiber, Metric, Option } from "effect";
 import * as FS from "fs";
@@ -888,15 +888,15 @@ export const utxoToLedgerInsertMaterialV1 = (
   SDK.CmlDeserializationError
 > =>
   Effect.gen(function* () {
-    const input = yield* Effect.try({
-      try: () =>
-        CML.TransactionInput.new(
-          CML.TransactionHash.from_hex(utxo.txHash),
-          BigInt(utxo.outputIndex),
-        ),
+    // The MPF trie key is the §5.3 field-0/1 item encoding, byte-for-byte what
+    // on-chain `ledger_outref_key` derives through `encode_midgard_tx_input`.
+    // CML's minimal-index TransactionInput CBOR is 36 bytes for indices 0–23 and
+    // would key the trie where the on-chain side never looks.
+    const outRef = yield* Effect.try({
+      try: () => outRefToCbor(utxo),
       catch: (e) =>
         new SDK.CmlDeserializationError({
-          message: "Failed to convert UTxO outref to CML.TransactionInput",
+          message: "Failed to encode UTxO outref as the §5.3 ledger key",
           cause: e,
         }),
     });
@@ -913,7 +913,6 @@ export const utxoToLedgerInsertMaterialV1 = (
           cause: e,
         }),
     });
-    const outRef = Buffer.from(input.to_cbor_bytes());
     const ledgerOp = yield* Effect.try({
       try: () => ledgerOutputToInsertBatchOpV1({ outRef, outputCbor: output }),
       catch: (e) =>

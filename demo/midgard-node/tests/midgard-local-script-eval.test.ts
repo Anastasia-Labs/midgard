@@ -31,6 +31,7 @@ import {
   hashMidgardV1Script,
   hashPlutusV3Script,
   makeMidgardTxOutput,
+  makeOutRefCbor,
   protectOutputAddressBytes,
 } from "./midgard-output-helpers.js";
 
@@ -89,14 +90,7 @@ const ledgerRedeemer = <
 });
 
 const makeOutRefHex = (txHashByte: number, outputIndex: bigint): string =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(
-        Buffer.alloc(32, txHashByte).toString("hex"),
-      ),
-      outputIndex,
-    ).to_cbor_bytes(),
-  ).toString("hex");
+  makeOutRefCbor(txHashByte, outputIndex).toString("hex");
 
 const makeScriptContextOutput = (
   scriptHash: string,
@@ -482,11 +476,7 @@ describe("Midgard local script evaluation primitives", () => {
   it("evaluates the MidgardV1 spend guard against a Midgard-shaped context", () => {
     const scriptBytes = Buffer.from(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX, "hex");
     const scriptHash = hashMidgardV1Script(scriptBytes);
-    const input = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex("31".repeat(32)),
-      2n,
-    );
-    const outRefHex = Buffer.from(input.to_cbor_bytes()).toString("hex");
+    const outRefHex = makeOutRefCbor("31".repeat(32), 2).toString("hex");
     const output = makeMidgardTxOutput(
       CML.EnterpriseAddress.new(
         0,
@@ -528,11 +518,7 @@ describe("Midgard local script evaluation primitives", () => {
   it("rejects the MidgardV1 spend guard when the redeemer is wrong", () => {
     const scriptBytes = Buffer.from(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX, "hex");
     const scriptHash = hashMidgardV1Script(scriptBytes);
-    const input = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex("32".repeat(32)),
-      0n,
-    );
-    const outRefHex = Buffer.from(input.to_cbor_bytes()).toString("hex");
+    const outRefHex = makeOutRefCbor("32".repeat(32), 0).toString("hex");
     const output = makeMidgardTxOutput(
       CML.EnterpriseAddress.new(
         0,
@@ -577,18 +563,8 @@ describe("Midgard local script evaluation primitives", () => {
       "hex",
     );
     const scriptHash = hashMidgardV1Script(scriptBytes);
-    const input = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex("34".repeat(32)),
-      1n,
-    );
-    const outRefHex = Buffer.from(input.to_cbor_bytes()).toString("hex");
-    const otherInput = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex("35".repeat(32)),
-      0n,
-    );
-    const otherOutRefHex = Buffer.from(otherInput.to_cbor_bytes()).toString(
-      "hex",
-    );
+    const outRefHex = makeOutRefCbor("34".repeat(32), 1).toString("hex");
+    const otherOutRefHex = makeOutRefCbor("35".repeat(32), 0).toString("hex");
     const output = makeMidgardTxOutput(
       CML.EnterpriseAddress.new(
         0,
@@ -854,11 +830,7 @@ describe("Midgard local script evaluation primitives", () => {
   it("builds PlutusV3 spending ScriptInfo with inline datum and empty txInfo data", () => {
     const scriptHash = "cd".repeat(28);
     const datum = CML.PlutusData.new_integer(CML.BigInteger.from_str("7"));
-    const input = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex("12".repeat(32)),
-      3n,
-    );
-    const outRefHex = Buffer.from(input.to_cbor_bytes()).toString("hex");
+    const outRefHex = makeOutRefCbor("12".repeat(32), 3).toString("hex");
     const output = makeMidgardTxOutput(
       CML.EnterpriseAddress.new(
         0,
@@ -910,11 +882,7 @@ describe("Midgard local script evaluation primitives", () => {
   it("preserves base-address stake credentials in script context TxOut addresses", () => {
     const paymentScriptHash = "cd".repeat(28);
     const stakeKeyHash = "ab".repeat(28);
-    const input = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex("34".repeat(32)),
-      1n,
-    );
-    const outRefHex = Buffer.from(input.to_cbor_bytes()).toString("hex");
+    const outRefHex = makeOutRefCbor("34".repeat(32), 1).toString("hex");
     const output = makeMidgardTxOutput(
       CML.BaseAddress.new(
         0,

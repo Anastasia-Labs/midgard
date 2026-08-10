@@ -32,7 +32,10 @@ import {
 import { resolveValidationWorkerPoolSize } from "@/services/config.js";
 import { packPhaseAJob } from "@/workers/utils/validation-pool.js";
 
-import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
+import {
+  makeMidgardTxOutput,
+  makeOutRefCbor,
+} from "./midgard-output-helpers.js";
 
 /**
  * Builds a fixed-width 32-byte hex string for validation tests.
@@ -40,12 +43,7 @@ import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 const hex32 = (byte: number) => byte.toString(16).padStart(2, "0").repeat(32);
 
 const outRefFromHash = (txHashHex: string, index: bigint): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHashHex),
-      index,
-    ).to_cbor_bytes(),
-  );
+  makeOutRefCbor(txHashHex, index);
 
 const makeOutput = (address: string, lovelace: bigint): Buffer =>
   Buffer.from(

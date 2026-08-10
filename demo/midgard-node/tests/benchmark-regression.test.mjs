@@ -1308,7 +1308,8 @@ describe("Phase 1 formal scenario contracts", () => {
   it("requires the deterministic live sample to contain exact outref and output bytes", async () => {
     const output = Buffer.from("8200", "hex");
     const outputCborSha256 = createHash("sha256").update(output).digest("hex");
-    const expectedOutrefCbor = `825820${"a".repeat(64)}00`;
+    // §5.3 field-0/1 item form: `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`.
+    const expectedOutrefCbor = `825820${"a".repeat(64)}190000`;
     const expected = {
       algorithm: "sha256-corpus-chain-id-order-v1",
       sampleSize: 1,

@@ -13,6 +13,7 @@ import {
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardSpendInputItemV1,
   encodeMidgardTxOutput,
   hashMidgardValidationMachineStateV1,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -41,6 +42,23 @@ const outputPath = path.resolve(
   "../../../onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak",
 );
 
+const commandArguments = process.argv.slice(2);
+if (
+  commandArguments.length > 1 ||
+  (commandArguments.length === 1 && commandArguments[0] !== "--check")
+) {
+  console.error(
+    "usage: node scripts/generate-validation-one-step-aiken-fixture.mjs [--check]",
+  );
+  process.exit(2);
+}
+// `--check` proves the checked-in Aiken fixture is still what this producer
+// emits, without writing it — the same discipline the golden channel uses. A
+// generated artifact whose producer has moved is worse than a missing one: the
+// Aiken tests keep asserting the old bytes and read as green evidence for a
+// wire format nothing produces any more.
+const checkOnly = commandArguments.length === 1;
+
 const privateKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x42));
 const publicKey = privateKey.to_public();
 const address = Buffer.from(
@@ -48,12 +66,15 @@ const address = Buffer.from(
     .to_address()
     .to_raw_bytes(),
 );
-const spent = Buffer.from(
-  CML.TransactionInput.new(
-    CML.TransactionHash.from_hex(Buffer.alloc(32, 0x11).toString("hex")),
-    0n,
-  ).to_cbor_bytes(),
-);
+// §5.3 fields 0/1: an out-ref has exactly one byte form, the fixed-index item
+// `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, and that same value is the ledger MPF
+// trie key. This is both here — the field-0 preimage item and the ledger delete
+// key — so it must come from that one encoder, not from CML's minimal-index
+// `TransactionInput` CBOR, which is 36 bytes and no longer decodes anywhere.
+const spent = encodeMidgardSpendInputItemV1({
+  txId: Buffer.alloc(32, 0x11),
+  outputIndex: 0,
+});
 const output = encodeMidgardTxOutput({
   address,
   value: { lovelace: 10n, assets: new Map() },
@@ -105,12 +126,13 @@ const transaction = {
 };
 const transactionId = computeMidgardNativeTxIdV1(transaction);
 const canonicalTransactionCbor = encodeMidgardNativeTxCanonicalV1(transaction);
-const createdOutRef = Buffer.from(
-  CML.TransactionInput.new(
-    CML.TransactionHash.from_raw_bytes(transactionId),
-    0n,
-  ).to_cbor_bytes(),
-);
+// The ledger insert key, so the same §5.3 encoder as `spent` above: on-chain
+// `ledger_outref_key` is a direct call to `encode_midgard_tx_input`, and a key
+// built any other way would not be the one the validator derives.
+const createdOutRef = encodeMidgardSpendInputItemV1({
+  txId: transactionId,
+  outputIndex: 0,
+});
 const expectedLedgerOps = [
   { type: "delete", key: spent },
   buildValidationMachineLedgerInsertOpV1({
@@ -341,10 +363,22 @@ test typescript_generated_script_discovery_control_wire_is_exact() {
 }
 `;
 
-fs.writeFileSync(outputPath, generated);
+if (checkOnly) {
+  const onDisk = fs.existsSync(outputPath)
+    ? fs.readFileSync(outputPath, "utf8")
+    : undefined;
+  if (onDisk !== generated) {
+    throw new Error(
+      `stale generated artifact: ${outputPath} — regenerate with \`make validation-one-step-cross-language\``,
+    );
+  }
+} else {
+  fs.writeFileSync(outputPath, generated);
+}
 process.stdout.write(
   `${JSON.stringify(
     {
+      mode: checkOnly ? "check" : "write",
       outputPath,
       boundaryEvidenceBytes: boundaryEvidenceCbor.length,
       transitionBytes: oneStepArgument.transitionCbor.length,

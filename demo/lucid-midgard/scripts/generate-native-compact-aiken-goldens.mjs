@@ -167,41 +167,93 @@ const BODY_HASH_FIELDS = [
   ["mintHash", "mintHashHex"],
 ];
 
+// `fullTxCborHex` is the only load-bearing field in the fixture JSON: everything
+// else is derived from it, both here and by the fixture's own producer. Nothing
+// downstream reads those derived fields any more, so without this they could rot
+// silently — a hand-edited or half-synced JSON would still generate consistent
+// Aiken goldens off `fullTxCborHex` while advertising stale hashes to any reader.
+// This is a same-file redundancy check, deliberately not keyed on the Aiken file:
+// the Aiken goldens legitimately lag the JSON between a fixture sync and this
+// run, which is exactly the case an Aiken-keyed interlock used to abort on.
+const assertFixtureDerivedFieldsAreFresh = (relativePath, fixture, fresh) => {
+  const mismatched = [];
+  const compare = (label, actual, expected) => {
+    if (actual !== expected) {
+      mismatched.push(`${label}: fixture=${actual} derived=${expected}`);
+    }
+  };
+  compare("txIdHex", fixture.txIdHex, fresh.txIdHex);
+  compare(
+    "compactTxCborHex",
+    fixture.compactTxCborHex,
+    fresh.compactTxCborHex,
+  );
+  compare(
+    "compactBodyCborHex",
+    fixture.compactBodyCborHex,
+    fresh.compactBodyCborHex,
+  );
+  for (const [hashName, expected] of Object.entries(fresh.hashes)) {
+    compare(`hashes.${hashName}`, fixture.hashes?.[hashName], expected);
+  }
+  if (mismatched.length > 0) {
+    // Worded as a stale generated artifact because that is what it is — the
+    // fixture's derived fields are generated from its own `fullTxCborHex` — and
+    // because `tests/native-compact-goldens.test.ts` asserts that phrase for
+    // exactly this case: reject the tampered fixture, never repair it.
+    throw new Error(
+      `stale generated artifact: ${relativePath} — derived fields do not match ` +
+        `its own fullTxCborHex; re-sync the fixture from its producer rather ` +
+        `than hand-editing it (${mismatched.join("; ")})`,
+    );
+  }
+};
+
 for (const family of GENERATED_FAMILIES) {
   const fixturePath = path.join(packageRoot, family.fixture);
   const fixture = JSON.parse(readUtf8(fixturePath));
   const fresh = deriveGolden(fixture.fullTxCborHex);
-  const stale = {
-    txIdHex: fixture.txIdHex,
-    compactTxCborHex: fixture.compactTxCborHex,
-    compactBodyCborHex: fixture.compactBodyCborHex,
-    hashes: fixture.hashes,
-  };
-
+  assertFixtureDerivedFieldsAreFresh(
+    path.relative(repositoryRoot, fixturePath),
+    fixture,
+    fresh,
+  );
   const aikenPath = path.join(repositoryRoot, family.aiken);
   let aiken = readUtf8(aikenPath);
-  if (extractConstant(aiken, family.compactName) !== stale.compactTxCborHex) {
-    throw new Error(`${family.compactName} does not match its JSON fixture`);
-  }
-  if (extractConstant(aiken, family.txIdName) !== stale.txIdHex) {
-    throw new Error(`${family.txIdName} does not match its JSON fixture`);
-  }
+  // The stale literals come from the Aiken file, not from the JSON — the same
+  // way the ordinary family below already sources its own. Textual replacement
+  // needs the literal that is actually in the file, and the JSON's derived
+  // fields may already be fresh: `fullTxCborHex` has a producer now
+  // (`fixtures:native-high-cardinality:sync`), so a run where the JSON has moved
+  // and the Aiken file has not is the normal case, not a corruption. Keying the
+  // interlock on the JSON made exactly that case abort.
+  const staleCompactTxCborHex = extractConstant(aiken, family.compactName);
+  const staleTxIdHex = extractConstant(aiken, family.txIdName);
+  const staleDecoded = decodeMidgardNativeTxCompactV1(
+    Buffer.from(staleCompactTxCborHex, "hex"),
+  );
   aiken = replaceAllExact(
     aiken,
-    stale.compactTxCborHex,
+    staleCompactTxCborHex,
     fresh.compactTxCborHex,
     `${family.compactName} CBOR`,
   );
   aiken = replaceAllExact(
     aiken,
-    stale.txIdHex,
+    staleTxIdHex,
     fresh.txIdHex,
     `${family.txIdName}`,
   );
-  for (const [hashName, staleHash] of Object.entries(stale.hashes)) {
+  aiken = rebindHashLiteral(
+    aiken,
+    hex(staleDecoded.transactionWitnessSetHash),
+    fresh.hashes.witnessSetHashHex,
+    `${family.compactName}.witnessSetHashHex`,
+  );
+  for (const [bodyField, hashName] of BODY_HASH_FIELDS) {
     aiken = rebindHashLiteral(
       aiken,
-      staleHash,
+      hex(staleDecoded.transactionBody[bodyField]),
       fresh.hashes[hashName],
       `${family.compactName}.${hashName}`,
     );

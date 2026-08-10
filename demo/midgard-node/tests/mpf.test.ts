@@ -53,6 +53,7 @@ import {
 } from "../src/workers/utils/mpf-event-flat.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import { compileAuthenticatedFlatMpfMultiproof } from "../src/workers/utils/mpf-flat-multiproof.js";
+import { makeOutRefCbor } from "./midgard-output-helpers.js";
 
 const TEST_DB = "test-mpf-db";
 const EMPTY_DELETE_DB = "test-mpf-empty-delete-db";
@@ -571,8 +572,8 @@ describe("Midgard MPF wrapper", () => {
         { type: "insert", key: key3, value: value3 },
       ]);
 
-      const firstOutRef = Buffer.from(`825820${"11".repeat(32)}00`, "hex");
-      const secondOutRef = Buffer.from(`825820${"22".repeat(32)}00`, "hex");
+      const firstOutRef = makeOutRefCbor(0x11);
+      const secondOutRef = makeOutRefCbor(0x22);
       const outputCbor = Buffer.from(
         "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
         "hex",

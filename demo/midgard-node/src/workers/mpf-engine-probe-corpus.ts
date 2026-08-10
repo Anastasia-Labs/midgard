@@ -3,9 +3,10 @@ import { createHash } from "node:crypto";
 import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  encodeMidgardSpendInputItemV1,
 } from "@al-ft/midgard-core/codec";
+import { hexToBytes } from "@al-ft/midgard-core/hex";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML } from "@lucid-evolution/lucid";
 
 import { parseOpenLoopCorpusLine } from "@/commands/stress-open-loop.js";
 import {
@@ -19,12 +20,13 @@ export const canonicalOutrefCborFromLabel = (label: string): Buffer => {
   if (match === null) {
     throw new Error(`Invalid canonical corpus outref ${label}`);
   }
-  return Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(match[1]!),
-      BigInt(match[2]!),
-    ).to_cbor_bytes(),
-  );
+  // The §5.3 field-0/1 item encoding — `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`,
+  // fixed 38 bytes — matching on-chain `ledger_outref_key`, not CML's
+  // minimal-index `TransactionInput` CBOR.
+  return encodeMidgardSpendInputItemV1({
+    txId: hexToBytes(match[1]!, { fieldName: "corpus outref txHash" }),
+    outputIndex: Number(match[2]!),
+  });
 };
 
 export type CanonicalProbeRow = {

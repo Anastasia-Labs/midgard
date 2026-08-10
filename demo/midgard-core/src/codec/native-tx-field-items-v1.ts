@@ -80,7 +80,7 @@ const exactBytes = (
 // ---------------------------------------------------------------------------
 
 /** §5.4/§5.3: the output index is a CBOR uint16, so 0..65,535. */
-const MIDGARD_MAX_OUTPUT_INDEX_V1 = 65_535;
+export const MIDGARD_MAX_OUTPUT_INDEX_V1 = 65_535;
 
 /**
  * §5.3's sole deliberately non-minimal encoding: the output index is **always**

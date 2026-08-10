@@ -1,5 +1,5 @@
-import { decodeMidgardTxOutput } from '@al-ft/lucid-midgard';
-import { CML, UTxO } from '@lucid-evolution/lucid';
+import { decodeMidgardUtxo } from '@al-ft/lucid-midgard';
+import { UTxO } from '@lucid-evolution/lucid';
 import { Effect } from 'effect';
 
 import { formatError } from '../../utils/common.js';
@@ -39,17 +39,20 @@ export class MidgardNodeClient {
    */
   private decodeNodeUtxo(raw: { outref: string; outputCbor: string }): UTxO | undefined {
     try {
-      const outRefBytes = Buffer.from(raw.outref, 'hex');
-      const outputBytes = Buffer.from(raw.outputCbor, 'hex');
-      const input = CML.TransactionInput.from_cbor_bytes(outRefBytes);
-      const outputIndex = Number(input.index());
-      if (!Number.isSafeInteger(outputIndex)) {
-        return undefined;
-      }
-      const output = decodeMidgardTxOutput(outputBytes).txOutput;
+      // The node's `outref` bytes are the §5.3 field-0/1 item encoding —
+      // `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes — which is what
+      // on-chain `ledger_outref_key` derives through `encode_midgard_tx_input`,
+      // not CML's minimal-index `TransactionInput` CBOR. `decodeMidgardUtxo`
+      // owns that decode (and bounds the index to a CBOR uint16), so the shape
+      // never gets a second spelling here.
+      const utxo = decodeMidgardUtxo({
+        outRefCbor: Buffer.from(raw.outref, 'hex'),
+        outputCbor: Buffer.from(raw.outputCbor, 'hex'),
+      });
+      const output = utxo.output;
       return {
-        txHash: input.transaction_id().to_hex(),
-        outputIndex,
+        txHash: utxo.txHash,
+        outputIndex: utxo.outputIndex,
         address: output.address,
         assets: output.assets,
         ...(output.datum == null ? {} : { datum: output.datum.cbor }),

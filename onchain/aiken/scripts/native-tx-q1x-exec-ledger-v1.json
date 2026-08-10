@@ -2,7 +2,7 @@
   "measurement": "q1x-family-rebind-exec-ledger",
   "issue": "#575 — Flat reversion P5, Q1x family rebind (first wave), on spec #565",
   "spec": "docs/spec/midgard-tx.md §5.3, §7.1, §8.3, §10.5 — arithmetic item access under authenticate-once",
-  "note": "The Q1x lane's rolling re-measurement, attached as a lane exit criterion per #565's measurement-slotting rule. Regenerate with `MIDGARD_AIKEN_BIN=<fork> node scripts/verify-q1x-exec-ledger-v1.mjs --update`, and move any reported number in the same commit. Provisional: formal closure of #551 is Phase 7's, against the Phase-6 blueprint. `--update` rewrites raw rows, derived figures and the Q1X-F6 growth readings; it does NOT rewrite `basisFit`, `infeasibility`, `errata` or the Q1X-F6 bands, because those are judgements and a re-take must not be able to launder one. `--update` is also not a bypass: structural failures (a selector that did not run, a missing block, a judgement the fresh measurement contradicts, a Q1X-F6 band the fresh reading falls outside) fail in update mode too and the ledger is not rewritten.\n\n**#584 re-take.** Every measured row here rose by a fixed **per-opening** amount when #584 gave `field_opening_v1` a multi-field opening: the single-field `opened_field_view`/`opened_field_walk` are now `anchored_native_tx` followed by `anchored_field_view`/`anchored_field_walk`, so a one-field step pays one extra opaque-record construction, the field reads that go with it, plus the two separate `expect`s `field_pairs_with` now spends so that a refusal names which guard fired rather than only that the field did not pair. The amount is not one number but two, because the two §2.5 halves construct different handles: **+7,117 mem / +2,529,845 cpu** on the Q10/Q11 body-field rows (field 0, opened as a `BodyTxOpening`, whose handle carries this module's unread placeholder witness set) and **+7,580 mem / +2,673,308 cpu** on the Q16/Q17 witness-field rows (fields 6 and 7, opened as a `WitnessTxOpening`, which additionally carries the transaction's real `NativeTxWitnessSetCompact` and pays the anchored `witness_set_hash` equality). Each amount reappears unchanged in the derived subtraction under it, and the four control rows — which never reach the door — did not move at all. What carries the per-opening conclusion is that within each half the shift is identical on the low- and high-cardinality rows: it is per-opening, not per-item. It therefore moves no growth figure (`memoryGrowth`/`cpuGrowth` are unchanged; only the headroom readings shift) and no `basisFit`, and the larger of the two is under 0.06% of the §3.3 memory basis and under 0.04% of the cpu basis. The alternative was a second spelling of `carriage_reaches_the_anchor` and the §2.5 body/witness pairing for the single-field path, which the AGENTS.md tradeoff order (correctness, safety, liveness, performance) does not buy at that price.",
+  "note": "The Q1x lane's rolling re-measurement, attached as a lane exit criterion per #565's measurement-slotting rule. Regenerate with `MIDGARD_AIKEN_BIN=<fork> node scripts/verify-q1x-exec-ledger-v1.mjs --update`, and move any reported number in the same commit. Provisional: formal closure of #551 is Phase 7's, against the Phase-6 blueprint. `--update` rewrites raw rows, derived figures and the Q1X-F6 growth readings; it does NOT rewrite `basisFit`, `infeasibility`, `errata` or the Q1X-F6 bands, because those are judgements and a re-take must not be able to launder one. `--update` is also not a bypass: structural failures (a selector that did not run, a missing block, a judgement the fresh measurement contradicts, a Q1X-F6 band the fresh reading falls outside) fail in update mode too and the ledger is not rewritten.\n\n**#584 re-take.** Every measured row here rose by a fixed **per-opening** amount when #584 gave `field_opening_v1` a multi-field opening: the single-field `opened_field_view`/`opened_field_walk` are now `anchored_native_tx` followed by `anchored_field_view`/`anchored_field_walk`, so a one-field step pays one extra opaque-record construction, the field reads that go with it, plus the two separate `expect`s `field_pairs_with` now spends so that a refusal names which guard fired rather than only that the field did not pair. The amount is not one number but two, because the two §2.5 halves construct different handles: **+7,117 mem / +2,529,845 cpu** on the Q10/Q11 body-field rows (field 0, opened as a `BodyTxOpening`, whose handle carries this module's unread placeholder witness set) and **+7,580 mem / +2,673,308 cpu** on the Q16/Q17 witness-field rows (fields 6 and 7, opened as a `WitnessTxOpening`, which additionally carries the transaction's real `NativeTxWitnessSetCompact` and pays the anchored `witness_set_hash` equality). Each amount reappears unchanged in the derived subtraction under it, and the four control rows — which never reach the door — did not move at all. What carries the per-opening conclusion is that within each half the shift is identical on the low- and high-cardinality rows: it is per-opening, not per-item. It therefore moves no growth figure (`memoryGrowth`/`cpuGrowth` are unchanged; only the headroom readings shift) and no `basisFit`, and the larger of the two is under 0.06% of the §3.3 memory basis and under 0.04% of the cpu basis. The alternative was a second spelling of `carriage_reaches_the_anchor` and the §2.5 body/witness pairing for the single-field path, which the AGENTS.md tradeoff order (correctness, safety, liveness, performance) does not buy at that price.\n\n**#586 re-take.** The four door rows — Q11 step-02 and Q10 step-04, each at 1 and at 296 spend inputs — rose by **+1,312 mem / +358,482 cpu** apiece, and nothing else in the ledger moved: the four control rows did not, and neither did the Q16/Q17 witness-field rows. The cause is #586's §5.3 ledger-key width guard: `decode_midgard_tx_input_cbor` in `lib/midgard/fraud-proofs/native-tx/components.ak` now asserts an input item is **exactly** 38 bytes (`midgard_tx_input_item_bytes`) before reading anything, so the non-minimal 39-byte spelling `82 ‖ 59 0020 ‖ tx_id(32) ‖ 19 index_be16` — which `decode_definite_bytes_at` on its own accepts as the same `(tx_id, output_index)` — is refused, and one out-ref has one trie key. The cost is that one length equality, so it is **per execution that decodes an out-ref, not per item**: the shift is identical on the low- and high-cardinality rows, and the Q16/Q17 rows walk fields 6 and 7 and decode no input item. Being the same on both rows of a subtraction pair, it cancels out of the growth figures — `memoryGrowth`/`cpuGrowth` are unchanged at -112,081 and -4,947,358 — and it reappears unchanged in each derived row; only the headroom readings move (12,827,679 → 12,826,367 mem, 7,851,416,297 → 7,851,057,815 cpu, both still above 97% of the §3.3 basis). It moves no `basisFit`, no `infeasibility` figure and no Q1X-F6 band, and +1,312 is under 0.01% of the §3.3 memory basis.",
   "basis": {
     "memoryUnits": 13200000,
     "cpuUnits": 8000000000,
@@ -25,32 +25,32 @@
           "cpu": 343861267
         },
         "q1x_f6_no_input_step_02_at_one_spend_input": {
-          "mem": 1253022,
-          "cpu": 492205401
+          "mem": 1254334,
+          "cpu": 492563883
         },
         "q1x_f6_no_input_step_02_control_at_the_admissible_maximum": {
           "mem": 16815183,
           "cpu": 6914531939
         },
         "q1x_f6_no_input_step_02_at_the_admissible_maximum": {
-          "mem": 17176538,
-          "cpu": 7057928715
+          "mem": 17177850,
+          "cpu": 7058287197
         },
         "q1x_f6_double_spend_step_04_control_at_one_spend_input": {
           "mem": 782194,
           "cpu": 344034414
         },
         "q1x_f6_double_spend_step_04_at_one_spend_input": {
-          "mem": 1266596,
-          "cpu": 497565475
+          "mem": 1267908,
+          "cpu": 497923957
         },
         "q1x_f6_double_spend_step_04_control_at_the_admissible_maximum": {
           "mem": 16817791,
           "cpu": 6914705086
         },
         "q1x_f6_double_spend_step_04_at_the_admissible_maximum": {
-          "mem": 17190112,
-          "cpu": 7063288789
+          "mem": 17191424,
+          "cpu": 7063647271
         },
         "q1x_f6_missing_native_script_tx_step_06_control_at_one_script_witness": {
           "mem": 787321,
@@ -92,32 +92,32 @@
       "claim": "Q11 no-input step-02 at 1 spend input",
       "minus": "q1x_f6_no_input_step_02_control_at_one_spend_input",
       "from": "q1x_f6_no_input_step_02_at_one_spend_input",
-      "mem": 473436,
-      "cpu": 148344134,
+      "mem": 474748,
+      "cpu": 148702616,
       "basisFit": "fits"
     },
     {
       "claim": "Q11 no-input step-02 at 296 spend inputs",
       "minus": "q1x_f6_no_input_step_02_control_at_the_admissible_maximum",
       "from": "q1x_f6_no_input_step_02_at_the_admissible_maximum",
-      "mem": 361355,
-      "cpu": 143396776,
+      "mem": 362667,
+      "cpu": 143755258,
       "basisFit": "fits"
     },
     {
       "claim": "Q10 double-spend step-04 at 1 spend input",
       "minus": "q1x_f6_double_spend_step_04_control_at_one_spend_input",
       "from": "q1x_f6_double_spend_step_04_at_one_spend_input",
-      "mem": 484402,
-      "cpu": 153531061,
+      "mem": 485714,
+      "cpu": 153889543,
       "basisFit": "fits"
     },
     {
       "claim": "Q10 double-spend step-04 at 296 spend inputs",
       "minus": "q1x_f6_double_spend_step_04_control_at_the_admissible_maximum",
       "from": "q1x_f6_double_spend_step_04_at_the_admissible_maximum",
-      "mem": 372321,
-      "cpu": 148583703,
+      "mem": 373633,
+      "cpu": 148942185,
       "basisFit": "fits"
     },
     {
@@ -168,8 +168,8 @@
     "maxCpuGrowth": 100000000,
     "memoryGrowth": -112081,
     "cpuGrowth": -4947358,
-    "memoryHeadroom": 12827679,
-    "cpuHeadroom": 7851416297,
+    "memoryHeadroom": 12826367,
+    "cpuHeadroom": 7851057815,
     "toleranceRationale": "The door pays one blake2b_256 over a preimage that does grow with cardinality - 43 bytes at one input, 11,843 at 296 - so the honest growth is the hash of ~11.8 KB more and nothing else, measured at ~4,600 mem. The band has to hold that plus the control-subtraction artifact described in `deltaAttribution` (|112,081| mem, |4,947,358| cpu), and has to sit far below any per-item regression. Both were measured rather than assumed: a step regressed to walk the whole 296-item collection costs +25,127,050 mem / +8,363,297,421 cpu against the same control, and one regressed to walk only half of it +12,129,016 mem / +4,062,287,469 cpu. The bands below are therefore ~2.2x the observed artifact and ~48x (mem) and ~40x (cpu) below the cheapest regression measured, so neither a half-collection walk nor anything dearer can hide inside them. cpu is carried as its own two-sided band because it is the axis a walk regression moves proportionally hardest against its own tolerance.",
     "minMemoryGrowth": -250000,
     "minCpuGrowth": -100000000,

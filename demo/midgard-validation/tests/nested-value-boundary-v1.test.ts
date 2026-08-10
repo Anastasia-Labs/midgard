@@ -41,7 +41,7 @@ const maximumNestedValueTerminalVectorV1 = {
   adjacentSignedCardanoBytes: 5_234,
   cardanoValueBytes: 5_000,
   adjacentCardanoValueBytes: 5_001,
-  nativeCanonicalBytes: 5_329,
+  nativeCanonicalBytes: 5_331,
   outputsFieldBytes: 5_085,
   outputItemBytes: 5_034,
   outputProofSteps: 3_198,

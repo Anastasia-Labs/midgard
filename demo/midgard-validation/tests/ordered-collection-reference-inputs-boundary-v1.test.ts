@@ -1,4 +1,7 @@
-import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
+import {
+  encodeMidgardSpendInputItemV1,
+  encodeMidgardTxOutput,
+} from "@al-ft/midgard-core";
 import { CML, Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -26,21 +29,21 @@ const MAXIMUM_REFERENCE_INPUT_ADJACENT_SIGNED_BYTES_V1 = 16_418;
 
 const maximumReferenceInputTerminalFoldVectorV1 = {
   transactionIdHex:
-    "cee18ffae3c1e118db1b046c5cc2da1e06cc8c611fe1afd2e6355149e869e3dc",
+    "866ba088f72c1d4723b0973c3858ff78b47d2c3f9980837787220cf8d2fd4ea0",
   transactionCommitmentHex:
-    "81de50f4c6b825a90ce4d70bdc89e7062494af859cfeda854dbe335a61c329f0",
+    "b95870f2da2aa6b42bdd05b7f2ff9050a742385d88e5cb7abfe1729a91da9fb5",
   compactCborHex:
-    "84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820e8d8722d2b57d87875a3aead6c1b8ea4aa999d1ad7d8340a712ae2dee01a228458204ddc79a7ae5ce6f67c3282833863d15ffe34a3dcad707bb6b921a31bf9c77b3b1a000d5e4520205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820d79bc2560eef235bd2a538c7f6110513f9bca34ff66948b14aab16b2c21f5ec600",
+    "84018c58204dc5462fa75f970091526b50e11ff2161e020020f791756d77ed6cd8c45d111c58202465b8b61bc8a2181406dfb86f69715ede93352d8473ce4f277ea70a80268f4958204ddc79a7ae5ce6f67c3282833863d15ffe34a3dcad707bb6b921a31bf9c77b3b1a000d5e4520205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820d79bc2560eef235bd2a538c7f6110513f9bca34ff66948b14aab16b2c21f5ec600",
   witnessSetCompactCborHex:
     "83582058a2b8a985737738bebe056e227d4b84b4a97c9534a63afd2b10925d2e28b8935820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-  fieldPreimageLengthsCborHex: "891827194295182c01010101186801",
+  fieldPreimageLengthsCborHex: "8918291943ab182c01010101186801",
   fieldCommitmentHex:
-    "e8d8722d2b57d87875a3aead6c1b8ea4aa999d1ad7d8340a712ae2dee01a2284",
+    "2465b8b61bc8a2181406dfb86f69715ede93352d8473ce4f277ea70a80268f49",
   preWorkRootHex:
-    "b7ccf4d203ce485dc61512b6680f6a7710f0fc9a57a5732fb838e1ada6b60d3b",
+    "12d99d756a8653183937c917a2339a8ed084d5c09eba8d9b7aac88ccc98336a6",
   postWorkRootHex:
-    "63b56d7b9c2368b667349fa33f722915691adba711645dce39a556a280a965af",
-  encodedLengthBeforeItem: 17_005,
+    "d14f9ac3915ff3c9b2c91c4f2aeb87ac40e0aa6afce834b52150b4768be978e5",
+  encodedLengthBeforeItem: 17_283,
   collectionProof: {
     fieldIndex: 1,
     itemCount: 433,
@@ -72,7 +75,7 @@ const maximumReferenceInputTerminalFoldVectorV1 = {
       {
         height: 8,
         hashHex:
-          "8606d2748f4812aa20f053dfc7660fb46b7f80a2fe4fb75309dc26cf8b0bd9b7",
+          "bd691df9f8528fc55076ff58c1bd281b20d046dd77d43887c1d53d4d87bd9319",
       },
     ],
     siblingHexes: [],
@@ -157,12 +160,15 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
         const lovelace = input.assets.lovelace;
         expect(lovelace).toBeDefined();
         return [
-          Buffer.from(
-            CML.TransactionInput.new(
-              CML.TransactionHash.from_hex(input.txHash),
-              BigInt(input.outputIndex),
-            ).to_cbor_bytes(),
-          ).toString("hex"),
+          // A DA payload UTxO key is a ledger out-ref, so it is §5.3's
+          // fixed-index item (`82 ‖ 58 20 tx_id ‖ 19 index_be16`, 38 bytes) and
+          // not CML's minimal-index `TransactionInput` CBOR. The strict DA
+          // decoder matches these keys against the transaction's field-1
+          // reference-input items, which carry exactly these bytes.
+          encodeMidgardSpendInputItemV1({
+            txId: CML.TransactionHash.from_hex(input.txHash).to_raw_bytes(),
+            outputIndex: input.outputIndex,
+          }).toString("hex"),
           encodeMidgardTxOutput({
             address: Buffer.from(
               CML.Address.from_bech32(input.address).to_raw_bytes(),

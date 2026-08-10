@@ -27,6 +27,13 @@ fn expect_asset_name(asset_name: ByteArray) -> ByteArray {
   asset_name
 }
 
+/// §5.3 fields 0/1: an input item is **exactly** this wide —
+/// `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16` — which is what fixes stride 40 and
+/// makes positional item access sound. It is also what pins the byte-string
+/// header: only the minimal `58 20` leaves room for the 3-byte index inside 38
+/// bytes. Twin of `MIDGARD_SPEND_INPUT_ITEM_BYTES_V1`.
+pub const midgard_tx_input_item_bytes: Int = 38
+
 /// The output index of a spend/reference input is **always** the fixed 3-byte
 /// `19 XXXX` form (CBOR uint16 head, big-endian value 0–65,535), even for
 /// values 0–23 that minimal CBOR would spell in one byte. This is the sole
@@ -56,7 +63,20 @@ pub fn encode_midgard_tx_input(input: MidgardTxInput) -> ByteArray {
     |> bytearray.concat(encode_fixed_output_index(output_index))
 }
 
+/// Twin of `decodeMidgardSpendInputItemV1`, which asserts the same exact width
+/// before reading anything.
+///
+/// The width guard is load-bearing, not defensive tidiness:
+/// `decode_definite_bytes_at` accepts the non-minimal two-byte length header
+/// `59 0020` as "32 bytes", so without it the 39-byte
+/// `82 ‖ 59 0020 ‖ tx_id(32) ‖ 19 index_be16` would decode to the *same*
+/// `(tx_id, output_index)` as the canonical 38-byte item — two distinct trie
+/// keys naming one out-ref, which is exactly the uniqueness §5.3's fixed index
+/// exists to establish. Callers rely on it: `ledger_outref_key` bytes,
+/// `script_proof_v1.canonical_reference_source_key`, and the field-0/1 preimage
+/// walk all treat "decodes" as "is the one spelling of this out-ref".
 pub fn decode_midgard_tx_input_cbor(input_cbor: ByteArray) -> MidgardTxInput {
+  expect bytearray.length(input_cbor) == midgard_tx_input_item_bytes
   let offset = expect_byte(input_cbor, 0, 130)
   let Pair(offset, tx_id) = decode_definite_bytes_at(input_cbor, offset)
   expect bytearray.length(tx_id) == 32

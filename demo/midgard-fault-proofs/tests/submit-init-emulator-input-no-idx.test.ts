@@ -24,6 +24,7 @@ import {
   computeMidgardNativeTxIdV1,
   encodeCbor,
   encodeMidgardNativeTxCompactV1,
+  encodeMidgardSpendInputItemV1,
 } from "@al-ft/midgard-core/codec";
 import {
   FraudProofTokenDatum,
@@ -115,12 +116,10 @@ const fixedBaseEmulatorAccount = (
 });
 
 const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHash),
-      outputIndex,
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItemV1({
+    txId: Buffer.from(txHash, "hex"),
+    outputIndex: Number(outputIndex),
+  });
 
 /** One canonical native output: enterprise pubkey address, lovelace only. */
 const nativeOutputCbor = (paymentByte: number, lovelace: bigint): Buffer =>

@@ -5265,10 +5265,10 @@ const maximum_input_schedule_last_value =
 
 fn maximum_spend_input_schedule_terminal_vector() -> ResolutionScheduleTerminalVectorV1 {
   ResolutionScheduleTerminalVectorV1 {
-    original_schedule_hash: #"3175ee405a7dab445d883a4e4912fa79c57399fbafd5fe8865e50ea2a4f900cc",
-    terminal_accumulator: #"10d18e38469596142ba1fa63fd7c2bbdd310770d811bda870a32ba11fa0c2949",
-    terminal_frontier_commitment: #"7d01f4857f245e957b13a07cdb54a66af980f29825235c7945fde902c2a5c8ee",
-    penultimate_accumulator: #"e66484cfb1266c895a9dc2765e44542ecc0e63e8ef9c08173fb6c6dd91f954d5",
+    original_schedule_hash: #"b1276de655cef9d7a3bc33abb49024dd36462f2cd2486dd25d9f7347563eab35",
+    terminal_accumulator: #"fb2154b7f046126c8cda87674c2822c3dad1ac294531845e6e6b49c0035e4858",
+    terminal_frontier_commitment: #"8d0f7813e70f9bf63f84b78365a38e5c00efb807ac4f5ed16d21f0eff4b5e5b7",
+    penultimate_accumulator: #"7f4f9eb3bfca6b31c4c6781cc36b58f0305c7cafbfbbe4dbfef9ad2370f8cbdc",
     penultimate_remaining_schedule_hash: #"6d5383cff6142a4e20298cf82b71837886eeb853245d068a8cf43a540e1d2b3d",
     penultimate_spend_index: 433,
     penultimate_resolved_item_peaks: [
@@ -5290,7 +5290,7 @@ fn maximum_spend_input_schedule_terminal_vector() -> ResolutionScheduleTerminalV
       },
       validation_merkle_v1.FrontierPeak {
         height: 8,
-        hash: #"a51dc8d5735d7e5ab600dfff6020801e6ae064e76b0cf8f7a880d05c7bcb91de",
+        hash: #"998486423647076a38bdd62961e92f2c404cd7c9f3ce8f862890f806e82eb543",
       },
     ],
     last_source_kind: 0,
@@ -5301,10 +5301,10 @@ fn maximum_spend_input_schedule_terminal_vector() -> ResolutionScheduleTerminalV
 
 fn maximum_reference_input_schedule_terminal_vector() -> ResolutionScheduleTerminalVectorV1 {
   ResolutionScheduleTerminalVectorV1 {
-    original_schedule_hash: #"95872510ce0c8c50c31d60b997049c0f7741916d7378a6cd264f7f6e60f26c75",
-    terminal_accumulator: #"a8e7978a7b04c06c22e93f148e20c4f05d1e52e342086d99dce07ebcf22162cd",
-    terminal_frontier_commitment: #"b3de0271b55374bf3aba6fed0bc45c7acbf89cf6cb94f28255f9642820e98e5c",
-    penultimate_accumulator: #"a626f4411517e88a5d3cbd4f557eaa3016c097ee9faceb9f9778a122c3aa2085",
+    original_schedule_hash: #"320bc3d5140983c35d48db52cbf4e722de03b8ea618ef56b6a7f8b6fc6162e56",
+    terminal_accumulator: #"e0254c2da094b13f9857dd7f442bd346f74ccf0f4a1337bd1328983d80156421",
+    terminal_frontier_commitment: #"b4757e20d40f58687e5421545c69f0399d6de0026a8e9728ec6e9bb13b510a46",
+    penultimate_accumulator: #"cef5b3dc9392a0a6f359309a1b6ef88bc48196c7d85e4b2ab2b539a778fec226",
     penultimate_remaining_schedule_hash: #"11e90c7b9d22faa10a757fe7cbcfc12f5784cb6c546408583d36ce0dd5d49329",
     penultimate_spend_index: 1,
     penultimate_resolved_item_peaks: [
@@ -5326,7 +5326,7 @@ fn maximum_reference_input_schedule_terminal_vector() -> ResolutionScheduleTermi
       },
       validation_merkle_v1.FrontierPeak {
         height: 8,
-        hash: #"ef9e52876a7b2b2de2f7864af0bd5d3bcb8992826ea07065fb586085e8ac8f28",
+        hash: #"7d334c4861036c40c26095c4cb1d9db17b736a5a4108beb136aa4988ce854fe7",
       },
     ],
     last_source_kind: 1,
@@ -10601,7 +10601,7 @@ fn maximum_spend_input_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtur
       },
       validation_merkle_v1.FrontierPeak {
         height: 8,
-        hash: #"2ec5b0bf539013547a4e08389d40946112938257232a275eabda35f47a512ef8",
+        hash: #"e9af1286950598c5c2fc6ce275c39ce11a5dada1c59051ea51d6a417f4b2cf82",
       },
     ],
     siblings: [
@@ -10625,17 +10625,17 @@ fn maximum_spend_input_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtur
   }
 
   MaximumFieldTerminalFixtureV1 {
-    transaction_id: #"5616fc26bfef26893b4d4413a9b75af4275feed78dd7e13000d52af2b221402b",
-    transaction_commitment: #"c91b1c78baee450b8138a85aa4febfd6d9b5e6e208633fef29d4cec4e2c63d0b",
-    compact_cbor: #"84018c5820fa49d0bce0fd16e8a8f20703162027ce5d24e4de5872def31c5e89f46d27cdb25820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f58204b9a64944d619f32cd8c14e88f53c67857b717dd0686b1a20838c8e815308dce1a000d5e1920205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820ecaa2a4ca3d5110e0d124e3b3da2012a20c326fd6bdc25c1b71e67e9b9a04a9e00",
+    transaction_id: #"92636c095141a35709f9a20f12144429c82eda509b1149322ac0a491a5ded569",
+    transaction_commitment: #"86d5978e0fe722a3ef10491636173ba8cbae538bc1066b54f5c7d45fa607daa5",
+    compact_cbor: #"84018c5820140e551a84f0656f98995ea12cb85e5b18ee9a07b240e61d248657dd249e27aa5820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f58204b9a64944d619f32cd8c14e88f53c67857b717dd0686b1a20838c8e815308dce1a000d5e1920205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820ecaa2a4ca3d5110e0d124e3b3da2012a20c326fd6bdc25c1b71e67e9b9a04a9e00",
     witness_set_compact_cbor: #"835820bdb04d390efaca1a689981865803b28a488f2c518ce905626962c7a7cebb7be25820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-    field_preimage_lengths_cbor: #"891942bb01183001010101186801",
+    field_preimage_lengths_cbor: #"891943d301183001010101186801",
     field_index: 0,
     item_count: 434,
     item_index: 433,
-    encoded_length_before_item: 17043,
-    expected_pre_work_root: #"99ce6f53c84ad64e689f582577913b117d7f86257bffb96308554678d1506973",
-    expected_post_work_root: #"d0354c24ccee8206b9926ca2662ea50639e0a114a5b60f4173eb986a94792cef",
+    encoded_length_before_item: 17323,
+    expected_pre_work_root: #"79c210c57a64d1c25b4bc072c0e10a93e2a2c9c32c644adc6bdf0660d0db469b",
+    expected_post_work_root: #"f037bbea23f5b7d4704cad888c8cd2f6b31b6536a553917868ff15e74163519e",
     collection_proof,
     chunk_proof,
   }
@@ -10678,7 +10678,7 @@ fn maximum_reference_input_field_terminal_fixture_v1() -> MaximumFieldTerminalFi
       },
       validation_merkle_v1.FrontierPeak {
         height: 8,
-        hash: #"8606d2748f4812aa20f053dfc7660fb46b7f80a2fe4fb75309dc26cf8b0bd9b7",
+        hash: #"bd691df9f8528fc55076ff58c1bd281b20d046dd77d43887c1d53d4d87bd9319",
       },
     ],
     siblings: [],
@@ -10700,17 +10700,17 @@ fn maximum_reference_input_field_terminal_fixture_v1() -> MaximumFieldTerminalFi
   }
 
   MaximumFieldTerminalFixtureV1 {
-    transaction_id: #"cee18ffae3c1e118db1b046c5cc2da1e06cc8c611fe1afd2e6355149e869e3dc",
-    transaction_commitment: #"81de50f4c6b825a90ce4d70bdc89e7062494af859cfeda854dbe335a61c329f0",
-    compact_cbor: #"84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820e8d8722d2b57d87875a3aead6c1b8ea4aa999d1ad7d8340a712ae2dee01a228458204ddc79a7ae5ce6f67c3282833863d15ffe34a3dcad707bb6b921a31bf9c77b3b1a000d5e4520205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820d79bc2560eef235bd2a538c7f6110513f9bca34ff66948b14aab16b2c21f5ec600",
+    transaction_id: #"866ba088f72c1d4723b0973c3858ff78b47d2c3f9980837787220cf8d2fd4ea0",
+    transaction_commitment: #"b95870f2da2aa6b42bdd05b7f2ff9050a742385d88e5cb7abfe1729a91da9fb5",
+    compact_cbor: #"84018c58204dc5462fa75f970091526b50e11ff2161e020020f791756d77ed6cd8c45d111c58202465b8b61bc8a2181406dfb86f69715ede93352d8473ce4f277ea70a80268f4958204ddc79a7ae5ce6f67c3282833863d15ffe34a3dcad707bb6b921a31bf9c77b3b1a000d5e4520205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820d79bc2560eef235bd2a538c7f6110513f9bca34ff66948b14aab16b2c21f5ec600",
     witness_set_compact_cbor: #"83582058a2b8a985737738bebe056e227d4b84b4a97c9534a63afd2b10925d2e28b8935820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-    field_preimage_lengths_cbor: #"891827194295182c01010101186801",
+    field_preimage_lengths_cbor: #"8918291943ab182c01010101186801",
     field_index: 1,
     item_count: 433,
     item_index: 432,
-    encoded_length_before_item: 17005,
-    expected_pre_work_root: #"b7ccf4d203ce485dc61512b6680f6a7710f0fc9a57a5732fb838e1ada6b60d3b",
-    expected_post_work_root: #"63b56d7b9c2368b667349fa33f722915691adba711645dce39a556a280a965af",
+    encoded_length_before_item: 17283,
+    expected_pre_work_root: #"12d99d756a8653183937c917a2339a8ed084d5c09eba8d9b7aac88ccc98336a6",
+    expected_post_work_root: #"d14f9ac3915ff3c9b2c91c4f2aeb87ac40e0aa6afce834b52150b4768be978e5",
     collection_proof,
     chunk_proof,
   }
@@ -10775,17 +10775,17 @@ fn maximum_observer_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1
   }
 
   MaximumFieldTerminalFixtureV1 {
-    transaction_id: #"9e6740ff958462051886f6d64a5fb7d03ee47dc50bd627c5765734f1c32f4bde",
-    transaction_commitment: #"7c0bebc279806e82bfdda06d46c06e6917e132e13325e48d2f3eb5ad7b7509da",
-    compact_cbor: #"84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820598bbaa08e9cc6dc4d9634b23089ead14091f45c5e1165dcf8a6288be95a1b001a000d570d201927105820e127f848e4bda8c1e9b42ddf4c89dfbd1479301dd90551baeff900fdfcec2e975820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff58205c66a9cb2310e13ca74d861c7d29f5b996030ad755920f1dfc2c325ec3cb015d00",
+    transaction_id: #"dea55d4e6a14e025bdce718e1c21ebeeea77723058cabd65d9bbfed76af516af",
+    transaction_commitment: #"8da6f4d07d4cc3728c53bfe50977d38163a24b7f9e03738ec36bc1375bb21a1f",
+    compact_cbor: #"84018c58204dc5462fa75f970091526b50e11ff2161e020020f791756d77ed6cd8c45d111c5820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820598bbaa08e9cc6dc4d9634b23089ead14091f45c5e1165dcf8a6288be95a1b001a000d570d201927105820e127f848e4bda8c1e9b42ddf4c89dfbd1479301dd90551baeff900fdfcec2e975820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff58205c66a9cb2310e13ca74d861c7d29f5b996030ad755920f1dfc2c325ec3cb015d00",
     witness_set_compact_cbor: #"8358209c3c9f949b41759fc4d9ea024e36e2aa7659f3d5dbe41611256f4dfc80a9a62d5820ad4dcd868783831d5bd321d25528c3295f55b1ea6c8d61d85c3216be9a73ea3d5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-    field_preimage_lengths_cbor: #"89182701182c191a420101192682186801",
+    field_preimage_lengths_cbor: #"89182901182c191a420101192682186801",
     field_index: 3,
     item_count: 224,
     item_index: 223,
     encoded_length_before_item: 6692,
-    expected_pre_work_root: #"f07593faa6515f95d422e6ab0cdad5c58fc1946bf7bbd43d6a78c02fd1db6566",
-    expected_post_work_root: #"ff51cd1448de36fccb43040b44c7977b7a0d6e96c11c41ad3bb2b4ebe4794136",
+    expected_pre_work_root: #"fe92e3fb9e857d492cdf9a5540313e388c71a0b17af5190bf988ed5bcefb0b02",
+    expected_post_work_root: #"2f4cd74cdbb1cf7c719f50fd4f2be0c49c82fcf05757651e09b9134f4ad9cd0a",
     collection_proof,
     chunk_proof,
   }
@@ -10852,17 +10852,17 @@ fn maximum_output_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
   }
 
   MaximumFieldTerminalFixtureV1 {
-    transaction_id: #"851486b3f437bcae3712e1a2f0dbfab86062e4f0e8a3ed207607e1c0581c29e3",
-    transaction_commitment: #"23ad248d5c89787009031bf83f08588bf60d221f57370f8e3bb99b35e3d5fa2a",
-    compact_cbor: #"84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820171d600ea53700101a59de7d6eb4b7c321fcc68f0e73c7952b0b18a266128e501a000d5ce520205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff582017cc85b1ee02772972e50a3306e76f232174a2ad9c1e108f257a1f0204b4455800",
+    transaction_id: #"1f0633f496289b3e041e18e7da64db345e4ae20d8754d14c7e3ec189ff561353",
+    transaction_commitment: #"7b63351fbf58b7e19205a04f2e4796dac6d2dd66019729ac3e6314a7e4de761b",
+    compact_cbor: #"84018c58204dc5462fa75f970091526b50e11ff2161e020020f791756d77ed6cd8c45d111c5820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820171d600ea53700101a59de7d6eb4b7c321fcc68f0e73c7952b0b18a266128e501a000d5ce520205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff582017cc85b1ee02772972e50a3306e76f232174a2ad9c1e108f257a1f0204b4455800",
     witness_set_compact_cbor: #"835820f2556fc5ee4526e1b69dd8bcf77c5dbc7cab7187bbaec526c0d69004ecc8c0d95820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-    field_preimage_lengths_cbor: #"8918270119499901010101186801",
+    field_preimage_lengths_cbor: #"8918290119499901010101186801",
     field_index: 2,
     item_count: 438,
     item_index: 437,
     encoded_length_before_item: 18794,
-    expected_pre_work_root: #"dbff2136c653b5f01f9cc44095f2d9e72e93bbf5f87791c978c7424e2cad6030",
-    expected_post_work_root: #"3e54da6a779af01fccaba5ffe794ec0f678f22c415bf5a7c3309b3726ab5ff5c",
+    expected_pre_work_root: #"91fa16b286979293e843a3666f9546400bce0d92a4f474fe5704d9711e9c7cb4",
+    expected_post_work_root: #"465a228f0fb939b33bb7b488921aab9d6acbade749fc6c6587597302e98917cc",
     collection_proof,
     chunk_proof,
   }
@@ -10926,17 +10926,17 @@ fn maximum_required_signer_field_terminal_fixture_v1() -> MaximumFieldTerminalFi
   }
 
   MaximumFieldTerminalFixtureV1 {
-    transaction_id: #"0297901027ac0e7df5aeefe14961ca4fcebcdf27d69bc9d9ab2638ee2c86b71e",
-    transaction_commitment: #"c0ef3ffbbef5147e9ebc16ace943689df4f1ba1ef4521fc62af33fc8bb0d4b67",
-    compact_cbor: #"84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f582010b1e0f0eedf2fd59f6e885d21a7291fbeeaa435b794343c0d44c6222886d53f1a000d594920205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820df206ad9e3c76e42f59400a5bf8ffb6d74ef4d4c82dad8b11b36df6de3db39325820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820a41a40b9671b9e0bf7705ea9fe39e4ff4162d25391a7837f17ee3c48aaf446b700",
+    transaction_id: #"9ffc4b4d44c94361301f605b85ddf0ecd917e10aaeda17181b99d89c780c54ad",
+    transaction_commitment: #"3c0f49ab486f675cfca3869e7e4f356c90c9de775e202ad874e90465d77bde68",
+    compact_cbor: #"84018c58204dc5462fa75f970091526b50e11ff2161e020020f791756d77ed6cd8c45d111c5820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f582010b1e0f0eedf2fd59f6e885d21a7291fbeeaa435b794343c0d44c6222886d53f1a000d594920205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820df206ad9e3c76e42f59400a5bf8ffb6d74ef4d4c82dad8b11b36df6de3db39325820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820a41a40b9671b9e0bf7705ea9fe39e4ff4162d25391a7837f17ee3c48aaf446b700",
     witness_set_compact_cbor: #"8358206368be82071b67667a46025edba8a97b1311d8f561553682bd05d001c1d4492f5820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-    field_preimage_lengths_cbor: #"89182701183001190e8a01011931e601",
+    field_preimage_lengths_cbor: #"89182901183001190e8a01011931e601",
     field_index: 4,
     item_count: 124,
     item_index: 123,
     encoded_length_before_item: 3692,
-    expected_pre_work_root: #"a9daba44283f35f0f8bd4a463aab8de3a8004e0c25518ed8fae31f0c8459a61d",
-    expected_post_work_root: #"2645969168012ec73dacba2a2fad3932d0af7eb0ee6721a5050d2eb21783e160",
+    expected_pre_work_root: #"caa12740b3c15ded3bccb9ef49a9377a78a14e27894d5c1cb59cc673bf6bb0b8",
+    expected_post_work_root: #"92a3a4986cd45bf186afc789ecb81f0c1f6f1469e060edcd730f716a5d713307",
     collection_proof,
     chunk_proof,
   }
@@ -11009,13 +11009,13 @@ test cek_context_signer_item_uses_authenticated_signer_frontier() {
 
 test cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree() {
   let base = empty_v1_transaction()
-  let transaction_id = #"9e6740ff958462051886f6d64a5fb7d03ee47dc50bd627c5765734f1c32f4bde"
-  let transaction_commitment = #"7c0bebc279806e82bfdda06d46c06e6917e132e13325e48d2f3eb5ad7b7509da"
+  let transaction_id = #"dea55d4e6a14e025bdce718e1c21ebeeea77723058cabd65d9bbfed76af516af"
+  let transaction_commitment = #"8da6f4d07d4cc3728c53bfe50977d38163a24b7f9e03738ec36bc1375bb21a1f"
   let native_control = validation_machine_v1.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(base),
-    compact_cbor: #"84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820598bbaa08e9cc6dc4d9634b23089ead14091f45c5e1165dcf8a6288be95a1b001a000d570d201927105820e127f848e4bda8c1e9b42ddf4c89dfbd1479301dd90551baeff900fdfcec2e975820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff58205c66a9cb2310e13ca74d861c7d29f5b996030ad755920f1dfc2c325ec3cb015d00",
+    compact_cbor: #"84018c58204dc5462fa75f970091526b50e11ff2161e020020f791756d77ed6cd8c45d111c5820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820598bbaa08e9cc6dc4d9634b23089ead14091f45c5e1165dcf8a6288be95a1b001a000d570d201927105820e127f848e4bda8c1e9b42ddf4c89dfbd1479301dd90551baeff900fdfcec2e975820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff58205c66a9cb2310e13ca74d861c7d29f5b996030ad755920f1dfc2c325ec3cb015d00",
     witness_set_compact_cbor: #"8358209c3c9f949b41759fc4d9ea024e36e2aa7659f3d5dbe41611256f4dfc80a9a62d5820ad4dcd868783831d5bd321d25528c3295f55b1ea6c8d61d85c3216be9a73ea3d5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-    field_preimage_lengths_cbor: #"89182701182c191a420101192682186801",
+    field_preimage_lengths_cbor: #"89182901182c191a420101192682186801",
   }
   let context_control = empty_cek_context_control_fixture(5)
   let observer_hash = #"ffab1dd64f82b6991818c1ecc5047d52ce5d00f6fdbc5023e2980167"
@@ -12375,17 +12375,17 @@ fn maximum_mint_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
     siblings: [],
   }
   MaximumFieldTerminalFixtureV1 {
-    transaction_id: #"fb8384370f1f3b2c4543567ee9d2bd0d3c9a4152b505c8eecd540cf99e78bcd2",
-    transaction_commitment: #"346193b5f63533c46919d8dddd78bcb99777a9a5d87c00ca49a26242c0e4e086",
-    compact_cbor: #"84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f582077da2ade1bedecb84bafe4fabaefeccaf5da90cd82634773f3626f2ad5e92e291a000d5d95201927105820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea7458207dc0480f6a10748bc18aed966ef23ca7dd70cd929f5a88b056d427e2f9453c32582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820cfe3cf8c48a624b593eb8f53bdf83543b3db912f088fbc07b40d2b800cbf6efd00",
+    transaction_id: #"8a2947f98b0c56a59b8c7eb2d33ab74b759f45f7c10c86ae35060383bce149f2",
+    transaction_commitment: #"6cf2bfa302c7980b51114944079713aacc1b95fefbdb9d47a1c27aef40eeea74",
+    compact_cbor: #"84018c58204dc5462fa75f970091526b50e11ff2161e020020f791756d77ed6cd8c45d111c5820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f582077da2ade1bedecb84bafe4fabaefeccaf5da90cd82634773f3626f2ad5e92e291a000d5d95201927105820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea7458207dc0480f6a10748bc18aed966ef23ca7dd70cd929f5a88b056d427e2f9453c32582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820cfe3cf8c48a624b593eb8f53bdf83543b3db912f088fbc07b40d2b800cbf6efd00",
     witness_set_compact_cbor: #"8358205a38624e9c4dd250767e307ff82f25d727953cbe76e83ed2361505d1bfde4e2658201ae334ef559fb72274ae60b8a4b57232ad0bc17b9fcbb6c4cc51aef26774c6e65820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-    field_preimage_lengths_cbor: #"891827011915b2010119155619165a186801",
+    field_preimage_lengths_cbor: #"891829011915b2010119155619165a186801",
     field_index: 5,
     item_count: 130,
     item_index: 129,
     encoded_length_before_item: 5420,
-    expected_pre_work_root: #"fb84741314c90a947da6e44eee2d225d2f80a61bf0ab36e84b378f41881ad49a",
-    expected_post_work_root: #"9c2c4e915e7d0f502fa3070c90c9eafb2f59526f9e02c21e8a2cbf756457e83a",
+    expected_pre_work_root: #"e841b45df4501bc51ac727186bc83c99405008ffed6b9acd10b6a560f1ba70a8",
+    expected_post_work_root: #"6392d6588e7c2bcdf78961d270a0254f1f0bed0052fcace9f2bb1de59ad400e1",
     collection_proof,
     chunk_proof,
   }

@@ -30,6 +30,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
 } from "./native-constants.js";
 import { midgardRedeemersToCardano } from "./native-redeemer.js";
+import { decodeMidgardSpendInputItemV1 } from "./native-tx-field-item-decoders-v1.js";
 import {
   asFixedArray,
   asSigned,
@@ -807,7 +808,18 @@ const decodeNativeInputsToCardano = (
   );
   const inputs = CML.TransactionInputList.new();
   for (let i = 0; i < inputBytes.length; i++) {
-    inputs.add(CML.TransactionInput.from_cbor_bytes(inputBytes[i]));
+    // Field-0/1 items are §5.3's fixed-index form, which is not a shape CML's
+    // decoder should be asked to interpret: `19 0000` is deliberately
+    // non-minimal, so decode it with its own twin and hand CML the parts. The
+    // Cardano side then re-minimises the index on its own, which is correct —
+    // it is a Cardano input now, not a Midgard field item.
+    const decoded = decodeMidgardSpendInputItemV1(inputBytes[i]);
+    inputs.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_raw_bytes(decoded.txId),
+        BigInt(decoded.outputIndex),
+      ),
+    );
   }
   return inputs;
 };

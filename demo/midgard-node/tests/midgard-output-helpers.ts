@@ -1,6 +1,7 @@
 import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
 import {
   decodeMidgardTxOutput as decodeCoreMidgardTxOutput,
+  encodeMidgardSpendInputItemV1,
   encodeMidgardTxOutput as encodeCoreMidgardTxOutput,
   hashMidgardVersionedScript,
   type MidgardTxOutput,
@@ -11,6 +12,33 @@ import { CML } from "@lucid-evolution/lucid";
 export type TestMidgardTxOutput = MidgardTxOutput & {
   readonly to_cbor_bytes: () => Buffer;
 };
+
+/**
+ * The canonical out-ref bytes for tests: the §5.3 field-0/1 item encoding
+ * `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16` — a fixed 38 bytes with the
+ * deliberately non-minimal 3-byte output index.
+ *
+ * The same bytes are the field-0/1 preimage item, the ledger MPF trie key, and
+ * the ledger DB `outref` column, so tests must derive them from the shared
+ * encoder rather than hand-rolling CML's minimal-index `TransactionInput` CBOR
+ * (36 bytes for output indices 0–23) or literal `825820…00` hex.
+ *
+ * `txId` accepts the 32 raw bytes, a 64-char hex string, or a single repeated
+ * fill byte, which is how the existing test fixtures spell their tx ids.
+ */
+export const makeOutRefCbor = (
+  txId: Uint8Array | string | number,
+  outputIndex: number | bigint = 0,
+): Buffer =>
+  encodeMidgardSpendInputItemV1({
+    txId:
+      typeof txId === "number"
+        ? Buffer.alloc(32, txId)
+        : typeof txId === "string"
+          ? Buffer.from(txId, "hex")
+          : txId,
+    outputIndex: Number(outputIndex),
+  });
 
 const datumOptionToPlutusData = (
   datum?: CML.DatumOption,

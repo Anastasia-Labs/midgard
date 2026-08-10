@@ -94,7 +94,7 @@ const maximumNestedRedeemerDataTerminalVectorV1 = {
   adjacentDataCborBytes: 15_985,
   adjacentSignedCardanoBytes: 16_385,
   parallelSignedCardanoBytes: 16_293,
-  nativeCanonicalBytes: 16_349,
+  nativeCanonicalBytes: 16_353,
   redeemerFieldBytes: 15_998,
   redeemerTraverseSteps: 127_799,
   maximumSourceSpan: 14,

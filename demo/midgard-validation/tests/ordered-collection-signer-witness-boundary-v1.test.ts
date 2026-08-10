@@ -23,13 +23,13 @@ const MAXIMUM_SIGNER_WITNESS_ADJACENT_SIGNED_BYTES_V1 = 16_482;
 
 const maximumRequiredSignerTerminalFoldVectorV1 = {
   transactionIdHex:
-    "0297901027ac0e7df5aeefe14961ca4fcebcdf27d69bc9d9ab2638ee2c86b71e",
+    "9ffc4b4d44c94361301f605b85ddf0ecd917e10aaeda17181b99d89c780c54ad",
   transactionCommitmentHex:
-    "c0ef3ffbbef5147e9ebc16ace943689df4f1ba1ef4521fc62af33fc8bb0d4b67",
+    "3c0f49ab486f675cfca3869e7e4f356c90c9de775e202ad874e90465d77bde68",
   preWorkRootHex:
-    "a9daba44283f35f0f8bd4a463aab8de3a8004e0c25518ed8fae31f0c8459a61d",
+    "caa12740b3c15ded3bccb9ef49a9377a78a14e27894d5c1cb59cc673bf6bb0b8",
   postWorkRootHex:
-    "2645969168012ec73dacba2a2fad3932d0af7eb0ee6721a5050d2eb21783e160",
+    "92a3a4986cd45bf186afc789ecb81f0c1f6f1469e060edcd730f716a5d713307",
   encodedLengthBeforeItem: 3_692,
   collectionProof: {
     fieldIndex: 4,
@@ -210,6 +210,23 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
         chunkHex: signerField.terminalFoldVector.chunkProof.chunkHex,
       },
     }).toEqual(maximumRequiredSignerTerminalFoldVectorV1);
+    // The producing channel for this boundary's Aiken twin. The compact
+    // transaction, its witness-set compact form and the nine field-preimage
+    // lengths are mirrored by the fixture in
+    // `onchain/aiken/lib/midgard/validation-machine-v1.test.ak` but are not
+    // covered by the pinned object above, so print them on demand rather than
+    // re-deriving them by hand. Same contract as the sibling boundary suites.
+    if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
+      console.info(
+        JSON.stringify({
+          compactCborHex: signerField.terminalFoldVector.compactCborHex,
+          witnessSetCompactCborHex:
+            signerField.terminalFoldVector.witnessSetCompactCborHex,
+          fieldPreimageLengthsCborHex:
+            signerField.terminalFoldVector.fieldPreimageLengthsCborHex,
+        }),
+      );
+    }
 
     const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);

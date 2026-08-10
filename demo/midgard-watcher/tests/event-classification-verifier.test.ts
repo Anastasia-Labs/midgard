@@ -403,10 +403,14 @@ const withdrawalTransitionEffect = (
   ) as { readonly info: SDK.WithdrawalInfo };
   return canonicalCommittedWithdrawalTransitionEffectV1({
     committedValid,
-    outRefCbor: CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(decoded.info.body.l2_outref.transactionId),
+    // The Plutus-Data `OutputReference` in the event datum is a *different*
+    // encoding from the ledger out-ref; going from one to the other means
+    // re-encoding through §5.3's fixed-index field-0/1 item, never CML's
+    // minimal-index `TransactionInput` CBOR.
+    outRefCbor: outRefFromTxId(
+      Buffer.from(decoded.info.body.l2_outref.transactionId, "hex"),
       decoded.info.body.l2_outref.outputIndex,
-    ).to_cbor_bytes(),
+    ),
   });
 };
 
