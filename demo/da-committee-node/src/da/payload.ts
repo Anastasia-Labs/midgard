@@ -7,7 +7,6 @@ import {
 } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1,
@@ -700,18 +699,11 @@ const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
         `${fieldName}.source does not match the canonical transaction field commitments`,
       );
     }
-    const derivedCommitment =
-      computeMidgardNativeTxProofCommitmentV1(derived).toString("hex");
-    const committedCommitment = normalizeHex(source.transaction_commitment, {
-      fieldName: `${fieldName}.transaction_commitment`,
-      byteLength: 32,
-    });
-    if (committedCommitment !== derivedCommitment) {
-      throw new DaPayloadValidationError(
-        "malformed_transaction",
-        `${fieldName}.transaction_commitment does not match the compact proof source`,
-      );
-    }
+    // No `transaction_commitment` to check: the committed source carries the
+    // proof-source triple and nothing derived from it, so the three equalities
+    // above are the whole of the binding. The retired field was
+    // `computeMidgardNativeTxProofCommitmentV1(derived)` by construction, and a
+    // check of a value against its own derivation could only ever pass.
     return decodedTxId;
   };
 

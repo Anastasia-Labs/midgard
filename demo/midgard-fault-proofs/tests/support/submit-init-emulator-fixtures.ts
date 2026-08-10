@@ -16,7 +16,6 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   buildMidgardValidationTraceTree,
   computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
@@ -1068,8 +1067,6 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
     deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(forcedCanonicalCbor);
   const forcedTransaction = {
     tx_id: computeMidgardNativeTxIdV1(forcedNativeTx).toString("hex"),
-    transaction_commitment:
-      computeMidgardNativeTxProofCommitmentV1(forcedSource).toString("hex"),
     source: {
       compact_cbor: forcedSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
@@ -1261,8 +1258,6 @@ export const buildInvalidForcedValidationDisputeFixture = async ({
   const transactionId = computeMidgardNativeTxIdV1(forcedNativeTx);
   const forcedTransaction = {
     tx_id: transactionId.toString("hex"),
-    transaction_commitment:
-      computeMidgardNativeTxProofCommitmentV1(forcedSource).toString("hex"),
     source: {
       compact_cbor: forcedSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:

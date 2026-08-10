@@ -109,7 +109,6 @@ export const buildStrictRetainedDaPairFixtureV1 = async ({
     computeMidgardNativeTxProofCommitmentV1(proofSource).toString("hex");
   const source: SDK.L2TransactionSourceV1 = {
     tx_id: transactionIdHex,
-    transaction_commitment: transactionCommitmentHex,
     source: {
       compact_cbor: proofSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:

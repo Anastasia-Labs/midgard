@@ -42,6 +42,18 @@
 ////     thread anchored. `carriage_reaches_the_anchor` refuses it; §8.3
 ////     erratum E2 limit 3 records the cost and #579 owns the repair.
 ////
+//// A step that opens **more than one field** of the same transaction says so
+//// once. `anchored_native_tx` verifies the anchor and hands back an
+//// `AnchoredNativeTxV1`; `anchored_field_view` and `anchored_field_walk` then
+//// open each field against it, one carriage per field, with the §2.5 pairing
+//// and the tier check re-run every time. The single-field `opened_field_view`
+//// and `opened_field_walk` below are exactly that sequence with one field in
+//// it. Why the split is worth a type: re-deriving the transaction id costs
+//// roughly 211k memory units, and a two-field step through the single-field
+//// entry points paid it twice over — while the obvious cheap fix, reaching
+//// `authenticated_field_view` directly with one pre-verified structure, buys
+//// the saving by stepping outside both guards.
+////
 //// The `Body`/`Witness` split is §2.5's field table made structural. Fields
 //// 0–5 are committed by the transaction body and the door reads them without
 //// consulting any witness set; fields 6–8 live in the witness set, and the
@@ -129,6 +141,34 @@ pub type FieldOpeningV1 {
   }
 }
 
+/// The transaction-identifying half of an opening: everything that binds the
+/// disputed transaction to the thread's anchor, with **no carriage attached**.
+///
+/// `FieldOpeningV1` pairs one of these with exactly one carriage, because a step
+/// that opens one field has exactly one preimage to carry. A step that opens
+/// *two* has two preimages and still only one transaction, and that asymmetry is
+/// what this type exists for: the anchor is paid once (`anchored_native_tx`) and
+/// each field then names its own carriage (`anchored_field_view`,
+/// `anchored_field_walk`).
+///
+/// **Internal representation, not a frozen wire surface.** `FieldOpeningV1` is
+/// a redeemer field on the Q1x step validators, so its constructor order is wire
+/// format and cannot move; this type appears in no datum, redeemer or validator
+/// parameter, has no SDK twin, and is only ever built inside the caller that
+/// immediately hands it to `anchored_native_tx`. Its constructors are laid out in
+/// `FieldOpeningV1`'s order for readability — same §2.5 split, same order — and
+/// nothing off-chain depends on that.
+pub type NativeTxOpeningV1 {
+  /// Fields 0–5. No witness set is consulted, so none is carried.
+  BodyTxOpening { native_tx_compact_cbor: ByteArray }
+  /// Fields 6–8. Both members are unauthenticated on arrival and are checked
+  /// against the thread's `WitnessAnchor` before anything is read.
+  WitnessTxOpening {
+    native_tx_compact_cbor: ByteArray,
+    witness_set: NativeTxWitnessSetCompact,
+  }
+}
+
 /// What a family's own step-01 must put in thread state for a downstream step
 /// to re-open a field of the transaction the thread is disputing.
 ///
@@ -171,6 +211,201 @@ fn unread_witness_set() -> NativeTxWitnessSetCompact {
   }
 }
 
+/// A disputed transaction whose **anchor has already been paid for**: the
+/// compact structures re-derived from redeemer bytes and checked against thread
+/// state, once, however many fields the step goes on to open.
+///
+/// Opaque on purpose. `anchored_native_tx` is the only way to obtain one, so
+/// "these structures were checked against the thread's anchor" is a property of
+/// the value rather than a claim its holder makes about itself. A step cannot
+/// assemble the cheap version by hand and pass it off as the checked one.
+///
+/// `opens_witness_set_fields` records which §2.5 half the opening was for. It
+/// is not a convenience: the split has to stay enforced **per field opened**,
+/// because a handle checked out under a body opening must still be refused at
+/// field 6 — otherwise the multi-field form would be a way around the very
+/// pairing the single-field form enforces.
+pub opaque type AnchoredNativeTxV1 {
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
+  opens_witness_set_fields: Bool,
+}
+
+/// Pay the anchor once (§7.1, one level out from the door's own
+/// authenticate-once).
+///
+/// Both levels §2.5 has are checked here, exactly as the single-field entry
+/// points always checked them: `verify_native_tx_compact_cbor_v1` re-derives the
+/// transaction id from the supplied bytes, and for a witness-set opening the
+/// re-derived compact structure's `witness_set_hash` must be the **anchored**
+/// one. What is *not* checked here is anything per-field — the field index and
+/// the carriage tier are `anchored_field_view`'s and `anchored_field_walk`'s,
+/// because a handle exists precisely to be opened at more than one of each.
+///
+/// **Why this is a separate function at all.** `verify_native_tx_compact_cbor_v1`
+/// re-derives the id by hashing the body CBOR, and that hash is the dominant
+/// per-opening cost — measured at roughly 211k memory units on the Q21 vector.
+/// A step opening two fields through the single-field entry points paid it
+/// twice, and paid it a third time if it also needed the compact structure for
+/// itself. The saving is not available by reaching `authenticated_field_view`
+/// directly: that route leaves the caller outside `carriage_reaches_the_anchor`
+/// and the §2.5 pairing, which is the guard #575 closed a reproduced forgery
+/// with. So the opening that pays once lives here, where both guards still
+/// apply to every field it opens.
+pub fn anchored_native_tx(
+  opening: NativeTxOpeningV1,
+  anchor: NativeTxAnchorV1,
+) -> AnchoredNativeTxV1 {
+  when opening is {
+    BodyTxOpening { native_tx_compact_cbor } -> {
+      // 1. The thread anchored a body dispute. A `WitnessAnchor` here would mean
+      //    the family's own step-01 recorded a witness-set anchor and this step
+      //    is opening it without the witness set that anchor names, so the two
+      //    §2.5 halves have to agree before any byte is read.
+      expect BodyAnchor { tx_id } = anchor
+      AnchoredNativeTxV1 {
+        verified: verify_native_tx_compact_cbor_v1(
+          tx_id,
+          native_tx_compact_cbor,
+        ),
+        witness_set: unread_witness_set(),
+        opens_witness_set_fields: False,
+      }
+    }
+    WitnessTxOpening { native_tx_compact_cbor, witness_set } -> {
+      // 1. The thread anchored a witness-set dispute. A `BodyAnchor` carries no
+      //    `witness_set_hash`, so there would be nothing for check 2 to
+      //    authenticate the supplied witness set against — the two §2.5 halves
+      //    have to agree before any byte is read.
+      expect WitnessAnchor { tx_id, witness_set_hash } = anchor
+      let verified = verify_native_tx_compact_cbor_v1(
+        tx_id,
+        native_tx_compact_cbor,
+      )
+      // 2. The check the transaction id cannot make for itself. Without it a
+      //    prover supplies the genuine body — which re-derives to `tx_id` and so
+      //    satisfies check 1 — followed by a `witness_set_hash` of its own
+      //    choosing, and then "authenticates" a witness set of its own choosing
+      //    against it. The empty witness set is the useful forgery: it makes
+      //    every absence rule (§2.5 fields 6 and 7) true of every transaction,
+      //    which is a slashing proof against an honest operator.
+      expect verified.tx_compact.witness_set_hash == witness_set_hash
+      AnchoredNativeTxV1 {
+        verified,
+        witness_set,
+        opens_witness_set_fields: True,
+      }
+    }
+  }
+}
+
+/// The native-transaction version the anchored compact structure was committed
+/// under.
+///
+/// **Anchored.** `verify_native_tx_compact_cbor_v1` requires the version byte to
+/// be present in the compact bytes *and* feeds it to `native_tx_id_for_version`
+/// alongside the body, so it is inside §3's id derivation rather than beside it.
+pub fn anchored_native_tx_version(anchored: AnchoredNativeTxV1) -> Int {
+  anchored.verified.version
+}
+
+/// The §2.5 `validity_code` sitting in the compact bytes this handle was built
+/// from. **Named for what it is not**: every other function here says `anchored`
+/// because the anchor covers what it returns, and this one does not, so it does
+/// not claim it.
+///
+/// **NOT anchored, and that is not a defect this function can fix.** §3's id
+/// preimage is the body CBOR alone, so of the compact structure's four parts —
+/// version, body, `witness_set_hash`, `validity_code` — re-deriving the id pins
+/// the first two and says nothing about the last two. A prover may hand over the
+/// genuine body followed by any trailing `validity_code` it likes and the bytes
+/// still re-derive to the committed transaction id. A rule that asserts something
+/// *about* this value is asserting it about the prover's bytes; a rule that needs
+/// the committed value must reach it the way the block committed it, through the
+/// structure its own step-01 was handed.
+///
+/// It is exposed anyway, and narrowly, because the transition-trace family's
+/// `validity_code == 0` read predates the handle and is unchanged by it — the
+/// alternative to naming the limit here was leaving that call site to obtain the
+/// whole `VerifiedMidgardNativeTxCompact` and take the value off it silently.
+/// That call site is sound for a reason this handle knows nothing about: its
+/// compact bytes come out of a `transactions_root` leaf whose exact bytes it
+/// re-checks, so the value is committed by the *root*, not by the anchor. Any new
+/// caller owes the same argument in its own words, which is what the name is for.
+///
+/// **There is deliberately no accessor for `witness_set_hash`.** For a
+/// `WitnessTxOpening` handle it is the anchored value (checked in
+/// `anchored_native_tx`), but for a `BodyTxOpening` handle it is the prover's,
+/// and the handle does not say which arm produced it. Handing it out would put
+/// the one ingredient #575's reproduced forgery needs — an unanchored
+/// `witness_set_hash` to authenticate an arbitrary witness set against — one
+/// `authenticated_field_view` call away from a value the type system labels
+/// anchored. Reading a witness-set field goes through `anchored_field_view` or
+/// `anchored_field_walk`, which is where the §2.5 pairing lives.
+pub fn unanchored_validity_code_of(anchored: AnchoredNativeTxV1) -> Int {
+  anchored.verified.tx_compact.validity_code
+}
+
+/// Authenticate field `field_index` of an already-anchored transaction and hand
+/// back a view to slice.
+///
+/// Every guard the single-field `opened_field_view` applies is applied here, and
+/// applied **per field**: the §2.5 body/witness pairing against the half the
+/// handle was opened under, and `carriage_reaches_the_anchor` against the tier
+/// this particular field names. Opening a second field re-runs both; only the
+/// anchor is shared.
+///
+/// §7.1 authenticate-once is the caller's to exploit exactly as it is through
+/// the door itself: open once per field per step, read the view many times.
+pub fn anchored_field_view(
+  anchored: AnchoredNativeTxV1,
+  field_index: Int,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> FieldViewV1 {
+  // 1. The two per-field guards, re-run on every opening this handle serves:
+  //    the §2.5 half the anchor was paid under against the half `field_index`
+  //    lives in, and the carriage tier against `field_index`.
+  //    `field_pairs_with` asserts them one at a time, so a refusal says which.
+  expect field_pairs_with(anchored, field_index, carriage)
+  authenticated_field_view(
+    anchored.verified,
+    anchored.witness_set,
+    field_index,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
+/// The same per-field authentication, opened as a **walk** instead of a view
+/// (§10).
+///
+/// Returns the view together with the walk's derived starting position, which
+/// is what `fold_opened_field` and any resumable family rule take. The position
+/// comes from `open_field_walk`, so it is derived from the authenticated view
+/// and is never a redeemer argument (§10.2).
+pub fn anchored_field_walk(
+  anchored: AnchoredNativeTxV1,
+  field_index: Int,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {
+  // 1. The same two per-field guards `anchored_field_view` applies, for the same
+  //    reason: the walk shares the anchor, not the pairing or the tier check.
+  expect field_pairs_with(anchored, field_index, carriage)
+  open_field_walk(
+    anchored.verified,
+    anchored.witness_set,
+    field_index,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
 /// Authenticate field `field_index` of the transaction the thread is disputing
 /// and hand back a view to slice.
 ///
@@ -181,8 +416,10 @@ fn unread_witness_set() -> NativeTxWitnessSetCompact {
 /// so the only compact structures that reach the door are the ones the thread
 /// authenticated.
 ///
-/// §7.1 authenticate-once is the caller's to exploit exactly as it is through
-/// the door itself: open once per field per step, read the view many times.
+/// The single-field spelling of `anchored_native_tx` followed by
+/// `anchored_field_view`, and nothing else: one field, so the anchor is paid
+/// once either way. A step opening two or more fields should hold the handle
+/// itself rather than call this twice.
 pub fn opened_field_view(
   opening: FieldOpeningV1,
   anchor: NativeTxAnchorV1,
@@ -190,14 +427,8 @@ pub fn opened_field_view(
   reference_inputs: List<Input>,
   certificate_policy_id: PolicyId,
 ) -> FieldViewV1 {
-  let Pair(verified, witness_set) = resolved_sources(
-    opening,
-    anchor,
-    field_index,
-  )
-  authenticated_field_view(
-    verified,
-    witness_set,
+  anchored_field_view(
+    anchored_native_tx(tx_opening_of(opening), anchor),
     field_index,
     carriage_of(opening),
     reference_inputs,
@@ -218,14 +449,8 @@ pub fn opened_field_walk(
   reference_inputs: List<Input>,
   certificate_policy_id: PolicyId,
 ) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {
-  let Pair(verified, witness_set) = resolved_sources(
-    opening,
-    anchor,
-    field_index,
-  )
-  open_field_walk(
-    verified,
-    witness_set,
+  anchored_field_walk(
+    anchored_native_tx(tx_opening_of(opening), anchor),
     field_index,
     carriage_of(opening),
     reference_inputs,
@@ -233,58 +458,47 @@ pub fn opened_field_walk(
   )
 }
 
-/// The anchored compact structures and the witness set the door will consult,
-/// with the §2.5 body/witness split enforced against `field_index` on both the
-/// opening and the anchor.
+/// Asserts that this field, carried this way, may be opened against this handle.
 ///
-/// Three constructors pair up here — opening, anchor, field index — and all
-/// three must agree. The opening/index pairing keeps a witness set from riding
-/// in under a field that will not read one, or from being omitted under a field
-/// that must; the anchor/opening pairing is what makes the witness-set read
-/// *authenticated at all*, and the paragraph in the module header is the whole
-/// argument for why.
-///
-/// A fourth thing has to agree, and it is the one a reader would not predict:
-/// the **carriage tier**. Tiers 1–2 are authenticated by the door itself, but
-/// tier 3's binding is a §8.6 certificate minted against a `witness_set_hash`
-/// its own redeemer supplied — a value §3's transaction id does not cover — so a
-/// tier-3 carriage of a witness-set field reaches no anchor at all.
-/// `carriage_reaches_the_anchor` carries that argument in full.
-fn resolved_sources(
-  opening: FieldOpeningV1,
-  anchor: NativeTxAnchorV1,
+/// Two things pair up, and both are per-field rather than per-anchor, which is
+/// why neither can live in `anchored_native_tx`. They are asserted **one at a
+/// time** rather than folded into a single `and {}`: both refusals are forgery
+/// attempts of different shapes, and a trace that says only "the field did not
+/// pair" tells the reader neither which shape it was nor which guard held.
+fn field_pairs_with(
+  anchored: AnchoredNativeTxV1,
   field_index: Int,
-) -> Pair<VerifiedMidgardNativeTxCompact, NativeTxWitnessSetCompact> {
-  // Checked once, over both arms, so the clause that admits tier 3 for a body
-  // field is as load-bearing as the one that refuses it for a witness field and
-  // neither can be widened without a test going red.
-  expect carriage_reaches_the_anchor(carriage_of(opening), field_index)
+  carriage: FieldCarriageV1,
+) -> Bool {
+  // 1. The **carriage tier** reaches the thread's anchor for this field, and it
+  //    is the guard a reader would not predict. Tiers 1–2 are authenticated by
+  //    the door itself, but tier 3's binding is a §8.6 certificate minted
+  //    against a `witness_set_hash` its own redeemer supplied — a value §3's
+  //    transaction id does not cover — so a tier-3 carriage of a witness-set
+  //    field reaches no anchor at all. `carriage_reaches_the_anchor` carries
+  //    that argument in full.
+  expect carriage_reaches_the_anchor(carriage, field_index)
+  // 2. The **§2.5 half** the handle was opened under is the half this field
+  //    lives in. An opening that carries no witness set may not be read at a
+  //    witness-set index — the door would otherwise be handed this module's
+  //    internal placeholder as if it were the transaction's real witness set —
+  //    and an opening that carries one may not be read at a body index, where it
+  //    would be silently ignored. Neither direction is reachable from an honest
+  //    family, which is exactly why both are asserted rather than assumed.
+  expect
+    anchored.opens_witness_set_fields == (
+      field_index >= first_witness_set_field_index
+    )
+  True
+}
+
+/// The carriage-free half of a single-field opening.
+fn tx_opening_of(opening: FieldOpeningV1) -> NativeTxOpeningV1 {
   when opening is {
-    BodyFieldOpening { native_tx_compact_cbor, .. } -> {
-      expect field_index < first_witness_set_field_index
-      expect BodyAnchor { tx_id } = anchor
-      Pair(
-        verify_native_tx_compact_cbor_v1(tx_id, native_tx_compact_cbor),
-        unread_witness_set(),
-      )
-    }
-    WitnessFieldOpening { native_tx_compact_cbor, witness_set, .. } -> {
-      expect field_index >= first_witness_set_field_index
-      expect WitnessAnchor { tx_id, witness_set_hash } = anchor
-      let verified = verify_native_tx_compact_cbor_v1(
-        tx_id,
-        native_tx_compact_cbor,
-      )
-      // The check the transaction id cannot make for itself. Without it a
-      // prover supplies the genuine body — which re-derives to `tx_id` and so
-      // satisfies everything above — followed by a `witness_set_hash` of its own
-      // choosing, and then "authenticates" a witness set of its own choosing
-      // against it. The empty witness set is the useful forgery: it makes every
-      // absence rule (§2.5 fields 6 and 7) true of every transaction, which is a
-      // slashing proof against an honest operator.
-      expect verified.tx_compact.witness_set_hash == witness_set_hash
-      Pair(verified, witness_set)
-    }
+    BodyFieldOpening { native_tx_compact_cbor, .. } ->
+      BodyTxOpening { native_tx_compact_cbor }
+    WitnessFieldOpening { native_tx_compact_cbor, witness_set, .. } ->
+      WitnessTxOpening { native_tx_compact_cbor, witness_set }
   }
 }
 

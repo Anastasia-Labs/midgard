@@ -260,9 +260,6 @@ const makeAiken = ({ transactions, forcedOrders, roots }) => {
       `const ${entry.constantPrefix}_value_cbor = ${aikenBytes(entry.valueCborHex)}`,
     );
     lines.push(
-      `const ${entry.constantPrefix}_transaction_commitment = ${aikenBytes(entry.transactionCommitmentHex)}`,
-    );
-    lines.push(
       `const ${entry.constantPrefix}_compact_cbor = ${aikenBytes(entry.compactCborHex)}`,
     );
     lines.push(
@@ -285,9 +282,6 @@ const makeAiken = ({ transactions, forcedOrders, roots }) => {
     );
     lines.push(
       `const ${entry.constantPrefix}_order_transaction_id = ${aikenBytes(entry.orderId.transactionIdHex)}`,
-    );
-    lines.push(
-      `const ${entry.constantPrefix}_transaction_commitment = ${aikenBytes(entry.transactionCommitmentHex)}`,
     );
     lines.push(
       `const ${entry.constantPrefix}_compact_cbor = ${aikenBytes(entry.compactCborHex)}`,
@@ -408,7 +402,6 @@ const makeAiken = ({ transactions, forcedOrders, roots }) => {
       "  and {",
       `    cbor.serialise(value) == ${entry.constantPrefix}_value_cbor,`,
       `    value.tx_id == ${entry.constantPrefix}_key,`,
-      `    value.transaction_commitment == ${entry.constantPrefix}_transaction_commitment,`,
       `    value.source.compact_cbor == ${entry.constantPrefix}_compact_cbor,`,
       `    value.source.witness_set_compact_cbor == ${entry.constantPrefix}_witness_set_compact_cbor,`,
       `    value.source.field_preimage_lengths_cbor == ${entry.constantPrefix}_field_preimage_lengths_cbor,`,
@@ -431,7 +424,6 @@ const makeAiken = ({ transactions, forcedOrders, roots }) => {
       `    order.transaction_id == ${entry.constantPrefix}_order_transaction_id,`,
       `    order.output_index == ${aikenInt(entry.orderId.outputIndex)},`,
       `    value.tx_id == ${aikenBytes(entry.txIdHex)},`,
-      `    value.transaction_commitment == ${entry.constantPrefix}_transaction_commitment,`,
       `    value.source.compact_cbor == ${entry.constantPrefix}_compact_cbor,`,
       `    value.source.witness_set_compact_cbor == ${entry.constantPrefix}_witness_set_compact_cbor,`,
       `    value.source.field_preimage_lengths_cbor == ${entry.constantPrefix}_field_preimage_lengths_cbor,`,
@@ -551,7 +543,6 @@ const normalEntries = parsedTransactions.map((parsed) => {
     valueCborHex: valueCbor.toString("hex"),
     canonicalTransactionCborHex: canonicalCbor.toString("hex"),
     txIdHex: source.tx_id,
-    transactionCommitmentHex: source.transaction_commitment,
     compactCborHex: source.source.compact_cbor,
     witnessSetCompactCborHex: source.source.witness_set_compact_cbor,
     fieldPreimageLengthsCborHex: source.source.field_preimage_lengths_cbor,
@@ -629,7 +620,6 @@ for (const [index, value] of canonical.forcedOrders.entries()) {
       outputIndex,
     },
     txIdHex: decoded.tx_id,
-    transactionCommitmentHex: decoded.transaction_commitment,
     compactCborHex: decoded.source.compact_cbor,
     witnessSetCompactCborHex: decoded.source.witness_set_compact_cbor,
     fieldPreimageLengthsCborHex: decoded.source.field_preimage_lengths_cbor,

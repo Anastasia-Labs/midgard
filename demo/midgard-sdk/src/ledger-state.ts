@@ -693,9 +693,21 @@ export const TxOrderEventV1Schema = Data.Object({
 export type TxOrderEventV1 = Data.Static<typeof TxOrderEventV1Schema>;
 export const TxOrderEventV1 = TxOrderEventV1Schema as unknown as TxOrderEventV1;
 
+/**
+ * Twin of `midgard/ledger_state.L2TransactionSourceV1`.
+ *
+ * **No `transaction_commitment`.** It used to sit between `tx_id` and `source`.
+ * Under `docs/spec/midgard-tx.md` §4's flat reversion the transition-trace
+ * family authenticates the compact bytes against the tx-id anchor through the
+ * §8.8 door and never reads it, leaving `validation_claim_v1` as the only
+ * consumer — and that consumer compared the carried value against the
+ * `native_tx_proof_commitment_v1` it re-derived from `source` in the same
+ * expression. The on-chain type dropped the field and re-anchored on the
+ * derivation; this schema moves with it, because a committed leaf that encodes
+ * three fields where the validator expects two does not decode.
+ */
 export const L2TransactionSourceV1Schema = Data.Object({
   tx_id: H32Schema,
-  transaction_commitment: H32Schema,
   source: NativeTxProofSourceV1Schema,
 });
 export type L2TransactionSourceV1 = Data.Static<
@@ -704,9 +716,13 @@ export type L2TransactionSourceV1 = Data.Static<
 export const L2TransactionSourceV1 =
   L2TransactionSourceV1Schema as unknown as L2TransactionSourceV1;
 
+/**
+ * Twin of `midgard/ledger_state.ForcedInclusionTxV1`. It shed
+ * `transaction_commitment` for the same reason and in the same change — see
+ * {@link L2TransactionSourceV1Schema}.
+ */
 export const ForcedInclusionTxV1Schema = Data.Object({
   tx_id: H32Schema,
-  transaction_commitment: H32Schema,
   source: NativeTxProofSourceV1Schema,
   operator_validity: MidgardTxValiditySchema,
 });

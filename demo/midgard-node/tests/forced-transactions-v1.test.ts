@@ -272,7 +272,6 @@ describe("V1 forced transaction material", () => {
     expect(accepted.value).not.toEqual(rejected.value);
     expect(decoded).toEqual({
       tx_id: accepted.txId.toString("hex"),
-      transaction_commitment: accepted.transactionCommitment.toString("hex"),
       source: {
         compact_cbor: accepted.source.compactCbor.toString("hex"),
         witness_set_compact_cbor:

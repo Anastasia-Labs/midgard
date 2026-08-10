@@ -13,8 +13,9 @@ use midgard/common/types.{Proof}
 use midgard/common/utils
 use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/field_opening_v1.{
-  BodyAnchor, BodyFieldOpening, fold_opened_field, opened_field_walk,
-  outputs_field_index, spend_inputs_field_index,
+  AnchoredNativeTxV1, BodyAnchor, BodyTxOpening, anchored_field_walk,
+  anchored_native_tx, anchored_native_tx_version, fold_opened_field,
+  outputs_field_index, spend_inputs_field_index, unanchored_validity_code_of,
 }
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/components as native_components
@@ -1143,10 +1144,15 @@ fn validate_valid_deposit_transition(
 /// bridge is what keeps that true of a later edit to this file rather than a
 /// property of the two call sites below.
 ///
-/// The `anchor` is `BodyAnchor { tx_id }`, and the tx id is the MPF-committed
-/// `source_membership.key` — never a redeemer value. `field_index` is a literal
-/// at each call site (§4 removed field-index domain separation, so the index is
-/// the only thing distinguishing field 0's commitment from field 1's).
+/// The anchor arrives **already paid for**, as an `AnchoredNativeTxV1` the
+/// caller built once from `BodyAnchor { tx_id }` over the MPF-committed
+/// `source_membership.key` — never a redeemer value. Taking the handle rather
+/// than the id and the bytes is what makes this family's two openings cost one
+/// transaction-id derivation instead of two: the bridge still re-runs the §2.5
+/// pairing and the tier check for each field, and only the anchor is shared.
+/// `field_index` remains a literal at each call site (§4 removed field-index
+/// domain separation, so the index is the only thing distinguishing field 0's
+/// commitment from field 1's).
 ///
 /// The carriage is likewise a literal: this family carries its preimages inline
 /// in the fault witness (§8.1 tier 1), so tiers 2 and 3 are unreachable from
@@ -1155,20 +1161,16 @@ fn validate_valid_deposit_transition(
 /// passed empty rather than plumbed through, which is also why this rebind adds
 /// no validator parameter and leaves the family's applied hashes to #579.
 fn door_body_field_items(
-  tx_id: ByteArray,
-  compact_cbor: ByteArray,
+  anchored: AnchoredNativeTxV1,
   field_index: Int,
   preimage: ByteArray,
   decode_item: fn(ByteArray) -> a,
 ) -> List<a> {
   let reversed_items = fold_opened_field(
-    opened_field_walk(
-      BodyFieldOpening {
-        native_tx_compact_cbor: compact_cbor,
-        carriage: native_tx_field_access_v1.Inline { preimage },
-      },
-      BodyAnchor { tx_id },
+    anchored_field_walk(
+      anchored,
       field_index,
+      native_tx_field_access_v1.Inline { preimage },
       [],
       #"",
     ),
@@ -1191,32 +1193,46 @@ fn validate_l2_transaction_transition(
   spent_utxos: List<LedgerDeleteWitness>,
   produced_utxos: List<LedgerInsertWitness>,
 ) -> Bool {
+  // 1. The committed source leaf must be well-formed CBOR.
   expect Some(source_data) = cbor.deserialise(source_membership.value)
+  // 2. Those bytes must decode as an `L2TransactionSourceV1`.
   expect source: ledger_state.L2TransactionSourceV1 = source_data
   // §4/§8.8: the transaction id is the anchor and the compact bytes re-derive
   // to it. This replaces the retired `verify_native_tx_proof_source_v1` over the
   // proof-source triple; the witness-set-compact and field-preimage-lengths
   // members that triple carried are not consulted for a body-field dispute.
-  let verified = native_compact.verify_native_tx_compact_cbor_v1(
-    source_membership.key,
-    source.source.compact_cbor,
+  //
+  // Derived **once** for the whole step. This rule reads three things off the
+  // one transaction — its scalar `validity_code`, field 0 and field 2 — and
+  // re-deriving the id for each cost ~211k memory units apiece; the anchored
+  // handle pays it once without giving up the §2.5 pairing or the tier check,
+  // both of which the bridge re-runs per field opened.
+  let anchored = anchored_native_tx(
+    BodyTxOpening { native_tx_compact_cbor: source.source.compact_cbor },
+    BodyAnchor { tx_id: source_membership.key },
   )
-  let compact = verified.tx_compact
-  expect compact.validity_code == 0
+  // 3. The transaction's §2.5 `validity_code` must be `TxIsValid` (0), because
+  //    this rule is about a transaction the block declared valid. The accessor is
+  //    named `unanchored_` because the *handle* cannot vouch for that value —
+  //    §3's id preimage is the body alone — and at this call site it does not
+  //    have to. `source.source.compact_cbor` is not the prover's own bytes: it
+  //    comes out of the `transactions_root` leaf, and the exact leaf bytes are
+  //    re-checked below (`cbor.serialise(source) == source_membership.value`,
+  //    over the membership `validate_l2_one_step_binding` verifies), so the code
+  //    read here is the one the block committed.
+  expect unanchored_validity_code_of(anchored) == 0
   // §8.8 door: field 0 (spend inputs) and field 2 (outputs) are authenticated
   // once against their flat commitments and walked into item lists. The field
   // indices are literals here, not witness values, so no prover can steer a
   // field-0 read onto field 1's identically-shaped commitment (§4).
   let spend_inputs = door_body_field_items(
-    source_membership.key,
-    source.source.compact_cbor,
+    anchored,
     spend_inputs_field_index,
     spend_inputs_preimage,
     native_components.decode_midgard_tx_input_cbor,
   )
   let outputs = door_body_field_items(
-    source_membership.key,
-    source.source.compact_cbor,
+    anchored,
     outputs_field_index,
     outputs_preimage,
     native_components.decode_midgard_tx_output_cbor,
@@ -1242,7 +1258,7 @@ fn validate_l2_transaction_transition(
     ),
     cbor.serialise(source) == source_membership.value,
     source.tx_id == source_membership.key,
-    verified.version == 1,
+    anchored_native_tx_version(anchored) == 1,
     expected_post_root != trace_proof.value.post_utxos_root,
   }
 }
@@ -1648,7 +1664,6 @@ fn validate_out_of_window_source_event(
       let user_events.OptimisticDatum { event, inclusion_time, .. } = tx_order_datum
       let expected_source_value = ledger_state.ForcedInclusionTxV1 {
         tx_id: event.tx.tx_id,
-        transaction_commitment: event.tx.transaction_commitment,
         source: event.tx.source,
         operator_validity: validity_override,
       }

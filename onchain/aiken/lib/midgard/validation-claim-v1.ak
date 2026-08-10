@@ -236,11 +236,6 @@ fn verify_source_authentication(
           cbor.serialise(membership.value),
         ),
         membership.key == tx_order_id,
-        membership.value.transaction_commitment == native_tx_proof_commitment_v1(
-          membership.value.source.compact_cbor,
-          membership.value.source.witness_set_compact_cbor,
-          membership.value.source.field_preimage_lengths_cbor,
-        ),
         verified.version == 1,
       }
     }
@@ -263,15 +258,39 @@ fn verify_source_authentication(
         ),
         membership.key == membership.value.tx_id,
         membership.value.tx_id == tx_id,
-        membership.value.transaction_commitment == native_tx_proof_commitment_v1(
-          membership.value.source.compact_cbor,
-          membership.value.source.witness_set_compact_cbor,
-          membership.value.source.field_preimage_lengths_cbor,
-        ),
         verified.version == 1,
       }
     }
   }
+}
+
+/// What the machine's `transaction_commitment` is anchored to, now that the
+/// committed source no longer carries one.
+///
+/// §4's flat reversion left `L2TransactionSourceV1.transaction_commitment` and
+/// its `ForcedInclusionTxV1` twin with exactly one reader — this file — and that
+/// reader used the carried value twice over: once to assert it equalled
+/// `native_tx_proof_commitment_v1` of the very triple it sat beside, and once to
+/// bind it to the machine state. The first assertion made the second one's
+/// subject the derivation rather than the field, so retiring the field changes
+/// nothing about what is anchored: the machine's `transaction_commitment` is
+/// still the §7 proof-source commitment of the source membership's own triple.
+/// It is now derived at the one place it is used instead of carried on every
+/// leaf of two block-committed roots and checked back against its own
+/// derivation.
+///
+/// Derived here rather than in `verify_source_authentication` — which is where
+/// the retired equality check lived — because this is the only consumer. Both
+/// functions run on every claim, so no work is duplicated by the move and none
+/// is added: exactly one `native_tx_proof_commitment_v1` per claim, as before.
+fn source_proof_commitment(
+  source: ledger_state.NativeTxProofSourceV1,
+) -> ByteArray {
+  native_tx_proof_commitment_v1(
+    source.compact_cbor,
+    source.witness_set_compact_cbor,
+    source.field_preimage_lengths_cbor,
+  )
 }
 
 fn source_binding_is_exact(
@@ -282,7 +301,7 @@ fn source_binding_is_exact(
   when source is {
     ForcedValidationSource { membership } -> and {
         membership.value.tx_id == initial_state.transaction_id,
-        membership.value.transaction_commitment == initial_state.transaction_commitment,
+        source_proof_commitment(membership.value.source) == initial_state.transaction_commitment,
         initial_state.source_kind == validation_trace_v1.Forced,
         forced_verdict_matches(
           membership.value.operator_validity,
@@ -291,7 +310,7 @@ fn source_binding_is_exact(
       }
     NormalValidationSource { membership } -> and {
         membership.value.tx_id == initial_state.transaction_id,
-        membership.value.transaction_commitment == initial_state.transaction_commitment,
+        source_proof_commitment(membership.value.source) == initial_state.transaction_commitment,
         initial_state.source_kind == validation_trace_v1.Normal,
         descriptor.verdict == validation_trace_v1.Accepted,
       }

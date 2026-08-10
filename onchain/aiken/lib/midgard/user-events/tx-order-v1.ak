@@ -471,7 +471,6 @@ pub fn forced_inclusion_key_value(
     tx_order_id,
     ForcedInclusionTxV1 {
       tx_id: tx_order_payload.tx_id,
-      transaction_commitment: tx_order_payload.transaction_commitment,
       source: tx_order_payload.source,
       operator_validity: validity_override,
     },

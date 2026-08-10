@@ -307,7 +307,7 @@ test missing_native_script_tx_step_06_rejects_a_forged_witness_set() fail {
 /// against a transaction that carries it.
 ///
 /// What refuses it is the thread-anchored `bad_tx_witness_set_hash`. Neutralise
-/// that one `expect` in `resolved_sources` and this test passes.
+/// that one `expect` in `anchored_native_tx` and this test passes.
 test missing_native_script_tx_step_06_rejects_a_forged_witness_set_and_compact() fail {
   let block = challenged_block()
   run_finalize_against(

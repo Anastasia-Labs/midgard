@@ -114,7 +114,6 @@ const depositInfo: SDK.DepositInfo = {
 
 const forcedInclusionTx: SDK.ForcedInclusionTxV1 = {
   tx_id: H32_A,
-  transaction_commitment: H32_B,
   source: {
     compact_cbor: "80",
     witness_set_compact_cbor: "80",

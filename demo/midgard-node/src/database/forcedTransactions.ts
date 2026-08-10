@@ -354,7 +354,6 @@ export const encodeForcedInclusionValueV1 = ({
     });
     const forcedInclusionTx: SDK.ForcedInclusionTxV1 = {
       tx_id: material.txId.toString("hex"),
-      transaction_commitment: material.transactionCommitment.toString("hex"),
       source: {
         compact_cbor: material.source.compactCbor.toString("hex"),
         witness_set_compact_cbor:

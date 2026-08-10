@@ -1993,7 +1993,6 @@ const nonDepositSpendBundle = (
       : Data.to(
           {
             tx_id: datum.event.tx!.tx_id,
-            transaction_commitment: datum.event.tx!.transaction_commitment,
             source: datum.event.tx!.source,
             operator_validity: validity,
           },

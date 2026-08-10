@@ -740,7 +740,6 @@ const publicEventFromW15 = (
       dataHex(
         {
           tx_id: decoded.tx.tx_id,
-          transaction_commitment: decoded.tx.transaction_commitment,
           source: decoded.tx.source,
           operator_validity: event.terminalClassification.operatorValidity,
         },
@@ -1025,8 +1024,6 @@ const buildPublicReplayFixture = async (input: {
       deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
     const source: SDK.L2TransactionSourceV1 = {
       tx_id: computeMidgardNativeTxIdV1(full).toString("hex"),
-      transaction_commitment:
-        computeMidgardNativeTxProofCommitmentV1(proof).toString("hex"),
       source: {
         compact_cbor: proof.compactCbor.toString("hex"),
         witness_set_compact_cbor: proof.witnessSetCompactCbor.toString("hex"),

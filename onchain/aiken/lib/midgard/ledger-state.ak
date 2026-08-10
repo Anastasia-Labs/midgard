@@ -492,15 +492,53 @@ pub type MidgardTxValidity {
   UnbalancedTx
 }
 
+/// The committed source of an L2 transaction, as the block's `transactions_root`
+/// carries it.
+///
+/// **No `transaction_commitment`.** It used to sit between `tx_id` and `source`,
+/// and under the retired counted scheme it was load-bearing: the proof-source
+/// triple's `native_tx_proof_commitment_v1` was what a dispute checked its
+/// witnesses against. Under `docs/spec/midgard-tx.md` §4's flat reversion the
+/// transition-trace family authenticates the compact bytes against the tx-id
+/// anchor through the §8.8 door and never reads it, so the only consumer left
+/// was `validation_claim_v1` — which read the field twice, in two functions the
+/// validator reaches by two different routes. `verify_source_authentication`,
+/// under the mandatory `committed_claim_source_is_authenticated`, asserted that
+/// the carried value equalled the `native_tx_proof_commitment_v1` it re-derived
+/// from the `source` sitting beside it. `source_binding_is_exact`, under
+/// `committed_claim_endpoints_and_source_are_valid` — which
+/// `validators/fraud-proofs/validation-trace/source-v1.ak` uses as a *branch
+/// selector* rather than a conjunct — then bound the carried value to the machine
+/// state's initial `transaction_commitment`. Because the first check was
+/// unconditional, the second one's real subject was always the derivation:
+/// carried == derived ∧ carried == initial says exactly what derived == initial
+/// says, which is why retiring the field changes no verdict. A field every reader
+/// had to re-derive before trusting is not a commitment — it is 32 bytes of
+/// serialized weight on every leaf of the transactions root, re-hashed by every
+/// watcher replaying the block, and one more place for a producer to write
+/// something a consumer must remember to check.
+///
+/// So `validation_claim_v1` now anchors on the derivation directly:
+/// `native_tx_proof_commitment_v1(source)` against the machine state's
+/// `transaction_commitment`, in the one function that was using it. Same value,
+/// same binding, one place it can come from, and still exactly one
+/// `native_tx_proof_commitment_v1` per claim.
+///
+/// Retired from the **committed source leaf only**, not protocol-wide:
+/// `TxOrderPayloadV1`, `TxFieldPreimageV1` and `TxFieldReceiptV1` all still carry
+/// a `transaction_commitment`, because the L1 forced-order path uses it as the
+/// name a field preimage and its receipt are filed under while the transaction's
+/// material is still being published piecewise.
 pub type L2TransactionSourceV1 {
   tx_id: ByteArray,
-  transaction_commitment: ByteArray,
   source: NativeTxProofSourceV1,
 }
 
+/// The forced-inclusion twin of `L2TransactionSourceV1`, carrying the operator's
+/// recorded verdict. It shed `transaction_commitment` for the same reason and in
+/// the same change — see that type.
 pub type ForcedInclusionTxV1 {
   tx_id: ByteArray,
-  transaction_commitment: ByteArray,
   source: NativeTxProofSourceV1,
   operator_validity: MidgardTxValidity,
 }

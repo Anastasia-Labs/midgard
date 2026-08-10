@@ -93,7 +93,31 @@ const withdrawalInfo = (
   validity,
 });
 
+/**
+ * Fixture-local index from a native proof source back to the canonical CBOR the
+ * fixture built it from.
+ *
+ * Keyed by `native_tx_proof_commitment_v1` rather than by tx id even though #584
+ * retired `transaction_commitment` from the on-chain leaves. The commitment
+ * covers the compact body, the compact witness set and the validity code; the tx
+ * id covers the body alone. Every fixture here happens to pin `TxIsValid` with
+ * an empty witness set, so the two keys are injective over today's vectors — but
+ * a later vector that varies validity or witnesses would silently collide under
+ * a tx-id key and hand back the wrong preimage. Nothing outside this file sees
+ * the commitment: it is derived here from the source and is deliberately not
+ * re-exposed on {@link nativeMaterial}'s result.
+ */
 const canonicalPreimageByCommitment = new Map<string, Buffer>();
+
+const proofSourceCommitment = (source: SDK.NativeTxProofSourceV1): string =>
+  computeMidgardNativeTxProofCommitmentV1({
+    compactCbor: Buffer.from(source.compact_cbor, "hex"),
+    witnessSetCompactCbor: Buffer.from(source.witness_set_compact_cbor, "hex"),
+    fieldPreimageLengthsCbor: Buffer.from(
+      source.field_preimage_lengths_cbor,
+      "hex",
+    ),
+  }).toString("hex");
 
 const nativeMaterial = (
   byte: number,
@@ -130,12 +154,13 @@ const nativeMaterial = (
   const canonicalCbor = encodeMidgardNativeTxCanonicalV1(full);
   const source =
     deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
-  const transactionCommitment =
-    computeMidgardNativeTxProofCommitmentV1(source).toString("hex");
-  canonicalPreimageByCommitment.set(transactionCommitment, canonicalCbor);
+  const txId = computeMidgardNativeTxIdV1(full).toString("hex");
+  canonicalPreimageByCommitment.set(
+    computeMidgardNativeTxProofCommitmentV1(source).toString("hex"),
+    canonicalCbor,
+  );
   return {
-    txId: computeMidgardNativeTxIdV1(full).toString("hex"),
-    transactionCommitment,
+    txId,
     canonicalCbor,
     source: {
       compact_cbor: source.compactCbor.toString("hex"),
@@ -153,7 +178,6 @@ const forcedTx = (
   const material = nativeMaterial(byte);
   return {
     tx_id: material.txId,
-    transaction_commitment: material.transactionCommitment,
     source: material.source,
     operator_validity: operatorValidity,
   };
@@ -314,7 +338,7 @@ const buildPayloadFixture = async ({
         SDK.ForcedInclusionTxV1,
       ) as SDK.ForcedInclusionTxV1;
       const preimage = canonicalPreimageByCommitment.get(
-        forced.transaction_commitment,
+        proofSourceCommitment(forced.source),
       );
       if (preimage === undefined) {
         throw new Error(
@@ -548,7 +572,6 @@ const buildL2ReplayFixture = async ({
 
   const source: SDK.L2TransactionSourceV1 = {
     tx_id: material.txId,
-    transaction_commitment: material.transactionCommitment,
     source: material.source,
   };
   const eventKey: SDK.EventKey = {
@@ -930,7 +953,6 @@ describe("transition-trace challenger tooling", () => {
     const material = nativeMaterial(70);
     const source: SDK.L2TransactionSourceV1 = {
       tx_id: material.txId,
-      transaction_commitment: material.transactionCommitment,
       source: material.source,
     };
     const eventKey: SDK.EventKey = {
@@ -1801,7 +1823,6 @@ describe("transition-trace challenger tooling", () => {
     const txId = material.txId;
     const source: SDK.L2TransactionSourceV1 = {
       tx_id: txId,
-      transaction_commitment: material.transactionCommitment,
       source: material.source,
     };
     const eventKey: SDK.EventKey = { L2TransactionEventKey: { tx_id: txId } };
@@ -1896,7 +1917,6 @@ describe("transition-trace challenger tooling", () => {
     const material = nativeMaterial(14);
     const normalSource: SDK.L2TransactionSourceV1 = {
       tx_id: material.txId,
-      transaction_commitment: material.transactionCommitment,
       source: material.source,
     };
     const normalKey: SDK.EventKey = {

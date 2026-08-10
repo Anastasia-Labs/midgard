@@ -223,7 +223,6 @@ const publicEventFromAuthority = (
       dataHex(
         {
           tx_id: decoded.tx.tx_id,
-          transaction_commitment: decoded.tx.transaction_commitment,
           source: decoded.tx.source,
           operator_validity: event.terminalClassification.operatorValidity,
         },

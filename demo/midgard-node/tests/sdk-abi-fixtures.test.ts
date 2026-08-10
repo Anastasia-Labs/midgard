@@ -164,7 +164,6 @@ const headerFixture: SDK.HeaderV1 = {
 
 const forcedInclusionTxV1Fixture: SDK.ForcedInclusionTxV1 = {
   tx_id: h32,
-  transaction_commitment: "34".repeat(32),
   source: {
     compact_cbor: "80",
     witness_set_compact_cbor: "81",
@@ -175,7 +174,6 @@ const forcedInclusionTxV1Fixture: SDK.ForcedInclusionTxV1 = {
 
 const l2TransactionSourceV1Fixture: SDK.L2TransactionSourceV1 = {
   tx_id: h32,
-  transaction_commitment: "35".repeat(32),
   source: {
     compact_cbor: "80",
     witness_set_compact_cbor: "81",
@@ -637,7 +635,7 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     machine_version: 1n,
     event_key_hash: "81".repeat(32),
     transaction_id: h32,
-    transaction_commitment: l2TransactionSourceV1Fixture.transaction_commitment,
+    transaction_commitment: "35".repeat(32),
     validation_context_hash: "82".repeat(32),
     source_kind: "Normal",
     prior_ledger_root: headerFixture.prevUtxosRoot,
@@ -1348,12 +1346,7 @@ describe("SDK canonical ABI fixtures", () => {
     expectRoundTrip(forcedInclusionTx, SDK.ForcedInclusionTxV1);
     expect(
       Object.keys(roundTrip(forcedInclusionTx, SDK.ForcedInclusionTxV1)),
-    ).toEqual([
-      "tx_id",
-      "transaction_commitment",
-      "source",
-      "operator_validity",
-    ]);
+    ).toEqual(["tx_id", "source", "operator_validity"]);
     for (const phase of transitionPhases) {
       expectRoundTrip(phase, SDK.TransitionPhase);
       expectRoundTrip({ step_index: 1n, phase }, SDK.EventToStepValue);

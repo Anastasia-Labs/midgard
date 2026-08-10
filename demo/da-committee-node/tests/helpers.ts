@@ -4,7 +4,6 @@ import { join } from "node:path";
 
 import {
   computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
   deriveMidgardNativeTxProofSourceV1,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -100,8 +99,6 @@ const transactionSourceV1 = (
   const source = deriveMidgardNativeTxProofSourceV1(transaction.tx);
   return {
     tx_id: transaction.txId,
-    transaction_commitment:
-      computeMidgardNativeTxProofCommitmentV1(source).toString("hex"),
     source: {
       compact_cbor: source.compactCbor.toString("hex"),
       witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),

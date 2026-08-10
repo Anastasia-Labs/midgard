@@ -221,7 +221,6 @@ const requireEntry = (
 const assertSourceMatches = ({
   retainedSource,
   transactionIdHex,
-  transactionCommitmentHex,
   compactCborHex,
   witnessSetCompactCborHex,
   fieldPreimageLengthsCborHex,
@@ -229,7 +228,6 @@ const assertSourceMatches = ({
 }: {
   readonly retainedSource: SDK.L2TransactionSourceV1;
   readonly transactionIdHex: string;
-  readonly transactionCommitmentHex: string;
   readonly compactCborHex: string;
   readonly witnessSetCompactCborHex: string;
   readonly fieldPreimageLengthsCborHex: string;
@@ -237,7 +235,6 @@ const assertSourceMatches = ({
 }): void => {
   if (
     retainedSource.tx_id !== transactionIdHex ||
-    retainedSource.transaction_commitment !== transactionCommitmentHex ||
     retainedSource.source.compact_cbor !== compactCborHex ||
     retainedSource.source.witness_set_compact_cbor !==
       witnessSetCompactCborHex ||
@@ -297,7 +294,6 @@ const reconstructRetainedClassificationV1 = ({
   assertSourceMatches({
     retainedSource: exactSource,
     transactionIdHex,
-    transactionCommitmentHex,
     compactCborHex: retainedProofSource.compactCbor.toString("hex"),
     witnessSetCompactCborHex:
       retainedProofSource.witnessSetCompactCbor.toString("hex"),
@@ -419,7 +415,6 @@ export const exerciseMidgardRetainedDaCanonicalBoundaryV1 = async ({
   });
   const retainedSource: SDK.L2TransactionSourceV1 = {
     tx_id: transactionIdHex,
-    transaction_commitment: transactionCommitmentHex,
     source: {
       compact_cbor: source.compactCbor.toString("hex"),
       witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),

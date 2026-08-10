@@ -8,10 +8,9 @@
 A canonical V1 transaction source set is a finite map from transaction ID to the
 authenticated L2 transaction proof source.  The ID is the Blake2b-256 hash of
 the compact transaction body; equivalently, the map key must match the
-\code{tx\_id} field in the source value.  The witness-set hash, field lengths,
-and transaction commitment are authenticated by the block's
-\code{transactions\_root} through that value, but they are not part of the
-transaction ID:
+\code{tx\_id} field in the source value.  The witness-set hash and field lengths
+are authenticated by the block's \code{transactions\_root} through that value,
+but they are not part of the transaction ID:
 \begin{align*}
     \T{TxSetV1} &\coloneq \T{Map(TxId, L2TransactionSourceV1)} \\
       &\coloneq \Bigl\{
@@ -26,7 +25,6 @@ The exact source value is:
     \T{L2TransactionSourceV1} \coloneq \left\{
       \begin{array}{ll}
         \T{tx\_id} : & \T{TxId} \\
-        \T{transaction\_commitment} : & \T{MidgardTxProofCommitmentV1} \\
         \T{source} : & \T{NativeTxProofSourceV1}
       \end{array} \right\} \\
     \T{NativeTxProofSourceV1} \coloneq \left\{
@@ -40,7 +38,16 @@ The exact source value is:
 \T{MidgardTxProofCommitmentV1} is the domain-separated hash
 \(\mathcal{H}_{\T{Blake2b-256}}(\T{"MidgardNativeTxProofSourceV1"}
 \mathbin{\Vert} \T{Cbor(1)} \mathbin{\Vert}
-\T{Cbor(source)})\), matching the production V1 encoder.
+\T{Cbor(source)})\), matching the production V1 encoder.  The committed source
+value does not carry a copy of it.  Its only consumer, the validation claim, binds
+the initial machine state's commitment to the value it derives from
+\T{NativeTxProofSourceV1} at the point of use, so the committed leaf holds no copy
+to keep in agreement with its own derivation.  This is a statement about the
+committed leaf alone: the L1 transaction-order payload and its field receipts still
+carry the commitment explicitly, because there it names the material a receipt is
+filed under while that material is still being published piecewise, and the order
+event checks the carried value against the same derivation once the source is
+complete.
 
 The \code{transactions\_root} is the source root for normal L2 transaction requests.
 Forced L1 transaction orders are committed separately in \code{forced\_transactions\_root}, keyed by their L1 order identity.

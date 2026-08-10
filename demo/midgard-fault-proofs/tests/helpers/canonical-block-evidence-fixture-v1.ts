@@ -12,7 +12,6 @@
  */
 import {
   computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -95,8 +94,6 @@ export const buildFixtureTransactionV1 = ({
     deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
   const source: SDK.L2TransactionSourceV1 = {
     tx_id: computeMidgardNativeTxIdV1(full).toString("hex"),
-    transaction_commitment:
-      computeMidgardNativeTxProofCommitmentV1(proofSource).toString("hex"),
     source: {
       compact_cbor: proofSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:

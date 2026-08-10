@@ -101,7 +101,6 @@ production native encoder:
 ```text
 L2TransactionSourceV1 {
   tx_id,
-  transaction_commitment,
   source: NativeTxProofSourceV1 {
     compact_cbor,
     witness_set_compact_cbor,
@@ -118,7 +117,6 @@ the serialized L1 order output reference (not the L2 transaction ID) to:
 ```text
 ForcedInclusionTxV1 {
   tx_id,
-  transaction_commitment,
   source: NativeTxProofSourceV1 {
     compact_cbor,
     witness_set_compact_cbor,

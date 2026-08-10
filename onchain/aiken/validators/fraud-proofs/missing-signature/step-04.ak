@@ -315,7 +315,7 @@ test missing_signature_step_04_rejects_a_forged_witness_set() fail {
 ///
 /// What refuses it is the thread-anchored `verified_witness_set_hash`, which
 /// step-01 read off the block-committed compact structure and which no redeemer
-/// can restate. Neutralise that one `expect` in `resolved_sources` and this test
+/// can restate. Neutralise that one `expect` in `anchored_native_tx` and this test
 /// passes.
 test missing_signature_step_04_rejects_a_forged_witness_set_and_compact() fail {
   let block = challenged_block()

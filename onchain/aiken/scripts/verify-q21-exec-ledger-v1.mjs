@@ -14,11 +14,15 @@
  * Neither introduces a walk whose cost grows faster than the one it replaced,
  * so the ledger carries no `basisFit:"exceeds"` row.
  *
- * The two call sites moved in **opposite** directions — the forced-order path
- * got cheaper, the two-field L2 path got dearer, because opening two fields
- * re-derives the transaction id twice over. Both are pinned for that reason. A
- * lane that publishes only the row that improved has not measured itself, and
- * an unpinned regression is the one that grows.
+ * Both call sites are pinned, and the reason is historical rather than
+ * symmetric. Under #577 they moved in **opposite** directions — the forced-order
+ * path got cheaper, the two-field L2 path got dearer, because opening two fields
+ * re-derived the transaction id twice over — and the lane published the
+ * regression rather than only the row that improved. #584 then paid the anchor
+ * once (`field_opening_v1.anchored_native_tx`) and retired
+ * `transaction_commitment` from the committed source value, and both rows fell.
+ * Both stay pinned: an unpinned regression is the one that grows, and the row
+ * that is cheap today is the one nobody will notice getting dear.
  *
  * Aiken tests cannot assert their own execution units, so the pin lives one
  * level up: a ledger of expected readings next to this verifier, which takes

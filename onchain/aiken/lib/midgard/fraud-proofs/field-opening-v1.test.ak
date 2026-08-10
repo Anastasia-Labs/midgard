@@ -34,10 +34,13 @@ use aiken/collection/list
 use aiken/primitive/bytearray
 use cardano/transaction.{Input}
 use midgard/fraud_proofs/field_opening_v1.{
-  BodyAnchor, FieldOpeningV1, NativeTxAnchorV1, WitnessAnchor,
-  address_witnesses_field_index, first_witness_set_field_index,
-  fold_opened_field, mint_field_index, opened_field_view, opened_field_walk,
-  redeemers_field_index, script_witnesses_field_index, spend_inputs_field_index,
+  AnchoredNativeTxV1, BodyAnchor, BodyTxOpening, FieldOpeningV1,
+  NativeTxAnchorV1, WitnessAnchor, WitnessTxOpening,
+  address_witnesses_field_index, anchored_field_view, anchored_field_walk,
+  anchored_native_tx, first_witness_set_field_index, fold_opened_field,
+  mint_field_index, opened_field_view, opened_field_walk, redeemers_field_index,
+  reference_inputs_field_index, script_witnesses_field_index,
+  spend_inputs_field_index,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{
@@ -51,8 +54,8 @@ use midgard/native_tx_carriage_v1.{
   verify_field_preimage_certificate_v1,
 }
 use midgard/native_tx_field_access_v1.{
-  FieldViewV1, chunk_bytes_k, encode_field_preimage, field_item_at,
-  field_item_count,
+  FieldCarriageV1, FieldViewV1, Inline, chunk_bytes_k, encode_field_preimage,
+  field_item_at, field_item_count,
 }
 
 fn block() -> fixture.NativeBlockFixtureV1 {
@@ -180,6 +183,113 @@ test opened_field_walk_is_refused_on_a_mismatched_split() fail {
   True
 }
 
+// ## One anchor, many fields
+//
+// `anchored_native_tx` exists so a step that opens two fields of one transaction
+// pays the tx-id derivation once instead of twice. What that must not buy is a
+// weaker check: the §2.5 half and the carriage tier are properties of the
+// *field*, not of the anchor, so both have to be re-run on every opening the
+// handle serves. The rows below assert exactly that — one positive that the
+// second field really opens, and three negatives that the second opening is
+// still guarded.
+
+fn anchored_body_tx() -> AnchoredNativeTxV1 {
+  anchored_native_tx(
+    BodyTxOpening { native_tx_compact_cbor: block().compact_cbor },
+    body_anchor(),
+  )
+}
+
+fn inline_items(items: List<ByteArray>) -> FieldCarriageV1 {
+  Inline { preimage: encode_field_preimage(items) }
+}
+
+fn anchored_view(
+  anchored: AnchoredNativeTxV1,
+  field_index: Int,
+  items: List<ByteArray>,
+) -> FieldViewV1 {
+  anchored_field_view(
+    anchored,
+    field_index,
+    inline_items(items),
+    [],
+    fixture.test_certificate_policy_id,
+  )
+}
+
+fn spend_input_items() -> List<ByteArray> {
+  block().tx.body.inputs |> list.map(encode_midgard_tx_input)
+}
+
+fn reference_input_items() -> List<ByteArray> {
+  block().tx.body.reference_inputs |> list.map(encode_midgard_tx_input)
+}
+
+/// Positive: one anchor, two fields, and each field authenticated against its
+/// **own** commitment.
+///
+/// Fields 0 and 1 are the pair that makes this worth asserting. §4 removed
+/// field-index domain separation, so their commitments are computed the same
+/// way and differ only because their items do; a handle that carried a field's
+/// identity rather than the transaction's would open both to the same bytes and
+/// nothing would say so.
+test one_anchor_opens_two_body_fields_against_their_own_commitments() {
+  let anchored = anchored_body_tx()
+  expect [spend_item] = spend_input_items()
+  expect [reference_item] = reference_input_items()
+  and {
+    spend_item != reference_item,
+    field_item_at(
+      anchored_view(anchored, spend_inputs_field_index, spend_input_items()),
+      0,
+    ) == spend_item,
+    field_item_at(
+      anchored_view(
+        anchored,
+        reference_inputs_field_index,
+        reference_input_items(),
+      ),
+      0,
+    ) == reference_item,
+  }
+}
+
+/// The door's §7.1 hash check is still per field: field 1's preimage does not
+/// open field 0, even though the same anchor authenticated both.
+test one_anchor_refuses_a_field_carried_with_another_fields_preimage() fail {
+  field_item_count(
+    anchored_view(
+      anchored_body_tx(),
+      spend_inputs_field_index,
+      reference_input_items(),
+    ),
+  ) == 0
+}
+
+/// The §2.5 split survives the handle. A body opening carries no witness set,
+/// so a witness-set index would hand the door the module's internal placeholder
+/// — the mismatch `opened_field_view` refuses, refused here on the second
+/// opening rather than the first.
+test one_anchor_refuses_a_witness_field_on_a_body_handle() fail {
+  field_item_count(
+    anchored_view(anchored_body_tx(), script_witnesses_field_index, []),
+  ) == 0
+}
+
+/// And it survives it on the walk entry point too, which is the one the
+/// transition-trace family opens its two fields through.
+test one_anchor_walk_refuses_a_witness_field_on_a_body_handle() fail {
+  let Pair(_view, _checkpoint) = anchored_field_walk(
+    anchored_body_tx(),
+    script_witnesses_field_index,
+    inline_items([]),
+    [],
+    fixture.test_certificate_policy_id,
+  )
+  True
+}
+
 // ## The §3 two-level split, and what it does not commit
 
 /// **The premise.** The forged compact structure re-derives to the *same*
@@ -206,7 +316,7 @@ test forged_witness_set_hash_re_derives_the_same_tx_id() {
 /// the witness set that matches it — and the door refuses, because the
 /// `witness_set_hash` it checks against is the thread's, not the redeemer's.
 ///
-/// Neutralise the `witness_set_hash` equality in `resolved_sources` and this
+/// Neutralise the `witness_set_hash` equality in `anchored_native_tx` and this
 /// test passes with `field_item_count == 0`: every §2.5 absence rule over fields
 /// 6–8 becomes true of every transaction ever committed.
 test forged_witness_set_and_compact_is_refused_under_the_anchor() fail {
@@ -420,7 +530,7 @@ test tier_three_certificate_over_a_body_field_is_bound_by_the_tx_id() {
 /// `WitnessAnchor` — every §2.5 check above passes — and the door is still
 /// refused, because tier 3 cannot reach the anchor for a witness-set field.
 ///
-/// Neutralise `carriage_reaches_the_anchor` in `resolved_sources` and this test
+/// Neutralise `carriage_reaches_the_anchor` in `field_pairs_with` and this test
 /// passes with `field_item_count == 256`: an invalid-signature or
 /// missing-signature fault becomes provable against a transaction whose field 7
 /// the prover wrote itself.
@@ -490,7 +600,7 @@ test opened_field_walk_refuses_certified_carriage_on_a_witness_field() fail {
 /// field through the same call.
 ///
 /// This is what stops the guards above from passing for the wrong reason. A
-/// `resolved_sources` that refused every `Certified` carriage would satisfy all
+/// `field_pairs_with` that refused every `Certified` carriage would satisfy all
 /// four `fail` tests and break tier 3 for the six fields it is sound for; this
 /// row goes red the moment that happens. The certificate here could not in fact
 /// be minted — the row above proves the minting predicate refuses it — because
@@ -507,4 +617,130 @@ test certified_carriage_still_opens_on_a_body_field() {
     ),
     0,
   ) == encode_midgard_address_witness(fixture.sample_address_witness())
+}
+
+// ## The tier guard on the *second* opening of a live handle
+//
+// The four `fail` rows above all reach the tier guard through the single-field
+// entry points, where the anchor and the carriage arrive together in one
+// `FieldOpeningV1`. `anchored_native_tx` splits them: the anchor is paid once and
+// each later opening names its own field and its own carriage. That is exactly the
+// shape in which a tier check can be lost — `field_pairs_with` is called from
+// `anchored_field_view` and `anchored_field_walk` rather than from
+// `anchored_native_tx`, and an edit that hoisted it into the constructor would
+// still satisfy every row above while leaving the second opening of a handle
+// unguarded.
+//
+// So the refusal is asserted again here, per opening rather than transitively: a
+// witness handle whose first field opens honestly under tier 1, then offered the
+// tier-3 fabrication at the same witness field. The positive first open is inside
+// the test body on purpose — it is what makes the row a statement about the
+// *second* opening rather than about a handle that never worked.
+
+fn anchored_witness_tx() -> AnchoredNativeTxV1 {
+  let committed = block()
+  anchored_native_tx(
+    WitnessTxOpening {
+      native_tx_compact_cbor: committed.compact_cbor,
+      witness_set: committed.witness_set_compact,
+    },
+    witness_anchor(),
+  )
+}
+
+fn address_witness_items() -> List<ByteArray> {
+  block().tx.witness_set.addr_tx_wits
+    |> list.map(encode_midgard_address_witness)
+}
+
+fn anchored_view_with_references(
+  anchored: AnchoredNativeTxV1,
+  field_index: Int,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+) -> FieldViewV1 {
+  anchored_field_view(
+    anchored,
+    field_index,
+    carriage,
+    reference_inputs,
+    fixture.test_certificate_policy_id,
+  )
+}
+
+/// **The guard, second opening, view entry point.** Field 7 opens under tier-1
+/// carriage of the committed items — so the handle is demonstrably live — and the
+/// very next opening of that same live handle is refused when it carries the
+/// tier-3 fabrication.
+///
+/// Neutralise `carriage_reaches_the_anchor` in `field_pairs_with`, or hoist that
+/// call out of `anchored_field_view` into `anchored_native_tx`, and this test
+/// passes with `field_item_count == 256`.
+test one_anchor_refuses_certified_carriage_at_a_witness_field_on_the_second_open() fail {
+  let anchored = anchored_witness_tx()
+  let honest = address_witness_items()
+  expect
+    field_item_count(
+      anchored_view(anchored, address_witnesses_field_index, honest),
+    ) == list.length(honest)
+  let preimage = forged_witness_preimage()
+  field_item_count(
+    anchored_view_with_references(
+      anchored,
+      address_witnesses_field_index,
+      fixture.certified_carriage_v1(preimage),
+      certified_reference_inputs(address_witnesses_field_index, preimage),
+    ),
+  ) == forged_witness_count
+}
+
+/// The same, through the walk entry point, which is the one the transition-trace
+/// family opens its fields through and the one §10's resumable work will add more
+/// callers of. `anchored_field_walk` has its own `field_pairs_with` call, so this
+/// is a second guard rather than the same guard reached twice.
+test one_anchor_walk_refuses_certified_carriage_at_a_witness_field_on_the_second_open() fail {
+  let anchored = anchored_witness_tx()
+  let honest = address_witness_items()
+  expect
+    field_item_count(
+      anchored_view(anchored, address_witnesses_field_index, honest),
+    ) == list.length(honest)
+  let preimage = forged_witness_preimage()
+  let Pair(view, _checkpoint) = anchored_field_walk(
+    anchored,
+    address_witnesses_field_index,
+    fixture.certified_carriage_v1(preimage),
+    certified_reference_inputs(address_witnesses_field_index, preimage),
+    fixture.test_certificate_policy_id,
+  )
+  field_item_count(view) == forged_witness_count
+}
+
+/// **The neutralisation twin for the handle path.** The refusal is scoped to
+/// fields 6–8 here too, not a ban on tier 3 for anything a handle serves: a body
+/// handle opens field 0 under tier-1 carriage and then field 5 under the identical
+/// tier-3 carriage and certificate the two rows above are refused for.
+///
+/// Without this row an `anchored_field_view` that rejected every `Certified`
+/// carriage outright would satisfy both `fail` tests above and silently break
+/// tier 3 for the six fields it is sound for.
+test one_anchor_still_opens_certified_carriage_on_a_body_field_second() {
+  let anchored = anchored_body_tx()
+  let preimage = forged_witness_preimage()
+  expect [spend_item] = spend_input_items()
+  and {
+    field_item_at(
+      anchored_view(anchored, spend_inputs_field_index, spend_input_items()),
+      0,
+    ) == spend_item,
+    field_item_at(
+      anchored_view_with_references(
+        anchored,
+        mint_field_index,
+        fixture.certified_carriage_v1(preimage),
+        certified_reference_inputs(mint_field_index, preimage),
+      ),
+      0,
+    ) == encode_midgard_address_witness(fixture.sample_address_witness()),
+  }
 }

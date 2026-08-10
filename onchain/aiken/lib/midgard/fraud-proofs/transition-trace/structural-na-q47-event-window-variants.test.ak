@@ -316,7 +316,6 @@ fn authenticated_forced_tx(
   let payload = authenticated_tx_order_payload()
   ledger_state.ForcedInclusionTxV1 {
     tx_id: payload.tx_id,
-    transaction_commitment: payload.transaction_commitment,
     source: payload.source,
     operator_validity,
   }

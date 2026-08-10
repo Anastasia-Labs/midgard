@@ -1,6 +1,5 @@
 import {
   computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
@@ -463,8 +462,6 @@ const decodeTransactions = async ({
         );
       const expected: SDK.L2TransactionSourceV1 = {
         tx_id: expectedTxId,
-        transaction_commitment:
-          computeMidgardNativeTxProofCommitmentV1(source).toString("hex"),
         source: {
           compact_cbor: source.compactCbor.toString("hex"),
           witness_set_compact_cbor:
@@ -553,8 +550,6 @@ const authenticateForcedTransactionPreimages = (
       );
       const expected: SDK.ForcedInclusionTxV1 = {
         tx_id: computeMidgardNativeTxIdV1(full).toString("hex"),
-        transaction_commitment:
-          computeMidgardNativeTxProofCommitmentV1(source).toString("hex"),
         source: {
           compact_cbor: source.compactCbor.toString("hex"),
           witness_set_compact_cbor:

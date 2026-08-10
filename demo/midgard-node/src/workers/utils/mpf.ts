@@ -9,7 +9,6 @@ import {
 } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   encodeCborBytes,
@@ -555,8 +554,6 @@ export const encodeTransactionRootValue = (
   );
   const value: SDK.L2TransactionSourceV1 = {
     tx_id: transactionId.toString("hex"),
-    transaction_commitment:
-      computeMidgardNativeTxProofCommitmentV1(source).toString("hex"),
     source: {
       compact_cbor: source.compactCbor.toString("hex"),
       witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),

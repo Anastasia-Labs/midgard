@@ -16,7 +16,6 @@ import {
 } from "@al-ft/midgard-core/cek-semantic";
 import {
   computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1,
   encodeMidgardNativeTxCanonicalV1,
@@ -83,8 +82,6 @@ const payloadWithProgramMaterial = async (
       const source = deriveMidgardNativeTxProofSourceV1(tx);
       const committedSource: SDK.L2TransactionSourceV1 = {
         tx_id: txId,
-        transaction_commitment:
-          computeMidgardNativeTxProofCommitmentV1(source).toString("hex"),
         source: {
           compact_cbor: source.compactCbor.toString("hex"),
           witness_set_compact_cbor:

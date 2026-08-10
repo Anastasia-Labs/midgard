@@ -41,15 +41,6 @@ const h32_c =
 const h64_a =
   #"44444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444"
 
-/// The `transaction_commitment` a vector supplies when it does not read the
-/// field — see `raw_l2_source_membership`, which takes it as an argument rather
-/// than choosing it, so that "this vector does not read the retired field" is
-/// stated per vector instead of assumed for all of them.
-///
-/// Deliberately one of the module's generic filler hashes and not a real
-/// commitment: a value that *looked* derived would invite a reader to trust it.
-const unread_source_commitment = h32_b
-
 const fraud_category_id = #"00000004"
 
 const zero_hash =
@@ -342,44 +333,23 @@ fn validation_descriptor_membership(
   }
 }
 
-/// An L2 transaction source committed under the transactions root, with the
-/// retired proof-source `transaction_commitment` supplied by the caller.
+/// An L2 transaction source committed under the transactions root.
 ///
 /// Under §4's flat reversion the L2 transition authenticates the compact bytes
-/// against the tx-id anchor through the §8.8 door, so it no longer reads
-/// `transaction_commitment` at all. The field survives on the parent
-/// `ledger_state.L2TransactionSourceV1` type, and every vector in this module
-/// passes `unread_source_commitment` for it: L2 source membership is verified
-/// over raw key/value bytes, which do not care what the field holds.
-///
-/// It is an **argument** rather than a constant inside this function because it
-/// is not safe for every caller, and the unsafe caller does not exist yet.
-/// `validation_claim_v1`'s `NormalValidationSource` arm still requires this
-/// field to be the real `native_tx_proof_commitment_v1` of the proof-source
-/// triple; a vector that wired a validation claim to a source built here with a
-/// placeholder would abort inside the claim rather than at the point of
-/// interest, and would do so for a reason no one reading the vector could see.
-/// Baking the placeholder in would hand that state to the next vector silently.
-/// Passing it makes each vector say which it is relying on — and gives the one
-/// that needs a real commitment somewhere to put it without editing this helper.
-///
-/// Aiken has no default arguments (`fn f(a: Int, b: Int = 3)` is a parse error
-/// under both the released compiler and the fork), so "explicit at the call
-/// site" is the whole of the available isolation. Retiring the field from
-/// `L2TransactionSourceV1` outright is
-/// [#584](https://github.com/Anastasia-Labs/midgard/issues/584)'s
-/// serialized-surface work, which is also where the surviving
-/// `validation_claim_v1` reader is resolved.
+/// against the tx-id anchor through the §8.8 door, and #584 retired the
+/// proof-source `transaction_commitment` from `L2TransactionSourceV1` outright
+/// once `validation_claim_v1` — the last reader — was re-anchored onto the
+/// derivation instead of the carried field. So there is nothing left for a
+/// caller to choose here: the source is `(tx_id, source)` and nothing else, and
+/// L2 source membership is verified over raw key/value bytes.
 fn raw_l2_source_membership(
   tx_id: ByteArray,
   compact_cbor: ByteArray,
-  transaction_commitment: ByteArray,
 ) -> transition_trace.RootMembershipProof<ByteArray, ByteArray> {
   let witness_set_compact_cbor = native_l2_witness_set_compact_cbor()
   let field_preimage_lengths_cbor = native_l2_field_preimage_lengths_cbor()
   let source = ledger_state.L2TransactionSourceV1 {
     tx_id,
-    transaction_commitment,
     source: ledger_state.NativeTxProofSourceV1 {
       compact_cbor,
       witness_set_compact_cbor,
@@ -524,7 +494,6 @@ fn forced_tx(
 ) -> ledger_state.ForcedInclusionTxV1 {
   ledger_state.ForcedInclusionTxV1 {
     tx_id: h32_a,
-    transaction_commitment: h32_b,
     source: ledger_state.NativeTxProofSourceV1 {
       compact_cbor,
       witness_set_compact_cbor: #"",
@@ -567,16 +536,12 @@ fn authenticated_forced_tx(
   let tx = empty_native_transaction()
   let compact = native_transaction.midgard_transaction_to_compact(tx)
   let proof_source = native_transaction.midgard_transaction_proof_source_v1(tx)
-  let transaction_commitment = native_transaction.midgard_transaction_proof_commitment_v1(
-    tx,
-  )
   let tx_id = native_compact.native_tx_id_for_version(
     native_types.native_tx_version_v1,
     native_compact.encode_native_tx_body_compact(compact.body),
   )
   ledger_state.ForcedInclusionTxV1 {
     tx_id,
-    transaction_commitment,
     source: ledger_state.NativeTxProofSourceV1 {
       compact_cbor: proof_source.compact_cbor,
       witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
@@ -693,7 +658,20 @@ fn accepted_forced_transition_case(
     machine_version: validation_trace_v1.machine_version,
     event_key_hash,
     transaction_id: source.tx_id,
-    transaction_commitment: source.transaction_commitment,
+    // The §7 proof-source commitment of the source's own triple. Derived here
+    // because `ForcedInclusionTxV1` no longer carries one — which is exactly
+    // what `validation_claim_v1.source_binding_is_exact` now derives too, so a
+    // fixture that hard-coded a value would stop testing the binding.
+    //
+    // Derived from the `source` parameter's own three members rather than from
+    // the transaction `authenticated_forced_tx` happens to build them out of, so
+    // the fixture keeps agreeing with the claim if a caller ever passes a source
+    // assembled some other way.
+    transaction_commitment: native_compact.native_tx_proof_commitment_v1(
+      source.source.compact_cbor,
+      source.source.witness_set_compact_cbor,
+      source.source.field_preimage_lengths_cbor,
+    ),
     validation_context_hash,
     source_kind: validation_trace_v1.Forced,
     prior_ledger_root: h32_a,
@@ -1101,7 +1079,6 @@ test accepts_l2_source_event_missing_trace_fault() {
   let source_membership = raw_l2_source_membership(
     tx_id,
     native_l2_compact_cbor(spend_inputs_preimage, outputs_preimage),
-    unread_source_commitment,
   )
   let event_to_step_non_membership = empty_non_membership(
     transition_trace.EventToStepRootDomain,
@@ -1432,11 +1409,7 @@ test accepts_normal_transaction_classified_as_forced_fault() {
     h32_b,
   )
   let trace_proof = trace_membership(opened_step)
-  let source_membership = raw_l2_source_membership(
-    h32_a,
-    #"d87980",
-    unread_source_commitment,
-  )
+  let source_membership = raw_l2_source_membership(h32_a, #"d87980")
   let header = ledger_state.HeaderV1 {
     ..base_header(),
     transactions_root: source_membership.root,
@@ -1687,11 +1660,7 @@ test accepts_valid_l2_transaction_no_op_transition_fault() {
   let produced_key = native_components.encode_midgard_tx_input(
     native_input(tx_id, 0),
   )
-  let source_membership = raw_l2_source_membership(
-    tx_id,
-    compact_cbor,
-    unread_source_commitment,
-  )
+  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
   let expected_post_root = proof.insert_root(
     proof.delete_root(pre_root, spent_key, spent_value, []),
@@ -1765,11 +1734,7 @@ test rejects_l2_transaction_when_trace_matches_expected_post_root() {
   let produced_key = native_components.encode_midgard_tx_input(
     native_input(tx_id, 0),
   )
-  let source_membership = raw_l2_source_membership(
-    tx_id,
-    compact_cbor,
-    unread_source_commitment,
-  )
+  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
   let expected_post_root = proof.insert_root(
     proof.delete_root(pre_root, spent_key, spent_value, []),
@@ -1842,11 +1807,7 @@ test rejects_l2_transaction_with_wrong_authenticated_transaction_id() fail {
   let produced_key = native_components.encode_midgard_tx_input(
     native_input(wrong_tx_id, 0),
   )
-  let source_membership = raw_l2_source_membership(
-    wrong_tx_id,
-    compact_cbor,
-    unread_source_commitment,
-  )
+  let source_membership = raw_l2_source_membership(wrong_tx_id, compact_cbor)
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
   let event_key = ledger_state.L2TransactionEventKey { tx_id: wrong_tx_id }
   let opened_step = step(
@@ -1912,11 +1873,7 @@ test rejects_l2_transaction_with_uncommitted_spend_preimage() fail {
   let produced_key = native_components.encode_midgard_tx_input(
     native_input(tx_id, 0),
   )
-  let source_membership = raw_l2_source_membership(
-    tx_id,
-    compact_cbor,
-    unread_source_commitment,
-  )
+  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
   let event_key = ledger_state.L2TransactionEventKey { tx_id }
   let opened_step = step(
@@ -2013,11 +1970,7 @@ fn substituted_preimage_l2_fault(
   let produced_key = native_components.encode_midgard_tx_input(
     native_input(tx_id, 0),
   )
-  let source_membership = raw_l2_source_membership(
-    tx_id,
-    compact_cbor,
-    unread_source_commitment,
-  )
+  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
   let event_key = ledger_state.L2TransactionEventKey { tx_id }
   let opened_step = step(

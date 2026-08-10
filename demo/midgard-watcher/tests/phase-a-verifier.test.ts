@@ -40,7 +40,6 @@
  */
 import {
   computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
@@ -547,8 +546,6 @@ const buildBlock = async (input: {
       deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
     const source: SDK.L2TransactionSourceV1 = {
       tx_id: computeMidgardNativeTxIdV1(full).toString("hex"),
-      transaction_commitment:
-        computeMidgardNativeTxProofCommitmentV1(proofSource).toString("hex"),
       source: {
         compact_cbor: proofSource.compactCbor.toString("hex"),
         witness_set_compact_cbor:

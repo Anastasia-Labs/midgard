@@ -1992,14 +1992,12 @@ const verifyTerminalSemantics = (
       ? (() => {
           const tx = eventPair.payload as {
             tx_id?: unknown;
-            transaction_commitment?: unknown;
             source?: unknown;
           };
           try {
             return Data.to(
               {
                 tx_id: tx.tx_id,
-                transaction_commitment: tx.transaction_commitment,
                 source: tx.source,
                 operator_validity: spend.purpose,
               } as never,

@@ -7,7 +7,6 @@ import {
   buildMidgardValidationTraceTree,
   compareOutRefs,
   computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -173,6 +172,79 @@ export const moduleDir = dirname(fileURLToPath(import.meta.url));
 
 export const repoRoot = resolve(moduleDir, "../../../..");
 
+/**
+ * The compiled on-chain artifact as it sits in the tree. These tests read it;
+ * they never rebuild it.
+ *
+ * KNOWN RED, AND WHO OWNS IT. #584 retired `transaction_commitment` from
+ * `ledger_state.L2TransactionSourceV1` and `ledger_state.ForcedInclusionTxV1`
+ * without regenerating `plutus.json` — the blueprint still declares both
+ * constructors with three and four fields respectively, while the encoders in
+ * `@al-ft/midgard-sdk` now emit two and three. The stale script destructures a
+ * field that is no longer there, so the scenario dies inside the validator with
+ * an `EvaluatorError` reading `unexpected empty list`. Regenerating the blueprint
+ * is #579's, and these are the TEN tests it has to turn green again.
+ *
+ * Six of them are emulator scenarios in this directory. All six die at the same
+ * `Spend[0] unexpected empty list`:
+ *
+ *   1. `submit-init-emulator-soundness.test.ts` — "lets a challenger win against
+ *      an operator who claimed Accepted over a non-empty claimed ledger delta"
+ *   2. `submit-init-emulator-soundness.test.ts` — "rejects the cleared-delta
+ *      rejection successor the deleted VM-DEFECT-2 clause required"
+ *   3. `submit-init-emulator-soundness.test.ts` — "cannot be defeated when the
+ *      operator honestly accepted a valid transaction carrying a non-empty ledger
+ *      delta"
+ *   4. `submit-init-emulator-transition-trace.test.ts` — "submits and removes a
+ *      tail transition-trace fraud proof end to end"
+ *   5. `submit-init-emulator-validation-dispute.test.ts` — "opens, bisects,
+ *      resolves a fitting complete item by 'direct', and awards a validation
+ *      dispute"
+ *   6. `submit-init-emulator-validation-dispute.test.ts` — "opens, bisects,
+ *      resolves a fitting complete item by 'reference', and awards a validation
+ *      dispute"
+ *
+ * Rows 5 and 6 are the two `it.each` rows of one table, so a runner reports them
+ * under one `FAIL` block with two names. The two *other* validation-dispute
+ * scenarios — "publishes every authenticated validation-dispute control under the
+ * exact L1 envelope" and "publishes and verifies the authenticated
+ * generated-blueprint CEK direct-resolver reference script" — **pass**: they
+ * publish and re-read controls without ever spending an affected leaf, so the
+ * stale arity never reaches a script. Running these three files gives
+ * `6 failed | 2 passed (8)`.
+ *
+ * Rows 1-3 need reading rather than only re-running: their expected failure
+ * *stage* moved (from prepare-selected / semantic-resolution to open), so they
+ * present as an assertion about the wrong stage rather than as an evaluator
+ * error, while being this same stale script underneath.
+ *
+ * The remaining four are schema-parity rows, not emulator scenarios, and they
+ * live in `demo/midgard-node/tests/sdk-aiken-schema-parity.test.ts`. They compare
+ * each SDK `Data` schema against the blueprint definition of the same name, so
+ * the stale arity shows up directly as a field-count mismatch rather than as an
+ * evaluator error:
+ *
+ *   7. "matches ForcedInclusionTxV1Schema to
+ *      midgard/ledger_state/ForcedInclusionTxV1 recursively"
+ *   8. "matches L2TransactionSourceV1Schema to
+ *      midgard/ledger_state/L2TransactionSourceV1 recursively"
+ *   9. "matches ValidationSourceMembershipV1Schema to
+ *      midgard/validation_claim_v1/ValidationSourceMembershipV1 recursively"
+ *  10. "matches ValidationClaimWitnessV1Schema to
+ *      midgard/validation_claim_v1/ValidationClaimWitnessV1 recursively"
+ *
+ * That file gives `4 failed | 28 passed (32)`.
+ *
+ * TEN with those names is the handoff figure, and it is written down here rather
+ * than left in a review thread so a later reviewer diffing #579 against it is
+ * diffing against the real set. Nothing outside these ten is expected red for
+ * this reason.
+ *
+ * Both figures are for the blueprint **in the tree**. This file and the parity
+ * file both honour `MIDGARD_REAL_BLUEPRINT_PATH`, so pointing that variable at an
+ * already-regenerated blueprint is how #579 checks its work — and it is also the
+ * one way to see a different red set than the one enumerated above.
+ */
 export const realBlueprintPath =
   process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
   resolve(repoRoot, "onchain/aiken/plutus.json");
@@ -1588,8 +1660,6 @@ export const buildAcceptedClaimOverRejectingTransactionFixture = async ({
   const transactionId = computeMidgardNativeTxIdV1(forcedNativeTx);
   const forcedTransaction = {
     tx_id: transactionId.toString("hex"),
-    transaction_commitment:
-      computeMidgardNativeTxProofCommitmentV1(forcedSource).toString("hex"),
     source: {
       compact_cbor: forcedSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
@@ -1745,8 +1815,6 @@ export const buildHonestAcceptedValidationDisputeFixture = async ({
     deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(forcedCanonicalCbor);
   const forcedTransaction = {
     tx_id: transactionId.toString("hex"),
-    transaction_commitment:
-      computeMidgardNativeTxProofCommitmentV1(forcedSource).toString("hex"),
     source: {
       compact_cbor: forcedSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:

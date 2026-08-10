@@ -43,6 +43,20 @@ type NormalizedSchema =
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(testDir, "../../..");
+/**
+ * KNOWN RED against the blueprint currently in the tree. #584 retired
+ * `transaction_commitment` from the committed source leaves without regenerating
+ * `plutus.json`, so four rows below compare a two- or three-field SDK schema
+ * against a stale three- or four-field blueprint definition and fail on the field
+ * count: `ForcedInclusionTxV1Schema`, `L2TransactionSourceV1Schema`,
+ * `ValidationSourceMembershipV1Schema` and `ValidationClaimWitnessV1Schema`
+ * (`4 failed | 28 passed`). Regenerating the blueprint is
+ * [#579](https://github.com/Anastasia-Labs/midgard/issues/579)'s; these four are
+ * rows 7-10 of the ten-test handoff set enumerated in
+ * `demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts`, which
+ * also owns the six emulator scenarios red for the same cause. Point
+ * `MIDGARD_REAL_BLUEPRINT_PATH` at a regenerated blueprint to check the fix.
+ */
 const blueprintPath =
   process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
   path.join(repoRoot, "onchain/aiken/plutus.json");
