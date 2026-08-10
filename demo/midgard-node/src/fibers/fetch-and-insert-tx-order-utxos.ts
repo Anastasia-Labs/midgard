@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import { midgardBoundedItemChunkCountV1 } from "@al-ft/midgard-core";
 import {
   decodeMidgardCekProgramMaterialEntryV1,
   encodeMidgardCekProgramMaterialEntryV1,
@@ -13,23 +12,18 @@ import {
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   decodeMidgardNativeTxProofFieldLengthsV1,
 } from "@al-ft/midgard-core/codec";
+// `authenticatedMidgardFieldViewV1` is deliberately not imported — see
+// `reconstructTxOrderMaterialV1`'s note on why the §8.8 door cannot be the
+// authenticator on this path until #585 swaps the nine-field derivation to §4.
+import { encodeMidgardFieldArrayHeaderV1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
   isMidgardConsensusProfileV1,
   type MidgardConsensusProfileV1,
 } from "@al-ft/midgard-core/consensus-profile-v1";
-import {
-  deriveMidgardTxFieldReceiptAssetNameV1,
-  reconstructMidgardTransactionV1,
-  verifyMidgardV1TxFieldChunk,
-} from "@al-ft/midgard-core/consensus-validation-v1";
+import { reconstructMidgardTransactionV1 } from "@al-ft/midgard-core/consensus-validation-v1";
 import { collectMidgardV1AttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  Data,
-  LucidEvolution,
-  toUnit,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
 import {
@@ -135,142 +129,54 @@ export const publishedProgramMaterialSnapshotError = (
       })
     : undefined;
 
-const outRefKeyV1 = (reference: SDK.OutputReference): string =>
-  `${reference.transactionId}#${reference.outputIndex.toString()}`;
-
-const lucidOutRefV1 = (
-  reference: SDK.OutputReference,
-  label: string,
-): Pick<UTxO, "txHash" | "outputIndex"> => {
-  const outputIndex = Number(reference.outputIndex);
-  if (!Number.isSafeInteger(outputIndex) || outputIndex < 0) {
-    throw new Error(
-      `${label} output index does not fit a non-negative safe integer`,
-    );
-  }
-  return { txHash: reference.transactionId, outputIndex };
-};
-
-const canonicalHeaderV1 = (major: number, length: number): Buffer => {
-  if (!Number.isSafeInteger(length) || length < 0) {
-    throw new Error("canonical CBOR header length is invalid");
-  }
-  if (length < 24) return Buffer.from([(major << 5) | length]);
-  if (length <= 0xff) return Buffer.from([(major << 5) | 24, length]);
-  if (length <= 0xffff) {
-    const header = Buffer.alloc(3);
-    header[0] = (major << 5) | 25;
-    header.writeUInt16BE(length, 1);
-    return header;
-  }
-  if (length <= 0xffff_ffff) {
-    const header = Buffer.alloc(5);
-    header[0] = (major << 5) | 26;
-    header.writeUInt32BE(length, 1);
-    return header;
-  }
-  throw new Error("canonical CBOR header length exceeds uint32");
-};
-
-const fieldItemEncodedSizeV1 = (
-  fieldIndex: number,
-  itemLength: number,
-): number => {
-  if ([0, 1, 2, 3, 4, 7].includes(fieldIndex)) {
-    return canonicalHeaderV1(2, itemLength).length + itemLength;
-  }
-  if (fieldIndex === 5) {
-    if (itemLength <= 1) {
-      throw new Error("mint policy item is missing its array-pair header");
-    }
-    return itemLength - 1;
-  }
-  if (fieldIndex === 6 || fieldIndex === 8) return itemLength;
-  throw new Error(`unknown V1 field index ${fieldIndex.toString()}`);
-};
-
-const frontierMatchesV1 = (
-  left: SDK.TxFieldReceiptV1["collection_proof"]["frontier"],
-  right: SDK.TxFieldReceiptV1["collection_proof"]["frontier"],
-): boolean =>
-  left.length === right.length &&
-  left.every(
-    (peak, index) =>
-      peak.height === right[index]!.height && peak.hash === right[index]!.hash,
-  );
-
-const receiptIsImmediatePredecessorV1 = (
-  predecessor: SDK.TxFieldReceiptV1,
-  successor: SDK.TxFieldReceiptV1,
-): boolean => {
-  const previous = predecessor.collection_proof;
-  const current = successor.collection_proof;
-  const previousChunkCount = midgardBoundedItemChunkCountV1(
-    Number(previous.item_length),
-  );
-  const currentChunkCount = midgardBoundedItemChunkCountV1(
-    Number(current.item_length),
-  );
-  const currentFinalChunk =
-    Number(successor.chunk_index) + 1 === currentChunkCount;
-  const successorSizeBeforeItem =
-    Number(successor.field_encoded_size) -
-    (currentFinalChunk
-      ? fieldItemEncodedSizeV1(
-          Number(current.field_index),
-          Number(current.item_length),
-        )
-      : 0);
-
-  if (Number(successor.chunk_index) > 0) {
-    return (
-      Data.to(previous, SDK.BoundedCollectionItemProofV1) ===
-        Data.to(current, SDK.BoundedCollectionItemProofV1) &&
-      Number(predecessor.chunk_index) + 1 === Number(successor.chunk_index) &&
-      Number(predecessor.field_encoded_size) === successorSizeBeforeItem
-    );
-  }
-  if (Number(current.item_index) > 0) {
-    return (
-      Number(previous.field_index) === Number(current.field_index) &&
-      Number(previous.item_count) === Number(current.item_count) &&
-      Number(previous.item_index) + 1 === Number(current.item_index) &&
-      frontierMatchesV1(previous.frontier, current.frontier) &&
-      Number(predecessor.chunk_index) + 1 === previousChunkCount &&
-      Number(predecessor.field_encoded_size) === successorSizeBeforeItem
-    );
-  }
-  return (
-    Number(previous.field_index) < Number(current.field_index) &&
-    Number(previous.item_index) + 1 === Number(previous.item_count) &&
-    Number(predecessor.chunk_index) + 1 === previousChunkCount
-  );
-};
-
+/**
+ * Reconstructs the canonical native-V1 transaction an L1 forced order committed
+ * to, from the §8 carriage of its nine field preimages.
+ *
+ * **What this used to be.** It walked the counted per-item publication receipt
+ * chain backwards from `payload.terminal_receipt_reference`, checking each
+ * receipt's minted asset name and its `collection_proof`, and rebuilt each field
+ * preimage byte-range by byte-range with per-field arithmetic that only made
+ * sense under the counted item grammar — a `[0, 1, 2, 3, 4, 7]` byte-list branch
+ * and a ±1 chunk offset that existed solely because field 5 was a raw CBOR map.
+ * All of that retired with the chain in #587: under `docs/spec/midgard-tx.md` §4
+ * a field is committed by one flat hash over its whole preimage, so a preimage is
+ * authenticated once and read whole rather than assembled from openings.
+ *
+ * **What it is now.** It reads the committed field lengths, refuses any order that
+ * carries material, and reconstructs the transaction from nine §5.1 empty-field
+ * preimages. `reconstructMidgardTransactionV1` is what authenticates: it checks
+ * every preimage against the field hash the compact structure carries, and
+ * re-derives the tx-id and the proof commitment from the same bytes, so a payload
+ * whose lengths, hashes and id do not agree is refused.
+ *
+ * **Why the §8.8 door is not the authenticator here, yet.** #587's ruling named
+ * `authenticatedMidgardFieldViewV1` — deliberately not imported, so this is a
+ * name and not a `{@link}` that would dangle — and that is the right destination,
+ * but
+ * the door authenticates a preimage against a **§4 flat commitment**, and
+ * `deriveNativeTxBodyCompact` still derives the nine field hashes under the retired
+ * counted bounded-collection scheme. That residual is documented in full at its
+ * source and owned by #585. Until it swaps, the only §4 commitment available on
+ * this path is the empty field's, which is a constant — so a door call here would
+ * compare a constant against a constant and pass whatever the payload said. A check
+ * that cannot fail is worse than no check, so this uses the authenticator that is
+ * actually bound to the payload and says why.
+ *
+ * The material limit is the other half: the tx-order mint's
+ * `verify_order_material` admits only the canonically-empty transaction. See its
+ * `field_carriage_availability` note and #587's Deviation for why; issue #589
+ * owns the §8.6 certificate work that lifts it, and owns moving this function
+ * onto the door.
+ */
 export const reconstructTxOrderMaterialV1 = ({
-  lucid,
-  txOrderId,
   payload,
-  txOrderPolicyId,
-  fieldPreimageAddress,
-  fieldReceiptPolicyId,
-  fieldReceiptAddress,
 }: {
-  readonly lucid: LucidEvolution;
-  readonly txOrderId: SDK.OutputReference;
   readonly payload: TxOrderPayloadV1;
-  readonly txOrderPolicyId: string;
-  readonly fieldPreimageAddress: string;
-  readonly fieldReceiptPolicyId: string;
-  readonly fieldReceiptAddress: string;
 }): Effect.Effect<Buffer, SDK.LucidError> =>
-  Effect.tryPromise({
-    try: async () => {
+  Effect.try({
+    try: () => {
       const transactionId = Buffer.from(payload.tx_id, "hex");
-      const transactionCommitment = Buffer.from(
-        payload.transaction_commitment,
-        "hex",
-      );
       const source = {
         compactCbor: Buffer.from(payload.source.compact_cbor, "hex"),
         witnessSetCompactCbor: Buffer.from(
@@ -285,296 +191,33 @@ export const reconstructTxOrderMaterialV1 = ({
       const fieldLengths = decodeMidgardNativeTxProofFieldLengthsV1(
         source.fieldPreimageLengthsCbor,
       );
-      const maximumReceiptSteps = fieldLengths.reduce(
-        (total, length) => total + length,
-        0,
+      const emptyFieldPreimage = encodeMidgardFieldArrayHeaderV1(0);
+      const withMaterial = fieldLengths.flatMap((length, fieldIndex) =>
+        length === emptyFieldPreimage.length ? [] : [fieldIndex],
       );
-      const fieldPreimages = fieldLengths.map((length) => Buffer.alloc(length));
-      const seenFields = new Set<number>();
-      const txOrderIdCbor = Data.to(txOrderId, SDK.OutputReference);
-
-      const resolveOne = async (
-        reference: SDK.OutputReference,
-        label: string,
-      ): Promise<UTxO> => {
-        const utxos = await lucid.utxosByOutRef([
-          lucidOutRefV1(reference, label),
-        ]);
-        if (utxos.length !== 1) {
-          throw new Error(
-            `${label} ${outRefKeyV1(reference)} resolved to ${utxos.length.toString()} UTxOs`,
-          );
-        }
-        return utxos[0]!;
-      };
-
-      if (payload.terminal_receipt_reference === null) {
-        for (const [fieldIndex, length] of fieldLengths.entries()) {
-          if (length !== 1) {
-            throw new Error(
-              `empty material field ${fieldIndex.toString()} has committed length ${length.toString()}`,
-            );
-          }
-          fieldPreimages[fieldIndex] = Buffer.from([0x80]);
-        }
-      } else {
-        let reference: SDK.OutputReference | null =
-          payload.terminal_receipt_reference;
-        let successor: SDK.TxFieldReceiptV1 | undefined;
-        let finalReceipt: SDK.TxFieldReceiptV1 | undefined;
-        let firstReceipt: SDK.TxFieldReceiptV1 | undefined;
-        let steps = 0;
-
-        while (reference !== null) {
-          steps += 1;
-          if (steps > maximumReceiptSteps) {
-            throw new Error(
-              `receipt chain exceeds its committed-byte bound ${maximumReceiptSteps.toString()}`,
-            );
-          }
-          const receiptUtxo = await resolveOne(reference, "V1 field receipt");
-          if (
-            receiptUtxo.address !== fieldReceiptAddress ||
-            receiptUtxo.datum == null
-          ) {
-            throw new Error(
-              `field receipt ${outRefKeyV1(reference)} is not an inline datum at the compiled receipt validator`,
-            );
-          }
-          const receipt = SDK.decodeTxFieldReceiptV1Cbor(
-            Buffer.from(receiptUtxo.datum, "hex"),
-          );
-          const collection = receipt.collection_proof;
-          const fieldIndex = Number(collection.field_index);
-          const itemIndex = Number(collection.item_index);
-          const itemCount = Number(collection.item_count);
-          const itemLength = Number(collection.item_length);
-          const chunkIndex = Number(receipt.chunk_index);
-          const fieldEncodedSize = Number(receipt.field_encoded_size);
-          const chunkCount = midgardBoundedItemChunkCountV1(itemLength);
-          if (
-            collection.version !== 1n ||
-            !Number.isSafeInteger(fieldIndex) ||
-            fieldIndex < 0 ||
-            fieldIndex >= 9 ||
-            !Number.isSafeInteger(itemIndex) ||
-            itemIndex < 0 ||
-            !Number.isSafeInteger(itemCount) ||
-            itemCount <= 0 ||
-            itemIndex >= itemCount ||
-            !Number.isSafeInteger(itemLength) ||
-            itemLength < 0 ||
-            !Number.isSafeInteger(chunkIndex) ||
-            chunkIndex < 0 ||
-            chunkIndex >= chunkCount ||
-            !Number.isSafeInteger(fieldEncodedSize) ||
-            fieldEncodedSize < 0 ||
-            fieldEncodedSize > fieldLengths[fieldIndex]!
-          ) {
-            throw new Error(
-              `field receipt ${outRefKeyV1(reference)} has invalid cursor metadata`,
-            );
-          }
-          const receiptAssetName = deriveMidgardTxFieldReceiptAssetNameV1({
-            txOrderPolicyId: Buffer.from(txOrderPolicyId, "hex"),
-            txOrderTransactionId: Buffer.from(txOrderId.transactionId, "hex"),
-            txOrderOutputIndex: txOrderId.outputIndex,
-            transactionCommitment,
-            fieldIndex,
-            itemIndex,
-            chunkIndex,
-          }).toString("hex");
-          const receiptUnit = toUnit(fieldReceiptPolicyId, receiptAssetName);
-          const receiptPolicyTokens = Object.entries(receiptUtxo.assets).filter(
-            ([unit, quantity]) =>
-              unit.startsWith(fieldReceiptPolicyId) && quantity !== 0n,
-          );
-          if (
-            receipt.field_receipt_policy_id !== fieldReceiptPolicyId ||
-            receipt.tx_order_policy_id !== txOrderPolicyId ||
-            Data.to(receipt.tx_order_id, SDK.OutputReference) !==
-              txOrderIdCbor ||
-            receipt.transaction_commitment !== payload.transaction_commitment ||
-            receiptPolicyTokens.length !== 1 ||
-            (receiptUtxo.assets[receiptUnit] ?? 0n) !== 1n
-          ) {
-            throw new Error(
-              `field receipt ${outRefKeyV1(reference)} has invalid identity or receipt token`,
-            );
-          }
-          const finalChunk = chunkIndex + 1 === chunkCount;
-          const itemEncodedSize = fieldItemEncodedSizeV1(
-            fieldIndex,
-            itemLength,
-          );
-          const sizeBeforeItem =
-            fieldEncodedSize - (finalChunk ? itemEncodedSize : 0);
-          const fieldHeader = canonicalHeaderV1(
-            fieldIndex === 5 ? 5 : 4,
-            itemCount,
-          );
-          if (
-            sizeBeforeItem < fieldHeader.length ||
-            (itemIndex === 0 && sizeBeforeItem !== fieldHeader.length) ||
-            (finalChunk &&
-              itemIndex + 1 === itemCount &&
-              fieldEncodedSize !== fieldLengths[fieldIndex])
-          ) {
-            throw new Error(
-              `field receipt ${outRefKeyV1(reference)} has invalid encoded-size state`,
-            );
-          }
-          if (successor === undefined) {
-            if (!finalChunk || itemIndex + 1 !== itemCount) {
-              throw new Error("terminal receipt is not at an item boundary");
-            }
-            finalReceipt = receipt;
-          } else if (!receiptIsImmediatePredecessorV1(receipt, successor)) {
-            throw new Error(
-              `receipt ${outRefKeyV1(reference)} is not the immediate predecessor of its successor`,
-            );
-          }
-
-          const fieldUtxo = await resolveOne(
-            receipt.field_reference,
-            "V1 field fragment",
-          );
-          if (
-            fieldUtxo.address !== fieldPreimageAddress ||
-            fieldUtxo.datum == null
-          ) {
-            throw new Error(
-              `field fragment ${outRefKeyV1(receipt.field_reference)} is not an inline datum at the compiled field validator`,
-            );
-          }
-          const field = SDK.decodeTxFieldPreimageV1Cbor(
-            Buffer.from(fieldUtxo.datum, "hex"),
-          );
-          if (
-            field.field_receipt_policy_id !== fieldReceiptPolicyId ||
-            field.tx_order_policy_id !== txOrderPolicyId ||
-            Data.to(field.tx_order_id, SDK.OutputReference) !== txOrderIdCbor ||
-            field.transaction_commitment !== payload.transaction_commitment ||
-            Data.to(
-              field.collection_proof,
-              SDK.BoundedCollectionItemProofV1,
-            ) !==
-              Data.to(
-                receipt.collection_proof,
-                SDK.BoundedCollectionItemProofV1,
-              ) ||
-            field.proof.field_index !== collection.field_index ||
-            field.proof.item_index !== collection.item_index ||
-            field.proof.total_length !== collection.item_length ||
-            field.proof.chunk_index !== receipt.chunk_index
-          ) {
-            throw new Error(
-              `field fragment ${outRefKeyV1(receipt.field_reference)} does not match its receipt`,
-            );
-          }
-          const collectionProof = {
-            version: 1 as const,
-            fieldIndex,
-            itemCount,
-            itemIndex,
-            itemLength,
-            itemCommitment: Buffer.from(collection.item_commitment, "hex"),
-            frontier: {
-              count: itemCount,
-              peaks: collection.frontier.map((peak) => ({
-                height: Number(peak.height),
-                hash: Buffer.from(peak.hash, "hex"),
-              })),
-            },
-            siblings: collection.siblings.map((sibling) =>
-              Buffer.from(sibling, "hex"),
-            ),
-          };
-          const proof = {
-            version: 1 as const,
-            fieldIndex,
-            itemIndex,
-            totalLength: itemLength,
-            chunkIndex,
-            chunk: Buffer.from(field.proof.chunk, "hex"),
-            frontier: {
-              count: chunkCount,
-              peaks: field.proof.frontier.map((peak) => ({
-                height: Number(peak.height),
-                hash: Buffer.from(peak.hash, "hex"),
-              })),
-            },
-            siblings: field.proof.siblings.map((sibling) =>
-              Buffer.from(sibling, "hex"),
-            ),
-          };
-          verifyMidgardV1TxFieldChunk({
-            transactionId,
-            transactionCommitment,
-            source,
-            collectionProof,
-            proof,
-          });
-
-          const target = fieldPreimages[fieldIndex]!;
-          fieldHeader.copy(target, 0);
-          const itemStart = sizeBeforeItem;
-          const chunkOffset = chunkIndex * 4_095;
-          if ([0, 1, 2, 3, 4, 7].includes(fieldIndex)) {
-            const bytesHeader = canonicalHeaderV1(2, itemLength);
-            bytesHeader.copy(target, itemStart);
-            proof.chunk.copy(
-              target,
-              itemStart + bytesHeader.length + chunkOffset,
-            );
-          } else if (fieldIndex === 5) {
-            const sourceOffset = Math.max(0, 1 - chunkOffset);
-            proof.chunk.copy(
-              target,
-              itemStart + Math.max(0, chunkOffset - 1),
-              sourceOffset,
-            );
-          } else {
-            proof.chunk.copy(target, itemStart + chunkOffset);
-          }
-          seenFields.add(fieldIndex);
-          successor = receipt;
-          firstReceipt = receipt;
-          reference = receipt.predecessor_receipt_reference;
-        }
-        if (
-          finalReceipt === undefined ||
-          firstReceipt === undefined ||
-          firstReceipt.collection_proof.item_index !== 0n ||
-          firstReceipt.chunk_index !== 0n
-        ) {
-          throw new Error(
-            "receipt chain does not terminate at its first cursor",
-          );
-        }
-        for (const [fieldIndex, length] of fieldLengths.entries()) {
-          if (!seenFields.has(fieldIndex)) {
-            if (length !== 1) {
-              throw new Error(
-                `unpublished field ${fieldIndex.toString()} is not canonically empty`,
-              );
-            }
-            fieldPreimages[fieldIndex] = Buffer.from([0x80]);
-          }
-        }
+      if (withMaterial.length > 0) {
+        throw new Error(
+          `forced order carries material in field(s) ${withMaterial.join(", ")}; ` +
+            "the §8.6-certified carriage the tx-order mint needs for non-empty " +
+            "material is not deployable yet (see #587's Deviation and issue #589, " +
+            "which owns the blocker), so no such order can be authenticated on L1 " +
+            "and none can be ingested here",
+        );
       }
-
       return reconstructMidgardTransactionV1({
         transactionId,
-        transactionCommitment,
+        transactionCommitment: Buffer.from(
+          payload.transaction_commitment,
+          "hex",
+        ),
         source,
-        fieldPreimages,
+        fieldPreimages: fieldLengths.map(() => emptyFieldPreimage),
       });
     },
     catch: (cause) =>
       new SDK.LucidError({
         message:
-          "Failed to walk and reconstruct the authenticated V1 tx-order material chain",
+          "Failed to reconstruct the authenticated V1 tx-order material from its §8 carriage",
         cause,
       }),
   });
@@ -582,11 +225,6 @@ export const reconstructTxOrderMaterialV1 = ({
 const txOrderUTxOToEntry = (
   txOrderUTxO: SDK.TxOrderUTxOV1,
   consensusProfile: ContractDeploymentIdentity["consensusProfile"],
-  lucid: LucidEvolution,
-  txOrderPolicyId: string,
-  fieldPreimageAddress: string,
-  fieldReceiptPolicyId: string,
-  fieldReceiptAddress: string,
   publishedProgramMaterial: PublishedProgramMaterialSnapshot,
 ): Effect.Effect<
   ForcedTransactionsDB.Entry,
@@ -606,15 +244,7 @@ const txOrderUTxOToEntry = (
     }
     const txOrderUTxOV1 = txOrderUTxO;
     const payload = txOrderUTxOV1.datum.event.tx;
-    const nativeTxCbor = yield* reconstructTxOrderMaterialV1({
-      lucid,
-      txOrderId: txOrderUTxOV1.datum.event.id,
-      payload,
-      txOrderPolicyId,
-      fieldPreimageAddress,
-      fieldReceiptPolicyId,
-      fieldReceiptAddress,
-    });
+    const nativeTxCbor = yield* reconstructTxOrderMaterialV1({ payload });
     const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeTxCbor);
     const attachedProgramEnvelopes = yield* Effect.try({
       try: () => collectMidgardV1AttachedProgramEnvelopes(decoded),
@@ -761,12 +391,7 @@ export const reconcileVisibleTxOrderUTxOs = (
     const txOrderUTxOs: SDK.TxOrderUTxOV1[] = [
       ...(yield* fetchTxOrderUTxOs(lucid, consensusProfile, config)),
     ];
-    const {
-      txOrder,
-      txOrderFieldPreimage,
-      txOrderFieldReceipt,
-      cekProgramMaterial,
-    } = yield* MidgardContracts;
+    const { cekProgramMaterial } = yield* MidgardContracts;
     const materialEntries = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(cekProgramMaterial.spendingScriptAddress),
       catch: (cause) =>
@@ -805,17 +430,7 @@ export const reconcileVisibleTxOrderUTxOs = (
     }
     return yield* persistVisibleUserEventUTxOs({
       visibleUtxos: txOrderUTxOs,
-      toEntry: (utxo) =>
-        txOrderUTxOToEntry(
-          utxo,
-          consensusProfile,
-          lucid,
-          txOrder.policyId,
-          txOrderFieldPreimage.spendingScriptAddress,
-          txOrderFieldReceipt.policyId,
-          txOrderFieldReceipt.spendingScriptAddress,
-          material,
-        ),
+      toEntry: (utxo) => txOrderUTxOToEntry(utxo, consensusProfile, material),
       insertEntries: ForcedTransactionsDB.insertEntries,
       emptyLogMessage: "No tx-order UTxOs found.",
       foundLogMessage: (count) => `${count} tx-order UTxO(s) found.`,

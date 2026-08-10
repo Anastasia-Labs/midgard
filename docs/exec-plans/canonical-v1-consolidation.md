@@ -161,7 +161,7 @@ current implementation to retain; the source number itself does not survive.
 | Protocol-info API       | proof API v8                                         | `ProtocolInfoV1`, API version `1`                                     |
 | Submission envelope     | proof submission envelope V2                         | `ProofSubmissionEnvelopeV1`, version `1`                              |
 | Transaction order       | transaction-order/forced-inclusion V3                | `TxOrderDatumV1`, `TxOrderEventV1`, `ForcedInclusionTxV1`             |
-| Field publications      | field preimage/receipt V3                            | `TxFieldPreimageV1`, `TxFieldReceiptV1`                               |
+| Field publications      | field preimage/receipt V3                            | retired by #587; §8 carriage replaces it (see note below)             |
 | Forced journal member   | forced journal member V5                             | `ForcedTransactionJournalMemberV1`, exact version `1`                 |
 | CEK program envelope    | CEK envelope V3                                      | `MidgardCekProgramEnvelopeV1`                                         |
 | CEK Value/material      | CEK Value/material/sidecar V3                        | corresponding sole `...V1` formats                                    |
@@ -180,6 +180,25 @@ current implementation to retain; the source number itself does not survive.
 The map does not authorize combining semantically different records merely
 because both become V1. Each family retains its own type, domain separator, and
 boundary validation.
+
+**Field publications, retired (#587).** The `TxFieldPreimageV1` /
+`TxFieldReceiptV1` pair the row above once named is gone: it expressed the
+counted per-item publication receipt chain, and `docs/spec/midgard-tx.md` §4's
+flat field commitment made the receipt mint's own gate
+(`verify_midgard_transaction_field_chunk_v1`) unsatisfiable for any payload whose
+commitments are the §4 flat hashes of real material, so no receipt could be
+minted for a field carrying an item under the format §4 actually defines. The
+gate is not unsatisfiable outright — it checks the opening against the
+commitment the payload's own compact *declares*, so a payload declaring counted
+roots could satisfy it — which is why the replacement below closes the gap by
+construction rather than relying on that arithmetic. #587 deleted both validators, both
+libraries, and both SDK twins. The role the family was supposed to serve — L1
+availability of a forced order's material — is now §8 carriage: a §8.6
+`FieldPreimageCertificateV1` per non-empty field, read through
+`native_tx_field_access_v1.authenticated_field_view`. That re-expression is not
+yet deployable (the certificate validator is outside the frozen blueprint and
+§8.4's tier-1 ladder publishes no durable UTxO), so `verify_order_material`
+admits only the canonically-empty transaction; issue #589 owns closing it.
 
 ### 3.1 Exhaustive format registry gate
 

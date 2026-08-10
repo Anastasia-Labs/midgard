@@ -24,7 +24,6 @@ import {
   resolveEventInclusionTime,
   RootDomain,
   SettlementDatum,
-  TxFieldReceiptV1,
   TxOrderDatumV1,
   TxOrderSpendRedeemerV1,
   UserEventMintRedeemer,
@@ -43,7 +42,6 @@ import {
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
   deriveMidgardNativeTxProofSourceV1,
-  encodeMidgardNativeTxCanonicalV1,
   materializeMidgardNativeTxFromCanonicalV1,
   type MidgardNativeTxCanonicalV1,
 } from "../../midgard-core/src/codec/native.js";
@@ -58,10 +56,6 @@ import {
   MIDGARD_CONSENSUS_PROFILE_V1,
   MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
 } from "../../midgard-core/src/consensus-profile-v1.js";
-import {
-  deriveMidgardTxFieldReceiptAssetNameV1,
-  deriveMidgardV1TxFieldChunks,
-} from "../../midgard-core/src/consensus-validation-v1.js";
 import {
   DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
   DA_TRANSPORT_LIMITS_V1,
@@ -664,7 +658,6 @@ const emptyNativePayload = {
     field_preimage_lengths_cbor:
       emptyNativeSource.fieldPreimageLengthsCbor.toString("hex"),
   },
-  terminal_receipt_reference: null,
 };
 const nonEmptyNativeCanonical: MidgardNativeTxCanonicalV1 = {
   ...emptyNativeTxCanonical,
@@ -678,8 +671,6 @@ const nonEmptyNativeTx = materializeMidgardNativeTxFromCanonicalV1(
 );
 const nonEmptyNativeSource =
   deriveMidgardNativeTxProofSourceV1(nonEmptyNativeTx);
-const NON_EMPTY_NATIVE_TX_CBOR =
-  encodeMidgardNativeTxCanonicalV1(nonEmptyNativeTx);
 const nonEmptyNativePayload = {
   tx_id: computeMidgardNativeTxIdV1(nonEmptyNativeTx).toString("hex"),
   transaction_commitment:
@@ -693,7 +684,6 @@ const nonEmptyNativePayload = {
     field_preimage_lengths_cbor:
       nonEmptyNativeSource.fieldPreimageLengthsCbor.toString("hex"),
   },
-  terminal_receipt_reference: null,
 };
 
 const policy = makeWatcherUserEventIndexerPolicyV1({
@@ -1100,10 +1090,6 @@ const makeEventFixture = (
       witness_set_compact_cbor: string;
       field_preimage_lengths_cbor: string;
     }>;
-    terminal_receipt_reference: Readonly<{
-      transactionId: string;
-      outputIndex: bigint;
-    }> | null;
   }>,
   extraReferenceOutRefs: readonly string[] = [],
 ): EventFixture => {
@@ -3178,8 +3164,28 @@ describe("canonical authenticated user-event indexer", () => {
     expect(parseWatcherUserEventIndexerStateV1(cyclicState, policy)).toBeNull();
   });
 
-  it("requires non-empty forced-order material to close with an authenticated terminal receipt", () => {
-    const missingReceipt = makeEventFixture(
+  it("observes a material-bearing forced order on its §4 self-binding alone", () => {
+    // This used to require an authenticated terminal receipt for non-empty
+    // material: the bare fixture had to be rejected, and acceptance needed a
+    // `TxFieldReceiptV1` UTxO seeded in the durable store, its minted asset name
+    // re-derived, its `collection_proof` verified, and the order's
+    // `terminal_receipt_reference` pointing at it as a third reference input.
+    // #587 retired that chain — its mint policy was unsatisfiable under
+    // `docs/spec/midgard-tx.md` §4 — and `TxOrderPayloadV1` shed the reference, so
+    // there is no availability evidence in the datum left to check. What remains is
+    // the §4 binding, and it is asserted on material-bearing material precisely
+    // because that is where the retired walk used to be reached.
+    //
+    // The watcher does not re-derive `verify_order_material`'s temporary
+    // all-empty clause; `forcedPayloadMatchesNativeSource`'s docstring records the
+    // reasoning, and the next test is the material-bearing refusal that clause's
+    // absence does *not* weaken. A forced order over the canonically-empty
+    // transaction moves nothing, so refusing material here would leave the
+    // watcher's forced-inclusion verification — `event-classification-verifier`'s
+    // `MidgardTxValidity` classification and `block-replay`'s `ForcedTransaction`
+    // replay, both of which drive this same gate through
+    // `tests/support/w15-authority-scenarios.ts` — with no reachable subject.
+    const fixture = makeEventFixture(
       "forced_order",
       "b6",
       0,
@@ -3189,145 +3195,16 @@ describe("canonical authenticated user-event indexer", () => {
       undefined,
       nonEmptyNativePayload,
     );
-    expect(
-      deriveWatcherUserEventObservationV1(
-        policy,
-        null,
-        blockBundle([missingReceipt]).context,
-      ),
-    ).toBeNull();
-
-    const receiptOutRef = `${h32("f0")}#0`;
-    const txOrderId = {
-      transactionId: h32("b7"),
-      outputIndex: 0n,
-    };
-    const terminal = deriveMidgardV1TxFieldChunks(NON_EMPTY_NATIVE_TX_CBOR).at(
-      -1,
-    )!;
-    const receiptDatum = {
-      field_receipt_policy_id: applied.txOrderFieldReceiptMint!,
-      tx_order_policy_id: eventFields.forcedOrder.policyId,
-      tx_order_id: txOrderId,
-      transaction_commitment: nonEmptyNativePayload.transaction_commitment,
-      collection_proof: {
-        version: BigInt(terminal.collectionProof.version),
-        field_index: BigInt(terminal.collectionProof.fieldIndex),
-        item_count: BigInt(terminal.collectionProof.itemCount),
-        item_index: BigInt(terminal.collectionProof.itemIndex),
-        item_length: BigInt(terminal.collectionProof.itemLength),
-        item_commitment:
-          terminal.collectionProof.itemCommitment.toString("hex"),
-        frontier: terminal.collectionProof.frontier.peaks.map((peak) => ({
-          height: BigInt(peak.height),
-          hash: peak.hash.toString("hex"),
-        })),
-        siblings: terminal.collectionProof.siblings.map((hash) =>
-          hash.toString("hex"),
-        ),
-      },
-      chunk_index: BigInt(terminal.proof.chunkIndex),
-      field_reference: {
-        transactionId: h32("f1"),
-        outputIndex: 0n,
-      },
-      predecessor_receipt_reference: null,
-      field_encoded_size: BigInt(terminal.fieldEncodedSize),
-    };
-    const receiptAssetName = deriveMidgardTxFieldReceiptAssetNameV1({
-      txOrderPolicyId: Buffer.from(eventFields.forcedOrder.policyId, "hex"),
-      txOrderTransactionId: Buffer.from(txOrderId.transactionId, "hex"),
-      txOrderOutputIndex: txOrderId.outputIndex,
-      transactionCommitment: Buffer.from(
-        nonEmptyNativePayload.transaction_commitment,
-        "hex",
-      ),
-      fieldIndex: terminal.proof.fieldIndex,
-      itemIndex: terminal.proof.itemIndex,
-      chunkIndex: terminal.proof.chunkIndex,
-    }).toString("hex");
-    const receiptAssets = CML.MultiAsset.new();
-    receiptAssets.set(
-      CML.ScriptHash.from_hex(applied.txOrderFieldReceiptMint!),
-      CML.AssetName.from_hex(receiptAssetName),
-      1n,
-    );
-    const receiptOutput = CML.TransactionOutput.new(
-      CML.Address.from_hex(scriptAddress(applied.txOrderFieldReceiptSpend!)),
-      CML.Value.new(3_000_000n, receiptAssets),
-      CML.DatumOption.new_datum(
-        CML.PlutusData.from_cbor_hex(Data.to(receiptDatum, TxFieldReceiptV1)),
-      ),
-    );
-    const receiptBootstrap = makeWatcherDurableStoreV1({
-      deploymentMarker: bootstrapStore.deploymentMarker,
-      revision: "0",
-      records: {
-        l1Observations: bootstrapStore.l1Observations,
-        chainPoints: bootstrapStore.chainPoints,
-        protocolUtxos: [
-          ...bootstrapStore.protocolUtxos,
-          {
-            outRef: receiptOutRef,
-            role: "proof_thread",
-            chainPointId: BOOTSTRAP_CHAIN_POINT_ID,
-            output: makeWatcherDurablePayloadV1(receiptOutput.to_cbor_hex()),
-          },
-        ],
-        daProofInputs: bootstrapStore.daProofInputs,
-        reconstructedStates: bootstrapStore.reconstructedStates,
-        decisions: bootstrapStore.decisions,
-        faults: bootstrapStore.faults,
-        submissions: bootstrapStore.submissions,
-        confirmations: bootstrapStore.confirmations,
-        retries: bootstrapStore.retries,
-        deadlines: bootstrapStore.deadlines,
-        correctionResults: bootstrapStore.correctionResults,
-      },
-    });
-    const receiptPolicy = makeWatcherUserEventIndexerPolicyV1({
-      network: policy.network,
-      releaseEvidenceDigest: policy.releaseEvidenceDigest,
-      deploymentMarker: policy.deploymentMarker,
-      deposit: policy.deposit,
-      withdrawal: policy.withdrawal,
-      forcedOrder: policy.forcedOrder,
-      bootstrapStoreDigest: watcherDurableStoreBytesSha256(
-        encodeWatcherDurableStoreV1(receiptBootstrap),
-      ),
-      deploymentTrustRootId: policy.deploymentTrustRootId,
-      requiredFinalityDepth: policy.requiredFinalityDepth,
-      maximumActiveHistoryEntries: policy.maximumActiveHistoryEntries,
-      maximumAuditHistoryEntries: policy.maximumAuditHistoryEntries,
-    })!;
-    const payload = {
-      ...nonEmptyNativePayload,
-      terminal_receipt_reference: {
-        transactionId: h32("f0"),
-        outputIndex: 0n,
-      },
-    };
-    const fixture = makeEventFixture(
-      "forced_order",
-      "b7",
-      0,
-      1_000n,
-      0n,
-      undefined,
-      undefined,
-      payload,
-      [receiptOutRef],
-    );
-    const bundle = blockBundle([fixture], receiptBootstrap, 100, 1);
+    const bundle = blockBundle([fixture], null, 100, 1);
     const observation = deriveWatcherUserEventObservationV1(
-      receiptPolicy,
+      policy,
       null,
       bundle.context,
     );
     expect(observation).not.toBeNull();
     expect(
       evaluateWatcherUserEventIndexerV1(
-        receiptPolicy,
+        policy,
         null,
         observation,
         bundle.context,
@@ -3340,6 +3217,32 @@ describe("canonical authenticated user-event indexer", () => {
         },
       },
     });
+  });
+
+  it("rejects a material-bearing forced order whose carried commitment is not its source's", () => {
+    // The material-bearing negative: the §4 binding is the whole of what the datum
+    // claims now, so breaking it is the way a forced order carrying real material
+    // fails to produce an observation.
+    const fixture = makeEventFixture(
+      "forced_order",
+      "b7",
+      0,
+      1_000n,
+      0n,
+      undefined,
+      undefined,
+      {
+        ...nonEmptyNativePayload,
+        transaction_commitment: h32("de"),
+      },
+    );
+    expect(
+      deriveWatcherUserEventObservationV1(
+        policy,
+        null,
+        blockBundle([fixture]).context,
+      ),
+    ).toBeNull();
   });
 
   it("promotes terminal finality independently and restores terminal consumption through W13 restart/reprocessing", () => {

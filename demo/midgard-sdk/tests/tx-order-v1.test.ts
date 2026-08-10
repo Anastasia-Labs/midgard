@@ -22,11 +22,10 @@ import {
   MIDGARD_V1_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core";
 import {
-  CML,
-  Data,
-  type LucidEvolution,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+  midgardFieldCommitmentV1,
+  selectMidgardFieldCarriageTierV1,
+} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import { CML, Data, type LucidEvolution } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import * as SDK from "../src/index.js";
@@ -149,8 +148,8 @@ const materialPublicationLucid = ({
   } as unknown as LucidEvolution;
 };
 
-describe("V1 transaction-order fragments", () => {
-  it("pins the exact datum, spend, receipt-mint, and forced-key V1 vectors", () => {
+describe("V1 transaction-order datum, §8 field carriage, and CEK program material", () => {
+  it("pins the exact datum, spend, and forced-key V1 vectors", () => {
     const txOrderId: SDK.OutputReference = {
       transactionId: "33".repeat(32),
       outputIndex: 4n,
@@ -164,7 +163,6 @@ describe("V1 transaction-order fragments", () => {
       tx_id: "44".repeat(32),
       transaction_commitment: "55".repeat(32),
       source,
-      terminal_receipt_reference: null,
     };
     const event: SDK.TxOrderEventV1 = { id: txOrderId, tx: payload };
     const datum: SDK.TxOrderDatumV1 = {
@@ -202,43 +200,25 @@ describe("V1 transaction-order fragments", () => {
       inclusion_proof_script_withdraw_redeemer_index: 5n,
       validity_override: "FailedScript",
     };
-    const publish: SDK.TxFieldReceiptMintRedeemerV1 = {
-      PublishField: {
-        field_reference_input_index: 0n,
-        predecessor_receipt_reference_input_index: -1n,
-        receipt_output_index: 1n,
-        transaction_id: payload.tx_id,
-        source,
-      },
-    };
-    const burn: SDK.TxFieldReceiptMintRedeemerV1 = {
-      BurnReceipts: { receipt_input_indices: [0n, 2n] },
-    };
 
     const datumCbor = Data.to(datum, SDK.TxOrderDatumV1);
     expect(Data.to(txOrderId, SDK.OutputReference)).toBe(
       `d8799f5820${"33".repeat(32)}04ff`,
     );
     expect(Data.to(payload, SDK.TxOrderPayloadV1)).toBe(
-      `d8799f5820${"44".repeat(32)}5820${"55".repeat(32)}d8799f41014202034104ffd87a80ff`,
+      `d8799f5820${"44".repeat(32)}5820${"55".repeat(32)}d8799f41014202034104ffff`,
     );
     expect(Data.to(event, SDK.TxOrderEventV1)).toBe(
-      `d8799fd8799f5820${"33".repeat(32)}04ffd8799f5820${"44".repeat(32)}5820${"55".repeat(32)}d8799f41014202034104ffd87a80ffff`,
+      `d8799fd8799f5820${"33".repeat(32)}04ffd8799f5820${"44".repeat(32)}5820${"55".repeat(32)}d8799f41014202034104ffffff`,
     );
     expect(datumCbor).toBe(
-      `d8799fd8799fd8799f5820${"33".repeat(32)}04ffd8799f5820${"44".repeat(32)}5820${"55".repeat(32)}d8799f41014202034104ffd87a80ffff187b581c${"66".repeat(28)}d8799fd8799f581c${"77".repeat(28)}ffd87a80ffd87980ff`,
+      `d8799fd8799fd8799f5820${"33".repeat(32)}04ffd8799f5820${"44".repeat(32)}5820${"55".repeat(32)}d8799f41014202034104ffffff187b581c${"66".repeat(28)}d8799fd8799f581c${"77".repeat(28)}ffd87a80ffd87980ff`,
     );
     expect(Data.to(forced, SDK.ForcedInclusionTxV1)).toBe(
       `d8799f5820${"44".repeat(32)}d8799f41014202034104ffd87c80ff`,
     );
     expect(Data.to(spend, SDK.TxOrderSpendRedeemerV1)).toBe(
       "d8799f0001020304d8799fd87a805820000000000000000000000000000000000000000000000000000000000000000058201111111111111111111111111111111111111111111111111111111111111111015827d8799f5820333333333333333333333333333333333333333333333333333333333333333304ff5834d8799f58204444444444444444444444444444444444444444444444444444444444444444d8799f41014202034104ffd87c80ff80ff05d87c80ff",
-    );
-    expect(Data.to(publish, SDK.TxFieldReceiptMintRedeemerV1)).toBe(
-      `d8799f0020015820${"44".repeat(32)}d8799f41014202034104ffff`,
-    );
-    expect(Data.to(burn, SDK.TxFieldReceiptMintRedeemerV1)).toBe(
-      "d87a9f9f0002ffff",
     );
     expect(
       SDK.decodeTxOrderDatumV1Cbor(SDK.encodeTxOrderDatumV1Cbor(datum)),
@@ -296,126 +276,48 @@ describe("V1 transaction-order fragments", () => {
     ).toThrow();
   });
 
-  it("derives every canonical independently bounded field chunk", () => {
+  it("derives the §8 carriage of every non-empty field and nothing for the empty ones", () => {
     const cbor = transactionCbor();
-    const txOrderId: SDK.OutputReference = {
-      transactionId: "33".repeat(32),
-      outputIndex: 4n,
-    };
-    const bundle = SDK.deriveTxOrderFragmentBundleV1({
+    const material = SDK.deriveTxOrderMaterialV1({
       nativeTxCbor: cbor,
-      fieldReceiptPolicyId: "55".repeat(28),
-      txOrderPolicyId: "44".repeat(28),
-      txOrderId,
+      owner: Buffer.alloc(28, 0x44),
     });
 
     expect(cbor.length).toBeGreaterThan(8 * 1024);
     expect(cbor.length).toBeLessThanOrEqual(
       MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes,
     );
-    expect(bundle.fragments.length).toBe(4);
-    expect(bundle.fragments.map((fragment) => fragment.fieldIndex)).toEqual([
-      2, 2, 2, 2,
-    ]);
-    expect(bundle.fragments.map((fragment) => fragment.itemIndex)).toEqual([
-      0, 0, 1, 1,
-    ]);
-    expect(bundle.fragments.map((fragment) => fragment.chunkIndex)).toEqual([
-      0, 1, 0, 1,
-    ]);
-    for (const fragment of bundle.fragments) {
-      expect(Data.from(fragment.datumCbor, SDK.TxFieldPreimageV1)).toEqual(
-        fragment.datum,
-      );
-      expect(fragment.datum.transaction_commitment).toBe(
-        bundle.transactionCommitment,
-      );
-      expect(fragment.datum.field_receipt_policy_id).toBe("55".repeat(28));
-      expect(fragment.datum.tx_order_id).toEqual(txOrderId);
-      expect(fragment.datum.collection_proof.field_index).toBe(
-        fragment.datum.proof.field_index,
-      );
-      expect(fragment.datum.collection_proof.item_index).toBe(
-        fragment.datum.proof.item_index,
-      );
-      expect(fragment.datum.collection_proof.item_length).toBe(
-        fragment.datum.proof.total_length,
-      );
-      expect(fragment.datum.collection_proof.item_commitment).toHaveLength(64);
-      expect(
-        Buffer.from(fragment.datum.proof.chunk, "hex").length,
-      ).toBeLessThanOrEqual(4_095);
-    }
-    expect(bundle.fragments.at(-1)!.fieldEncodedSize).toBe(
+    // Only field 2 (outputs) carries anything in this fixture, so the carriage
+    // list is exactly one entry: the counted scheme published four per-item
+    // chunks for the same bytes, which is the whole difference the §4 reversion
+    // makes to a publisher.
+    expect(material.carriage.map((field) => field.fieldIndex)).toEqual([2]);
+    const outputs = material.carriage[0]!;
+    expect(outputs.fieldName).toBe("outputs");
+    expect(outputs.preimage).toEqual(
       decodeMidgardNativeTxFullV1FromCanonicalCbor(cbor).body
-        .outputsPreimageCbor.length,
+        .outputsPreimageCbor,
     );
+    expect(outputs.commitment).toBe(
+      midgardFieldCommitmentV1(outputs.preimage).toString("hex"),
+    );
+    // §8.4 is a partition, so the tier is a fact about the byte length and not a
+    // choice this module makes.
+    expect(outputs.plan.tier).toBe(
+      selectMidgardFieldCarriageTierV1(outputs.preimage.length),
+    );
+    expect(outputs.plan.totalLength).toBe(outputs.preimage.length);
+    expect(outputs.plan.commitment.toString("hex")).toBe(outputs.commitment);
+    expect(outputs.plan.txId.toString("hex")).toBe(material.transactionId);
   });
 
-  it("fails closed for an unknown policy encoding", () => {
+  it("refuses material it cannot bind to a canonical transaction", () => {
     expect(() =>
-      SDK.deriveTxOrderFragmentBundleV1({
-        nativeTxCbor: transactionCbor(),
-        fieldReceiptPolicyId: "55".repeat(28),
-        txOrderPolicyId: "AA".repeat(28),
-        txOrderId: {
-          transactionId: "33".repeat(32),
-          outputIndex: 0n,
-        },
+      SDK.deriveTxOrderMaterialV1({
+        nativeTxCbor: Buffer.from("00", "hex"),
+        owner: Buffer.alloc(28, 0x44),
       }),
-    ).toThrow(/28-byte lowercase hex/u);
-  });
-
-  it("keeps a maximum field publication transaction below the L1 envelope", () => {
-    const bundle = SDK.deriveTxOrderFragmentBundleV1({
-      nativeTxCbor: transactionCbor(),
-      fieldReceiptPolicyId: "11".repeat(28),
-      txOrderPolicyId: "22".repeat(28),
-      txOrderId: {
-        transactionId: "33".repeat(32),
-        outputIndex: 65_535n,
-      },
-    });
-    const datum = bundle.fragments.find(
-      (fragment) =>
-        fragment.fieldIndex === 2 &&
-        fragment.datum.proof.chunk.length === 8_190,
-    )!.datum;
-    const datumCbor = Data.to(datum, SDK.TxFieldPreimageV1);
-    const inputs = CML.TransactionInputList.new();
-    inputs.add(
-      CML.TransactionInput.new(
-        CML.TransactionHash.from_raw_bytes(Buffer.alloc(32, 1)),
-        0n,
-      ),
-    );
-    const outputs = CML.TransactionOutputList.new();
-    outputs.add(
-      CML.TransactionOutput.new(
-        CML.Address.from_raw_bytes(
-          Buffer.concat([Buffer.from([0x70]), Buffer.alloc(28, 2)]),
-        ),
-        CML.Value.from_coin(2_000_000n),
-        CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(datumCbor)),
-        undefined,
-      ),
-    );
-    const body = CML.TransactionBody.new(inputs, outputs, 200_000n);
-    const tx = CML.Transaction.new(
-      body,
-      CML.TransactionWitnessSet.new(),
-      true,
-      undefined,
-    );
-    expect(datumCbor.length / 2).toBeLessThanOrEqual(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxFieldPublicationDatumBytes,
-    );
-    expect(tx.to_cbor_bytes().length).toBeLessThanOrEqual(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxFieldPublicationUnsignedTransactionBytes,
-    );
-    expect(tx.to_cbor_bytes().length).toBeLessThan(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
-    );
+    ).toThrow();
   });
 
   it("encodes immutable content-addressed L1 program material below the independent field bound", () => {
@@ -757,35 +659,5 @@ describe("V1 transaction-order fragments", () => {
         lovelace: minimumLovelace,
       },
     ]);
-  });
-
-  it("derives an exact receipt burn set", () => {
-    const policyId = "66".repeat(28);
-    const receipt = (assetName: string, outputIndex: number): UTxO =>
-      ({
-        txHash: "77".repeat(32),
-        outputIndex,
-        address: "addr_test1vreceipt",
-        assets: {
-          lovelace: 2_000_000n,
-          [`${policyId}${assetName}`]: 1n,
-        },
-        datum: Data.to(0n),
-      }) as UTxO;
-    expect(
-      SDK.txOrderFieldReceiptBurnAssetsV1(
-        [receipt("01".repeat(32), 0), receipt("02".repeat(32), 1)],
-        policyId,
-      ),
-    ).toEqual({
-      [`${policyId}${"01".repeat(32)}`]: -1n,
-      [`${policyId}${"02".repeat(32)}`]: -1n,
-    });
-    expect(() =>
-      SDK.txOrderFieldReceiptBurnAssetsV1(
-        [receipt("01".repeat(32), 0), receipt("01".repeat(32), 1)],
-        policyId,
-      ),
-    ).toThrow(/duplicate/u);
   });
 });

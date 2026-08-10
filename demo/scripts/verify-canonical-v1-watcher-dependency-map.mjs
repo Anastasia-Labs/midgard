@@ -2181,7 +2181,7 @@ if (
     "exact_W13_pre_and_post_finality_internally_derived_sparse_block_cut_journal_restoration_suffix_rewind_restart_replacement_path_replay_and_reinclusion" ||
   userEventIndexer.unknownBehavior !== "fail_closed" ||
   userEventIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  userEventIndexer.expectedFocusedTestCount !== 23
+  userEventIndexer.expectedFocusedTestCount !== 24
 ) {
   fail("W15 user-event-indexer evidence is incomplete or stale");
 }
@@ -2425,7 +2425,16 @@ for (const requiredTestSymbol of [
   "genuineW16.absorbToReserve",
   "genuineW16.initializePayout",
   "genuineW16.refundWithdrawal",
-  "forcedCanonicalNativeTxCbor",
+  // `forcedCanonicalNativeTxCbor` was required here so the block-replay test
+  // had to hand the W15 support file the canonical native-tx bytes a terminal
+  // publication receipt was seeded from. #587 retired that chain, so the field
+  // is gone from `GenuineW15AuthorityFixtureInputV1` and requiring its name
+  // would pin a surface that no longer exists. What the requirement was really
+  // for — that this test drives the forced-order path with a *material-bearing*
+  // native transaction rather than only the canonically-empty one — is pinned
+  // by the two symbols below, which survive the retirement.
+  "forcedPayloadOverride",
+  "FORCED_INVALID_CASES",
 ]) {
   if (!blockReplayTestSource.includes(requiredTestSymbol)) {
     fail(`W25 block-replay test does not cover ${requiredTestSymbol}`);
@@ -2442,9 +2451,12 @@ for (const requiredAuthoritySymbol of [
   "parseWatcherUserEventIndexerResultV1",
   "replayGenuineForcedTerminalAuthorityScenarioV1",
   "createGenuineW15DepositWithdrawalAuthoritiesV1",
-  "forcedReceiptFixture",
-  "deriveMidgardV1TxFieldChunks",
-  "deriveMidgardTxFieldReceiptAssetNameV1",
+  // `forcedReceiptFixture`, `deriveMidgardV1TxFieldChunks` and
+  // `deriveMidgardTxFieldReceiptAssetNameV1` were required here while a non-empty
+  // forced order had to close against an authenticated terminal receipt. #587
+  // retired the counted publication receipt chain, so the support file has no
+  // receipt to seed and the payload it builds names none; requiring the symbols
+  // would pin a surface that no longer exists.
 ]) {
   if (!w15AuthorityScenariosSource.includes(requiredAuthoritySymbol)) {
     fail(`W25 W15 authority support is missing ${requiredAuthoritySymbol}`);

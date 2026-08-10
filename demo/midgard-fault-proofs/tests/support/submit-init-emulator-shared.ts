@@ -183,8 +183,11 @@ export const repoRoot = resolve(moduleDir, "../../../..");
  * constructors with three and four fields respectively, while the encoders in
  * `@al-ft/midgard-sdk` now emit two and three. The stale script destructures a
  * field that is no longer there, so the scenario dies inside the validator with
- * an `EvaluatorError` reading `unexpected empty list`. Regenerating the blueprint
- * is #579's, and these are the TEN tests it has to turn green again.
+ * an `EvaluatorError` reading `unexpected empty list`. #587 then retired the
+ * counted publication receipt chain, which took `terminal_receipt_reference` out
+ * of `ledger_state.TxOrderPayloadV1` — the same staleness, three more rows.
+ * Regenerating the blueprint is #579's, and these are the THIRTEEN tests it has
+ * to turn green again.
  *
  * Six of them are emulator scenarios in this directory. All six die at the same
  * `Spend[0] unexpected empty list`:
@@ -219,11 +222,12 @@ export const repoRoot = resolve(moduleDir, "../../../..");
  * present as an assertion about the wrong stage rather than as an evaluator
  * error, while being this same stale script underneath.
  *
- * The remaining four are schema-parity rows, not emulator scenarios, and they
+ * The remaining seven are schema-parity rows, not emulator scenarios, and they
  * live in `demo/midgard-node/tests/sdk-aiken-schema-parity.test.ts`. They compare
  * each SDK `Data` schema against the blueprint definition of the same name, so
  * the stale arity shows up directly as a field-count mismatch rather than as an
- * evaluator error:
+ * evaluator error. Rows 7-10 are #584's; rows 11-13 are #587's, and the last two
+ * of those are red only because they embed the payload:
  *
  *   7. "matches ForcedInclusionTxV1Schema to
  *      midgard/ledger_state/ForcedInclusionTxV1 recursively"
@@ -233,13 +237,29 @@ export const repoRoot = resolve(moduleDir, "../../../..");
  *      midgard/validation_claim_v1/ValidationSourceMembershipV1 recursively"
  *  10. "matches ValidationClaimWitnessV1Schema to
  *      midgard/validation_claim_v1/ValidationClaimWitnessV1 recursively"
+ *  11. "matches TxOrderPayloadV1Schema to midgard/ledger_state/TxOrderPayloadV1
+ *      recursively"
+ *  12. "matches TxOrderEventV1Schema to midgard/ledger_state/TxOrderEventV1
+ *      recursively"
+ *  13. "matches TxOrderDatumV1Schema to midgard/user_events/tx_order_v1/Datum
+ *      recursively"
  *
- * That file gives `4 failed | 28 passed (32)`.
+ * That file gives `7 failed | 22 passed (29)`. Its total moved with the set: #587
+ * deleted the two mappings for the retired receipt datums and the one for the
+ * retired receipt mint redeemer, because a mapping to a type that no longer
+ * exists on the SDK side would assert a retired surface rather than measure a
+ * stale blueprint.
  *
- * TEN with those names is the handoff figure, and it is written down here rather
- * than left in a review thread so a later reviewer diffing #579 against it is
- * diffing against the real set. Nothing outside these ten is expected red for
- * this reason.
+ * THIRTEEN with those names is the handoff figure, and it is written down here
+ * rather than left in a review thread so a later reviewer diffing #579 against it
+ * is diffing against the real set. Nothing outside these thirteen is expected red
+ * for this reason. Both counts above were re-measured on 2026-08-10, after #587:
+ * `vitest run tests/submit-init-emulator-soundness.test.ts
+ * tests/submit-init-emulator-transition-trace.test.ts
+ * tests/submit-init-emulator-validation-dispute.test.ts --pool=forks
+ * --no-file-parallelism` and `vitest run tests/sdk-aiken-schema-parity.test.ts`.
+ * Re-measure before editing them; a figure in a comment that nobody re-ran is the
+ * defect this paragraph exists to prevent (#586).
  *
  * Both figures are for the blueprint **in the tree**. This file and the parity
  * file both honour `MIDGARD_REAL_BLUEPRINT_PATH`, so pointing that variable at an

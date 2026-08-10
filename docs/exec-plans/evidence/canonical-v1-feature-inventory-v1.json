@@ -53,12 +53,18 @@
     ],
     "forcedAiken": [
       "onchain/aiken/lib/midgard/user-events/tx-order-v1.ak",
-      "onchain/aiken/lib/midgard/user-events/tx-field-receipt-v1.ak",
       "onchain/aiken/validators/user-events/tx-order-v1.ak",
-      "onchain/aiken/validators/user-events/tx-field-preimage-v1.ak",
-      "onchain/aiken/validators/user-events/tx-field-receipt-v1.ak",
       "onchain/aiken/validators/user-events/cek-program-material-v1.ak"
     ],
+    "forcedAikenRetired": {
+      "issue": "#587",
+      "paths": [
+        "onchain/aiken/lib/midgard/user-events/tx-field-receipt-v1.ak",
+        "onchain/aiken/validators/user-events/tx-field-preimage-v1.ak",
+        "onchain/aiken/validators/user-events/tx-field-receipt-v1.ak"
+      ],
+      "reason": "The counted per-item publication receipt chain. Its mint gated on verify_midgard_transaction_field_chunk_v1, which docs/spec/midgard-tx.md \u00a74's flat field commitment makes unsatisfiable for any payload whose commitments are the \u00a74 flat hashes of real material \u2014 not outright, since the opening is checked against the commitment the payload's own compact declares, so a payload declaring counted roots could satisfy it. The tx-order mint's all-empty verify_order_material closes that residual by construction. The availability role passes to \u00a78 carriage; issue #589 owns deploying it."
+    },
     "retainedDa": [
       "demo/midgard-sdk/src/da-payload.ts",
       "demo/midgard-node/src/workers/commit-block-header/da-payload.ts",

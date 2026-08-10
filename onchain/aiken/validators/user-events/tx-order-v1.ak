@@ -1,4 +1,3 @@
-use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets.{PolicyId, add}
@@ -10,7 +9,7 @@ use midgard/settlement
 use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/tx_order_v1.{
-  Datum, SpendRedeemer, forced_inclusion_key_value, verify_order_receipts,
+  Datum, SpendRedeemer, forced_inclusion_key_value, verify_order_material,
 }
 
 validator spend(hub_oracle: ScriptHash) {
@@ -117,11 +116,7 @@ validator spend(hub_oracle: ScriptHash) {
   }
 }
 
-validator mint(
-  hub_oracle: ScriptHash,
-  receipt_script_hash: ScriptHash,
-  field_receipt_policy_id: PolicyId,
-) {
+validator mint(hub_oracle: ScriptHash) {
   mint(
     redeemer: user_events.MintRedeemer,
     own_policy: PolicyId,
@@ -144,17 +139,7 @@ validator mint(
     expect output_tx_order_nft_triplet == (own_policy, l1_id, 1)
 
     expect tx_order_payload: ledger_state.TxOrderPayloadV1 = tx_order_payload_data
-    expect user_events.AuthenticateEvent { nonce_input_index, .. } = redeemer
-    expect Some(nonce_input) = tx.inputs |> list.at(nonce_input_index)
-    expect
-      verify_order_receipts(
-        tx.reference_inputs,
-        receipt_script_hash,
-        field_receipt_policy_id,
-        own_policy,
-        nonce_input.output_reference,
-        tx_order_payload,
-      )
+    expect verify_order_material(tx_order_payload)
 
     True
   }

@@ -4,10 +4,8 @@ import {
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardCekBlobChunkV1,
-  encodeMidgardCekProgramEnvelopeV1,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardTxOutput,
-  encodeMidgardVersionedScriptListPreimage,
   hashMidgardCekProgramMaterialPreimageV1,
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -15,14 +13,8 @@ import {
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
 import { MidgardCekProgramMaterialMissingRootError } from "@al-ft/midgard-core/cek-proof";
-import { deriveMidgardTxFieldReceiptAssetNameV1 } from "@al-ft/midgard-core/consensus-validation-v1";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  Data,
-  type LucidEvolution,
-  toUnit,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -32,15 +24,6 @@ import {
   publishedProgramMaterialSnapshotError,
   reconstructTxOrderMaterialV1,
 } from "@/fibers/fetch-and-insert-tx-order-utxos.js";
-
-const FIELD_PREIMAGE_ADDRESS = "addr_test1vfieldpreimage";
-const FIELD_RECEIPT_ADDRESS = "addr_test1vfieldreceipt";
-const FIELD_RECEIPT_POLICY_ID = "55".repeat(28);
-const TX_ORDER_POLICY_ID = "44".repeat(28);
-const TX_ORDER_ID: SDK.OutputReference = {
-  transactionId: "33".repeat(32),
-  outputIndex: 4n,
-};
 
 const transactionCbor = ({
   addrTxWitsPreimageCbor = EMPTY_CBOR_LIST,
@@ -94,300 +77,137 @@ const transactionCbor = ({
     }),
   );
 
-const outRefKey = ({
-  transactionId,
-  outputIndex,
-}: SDK.OutputReference): string => `${transactionId}#${outputIndex.toString()}`;
-
-const fragmentReference = (ordinal: number): SDK.OutputReference => ({
-  transactionId: (0x80 + ordinal).toString(16).padStart(2, "0").repeat(32),
-  outputIndex: BigInt(ordinal),
-});
-
-const receiptReference = (ordinal: number): SDK.OutputReference => ({
-  transactionId: (0x90 + ordinal).toString(16).padStart(2, "0").repeat(32),
-  outputIndex: BigInt(ordinal),
-});
-
-const materialFixture = (nativeTxCbor = transactionCbor()) => {
-  const bundle = SDK.deriveTxOrderFragmentBundleV1({
-    nativeTxCbor,
-    fieldReceiptPolicyId: FIELD_RECEIPT_POLICY_ID,
-    txOrderPolicyId: TX_ORDER_POLICY_ID,
-    txOrderId: TX_ORDER_ID,
-  });
-  const utxos = new Map<string, UTxO>();
-  let predecessorReceiptReference: SDK.OutputReference | null = null;
-
-  for (const [ordinal, fragment] of bundle.fragments.entries()) {
-    const fieldReference = fragmentReference(ordinal);
-    utxos.set(outRefKey(fieldReference), {
-      txHash: fieldReference.transactionId,
-      outputIndex: Number(fieldReference.outputIndex),
-      address: FIELD_PREIMAGE_ADDRESS,
-      assets: { lovelace: 2_000_000n },
-      datum: fragment.datumCbor,
-    } as UTxO);
-
-    const receiptOutRef = receiptReference(ordinal);
-    const receiptAssetName = deriveMidgardTxFieldReceiptAssetNameV1({
-      txOrderPolicyId: Buffer.from(TX_ORDER_POLICY_ID, "hex"),
-      txOrderTransactionId: Buffer.from(TX_ORDER_ID.transactionId, "hex"),
-      txOrderOutputIndex: TX_ORDER_ID.outputIndex,
-      transactionCommitment: Buffer.from(bundle.transactionCommitment, "hex"),
-      fieldIndex: fragment.fieldIndex,
-      itemIndex: fragment.itemIndex,
-      chunkIndex: fragment.chunkIndex,
-    }).toString("hex");
-    const receiptDatum: SDK.TxFieldReceiptV1 = {
-      field_receipt_policy_id: FIELD_RECEIPT_POLICY_ID,
-      tx_order_policy_id: TX_ORDER_POLICY_ID,
-      tx_order_id: TX_ORDER_ID,
-      transaction_commitment: bundle.transactionCommitment,
-      collection_proof: fragment.datum.collection_proof,
-      chunk_index: BigInt(fragment.chunkIndex),
-      field_reference: fieldReference,
-      predecessor_receipt_reference: predecessorReceiptReference,
-      field_encoded_size: BigInt(fragment.fieldEncodedSize),
-    };
-    utxos.set(outRefKey(receiptOutRef), {
-      txHash: receiptOutRef.transactionId,
-      outputIndex: Number(receiptOutRef.outputIndex),
-      address: FIELD_RECEIPT_ADDRESS,
-      assets: {
-        lovelace: 2_000_000n,
-        [toUnit(FIELD_RECEIPT_POLICY_ID, receiptAssetName)]: 1n,
+const emptyTransactionCbor = (): Buffer =>
+  encodeMidgardNativeTxCanonicalV1(
+    materializeMidgardNativeTxFromCanonicalV1({
+      version: MIDGARD_NATIVE_TX_V1_VERSION,
+      validity: "TxIsValid",
+      body: {
+        spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+        referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
+        outputsPreimageCbor: EMPTY_CBOR_LIST,
+        fee: 0n,
+        validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
+        validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+        requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+        requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+        mintPreimageCbor: EMPTY_CBOR_LIST,
+        scriptIntegrityHash: EMPTY_NULL_ROOT,
+        auxiliaryDataHash: EMPTY_NULL_ROOT,
+        networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
       },
-      datum: Data.to(receiptDatum, SDK.TxFieldReceiptV1),
-    } as UTxO);
-    predecessorReceiptReference = receiptOutRef;
-  }
+      witnessSet: {
+        addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      },
+    }),
+  );
 
-  const lucid = {
-    utxosByOutRef: async (
-      references: readonly Pick<UTxO, "txHash" | "outputIndex">[],
-    ): Promise<UTxO[]> =>
-      references.flatMap((reference) => {
-        const utxo = utxos.get(
-          `${reference.txHash}#${reference.outputIndex.toString()}`,
-        );
-        return utxo === undefined ? [] : [utxo];
-      }),
-  } as unknown as LucidEvolution;
-  return {
+const payloadFor = (nativeTxCbor: Buffer): SDK.TxOrderPayloadV1 => {
+  const material = SDK.deriveTxOrderMaterialV1({
     nativeTxCbor,
-    bundle,
-    utxos,
-    lucid,
-    terminalReceiptReference: predecessorReceiptReference!,
+    owner: Buffer.alloc(28, 0x66),
+  });
+  return {
+    tx_id: material.transactionId,
+    transaction_commitment: material.transactionCommitment,
+    source: material.source,
   };
 };
 
-const mutateFragment = (
-  fixture: ReturnType<typeof materialFixture>,
-  ordinal: number,
-  mutate: (datum: SDK.TxFieldPreimageV1) => SDK.TxFieldPreimageV1,
-): void => {
-  const reference = fragmentReference(ordinal);
-  const utxo = fixture.utxos.get(outRefKey(reference))!;
-  const datum = Data.from(
-    utxo.datum!,
-    SDK.TxFieldPreimageV1,
-  ) as SDK.TxFieldPreimageV1;
-  fixture.utxos.set(outRefKey(reference), {
-    ...utxo,
-    datum: Data.to(mutate(datum), SDK.TxFieldPreimageV1),
-  });
-};
+const RECONSTRUCTION_FAILURE = {
+  message:
+    "Failed to reconstruct the authenticated V1 tx-order material from its §8 carriage",
+} as const;
 
-const reconstruct = (
-  fixture: ReturnType<typeof materialFixture>,
-): Effect.Effect<Buffer, SDK.LucidError> =>
-  reconstructTxOrderMaterialV1({
-    lucid: fixture.lucid,
-    txOrderId: TX_ORDER_ID,
-    payload: {
-      tx_id: fixture.bundle.transactionId,
-      transaction_commitment: fixture.bundle.transactionCommitment,
-      source: fixture.bundle.source,
-      terminal_receipt_reference: fixture.terminalReceiptReference,
-    },
-    txOrderPolicyId: TX_ORDER_POLICY_ID,
-    fieldPreimageAddress: FIELD_PREIMAGE_ADDRESS,
-    fieldReceiptPolicyId: FIELD_RECEIPT_POLICY_ID,
-    fieldReceiptAddress: FIELD_RECEIPT_ADDRESS,
-  });
-
-describe("V1 tx-order material receipt chain", () => {
-  it("streams an authenticated multi-item, multi-chunk chain into the exact transaction", async () => {
-    const fixture = materialFixture();
-
-    expect(fixture.bundle.fragments.length).toBe(4);
-    expect(fixture.nativeTxCbor.length).toBeGreaterThan(8 * 1_024);
-    await expect(Effect.runPromise(reconstruct(fixture))).resolves.toEqual(
-      fixture.nativeTxCbor,
-    );
-  });
-
-  it("reconstructs field 6 scripts raw and field 7 address witnesses as byte-list items", async () => {
-    const scriptTxWitsPreimageCbor = encodeMidgardVersionedScriptListPreimage([
-      {
-        language: "MidgardV1",
-        scriptBytes: encodeMidgardCekProgramEnvelopeV1({
-          uplcVersion: [1n, 1n, 0n],
-          termRoot: Buffer.alloc(32, 0x33),
-          nodeCount: 3n,
-          materialByteLength: 144n,
-        }),
-      },
-    ]);
-    const addressWitnessCbor = encodeCbor([
-      Buffer.alloc(32, 0x44),
-      Buffer.alloc(64, 0x55),
-    ]);
-    const addrTxWitsPreimageCbor = encodeCbor([addressWitnessCbor]);
-    const fixture = materialFixture(
-      transactionCbor({
-        addrTxWitsPreimageCbor,
-        scriptTxWitsPreimageCbor,
-      }),
-    );
-    const scriptFragments = fixture.bundle.fragments.filter(
-      ({ fieldIndex }) => fieldIndex === 6,
-    );
-    const addressFragments = fixture.bundle.fragments.filter(
-      ({ fieldIndex }) => fieldIndex === 7,
-    );
-
-    expect(scriptFragments).toHaveLength(1);
-    expect(scriptFragments[0]).toMatchObject({
-      fieldName: "script_witnesses",
-      fieldEncodedSize: scriptTxWitsPreimageCbor.length,
+describe("V1 tx-order §8 field carriage", () => {
+  it("reconstructs a canonically-empty forced order, without the §8.8 door", async () => {
+    // Not through `authenticatedMidgardFieldViewV1`: `reconstructTxOrderMaterialV1`
+    // documents why the door cannot be the authenticator on this path while
+    // `deriveNativeTxBodyCompact` is still counted (#585), and
+    // `reconstructMidgardTransactionV1` is what binds the preimages to the payload
+    // instead. This asserts the reconstruction that actually runs.
+    const nativeTxCbor = emptyTransactionCbor();
+    const material = SDK.deriveTxOrderMaterialV1({
+      nativeTxCbor,
+      owner: Buffer.alloc(28, 0x66),
     });
-    expect(addressFragments).toHaveLength(1);
-    expect(addressFragments[0]).toMatchObject({
-      fieldName: "address_witnesses",
-      fieldEncodedSize: addrTxWitsPreimageCbor.length,
-    });
-    await expect(Effect.runPromise(reconstruct(fixture))).resolves.toEqual(
-      fixture.nativeTxCbor,
-    );
-  });
 
-  it("fails closed when a predecessor lies about its encoded-size state", async () => {
-    const fixture = materialFixture();
-    const predecessorReference =
-      fixture.bundle.fragments.length === 0
-        ? fixture.terminalReceiptReference
-        : receiptReference(fixture.bundle.fragments.length - 2);
-    const predecessor = fixture.utxos.get(outRefKey(predecessorReference))!;
-    const datum = Data.from(
-      predecessor.datum!,
-      SDK.TxFieldReceiptV1,
-    ) as SDK.TxFieldReceiptV1;
-    fixture.utxos.set(outRefKey(predecessorReference), {
-      ...predecessor,
-      datum: Data.to(
-        {
-          ...datum,
-          field_encoded_size: datum.field_encoded_size + 1n,
-        },
-        SDK.TxFieldReceiptV1,
+    // Nine empty fields carry nothing, so there is no §8 carriage to publish —
+    // which is the only order state the tx-order mint admits today.
+    expect(material.carriage).toEqual([]);
+    await expect(
+      Effect.runPromise(
+        reconstructTxOrderMaterialV1({ payload: payloadFor(nativeTxCbor) }),
       ),
-    });
-
-    await expect(Effect.runPromise(reconstruct(fixture))).rejects.toMatchObject(
-      {
-        message:
-          "Failed to walk and reconstruct the authenticated V1 tx-order material chain",
-      },
-    );
+    ).resolves.toEqual(nativeTxCbor);
   });
 
-  it.each([
-    {
-      name: "field kind",
-      mutate: (datum: SDK.TxFieldPreimageV1): SDK.TxFieldPreimageV1 => ({
-        ...datum,
-        proof: {
-          ...datum.proof,
-          field_index: datum.proof.field_index + 1n,
-        },
-      }),
-    },
-    {
-      name: "field hash",
-      mutate: (datum: SDK.TxFieldPreimageV1): SDK.TxFieldPreimageV1 => ({
-        ...datum,
-        proof: {
-          ...datum.proof,
-          chunk: `${datum.proof.chunk.startsWith("00") ? "01" : "00"}${datum.proof.chunk.slice(2)}`,
-        },
-      }),
-    },
-    {
-      name: "field length",
-      mutate: (datum: SDK.TxFieldPreimageV1): SDK.TxFieldPreimageV1 => ({
-        ...datum,
-        proof: {
-          ...datum.proof,
-          total_length: datum.proof.total_length + 1n,
-        },
-      }),
-    },
-  ])("fails closed for a mutated $name", async ({ mutate }) => {
-    const fixture = materialFixture();
-    mutateFragment(fixture, 0, mutate);
-    await expect(Effect.runPromise(reconstruct(fixture))).rejects.toMatchObject(
-      {
-        message:
-          "Failed to walk and reconstruct the authenticated V1 tx-order material chain",
-      },
-    );
+  it("fails closed on a forced order that carries material", async () => {
+    // `transactionCbor()` puts two 5 kB-datum outputs in field 2. Under the
+    // retired counted chain this arrived as four per-item openings walked back
+    // through their receipts; under §8 it is one field preimage with no
+    // deployable carriage, so ingestion refuses it by name rather than
+    // reassembling something no L1 order could have authenticated.
+    await expect(
+      Effect.runPromise(
+        reconstructTxOrderMaterialV1({
+          payload: payloadFor(transactionCbor()),
+        }),
+      ),
+    ).rejects.toMatchObject(RECONSTRUCTION_FAILURE);
   });
 
-  it("rejects semantically decodable but noncanonical fragment data", async () => {
-    const fixture = materialFixture();
-    const reference = fragmentReference(0);
-    const utxo = fixture.utxos.get(outRefKey(reference))!;
-    const noncanonical = utxo.datum!.replace("d8799f01", "d8799f1801");
-    expect(noncanonical).not.toBe(utxo.datum);
-    expect(Data.from(noncanonical, SDK.TxFieldPreimageV1)).toEqual(
-      Data.from(utxo.datum!, SDK.TxFieldPreimageV1),
+  it("fails closed when the committed field lengths do not describe the source", async () => {
+    const payload = payloadFor(emptyTransactionCbor());
+    const lengths = Buffer.from(
+      payload.source.field_preimage_lengths_cbor,
+      "hex",
     );
-    fixture.utxos.set(outRefKey(reference), {
-      ...utxo,
-      datum: noncanonical,
-    });
+    // Nine one-byte fields encode as nine `01`s behind a `89` header; claiming
+    // two bytes for field 0 leaves every length still "empty enough" to pass the
+    // header check and wrong against the source.
+    const index = lengths.indexOf(0x01);
+    expect(index).toBeGreaterThan(0);
+    const mutated = Buffer.from(lengths);
+    mutated[index] = 0x02;
 
-    await expect(Effect.runPromise(reconstruct(fixture))).rejects.toMatchObject(
-      {
-        message:
-          "Failed to walk and reconstruct the authenticated V1 tx-order material chain",
-      },
-    );
+    await expect(
+      Effect.runPromise(
+        reconstructTxOrderMaterialV1({
+          payload: {
+            ...payload,
+            source: {
+              ...payload.source,
+              field_preimage_lengths_cbor: mutated.toString("hex"),
+            },
+          },
+        }),
+      ),
+    ).rejects.toMatchObject(RECONSTRUCTION_FAILURE);
   });
 
-  it("rejects semantically decodable but noncanonical receipt data", async () => {
-    const fixture = materialFixture();
-    const reference = fixture.terminalReceiptReference;
-    const utxo = fixture.utxos.get(outRefKey(reference))!;
-    const noncanonical = utxo.datum!.replace("d8799f01", "d8799f1801");
-    expect(noncanonical).not.toBe(utxo.datum);
-    expect(Data.from(noncanonical, SDK.TxFieldReceiptV1)).toEqual(
-      Data.from(utxo.datum!, SDK.TxFieldReceiptV1),
-    );
-    fixture.utxos.set(outRefKey(reference), {
-      ...utxo,
-      datum: noncanonical,
-    });
+  it("fails closed when the payload's transaction id is not the source's", async () => {
+    const payload = payloadFor(emptyTransactionCbor());
+    await expect(
+      Effect.runPromise(
+        reconstructTxOrderMaterialV1({
+          payload: { ...payload, tx_id: "11".repeat(32) },
+        }),
+      ),
+    ).rejects.toMatchObject(RECONSTRUCTION_FAILURE);
+  });
 
-    await expect(Effect.runPromise(reconstruct(fixture))).rejects.toMatchObject(
-      {
-        message:
-          "Failed to walk and reconstruct the authenticated V1 tx-order material chain",
-      },
-    );
+  it("fails closed when the payload's commitment is not the source's", async () => {
+    const payload = payloadFor(emptyTransactionCbor());
+    await expect(
+      Effect.runPromise(
+        reconstructTxOrderMaterialV1({
+          payload: { ...payload, transaction_commitment: "22".repeat(32) },
+        }),
+      ),
+    ).rejects.toMatchObject(RECONSTRUCTION_FAILURE);
   });
 });
 

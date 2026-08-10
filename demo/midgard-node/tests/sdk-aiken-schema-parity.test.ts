@@ -44,18 +44,32 @@ type NormalizedSchema =
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(testDir, "../../..");
 /**
- * KNOWN RED against the blueprint currently in the tree. #584 retired
- * `transaction_commitment` from the committed source leaves without regenerating
- * `plutus.json`, so four rows below compare a two- or three-field SDK schema
- * against a stale three- or four-field blueprint definition and fail on the field
- * count: `ForcedInclusionTxV1Schema`, `L2TransactionSourceV1Schema`,
- * `ValidationSourceMembershipV1Schema` and `ValidationClaimWitnessV1Schema`
- * (`4 failed | 28 passed`). Regenerating the blueprint is
- * [#579](https://github.com/Anastasia-Labs/midgard/issues/579)'s; these four are
- * rows 7-10 of the ten-test handoff set enumerated in
- * `demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts`, which
- * also owns the six emulator scenarios red for the same cause. Point
- * `MIDGARD_REAL_BLUEPRINT_PATH` at a regenerated blueprint to check the fix.
+ * KNOWN RED against the blueprint currently in the tree, and the set grew in
+ * #587.
+ *
+ * #584 retired `transaction_commitment` from the committed source leaves without
+ * regenerating `plutus.json`, so four rows compare a two- or three-field SDK
+ * schema against a stale three- or four-field blueprint definition and fail on
+ * the field count: `ForcedInclusionTxV1Schema`, `L2TransactionSourceV1Schema`,
+ * `ValidationSourceMembershipV1Schema` and `ValidationClaimWitnessV1Schema`.
+ *
+ * #587 then retired the counted publication receipt chain, which took
+ * `terminal_receipt_reference` out of `TxOrderPayloadV1`. That is the same kind of
+ * staleness and it moves three more rows red — `TxOrderPayloadV1Schema` on its own
+ * field count, and `TxOrderEventV1Schema` and `TxOrderDatumV1Schema` because both
+ * embed the payload — for a total of **seven** rows against this blueprint. The
+ * two mappings for the retired receipt datums, and the one for the retired receipt
+ * mint redeemer, were removed rather than left to fail: a red row measures a stale
+ * blueprint, while a mapping to a type that no longer exists on the SDK side would
+ * assert a retired surface.
+ *
+ * Measured on 2026-08-10 after #587: `7 failed | 22 passed (29)`. Regenerating the
+ * blueprint is [#579](https://github.com/Anastasia-Labs/midgard/issues/579)'s; all
+ * seven are rows 7-13 of the thirteen-test handoff set enumerated in
+ * `demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts` (#584's
+ * four as rows 7-10, #587's three as 11-13), which also owns the six emulator
+ * scenarios red for the same cause. Point `MIDGARD_REAL_BLUEPRINT_PATH` at a
+ * regenerated blueprint to check the fix.
  */
 const blueprintPath =
   process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
@@ -143,8 +157,11 @@ const ABI_MAPPINGS = [
   ["NativeTxProofSourceV1Schema", "midgard/ledger_state/NativeTxProofSourceV1"],
   ["TxOrderPayloadV1Schema", "midgard/ledger_state/TxOrderPayloadV1"],
   ["TxOrderEventV1Schema", "midgard/ledger_state/TxOrderEventV1"],
-  ["TxFieldPreimageV1Schema", "midgard/ledger_state/TxFieldPreimageV1"],
-  ["TxFieldReceiptV1Schema", "midgard/ledger_state/TxFieldReceiptV1"],
+  // `TxFieldPreimageV1Schema` and `TxFieldReceiptV1Schema` were mapped here until
+  // #587 retired both twins with the counted publication receipt chain. Their
+  // Aiken definitions are still in the frozen blueprint and go with it when #579
+  // regenerates; a mapping kept for them would assert a retired surface rather
+  // than measure a stale one.
   [
     "CekProgramMaterialDatumV1Schema",
     "midgard/ledger_state/CekProgramMaterialDatumV1",
@@ -153,10 +170,6 @@ const ABI_MAPPINGS = [
   [
     "TxOrderSpendRedeemerV1Schema",
     "midgard/user_events/tx_order_v1/SpendRedeemer",
-  ],
-  [
-    "TxFieldReceiptMintRedeemerV1Schema",
-    "midgard/user_events/tx_field_receipt_v1/MintRedeemer",
   ],
   [
     "ValidationMachineStateV1Schema",

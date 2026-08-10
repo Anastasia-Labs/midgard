@@ -205,7 +205,6 @@ const forcedPayloadForNative = (native: ReturnType<typeof makeNativeTx>) => {
       field_preimage_lengths_cbor:
         source.fieldPreimageLengthsCbor.toString("hex"),
     }),
-    terminal_receipt_reference: null,
   });
 };
 
@@ -245,14 +244,12 @@ const genuineW15Input = () => ({
     outputIndex: 0n,
   },
   forcedPayloadOverride: forcedPayloadForNative(FORCED_FLOW_NATIVE),
-  forcedCanonicalNativeTxCbor: FORCED_FLOW_NATIVE.txCbor,
   forcedVariants: [
     ...Object.entries(FORCED_INVALID_CASES).map(
       ([key, invalidCase], index) => ({
         key,
         nonceByte: ["9d", "9e", "9f", "aa", "ab"][index]!,
         payload: forcedPayloadForNative(invalidCase.native),
-        canonicalNativeTxCbor: invalidCase.native.txCbor,
         operatorValidity: invalidCase.operatorValidity,
       }),
     ),
@@ -260,7 +257,6 @@ const genuineW15Input = () => ({
       key: "Mismatch",
       nonceByte: "ac",
       payload: forcedPayloadForNative(FORCED_INVALID_CASES.UnbalancedTx.native),
-      canonicalNativeTxCbor: FORCED_INVALID_CASES.UnbalancedTx.native.txCbor,
       operatorValidity: "TxIsValid" as const,
     },
   ],

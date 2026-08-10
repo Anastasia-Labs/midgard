@@ -1,64 +1,30 @@
 use aiken/cbor
-use aiken/crypto.{blake2b_256}
-use aiken/primitive/bytearray
 use cardano/address
-use cardano/assets
-use cardano/transaction.{
-  InlineDatum, Input, NoDatum, Output, OutputReference, Transaction,
-}
-use midgard/bounded_collection_v1.{ItemProofV1, hash_item}
-use midgard/bounded_item_v1.{ChunkProofV1, from_bytes, hash_chunk}
+use cardano/transaction.{NoDatum, OutputReference}
 use midgard/cek_proof_v1
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, native_tx_id_for_version,
 }
-use midgard/fraud_proofs/native_tx/components.{
-  encode_midgard_address_witness, encode_midgard_tx_input,
-  encode_midgard_versioned_script,
-}
-use midgard/fraud_proofs/native_tx/preimages.{
-  encode_address_witness_preimage, encode_script_witness_preimage,
-}
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types.{
-  MidgardAddressWitness, MidgardTransaction, MidgardTransactionBody,
-  MidgardTransactionWitnessSet, MidgardTxInput, MidgardVersionedScript,
-  NativeCardanoScript, TxIsValid, native_tx_version_v1,
+  MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
+  MidgardTxInput, TxIsValid, native_tx_version_v1,
 }
 use midgard/ledger_state.{
   CekProgramMaterialDatumV1, ForcedInclusionTxV1, NativeTxProofSourceV1,
-  TxFieldPreimageV1, TxFieldReceiptV1, TxOrderEventV1, TxOrderPayloadV1,
+  TxOrderEventV1, TxOrderPayloadV1,
 }
 use midgard/transition_trace
 use midgard/user_events
-use midgard/user_events/tx_field_receipt_v1 as tx_field_receipt
 use midgard/user_events/tx_order_v1.{
-  Datum, SpendRedeemer, field_fragment_burn_authorized, field_receipt_asset_name,
-  field_receipt_burn_authorized, forced_inclusion_key_value,
-  verify_order_receipts, verify_receipt_chain_link,
+  Datum, SpendRedeemer, forced_inclusion_key_value, verify_order_material,
 }
-use midgard/validation_merkle_v1.{FrontierPeak}
-
-const tx_order_policy_id =
-  #"11111111111111111111111111111111111111111111111111111111"
-
-const field_receipt_policy_id =
-  #"22222222222222222222222222222222222222222222222222222222"
-
-const receipt_script_hash =
-  #"33333333333333333333333333333333333333333333333333333333"
-
-const other_script_hash =
-  #"77777777777777777777777777777777777777777777777777777777"
 
 const order_transaction_id =
   #"4444444444444444444444444444444444444444444444444444444444444444"
 
-const field_transaction_id =
+const commitment_transaction_id =
   #"5555555555555555555555555555555555555555555555555555555555555555"
-
-const receipt_transaction_id =
-  #"8888888888888888888888888888888888888888888888888888888888888888"
 
 const input_transaction_id =
   #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -66,10 +32,6 @@ const input_transaction_id =
 const signer = #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 const zero = #"0000000000000000000000000000000000000000000000000000000000000000"
-
-fn order_id() -> OutputReference {
-  OutputReference { transaction_id: order_transaction_id, output_index: 7 }
-}
 
 fn vector_order_id() -> OutputReference {
   OutputReference {
@@ -89,9 +51,8 @@ fn vector_source() -> NativeTxProofSourceV1 {
 fn vector_payload() -> TxOrderPayloadV1 {
   TxOrderPayloadV1 {
     tx_id: order_transaction_id,
-    transaction_commitment: field_transaction_id,
+    transaction_commitment: commitment_transaction_id,
     source: vector_source(),
-    terminal_receipt_reference: None,
   }
 }
 
@@ -140,17 +101,6 @@ fn vector_spend_redeemer() -> SpendRedeemer {
   }
 }
 
-fn field_reference(index: Int) -> OutputReference {
-  OutputReference { transaction_id: field_transaction_id, output_index: index }
-}
-
-fn receipt_reference(index: Int) -> OutputReference {
-  OutputReference {
-    transaction_id: receipt_transaction_id,
-    output_index: index,
-  }
-}
-
 fn empty_v1_transaction() -> MidgardTransaction {
   let empty_mint: Data = []
   MidgardTransaction {
@@ -178,17 +128,17 @@ fn empty_v1_transaction() -> MidgardTransaction {
   }
 }
 
-fn sample_input() -> MidgardTxInput {
-  MidgardTxInput { tx_id: input_transaction_id, output_index: 3 }
-}
-
 fn sample_v1_transaction(include_signer: Bool) -> MidgardTransaction {
   let empty = empty_v1_transaction()
   MidgardTransaction {
     ..empty,
     body: MidgardTransactionBody {
       ..empty.body,
-      inputs: [sample_input()],
+      inputs: if include_signer {
+        []
+      } else {
+        [MidgardTxInput { tx_id: input_transaction_id, output_index: 3 }]
+      },
       required_signers: if include_signer {
         [signer]
       } else {
@@ -219,134 +169,20 @@ fn commitment(tx: MidgardTransaction) -> ByteArray {
   native_transaction.midgard_transaction_proof_commitment_v1(tx)
 }
 
-fn payload(
-  tx: MidgardTransaction,
-  terminal_receipt_reference: Option<OutputReference>,
-) -> TxOrderPayloadV1 {
+fn payload(tx: MidgardTransaction) -> TxOrderPayloadV1 {
   TxOrderPayloadV1 {
     tx_id: tx_id(tx),
     transaction_commitment: commitment(tx),
     source: source(tx),
-    terminal_receipt_reference,
-  }
-}
-
-fn collection_proof(field_index: Int, item: ByteArray) -> ItemProofV1 {
-  let item_commitment = from_bytes(field_index, 0, item)
-  let leaf = hash_item(field_index, 0, bytearray.length(item), item_commitment)
-  ItemProofV1 {
-    version: 1,
-    field_index,
-    item_count: 1,
-    item_index: 0,
-    item_length: bytearray.length(item),
-    item_commitment,
-    frontier: [FrontierPeak { height: 0, hash: leaf }],
-    siblings: [],
-  }
-}
-
-fn input_receipt(
-  tx: MidgardTransaction,
-  predecessor_receipt_reference: Option<OutputReference>,
-) -> TxFieldReceiptV1 {
-  TxFieldReceiptV1 {
-    field_receipt_policy_id,
-    tx_order_policy_id,
-    tx_order_id: order_id(),
-    transaction_commitment: commitment(tx),
-    collection_proof: collection_proof(
-      0,
-      encode_midgard_tx_input(sample_input()),
-    ),
-    chunk_index: 0,
-    field_reference: field_reference(0),
-    predecessor_receipt_reference,
-    field_encoded_size: 39,
-  }
-}
-
-fn signer_receipt(
-  tx: MidgardTransaction,
-  predecessor_receipt_reference: Option<OutputReference>,
-) -> TxFieldReceiptV1 {
-  TxFieldReceiptV1 {
-    field_receipt_policy_id,
-    tx_order_policy_id,
-    tx_order_id: order_id(),
-    transaction_commitment: commitment(tx),
-    collection_proof: collection_proof(4, signer),
-    chunk_index: 0,
-    field_reference: field_reference(1),
-    predecessor_receipt_reference,
-    field_encoded_size: 31,
-  }
-}
-
-fn receipt_input(
-  reference: OutputReference,
-  receipt: TxFieldReceiptV1,
-  script_hash: ByteArray,
-) -> Input {
-  let proof = receipt.collection_proof
-  let asset_name = field_receipt_asset_name(
-    receipt.tx_order_policy_id,
-    receipt.tx_order_id,
-    receipt.transaction_commitment,
-    proof.field_index,
-    proof.item_index,
-    receipt.chunk_index,
-  )
-  let receipt_data: Data = receipt
-  Input {
-    output_reference: reference,
-    output: Output {
-      address: address.from_script(script_hash),
-      value: assets.from_lovelace(2_000_000)
-        |> assets.add(field_receipt_policy_id, asset_name, 1),
-      datum: InlineDatum(receipt_data),
-      reference_script: None,
-    },
-  }
-}
-
-fn receipt_burn_transaction(
-  receipt: TxFieldReceiptV1,
-  order_quantity: Int,
-  receipt_quantity: Int,
-) -> Transaction {
-  let nonce_asset_name = user_events.out_ref_to_nonce(receipt.tx_order_id)
-  let proof = receipt.collection_proof
-  let receipt_asset_name = field_receipt_asset_name(
-    receipt.tx_order_policy_id,
-    receipt.tx_order_id,
-    receipt.transaction_commitment,
-    proof.field_index,
-    proof.item_index,
-    receipt.chunk_index,
-  )
-  Transaction {
-    ..transaction.placeholder,
-    inputs: [receipt_input(receipt_reference(0), receipt, receipt_script_hash)],
-    mint: assets.from_asset(
-      tx_order_policy_id,
-      nonce_asset_name,
-      order_quantity,
-    )
-      |> assets.add(
-          field_receipt_policy_id,
-          receipt_asset_name,
-          receipt_quantity,
-        ),
   }
 }
 
 test tx_order_v1_matches_the_canonical_typescript_abi_vectors() {
   and {
     cbor.serialise(vector_order_id()) == #"d8799f5820333333333333333333333333333333333333333333333333333333333333333304ff",
-    cbor.serialise(vector_payload()) == #"d8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffd87a80ff",
-    cbor.serialise(vector_event()) == #"d8799fd8799f5820333333333333333333333333333333333333333333333333333333333333333304ffd8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffd87a80ffff",
-    cbor.serialise(vector_datum()) == #"d8799fd8799fd8799f5820333333333333333333333333333333333333333333333333333333333333333304ffd8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffd87a80ffff187b581c66666666666666666666666666666666666666666666666666666666d8799fd8799f581c77777777777777777777777777777777777777777777777777777777ffd87a80ffd87980ff",
+    cbor.serialise(vector_payload()) == #"d8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffff",
+    cbor.serialise(vector_event()) == #"d8799fd8799f5820333333333333333333333333333333333333333333333333333333333333333304ffd8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffffff",
+    cbor.serialise(vector_datum()) == #"d8799fd8799fd8799f5820333333333333333333333333333333333333333333333333333333333333333304ffd8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffffff187b581c66666666666666666666666666666666666666666666666666666666d8799fd8799f581c77777777777777777777777777777777777777777777777777777777ffd87a80ffd87980ff",
     cbor.serialise(vector_forced_inclusion()) == #"d8799f58204444444444444444444444444444444444444444444444444444444444444444d8799f41014202034104ffd87c80ff",
     cbor.serialise(vector_spend_redeemer()) == #"d8799f0001020304d8799fd87a805820000000000000000000000000000000000000000000000000000000000000000058201111111111111111111111111111111111111111111111111111111111111111015827d8799f5820333333333333333333333333333333333333333333333333333333333333333304ff5834d8799f58204444444444444444444444444444444444444444444444444444444444444444d8799f41014202034104ffd87c80ff80ff05d87c80ff",
   }
@@ -363,26 +199,9 @@ test forced_inclusion_key_value_matches_the_canonical_v1_vectors() {
   }
 }
 
-test tx_field_receipt_redeemers_match_the_canonical_typescript_abi_vectors() {
-  and {
-    cbor.serialise(
-      tx_field_receipt.PublishField {
-        field_reference_input_index: 0,
-        predecessor_receipt_reference_input_index: -1,
-        receipt_output_index: 1,
-        transaction_id: order_transaction_id,
-        source: vector_source(),
-      },
-    ) == #"d8799f00200158204444444444444444444444444444444444444444444444444444444444444444d8799f41014202034104ffff",
-    cbor.serialise(
-      tx_field_receipt.BurnReceipts { receipt_input_indices: [0, 2] },
-    ) == #"d87a9f9f0002ffff",
-  }
-}
-
 test tx_order_payload_rejects_an_unknown_outer_constructor() fail {
   expect Some(data) = cbor.deserialise(
-    #"d87a9f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffd87a80ff",
+    #"d87a9f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffff",
   )
   expect payload: TxOrderPayloadV1 = data
   payload.tx_id == order_transaction_id
@@ -390,7 +209,7 @@ test tx_order_payload_rejects_an_unknown_outer_constructor() fail {
 
 test tx_order_payload_rejects_an_extra_field() fail {
   expect Some(data) = cbor.deserialise(
-    #"d8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ffd87a8000ff",
+    #"d8799f5820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8799f41014202034104ff00ff",
   )
   expect payload: TxOrderPayloadV1 = data
   payload.tx_id == order_transaction_id
@@ -407,354 +226,26 @@ test cek_program_material_v1_matches_the_typed_blob_chunk_hash_vector() {
   }
 }
 
-test field_receipt_asset_name_matches_core_vector() {
-  field_receipt_asset_name(tx_order_policy_id, order_id(), zero, 0, 0, 0) == #"7bc0ae911756007cc44a1e956fedc08d67af38ce19778405ab040faa77b60123"
+/// The one material state a forced order can be authenticated in today — a
+/// strict narrowing of what the retired counted receipt chain admitted. That
+/// chain's mint policy gated on a per-item opening that is unsatisfiable for any
+/// payload whose commitments are the §4 flat hashes of real material, but
+/// satisfiable by a payload declaring counted roots instead; this predicate drops
+/// that declaring-payload path as well. See `verify_order_material`'s
+/// `field_carriage_availability` note for the §8.6-certified re-expression and
+/// the issue that owns it.
+test empty_material_activates_the_order() {
+  verify_order_material(payload(empty_v1_transaction()))
 }
 
-test empty_material_activates_without_a_terminal_receipt() {
-  let tx = empty_v1_transaction()
-  verify_order_receipts(
-    [],
-    receipt_script_hash,
-    field_receipt_policy_id,
-    tx_order_policy_id,
-    order_id(),
-    payload(tx, None),
-  )
+/// Fails closed on a body field (0 — spend inputs) and on a witness-set field
+/// (4 — required signers), because the nine commitments are read from two
+/// different committed structures and a check that only covered one of them
+/// would pass a transaction whose material lives in the other.
+test material_bearing_order_fails_closed_on_a_body_field() fail {
+  verify_order_material(payload(sample_v1_transaction(False)))
 }
 
-test non_empty_material_without_a_terminal_receipt_fails_closed() fail {
-  let tx = sample_v1_transaction(False)
-  verify_order_receipts(
-    [],
-    receipt_script_hash,
-    field_receipt_policy_id,
-    tx_order_policy_id,
-    order_id(),
-    payload(tx, None),
-  )
-}
-
-test first_receipt_and_terminal_receipt_authenticate_one_item_material() {
-  let tx = sample_v1_transaction(False)
-  let receipt = input_receipt(tx, None)
-  and {
-    verify_receipt_chain_link(
-      tx_id(tx),
-      commitment(tx),
-      source(tx),
-      field_receipt_policy_id,
-      tx_order_policy_id,
-      order_id(),
-      None,
-      receipt,
-    ),
-    verify_order_receipts(
-      [receipt_input(receipt_reference(0), receipt, receipt_script_hash)],
-      receipt_script_hash,
-      field_receipt_policy_id,
-      tx_order_policy_id,
-      order_id(),
-      payload(tx, Some(receipt_reference(0))),
-    ),
-  }
-}
-
-test later_non_empty_field_links_to_the_authenticated_predecessor() {
-  let tx = sample_v1_transaction(True)
-  let previous = input_receipt(tx, None)
-  let current = signer_receipt(tx, Some(receipt_reference(0)))
-  and {
-    verify_receipt_chain_link(
-      tx_id(tx),
-      commitment(tx),
-      source(tx),
-      field_receipt_policy_id,
-      tx_order_policy_id,
-      order_id(),
-      None,
-      previous,
-    ),
-    verify_receipt_chain_link(
-      tx_id(tx),
-      commitment(tx),
-      source(tx),
-      field_receipt_policy_id,
-      tx_order_policy_id,
-      order_id(),
-      Some(previous),
-      current,
-    ),
-    verify_order_receipts(
-      [receipt_input(receipt_reference(1), current, receipt_script_hash)],
-      receipt_script_hash,
-      field_receipt_policy_id,
-      tx_order_policy_id,
-      order_id(),
-      payload(tx, Some(receipt_reference(1))),
-    ),
-  }
-}
-
-test script_field_6_precedes_address_field_7_with_exact_receipt_sizes() {
-  let base = empty_v1_transaction()
-  let script = MidgardVersionedScript {
-    language: NativeCardanoScript,
-    script_bytes: #"820400",
-  }
-  let address_witness = MidgardAddressWitness {
-    verification_key: #"1111111111111111111111111111111111111111111111111111111111111111",
-    signature: #"22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222",
-  }
-  let tx = MidgardTransaction {
-    ..base,
-    witness_set: MidgardTransactionWitnessSet {
-      ..base.witness_set,
-      addr_tx_wits: [address_witness],
-      script_tx_wits: [script],
-    },
-  }
-  let script_item = encode_midgard_versioned_script(script)
-  let address_item = encode_midgard_address_witness(address_witness)
-  let script_receipt = TxFieldReceiptV1 {
-    field_receipt_policy_id,
-    tx_order_policy_id,
-    tx_order_id: order_id(),
-    transaction_commitment: commitment(tx),
-    collection_proof: collection_proof(6, script_item),
-    chunk_index: 0,
-    field_reference: field_reference(6),
-    predecessor_receipt_reference: None,
-    field_encoded_size: bytearray.length(
-      encode_script_witness_preimage([script]),
-    ),
-  }
-  let address_receipt = TxFieldReceiptV1 {
-    field_receipt_policy_id,
-    tx_order_policy_id,
-    tx_order_id: order_id(),
-    transaction_commitment: commitment(tx),
-    collection_proof: collection_proof(7, address_item),
-    chunk_index: 0,
-    field_reference: field_reference(7),
-    predecessor_receipt_reference: Some(receipt_reference(0)),
-    field_encoded_size: bytearray.length(
-      encode_address_witness_preimage([address_witness]),
-    ),
-  }
-  and {
-    verify_receipt_chain_link(
-      tx_id(tx),
-      commitment(tx),
-      source(tx),
-      field_receipt_policy_id,
-      tx_order_policy_id,
-      order_id(),
-      None,
-      script_receipt,
-    ),
-    verify_receipt_chain_link(
-      tx_id(tx),
-      commitment(tx),
-      source(tx),
-      field_receipt_policy_id,
-      tx_order_policy_id,
-      order_id(),
-      Some(script_receipt),
-      address_receipt,
-    ),
-    verify_order_receipts(
-      [
-        receipt_input(
-          receipt_reference(1),
-          address_receipt,
-          receipt_script_hash,
-        ),
-      ],
-      receipt_script_hash,
-      field_receipt_policy_id,
-      tx_order_policy_id,
-      order_id(),
-      payload(tx, Some(receipt_reference(1))),
-    ),
-  }
-}
-
-test later_field_without_its_predecessor_fails_closed() fail {
-  let tx = sample_v1_transaction(True)
-  verify_receipt_chain_link(
-    tx_id(tx),
-    commitment(tx),
-    source(tx),
-    field_receipt_policy_id,
-    tx_order_policy_id,
-    order_id(),
-    None,
-    signer_receipt(tx, None),
-  )
-}
-
-test malformed_encoded_size_fails_closed() fail {
-  let tx = sample_v1_transaction(False)
-  let malformed = TxFieldReceiptV1 {
-    ..input_receipt(tx, None),
-    field_encoded_size: 42,
-  }
-  verify_receipt_chain_link(
-    tx_id(tx),
-    commitment(tx),
-    source(tx),
-    field_receipt_policy_id,
-    tx_order_policy_id,
-    order_id(),
-    None,
-    malformed,
-  )
-}
-
-test terminal_receipt_locked_by_another_script_fails_closed() fail {
-  let tx = sample_v1_transaction(False)
-  let receipt = input_receipt(tx, None)
-  verify_order_receipts(
-    [receipt_input(receipt_reference(0), receipt, other_script_hash)],
-    receipt_script_hash,
-    field_receipt_policy_id,
-    tx_order_policy_id,
-    order_id(),
-    payload(tx, Some(receipt_reference(0))),
-  )
-}
-
-test fragment_spend_is_bound_to_exact_order_nft_burn() {
-  let proof = collection_proof(0, encode_midgard_tx_input(sample_input()))
-  let field = TxFieldPreimageV1 {
-    field_receipt_policy_id,
-    tx_order_policy_id,
-    tx_order_id: order_id(),
-    transaction_commitment: blake2b_256(#""),
-    collection_proof: proof,
-    proof: ChunkProofV1 {
-      version: 1,
-      field_index: 0,
-      item_index: 0,
-      total_length: proof.item_length,
-      chunk_index: 0,
-      chunk: encode_midgard_tx_input(sample_input()),
-      frontier: [
-        FrontierPeak {
-          height: 0,
-          hash: hash_chunk(0, 0, 0, encode_midgard_tx_input(sample_input())),
-        },
-      ],
-      siblings: [],
-    },
-  }
-  let nonce_asset_name = user_events.out_ref_to_nonce(field.tx_order_id)
-  let receipt_asset_name = field_receipt_asset_name(
-    field.tx_order_policy_id,
-    field.tx_order_id,
-    field.transaction_commitment,
-    field.proof.field_index,
-    field.proof.item_index,
-    field.proof.chunk_index,
-  )
-  let complete_burn = assets.from_asset(
-    tx_order_policy_id,
-    nonce_asset_name,
-    -1,
-  )
-    |> assets.add(field_receipt_policy_id, receipt_asset_name, -1)
-  and {
-    field_fragment_burn_authorized(field, complete_burn),
-    !field_fragment_burn_authorized(
-      field,
-      assets.from_asset(tx_order_policy_id, nonce_asset_name, -1),
-    ),
-    !field_fragment_burn_authorized(
-      field,
-      assets.from_asset(tx_order_policy_id, nonce_asset_name, -1)
-        |> assets.add(field_receipt_policy_id, receipt_asset_name, -2),
-    ),
-  }
-}
-
-test receipt_spend_is_bound_to_exact_order_and_receipt_burns() {
-  let tx = sample_v1_transaction(False)
-  let receipt = input_receipt(tx, None)
-  let nonce_asset_name = user_events.out_ref_to_nonce(receipt.tx_order_id)
-  let proof = receipt.collection_proof
-  let receipt_asset_name = field_receipt_asset_name(
-    receipt.tx_order_policy_id,
-    receipt.tx_order_id,
-    receipt.transaction_commitment,
-    proof.field_index,
-    proof.item_index,
-    receipt.chunk_index,
-  )
-  let complete_burn = assets.from_asset(
-    tx_order_policy_id,
-    nonce_asset_name,
-    -1,
-  )
-    |> assets.add(field_receipt_policy_id, receipt_asset_name, -1)
-  and {
-    field_receipt_burn_authorized(receipt, complete_burn),
-    !field_receipt_burn_authorized(
-      receipt,
-      assets.from_asset(field_receipt_policy_id, receipt_asset_name, -1),
-    ),
-    !field_receipt_burn_authorized(
-      receipt,
-      assets.from_asset(tx_order_policy_id, nonce_asset_name, -1)
-        |> assets.add(field_receipt_policy_id, receipt_asset_name, -2),
-    ),
-  }
-}
-
-test receipt_policy_burns_exactly_one_authenticated_receipt() {
-  let tx = sample_v1_transaction(False)
-  let receipt = input_receipt(tx, None)
-  tx_field_receipt.validate(
-    other_script_hash,
-    receipt_script_hash,
-    tx_field_receipt.BurnReceipts { receipt_input_indices: [0] },
-    field_receipt_policy_id,
-    receipt_burn_transaction(receipt, -1, -1),
-  )
-}
-
-test receipt_policy_rejects_the_wrong_receipt_input_index() fail {
-  let tx = sample_v1_transaction(False)
-  let receipt = input_receipt(tx, None)
-  tx_field_receipt.validate(
-    other_script_hash,
-    receipt_script_hash,
-    tx_field_receipt.BurnReceipts { receipt_input_indices: [1] },
-    field_receipt_policy_id,
-    receipt_burn_transaction(receipt, -1, -1),
-  )
-}
-
-test receipt_policy_rejects_a_receipt_overburn() fail {
-  let tx = sample_v1_transaction(False)
-  let receipt = input_receipt(tx, None)
-  tx_field_receipt.validate(
-    other_script_hash,
-    receipt_script_hash,
-    tx_field_receipt.BurnReceipts { receipt_input_indices: [0] },
-    field_receipt_policy_id,
-    receipt_burn_transaction(receipt, -1, -2),
-  )
-}
-
-test receipt_policy_rejects_the_wrong_order_nft_burn() fail {
-  let tx = sample_v1_transaction(False)
-  let receipt = input_receipt(tx, None)
-  tx_field_receipt.validate(
-    other_script_hash,
-    receipt_script_hash,
-    tx_field_receipt.BurnReceipts { receipt_input_indices: [0] },
-    field_receipt_policy_id,
-    receipt_burn_transaction(receipt, -2, -1),
-  )
+test material_bearing_order_fails_closed_on_a_signer_field() fail {
+  verify_order_material(payload(sample_v1_transaction(True)))
 }

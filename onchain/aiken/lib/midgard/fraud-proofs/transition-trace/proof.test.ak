@@ -568,7 +568,6 @@ fn authenticated_tx_order_payload() -> ledger_state.TxOrderPayloadV1 {
       witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
       field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     },
-    terminal_receipt_reference: None,
   }
 }
 

@@ -12,7 +12,6 @@ import {
 } from "./bounded-item-v1.js";
 import { decodeMidgardCekProgramEnvelopeV1 } from "./cek-proof.js";
 import { asArray, asBytes, asMap, decodeSingleCbor } from "./codec/cbor.js";
-import { computeHash32 } from "./codec/hash.js";
 import {
   computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeByteListPreimage,
@@ -39,103 +38,6 @@ import { decodeMidgardTxOutput } from "./codec/output.js";
 import { midgardValueToCmlValue } from "./codec/value.js";
 import { decodeMidgardVersionedScriptListPreimage } from "./codec/versioned-script.js";
 import { MIDGARD_CONSENSUS_LIMITS_V1 } from "./consensus-profile-v1.js";
-
-export const MIDGARD_TX_FIELD_RECEIPT_V1_DOMAIN = Buffer.from(
-  "MidgardTxFieldReceiptV1",
-  "utf8",
-);
-
-const requireExactBytes = (
-  value: Uint8Array,
-  expectedLength: number,
-  fieldName: string,
-): Buffer => {
-  const bytes = Buffer.from(value);
-  if (bytes.length !== expectedLength) {
-    throw new Error(
-      `${fieldName} must be exactly ${expectedLength.toString()} bytes`,
-    );
-  }
-  return bytes;
-};
-
-/**
- * Derives the exact V1 receipt asset name used by the L1 validators.
- *
- * The receipt policy id is deliberately not included in the asset name: the
- * Cardano asset unit already prefixes this 32-byte name with that policy id.
- */
-export const deriveMidgardTxFieldReceiptAssetNameV1 = ({
-  txOrderPolicyId,
-  txOrderTransactionId,
-  txOrderOutputIndex,
-  transactionCommitment,
-  fieldIndex,
-  itemIndex,
-  chunkIndex,
-}: {
-  readonly txOrderPolicyId: Uint8Array;
-  readonly txOrderTransactionId: Uint8Array;
-  readonly txOrderOutputIndex: bigint;
-  readonly transactionCommitment: Uint8Array;
-  readonly fieldIndex: number;
-  readonly itemIndex: number;
-  readonly chunkIndex: number;
-}): Buffer => {
-  const policyId = requireExactBytes(txOrderPolicyId, 28, "tx-order policy id");
-  const orderTransactionId = requireExactBytes(
-    txOrderTransactionId,
-    32,
-    "tx-order transaction id",
-  );
-  const commitment = requireExactBytes(
-    transactionCommitment,
-    32,
-    "transaction commitment",
-  );
-  if (txOrderOutputIndex < 0n || txOrderOutputIndex > 0xffff_ffff_ffff_ffffn) {
-    throw new Error("tx-order output index must fit uint64");
-  }
-  if (
-    !Number.isSafeInteger(itemIndex) ||
-    itemIndex < 0 ||
-    itemIndex > Number.MAX_SAFE_INTEGER
-  ) {
-    throw new Error("V1 transaction field item index must be non-negative");
-  }
-  if (
-    !Number.isSafeInteger(fieldIndex) ||
-    fieldIndex < 0 ||
-    fieldIndex >= MIDGARD_V1_TX_FIELD_NAMES.length
-  ) {
-    throw new Error(`unknown V1 transaction field index ${fieldIndex}`);
-  }
-  if (
-    !Number.isSafeInteger(chunkIndex) ||
-    chunkIndex < 0 ||
-    chunkIndex > Number.MAX_SAFE_INTEGER
-  ) {
-    throw new Error("V1 transaction field chunk index must be non-negative");
-  }
-  const outputIndex = Buffer.alloc(8);
-  outputIndex.writeBigUInt64BE(txOrderOutputIndex);
-  const exactChunkIndex = Buffer.alloc(8);
-  exactChunkIndex.writeBigUInt64BE(BigInt(chunkIndex));
-  const exactItemIndex = Buffer.alloc(8);
-  exactItemIndex.writeBigUInt64BE(BigInt(itemIndex));
-  return computeHash32(
-    Buffer.concat([
-      MIDGARD_TX_FIELD_RECEIPT_V1_DOMAIN,
-      policyId,
-      orderTransactionId,
-      outputIndex,
-      commitment,
-      Buffer.from([fieldIndex]),
-      exactItemIndex,
-      exactChunkIndex,
-    ]),
-  );
-};
 
 export type MidgardConsensusV1ViolationCode =
   | "E_TX_VERSION"

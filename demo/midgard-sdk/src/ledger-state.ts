@@ -638,32 +638,19 @@ export type BoundedItemChunkProofV1 = Data.Static<
 export const BoundedItemChunkProofV1 =
   BoundedItemChunkProofV1Schema as unknown as BoundedItemChunkProofV1;
 
-export const TxFieldPreimageV1Schema = Data.Object({
-  field_receipt_policy_id: Data.Bytes({ minLength: 28, maxLength: 28 }),
-  tx_order_policy_id: Data.Bytes({ minLength: 28, maxLength: 28 }),
-  tx_order_id: OutputReferenceSchema,
-  transaction_commitment: H32Schema,
-  collection_proof: BoundedCollectionItemProofV1Schema,
-  proof: BoundedItemChunkProofV1Schema,
-});
-export type TxFieldPreimageV1 = Data.Static<typeof TxFieldPreimageV1Schema>;
-export const TxFieldPreimageV1 =
-  TxFieldPreimageV1Schema as unknown as TxFieldPreimageV1;
-
-export const TxFieldReceiptV1Schema = Data.Object({
-  field_receipt_policy_id: Data.Bytes({ minLength: 28, maxLength: 28 }),
-  tx_order_policy_id: Data.Bytes({ minLength: 28, maxLength: 28 }),
-  tx_order_id: OutputReferenceSchema,
-  transaction_commitment: H32Schema,
-  collection_proof: BoundedCollectionItemProofV1Schema,
-  chunk_index: Data.Integer(),
-  field_reference: OutputReferenceSchema,
-  predecessor_receipt_reference: Data.Nullable(OutputReferenceSchema),
-  field_encoded_size: Data.Integer(),
-});
-export type TxFieldReceiptV1 = Data.Static<typeof TxFieldReceiptV1Schema>;
-export const TxFieldReceiptV1 =
-  TxFieldReceiptV1Schema as unknown as TxFieldReceiptV1;
+// `TxFieldPreimageV1Schema` and `TxFieldReceiptV1Schema` used to sit here as the
+// twins of `midgard/ledger_state`'s two counted publication datums. Both retired
+// in #587 with the chain they described: under `docs/spec/midgard-tx.md` §4 a
+// field commitment is one flat `blake2b_256` over the whole preimage, so the
+// per-item Merkle opening they carried has nothing to be checked against and the
+// receipt mint policy that read them was unsatisfiable for any payload whose
+// commitments were the §4 flat hashes of real material (a payload declaring
+// counted roots could still satisfy it, which is why the replacement closes the
+// gap by construction rather than by arithmetic). The §8 replacement is
+// `FieldPreimageCertificateV1` in `native-tx-field-access-v1.ts`, whose manifest
+// is over §8.4 chunks of a preimage rather than over items of a counted
+// collection — so it is a different artifact, not a renamed one, and nothing here
+// forwards to it.
 
 export const CekProgramMaterialDatumV1Schema = Data.Object({
   kind: Data.Integer(),
@@ -676,11 +663,20 @@ export type CekProgramMaterialDatumV1 = Data.Static<
 export const CekProgramMaterialDatumV1 =
   CekProgramMaterialDatumV1Schema as unknown as CekProgramMaterialDatumV1;
 
+/**
+ * Twin of `midgard/ledger_state.TxOrderPayloadV1`.
+ *
+ * **No `terminal_receipt_reference`.** It named the last link of the counted
+ * publication receipt chain, which retired in #587 — see the note above
+ * `CekProgramMaterialDatumV1Schema`. The §8 re-expression of the availability
+ * role it served is not in this datum; `verify_order_material` on the Aiken side
+ * carries the `field_carriage_availability` note that says what the mint checks
+ * today and which issue owns the rest.
+ */
 export const TxOrderPayloadV1Schema = Data.Object({
   tx_id: H32Schema,
   transaction_commitment: H32Schema,
   source: NativeTxProofSourceV1Schema,
-  terminal_receipt_reference: Data.Nullable(OutputReferenceSchema),
 });
 export type TxOrderPayloadV1 = Data.Static<typeof TxOrderPayloadV1Schema>;
 export const TxOrderPayloadV1 =

@@ -149,6 +149,40 @@ const canonicalAbsenceScans = [
     ],
   },
   {
+    // L09/L10's claim is that the retired publication-receipt identities are not
+    // *live surface*. Live surface means declared, so this scans for declarations
+    // rather than for the names: #587's own prose — the Aiken gravestones on
+    // `verify_order_material`, `reconstructTxOrderMaterialV1`'s note, the SDK's
+    // `TxOrderMaterialV1` docstring — names every one of them on purpose, and a
+    // bare-name scan would either forbid documenting the retirement or pass only
+    // because the corpus was pruned to files that never mention it. Declaration
+    // anchors are the discriminating form: they cannot appear in a comment, and
+    // they are exactly what a resurrection would have to add.
+    id: "L09-L10-retired-publication-receipt-declarations",
+    paths: [
+      "demo/midgard-core/src",
+      "demo/midgard-core/tests",
+      "demo/midgard-sdk/src",
+      "demo/midgard-sdk/tests",
+      "demo/midgard-node/src",
+      "demo/midgard-node/tests",
+      "demo/midgard-watcher/src",
+      "demo/midgard-watcher/tests",
+      "demo/midgard-fault-proofs/src",
+      "demo/midgard-fault-proofs/tests",
+      "onchain/aiken/lib/midgard",
+      "onchain/aiken/validators",
+    ],
+    patterns: [
+      "export (?:const|type) (?:TxFieldPreimageV1|TxFieldReceiptV1)\\b",
+      "export const (?:TxFieldPreimageV1|TxFieldReceiptV1|TxOrderFieldFragmentV1|TxOrderFragmentBundleV1)Schema\\b",
+      "export const (?:decodeTxFieldReceiptV1Cbor|deriveTxOrderFragmentBundleV1)\\b",
+      "export const (?:deriveMidgardTxFieldReceiptAssetNameV1|MIDGARD_TX_FIELD_RECEIPT_V1_DOMAIN)\\b",
+      "pub (?:fn|type|const) (?:verify_order_receipts|TxFieldPreimageV1|TxFieldReceiptV1)\\b",
+      "terminal_receipt_reference:",
+    ],
+  },
+  {
     id: "L07-L11-retired-transaction-order-material-identities",
     paths: [
       "demo/midgard-sdk/src/ledger-state.ts",
@@ -156,10 +190,13 @@ const canonicalAbsenceScans = [
       "demo/midgard-node/src/fibers/fetch-and-insert-tx-order-utxos.ts",
       "onchain/aiken/lib/midgard/ledger-state.ak",
       "onchain/aiken/lib/midgard/user-events/tx-order-v1.ak",
-      "onchain/aiken/lib/midgard/user-events/tx-field-receipt-v1.ak",
+      // The counted publication receipt chain's three files —
+      // `lib/midgard/user-events/tx-field-receipt-v1.ak` and the
+      // `tx-field-preimage-v1` / `tx-field-receipt-v1` validators — were scanned here
+      // until #587 deleted them. A path that no longer exists cannot be scanned; the
+      // `TxField(?:Preimage|Receipt)V[2-9]` pattern below still runs over every
+      // surviving path, which is where a resurrected identity would have to appear.
       "onchain/aiken/validators/user-events/tx-order-v1.ak",
-      "onchain/aiken/validators/user-events/tx-field-preimage-v1.ak",
-      "onchain/aiken/validators/user-events/tx-field-receipt-v1.ak",
       "onchain/aiken/validators/user-events/cek-program-material-v1.ak",
     ],
     patterns: [

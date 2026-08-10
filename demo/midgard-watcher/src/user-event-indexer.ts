@@ -17,7 +17,6 @@ import {
   resolveEventInclusionTime,
   RootDomainSchema,
   SettlementDatumSchema,
-  TxFieldReceiptV1Schema,
   TxOrderDatumV1Schema,
   TxOrderEventV1Schema,
   TxOrderSpendRedeemerV1Schema,
@@ -31,17 +30,11 @@ import {
 import { CML, Data } from "@lucid-evolution/lucid";
 
 import { blake2b } from "../../midgard-core/node_modules/@noble/hashes/blake2.js";
-import { verifyMidgardBoundedCollectionItemProofV1 } from "../../midgard-core/src/bounded-collection-v1.js";
-import { midgardBoundedItemChunkCountV1 } from "../../midgard-core/src/bounded-item-v1.js";
 import {
   computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxCompactV1,
   decodeMidgardNativeTxProofFieldLengthsV1,
-  decodeMidgardNativeTxWitnessSetCompactV1,
   verifyMidgardNativeTxProofSourceV1,
 } from "../../midgard-core/src/codec/native.js";
-import { deriveMidgardNativeFieldCollectionV1 } from "../../midgard-core/src/codec/native-field-items.js";
-import { deriveMidgardTxFieldReceiptAssetNameV1 } from "../../midgard-core/src/consensus-validation-v1.js";
 import {
   type DeploymentMarkerV1,
   MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
@@ -1279,15 +1272,7 @@ const scanCreatedEvents = (
         (kind === "forced_order" &&
           (!isHex32(forcedEvent?.id?.transactionId) ||
             typeof forcedEvent.id.outputIndex !== "bigint" ||
-            !forcedPayloadMatchesNativeSource(forcedEvent.tx, {
-              sourceStore,
-              body,
-              deployment,
-              txOrderId: {
-                transactionId: forcedEvent.id.transactionId,
-                outputIndex: forcedEvent.id.outputIndex,
-              },
-            })))
+            !forcedPayloadMatchesNativeSource(forcedEvent.tx)))
       ) {
         return failCreated(
           `datum-time parsed=${String(parsedDatum === null)} ttl=${String(ttl)}`,
@@ -1672,22 +1657,65 @@ const authenticReferenceDatum = (
   return datum === null ? null : { output, datum };
 };
 
-const naturalNumber = (value: unknown): number | null =>
-  typeof value === "bigint" &&
-  value >= 0n &&
-  value <= BigInt(Number.MAX_SAFE_INTEGER)
-    ? Number(value)
-    : null;
-
-const forcedPayloadMatchesNativeSource = (
-  payload: unknown,
-  verification: Readonly<{
-    sourceStore: WatcherDurableStoreV1;
-    body: CML.TransactionBody;
-    deployment: WatcherDeploymentIdentityPolicyV1;
-    txOrderId: Readonly<{ transactionId: string; outputIndex: bigint }>;
-  }>,
-): boolean => {
+/**
+ * Whether a forced order's payload is a well-formed §4 binding to its own native
+ * source.
+ *
+ * It used to take a `verification` bundle — the durable store, the transaction
+ * body, the deployment's policy identities and the tx-order id — because it had to
+ * resolve `terminal_receipt_reference` to a receipt UTxO in the store, match that
+ * UTxO's script address and minted asset name against the deployment, and count
+ * the transaction's reference inputs to it. #587 retired the receipt chain and
+ * with it every one of those lookups, so the predicate is now a pure function of
+ * the payload.
+ *
+ * ### What this deliberately does not re-derive, and why
+ *
+ * The tx-order mint runs `tx_order_v1.verify_order_material`, which is
+ * `material_directory` — re-derived below in full — followed by
+ * `next_non_empty_field(..) == 9`, i.e. *all nine fields empty*. That trailing
+ * clause is not re-derived here, and the omission is deliberate rather than
+ * overlooked: emptiness is a pure function of the length vector decoded below, so
+ * the watcher can see it perfectly well.
+ *
+ * It is not re-derived because the watcher is a verifier of state that is already
+ * on chain, and this clause is a producer-side deployability stopgap, not a
+ * protocol rule. `verify_order_material`'s own docstring records why it is
+ * temporary: the §8.6 `FieldPreimageCertificateV1` carriage that authenticates
+ * non-empty material is not in the frozen blueprint and §8.4's tier-1 ladder
+ * routes preimages to redeemer carriage that does not outlive its transaction.
+ * That is tracked as #587's Deviation, re-homed to #589. The SDK's publish path
+ * and the node's ingestion walk *must* refuse material — one builds a mint the L1
+ * would reject, the other needs preimage bytes that no carriage delivers — but
+ * mirroring their refusal here would buy nothing and cost the watcher a
+ * capability:
+ *
+ *   - It buys nothing. This predicate only ever runs against a tx-order output
+ *     whose NFT a mint already authenticated, so it is never the first line of
+ *     defence. The mint in this tree refuses material-bearing orders outright
+ *     (`verify_order_material`'s all-empty clause). The deployed receipt-era mint
+ *     was narrower but not closed: its per-item opening is unsatisfiable for any
+ *     payload whose commitments are the §4 flat hashes of real material, yet a
+ *     payload *declaring* counted roots in place of flat commitments could
+ *     satisfy it, so it could authenticate a material-bearing order. That
+ *     residual is not something this predicate ever covered — what stood here was
+ *     the same receipt walk that mint gated on, accepting exactly the payloads
+ *     the mint accepted, declaring payload included. Reinstating a mirror of the
+ *     mint adds no check that was ever here.
+ *   - It costs a capability. Refusing here returns `null` for the whole block, so
+ *     the watcher would be unable to observe *any* forced order carrying an actual
+ *     L2 transaction — and a forced order over the canonically-empty transaction
+ *     moves nothing. The watcher's forced-inclusion verification (the
+ *     `MidgardTxValidity` classification in `event-classification-verifier.ts` and
+ *     the `ForcedTransaction` replay in `block-replay.ts`) would become
+ *     unreachable, verifying a null capability.
+ *
+ * When #589 lands the certificate, `TxOrderPayloadV1` regains availability
+ * evidence and *that* is what this predicate must then check — the re-pointing
+ * target the retired receipt walk had. Until the datum carries it there is
+ * nothing here to point at.
+ */
+const forcedPayloadMatchesNativeSource = (payload: unknown): boolean => {
   const candidate = payload as {
     tx_id?: unknown;
     transaction_commitment?: unknown;
@@ -1696,7 +1724,6 @@ const forcedPayloadMatchesNativeSource = (
       witness_set_compact_cbor?: unknown;
       field_preimage_lengths_cbor?: unknown;
     };
-    terminal_receipt_reference?: unknown;
   };
   if (
     !isHex32(candidate.tx_id) ||
@@ -1729,187 +1756,33 @@ const forcedPayloadMatchesNativeSource = (
     ) {
       return false;
     }
-    const compact = decodeMidgardNativeTxCompactV1(source.compactCbor);
-    const witness = decodeMidgardNativeTxWitnessSetCompactV1(
-      source.witnessSetCompactCbor,
-    );
-    const lengths = decodeMidgardNativeTxProofFieldLengthsV1(
-      source.fieldPreimageLengthsCbor,
-    );
-    const commitments = [
-      compact.transactionBody.spendInputsHash,
-      compact.transactionBody.referenceInputsHash,
-      compact.transactionBody.outputsHash,
-      compact.transactionBody.requiredObserversHash,
-      compact.transactionBody.requiredSignersHash,
-      compact.transactionBody.mintHash,
-      witness.scriptTxWitsHash,
-      witness.addrTxWitsHash,
-      witness.redeemerTxWitsHash,
-    ];
-    const emptyAt = (fieldIndex: number): boolean =>
-      lengths[fieldIndex] === 1 &&
-      deriveMidgardNativeFieldCollectionV1({
-        fieldIndex,
-        preimageCbor: Buffer.from([0x80]),
-      }).commitment.equals(commitments[fieldIndex]!);
-    if (candidate.terminal_receipt_reference === null) {
-      return commitments.every((_commitment, fieldIndex) =>
-        emptyAt(fieldIndex),
-      );
-    }
-    const receiptReference = candidate.terminal_receipt_reference as {
-      transactionId?: unknown;
-      outputIndex?: unknown;
-    };
-    if (
-      !isHex32(receiptReference.transactionId) ||
-      typeof receiptReference.outputIndex !== "bigint" ||
-      receiptReference.outputIndex < 0n
-    ) {
-      return false;
-    }
-    const receiptOutRef = `${receiptReference.transactionId}#${receiptReference.outputIndex.toString()}`;
-    const referenceInputs = verification.body.reference_inputs();
-    let referenceMatches = 0;
-    if (referenceInputs !== undefined) {
-      for (let index = 0; index < referenceInputs.len(); index += 1) {
-        if (outputReference(referenceInputs.get(index)) === receiptOutRef) {
-          referenceMatches += 1;
-        }
-      }
-    }
-    const receiptOutput = durableOutputAt(
-      verification.sourceStore,
-      receiptOutRef,
-      "proof_thread",
-    );
-    const receiptDatumHex =
-      receiptOutput === null ? null : inlineDatumCbor(receiptOutput);
-    const receipt =
-      receiptDatumHex === null
-        ? null
-        : dataRoundTrip<{
-            field_receipt_policy_id: string;
-            tx_order_policy_id: string;
-            tx_order_id: {
-              transactionId: string;
-              outputIndex: bigint;
-            };
-            transaction_commitment: string;
-            collection_proof: {
-              version: bigint;
-              field_index: bigint;
-              item_count: bigint;
-              item_index: bigint;
-              item_length: bigint;
-              item_commitment: string;
-              frontier: readonly { height: bigint; hash: string }[];
-              siblings: readonly string[];
-            };
-            chunk_index: bigint;
-            field_encoded_size: bigint;
-          }>(receiptDatumHex, TxFieldReceiptV1Schema as unknown as EventSchema);
-    const receiptPolicy =
-      verification.deployment.appliedScriptHashes.txOrderFieldReceiptMint;
-    const receiptSpend =
-      verification.deployment.appliedScriptHashes.txOrderFieldReceiptSpend;
-    if (
-      referenceMatches !== 1 ||
-      receiptOutput === null ||
-      receiptOutput.script_ref() !== undefined ||
-      receiptOutput.address().payment_cred()?.as_script()?.to_hex() !==
-        receiptSpend ||
-      receipt === null ||
-      receipt.field_receipt_policy_id !== receiptPolicy ||
-      receipt.tx_order_policy_id !==
-        verification.deployment.appliedScriptHashes.txOrderMint ||
-      receipt.tx_order_id.transactionId !==
-        verification.txOrderId.transactionId ||
-      receipt.tx_order_id.outputIndex !== verification.txOrderId.outputIndex ||
-      receipt.transaction_commitment !== candidate.transaction_commitment
-    ) {
-      return false;
-    }
-    const proof = receipt.collection_proof;
-    const fieldIndex = naturalNumber(proof.field_index);
-    const itemCount = naturalNumber(proof.item_count);
-    const itemIndex = naturalNumber(proof.item_index);
-    const itemLength = naturalNumber(proof.item_length);
-    const version = naturalNumber(proof.version);
-    const chunkIndex = naturalNumber(receipt.chunk_index);
-    const fieldEncodedSize = naturalNumber(receipt.field_encoded_size);
-    const frontier = proof.frontier.map((peak) => ({
-      height: naturalNumber(peak.height),
-      hash: isHex32(peak.hash) ? Buffer.from(peak.hash, "hex") : null,
-    }));
-    if (
-      fieldIndex === null ||
-      fieldIndex >= commitments.length ||
-      itemCount === null ||
-      itemIndex === null ||
-      itemLength === null ||
-      version !== 1 ||
-      chunkIndex === null ||
-      fieldEncodedSize === null ||
-      !isHex32(proof.item_commitment) ||
-      !proof.siblings.every(isHex32) ||
-      frontier.some((peak) => peak.height === null || peak.hash === null) ||
-      receiptPolicy === undefined
-    ) {
-      return false;
-    }
-    const collectionProof = {
-      version: 1 as const,
-      fieldIndex,
-      itemCount,
-      itemIndex,
-      itemLength,
-      itemCommitment: Buffer.from(proof.item_commitment, "hex"),
-      frontier: {
-        count: itemCount,
-        peaks: frontier.map((peak) => ({
-          height: peak.height!,
-          hash: peak.hash!,
-        })),
-      },
-      siblings: proof.siblings.map((hash) => Buffer.from(hash, "hex")),
-    };
-    const expectedAssetName = deriveMidgardTxFieldReceiptAssetNameV1({
-      txOrderPolicyId: Buffer.from(
-        verification.deployment.appliedScriptHashes.txOrderMint!,
-        "hex",
-      ),
-      txOrderTransactionId: Buffer.from(
-        verification.txOrderId.transactionId,
-        "hex",
-      ),
-      txOrderOutputIndex: verification.txOrderId.outputIndex,
-      transactionCommitment: Buffer.from(
-        candidate.transaction_commitment,
-        "hex",
-      ),
-      fieldIndex,
-      itemIndex,
-      chunkIndex,
-    }).toString("hex");
-    const receiptAssets = receiptOutput
-      .amount()
-      .multi_asset()
-      .get_assets(CML.ScriptHash.from_hex(receiptPolicy));
-    return (
-      verifyMidgardBoundedCollectionItemProofV1({
-        expectedCommitment: commitments[fieldIndex]!,
-        proof: collectionProof,
-      }) &&
-      itemIndex + 1 === itemCount &&
-      chunkIndex + 1 === midgardBoundedItemChunkCountV1(itemLength) &&
-      fieldEncodedSize === lengths[fieldIndex] &&
-      commitments
-        .slice(fieldIndex + 1)
-        .every((_commitment, index) => emptyAt(fieldIndex + index + 1)) &&
-      receiptAssets?.get(CML.AssetName.from_hex(expectedAssetName)) === 1n
-    );
+    // The committed field lengths are decoded, not merely present: a payload whose
+    // length vector is malformed or is not nine entries is not a §4 binding, and
+    // `decodeMidgardNativeTxProofFieldLengthsV1` is the thing that says so.
+    decodeMidgardNativeTxProofFieldLengthsV1(source.fieldPreimageLengthsCbor);
+    // What stood here walked the counted publication receipt chain: it resolved
+    // `terminal_receipt_reference` out of the durable store, checked the receipt
+    // datum's identity and its minted `deriveMidgardTxFieldReceiptAssetNameV1`
+    // name, verified the `collection_proof` with
+    // `verifyMidgardBoundedCollectionItemProofV1`, and re-derived the terminal
+    // chunk and encoded-size arithmetic — decoding both compact structures to get
+    // the nine commitments it needed for that. All of it retired in #587 with the
+    // chain itself: under `docs/spec/midgard-tx.md` §4 a field commitment is one
+    // flat hash over the whole preimage, so no per-item Merkle opening can be
+    // checked against it and the receipt mint policy was unsatisfiable for any
+    // payload whose commitments were the §4 flat hashes of real material — a
+    // narrowing this walk inherited, not a closed door (see the docstring above
+    // for the declaring-payload residual the mint left open and this walk shared).
+    //
+    // **The payload no longer carries availability evidence at all.**
+    // `TxOrderPayloadV1` shed `terminal_receipt_reference` in the same change, so
+    // what is left to verify from a forced order's datum is exactly what is
+    // checked above: the proof source authenticates against the carried `tx_id`,
+    // and the carried commitment is the one derived from that source. Availability
+    // is enforced where the evidence for it lives — the tx-order mint's
+    // `verify_order_material` — and the docstring above says why this predicate
+    // does not mirror that function's temporary all-empty clause.
+    return true;
   } catch {
     return false;
   }
@@ -2091,15 +1964,7 @@ const verifyTerminalSemantics = (
     return (
       isHex32(datum.event.id?.transactionId) &&
       typeof datum.event.id.outputIndex === "bigint" &&
-      forcedPayloadMatchesNativeSource(datum.event.tx, {
-        sourceStore,
-        body,
-        deployment,
-        txOrderId: {
-          transactionId: datum.event.id.transactionId,
-          outputIndex: datum.event.id.outputIndex,
-        },
-      }) &&
+      forcedPayloadMatchesNativeSource(datum.event.tx) &&
       addressMatchesData(produced.address(), datum.refund_address) &&
       cardanoDatumMatches(produced, datum.refund_datum)
     );

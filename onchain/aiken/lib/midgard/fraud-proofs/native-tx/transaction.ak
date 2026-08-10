@@ -459,31 +459,39 @@ fn retired_counted_field_commitment_v1(
   }
 }
 
-/// **RETIRED counted-scheme surface — and one live caller still binds it.**
+/// **RETIRED counted-scheme surface, and nothing binds it any more.**
 ///
-/// Under §4's plain hashing a field commitment is a single hash over the whole
-/// preimage, so there is nothing a per-item Merkle opening can be checked
-/// against: `bounded_collection_v1.verify_item` compares a counted-scheme
-/// Merkle root against a flat `blake2b_256` and is therefore unsatisfiable,
-/// and this predicate with it.
+/// `bounded_collection_v1.verify_item` checks a counted-scheme Merkle opening
+/// against the field commitment the *payload's own* compact structure declares.
+/// Under `docs/spec/midgard-tx.md` §4 a real field's commitment is a single flat
+/// `blake2b_256` over the whole preimage, so no per-item opening can be checked
+/// against it: this predicate is **unsatisfiable for any payload whose
+/// commitments are the §4 flat hashes of real material**.
 ///
-/// It is **not** true that nothing calls it. The user-events field-receipt
-/// mint (`midgard/user_events/tx_field_receipt_v1`, reached from
-/// `validators/user-events/tx-field-receipt-v1.ak`) gates its `PublishField`
-/// branch on this predicate, so that branch cannot succeed: the counted
-/// per-item/per-chunk receipt chain is dead surface until the §8 carriage
-/// tiers replace it. That fails closed — no receipt can be minted for a field
-/// that was never opened — which is why it is a liveness break and not a
-/// soundness one, and `tx-field-receipt-v1.test.ak` records it so the suite
-/// stops being silent about it.
+/// It is *not* unsatisfiable outright. A payload is free to declare a counted
+/// root in place of a flat commitment, and against such a payload the opening
+/// verifies — `native-tx-v1.test.ak`'s
+/// `v1_transaction_field_chunk_is_bound_to_the_exact_proof_source` builds
+/// exactly that (a compact whose `spend_inputs_hash` *is* the collection
+/// commitment) and asserts `True`. So the deployed receipt-era mint could
+/// authenticate a material-bearing order that declared counted-root
+/// commitments; what it could never do is authenticate one whose commitments
+/// were the §4 hashes of the material it carried.
 ///
-/// Rebinding is not this ticket's: the receipt chain publishes *items and
-/// chunks*, and the replacement for that is the §8.6 permissionless
-/// chunk-certificate validator plus its publish/heal tooling (#573, #574),
-/// after the machine walk core lands (#570). This survives meanwhile only so
-/// the dispute machine and the proof families keep compiling until #570 and
-/// the Phase-5 family-rebind lanes delete their counted call sites. New
-/// surface uses `authenticated_field_view`
+/// Its last live caller was the user-events field-receipt mint, which gated its
+/// `PublishField` branch on this predicate. That validator, its library and the
+/// whole counted publication receipt chain retired in #587;
+/// `TxOrderPayloadV1` shed the `terminal_receipt_reference` that pointed into
+/// it, and `midgard/user_events/tx_order_v1.verify_order_material` replaced the
+/// walk with an all-empty clause that closes the gap outright rather than
+/// relying on the opening being hard to satisfy.
+///
+/// This survives only as evidence about the retired opening, so the suite is
+/// not silent about a format that still has a name: `native-tx-v1.test.ak` and
+/// `validation-machine-v1.test.ak` bind it to its exact proof source — `True`
+/// on counted-root-declaring material, `False` on every mismatched proof
+/// (wrong field index, wrong item, wrong chunk, substituted source). Nothing
+/// may bind it — new surface uses `authenticated_field_view`
 /// (`midgard/native_tx_field_access_v1`).
 pub fn verify_midgard_transaction_field_chunk_v1(
   transaction_id: ByteArray,

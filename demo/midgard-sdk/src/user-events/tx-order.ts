@@ -16,22 +16,27 @@ import {
   deriveMidgardNativeTxProofSourceV1,
 } from "@al-ft/midgard-core/codec";
 import {
+  type MidgardFieldCarriagePlanV1,
+  planMidgardFieldCarriageV1,
+} from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
+import {
+  encodeMidgardFieldArrayHeaderV1,
+  midgardFieldCommitmentV1,
+} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import {
   MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_V1_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  deriveMidgardTxFieldReceiptAssetNameV1,
-  deriveMidgardV1TxFieldChunks,
+  deriveMidgardV1TxFieldPreimages,
   validateMidgardConsensusV1TxCbor,
 } from "@al-ft/midgard-core/consensus-validation-v1";
 import {
   type Assets,
-  type BuildTxWithRedeemer,
   CML,
   Data,
   LucidEvolution,
   type ProtocolParameters,
-  toUnit,
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
@@ -51,27 +56,15 @@ import {
 import { HubOracleError } from "@/hub-oracle.js";
 import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
 import {
-  BoundedCollectionItemProofV1,
   CardanoDatum,
   CardanoDatumSchema,
   CekProgramMaterialDatumV1,
   CekProgramMaterialDatumV1Schema,
   MidgardTxValiditySchema,
   NativeTxProofSourceV1,
-  NativeTxProofSourceV1Schema,
-  TxFieldPreimageV1,
-  TxFieldPreimageV1Schema,
-  TxFieldReceiptV1,
-  TxFieldReceiptV1Schema,
   TxOrderEventV1Schema,
 } from "@/ledger-state.js";
 import { RawRootMembershipProofSchema } from "@/transition-trace.js";
-import {
-  requireInputIndex,
-  requireOwnMintPurpose,
-  requireReferenceInputIndex,
-  requireUniqueOutputIndex,
-} from "@/tx-context-redeemer.js";
 
 import {
   buildCompletedUserEventMintTxProgram,
@@ -143,24 +136,6 @@ export const encodeTxOrderDatumV1Cbor = (datum: TxOrderDatumV1): Buffer =>
 
 export const decodeTxOrderDatumV1Cbor = (bytes: Uint8Array): TxOrderDatumV1 =>
   decodeCanonicalPlutusDataV1(bytes, TxOrderDatumV1Schema, "TxOrderDatumV1");
-
-export const decodeTxFieldPreimageV1Cbor = (
-  bytes: Uint8Array,
-): TxFieldPreimageV1 =>
-  decodeCanonicalPlutusDataV1(
-    bytes,
-    TxFieldPreimageV1Schema,
-    "TxFieldPreimageV1",
-  );
-
-export const decodeTxFieldReceiptV1Cbor = (
-  bytes: Uint8Array,
-): TxFieldReceiptV1 =>
-  decodeCanonicalPlutusDataV1(
-    bytes,
-    TxFieldReceiptV1Schema,
-    "TxFieldReceiptV1",
-  );
 
 export const decodeCekProgramMaterialDatumV1Cbor = (
   bytes: Uint8Array,
@@ -282,57 +257,87 @@ export type SubmitTxOrderReferenceScripts = {
 export type SubmitTxOrderV1Config = {
   /** Exact bounded canonical native-V1 transaction bytes. */
   readonly nativeTxCbor: string;
-  /** Reserved while all field fragments and their L1 receipts are prepared. */
+  /** Reserved while the order's §8 field carriage is prepared. */
   readonly nonceInput: UTxO;
-  /** Exact terminal receipt for non-empty material; absent only for nine empty fields. */
-  readonly terminalFieldReceiptUtxo?: UTxO;
   readonly refundAddress: TxOrderRefundAddressV1;
   readonly refundDatum?: CardanoDatum;
   readonly lovelace?: bigint;
   readonly referenceScripts?: SubmitTxOrderReferenceScripts;
 };
 
-export type TxOrderFieldFragmentV1 = {
+/**
+ * One non-empty field of a forced order's material, with the §8 carriage its
+ * preimage requires.
+ *
+ * `plan` comes straight from {@link planMidgardFieldCarriageV1}, so the tier is
+ * §8.4's partition rather than this module's choice, and `publications` is the
+ * exact set of raw carriage UTxOs a publisher has to create.
+ */
+export type TxOrderFieldCarriageV1 = {
   readonly fieldIndex: number;
-  readonly itemIndex: number;
-  readonly chunkIndex: number;
   readonly fieldName: string;
-  readonly fieldEncodedSize: number;
-  readonly datum: TxFieldPreimageV1;
-  readonly datumCbor: string;
+  /** The §5.1 enveloped field preimage. */
+  readonly preimage: Buffer;
+  /**
+   * The §4 flat commitment over {@link preimage}.
+   *
+   * **This is not yet what the compact structure beside it carries.**
+   * `deriveNativeTxBodyCompact` still derives the nine field commitments under
+   * the retired counted bounded-collection scheme — a residual it documents in
+   * full and that #585 owns — so a field's committed hash and its §4 commitment
+   * disagree in TypeScript today while the Aiken side has derived §4 since #567.
+   * The value here is the §4 one, because that is what the §8 carriage plan and
+   * the on-chain door authenticate against; it is deliberately not asserted
+   * equal to the compact structure's hash, which would only turn one lane's
+   * known residual into another lane's red.
+   */
+  readonly commitment: string;
+  readonly plan: MidgardFieldCarriagePlanV1;
 };
 
-export type TxOrderFragmentBundleV1 = {
+/**
+ * What a forced order binds itself to: the §3 transaction id, the proof-source
+ * triple its datum carries, and the §8 carriage of every field with material in
+ * it.
+ *
+ * This replaced `deriveTxOrderFragmentBundleV1`, which produced counted per-item
+ * `TxFieldPreimageV1` fragments for the retired publication receipt chain
+ * (#587). The nine field preimages are the same bytes either way — what changed
+ * is that a field is now committed by one flat hash over the whole preimage
+ * (§4), so there are no per-item openings to publish and the unit of carriage is
+ * the field, not the item.
+ */
+export type TxOrderMaterialV1 = {
   readonly transactionId: string;
   readonly transactionCommitment: string;
   readonly source: NativeTxProofSourceV1;
-  readonly fragments: readonly TxOrderFieldFragmentV1[];
+  /**
+   * One entry per field whose §5.1 preimage is not the empty field `80`, in
+   * ascending field index. Empty for a transaction with nine empty fields.
+   */
+  readonly carriage: readonly TxOrderFieldCarriageV1[];
 };
 
-const fieldChunkKeyV1 = (
-  fieldIndex: number,
-  itemIndex: number,
-  chunkIndex: number,
-): string =>
-  `${fieldIndex.toString()}:${itemIndex.toString()}:${chunkIndex.toString()}`;
-
-export const deriveTxOrderFragmentBundleV1 = ({
+/**
+ * Derives a forced order's transaction binding and the §8 carriage its material
+ * requires.
+ *
+ * `owner` is the §8.6 min-Ada reclaim authority a tier-3 plan records. The only
+ * caller today is `buildTxOrderV1`, which passes the publish transaction's
+ * `witnessScriptHash` — the event witness script's hash, not a key hash — and
+ * nothing reads the field back, because no tier-3 plan is publishable while the
+ * §8.6 certificate carriage is undeployable (#589). Whether the reclaim
+ * authority should be the publisher's own key hash or the witness script is a
+ * decision that belongs with the step that will first spend a carriage output,
+ * so it is settled there rather than guessed here; #589 owns it.
+ */
+export const deriveTxOrderMaterialV1 = ({
   nativeTxCbor,
-  fieldReceiptPolicyId,
-  txOrderPolicyId,
-  txOrderId,
+  owner,
 }: {
   readonly nativeTxCbor: Uint8Array;
-  readonly fieldReceiptPolicyId: string;
-  readonly txOrderPolicyId: string;
-  readonly txOrderId: OutputReference;
-}): TxOrderFragmentBundleV1 => {
-  if (!/^[0-9a-f]{56}$/u.test(fieldReceiptPolicyId)) {
-    throw new Error("field-receipt policy id must be 28-byte lowercase hex");
-  }
-  if (!/^[0-9a-f]{56}$/u.test(txOrderPolicyId)) {
-    throw new Error("tx-order policy id must be 28-byte lowercase hex");
-  }
+  readonly owner: Uint8Array;
+}): TxOrderMaterialV1 => {
   const violation = validateMidgardConsensusV1TxCbor(nativeTxCbor);
   if (violation !== null) {
     throw new Error(
@@ -340,95 +345,46 @@ export const deriveTxOrderFragmentBundleV1 = ({
     );
   }
   const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeTxCbor);
-  const transactionId = computeMidgardNativeTxIdV1(tx).toString("hex");
+  const transactionId = computeMidgardNativeTxIdV1(tx);
   const proofSource = deriveMidgardNativeTxProofSourceV1(tx);
-  const transactionCommitment =
-    computeMidgardNativeTxProofCommitmentV1(proofSource).toString("hex");
   const source: NativeTxProofSourceV1 = {
     compact_cbor: proofSource.compactCbor.toString("hex"),
     witness_set_compact_cbor: proofSource.witnessSetCompactCbor.toString("hex"),
     field_preimage_lengths_cbor:
       proofSource.fieldPreimageLengthsCbor.toString("hex"),
   };
-  const fragments = deriveMidgardV1TxFieldChunks(nativeTxCbor).map((field) => {
-    const proof = field.proof;
-    const datum: TxFieldPreimageV1 = {
-      field_receipt_policy_id: fieldReceiptPolicyId,
-      tx_order_policy_id: txOrderPolicyId,
-      tx_order_id: txOrderId,
-      transaction_commitment: transactionCommitment,
-      collection_proof: {
-        version: BigInt(field.collectionProof.version),
-        field_index: BigInt(field.collectionProof.fieldIndex),
-        item_count: BigInt(field.collectionProof.itemCount),
-        item_index: BigInt(field.collectionProof.itemIndex),
-        item_length: BigInt(field.collectionProof.itemLength),
-        item_commitment: field.collectionProof.itemCommitment.toString("hex"),
-        frontier: field.collectionProof.frontier.peaks.map((peak) => ({
-          height: BigInt(peak.height),
-          hash: peak.hash.toString("hex"),
-        })),
-        siblings: field.collectionProof.siblings.map((sibling) =>
-          sibling.toString("hex"),
-        ),
-      },
-      proof: {
-        version: BigInt(proof.version),
-        field_index: BigInt(proof.fieldIndex),
-        item_index: BigInt(proof.itemIndex),
-        total_length: BigInt(proof.totalLength),
-        chunk_index: BigInt(proof.chunkIndex),
-        chunk: proof.chunk.toString("hex"),
-        frontier: proof.frontier.peaks.map((peak) => ({
-          height: BigInt(peak.height),
-          hash: peak.hash.toString("hex"),
-        })),
-        siblings: proof.siblings.map((sibling) => sibling.toString("hex")),
-      },
-    };
-    return {
-      fieldIndex: proof.fieldIndex,
-      itemIndex: proof.itemIndex,
-      chunkIndex: proof.chunkIndex,
+  const carriage: TxOrderFieldCarriageV1[] = [];
+  // §5.1's empty field is the one-byte definite-array header `80`. The on-chain
+  // `next_non_empty_field` decides the same thing by comparing the committed
+  // hash against `empty_field_commitment`, which is the *derived* form of this
+  // test; it cannot be reproduced here while `deriveNativeTxBodyCompact` is
+  // still counted (#585), and the preimage bytes are the thing both spellings are
+  // about anyway.
+  const emptyFieldPreimage = encodeMidgardFieldArrayHeaderV1(0);
+  for (const field of deriveMidgardV1TxFieldPreimages(nativeTxCbor)) {
+    if (field.preimageCbor.equals(emptyFieldPreimage)) {
+      continue;
+    }
+    carriage.push({
+      fieldIndex: field.fieldIndex,
       fieldName: field.fieldName,
-      fieldEncodedSize: field.fieldEncodedSize,
-      datum,
-      datumCbor: Data.to(datum, TxFieldPreimageV1),
-    };
-  });
+      preimage: field.preimageCbor,
+      commitment: midgardFieldCommitmentV1(field.preimageCbor).toString("hex"),
+      plan: planMidgardFieldCarriageV1({
+        owner,
+        txId: transactionId,
+        fieldIndex: field.fieldIndex,
+        preimage: field.preimageCbor,
+      }),
+    });
+  }
   return {
-    transactionId,
-    transactionCommitment,
+    transactionId: transactionId.toString("hex"),
+    transactionCommitment:
+      computeMidgardNativeTxProofCommitmentV1(proofSource).toString("hex"),
     source,
-    fragments,
+    carriage: Object.freeze(carriage),
   };
-};
-
-export const TxFieldReceiptMintRedeemerV1Schema = Data.Enum([
-  Data.Object({
-    PublishField: Data.Object({
-      field_reference_input_index: Data.Integer(),
-      predecessor_receipt_reference_input_index: Data.Integer(),
-      receipt_output_index: Data.Integer(),
-      transaction_id: Data.Bytes({ minLength: 32, maxLength: 32 }),
-      source: NativeTxProofSourceV1Schema,
-    }),
-  }),
-  Data.Object({
-    BurnReceipts: Data.Object({
-      receipt_input_indices: Data.Array(Data.Integer()),
-    }),
-  }),
-]);
-export type TxFieldReceiptMintRedeemerV1 = Data.Static<
-  typeof TxFieldReceiptMintRedeemerV1Schema
->;
-export const TxFieldReceiptMintRedeemerV1 =
-  TxFieldReceiptMintRedeemerV1Schema as unknown as TxFieldReceiptMintRedeemerV1;
-
-export type PublishTxOrderFieldFragmentV1Config = {
-  readonly fragment: TxOrderFieldFragmentV1;
-  readonly lovelace?: bigint;
 };
 
 export type PublishCekProgramMaterialV1Config = {
@@ -621,338 +577,6 @@ export const deriveCekProgramMaterialPublicationsV1 = (
   );
 };
 
-export type PublishTxOrderFieldReceiptV1Config = {
-  readonly nativeTxCbor: string;
-  readonly fieldPreimageUtxo: UTxO;
-  /** Required for every fragment except the first canonical chain position. */
-  readonly predecessorReceiptUtxo?: UTxO;
-  readonly lovelace?: bigint;
-  readonly receiptMintingReferenceScript?: UTxO;
-};
-
-export type TxOrderFieldReceiptPublicationV1 = {
-  readonly fieldIndex: number;
-  readonly itemIndex: number;
-  readonly chunkIndex: number;
-  readonly fieldReference: OutputReference;
-  readonly transactionId: string;
-  readonly source: NativeTxProofSourceV1;
-  readonly receiptAssetName: string;
-  readonly receiptUnit: string;
-  readonly datum: TxFieldReceiptV1;
-  readonly datumCbor: string;
-};
-
-const receiptAssetNameV1 = ({
-  txOrderPolicyId,
-  txOrderId,
-  transactionCommitment,
-  fieldIndex,
-  itemIndex,
-  chunkIndex,
-}: {
-  readonly txOrderPolicyId: string;
-  readonly txOrderId: OutputReference;
-  readonly transactionCommitment: string;
-  readonly fieldIndex: number;
-  readonly itemIndex: number;
-  readonly chunkIndex: number;
-}): string =>
-  deriveMidgardTxFieldReceiptAssetNameV1({
-    txOrderPolicyId: Buffer.from(txOrderPolicyId, "hex"),
-    txOrderTransactionId: Buffer.from(txOrderId.transactionId, "hex"),
-    txOrderOutputIndex: txOrderId.outputIndex,
-    transactionCommitment: Buffer.from(transactionCommitment, "hex"),
-    fieldIndex,
-    itemIndex,
-    chunkIndex,
-  }).toString("hex");
-
-export const deriveTxOrderFieldReceiptPublicationV1 = ({
-  contracts,
-  nativeTxCbor,
-  fieldPreimageUtxo,
-  predecessorReceiptUtxo,
-}: {
-  readonly contracts: MidgardValidators;
-  readonly nativeTxCbor: Uint8Array;
-  readonly fieldPreimageUtxo: UTxO;
-  readonly predecessorReceiptUtxo?: UTxO;
-}): TxOrderFieldReceiptPublicationV1 => {
-  const outRef = `${fieldPreimageUtxo.txHash}#${fieldPreimageUtxo.outputIndex.toString()}`;
-  if (
-    fieldPreimageUtxo.address !==
-    contracts.txOrderFieldPreimage.spendingScriptAddress
-  ) {
-    throw new Error(
-      `field fragment ${outRef} is not locked by the compiled V1 fragment validator`,
-    );
-  }
-  if (fieldPreimageUtxo.datum == null) {
-    throw new Error(`field fragment ${outRef} has no inline datum`);
-  }
-  const field = decodeTxFieldPreimageV1Cbor(
-    Buffer.from(fieldPreimageUtxo.datum, "hex"),
-  );
-  if (
-    field.field_receipt_policy_id !== contracts.txOrderFieldReceipt.policyId
-  ) {
-    throw new Error(
-      `field fragment ${outRef} is bound to another receipt policy`,
-    );
-  }
-  const fieldIndex = Number(field.proof.field_index);
-  const itemIndex = Number(field.proof.item_index);
-  const chunkIndex = Number(field.proof.chunk_index);
-  if (!Number.isSafeInteger(fieldIndex) || fieldIndex < 0 || fieldIndex >= 9) {
-    throw new Error(
-      `field fragment ${outRef} has invalid field index ${field.proof.field_index.toString()}`,
-    );
-  }
-  if (!Number.isSafeInteger(itemIndex) || itemIndex < 0) {
-    throw new Error(
-      `field fragment ${outRef} has invalid item index ${field.proof.item_index.toString()}`,
-    );
-  }
-  if (!Number.isSafeInteger(chunkIndex) || chunkIndex < 0) {
-    throw new Error(
-      `field fragment ${outRef} has invalid chunk index ${field.proof.chunk_index.toString()}`,
-    );
-  }
-  const bundle = deriveTxOrderFragmentBundleV1({
-    nativeTxCbor,
-    fieldReceiptPolicyId: contracts.txOrderFieldReceipt.policyId,
-    txOrderPolicyId: field.tx_order_policy_id,
-    txOrderId: field.tx_order_id,
-  });
-  const expected = bundle.fragments.find(
-    (fragment) =>
-      fragment.fieldIndex === fieldIndex &&
-      fragment.itemIndex === itemIndex &&
-      fragment.chunkIndex === chunkIndex,
-  );
-  if (
-    expected === undefined ||
-    Data.to(field, TxFieldPreimageV1) !== expected.datumCbor
-  ) {
-    throw new Error(
-      `field fragment ${outRef} does not match the exact transaction commitment at field ${fieldIndex.toString()}, item ${itemIndex.toString()}, chunk ${chunkIndex.toString()}`,
-    );
-  }
-  const ordinal = bundle.fragments.indexOf(expected);
-  const predecessorReference =
-    predecessorReceiptUtxo === undefined
-      ? null
-      : outputReferenceFromUTxO(predecessorReceiptUtxo);
-  if (ordinal === 0) {
-    if (predecessorReceiptUtxo !== undefined) {
-      throw new Error("first V1 field receipt cannot have a predecessor");
-    }
-  } else {
-    if (predecessorReceiptUtxo === undefined) {
-      throw new Error(
-        `field receipt at ordinal ${ordinal.toString()} requires its immediate predecessor`,
-      );
-    }
-    const predecessorOutRef = `${predecessorReceiptUtxo.txHash}#${predecessorReceiptUtxo.outputIndex.toString()}`;
-    if (
-      predecessorReceiptUtxo.address !==
-      contracts.txOrderFieldReceipt.spendingScriptAddress
-    ) {
-      throw new Error(
-        `predecessor receipt ${predecessorOutRef} is not locked by the compiled V1 receipt validator`,
-      );
-    }
-    if (predecessorReceiptUtxo.datum == null) {
-      throw new Error(`predecessor receipt ${predecessorOutRef} has no datum`);
-    }
-    const predecessor = decodeTxFieldReceiptV1Cbor(
-      Buffer.from(predecessorReceiptUtxo.datum, "hex"),
-    );
-    const predecessorFragment = bundle.fragments[ordinal - 1]!;
-    const predecessorAssetName = receiptAssetNameV1({
-      txOrderPolicyId: field.tx_order_policy_id,
-      txOrderId: field.tx_order_id,
-      transactionCommitment: field.transaction_commitment,
-      fieldIndex: predecessorFragment.fieldIndex,
-      itemIndex: predecessorFragment.itemIndex,
-      chunkIndex: predecessorFragment.chunkIndex,
-    });
-    const predecessorUnit = toUnit(
-      contracts.txOrderFieldReceipt.policyId,
-      predecessorAssetName,
-    );
-    if (
-      predecessor.field_receipt_policy_id !==
-        contracts.txOrderFieldReceipt.policyId ||
-      predecessor.tx_order_policy_id !== field.tx_order_policy_id ||
-      Data.to(predecessor.tx_order_id, OutputReference) !==
-        Data.to(field.tx_order_id, OutputReference) ||
-      predecessor.transaction_commitment !== field.transaction_commitment ||
-      Data.to(predecessor.collection_proof, BoundedCollectionItemProofV1) !==
-        Data.to(
-          predecessorFragment.datum.collection_proof,
-          BoundedCollectionItemProofV1,
-        ) ||
-      predecessor.chunk_index !== predecessorFragment.datum.proof.chunk_index ||
-      predecessor.field_encoded_size !==
-        BigInt(predecessorFragment.fieldEncodedSize) ||
-      (predecessorReceiptUtxo.assets[predecessorUnit] ?? 0n) !== 1n
-    ) {
-      throw new Error(
-        `predecessor receipt ${predecessorOutRef} does not authenticate ordinal ${(ordinal - 1).toString()}`,
-      );
-    }
-  }
-  const fieldReference = outputReferenceFromUTxO(fieldPreimageUtxo);
-  const receiptAssetName = receiptAssetNameV1({
-    txOrderPolicyId: field.tx_order_policy_id,
-    txOrderId: field.tx_order_id,
-    transactionCommitment: field.transaction_commitment,
-    fieldIndex,
-    itemIndex,
-    chunkIndex,
-  });
-  const receiptUnit = toUnit(
-    contracts.txOrderFieldReceipt.policyId,
-    receiptAssetName,
-  );
-  const datum: TxFieldReceiptV1 = {
-    field_receipt_policy_id: contracts.txOrderFieldReceipt.policyId,
-    tx_order_policy_id: field.tx_order_policy_id,
-    tx_order_id: field.tx_order_id,
-    transaction_commitment: field.transaction_commitment,
-    collection_proof: field.collection_proof,
-    chunk_index: field.proof.chunk_index,
-    field_reference: fieldReference,
-    predecessor_receipt_reference: predecessorReference,
-    field_encoded_size: BigInt(expected.fieldEncodedSize),
-  };
-  return {
-    fieldIndex,
-    itemIndex,
-    chunkIndex,
-    fieldReference,
-    transactionId: bundle.transactionId,
-    source: bundle.source,
-    receiptAssetName,
-    receiptUnit,
-    datum,
-    datumCbor: Data.to(datum, TxFieldReceiptV1),
-  };
-};
-
-const receiptUnitFromUtxoV1 = (
-  utxo: UTxO,
-  fieldReceiptPolicyId: string,
-): string => {
-  if (!/^[0-9a-f]{56}$/u.test(fieldReceiptPolicyId)) {
-    throw new Error("field-receipt policy id must be 28-byte lowercase hex");
-  }
-  const matchingUnits = Object.entries(utxo.assets).filter(
-    ([unit, quantity]) =>
-      unit.startsWith(fieldReceiptPolicyId) &&
-      unit.length === fieldReceiptPolicyId.length + 64 &&
-      quantity === 1n,
-  );
-  if (matchingUnits.length !== 1) {
-    throw new Error(
-      `V1 receipt ${utxo.txHash}#${utxo.outputIndex.toString()} must contain exactly one receipt NFT`,
-    );
-  }
-  return matchingUnits[0]![0];
-};
-
-export const txOrderFieldReceiptBurnAssetsV1 = (
-  receiptUtxos: readonly UTxO[],
-  fieldReceiptPolicyId: string,
-): Assets => {
-  if (receiptUtxos.length === 0) {
-    throw new Error("V1 receipt burn requires at least one UTxO");
-  }
-  const units = receiptUtxos.map((utxo) =>
-    receiptUnitFromUtxoV1(utxo, fieldReceiptPolicyId),
-  );
-  if (new Set(units).size !== units.length) {
-    throw new Error("V1 receipt burn contains duplicate NFTs");
-  }
-  return Object.fromEntries(units.map((unit) => [unit, -1n]));
-};
-
-/**
- * Builds the receipt-policy burn redeemer after Lucid has fixed the canonical
- * input ordering. Indices follow receipt asset-name order, matching Aiken's
- * ordered token dictionary traversal.
- */
-export const txOrderFieldReceiptBurnRedeemerV1 = (
-  receiptUtxos: readonly UTxO[],
-  fieldReceiptPolicyId: string,
-): BuildTxWithRedeemer => {
-  const ordered = receiptUtxos
-    .map((utxo) => ({
-      utxo,
-      unit: receiptUnitFromUtxoV1(utxo, fieldReceiptPolicyId),
-    }))
-    .sort((left, right) => left.unit.localeCompare(right.unit));
-  if (
-    ordered.length === 0 ||
-    new Set(ordered.map(({ unit }) => unit)).size !== ordered.length
-  ) {
-    throw new Error("V1 receipt burn requires distinct receipt NFTs");
-  }
-  return (ctx) => {
-    requireOwnMintPurpose(ctx, fieldReceiptPolicyId, "V1 field receipt burn");
-    return Data.to(
-      {
-        BurnReceipts: {
-          receipt_input_indices: ordered.map(({ utxo }) =>
-            requireInputIndex(ctx, utxo, "V1 field receipt burn"),
-          ),
-        },
-      } satisfies TxFieldReceiptMintRedeemerV1,
-      TxFieldReceiptMintRedeemerV1,
-    );
-  };
-};
-
-export const buildUnsignedTxOrderFieldFragmentV1Program = (
-  lucid: LucidEvolution,
-  contracts: MidgardValidators,
-  config: PublishTxOrderFieldFragmentV1Config,
-): Effect.Effect<TxSignBuilder, UserEventBuildError> =>
-  Effect.tryPromise({
-    try: async () => {
-      if (
-        config.fragment.datum.field_receipt_policy_id !==
-        contracts.txOrderFieldReceipt.policyId
-      ) {
-        throw new Error("V1 field fragment is bound to another receipt policy");
-      }
-      if (
-        Data.to(config.fragment.datum, TxFieldPreimageV1) !==
-        config.fragment.datumCbor
-      ) {
-        throw new Error("V1 field fragment datum CBOR is not canonical");
-      }
-      return lucid
-        .newTx()
-        .pay.ToAddressWithData(
-          contracts.txOrderFieldPreimage.spendingScriptAddress,
-          {
-            kind: "inline",
-            value: config.fragment.datumCbor,
-          },
-          { lovelace: config.lovelace ?? DEFAULT_TX_ORDER_LOVELACE },
-        )
-        .complete({ localUPLCEval: true });
-    },
-    catch: (cause) =>
-      new UserEventBuildError({
-        message: "Failed to publish V1 field fragment",
-        cause,
-      }),
-  });
-
 export const buildUnsignedCekProgramMaterialV1Program = (
   lucid: LucidEvolution,
   contracts: MidgardValidators,
@@ -1036,124 +660,6 @@ export const buildUnsignedCekSinglePublicationV1Program = (
       }),
   });
 
-export const buildUnsignedTxOrderFieldReceiptV1Program = (
-  lucid: LucidEvolution,
-  contracts: MidgardValidators,
-  config: PublishTxOrderFieldReceiptV1Config,
-): Effect.Effect<TxSignBuilder, UserEventBuildError> =>
-  Effect.tryPromise({
-    try: async () => {
-      if (
-        config.nativeTxCbor.length === 0 ||
-        config.nativeTxCbor.length % 2 !== 0 ||
-        !/^[0-9a-f]+$/iu.test(config.nativeTxCbor)
-      ) {
-        throw new Error(
-          "nativeTxCbor must be non-empty, even-length hexadecimal",
-        );
-      }
-      const nativeTxCbor = Buffer.from(config.nativeTxCbor, "hex");
-      const publication = deriveTxOrderFieldReceiptPublicationV1({
-        contracts,
-        nativeTxCbor,
-        fieldPreimageUtxo: config.fieldPreimageUtxo,
-        predecessorReceiptUtxo: config.predecessorReceiptUtxo,
-      });
-      const materialReferenceInputs =
-        config.predecessorReceiptUtxo === undefined
-          ? [config.fieldPreimageUtxo]
-          : [config.fieldPreimageUtxo, config.predecessorReceiptUtxo];
-      const referenceInputs =
-        config.receiptMintingReferenceScript === undefined
-          ? materialReferenceInputs
-          : [...materialReferenceInputs, config.receiptMintingReferenceScript];
-      type ReceiptLayout = {
-        readonly fieldReferenceInputIndex: bigint;
-        readonly predecessorReceiptReferenceInputIndex: bigint;
-        readonly receiptOutputIndex: bigint;
-      };
-      const encodeRedeemer = (layout: ReceiptLayout): string =>
-        Data.to(
-          {
-            PublishField: {
-              field_reference_input_index: layout.fieldReferenceInputIndex,
-              predecessor_receipt_reference_input_index:
-                layout.predecessorReceiptReferenceInputIndex,
-              receipt_output_index: layout.receiptOutputIndex,
-              transaction_id: publication.transactionId,
-              source: publication.source,
-            },
-          } satisfies TxFieldReceiptMintRedeemerV1,
-          TxFieldReceiptMintRedeemerV1,
-        );
-      let resolvedLayout: ReceiptLayout | undefined;
-      const dynamicRedeemer = ((ctx) => {
-        requireOwnMintPurpose(
-          ctx,
-          contracts.txOrderFieldReceipt.policyId,
-          "V1 field receipt",
-        );
-        const layout: ReceiptLayout = {
-          fieldReferenceInputIndex: requireReferenceInputIndex(
-            ctx,
-            config.fieldPreimageUtxo,
-            "V1 field receipt",
-          ),
-          predecessorReceiptReferenceInputIndex:
-            config.predecessorReceiptUtxo === undefined
-              ? -1n
-              : requireReferenceInputIndex(
-                  ctx,
-                  config.predecessorReceiptUtxo,
-                  "V1 field receipt predecessor",
-                ),
-          receiptOutputIndex: requireUniqueOutputIndex(
-            ctx.outputs,
-            (output) => (output.assets[publication.receiptUnit] ?? 0n) === 1n,
-            "V1 field receipt",
-          ),
-        };
-        resolvedLayout = layout;
-        return encodeRedeemer(layout);
-      }) satisfies BuildTxWithRedeemer;
-      const makeTx = (
-        redeemer: BuildTxWithRedeemer | string,
-      ): ReturnType<LucidEvolution["newTx"]> => {
-        const baseTx = lucid.newTx().readFrom(referenceInputs);
-        const withPolicy =
-          config.receiptMintingReferenceScript === undefined
-            ? baseTx.attach.MintingPolicy(
-                contracts.txOrderFieldReceipt.mintingScript,
-              )
-            : baseTx;
-        return withPolicy
-          .mintAssets({ [publication.receiptUnit]: 1n }, redeemer)
-          .pay.ToAddressWithData(
-            contracts.txOrderFieldReceipt.spendingScriptAddress,
-            { kind: "inline", value: publication.datumCbor },
-            {
-              lovelace: config.lovelace ?? DEFAULT_TX_ORDER_LOVELACE,
-              [publication.receiptUnit]: 1n,
-            },
-          );
-      };
-      await makeTx(dynamicRedeemer).complete({ localUPLCEval: true });
-      if (resolvedLayout === undefined) {
-        throw new Error(
-          "failed to resolve V1 field receipt transaction layout",
-        );
-      }
-      return makeTx(encodeRedeemer(resolvedLayout)).complete({
-        localUPLCEval: true,
-      });
-    },
-    catch: (cause) =>
-      new UserEventBuildError({
-        message: "Failed to mint V1 field receipt",
-        cause,
-      }),
-  });
-
 export type TxOrderBuildMetadata = {
   readonly txOrderAddress: string;
   readonly txOrderId: OutputReference;
@@ -1223,93 +729,40 @@ export const buildUnsignedTxOrderTxV1WithMetadataProgram = (
     } = context;
     const txOrderId = outputReferenceFromUTxO(nonceInput);
     const authNonceCbor = outputReferenceToPlutusDataCbor(nonceInput);
-    const bundle = yield* Effect.try({
-      try: () =>
-        deriveTxOrderFragmentBundleV1({
-          nativeTxCbor,
-          fieldReceiptPolicyId: contracts.txOrderFieldReceipt.policyId,
-          txOrderPolicyId: contracts.txOrder.policyId,
-          txOrderId,
-        }),
-      catch: (cause) =>
-        new UserEventBuildError({
-          message: "Failed to derive V1 tx-order fragments",
-          cause,
-        }),
-    });
-    const terminalFieldReceiptUtxo = yield* Effect.try({
+    const material = yield* Effect.try({
       try: () => {
-        if (bundle.fragments.length === 0) {
-          if (config.terminalFieldReceiptUtxo !== undefined) {
-            throw new Error(
-              "nine empty dynamic fields cannot specify a terminal receipt",
-            );
-          }
-          return undefined;
-        }
-        const utxo = config.terminalFieldReceiptUtxo;
-        if (utxo === undefined) {
-          throw new Error("non-empty V1 material requires a terminal receipt");
-        }
-        const outRef = `${utxo.txHash}#${utxo.outputIndex.toString()}`;
-        if (
-          utxo.address !== contracts.txOrderFieldReceipt.spendingScriptAddress
-        ) {
-          throw new Error(
-            `terminal receipt ${outRef} is not locked by the compiled V1 receipt validator`,
-          );
-        }
-        if (utxo.datum == null) {
-          throw new Error(`terminal receipt ${outRef} has no inline datum`);
-        }
-        const receipt = decodeTxFieldReceiptV1Cbor(
-          Buffer.from(utxo.datum, "hex"),
-        );
-        const terminal = bundle.fragments.at(-1)!;
-        const expectedAssetName = receiptAssetNameV1({
-          txOrderPolicyId: contracts.txOrder.policyId,
-          txOrderId,
-          transactionCommitment: bundle.transactionCommitment,
-          fieldIndex: terminal.fieldIndex,
-          itemIndex: terminal.itemIndex,
-          chunkIndex: terminal.chunkIndex,
+        const derived = deriveTxOrderMaterialV1({
+          nativeTxCbor,
+          owner: Buffer.from(witnessScriptHash, "hex"),
         });
-        const expectedUnit = toUnit(
-          contracts.txOrderFieldReceipt.policyId,
-          expectedAssetName,
-        );
-        if (
-          receipt.field_receipt_policy_id !==
-            contracts.txOrderFieldReceipt.policyId ||
-          receipt.tx_order_policy_id !== contracts.txOrder.policyId ||
-          Data.to(receipt.tx_order_id, OutputReference) !==
-            Data.to(txOrderId, OutputReference) ||
-          receipt.transaction_commitment !== bundle.transactionCommitment ||
-          Data.to(receipt.collection_proof, BoundedCollectionItemProofV1) !==
-            Data.to(
-              terminal.datum.collection_proof,
-              BoundedCollectionItemProofV1,
-            ) ||
-          receipt.chunk_index !== terminal.datum.proof.chunk_index ||
-          receipt.field_encoded_size !== BigInt(terminal.fieldEncodedSize) ||
-          (bundle.fragments.length === 1
-            ? receipt.predecessor_receipt_reference !== null
-            : receipt.predecessor_receipt_reference === null) ||
-          (utxo.assets[expectedUnit] ?? 0n) !== 1n
-        ) {
+        if (derived.carriage.length > 0) {
+          // Fail closed, and say why here rather than at submission. The tx-order
+          // mint's `verify_order_material` admits only the canonically-empty
+          // transaction, because the §8 availability re-expression it needs — a
+          // §8.6 `FieldPreimageCertificateV1` per non-empty field, checked
+          // through `authenticated_field_view` — cannot be wired yet: the
+          // certificate validator is not in the frozen blueprint and has no
+          // deployment role, and §8.4's ladder routes preimages under the tier-1
+          // bound to redeemer carriage, which does not outlive the transaction
+          // that carried it. Both are recorded as a Deviation on #587 and owned
+          // by #589, which is where this refusal lifts. Building an order the
+          // mint will refuse would only move the refusal somewhere less
+          // informative.
           throw new Error(
-            `terminal receipt ${outRef} does not authenticate ${fieldChunkKeyV1(
-              terminal.fieldIndex,
-              terminal.itemIndex,
-              terminal.chunkIndex,
-            )}`,
+            `forced order carries material in ${derived.carriage.length.toString()} field(s) ` +
+              `(${derived.carriage
+                .map((field) => field.fieldName)
+                .join(", ")}); the §8.6-certified carriage the tx-order mint ` +
+              "needs for non-empty material is not deployable yet (see #587's " +
+              "Deviation and issue #589, which owns the blocker). Only a " +
+              "transaction with nine empty fields can be ordered today.",
           );
         }
-        return utxo;
+        return derived;
       },
       catch: (cause) =>
         new UserEventBuildError({
-          message: "V1 tx-order terminal receipt is missing or unauthenticated",
+          message: "Failed to derive V1 tx-order material carriage",
           cause,
         }),
     });
@@ -1317,13 +770,9 @@ export const buildUnsignedTxOrderTxV1WithMetadataProgram = (
       event: {
         id: txOrderId,
         tx: {
-          tx_id: bundle.transactionId,
-          transaction_commitment: bundle.transactionCommitment,
-          source: bundle.source,
-          terminal_receipt_reference:
-            terminalFieldReceiptUtxo === undefined
-              ? null
-              : outputReferenceFromUTxO(terminalFieldReceiptUtxo),
+          tx_id: material.transactionId,
+          transaction_commitment: material.transactionCommitment,
+          source: material.source,
         },
       },
       inclusion_time: BigInt(inclusionTime),
@@ -1338,16 +787,8 @@ export const buildUnsignedTxOrderTxV1WithMetadataProgram = (
     };
     const referenceInputs =
       config.referenceScripts === undefined
-        ? terminalFieldReceiptUtxo === undefined
-          ? [hubOracleRefInput]
-          : [hubOracleRefInput, terminalFieldReceiptUtxo]
-        : terminalFieldReceiptUtxo === undefined
-          ? [hubOracleRefInput, config.referenceScripts.txOrderMinting]
-          : [
-              hubOracleRefInput,
-              config.referenceScripts.txOrderMinting,
-              terminalFieldReceiptUtxo,
-            ];
+        ? [hubOracleRefInput]
+        : [hubOracleRefInput, config.referenceScripts.txOrderMinting];
     const witnessRegistrationRedeemer =
       encodeUserEventWitnessMintOrBurnRedeemer(contracts.txOrder.policyId);
     const tx = yield* buildCompletedUserEventMintTxProgram({
@@ -1408,24 +849,6 @@ export const unsignedTxOrderTxV1 = (
 ): Promise<TxSignBuilder> =>
   makeReturn(
     unsignedTxOrderTxV1Program(lucid, contracts, txOrderParams),
-  ).unsafeRun();
-
-export const unsignedTxOrderFieldFragmentV1 = (
-  lucid: LucidEvolution,
-  contracts: MidgardValidators,
-  config: PublishTxOrderFieldFragmentV1Config,
-): Promise<TxSignBuilder> =>
-  makeReturn(
-    buildUnsignedTxOrderFieldFragmentV1Program(lucid, contracts, config),
-  ).unsafeRun();
-
-export const unsignedTxOrderFieldReceiptV1 = (
-  lucid: LucidEvolution,
-  contracts: MidgardValidators,
-  config: PublishTxOrderFieldReceiptV1Config,
-): Promise<TxSignBuilder> =>
-  makeReturn(
-    buildUnsignedTxOrderFieldReceiptV1Program(lucid, contracts, config),
   ).unsafeRun();
 
 export const unsignedCekProgramMaterialV1 = (

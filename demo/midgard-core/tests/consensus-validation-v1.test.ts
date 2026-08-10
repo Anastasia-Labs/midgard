@@ -5,7 +5,6 @@ import {
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
   deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardTxFieldReceiptAssetNameV1,
   deriveMidgardV1TxFieldChunks,
   deriveMidgardV1TxFieldEvidence,
   deriveMidgardV1TxFieldPreimages,
@@ -114,31 +113,6 @@ const nestedNativeScript = (depth: number): MidgardNativeScript => {
 };
 
 describe("canonical V1 consensus transaction bounds", () => {
-  it("derives the exact L1 field-receipt asset-name vector", () => {
-    expect(
-      deriveMidgardTxFieldReceiptAssetNameV1({
-        txOrderPolicyId: Buffer.from("11".repeat(28), "hex"),
-        txOrderTransactionId: Buffer.from("44".repeat(32), "hex"),
-        txOrderOutputIndex: 7n,
-        transactionCommitment: Buffer.alloc(32),
-        fieldIndex: 0,
-        itemIndex: 0,
-        chunkIndex: 0,
-      }).toString("hex"),
-    ).toBe("7bc0ae911756007cc44a1e956fedc08d67af38ce19778405ab040faa77b60123");
-    expect(() =>
-      deriveMidgardTxFieldReceiptAssetNameV1({
-        txOrderPolicyId: Buffer.alloc(27),
-        txOrderTransactionId: Buffer.alloc(32),
-        txOrderOutputIndex: 0n,
-        transactionCommitment: Buffer.alloc(32),
-        fieldIndex: 0,
-        itemIndex: 0,
-        chunkIndex: 0,
-      }),
-    ).toThrow(/exactly 28 bytes/u);
-  });
-
   it("admits the requested V1 feature surface instead of feature-gating it", () => {
     const tx = materializeMidgardNativeTxFromCanonicalV1(canonical());
     const txCbor = encodeMidgardNativeTxCanonicalV1(tx);

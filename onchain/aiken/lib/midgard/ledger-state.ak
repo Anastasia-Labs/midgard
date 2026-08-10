@@ -21,13 +21,11 @@ use aiken/crypto.{
 }
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential}
-use cardano/assets.{Lovelace, PolicyId}
+use cardano/assets.{Lovelace}
 use cardano/transaction.{
   Datum as CardanoDatum, OutputReference, Redeemer, ScriptPurpose, ValidityRange,
 }
 use env
-use midgard/bounded_collection_v1
-use midgard/bounded_item_v1
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
 use midgard/common/utils
 use midgard/validation_trace_v1
@@ -396,27 +394,6 @@ pub type NativeTxProofSourceV1 {
   field_preimage_lengths_cbor: ByteArray,
 }
 
-pub type TxFieldPreimageV1 {
-  field_receipt_policy_id: PolicyId,
-  tx_order_policy_id: PolicyId,
-  tx_order_id: TxOrderId,
-  transaction_commitment: ByteArray,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  proof: bounded_item_v1.ChunkProofV1,
-}
-
-pub type TxFieldReceiptV1 {
-  field_receipt_policy_id: PolicyId,
-  tx_order_policy_id: PolicyId,
-  tx_order_id: TxOrderId,
-  transaction_commitment: ByteArray,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  chunk_index: Int,
-  field_reference: OutputReference,
-  predecessor_receipt_reference: Option<OutputReference>,
-  field_encoded_size: Int,
-}
-
 /// Permissionless, immutable L1 publication of one content-addressed CEK
 /// program node. The root authenticates `(kind, preimage)` under the
 /// canonical V1 domain; the enclosing validator deliberately has no spend path so
@@ -428,11 +405,33 @@ pub type CekProgramMaterialDatumV1 {
   preimage: ByteArray,
 }
 
+/// The L1 forced-inclusion order's payload.
+///
+/// **No `terminal_receipt_reference`.** It used to name the last link of the
+/// counted per-item publication receipt chain, and `verify_order_receipts` read
+/// it to conclude that every one of the nine fields' items had been opened on
+/// L1. Under `docs/spec/midgard-tx.md` §4's flat reversion there is nothing for
+/// a per-item Merkle opening to be checked against — `bounded_collection_v1`'s
+/// item verification compares a counted root against the commitment the
+/// payload's own compact *declares*, so the chain's mint policy was
+/// unsatisfiable for any payload whose commitments were the §4 flat hashes of
+/// real material. It was **not** unsatisfiable outright: a payload declaring
+/// counted roots in place of flat commitments could still mint a receipt, and so
+/// a material-bearing order could be authenticated by declaring the format it
+/// was no longer written in. Either way the pointer certifies nothing about §4
+/// material, so the field retires with the chain rather than being kept as a
+/// parallel counted artifact — and `verify_order_material`'s all-empty clause
+/// closes the declaring-payload hole outright rather than leaning on the opening
+/// being hard to satisfy.
+///
+/// The §8 replacement for the availability role is **not** in this datum: see
+/// the `field_carriage_availability` note on
+/// `midgard/user_events/tx_order_v1.verify_order_material` for what the mint
+/// checks today and which issue owns the §8.6-certified re-expression.
 pub type TxOrderPayloadV1 {
   tx_id: ByteArray,
   transaction_commitment: ByteArray,
   source: NativeTxProofSourceV1,
-  terminal_receipt_reference: Option<OutputReference>,
 }
 
 pub type TxOrderEventV1 {
@@ -525,10 +524,11 @@ pub type MidgardTxValidity {
 /// `native_tx_proof_commitment_v1` per claim.
 ///
 /// Retired from the **committed source leaf only**, not protocol-wide:
-/// `TxOrderPayloadV1`, `TxFieldPreimageV1` and `TxFieldReceiptV1` all still carry
-/// a `transaction_commitment`, because the L1 forced-order path uses it as the
-/// name a field preimage and its receipt are filed under while the transaction's
-/// material is still being published piecewise.
+/// `TxOrderPayloadV1` still carries a `transaction_commitment`, because the L1
+/// forced-order path names an order by the proof-source triple it was finalized
+/// against. Its two former companions, `TxFieldPreimageV1` and
+/// `TxFieldReceiptV1`, are gone outright — they were the counted publication
+/// receipt chain's datums, and they retired with it.
 pub type L2TransactionSourceV1 {
   tx_id: ByteArray,
   source: NativeTxProofSourceV1,

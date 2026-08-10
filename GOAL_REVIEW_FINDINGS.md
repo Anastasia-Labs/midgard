@@ -40,6 +40,16 @@ break ingestion and commit barriers.
 **Smallest repair:** use `expect True = verify_order_receipts(...)` and add
 negative tests proving missing, malformed, and mismatched receipts cannot mint.
 
+**Resolved (2026-08-10, #587):** the subject was retired rather than repaired.
+`verify_order_receipts` and the counted publication receipt chain it walked are
+deleted — the receipt mint gated on
+`verify_midgard_transaction_field_chunk_v1`, which `docs/spec/midgard-tx.md` §4
+makes unsatisfiable, so no receipt could be minted for any field carrying an
+item. The mint now binds `verify_order_material` under `expect`
+(`onchain/aiken/validators/user-events/tx-order-v1.ak`), which is the assertion
+this row asked for, applied to the surviving check. The remaining availability
+gap is recorded as #587's Deviation and owned by #589. Row kept for history.
+
 ### RF-002 — False MPF non-membership proofs are accepted
 
 `onchain/aiken/lib/midgard/mpf-proof-v1.ak:120-142` and `:255-267` validate a

@@ -25,7 +25,6 @@ import {
   resolveEventInclusionTime,
   RootDomain,
   SettlementDatum,
-  TxFieldReceiptV1,
   TxOrderDatumV1,
   TxOrderSpendRedeemerV1,
   UserEventMintRedeemer,
@@ -58,10 +57,6 @@ import {
   MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
 } from "../../../midgard-core/src/consensus-profile-v1.js";
 import {
-  deriveMidgardTxFieldReceiptAssetNameV1,
-  deriveMidgardV1TxFieldChunks,
-} from "../../../midgard-core/src/consensus-validation-v1.js";
-import {
   DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
   DA_TRANSPORT_LIMITS_V1,
   DA_TRANSPORT_V1_PROTOCOL_VERSION,
@@ -89,7 +84,6 @@ import {
   makeWatcherDurablePayloadV1,
   makeWatcherDurableStoreV1,
   watcherDurableStoreBytesSha256,
-  type WatcherDurableStoreV1,
   type WatcherProtocolUtxoV1,
 } from "../../src/durable-store.js";
 import {
@@ -628,7 +622,6 @@ const emptyNativePayload = {
     field_preimage_lengths_cbor:
       emptyNativeSource.fieldPreimageLengthsCbor.toString("hex"),
   },
-  terminal_receipt_reference: null,
 };
 const policy = makeWatcherUserEventIndexerPolicyV1({
   network: "Preprod",
@@ -1072,10 +1065,6 @@ export type GenuineW15ForcedPayloadV1 = Readonly<{
     witness_set_compact_cbor: string;
     field_preimage_lengths_cbor: string;
   }>;
-  terminal_receipt_reference: Readonly<{
-    transactionId: string;
-    outputIndex: bigint;
-  }> | null;
 }>;
 
 const makeEventFixture = (
@@ -1729,13 +1718,10 @@ export type GenuineW15AuthorityFixtureInputV1 = Readonly<{
   /** Test-only root override used to prove setup-failure lease cleanup. */
   transportFixtureRoot?: string;
   forcedPayloadOverride?: GenuineW15ForcedPayloadV1;
-  /** Required when the forced proof source is non-empty. */
-  forcedCanonicalNativeTxCbor?: Buffer;
   forcedOperatorValidity?: MidgardTxValidity;
   forcedVariants?: readonly Readonly<{
     key: string;
     payload: GenuineW15ForcedPayloadV1;
-    canonicalNativeTxCbor: Buffer;
     operatorValidity: MidgardTxValidity;
     nonceByte?: string;
   }>[];
@@ -1808,139 +1794,6 @@ const acceptedAuthority = (
   });
 };
 
-const forcedReceiptFixture = (input: {
-  readonly payload: GenuineW15ForcedPayloadV1;
-  readonly canonicalNativeTxCbor: Buffer;
-  readonly txOrderId?: Readonly<{
-    transactionId: string;
-    outputIndex: bigint;
-  }>;
-}): Readonly<{
-  payload: GenuineW15ForcedPayloadV1;
-  store: WatcherDurableStoreV1;
-  policy: WatcherUserEventIndexerPolicyV1;
-  receiptOutRef: string;
-}> => {
-  const receiptTransactionId = h32("f0");
-  const receiptOutRef = `${receiptTransactionId}#0`;
-  const txOrderId = input.txOrderId ?? {
-    transactionId: h32("9c"),
-    outputIndex: 0n,
-  };
-  const terminal = deriveMidgardV1TxFieldChunks(input.canonicalNativeTxCbor).at(
-    -1,
-  );
-  if (terminal === undefined) {
-    throw new Error("non-empty forced order has no terminal field chunk");
-  }
-  const receiptDatum = {
-    field_receipt_policy_id: applied.txOrderFieldReceiptMint!,
-    tx_order_policy_id: eventFields.forcedOrder.policyId,
-    tx_order_id: txOrderId,
-    transaction_commitment: input.payload.transaction_commitment,
-    collection_proof: {
-      version: BigInt(terminal.collectionProof.version),
-      field_index: BigInt(terminal.collectionProof.fieldIndex),
-      item_count: BigInt(terminal.collectionProof.itemCount),
-      item_index: BigInt(terminal.collectionProof.itemIndex),
-      item_length: BigInt(terminal.collectionProof.itemLength),
-      item_commitment: terminal.collectionProof.itemCommitment.toString("hex"),
-      frontier: terminal.collectionProof.frontier.peaks.map((peak) => ({
-        height: BigInt(peak.height),
-        hash: peak.hash.toString("hex"),
-      })),
-      siblings: terminal.collectionProof.siblings.map((hash) =>
-        hash.toString("hex"),
-      ),
-    },
-    chunk_index: BigInt(terminal.proof.chunkIndex),
-    field_reference: { transactionId: h32("f1"), outputIndex: 0n },
-    predecessor_receipt_reference: null,
-    field_encoded_size: BigInt(terminal.fieldEncodedSize),
-  };
-  const receiptAssetName = deriveMidgardTxFieldReceiptAssetNameV1({
-    txOrderPolicyId: Buffer.from(eventFields.forcedOrder.policyId, "hex"),
-    txOrderTransactionId: Buffer.from(txOrderId.transactionId, "hex"),
-    txOrderOutputIndex: txOrderId.outputIndex,
-    transactionCommitment: Buffer.from(
-      input.payload.transaction_commitment,
-      "hex",
-    ),
-    fieldIndex: terminal.proof.fieldIndex,
-    itemIndex: terminal.proof.itemIndex,
-    chunkIndex: terminal.proof.chunkIndex,
-  }).toString("hex");
-  const receiptAssets = CML.MultiAsset.new();
-  receiptAssets.set(
-    CML.ScriptHash.from_hex(applied.txOrderFieldReceiptMint!),
-    CML.AssetName.from_hex(receiptAssetName),
-    1n,
-  );
-  const receiptOutput = CML.TransactionOutput.new(
-    CML.Address.from_hex(scriptAddress(applied.txOrderFieldReceiptSpend!)),
-    CML.Value.new(3_000_000n, receiptAssets),
-    CML.DatumOption.new_datum(
-      CML.PlutusData.from_cbor_hex(Data.to(receiptDatum, TxFieldReceiptV1)),
-    ),
-  );
-  const store = makeWatcherDurableStoreV1({
-    deploymentMarker: bootstrapStore.deploymentMarker,
-    revision: "0",
-    records: {
-      l1Observations: bootstrapStore.l1Observations,
-      chainPoints: bootstrapStore.chainPoints,
-      protocolUtxos: [
-        ...bootstrapStore.protocolUtxos,
-        {
-          outRef: receiptOutRef,
-          role: "proof_thread",
-          chainPointId: BOOTSTRAP_CHAIN_POINT_ID,
-          output: makeWatcherDurablePayloadV1(receiptOutput.to_cbor_hex()),
-        },
-      ],
-      daProofInputs: bootstrapStore.daProofInputs,
-      reconstructedStates: bootstrapStore.reconstructedStates,
-      decisions: bootstrapStore.decisions,
-      faults: bootstrapStore.faults,
-      submissions: bootstrapStore.submissions,
-      confirmations: bootstrapStore.confirmations,
-      retries: bootstrapStore.retries,
-      deadlines: bootstrapStore.deadlines,
-      correctionResults: bootstrapStore.correctionResults,
-    },
-  });
-  const authorityPolicy = makeWatcherUserEventIndexerPolicyV1({
-    network: policy.network,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
-    deploymentMarker: policy.deploymentMarker,
-    deposit: policy.deposit,
-    withdrawal: policy.withdrawal,
-    forcedOrder: policy.forcedOrder,
-    bootstrapStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(store),
-    ),
-    deploymentTrustRootId: policy.deploymentTrustRootId,
-    requiredFinalityDepth: policy.requiredFinalityDepth,
-    maximumActiveHistoryEntries: policy.maximumActiveHistoryEntries,
-    maximumAuditHistoryEntries: policy.maximumAuditHistoryEntries,
-  });
-  if (authorityPolicy === null) {
-    throw new Error("forced receipt policy did not parse");
-  }
-  return Object.freeze({
-    payload: Object.freeze({
-      ...input.payload,
-      terminal_receipt_reference: Object.freeze({
-        transactionId: receiptTransactionId,
-        outputIndex: 0n,
-      }),
-    }),
-    store,
-    policy: authorityPolicy,
-    receiptOutRef,
-  });
-};
-
 /** Creates accepted W15 authorities from real L1 blocks and live opaque contexts. */
 export const createGenuineW15DepositWithdrawalAuthoritiesV1 = async (
   input: GenuineW15AuthorityFixtureInputV1 = {},
@@ -1997,23 +1850,12 @@ export const createGenuineW15DepositWithdrawalAuthoritiesV1 = async (
     );
     const buildForcedAuthority = (forcedInput: {
       readonly payload?: GenuineW15ForcedPayloadV1;
-      readonly canonicalNativeTxCbor?: Buffer;
       readonly operatorValidity?: MidgardTxValidity;
       readonly nonceByte?: string;
     }): W15AcceptedAuthorityScenarioV1 => {
-      const forcedReceipt =
-        forcedInput.payload === undefined ||
-        forcedInput.canonicalNativeTxCbor === undefined
-          ? null
-          : forcedReceiptFixture({
-              payload: forcedInput.payload,
-              canonicalNativeTxCbor: forcedInput.canonicalNativeTxCbor,
-              txOrderId: {
-                transactionId: h32(forcedInput.nonceByte ?? "9c"),
-                outputIndex: 0n,
-              },
-            });
-      const forcedPolicy = forcedReceipt?.policy ?? policy;
+      // The forced order needs no seeded store of its own since #587 retired the
+      // publication receipt chain: its payload is self-binding under §4, so the
+      // shared bootstrap `policy` authenticates it.
       const forcedCreation = blockBundle(
         [
           makeEventFixture(
@@ -2024,11 +1866,11 @@ export const createGenuineW15DepositWithdrawalAuthoritiesV1 = async (
             0n,
             undefined,
             undefined,
-            forcedReceipt?.payload ?? forcedInput.payload,
-            forcedReceipt === null ? [] : [forcedReceipt.receiptOutRef],
+            forcedInput.payload,
+            [],
           ),
         ],
-        forcedReceipt?.store ?? null,
+        null,
         100,
         1,
       );
@@ -2036,7 +1878,7 @@ export const createGenuineW15DepositWithdrawalAuthoritiesV1 = async (
         null,
         forcedCreation,
         "forced_order",
-        forcedPolicy,
+        policy,
       );
       const forcedTerminalBundle = nonDepositSpendBundle(
         forcedActive.parsed.state!,
@@ -2045,7 +1887,7 @@ export const createGenuineW15DepositWithdrawalAuthoritiesV1 = async (
         forcedInput.operatorValidity,
       );
       return replayGenuineForcedTerminalAuthorityScenarioV1({
-        policy: forcedPolicy,
+        policy,
         previousState: forcedActive.parsed.state!,
         publicContext: forcedTerminalBundle.context,
         transportAttestations: Object.freeze([...watcherTransportContexts]),
@@ -2053,7 +1895,6 @@ export const createGenuineW15DepositWithdrawalAuthoritiesV1 = async (
     };
     const forced = buildForcedAuthority({
       payload: input.forcedPayloadOverride,
-      canonicalNativeTxCbor: input.forcedCanonicalNativeTxCbor,
       operatorValidity: input.forcedOperatorValidity,
     });
     const forcedVariants = Object.freeze(
@@ -2062,7 +1903,6 @@ export const createGenuineW15DepositWithdrawalAuthoritiesV1 = async (
           variant.key,
           buildForcedAuthority({
             payload: variant.payload,
-            canonicalNativeTxCbor: variant.canonicalNativeTxCbor,
             operatorValidity: variant.operatorValidity,
             nonceByte: variant.nonceByte,
           }),
@@ -2279,27 +2119,10 @@ const nonDepositSpendBundle = (
   referenceInputs.add(
     CML.TransactionInput.new(CML.TransactionHash.from_hex(h32("a3")), 0n),
   );
-  if (event.kind === "forced_order") {
-    const forcedDatum = Data.from(event.datumCborHex, TxOrderDatumV1) as {
-      readonly event: {
-        readonly tx: {
-          readonly terminal_receipt_reference: Readonly<{
-            transactionId: string;
-            outputIndex: bigint;
-          }> | null;
-        };
-      };
-    };
-    const terminalReceipt = forcedDatum.event.tx.terminal_receipt_reference;
-    if (terminalReceipt !== null) {
-      referenceInputs.add(
-        CML.TransactionInput.new(
-          CML.TransactionHash.from_hex(terminalReceipt.transactionId),
-          terminalReceipt.outputIndex,
-        ),
-      );
-    }
-  }
+  // A forced order used to add its `terminal_receipt_reference` here as a third
+  // reference input, because the watcher required exactly one reference to the
+  // receipt it named. Both the field and the requirement retired in #587 with the
+  // counted publication receipt chain.
   body.set_reference_inputs(referenceInputs);
   body.set_script_data_hash(USER_EVENT_SCRIPT_DATA_HASH);
   const bodyHex = body.to_canonical_cbor_hex();
