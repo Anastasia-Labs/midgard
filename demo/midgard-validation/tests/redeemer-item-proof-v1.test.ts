@@ -4,7 +4,6 @@ import {
   advanceMidgardRedeemerItemProofV1,
   buildMidgardRedeemerItemProofTraceV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeFieldCollectionV1,
   encodeCbor,
   finalizeMidgardRedeemerItemProofV1,
   hashMidgardRedeemerItemProofControlV1,
@@ -16,6 +15,8 @@ import {
   nextMidgardRedeemerItemProofSpanV1,
 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
+
+import { countedMachineFieldTraceV1 } from "../src/validation-machine.js";
 
 type RetainedCorpus = {
   readonly entries: readonly {
@@ -235,10 +236,10 @@ describe("retained V1 redeemer item proof", () => {
     const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(
       balancedRedeemerCanonicalCbor,
     );
-    const collection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: 8,
-      preimageCbor: native.witnessSet.redeemerTxWitsPreimageCbor,
-    });
+    const collection = countedMachineFieldTraceV1(
+      8,
+      native.witnessSet.redeemerTxWitsPreimageCbor,
+    );
     expect(collection.items).toHaveLength(1);
     const item = collection.items[0]!;
     const trace = buildMidgardRedeemerItemProofTraceV1({

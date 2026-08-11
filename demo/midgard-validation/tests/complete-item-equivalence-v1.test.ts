@@ -2,14 +2,15 @@ import {
   buildMidgardBoundedCollectionItemProofV1,
   buildMidgardBoundedItemChunkProofV1,
   buildMidgardBoundedItemV1,
-  deriveMidgardNativeFieldCollectionV1,
-  encodeCbor,
+  encodeMidgardFieldPreimageV1,
   midgardBoundedItemChunkCountV1,
   verifyMidgardBoundedCollectionItemProofV1,
   verifyMidgardBoundedItemChunkProofV1,
 } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { describe, expect, it } from "vitest";
+
+import { countedMachineFieldTraceV1 } from "../src/validation-machine.js";
 
 /**
  * §3.2 semantic equivalence for the transaction-field family: the complete
@@ -25,10 +26,13 @@ const buildFieldFixture = (itemBytes: number) => {
   const probeItem = Buffer.alloc(itemBytes, 0xa7);
   probeItem[0] = 0x42; // any exact bytes; commitments treat them opaquely
   const sibling = Buffer.from("d87980", "hex");
-  const collection = deriveMidgardNativeFieldCollectionV1({
-    fieldIndex: FIELD_INDEX,
-    preimageCbor: encodeCbor([probeItem, sibling]),
-  });
+  // The machine's own counted per-item trace, built the way the machine builds
+  // it: §5.1's uniform item split folded into a bounded collection. It is not a
+  // §4 field commitment — see `countedMachineFieldTraceV1`'s note.
+  const collection = countedMachineFieldTraceV1(
+    FIELD_INDEX,
+    encodeMidgardFieldPreimageV1([probeItem, sibling]),
+  );
   expect(collection.items).toHaveLength(2);
   const item = collection.items[0]!;
   expect(item.bytes.length).toBe(itemBytes);

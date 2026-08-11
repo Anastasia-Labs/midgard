@@ -1,13 +1,17 @@
 import { CML } from "@lucid-evolution/lucid";
 
-import { encodeCbor } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { ensureHash32 } from "./hash.js";
 import { type MidgardNativeTxCanonicalV1 } from "./native.js";
 import { EMPTY_NULL_ROOT } from "./native-constants.js";
 import { cardanoRedeemersToMidgardPreimageCbor } from "./native-redeemer.js";
 import { decodeMidgardNativeScript } from "./native-script.js";
-import { encodeMidgardSpendInputItemV1 } from "./native-tx-field-items-v1.js";
+import { encodeMidgardFieldPreimageV1 } from "./native-tx-field-access-v1.js";
+import {
+  encodeMidgardFieldPreimageForFieldV1,
+  type MidgardTxInputV1,
+  sortMidgardMintItemsV1,
+} from "./native-tx-field-items-v1.js";
 import { encodeMidgardTxOutput, type MidgardTxOutput } from "./output.js";
 import { type MidgardValue } from "./value.js";
 import {
@@ -98,18 +102,24 @@ const asMintLike = (value: unknown): CmlMintLike | undefined => {
   return value as CmlMintLike;
 };
 
+/**
+ * The §5.1 preimage of a field whose items are already raw bytes — fields 2, 3,
+ * 4 and 7. Fields 0/1 do **not** come through here: their items carry §5.3's
+ * fixed 3-byte output index, which is not what CML's `TransactionInput` CBOR
+ * spells, so they have their own encoder below.
+ */
 const cmlCollectionToPreimageCbor = (
   collection: CmlCollectionLike | undefined,
   fieldName: string,
 ): Buffer => {
   if (collection === undefined) {
-    return encodeCbor([]);
+    return encodeMidgardFieldPreimageV1([]);
   }
   const entries: Buffer[] = [];
   for (let i = 0; i < collection.len(); i++) {
     entries.push(cmlObjectToBytes(collection.get(i), `${fieldName}[${i}]`));
   }
-  return encodeCbor(entries);
+  return encodeMidgardFieldPreimageV1(entries);
 };
 
 /**
@@ -123,11 +133,8 @@ const cmlInputsToSpendInputPreimageCbor = (
   collection: CmlCollectionLike | undefined,
   fieldName: string,
 ): Buffer => {
-  if (collection === undefined) {
-    return encodeCbor([]);
-  }
-  const entries: Buffer[] = [];
-  for (let i = 0; i < collection.len(); i++) {
+  const items: MidgardTxInputV1[] = [];
+  for (let i = 0; collection !== undefined && i < collection.len(); i++) {
     const input = collection.get(i);
     if (!(input instanceof CML.TransactionInput)) {
       throw new MidgardTxCodecError(
@@ -135,14 +142,12 @@ const cmlInputsToSpendInputPreimageCbor = (
         `Cannot serialize CML value in ${fieldName}[${i}]`,
       );
     }
-    entries.push(
-      encodeMidgardSpendInputItemV1({
-        txId: input.transaction_id().to_raw_bytes(),
-        outputIndex: Number(input.index()),
-      }),
-    );
+    items.push({
+      txId: input.transaction_id().to_raw_bytes(),
+      outputIndex: Number(input.index()),
+    });
   }
-  return encodeCbor(entries);
+  return encodeMidgardFieldPreimageForFieldV1({ fieldIndex: 0, items });
 };
 
 const cmlValueToMidgardValue = (value: CML.Value): MidgardValue => {
@@ -263,7 +268,7 @@ const cmlOutputsToNativePreimageCbor = (
   collection: CmlCollectionLike | undefined,
 ): Buffer => {
   if (collection === undefined) {
-    return encodeCbor([]);
+    return encodeMidgardFieldPreimageV1([]);
   }
   const entries: Buffer[] = [];
   for (let i = 0; i < collection.len(); i += 1) {
@@ -278,7 +283,7 @@ const cmlOutputsToNativePreimageCbor = (
       cmlOutputToMidgardOutputBytes(output, `transaction_body.outputs[${i}]`),
     );
   }
-  return encodeCbor(entries);
+  return encodeMidgardFieldPreimageV1(entries);
 };
 
 const cmlMintToPreimageCbor = (
@@ -286,7 +291,7 @@ const cmlMintToPreimageCbor = (
   fieldName: string,
 ): Buffer => {
   if (mint.policy_count() === 0) {
-    return encodeCbor([]);
+    return encodeMidgardFieldPreimageV1([]);
   }
 
   const policies = new Map<Buffer, Map<Buffer, bigint>>();
@@ -333,12 +338,27 @@ const cmlMintToPreimageCbor = (
     policies.set(Buffer.from(policyId.to_raw_bytes()), encodedAssets);
   }
 
-  return encodeCbor(policies);
+  // §5.6: field 5 is the enveloped list of per-policy items, not the retired
+  // raw map. `sortMidgardMintItemsV1` imposes §5.6's canonical key order at both
+  // levels and `encodeMidgardFieldItemsV1` then enforces it, so CML's iteration
+  // order cannot leak into committed bytes.
+  return encodeMidgardFieldPreimageForFieldV1({
+    fieldIndex: 5,
+    items: sortMidgardMintItemsV1(
+      [...policies.entries()].map(([policyId, assets]) => ({
+        policyId,
+        assets: [...assets.entries()].map(([assetName, quantity]) => ({
+          assetName,
+          quantity,
+        })),
+      })),
+    ),
+  });
 };
 
 const cmlAnyToPreimageCbor = (value: unknown, fieldName: string): Buffer => {
   if (value === undefined) {
-    return encodeCbor([]);
+    return encodeMidgardFieldPreimageV1([]);
   }
   const mint = asMintLike(value);
   if (mint !== undefined) {
@@ -375,7 +395,7 @@ const withdrawalsToRequiredObserversPreimageCbor = (
   withdrawals: CML.MapRewardAccountToCoin | undefined,
 ): Buffer => {
   if (withdrawals === undefined) {
-    return encodeCbor([]);
+    return encodeMidgardFieldPreimageV1([]);
   }
   const keys = withdrawals.keys();
   const observers: Buffer[] = [];
@@ -398,7 +418,7 @@ const withdrawalsToRequiredObserversPreimageCbor = (
     }
     observers.push(Buffer.from(scriptHash!.to_raw_bytes()));
   }
-  return encodeCbor(observers);
+  return encodeMidgardFieldPreimageV1(observers);
 };
 
 const scriptWitnessesToPreimageCbor = (

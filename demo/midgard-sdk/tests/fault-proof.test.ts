@@ -3,9 +3,12 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  buildMidgardBoundedCollectionV1,
   computeHash32,
   encodeCbor,
+  encodeMidgardAddressWitnessItemV1,
+  encodeMidgardFieldPreimageV1,
+  midgardFieldCommitmentFromItemsV1,
+  midgardFieldCommitmentV1,
 } from "@al-ft/midgard-core";
 import {
   applyParamsToScript,
@@ -400,38 +403,31 @@ describe("fault-proof ABI", () => {
     ).toThrow("must be 32 bytes");
   });
 
-  it("commits the address witnesses under native field 7", () => {
+  it("commits the address witnesses as the §4 flat hash of their §5.1 preimage", () => {
     const witnesses = [
       { verification_key: "aa".repeat(32), signature: "bb".repeat(64) },
       { verification_key: "cc".repeat(32), signature: "dd".repeat(64) },
     ];
-    // Twin of `bounded_collection_v1.from_items(7, list.map(..., encode_midgard_address_witness))`.
-    expect(SDK.invalidSignatureAddressWitnessesCommitmentV1(witnesses)).toBe(
-      buildMidgardBoundedCollectionV1({
-        fieldIndex: SDK.INVALID_SIGNATURE_ADDR_TX_WITS_FIELD_INDEX_V1,
-        items: witnesses.map((witness) =>
-          encodeCbor([
-            Buffer.from(witness.verification_key, "hex"),
-            Buffer.from(witness.signature, "hex"),
-          ]),
-        ),
-      }).commitment.toString("hex"),
+    const items = witnesses.map((witness) =>
+      encodeMidgardAddressWitnessItemV1({
+        verificationKey: Buffer.from(witness.verification_key, "hex"),
+        signature: Buffer.from(witness.signature, "hex"),
+      }),
     );
-    // The field index is load-bearing: the same items committed under any other
-    // native field produce a different hash, so a spend-inputs preimage can
-    // never open the witness collection.
-    expect(
-      SDK.invalidSignatureAddressWitnessesCommitmentV1(witnesses),
-    ).not.toBe(
-      buildMidgardBoundedCollectionV1({
-        fieldIndex: 0,
-        items: witnesses.map((witness) =>
-          encodeCbor([
-            Buffer.from(witness.verification_key, "hex"),
-            Buffer.from(witness.signature, "hex"),
-          ]),
-        ),
-      }).commitment.toString("hex"),
+    // Twin of `native_tx_field_access_v1.field_commitment(encode_address_witness_preimage(...))`.
+    expect(SDK.invalidSignatureAddressWitnessesCommitmentV1(witnesses)).toBe(
+      midgardFieldCommitmentFromItemsV1(items).toString("hex"),
+    );
+    // The commitment is over the assembled preimage bytes and nothing else:
+    // envelope-then-hash and hash-of-envelope are the same value, and no field
+    // index enters either. §4 is plain hashing, so the field index is **not**
+    // load-bearing here — the retired counted scheme salted each item leaf with
+    // it, and this test used to assert the resulting inequality against field 0.
+    // What separates the fields now is positional (§4's positional-identity
+    // invariant): step-01 takes its expected hash from
+    // `witness_set.addr_tx_wits_hash` in the committed compact structure.
+    expect(midgardFieldCommitmentFromItemsV1(items)).toEqual(
+      midgardFieldCommitmentV1(encodeMidgardFieldPreimageV1(items)),
     );
   });
 
@@ -929,11 +925,16 @@ describe("fault-proof ABI", () => {
       ],
     });
 
-    // The reference-inputs commitment is field 1, so the same list committed as
-    // spend inputs (field 0) can never open it.
+    // §4 puts no field index in the hash input, so fields 0 and 1 — which share
+    // the §5.3 item encoder — commit identical content to the same value. The
+    // retired counted scheme separated them by salting each leaf with its field
+    // index, and this assertion used to pin that inequality. Substitution is
+    // prevented positionally instead: each step reads its expected hash out of the
+    // committed compact structure (`body.reference_inputs_hash` versus
+    // `body.spend_inputs_hash`), which is §4's positional-identity invariant.
     expect(
       SDK.referenceInputNoIdxReferenceInputsCommitmentV1(referenceInputs),
-    ).not.toBe(SDK.inputNoIdxSpendInputsCommitmentV1(referenceInputs));
+    ).toBe(SDK.inputNoIdxSpendInputsCommitmentV1(referenceInputs));
     expect(SDK.referenceInputNoIdxOutputsCommitmentV1([referenceOutput])).toBe(
       SDK.inputNoIdxOutputsCommitmentV1([referenceOutput]),
     );
@@ -1098,10 +1099,13 @@ describe("fault-proof ABI", () => {
   });
 
   it("detects a zero-input violation from the native spend-inputs hash", () => {
-    // The empty spend-inputs list uses the native V1 bounded-collection
-    // commitment for field zero, which the step-02 validator pins.
+    // §4's flat commitment of the empty §5.1 field — `blake2b_256(#"80")` — which
+    // is what `fraud_proofs/zero_input/step_02` pins as
+    // `native_tx_field_access_v1.empty_field_commitment`. It carries no field
+    // index, so it is the empty commitment of all nine fields, not of field 0
+    // alone (§4's positional identity).
     expect(EMPTY_SPEND_INPUTS_HASH).toBe(
-      "eb25ed4ae02426602eee44b29d93e9dcd0be514b2087eda02f398b16fbb0ec76",
+      "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
     );
     expect(
       nativeTxBodyHasZeroInputViolation({

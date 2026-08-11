@@ -5,7 +5,7 @@ import type {
   MidgardNativeTxBodyCompactV1,
 } from "./native.js";
 import { MIDGARD_NATIVE_NETWORK_ID_NONE } from "./native-constants.js";
-import { deriveMidgardNativeFieldCollectionV1 } from "./native-field-items.js";
+import { midgardFieldCommitmentV1 } from "./native-tx-field-access-v1.js";
 import {
   asFixedArray,
   asSigned,
@@ -165,70 +165,47 @@ export const decodeNativeTxBodyCanonicalValue = (
 };
 
 /**
- * The six body field commitments.
+ * The six body field commitments, `docs/spec/midgard-tx.md` §4.
  *
- * **RETIRED counted-scheme derivation, still live here — owner #585.** This is
- * the one place the residual is written out in full; the other sites that carry
- * it (`deriveNativeTxWitnessSetCompact` and `@al-ft/midgard-sdk`'s
- * `EMPTY_SPEND_INPUTS_HASH`) point here.
+ * Each one is a plain `blake2b_256` over the field's §5.1 preimage bytes: no
+ * domain tag, no version prefix, no field index in the hash input. That is the
+ * whole derivation — {@link midgardFieldCommitmentV1} is `computeHash32`, and a
+ * watcher recomputing these needs the raw bytes and nothing else.
  *
- * `docs/spec/midgard-tx.md` §4 makes every field commitment a flat
- * `blake2b_256` over the field's §5.1 preimage bytes; the Aiken side has
- * derived them that way since #567. The flat twin that would replace the six
- * calls below is `midgardFieldCommitmentV1`
- * (`native-tx-field-access-v1.ts`), which hashes preimage bytes — the same
- * commitment reached from a field's *items* is
- * `midgardFieldCommitmentForFieldV1` (`native-tx-field-items-v1.ts`), so a note
- * naming either one means this scheme. What is still here instead is the
- * counted bounded-collection Merkle root: each preimage decomposed into items,
- * every item hashed under a domain tag with its field and item index, the
- * leaves folded into a frontier, and *that* committed.
+ * **The preimage is not re-validated here, deliberately.** §4's commitment is
+ * defined over bytes, and the Aiken twins hash first and walk the grammar
+ * separately (`verify_canonical_mint_preimage_cbor` is the pattern: one
+ * `field_commitment` check, then an in-place walk). Making this function decode
+ * would put a §5.1 parse on the honest path of every transaction — the cost the
+ * reversion exists to remove — and would give the format a second verdict on
+ * canonicality. Callers that need the grammar checked use
+ * {@link decodeMidgardFieldPreimageV1} or the per-field readers in
+ * `native-tx-field-item-decoders-v1.ts`; producers that build the bytes go
+ * through `encodeMidgardFieldPreimageForFieldV1`, which cannot emit a
+ * non-canonical preimage.
  *
- * It is deliberate, not an oversight, and it is why `EMPTY_SPEND_INPUTS_HASH`
- * still reads `eb25ed4a…` where §4 requires `45b0cfc2…`. The swap cannot be
- * made here alone: it also kills the counted per-item publication receipt chain
- * in `consensus-validation-v1.ts` — whose Aiken twin
- * `verify_midgard_transaction_field_chunk_v1` is already documented as
- * unsatisfiable under §4 — and it requires the §5.3/§5.6 item grammar to be
- * re-pointed in the `midgard-validation` and `lucid-midgard` producers, which
- * changes the bytes of every transaction TypeScript builds. #585 owns all of
- * it, and blocks #579's blueprint regeneration; #578 carries the measurement
- * that decomposed it.
- *
- * Until then this stays counted so that the codec, its fixtures and the
- * publication chain remain mutually consistent; a half-swap is the one state
- * that is worse than either end.
+ * Field identity is positional (§4), so fields 0/1 and 3/4 alias on identical
+ * content; the positional-identity invariant is what makes that safe, and it is
+ * enforced at the verification entry points, not here.
  */
 export const deriveNativeTxBodyCompact = (
   body: MidgardNativeTxBodyCanonicalV1,
 ): MidgardNativeTxBodyCompactV1 => ({
-  spendInputsHash: deriveMidgardNativeFieldCollectionV1({
-    fieldIndex: 0,
-    preimageCbor: body.spendInputsPreimageCbor,
-  }).commitment,
-  referenceInputsHash: deriveMidgardNativeFieldCollectionV1({
-    fieldIndex: 1,
-    preimageCbor: body.referenceInputsPreimageCbor,
-  }).commitment,
-  outputsHash: deriveMidgardNativeFieldCollectionV1({
-    fieldIndex: 2,
-    preimageCbor: body.outputsPreimageCbor,
-  }).commitment,
+  spendInputsHash: midgardFieldCommitmentV1(body.spendInputsPreimageCbor),
+  referenceInputsHash: midgardFieldCommitmentV1(
+    body.referenceInputsPreimageCbor,
+  ),
+  outputsHash: midgardFieldCommitmentV1(body.outputsPreimageCbor),
   fee: body.fee,
   validityIntervalStart: body.validityIntervalStart,
   validityIntervalEnd: body.validityIntervalEnd,
-  requiredObserversHash: deriveMidgardNativeFieldCollectionV1({
-    fieldIndex: 3,
-    preimageCbor: body.requiredObserversPreimageCbor,
-  }).commitment,
-  requiredSignersHash: deriveMidgardNativeFieldCollectionV1({
-    fieldIndex: 4,
-    preimageCbor: body.requiredSignersPreimageCbor,
-  }).commitment,
-  mintHash: deriveMidgardNativeFieldCollectionV1({
-    fieldIndex: 5,
-    preimageCbor: body.mintPreimageCbor,
-  }).commitment,
+  requiredObserversHash: midgardFieldCommitmentV1(
+    body.requiredObserversPreimageCbor,
+  ),
+  requiredSignersHash: midgardFieldCommitmentV1(
+    body.requiredSignersPreimageCbor,
+  ),
+  mintHash: midgardFieldCommitmentV1(body.mintPreimageCbor),
   scriptIntegrityHash: body.scriptIntegrityHash,
   auxiliaryDataHash: body.auxiliaryDataHash,
   networkId: body.networkId,

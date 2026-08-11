@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   decodeMidgardAddressBytes,
   decodeMidgardTxOutput,
+  encodeMidgardFieldPreimageForFieldV1,
   encodeMidgardNativeScript,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
@@ -204,8 +205,21 @@ describe("Midgard local script evaluation primitives", () => {
   });
 
   it("decodes the Midgard receiving redeemer tag and purpose constructor", () => {
+    // §5.1/§5.3: field 8 is the enveloped list of `enc_8` items, built here
+    // through the production encoder rather than hand-spelled — the retired
+    // counted scheme concatenated bare four-element arrays, which §5.1 refuses.
     const redeemers = decodeMidgardRedeemers(
-      Buffer.from(encode([[6n, 0n, 42n, [0n, 0n]]])),
+      encodeMidgardFieldPreimageForFieldV1({
+        fieldIndex: 8,
+        items: [
+          {
+            purpose: "Receive",
+            index: 0n,
+            redeemerCbor: Buffer.from(encode(42n)),
+            executionUnits: { memory: 0n, steps: 0n },
+          },
+        ],
+      }),
     );
     expect(redeemers).toHaveLength(1);
     expect(redeemers[0].tag).toBe(MidgardRedeemerTag.Receiving);

@@ -11,17 +11,17 @@ import {
   decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
-  deriveMidgardV1TxFieldChunks,
+  deriveMidgardV1TxFieldPreimages,
   encodeMidgardCekProgramMaterialDaValueV1,
   encodeMidgardTxOutput,
   hashMidgardVersionedScript,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-  reconstructMidgardTransactionV1FromChunks,
+  reconstructMidgardTransactionV1,
   verifyMidgardCekProgramMaterialBundleV1,
-  verifyMidgardV1TxFieldChunk,
 } from "@al-ft/midgard-core";
 import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
+import { countedMachineTransactionChunkStepsV1 } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -138,28 +138,27 @@ const reconstructAuthenticatedCanonicalTransactionFromFieldChunksV1 = (
   const source =
     deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(exactCanonicalCbor);
   const transactionCommitment = computeMidgardNativeTxProofCommitmentV1(source);
-  const chunks = deriveMidgardV1TxFieldChunks(exactCanonicalCbor);
-  for (const chunk of chunks) {
-    verifyMidgardV1TxFieldChunk({
-      transactionId,
-      transactionCommitment,
-      source,
-      collectionProof: chunk.collectionProof,
-      proof: chunk.proof,
-    });
-  }
+  // §4 authenticates a field once, over its whole preimage, against the hash the
+  // compact structure carries — which is what `reconstructMidgardTransactionV1`
+  // does for all nine. The retired counted chain verified per-item chunk openings
+  // here instead; §4 leaves nothing for such an opening to be checked against.
+  const fields = deriveMidgardV1TxFieldPreimages(exactCanonicalCbor);
+  // The machine's own counted trace is still what a dispute step walks, so its
+  // step count and widest chunk stay measured here. They are trace measurements,
+  // not publication claims (see `countedMachineFieldChunkStepsV1`).
+  const chunks = countedMachineTransactionChunkStepsV1(exactCanonicalCbor);
   return {
     transactionIdHex: transactionId.toString("hex"),
     transactionCommitmentHex: transactionCommitment.toString("hex"),
     revealStepCount: chunks.length,
     maximumChunkBytes: Math.max(
-      ...chunks.map(({ proof }) => proof.chunk.length),
+      ...chunks.map(({ chunkProof }) => chunkProof.chunk.length),
     ),
-    reconstructed: reconstructMidgardTransactionV1FromChunks({
+    reconstructed: reconstructMidgardTransactionV1({
       transactionId,
       transactionCommitment,
       source,
-      chunkProofs: chunks,
+      fieldPreimages: fields.map((field) => field.preimageCbor),
     }),
   };
 };

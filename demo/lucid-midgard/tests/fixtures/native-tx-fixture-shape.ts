@@ -23,11 +23,13 @@
 
 import {
   computeMidgardNativeTxIdV1,
+  decodeMidgardMintFieldPreimageV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeSingleCbor,
+  decodeMidgardRedeemerWitnessFieldPreimageV1,
   deriveMidgardNativeTxWitnessSetCompactV1,
   encodeMidgardNativeTxBodyCompactV1,
   encodeMidgardNativeTxCompactV1,
+  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
 } from "@al-ft/midgard-core/codec";
 
 export type NativeTxFixtureSizes = {
@@ -95,42 +97,28 @@ export type NativeTxFixtureFacets = {
  * the shape back in three places for a reader to keep in sync by eye. Here each
  * one names only what makes it different.
  */
-export type NativeTxFixtureEnvelope<Declared> = NativeTxFixtureFacets & Declared;
+export type NativeTxFixtureEnvelope<Declared> = NativeTxFixtureFacets &
+  Declared;
 
 const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 
-const asArray = (value: unknown, label: string): readonly unknown[] => {
-  if (!Array.isArray(value)) {
-    throw new Error(`${label} must decode to an array`);
-  }
-  return value;
-};
-
 /**
- * The mint field's policy ids in the order the field commits them, which is the
- * order a script context would observe. An empty mint field is the `80`
- * sentinel rather than a map, so it yields no policies.
+ * The mint field's policy ids in §5.6's canonical key order, which is the order
+ * the field commits them and therefore the order a script context observes. An
+ * empty mint field is `80` and yields no policies.
  */
-const mintPolicyIds = (mintPreimageCbor: Uint8Array): readonly string[] => {
-  const decoded = decodeSingleCbor(mintPreimageCbor);
-  if (decoded instanceof Map) {
-    return [...decoded.keys()].map((policy) => hex(policy as Uint8Array));
-  }
-  if (Array.isArray(decoded) && decoded.length === 0) {
-    return [];
-  }
-  throw new Error("mint preimage must decode to a map or the empty sentinel");
-};
+const mintPolicyIds = (mintPreimageCbor: Uint8Array): readonly string[] =>
+  decodeMidgardMintFieldPreimageV1(mintPreimageCbor).map((item) =>
+    hex(item.policyId),
+  );
 
 /** `purpose_tag:index`, one per redeemer, in field-8 order. */
 const redeemerPointers = (
   redeemerPreimageCbor: Uint8Array,
 ): readonly string[] =>
-  asArray(decodeSingleCbor(redeemerPreimageCbor), "redeemer preimage").map(
-    (entry) => {
-      const fields = asArray(entry, "redeemer entry");
-      return `${String(fields[0])}:${String(fields[1])}`;
-    },
+  decodeMidgardRedeemerWitnessFieldPreimageV1(redeemerPreimageCbor).map(
+    (witness) =>
+      `${String(MIDGARD_REDEEMER_PURPOSE_TAGS_V1[witness.purpose])}:${witness.index.toString(10)}`,
   );
 
 /**

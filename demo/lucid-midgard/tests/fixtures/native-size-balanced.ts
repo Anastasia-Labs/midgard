@@ -40,8 +40,9 @@
 import {
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeCborArrayRaw,
   encodeMidgardAddressWitnessItemV1,
+  encodeMidgardFieldPreimageForFieldV1,
+  encodeMidgardFieldPreimageV1,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardRedeemerWitnessItemV1,
   encodeMidgardSpendInputItemV1,
@@ -71,9 +72,18 @@ export const SIZE_BALANCED_FIXTURE_NAME = "size-balanced-15_5k-v1" as const;
  * assert, and the widths drive the byte total the band checks.
  */
 export const SIZE_BALANCED_PARAMETERS = {
-  /** The canonical-CBOR size the shape aims at, and the band around it. */
-  targetFullTxCborBytes: 15_872,
-  fullTxCborToleranceBytes: 256,
+  /**
+   * The canonical-CBOR size the shape aims at, and the band around it.
+   *
+   * Re-centred for §5.1's per-item envelope: fields 6 and 8 gained a definite
+   * byte-string wrapper per item and field 5 moved from a raw map to enveloped
+   * policy items, so the same declared shape now serialises 304 bytes wider than
+   * it did under the retired counted grammar. The counts below are unchanged —
+   * the shape is what this fixture declares, and the byte band is a consequence
+   * of it that regenerates when the grammar moves.
+   */
+  targetFullTxCborBytes: 16_128,
+  fullTxCborToleranceBytes: 128,
   /**
    * The largest definite CBOR list header the fixture is allowed to need — one
    * byte of count. Every field stays under it, so no field's envelope crosses
@@ -243,10 +253,7 @@ const scriptHashBytes = (script: MidgardVersionedScript): Buffer =>
   Buffer.from(hashMidgardVersionedScript(script), "hex");
 
 const assetName = (policyOrdinal: number, assetOrdinal: number): Buffer =>
-  Buffer.from([
-    (0x20 + policyOrdinal) % 256,
-    (0x80 + assetOrdinal) % 256,
-  ]);
+  Buffer.from([(0x20 + policyOrdinal) % 256, (0x80 + assetOrdinal) % 256]);
 
 const mintQuantity = (policyOrdinal: number, assetOrdinal: number): bigint =>
   BigInt(1 + policyOrdinal + 100 * assetOrdinal);
@@ -415,23 +422,22 @@ export const buildSizeBalancedNativeTxFixture =
         validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
         requiredObserversPreimageCbor: encodeCbor(observerHashes),
         requiredSignersPreimageCbor: encodeCbor(requiredSignerHashes),
-        mintPreimageCbor: encodeCbor(
-          new Map(
-            mintPolicies.map(({ policyId }, policyOrdinal) => [
-              policyId,
-              new Map(
-                Array.from(
-                  { length: parameters.mintAssetsPerPolicy },
-                  (_unused, assetOrdinal) =>
-                    [
-                      assetName(policyOrdinal, assetOrdinal),
-                      mintQuantity(policyOrdinal, assetOrdinal),
-                    ] as const,
-                ),
-              ),
-            ]),
-          ),
-        ),
+        // §5.6: the enveloped per-policy item list. `mintPolicies` and
+        // `assetName` already emit canonical key order, which the encoder then
+        // enforces rather than trusts.
+        mintPreimageCbor: encodeMidgardFieldPreimageForFieldV1({
+          fieldIndex: 5,
+          items: mintPolicies.map(({ policyId }, policyOrdinal) => ({
+            policyId,
+            assets: Array.from(
+              { length: parameters.mintAssetsPerPolicy },
+              (_unused, assetOrdinal) => ({
+                assetName: assetName(policyOrdinal, assetOrdinal),
+                quantity: mintQuantity(policyOrdinal, assetOrdinal),
+              }),
+            ),
+          })),
+        }),
         scriptIntegrityHash: stream(DOMAIN_SEEDS.scriptIntegrityHash, 0, 32),
         auxiliaryDataHash: AUXILIARY_DATA_HASH,
         networkId: 0n,
@@ -440,10 +446,13 @@ export const buildSizeBalancedNativeTxFixture =
         addrTxWitsPreimageCbor: encodeCbor(
           addressWitnesses.map(encodeMidgardAddressWitnessItemV1),
         ),
-        scriptTxWitsPreimageCbor: encodeCborArrayRaw(
+        // §5.1: fields 6 and 8 carry the per-item byte-string envelope like the
+        // other seven. `encodeCborArrayRaw` was the retired counted-era raw
+        // concatenation and is prohibited.
+        scriptTxWitsPreimageCbor: encodeMidgardFieldPreimageV1(
           scriptWitnesses.map(encodeMidgardVersionedScript),
         ),
-        redeemerTxWitsPreimageCbor: encodeCborArrayRaw(
+        redeemerTxWitsPreimageCbor: encodeMidgardFieldPreimageV1(
           redeemers.map(encodeMidgardRedeemerWitnessItemV1),
         ),
       },

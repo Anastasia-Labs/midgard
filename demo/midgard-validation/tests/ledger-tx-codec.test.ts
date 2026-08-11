@@ -3,7 +3,6 @@ import {
   computeScriptIntegrityHashForLanguages,
   EMPTY_NULL_ROOT,
 } from "@al-ft/midgard-core/codec";
-import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { Constr } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -16,6 +15,7 @@ import { plutusDataToCborHex } from "../src/plutus-data.js";
 import {
   encodeRecomputedNativeTx,
   hashScriptWitness,
+  makeMintPreimageCbor,
   makeNativeTx,
   makeOutput,
   makeRedeemersCbor,
@@ -92,7 +92,7 @@ describe("Midgard ledger transaction codec", () => {
     const policyId = Buffer.alloc(28, 0xa1);
     const mintedAsset = Buffer.from("alpha");
     const burnedAsset = Buffer.from("beta");
-    const mintPreimageCbor = encodeCbor(
+    const mintPreimageCbor = makeMintPreimageCbor(
       new Map([
         [
           policyId,

@@ -3,8 +3,9 @@ import { readFileSync } from "node:fs";
 import {
   cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  encodeCbor,
+  encodeMidgardFieldPreimageForFieldV1,
   midgardNativeTxFullToCardanoTxEncoding,
+  midgardRedeemerPurposeFromTagV1,
 } from "@al-ft/midgard-core";
 import {
   applyDoubleCborEncoding,
@@ -266,17 +267,25 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
       collateralizedRedeemers!.to_flat_format();
     expect(collateralizedFlatRedeemers.len()).toBe(1);
     const collateralizedRedeemer = collateralizedFlatRedeemers.get(0);
-    const expectedMidgardRedeemersCbor = encodeCbor([
-      [
-        collateralizedRedeemer.tag(),
-        collateralizedRedeemer.index(),
-        Buffer.from(collateralizedRedeemer.data().to_canonical_cbor_bytes()),
-        [
-          collateralizedRedeemer.ex_units().mem(),
-          collateralizedRedeemer.ex_units().steps(),
-        ],
+    // §5.1/§5.3: one enveloped `enc_8` item.
+    const expectedMidgardRedeemersCbor = encodeMidgardFieldPreimageForFieldV1({
+      fieldIndex: 8,
+      items: [
+        {
+          purpose: midgardRedeemerPurposeFromTagV1(
+            Number(collateralizedRedeemer.tag()),
+          ),
+          index: collateralizedRedeemer.index(),
+          redeemerCbor: Buffer.from(
+            collateralizedRedeemer.data().to_canonical_cbor_bytes(),
+          ),
+          executionUnits: {
+            memory: collateralizedRedeemer.ex_units().mem(),
+            steps: collateralizedRedeemer.ex_units().steps(),
+          },
+        },
       ],
-    ]);
+    });
     expect(collateralizedRedeemer.tag()).toBe(CML.RedeemerTag.Spend);
     expect(collateralizedRedeemer.data().to_canonical_cbor_hex()).toBe(
       "d87980",

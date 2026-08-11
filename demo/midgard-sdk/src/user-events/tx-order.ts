@@ -279,17 +279,15 @@ export type TxOrderFieldCarriageV1 = {
   /** The §5.1 enveloped field preimage. */
   readonly preimage: Buffer;
   /**
-   * The §4 flat commitment over {@link preimage}.
+   * The §4 flat commitment over {@link preimage} — `blake2b_256` of the bytes,
+   * which is what the §8 carriage plan and the on-chain door authenticate
+   * against.
    *
-   * **This is not yet what the compact structure beside it carries.**
-   * `deriveNativeTxBodyCompact` still derives the nine field commitments under
-   * the retired counted bounded-collection scheme — a residual it documents in
-   * full and that #585 owns — so a field's committed hash and its §4 commitment
-   * disagree in TypeScript today while the Aiken side has derived §4 since #567.
-   * The value here is the §4 one, because that is what the §8 carriage plan and
-   * the on-chain door authenticate against; it is deliberately not asserted
-   * equal to the compact structure's hash, which would only turn one lane's
-   * known residual into another lane's red.
+   * Since #585 this is also, necessarily, the hash the compact structure beside
+   * it carries: `deriveNativeTxBodyCompact` derives the nine field commitments
+   * the same way. {@link deriveTxOrderMaterialV1} asserts the two equal per field
+   * rather than leaving it implied — the equality is the whole point of the
+   * reversion, and before #585 it was false.
    */
   readonly commitment: string;
   readonly plan: MidgardFieldCarriagePlanV1;
@@ -355,21 +353,29 @@ export const deriveTxOrderMaterialV1 = ({
   };
   const carriage: TxOrderFieldCarriageV1[] = [];
   // §5.1's empty field is the one-byte definite-array header `80`. The on-chain
-  // `next_non_empty_field` decides the same thing by comparing the committed
-  // hash against `empty_field_commitment`, which is the *derived* form of this
-  // test; it cannot be reproduced here while `deriveNativeTxBodyCompact` is
-  // still counted (#585), and the preimage bytes are the thing both spellings are
-  // about anyway.
+  // `next_non_empty_field` decides the same thing by comparing the committed hash
+  // against `empty_field_commitment`; since #585 the two spellings agree by
+  // construction, and testing the bytes keeps this loop independent of whether a
+  // payload's declared hashes are trustworthy yet.
   const emptyFieldPreimage = encodeMidgardFieldArrayHeaderV1(0);
   for (const field of deriveMidgardV1TxFieldPreimages(nativeTxCbor)) {
     if (field.preimageCbor.equals(emptyFieldPreimage)) {
       continue;
     }
+    const commitment = midgardFieldCommitmentV1(field.preimageCbor);
+    // §4: the compact structure's field hash *is* this commitment. Asserting it
+    // here is what makes a producer bug surface at the producer rather than as an
+    // unsatisfiable dispute later.
+    if (!commitment.equals(field.expectedHash)) {
+      throw new Error(
+        `V1 ${field.fieldName} §4 commitment does not match the compact structure's field hash`,
+      );
+    }
     carriage.push({
       fieldIndex: field.fieldIndex,
       fieldName: field.fieldName,
       preimage: field.preimageCbor,
-      commitment: midgardFieldCommitmentV1(field.preimageCbor).toString("hex"),
+      commitment: commitment.toString("hex"),
       plan: planMidgardFieldCarriageV1({
         owner,
         txId: transactionId,

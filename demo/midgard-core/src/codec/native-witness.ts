@@ -5,7 +5,7 @@ import type {
   MidgardNativeTxWitnessSetCompactV1,
 } from "./native.js";
 import { MIDGARD_NATIVE_TX_V1_VERSION } from "./native-constants.js";
-import { deriveMidgardNativeFieldCollectionV1 } from "./native-field-items.js";
+import { midgardFieldCommitmentV1 } from "./native-tx-field-access-v1.js";
 import { asFixedArray, bytesItem, hashItem } from "./native-validation.js";
 
 type NativeTxWitnessSetCompactValue = readonly [Hash32, Hash32, Hash32];
@@ -65,27 +65,22 @@ export const decodeNativeTxWitnessSetCanonicalValue = (
 
 /**
  * The three witness-set field commitments — fields 7, 6 and 8 in that tuple
- * order.
+ * order (§2.2's wire order is not the §2.5 index order).
  *
- * **RETIRED counted-scheme derivation, still live here — owner #585.** Same
- * residual as {@link deriveNativeTxBodyCompact}'s, for the same reason and with
- * the same blocking edge onto #579; the note there is the full one.
+ * Same §4 derivation as {@link deriveNativeTxBodyCompact}'s six: a plain
+ * `blake2b_256` over the field's §5.1 preimage bytes, with no re-validation of
+ * the grammar here. The note there is the full one.
  */
 export const deriveNativeTxWitnessSetCompact = (
   witnessSet: MidgardNativeTxWitnessSetCanonicalV1,
 ): MidgardNativeTxWitnessSetCompactV1 => ({
-  addrTxWitsHash: deriveMidgardNativeFieldCollectionV1({
-    fieldIndex: 7,
-    preimageCbor: witnessSet.addrTxWitsPreimageCbor,
-  }).commitment,
-  scriptTxWitsHash: deriveMidgardNativeFieldCollectionV1({
-    fieldIndex: 6,
-    preimageCbor: witnessSet.scriptTxWitsPreimageCbor,
-  }).commitment,
-  redeemerTxWitsHash: deriveMidgardNativeFieldCollectionV1({
-    fieldIndex: 8,
-    preimageCbor: witnessSet.redeemerTxWitsPreimageCbor,
-  }).commitment,
+  addrTxWitsHash: midgardFieldCommitmentV1(witnessSet.addrTxWitsPreimageCbor),
+  scriptTxWitsHash: midgardFieldCommitmentV1(
+    witnessSet.scriptTxWitsPreimageCbor,
+  ),
+  redeemerTxWitsHash: midgardFieldCommitmentV1(
+    witnessSet.redeemerTxWitsPreimageCbor,
+  ),
 });
 
 export const encodeNativeTxWitnessSetCompactCbor = (

@@ -13,7 +13,6 @@ import {
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
-  deriveMidgardNativeFieldCollectionV1,
   encodeMidgardCekDataFrameV1,
   encodeMidgardCekDataTraverseControlV1,
   encodeMidgardNativeTxCanonicalV1,
@@ -25,6 +24,7 @@ import {
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
   MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
+  midgardFieldCommitmentV1,
   midgardNativeTxFullToCardanoTxEncoding,
   midgardRedeemerItemDescriptorV1,
   MidgardRedeemerItemProofModesV1,
@@ -47,6 +47,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildMidgardCanonicalScriptArtifactV1 } from "../src/cek-program.js";
 import { decodeMidgardRedeemers } from "../src/midgard-redeemers.js";
+import { countedMachineFieldTraceV1 } from "../src/validation-machine.js";
 import {
   buildCollateralFreeMidgardSchemaParallelCandidateV1,
   buildSignedCardanoNestedDatumCandidateV1,
@@ -1369,13 +1370,11 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       expect(schemaSourceNative.witnessSet.addrTxWitsPreimageCbor).not.toEqual(
         Buffer.from([0x80]),
       );
-      const projectedRedeemerField = deriveMidgardNativeFieldCollectionV1({
-        fieldIndex: 8,
-        preimageCbor: schemaSourceNative.witnessSet.redeemerTxWitsPreimageCbor,
-      });
       const projectedScriptIntegrityHash =
         computeScriptIntegrityHashForLanguages(
-          projectedRedeemerField.commitment,
+          midgardFieldCommitmentV1(
+            schemaSourceNative.witnessSet.redeemerTxWitsPreimageCbor,
+          ),
           ["PlutusV3"],
         );
       expect(projectedScriptIntegrityHash).toHaveLength(32);
@@ -1384,7 +1383,9 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       );
       expect(projectedScriptIntegrityHash).toEqual(
         computeScriptIntegrityHashForLanguages(
-          projectedRedeemerField.commitment,
+          midgardFieldCommitmentV1(
+            schemaSourceNative.witnessSet.redeemerTxWitsPreimageCbor,
+          ),
           ["PlutusV3"],
         ),
       );
@@ -1435,10 +1436,10 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
           steps: seed.executionSteps,
         },
       });
-      const field = deriveMidgardNativeFieldCollectionV1({
-        fieldIndex: 8,
-        preimageCbor: native.witnessSet.redeemerTxWitsPreimageCbor,
-      });
+      const field = countedMachineFieldTraceV1(
+        8,
+        native.witnessSet.redeemerTxWitsPreimageCbor,
+      );
       expect(field.items).toHaveLength(1);
       const item = field.items[0]!;
       const itemTrace = buildMidgardRedeemerItemProofTraceV1({

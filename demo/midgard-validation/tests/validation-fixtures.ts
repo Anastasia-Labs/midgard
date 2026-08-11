@@ -2,11 +2,11 @@ import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/ce
 import {
   computeMidgardNativeTxIdV1,
   computeScriptIntegrityHashForLanguages,
-  deriveMidgardNativeFieldCollectionV1,
   deriveMidgardNativeTxBodyCompactV1,
   deriveMidgardNativeTxCompactV1,
   EMPTY_NULL_ROOT,
   encodeMidgardAddressText,
+  encodeMidgardFieldPreimageForFieldV1,
   encodeMidgardNativeScript,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardSpendInputItemV1,
@@ -16,15 +16,18 @@ import {
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
+  midgardFieldCommitmentV1,
   type MidgardNativeScript,
   type MidgardNativeTxBodyCanonicalV1,
   type MidgardNativeTxFullV1,
   type MidgardNativeTxWitnessSetCanonicalV1,
+  midgardRedeemerPurposeFromTagV1,
   type MidgardTxOutput,
   type MidgardTxValidity,
   type MidgardVersionedScript,
   protectMidgardAddress,
   type ScriptLanguageName,
+  sortMidgardMintItemsV1,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
@@ -152,18 +155,42 @@ export const makeRedeemersCbor = (
   }[],
 ): Buffer => {
   const emptyData = Buffer.from(Data.to(new Constr(0, [])), "hex");
-  return encodeCbor(
-    items.map((item) => [
-      item.tag,
-      item.index,
-      Buffer.from(item.data ?? emptyData),
-      [
-        item.exUnits?.[0] ?? 1_000_000_000n,
-        item.exUnits?.[1] ?? 1_000_000_000n,
-      ],
-    ]),
-  );
+  // §5.1/§5.3: field 8 is the enveloped list of `enc_8` items. The retired counted
+  // scheme spelled this as a bare CBOR array of four-element arrays.
+  return encodeMidgardFieldPreimageForFieldV1({
+    fieldIndex: 8,
+    items: items.map((item) => ({
+      purpose: midgardRedeemerPurposeFromTagV1(item.tag),
+      index: item.index,
+      redeemerCbor: Buffer.from(item.data ?? emptyData),
+      executionUnits: {
+        memory: item.exUnits?.[0] ?? 1_000_000_000n,
+        steps: item.exUnits?.[1] ?? 1_000_000_000n,
+      },
+    })),
+  });
 };
+
+/**
+ * §5.6: a field-5 preimage from a policy → asset-name → quantity map, sorted into
+ * canonical key order at both levels. The retired scheme committed the raw map
+ * itself, which is why so many fixtures spelled `encodeCbor(new Map(...))` here.
+ */
+export const makeMintPreimageCbor = (
+  policies: ReadonlyMap<Uint8Array, ReadonlyMap<Uint8Array, bigint>>,
+): Buffer =>
+  encodeMidgardFieldPreimageForFieldV1({
+    fieldIndex: 5,
+    items: sortMidgardMintItemsV1(
+      [...policies.entries()].map(([policyId, assets]) => ({
+        policyId,
+        assets: [...assets.entries()].map(([assetName, quantity]) => ({
+          assetName,
+          quantity,
+        })),
+      })),
+    ),
+  });
 
 export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
   const spendInputs = opts.spendInputs ?? [outRefFromByte(0x11)];
@@ -180,10 +207,7 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
     opts.scriptLanguages === undefined
       ? EMPTY_NULL_ROOT
       : computeScriptIntegrityHashForLanguages(
-          deriveMidgardNativeFieldCollectionV1({
-            fieldIndex: 8,
-            preimageCbor: redeemerTxWitsPreimageCbor,
-          }).commitment,
+          midgardFieldCommitmentV1(redeemerTxWitsPreimageCbor),
           opts.scriptLanguages,
         );
 

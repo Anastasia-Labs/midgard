@@ -8,11 +8,11 @@ import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   decodeMidgardTxOutput,
-  deriveMidgardV1TxFieldChunks,
   deriveMidgardV1TxFieldPreimages,
   encodeCbor,
   encodeMidgardCekDataFrameV1,
   encodeMidgardCekDataTraverseControlV1,
+  encodeMidgardFieldPreimageForFieldV1,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardTxOutput,
   finalizeMidgardCekDataTraverseV1,
@@ -32,6 +32,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { countedMachineTransactionChunkStepsV1 } from "../src/validation-machine.js";
 import { runMaxDepthCmlOperationV1 } from "./helpers/cml-max-depth-runner-v1.js";
 import {
   buildCollateralFreeMidgardSchemaParallelCandidateV1,
@@ -111,23 +112,23 @@ const MAXIMUM_UNARY_REDEEMER_DEPTH_ADJACENT_COUNT_V1 = 3_996;
 const MAXIMUM_UNARY_REDEEMER_DEPTH_ADJACENT_SIGNED_BYTES_V1 = 16_385;
 
 const maximumUnaryRedeemerDepthTerminalVectorV1 = {
-  maxTxSize: 16_384,
+  maxTxSize: 16384,
   cardanoSignedCapacityCandidate: {
-    acceptedDepth: 3_995,
-    acceptedRedeemerDataCborBytes: 15_981,
-    acceptedSignedCardanoBytes: 16_381,
+    acceptedDepth: 3995,
+    acceptedRedeemerDataCborBytes: 15981,
+    acceptedSignedCardanoBytes: 16381,
     signedCardanoByteMargin: 3,
-    adjacentDepth: 3_996,
-    adjacentRedeemerDataCborBytes: 15_985,
-    adjacentSignedCardanoBytes: 16_385,
+    adjacentDepth: 3996,
+    adjacentRedeemerDataCborBytes: 15985,
+    adjacentSignedCardanoBytes: 16385,
   },
   midgardProjection: {
-    dataNodeCount: 3_996,
-    traverseSteps: 15_999,
+    dataNodeCount: 3996,
+    traverseSteps: 15999,
     maximumSourceSpan: 14,
-    sourceCanonicalTransactionBytes: 16_352,
-    canonicalTransactionBytes: 16_277,
-    redeemerFieldBytes: 15_997,
+    sourceCanonicalTransactionBytes: 16356,
+    canonicalTransactionBytes: 16282,
+    redeemerFieldBytes: 16000,
     redeemerFieldChunkCount: 4,
     completeFoldStepCount: 8,
     terminalPreControlCborHex:
@@ -531,7 +532,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     // measured against CML's minimal-index out-ref CBOR).
     expect(canonical.length).toBe(16_472);
     const completeFoldStepCount =
-      deriveMidgardV1TxFieldChunks(canonical).length;
+      countedMachineTransactionChunkStepsV1(canonical).length;
     expect(completeFoldStepCount).toBe(6);
 
     const retained = await exerciseMidgardRetainedDaCanonicalBoundaryV1({
@@ -962,15 +963,23 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     );
     const shallowNative =
       decodeMidgardNativeTxFullV1FromCanonicalCbor(shallowCanonical);
+    // §5.1/§5.3: one enveloped `enc_8` item, the same form the production bridge
+    // emits — the retired counted scheme spelled this as a bare array of arrays.
     const redeemerPreimageFor = (redeemerDataCbor: Buffer): Buffer =>
-      encodeCbor([
-        [
-          0n,
-          BigInt(scriptInputIndex),
-          redeemerDataCbor,
-          [seed.executionMemory, seed.executionSteps],
+      encodeMidgardFieldPreimageForFieldV1({
+        fieldIndex: 8,
+        items: [
+          {
+            purpose: "Spend",
+            index: BigInt(scriptInputIndex),
+            redeemerCbor: redeemerDataCbor,
+            executionUnits: {
+              memory: seed.executionMemory,
+              steps: seed.executionSteps,
+            },
+          },
         ],
-      ]);
+      });
     // The rebuild is byte-identical to the production bridge's own field-8
     // preimage at depth one, which is what licenses substituting the maximum.
     expect(
@@ -1019,9 +1028,9 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
         .toString("hex")
         .includes(accepted.redeemerDataCbor.toString("hex")),
     ).toBe(true);
-    const completeChunks = deriveMidgardV1TxFieldChunks(projected);
+    const completeChunks = countedMachineTransactionChunkStepsV1(projected);
     const redeemerChunks = completeChunks.filter(
-      (chunk) => chunk.fieldName === "redeemers",
+      (chunk) => chunk.fieldIndex === 8,
     );
 
     const trace = buildMidgardCekDataTraverseTraceV1({

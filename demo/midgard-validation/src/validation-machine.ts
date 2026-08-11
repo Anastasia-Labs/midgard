@@ -4,6 +4,7 @@ import {
   appendMidgardValidationMerkleLeafV1,
   buildMidgardBlake2b224TraceV1,
   buildMidgardBoundedCollectionItemProofV1,
+  buildMidgardBoundedCollectionV1,
   buildMidgardBoundedItemChunkProofV1,
   buildMidgardBoundedItemV1,
   buildMidgardLedgerOutputAssetFrontierV1,
@@ -19,7 +20,6 @@ import {
   decodeMidgardCekProgramEnvelopeV1,
   decodeMidgardCekProgramMaterialSidecarV1,
   decodeMidgardLedgerOutputCommitmentV1,
-  deriveMidgardNativeFieldCollectionV1,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   deriveMidgardV1TxFieldPreimages,
   encodeCbor,
@@ -56,6 +56,7 @@ import {
   type MidgardBlake2b224TraceControlV1,
   MidgardBlake2b224TraceStagesV1,
   type MidgardBoundedCollectionItemProofV1,
+  type MidgardBoundedCollectionV1,
   midgardBoundedItemChunkCountV1,
   type MidgardBoundedItemChunkProofV1,
   type MidgardConsensusProfileV1,
@@ -74,18 +75,22 @@ import {
   type MidgardValidationPhaseName,
   type MidgardValidationTraceTree,
   parseMidgardMpfProofJsonV1,
+  verifyMidgardBoundedCollectionItemProofV1,
 } from "@al-ft/midgard-core";
 import {
   decodeMidgardAddressBytes,
+  decodeMidgardFieldPreimageV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxCompactV1,
   decodeMidgardNativeTxWitnessSetCompactV1,
   decodeMidgardSpendInputItemV1,
   decodeMidgardTxOutput,
   decodeSingleCbor,
+  encodeMidgardDefiniteBytesV1,
   encodeMidgardSpendInputItemV1,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
+  midgardFieldHeaderLengthForCountV1,
   type MidgardValue,
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
@@ -155,6 +160,203 @@ import {
 } from "./script-context-proof.js";
 import { txOutRefData } from "./tx-out-ref.js";
 import type { QueuedTx, RejectCode, RejectedTx } from "./types.js";
+
+/**
+ * The validation machine's own per-item trace material for one of the nine
+ * fields: the §5.1 item split, folded into a counted bounded collection so the
+ * machine can emit `transactionFieldChunk` witnesses with a per-item opening.
+ *
+ * **This is machine-internal trace structure, not a field commitment.** Under
+ * `docs/spec/midgard-tx.md` §4 a field commits to a flat `blake2b_256` of its
+ * preimage bytes, and nothing here is ever compared against one — the collection
+ * root this builds is not `spend_inputs_hash` or any of its eight siblings, and
+ * no caller treats it as such. What it feeds is the machine's proof-step trace,
+ * whose on-chain twin is `lib/midgard/validation-machine-v1.ak`.
+ *
+ * It therefore survives the flat reversion's consumer swap (#585) deliberately:
+ * re-pointing the machine's witness idiom onto §8 carriage and
+ * `authenticated_field_view` is the Phase-3 machine rework, and the
+ * `validation_machine_v1.test` rows that are red under the fork runner today are
+ * that rework's on-chain half. Both halves move together, owned by **#592** —
+ * moving this half alone would be the same half-swap #585 exists to avoid. (#579
+ * owns only the single blueprint regeneration #592 has to land before, not this
+ * rework.)
+ *
+ * What *did* change with the reversion is the input: the items come from §5.1's
+ * one uniform enveloped byte-list decode, replacing the retired counted-era
+ * three-way split (byte lists / raw item concatenation / the field-5 raw map).
+ * Field-5 policy items are byte-identical either way — §5.6's
+ * `82 ‖ 58 1C policy_id ‖ map(k) ‖ assets` is the same `[bytes, map]` pair the
+ * counted map-entry split produced — so only the field-level envelope moved.
+ *
+ * Exported so the machine's own test helpers build this trace the same way the
+ * machine does. It replaced `deriveMidgardNativeFieldCollectionV1`, which used to
+ * live in `@al-ft/midgard-core` — the package every consumer depends on.
+ *
+ * **What moving it did and did not buy.** `src/index.ts` re-exports this module
+ * wholesale, so the name is public API of `@al-ft/midgard-validation` and is
+ * already imported across the package boundary:
+ * `demo/midgard-fault-proofs/tests/cardano-capability-retained-da-v1.test.ts`
+ * takes `countedMachineTransactionChunkStepsV1` that way. So this is not
+ * containment; what it buys is that the counted spelling now lives in the package
+ * whose on-chain twin still asks for it, one import away from this note, instead
+ * of in the dependency every producer already pulls in. The discipline it asks
+ * for is by name: `counted…` marks a machine-trace structure, and nothing called
+ * `counted…` may be compared against a §4 field commitment. Reach for
+ * `midgardFieldCommitmentV1` / `verifyMidgardV1TxFieldPreimage` for that.
+ */
+export const countedMachineFieldTraceV1 = (
+  fieldIndex: number,
+  preimageCbor: Uint8Array,
+): MidgardBoundedCollectionV1 =>
+  buildMidgardBoundedCollectionV1({
+    fieldIndex,
+    items: decodeMidgardFieldPreimageV1(preimageCbor),
+  });
+
+/**
+ * One `transactionFieldChunk` step of the machine's walk over a field: the
+ * per-item collection opening, the chunk opening inside that item, and the §5.1
+ * byte count the field has completed through this step.
+ *
+ * `fieldEncodedSize` is where the retired counted grammar showed most plainly.
+ * It used to need a per-field rule — a CBOR header plus the item for the byte-list
+ * fields, the item minus one byte for field 5's map pair, the raw item for the
+ * concatenated fields 6 and 8. §5.1 gives all nine fields one envelope, so it is
+ * now the header width plus the wrapper-and-payload width of each completed item,
+ * with no field in it at all.
+ */
+export type MachineFieldChunkStepV1 = {
+  readonly fieldIndex: number;
+  readonly collectionProof: MidgardBoundedCollectionItemProofV1;
+  readonly chunkProof: MidgardBoundedItemChunkProofV1;
+  readonly fieldEncodedSize: number;
+};
+
+/**
+ * §5.1's `definite_bytes_header(L) ‖ payload` width, measured with the encoder
+ * that defines it rather than re-spelled here.
+ *
+ * The re-spelling this replaces stopped at three header bytes, so it silently
+ * under-counted by two for any item wide enough to need `5a` — and an
+ * under-counted `fieldEncodedSize` is exactly what the terminating check below
+ * exists to catch, which means the duplicate could only ever have turned a real
+ * encoding into a spurious failure or, worse, agreed by accident.
+ */
+const midgardWrappedItemBytesV1 = (item: Uint8Array): number =>
+  encodeMidgardDefiniteBytesV1(item).length;
+
+/**
+ * The machine's chunk steps for one field, in the order it emits them:
+ * item-major, chunk-major.
+ *
+ * This is the replacement for `midgard-core`'s retired
+ * `deriveMidgardV1TxFieldChunks`, and the difference is what AC2 of #585 is about.
+ * That function *published* per-item openings against a field's committed hash,
+ * which §4 leaves nothing to check against. This one produces the machine's own
+ * trace steps and makes no claim about the field commitment — a caller that wants
+ * the field authenticated calls `verifyMidgardV1TxFieldPreimage`, once, over the
+ * whole preimage.
+ */
+export const countedMachineFieldChunkStepsV1 = (
+  fieldIndex: number,
+  preimageCbor: Uint8Array,
+): readonly MachineFieldChunkStepV1[] => {
+  const collection = countedMachineFieldTraceV1(fieldIndex, preimageCbor);
+  const steps: MachineFieldChunkStepV1[] = [];
+  let fieldEncodedSize = midgardFieldHeaderLengthForCountV1(
+    collection.items.length,
+  );
+  for (const [itemIndex, item] of collection.items.entries()) {
+    const collectionProof = buildMidgardBoundedCollectionItemProofV1(
+      collection,
+      itemIndex,
+    );
+    for (const [chunkIndex] of item.chunkHashes.entries()) {
+      if (chunkIndex + 1 === item.chunkHashes.length) {
+        fieldEncodedSize += midgardWrappedItemBytesV1(item.bytes);
+      }
+      steps.push({
+        fieldIndex,
+        collectionProof,
+        chunkProof: buildMidgardBoundedItemChunkProofV1(item, chunkIndex),
+        fieldEncodedSize,
+      });
+    }
+  }
+  if (fieldEncodedSize !== preimageCbor.length) {
+    throw new Error(
+      `V1 field ${fieldIndex.toString()} trace does not terminate at the committed field length: ${fieldEncodedSize.toString()} != ${preimageCbor.length.toString()}`,
+    );
+  }
+  return steps;
+};
+
+/**
+ * Checks one `transactionFieldItem` opening against the machine's own trace for
+ * that field, and returns the item bytes.
+ *
+ * **This is not a §4 field-commitment check, and it must not be read as one.**
+ * The retired `verifyMidgardV1TxFieldItem` in `midgard-core` took its expected
+ * root from the compact structure in view, which is what made it a claim about
+ * the *committed* field; under §4 a field commits to a flat hash of its whole
+ * preimage and a per-item Merkle opening has nothing to be checked against. What
+ * this verifies is internal consistency of the machine's trace: that a claimed
+ * opening belongs to the collection the machine actually built from the field's
+ * §5.1 items, at the index and count it claims.
+ *
+ * A caller that wants the field itself authenticated calls
+ * `verifyMidgardV1TxFieldPreimage`, once, over the whole preimage.
+ */
+export const verifyMachineFieldItemV1 = ({
+  fieldIndex,
+  preimageCbor,
+  collectionProof,
+  itemCbor,
+}: {
+  readonly fieldIndex: number;
+  readonly preimageCbor: Uint8Array;
+  readonly collectionProof: MidgardBoundedCollectionItemProofV1;
+  readonly itemCbor: Uint8Array;
+}): Buffer => {
+  const bytes = Buffer.from(itemCbor);
+  if (collectionProof.itemLength !== bytes.length) {
+    throw new Error(
+      "machine field item length does not match its collection proof",
+    );
+  }
+  const trace = countedMachineFieldTraceV1(fieldIndex, preimageCbor);
+  if (
+    !verifyMidgardBoundedCollectionItemProofV1({
+      expectedCommitment: trace.commitment,
+      proof: collectionProof,
+    })
+  ) {
+    throw new Error(
+      "machine field item opening does not belong to the field's trace",
+    );
+  }
+  if (
+    !buildMidgardBoundedItemV1({
+      fieldIndex,
+      itemIndex: collectionProof.itemIndex,
+      bytes,
+    }).commitment.equals(collectionProof.itemCommitment)
+  ) {
+    throw new Error(
+      "machine field item does not match its authenticated commitment",
+    );
+  }
+  return bytes;
+};
+
+/** Every field's chunk steps, field-major — the whole-transaction walk order. */
+export const countedMachineTransactionChunkStepsV1 = (
+  canonicalTransactionCbor: Uint8Array,
+): readonly MachineFieldChunkStepV1[] =>
+  deriveMidgardV1TxFieldPreimages(canonicalTransactionCbor).flatMap((field) =>
+    countedMachineFieldChunkStepsV1(field.fieldIndex, field.preimageCbor),
+  );
 
 export type MidgardPurposeKindV1 = 0 | 1 | 2 | 3;
 export type MidgardRedeemerPurposeTagV1 = 0 | 1 | 3 | 6;
@@ -1514,42 +1716,26 @@ export const buildDeterministicValidationMachineTrace = (
     const fieldPreimages = deriveMidgardV1TxFieldPreimages(
       input.canonicalTransactionCbor,
     );
-    const spendInputsCollection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: 0,
-      preimageCbor: fieldPreimages[0]!.preimageCbor,
-    });
-    const referenceInputsCollection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: 1,
-      preimageCbor: fieldPreimages[1]!.preimageCbor,
-    });
-    const outputsCollection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: 2,
-      preimageCbor: fieldPreimages[2]!.preimageCbor,
-    });
-    const requiredObserversCollection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: 3,
-      preimageCbor: fieldPreimages[3]!.preimageCbor,
-    });
-    const requiredSignersCollection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: 4,
-      preimageCbor: fieldPreimages[4]!.preimageCbor,
-    });
-    const mintCollection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: 5,
-      preimageCbor: fieldPreimages[5]!.preimageCbor,
-    });
-    const scriptWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX,
-      preimageCbor: fieldPreimages[6]!.preimageCbor,
-    });
-    const addressWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX,
-      preimageCbor: fieldPreimages[7]!.preimageCbor,
-    });
-    const redeemerWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: 8,
-      preimageCbor: fieldPreimages[8]!.preimageCbor,
-    });
+    const machineFieldTrace = (
+      fieldIndex: number,
+    ): MidgardBoundedCollectionV1 =>
+      countedMachineFieldTraceV1(
+        fieldIndex,
+        fieldPreimages[fieldIndex]!.preimageCbor,
+      );
+    const spendInputsCollection = machineFieldTrace(0);
+    const referenceInputsCollection = machineFieldTrace(1);
+    const outputsCollection = machineFieldTrace(2);
+    const requiredObserversCollection = machineFieldTrace(3);
+    const requiredSignersCollection = machineFieldTrace(4);
+    const mintCollection = machineFieldTrace(5);
+    const scriptWitnessesCollection = machineFieldTrace(
+      MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX,
+    );
+    const addressWitnessesCollection = machineFieldTrace(
+      MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX,
+    );
+    const redeemerWitnessesCollection = machineFieldTrace(8);
     const inputSetScanItems = [
       ...spendInputsCollection.items.map((item) => ({
         sourceKind: "spend" as const,
@@ -2326,10 +2512,10 @@ export const buildDeterministicValidationMachineTrace = (
     let authenticatedNativeScriptsWitnessCbor: Buffer | null = null;
     let authenticatedNativeScriptsBaseFields: unknown[] | null = null;
     for (const field of fieldPreimages) {
-      const collection = deriveMidgardNativeFieldCollectionV1({
-        fieldIndex: field.fieldIndex,
-        preimageCbor: field.preimageCbor,
-      });
+      const collection = countedMachineFieldTraceV1(
+        field.fieldIndex,
+        field.preimageCbor,
+      );
       if (collection.items.length === 0) {
         pushWitness(
           "canonicalDecode",

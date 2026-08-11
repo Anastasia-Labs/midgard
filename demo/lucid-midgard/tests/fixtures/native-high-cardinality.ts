@@ -1,5 +1,6 @@
 import type { MidgardCekProgramMaterialEntryV1 } from "@al-ft/midgard-core/cek-proof";
 import {
+  decodeMidgardMintFieldPreimageV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   decodeSingleCbor,
   hashMidgardVersionedScript,
@@ -214,16 +215,6 @@ const asArray = (value: unknown, label: string): readonly unknown[] => {
   return value;
 };
 
-const asMap = (
-  value: unknown,
-  label: string,
-): ReadonlyMap<unknown, unknown> => {
-  if (!(value instanceof Map)) {
-    throw new Error(`${label} must decode to a map`);
-  }
-  return value;
-};
-
 const makeAssetName = (prefix: number, index: number): string =>
   `${prefix.toString(16).padStart(2, "0")}${index
     .toString(16)
@@ -413,14 +404,18 @@ export const buildHighCardinalityNativeTxFixture =
       decodeSingleCbor(tx.body.outputsPreimageCbor),
       "outputs",
     );
-    const mint = asMap(decodeSingleCbor(tx.body.mintPreimageCbor), "mint");
+    // §5.6: field 5 is the enveloped per-policy item list, so the policy count is
+    // the item count rather than a map size.
+    const mintPolicies = decodeMidgardMintFieldPreimageV1(
+      tx.body.mintPreimageCbor,
+    );
 
     if (
       spendInputs.length !== HIGH_CARDINALITY_COUNTS.spendInputs ||
       decodedReferenceInputs.length !==
         HIGH_CARDINALITY_COUNTS.referenceInputs ||
       outputs.length !== HIGH_CARDINALITY_COUNTS.outputs ||
-      mint.size !== HIGH_CARDINALITY_COUNTS.mintPolicies ||
+      mintPolicies.length !== HIGH_CARDINALITY_COUNTS.mintPolicies ||
       facets.redeemerPointers.length !== HIGH_CARDINALITY_COUNTS.totalRedeemers
     ) {
       throw new Error("High-cardinality native tx fixture shape drifted");

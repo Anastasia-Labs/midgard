@@ -5,10 +5,7 @@
  * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
 
-import {
-  deriveMidgardNativeFieldCollectionV1,
-  encodeCbor,
-} from "@al-ft/midgard-core";
+import { midgardFieldCommitmentFromItemsV1 } from "@al-ft/midgard-core";
 import {
   DoubleSpendStep03Datum,
   DoubleSpendStep03SpendRedeemer,
@@ -112,13 +109,16 @@ export const parseSpendInputCbors = (
   );
 };
 
+/**
+ * §4's flat commitment of a field-0 preimage assembled from raw §5.3 item bytes:
+ * the §5.1 envelope goes on, then `blake2b_256`. The caller supplies items that
+ * are already the fixed-index 38-byte form, so the envelope is all that is left
+ * to add.
+ */
 export const hashSpendInputCbors = (inputCbors: readonly string[]): string =>
-  deriveMidgardNativeFieldCollectionV1({
-    fieldIndex: 0,
-    preimageCbor: encodeCbor(
-      inputCbors.map((inputCbor) => Buffer.from(inputCbor, "hex")),
-    ),
-  }).commitment.toString("hex");
+  midgardFieldCommitmentFromItemsV1(
+    inputCbors.map((inputCbor) => Buffer.from(inputCbor, "hex")),
+  ).toString("hex");
 
 type Step03DatumWithState = DoubleSpendStep03Datum & {
   readonly data: NonNullable<DoubleSpendStep03Datum["data"]>;

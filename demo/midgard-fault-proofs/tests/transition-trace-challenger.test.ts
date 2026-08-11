@@ -1160,9 +1160,7 @@ describe("transition-trace challenger tooling", () => {
         }),
       ).rejects.toMatchObject({
         code: "missingWitnessData",
-        message: expect.stringContaining(
-          "canonical bounded-collection commitment",
-        ),
+        message: expect.stringContaining("canonical field commitment"),
       });
     },
   );

@@ -5,17 +5,52 @@ import {
   cardanoTxBytesToMidgardNativeTxFullV1,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeCbor,
+  encodeMidgardFieldPreimageForFieldV1,
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxCanonicalV1,
   midgardNativeTxFullToCardanoTxEncoding,
+  type MidgardRedeemerPurposeV1,
 } from "../src/index.js";
 
+/**
+ * The field-8 preimage the bridge normalises two Cardano spellings onto, under
+ * §5.1's envelope: `82` array(2), then `4a` bytes(10) wrapping
+ * `84 00 00 43 d87980 82 05 07` and `49` bytes(9) wrapping
+ * `84 03 01 42 182a 82 0b 0d`.
+ *
+ * The retired counted scheme concatenated the two `enc_8` arrays with no per-item
+ * envelope (`8284000043d879808205078403…`); §5.1 prohibits that form for all nine
+ * fields, so this value is the same two items two bytes wider.
+ */
 const NORMALIZED_REDEEMERS_CBOR_HEX =
-  "8284000043d8798082050784030142182a820b0d";
+  "824a84000043d879808205074984030142182a820b0d";
+
+/**
+ * A field-8 preimage from `enc_8` parts, under §5.1's envelope. The retired
+ * counted scheme spelled these as a bare CBOR array of four-element arrays;
+ * §5.1 wraps each item in a definite byte string.
+ */
+const redeemerFieldPreimage = (
+  items: readonly {
+    readonly purpose: MidgardRedeemerPurposeV1;
+    readonly index: bigint;
+    readonly redeemerCborHex: string;
+    readonly memory: bigint;
+    readonly steps: bigint;
+  }[],
+): Buffer =>
+  encodeMidgardFieldPreimageForFieldV1({
+    fieldIndex: 8,
+    items: items.map((item) => ({
+      purpose: item.purpose,
+      index: item.index,
+      redeemerCbor: Buffer.from(item.redeemerCborHex, "hex"),
+      executionUnits: { memory: item.memory, steps: item.steps },
+    })),
+  });
 
 const NESTED_REDEEMER_DATA_CBOR_HEX = [
   "a2019fd87980ff",
@@ -195,13 +230,14 @@ describe("canonical V1 Cardano redeemer bridge", () => {
         cardanoMapRedeemers([nestedRedeemer(cmlCanonicalDataCborHex)]),
       ),
     );
-    const expectedPreimage = encodeCbor([
-      [
-        CML.RedeemerTag.Spend,
-        2n,
-        Buffer.from(NESTED_REDEEMER_DATA_CBOR_HEX, "hex"),
-        [17n, 19n],
-      ],
+    const expectedPreimage = redeemerFieldPreimage([
+      {
+        purpose: "Spend",
+        index: 2n,
+        redeemerCborHex: NESTED_REDEEMER_DATA_CBOR_HEX,
+        memory: 17n,
+        steps: 19n,
+      },
     ]);
     expect(fromAiken.witnessSet.redeemerTxWitsPreimageCbor).toEqual(
       expectedPreimage,
@@ -272,8 +308,14 @@ describe("canonical V1 Cardano redeemer bridge", () => {
       ),
     ).toThrow(/cannot be converted without loss/u);
 
-    const receivingPreimage = encodeCbor([
-      [6, 0, Buffer.from("d87980", "hex"), [5, 7]],
+    const receivingPreimage = redeemerFieldPreimage([
+      {
+        purpose: "Receive",
+        index: 0n,
+        redeemerCborHex: "d87980",
+        memory: 5n,
+        steps: 7n,
+      },
     ]);
     expect(() =>
       midgardNativeTxFullToCardanoTxEncoding(
@@ -283,9 +325,21 @@ describe("canonical V1 Cardano redeemer bridge", () => {
       ),
     ).toThrow(/cannot be converted without loss/u);
 
-    const duplicateMidgardPreimage = encodeCbor([
-      [0, 0, Buffer.from("d87980", "hex"), [5, 7]],
-      [0, 0, Buffer.from("d87980", "hex"), [5, 7]],
+    const duplicateMidgardPreimage = redeemerFieldPreimage([
+      {
+        purpose: "Spend",
+        index: 0n,
+        redeemerCborHex: "d87980",
+        memory: 5n,
+        steps: 7n,
+      },
+      {
+        purpose: "Spend",
+        index: 0n,
+        redeemerCborHex: "d87980",
+        memory: 5n,
+        steps: 7n,
+      },
     ]);
     expect(() =>
       midgardNativeTxFullToCardanoTxEncoding(
@@ -295,8 +349,14 @@ describe("canonical V1 Cardano redeemer bridge", () => {
       ),
     ).toThrow(/duplicate redeemer pointer/u);
 
-    const nonCanonicalDataPreimage = encodeCbor([
-      [0, 0, Buffer.from("1800", "hex"), [5, 7]],
+    const nonCanonicalDataPreimage = redeemerFieldPreimage([
+      {
+        purpose: "Spend",
+        index: 0n,
+        redeemerCborHex: "1800",
+        memory: 5n,
+        steps: 7n,
+      },
     ]);
     expect(() =>
       midgardNativeTxFullToCardanoTxEncoding(

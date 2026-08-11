@@ -2,11 +2,12 @@ import {
   computeMidgardNativeTxIdV1,
   computeScriptIntegrityHashForLanguages,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardRedeemerWitnessFieldPreimageV1,
   decodeMidgardVersionedScriptListPreimage,
-  decodeSingleCbor,
   deriveMidgardNativeTxWitnessSetCompactV1,
   EMPTY_CBOR_LIST,
   hashMidgardVersionedScript,
+  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
@@ -126,18 +127,12 @@ const makeReferenceUtxo = (ref: OutRef, script: Uint8Array): MidgardUtxo =>
     },
   );
 
-const redeemerPointers = (preimageCbor: Uint8Array): readonly string[] => {
-  const decoded = decodeSingleCbor(preimageCbor);
-  if (!Array.isArray(decoded)) {
-    throw new Error("redeemer preimage must decode to an array");
-  }
-  return decoded.map((entry) => {
-    if (!Array.isArray(entry) || entry.length < 2) {
-      throw new Error("redeemer entry must contain a pointer");
-    }
-    return `${String(entry[0])}:${String(entry[1])}`;
-  });
-};
+/** `purpose_tag:index` per redeemer, read back through the §5.3 field-8 decoder. */
+const redeemerPointers = (preimageCbor: Uint8Array): readonly string[] =>
+  decodeMidgardRedeemerWitnessFieldPreimageV1(preimageCbor).map(
+    (witness) =>
+      `${String(MIDGARD_REDEEMER_PURPOSE_TAGS_V1[witness.purpose])}:${witness.index.toString(10)}`,
+  );
 
 const expectScriptIntegrity = (
   tx: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>,

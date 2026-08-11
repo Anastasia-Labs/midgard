@@ -13,7 +13,7 @@ import {
   hashMidgardValidationMachineStateV1,
   MIDGARD_CONSENSUS_PROFILE_V1,
   MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
-  verifyMidgardV1TxFieldItem,
+  verifyMidgardV1TxFieldPreimage,
   verifyMidgardValidationTraceProofV1,
 } from "@al-ft/midgard-core";
 import {
@@ -52,9 +52,11 @@ import {
   type ValidationMachineWorkWitness,
   validationSemanticResolverIndexV1,
 } from "../src/index.js";
+import { verifyMachineFieldItemV1 } from "../src/validation-machine.js";
 import { exerciseMidgardRetainedDaCanonicalBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 import {
   hashScriptWitness,
+  makeMintPreimageCbor,
   makeNativeTx,
   makeOutput,
   makeProtectedScriptOutput,
@@ -1189,7 +1191,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         quantity > 0n ? makeOutput(10n) : makeOutput(10n, undefined, assets);
       const output =
         quantity > 0n ? makeOutput(10n, undefined, assets) : makeOutput(10n);
-      const mintPreimageCbor = encodeCbor(
+      const mintPreimageCbor = makeMintPreimageCbor(
         new Map([[policyId, new Map([[assetName, quantity]])]]),
       );
       const transaction = makeNativeTx({
@@ -1572,7 +1574,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       spendInputs: [spent],
       outputs: [mintedOutput],
       scriptWitnesses: [script],
-      mintPreimageCbor: encodeCbor(
+      mintPreimageCbor: makeMintPreimageCbor(
         new Map([[policyId, new Map([[assetName, 5n]])]]),
       ),
     });
@@ -1700,7 +1702,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       spendInputs: [spent],
       outputs: [burnedOutput],
       scriptWitnesses: [script],
-      mintPreimageCbor: encodeCbor(
+      mintPreimageCbor: makeMintPreimageCbor(
         new Map([[policyId, new Map([[assetName, -5n]])]]),
       ),
     });
@@ -1771,7 +1773,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       version: 1n,
       spendInputs: [spent],
       outputs: [makeOutput(10n)],
-      mintPreimageCbor: encodeCbor(new Map([[policyId, assets]])),
+      mintPreimageCbor: makeMintPreimageCbor(new Map([[policyId, assets]])),
     });
     const unchangedRoot = root(0x23);
     const trace = await Effect.runPromise(
@@ -2390,11 +2392,20 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       Buffer.from(fixture.transaction.txCbor),
     );
     const source = deriveMidgardNativeTxProofSourceV1(decoded);
-    const identity = {
+    // §4 authenticates field 2 once, over its whole preimage, against the hash the
+    // compact structure carries. That is done here; the per-item openings below
+    // are then checked against the machine's own trace of the same bytes, which is
+    // what they are openings *into* — the retired counted chain checked them
+    // against the field commitment, and §4 leaves nothing there to check.
+    const outputsPreimage = decoded.body.outputsPreimageCbor;
+    verifyMidgardV1TxFieldPreimage({
       transactionId: computeMidgardNativeTxIdV1(decoded),
       transactionCommitment: computeMidgardNativeTxProofCommitmentV1(source),
       source,
-    };
+      fieldIndex: 2,
+      preimageCbor: outputsPreimage,
+    });
+    const identity = { fieldIndex: 2, preimageCbor: outputsPreimage };
     const items = trace.witnesses.flatMap((witness) =>
       witness.phase === "canonicalDecode" &&
       witness.auxiliary?.kind === "transactionFieldItem" &&
@@ -2408,7 +2419,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
     // Positive control: the pristine complete item authenticates.
     expect(
-      verifyMidgardV1TxFieldItem({
+      verifyMachineFieldItemV1({
         ...identity,
         collectionProof: first.collectionProof,
         itemCbor: first.itemCbor,
@@ -2417,7 +2428,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
     // Count mutation: a claimed item count that is not the authenticated one.
     expect(() =>
-      verifyMidgardV1TxFieldItem({
+      verifyMachineFieldItemV1({
         ...identity,
         collectionProof: {
           ...first.collectionProof,
@@ -2429,7 +2440,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
     // Ordering mutation: the authenticated item re-indexed to another slot.
     expect(() =>
-      verifyMidgardV1TxFieldItem({
+      verifyMachineFieldItemV1({
         ...identity,
         collectionProof: {
           ...first.collectionProof,
@@ -2441,7 +2452,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
     // Ordering mutation: two authenticated items swapped against each other.
     expect(() =>
-      verifyMidgardV1TxFieldItem({
+      verifyMachineFieldItemV1({
         ...identity,
         collectionProof: first.collectionProof,
         itemCbor: second.itemCbor,
@@ -2455,7 +2466,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       substituted[substituted.length - 1]! ^ 0xff;
     expect(substituted.length).toBe(first.itemCbor.length);
     expect(() =>
-      verifyMidgardV1TxFieldItem({
+      verifyMachineFieldItemV1({
         ...identity,
         collectionProof: first.collectionProof,
         itemCbor: substituted,
@@ -2464,7 +2475,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
     // Trailing bytes inside a complete item contradict its declared length.
     expect(() =>
-      verifyMidgardV1TxFieldItem({
+      verifyMachineFieldItemV1({
         ...identity,
         collectionProof: first.collectionProof,
         itemCbor: Buffer.concat([first.itemCbor, Buffer.from([0x00])]),
@@ -2473,7 +2484,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
     // Field substitution: the same item claimed under a different field index.
     expect(() =>
-      verifyMidgardV1TxFieldItem({
+      verifyMachineFieldItemV1({
         ...identity,
         collectionProof: { ...first.collectionProof, fieldIndex: 6 },
         itemCbor: first.itemCbor,

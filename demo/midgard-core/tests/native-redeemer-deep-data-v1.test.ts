@@ -1,19 +1,28 @@
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { encodeCbor } from "../src/codec/cbor.js";
 import {
   cardanoRedeemersToMidgardPreimageCbor,
   midgardRedeemersToCardano,
 } from "../src/codec/native-redeemer.js";
+import { encodeMidgardFieldPreimageForFieldV1 } from "../src/codec/native-tx-field-items-v1.js";
 
 const unaryConstructorDataCborHex = (depth: number): string =>
   "d8799f".repeat(depth) + "00" + "ff".repeat(depth);
 
+/** A one-item field-8 preimage under §5.1's envelope. */
 const spendRedeemerPreimage = (dataCborHex: string): Buffer =>
-  encodeCbor([
-    [CML.RedeemerTag.Spend, 0n, Buffer.from(dataCborHex, "hex"), [1n, 2n]],
-  ]);
+  encodeMidgardFieldPreimageForFieldV1({
+    fieldIndex: 8,
+    items: [
+      {
+        purpose: "Spend",
+        index: 0n,
+        redeemerCbor: Buffer.from(dataCborHex, "hex"),
+        executionUnits: { memory: 1n, steps: 2n },
+      },
+    ],
+  });
 
 const buildDeepCmlUnaryData = (depth: number): CML.PlutusData => {
   let node = CML.PlutusData.new_integer(CML.BigInteger.from_str("0"));

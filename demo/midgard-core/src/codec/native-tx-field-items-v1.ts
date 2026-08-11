@@ -205,15 +205,47 @@ export type MidgardMintPolicyItemV1 = {
  * `canonical_bytes_key_precedes`.
  *
  * Exported because §5.5's Value maps and §5.6's mint items share this one
- * ordering, and the Cardano→Midgard bridge has to sort CML's iteration order
- * into it *before* handing items to {@link encodeMidgardFieldItemsV1} — which
- * enforces the order rather than trusting it. One comparator, so a producer and
- * the decoder that checks it can never disagree about what "canonical" means.
+ * ordering, so a producer and the decoder that checks it can never disagree about
+ * what "canonical" means. Producers of field-5 items do not call it directly —
+ * {@link sortMidgardMintItemsV1} is the one spelling of the two-level sort they
+ * need, and {@link encodeMidgardFieldItemsV1} then enforces the result rather than
+ * trusting it. This is for the ordering itself, wherever else §5.5/§5.6 keys are
+ * compared.
  */
 export const compareMidgardCanonicalKeyBytesV1 = (
   left: Uint8Array,
   right: Uint8Array,
 ): number => left.length - right.length || compareBytes(left, right);
+
+/**
+ * §5.6's canonical order applied to a whole field-5 item list: policy items by
+ * policy id, and each policy's assets by asset name.
+ *
+ * {@link encodeMidgardMintPolicyItemV1} and {@link encodeMidgardFieldItemsV1}
+ * *enforce* this order but deliberately never impose it, because a silent sort
+ * would hide a producer that had lost track of its own ordering. That left every
+ * producer spelling the two-level sort out for itself — four of them did, one per
+ * source of mint intent — and four spellings of one consensus rule is four places
+ * for it to drift. This is the one spelling; the enforcement downstream is what
+ * keeps it honest.
+ *
+ * Both levels are sorted, never deduplicated: two entries with the same key are a
+ * producer bug, and the encoder rejects them by name rather than letting a sort
+ * quietly pick a winner.
+ */
+export const sortMidgardMintItemsV1 = (
+  items: readonly MidgardMintPolicyItemV1[],
+): readonly MidgardMintPolicyItemV1[] =>
+  [...items]
+    .map((item) => ({
+      ...item,
+      assets: [...item.assets].sort((left, right) =>
+        compareMidgardCanonicalKeyBytesV1(left.assetName, right.assetName),
+      ),
+    }))
+    .sort((left, right) =>
+      compareMidgardCanonicalKeyBytesV1(left.policyId, right.policyId),
+    );
 
 /**
  * §5.6's ordering rule applied to one run of keys: strictly ascending under

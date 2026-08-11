@@ -508,7 +508,7 @@ const FIXED_TWO_TX_ROOTS = [
   {
     sequence: 0,
     txIndex: 0,
-    txId: "7c098dec921a0bcf3ee45a20bdbaaa5c4e45853b62424f92828943abf07f4bca",
+    txId: "ee9730caae51284ef70dd1b3a7a0a1313852d8f36075083599111353bfb40b9c",
     stepIndex: null,
     phase: null,
     operation: "delete",
@@ -521,41 +521,41 @@ const FIXED_TWO_TX_ROOTS = [
   {
     sequence: 1,
     txIndex: 0,
-    txId: "7c098dec921a0bcf3ee45a20bdbaaa5c4e45853b62424f92828943abf07f4bca",
+    txId: "ee9730caae51284ef70dd1b3a7a0a1313852d8f36075083599111353bfb40b9c",
     stepIndex: null,
     phase: null,
     operation: "insert",
     outRef:
-      "8258207c098dec921a0bcf3ee45a20bdbaaa5c4e45853b62424f92828943abf07f4bca190000",
+      "825820ee9730caae51284ef70dd1b3a7a0a1313852d8f36075083599111353bfb40b9c190000",
     preRoot: "c8bea0751d681c13447ebb4ac742762a7ee15619195d10f65e18eda3d11f0e32",
     postRoot:
-      "6adb068049c6661a1c693d88569bc971ac32ebe8c45994652ecb0e810869a4a4",
+      "84295a9f46479fe5a55bcce7d10a04cb828c49861e429e141c68d814bb863a5d",
   },
   {
     sequence: 2,
     txIndex: 1,
-    txId: "1835a98f37b6525e0d0806f7bef3891e3995e9418284757896745927c0a520a5",
+    txId: "076e9d45051350d9f378e269535104f515d3b502944fa475173348364e8d496b",
     stepIndex: null,
     phase: null,
     operation: "delete",
     outRef:
       "8258201212121212121212121212121212121212121212121212121212121212121212190000",
-    preRoot: "6adb068049c6661a1c693d88569bc971ac32ebe8c45994652ecb0e810869a4a4",
+    preRoot: "84295a9f46479fe5a55bcce7d10a04cb828c49861e429e141c68d814bb863a5d",
     postRoot:
-      "822a1b9206ac4ea2727d214d66365d4f49d8ece9f1a92413e20e2aa676c77305",
+      "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
   },
   {
     sequence: 3,
     txIndex: 1,
-    txId: "1835a98f37b6525e0d0806f7bef3891e3995e9418284757896745927c0a520a5",
+    txId: "076e9d45051350d9f378e269535104f515d3b502944fa475173348364e8d496b",
     stepIndex: null,
     phase: null,
     operation: "insert",
     outRef:
-      "8258201835a98f37b6525e0d0806f7bef3891e3995e9418284757896745927c0a520a5190000",
-    preRoot: "822a1b9206ac4ea2727d214d66365d4f49d8ece9f1a92413e20e2aa676c77305",
+      "825820076e9d45051350d9f378e269535104f515d3b502944fa475173348364e8d496b190000",
+    preRoot: "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
     postRoot:
-      "d87e2aea8dd823678de26450f9d0174280ff6c43889c4981756559c6129d9c86",
+      "620c86c27d41f3d1c87166f12fb2ef69f78e4419ab0aa77a5a60be52f734298c",
   },
 ] as const;
 
@@ -1437,7 +1437,7 @@ describe("W25 roots and deterministic replay", () => {
         preRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
         postRoot:
-          "b0a1cfa55c498ca204ba6795eeb2ad61a6b6ba3cae7c199e3c56c6794b12d5c5",
+          "e44dfc58ff680f66ac69719213544893bf40f18146ae06dc3515011bb062579e",
       },
     ]);
     expect(result.authorityManifestDigest).toMatch(/^[0-9a-f]{64}$/u);
@@ -1540,7 +1540,7 @@ describe("W25 roots and deterministic replay", () => {
         stepIndex: 1,
         mutationCount: 1,
         preRoot:
-          "dca5d630f2064fbd542282c30e4d50bb5b8ad1e90bca7b3bf0fd891fc7db4494",
+          "4d43ea241d0fe8435a64403db204e56022cfb3c38bccce53e88a302165667202",
         postRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
       },
@@ -1569,13 +1569,13 @@ describe("W25 roots and deterministic replay", () => {
         preRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
         postRoot:
-          "dca5d630f2064fbd542282c30e4d50bb5b8ad1e90bca7b3bf0fd891fc7db4494",
+          "4d43ea241d0fe8435a64403db204e56022cfb3c38bccce53e88a302165667202",
       },
       {
         operation: "delete",
         outRef: outRefFromTxId(WITHDRAWAL_FLOW_NATIVE.txId).toString("hex"),
         preRoot:
-          "dca5d630f2064fbd542282c30e4d50bb5b8ad1e90bca7b3bf0fd891fc7db4494",
+          "4d43ea241d0fe8435a64403db204e56022cfb3c38bccce53e88a302165667202",
         postRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
       },
@@ -1615,9 +1615,9 @@ describe("W25 roots and deterministic replay", () => {
         stepIndex: 1,
         mutationCount: 0,
         preRoot:
-          "dca5d630f2064fbd542282c30e4d50bb5b8ad1e90bca7b3bf0fd891fc7db4494",
+          "4d43ea241d0fe8435a64403db204e56022cfb3c38bccce53e88a302165667202",
         postRoot:
-          "dca5d630f2064fbd542282c30e4d50bb5b8ad1e90bca7b3bf0fd891fc7db4494",
+          "4d43ea241d0fe8435a64403db204e56022cfb3c38bccce53e88a302165667202",
       },
     ]);
     expect(
@@ -1639,7 +1639,7 @@ describe("W25 roots and deterministic replay", () => {
         preRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
         postRoot:
-          "dca5d630f2064fbd542282c30e4d50bb5b8ad1e90bca7b3bf0fd891fc7db4494",
+          "4d43ea241d0fe8435a64403db204e56022cfb3c38bccce53e88a302165667202",
       },
     ]);
     expect(refund.downstreamPrerequisite.inputDigest).not.toBe(
@@ -1745,7 +1745,7 @@ describe("W25 roots and deterministic replay", () => {
         preRoot:
           "05dc73de3852d2589fb03411a7416d0b9fa025bf4c2711a78e858cdf0f0883c5",
         postRoot:
-          "fff973660728450580e6bcc5b336b4db948bcf910f693d9112240514e31dc1ea",
+          "7e092294a8526e84929a35162645c3a4a173ba11aec044b9fe0fed3ee84e0f9b",
       },
     ]);
     expect(
@@ -1772,13 +1772,13 @@ describe("W25 roots and deterministic replay", () => {
         preRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
         postRoot:
-          "fff973660728450580e6bcc5b336b4db948bcf910f693d9112240514e31dc1ea",
+          "7e092294a8526e84929a35162645c3a4a173ba11aec044b9fe0fed3ee84e0f9b",
       },
       {
         operation: "delete",
         outRef: forcedProduced.toString("hex"),
         preRoot:
-          "fff973660728450580e6bcc5b336b4db948bcf910f693d9112240514e31dc1ea",
+          "7e092294a8526e84929a35162645c3a4a173ba11aec044b9fe0fed3ee84e0f9b",
         postRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
       },
@@ -1788,7 +1788,7 @@ describe("W25 roots and deterministic replay", () => {
         preRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
         postRoot:
-          "0c273de6dc2918721f83f45c9ea55c6549e5053c7b4b4ec46a92739ed1ed9c8b",
+          "e0641c156fd19361df84ab5d6969ef7dd61608b23a44a067906db75d9046cdd6",
       },
     ]);
 
@@ -2069,7 +2069,7 @@ describe("W25 roots and deterministic replay", () => {
           pre_utxos_root:
             "2d06ad9076acc163a729c04a3a78bc2c4ecb00a1e4b95f1296b129ee5030141a",
           post_utxos_root:
-            "822a1b9206ac4ea2727d214d66365d4f49d8ece9f1a92413e20e2aa676c77305",
+            "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
         },
       ],
       priorState,
@@ -2088,7 +2088,7 @@ describe("W25 roots and deterministic replay", () => {
       priorStateRoot:
         "2d06ad9076acc163a729c04a3a78bc2c4ecb00a1e4b95f1296b129ee5030141a",
       postStateRoot:
-        "822a1b9206ac4ea2727d214d66365d4f49d8ece9f1a92413e20e2aa676c77305",
+        "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
       acceptedTxIds: [txId],
     });
     expect(result.intermediateRoots).toStrictEqual([
@@ -2116,7 +2116,7 @@ describe("W25 roots and deterministic replay", () => {
         preRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
         postRoot:
-          "822a1b9206ac4ea2727d214d66365d4f49d8ece9f1a92413e20e2aa676c77305",
+          "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
       },
     ]);
     expect(result.transactionRoots).toStrictEqual([
@@ -2126,13 +2126,13 @@ describe("W25 roots and deterministic replay", () => {
         preRoot:
           "2d06ad9076acc163a729c04a3a78bc2c4ecb00a1e4b95f1296b129ee5030141a",
         postRoot:
-          "822a1b9206ac4ea2727d214d66365d4f49d8ece9f1a92413e20e2aa676c77305",
+          "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
         mutationCount: 2,
         committedStepIndex: 0,
         committedPreRoot:
           "2d06ad9076acc163a729c04a3a78bc2c4ecb00a1e4b95f1296b129ee5030141a",
         committedPostRoot:
-          "822a1b9206ac4ea2727d214d66365d4f49d8ece9f1a92413e20e2aa676c77305",
+          "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
       },
     ]);
     expect(result.resultDigest).toBe(
@@ -2254,7 +2254,7 @@ describe("W25 roots and deterministic replay", () => {
       "6071699881edb2da51a74749345fb8a480e583e4e8be13cc0430aedf7820ccd1",
     );
     expect(unbound.postStateRoot).toBe(
-      "d87e2aea8dd823678de26450f9d0174280ff6c43889c4981756559c6129d9c86",
+      "620c86c27d41f3d1c87166f12fb2ef69f78e4419ab0aa77a5a60be52f734298c",
     );
     expect(unbound.intermediateRoots).toStrictEqual(FIXED_TWO_TX_ROOTS);
     expect(unbound.transactionRoots).toHaveLength(2);
@@ -2303,7 +2303,7 @@ describe("W25 roots and deterministic replay", () => {
     const committedPriorRoot =
       "2d06ad9076acc163a729c04a3a78bc2c4ecb00a1e4b95f1296b129ee5030141a";
     const committedPostRoot =
-      "822a1b9206ac4ea2727d214d66365d4f49d8ece9f1a92413e20e2aa676c77305";
+      "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4";
     const priorState = entries([[spent, output]]);
     const postState = entries([[outRefFromTxId(native.txId), output]]);
 
@@ -2394,7 +2394,7 @@ describe("W25 roots and deterministic replay", () => {
       pre_utxos_root:
         "2d06ad9076acc163a729c04a3a78bc2c4ecb00a1e4b95f1296b129ee5030141a",
       post_utxos_root:
-        "822a1b9206ac4ea2727d214d66365d4f49d8ece9f1a92413e20e2aa676c77305",
+        "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
     };
 
     const wrongRoots = await buildPublicReplayFixture({

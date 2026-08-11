@@ -1,13 +1,7 @@
 import { CML } from "@lucid-evolution/lucid";
 
 import { decodeMidgardAddressBytes } from "./address.js";
-import {
-  asArray,
-  asBytes,
-  asMap,
-  decodeSingleCbor,
-  encodeCbor,
-} from "./cbor.js";
+import { asBytes, decodeSingleCbor, encodeCbor } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { computeHash32, ensureHash32, type Hash32 } from "./hash.js";
 import {
@@ -30,10 +24,13 @@ import {
   MIDGARD_POSIX_TIME_NONE,
 } from "./native-constants.js";
 import { midgardRedeemersToCardano } from "./native-redeemer.js";
-import { decodeMidgardSpendInputItemV1 } from "./native-tx-field-item-decoders-v1.js";
+import { decodeMidgardFieldPreimageV1 } from "./native-tx-field-access-v1.js";
+import {
+  decodeMidgardFieldItemsV1,
+  decodeMidgardSpendInputItemV1,
+} from "./native-tx-field-item-decoders-v1.js";
 import {
   asFixedArray,
-  asSigned,
   asUnsigned,
   decodeValidityCode,
   decodeVersion,
@@ -259,6 +256,7 @@ export const materializeMidgardNativeTxFromCanonicalV1 = (
     canonical.version,
     "transaction_canonical.version",
   );
+  validateMidgardNativeTxCanonicalV1(canonical);
   const compact = deriveMidgardNativeTxCompactV1(
     canonical.body,
     canonical.witnessSet,
@@ -325,15 +323,50 @@ const hasDerivedCompact = (
   tx: MidgardNativeTxCanonicalV1 | MidgardNativeTxFullV1,
 ): tx is MidgardNativeTxFullV1 => "compact" in tx;
 
+/**
+ * §5.1's fail-closed check over all nine field preimages: wrapper/length
+ * mismatch, a non-minimal header, an item count disagreeing with the walked
+ * content, and trailing bytes after item `N-1` all reject.
+ *
+ * This is the canonical form's only structural validator, and it is deliberately
+ * **not** inside {@link deriveNativeTxBodyCompact}. §4 defines a field commitment
+ * over bytes, so the hash must not depend on a parse, and the Aiken twins keep
+ * the two apart for the same reason (`field_commitment` first, then an in-place
+ * walk). It runs where given bytes become a committed transaction — the encoder,
+ * the canonical decoder, and materialisation — so a caller cannot obtain a
+ * commitment for a preimage no decoder would accept, while a caller that already
+ * holds producer-built bytes pays only for the hash.
+ *
+ * The retired counted derivation provided this incidentally: building a bounded
+ * collection had to split every preimage into items first, so this function used
+ * to be a bare `deriveMidgardNativeTxCompactV1` call kept for its exceptions.
+ * Under §4 nothing forces the split, so the check is stated rather than borrowed.
+ */
 const validateMidgardNativeTxCanonicalV1 = (
   tx: MidgardNativeTxCanonicalV1,
 ): void => {
-  deriveMidgardNativeTxCompactV1(
-    tx.body,
-    tx.witnessSet,
-    tx.validity,
-    tx.version,
-  );
+  const fields: readonly (readonly [string, Uint8Array])[] = [
+    ["spend_inputs", tx.body.spendInputsPreimageCbor],
+    ["reference_inputs", tx.body.referenceInputsPreimageCbor],
+    ["outputs", tx.body.outputsPreimageCbor],
+    ["required_observers", tx.body.requiredObserversPreimageCbor],
+    ["required_signers", tx.body.requiredSignersPreimageCbor],
+    ["mint", tx.body.mintPreimageCbor],
+    ["script_tx_wits", tx.witnessSet.scriptTxWitsPreimageCbor],
+    ["addr_tx_wits", tx.witnessSet.addrTxWitsPreimageCbor],
+    ["redeemer_tx_wits", tx.witnessSet.redeemerTxWitsPreimageCbor],
+  ];
+  for (const [fieldName, preimage] of fields) {
+    try {
+      decodeMidgardFieldPreimageV1(preimage);
+    } catch (error) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.CborDecode,
+        `transaction_canonical.${fieldName} is not a canonical §5.1 field preimage`,
+        String(error),
+      );
+    }
+  }
 };
 
 export const encodeMidgardNativeTxCanonicalV1 = (
@@ -669,13 +702,29 @@ export const verifyMidgardNativeTxProofSourceV1 = ({
   return compact;
 };
 
+/**
+ * §5.1's one uniform byte-list decode, which all nine fields share.
+ *
+ * Under the retired counted scheme this was a general `asArray`/`asBytes` pass
+ * that accepted any CBOR array of byte strings. §5.1 is narrower and fails
+ * closed: a non-minimal array or item header, an item count that disagrees with
+ * the walked content, and trailing bytes after item `N-1` all reject. Routing
+ * this through the one §5.1 decoder is what makes the loose reader and the
+ * field-access door agree on which byte forms exist.
+ */
 export const decodeMidgardNativeByteListPreimage = (
   preimageCbor: Uint8Array,
   fieldName = "preimage_cbor",
 ): Buffer[] => {
-  const decoded = decodeSingleCbor(preimageCbor);
-  const arr = asArray(decoded, fieldName);
-  return arr.map((item, index) => asBytes(item, `${fieldName}[${index}]`));
+  try {
+    return [...decodeMidgardFieldPreimageV1(preimageCbor)];
+  } catch (error) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.CborDecode,
+      `${fieldName} is not a canonical §5.1 field preimage`,
+      String(error),
+    );
+  }
 };
 
 export const cardanoTxBytesToMidgardNativeTxFullV1 = (
@@ -798,26 +847,36 @@ const decodeNativeObserversToWithdrawals = (
   return withdrawals;
 };
 
+/**
+ * §5.3 fields 0/1 read back into CML.
+ *
+ * The item cannot be handed to `CML.TransactionInput.from_cbor_bytes` directly:
+ * §5.3 fixes the output index at the 3-byte `19 XXXX` form, which is not
+ * minimal CBOR, so CML's strict reader refuses it. The item is decoded through
+ * the §5.3 twin and the input rebuilt from its two parts.
+ */
 const decodeNativeInputsToCardano = (
   preimageCbor: Uint8Array,
   fieldName: string,
 ): CML.TransactionInputList => {
-  const inputBytes = decodeMidgardNativeByteListPreimage(
-    preimageCbor,
-    fieldName,
-  );
   const inputs = CML.TransactionInputList.new();
-  for (let i = 0; i < inputBytes.length; i++) {
-    // Field-0/1 items are §5.3's fixed-index form, which is not a shape CML's
-    // decoder should be asked to interpret: `19 0000` is deliberately
-    // non-minimal, so decode it with its own twin and hand CML the parts. The
-    // Cardano side then re-minimises the index on its own, which is correct —
-    // it is a Cardano input now, not a Midgard field item.
-    const decoded = decodeMidgardSpendInputItemV1(inputBytes[i]);
+  for (const item of decodeMidgardFieldPreimageV1(preimageCbor)) {
+    let input;
+    try {
+      input = decodeMidgardSpendInputItemV1(item);
+    } catch (error) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.CborDecode,
+        `${fieldName} item is not a canonical §5.3 input`,
+        String(error),
+      );
+    }
+    // The Cardano side re-minimises the index on its own, which is correct — it
+    // is a Cardano input now, not a Midgard field item.
     inputs.add(
       CML.TransactionInput.new(
-        CML.TransactionHash.from_raw_bytes(decoded.txId),
-        BigInt(decoded.outputIndex),
+        CML.TransactionHash.from_raw_bytes(input.txId),
+        BigInt(input.outputIndex),
       ),
     );
   }
@@ -968,61 +1027,26 @@ const valueFromMultiasset = (multiasset: CML.MultiAsset): CML.Value =>
 export const decodeMidgardNativeMint = (
   preimageCbor: Uint8Array,
 ): DecodedMidgardNativeMint | undefined => {
-  const decoded = decodeSingleCbor(preimageCbor);
-  if (Array.isArray(decoded)) {
-    if (decoded.length === 0) {
-      return undefined;
-    }
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.InvalidFieldType,
-      "Midgard mint preimage must be an empty array or a CBOR map",
-      "native.mint",
-    );
-  }
-
-  const policies = asMap(decoded, "native.mint");
-  if (policies.size === 0) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.InvalidFieldType,
-      "Midgard mint map cannot be empty",
-      "native.mint",
-    );
+  // §5.6: field 5 is the enveloped list of per-policy items. The decoder checks
+  // policy-id and asset-name ordering and rejects duplicates, so CML never sees
+  // a mint the committed bytes did not canonically spell. An empty field is
+  // exactly `80`, like every other field — the retired raw-map form spelled it
+  // `a0` and is prohibited.
+  const items = decodeMidgardFieldItemsV1(5, preimageCbor).items;
+  if (items.length === 0) {
+    return undefined;
   }
 
   const mint = CML.Mint.new();
-  for (const [policyBytesValue, assetsValue] of policies.entries()) {
-    const policyBytes = asBytes(policyBytesValue, "native.mint.policy");
-    if (policyBytes.length !== 28) {
-      throw new MidgardTxCodecError(
-        MidgardTxCodecErrorCodes.InvalidFieldType,
-        "Mint policy id must be 28 bytes",
-        "native.mint.policy",
-      );
-    }
-
-    const assetsMap = asMap(assetsValue, "native.mint.assets");
-    if (assetsMap.size === 0) {
-      throw new MidgardTxCodecError(
-        MidgardTxCodecErrorCodes.InvalidFieldType,
-        "Mint policy asset map cannot be empty",
-        "native.mint.assets",
-      );
-    }
+  for (const item of items) {
     const assets = CML.MapAssetNameToNonZeroInt64.new();
-    for (const [assetNameValue, quantityValue] of assetsMap.entries()) {
-      const assetName = asBytes(assetNameValue, "native.mint.asset_name");
-      const quantity = asSigned(quantityValue, "native.mint.quantity");
-      if (quantity === 0n) {
-        throw new MidgardTxCodecError(
-          MidgardTxCodecErrorCodes.InvalidFieldType,
-          "Mint quantity cannot be zero",
-          "native.mint.quantity",
-        );
-      }
-      assets.insert(CML.AssetName.from_raw_bytes(assetName), quantity);
+    for (const asset of item.assets) {
+      assets.insert(
+        CML.AssetName.from_raw_bytes(asset.assetName),
+        asset.quantity,
+      );
     }
-
-    mint.insert_assets(CML.ScriptHash.from_raw_bytes(policyBytes), assets);
+    mint.insert_assets(CML.ScriptHash.from_raw_bytes(item.policyId), assets);
   }
 
   const policyIds = Array.from({ length: mint.keys().len() }, (_, index) =>

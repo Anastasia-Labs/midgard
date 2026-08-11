@@ -22,13 +22,13 @@ const MAXIMUM_OUTPUT_ADJACENT_SIGNED_BYTES_V1 = 16_409;
 
 const maximumOutputTerminalFoldVectorV1 = {
   transactionIdHex:
-    "1f0633f496289b3e041e18e7da64db345e4ae20d8754d14c7e3ec189ff561353",
+    "1faba3bc592fac6c30165c2789e08a18357deb9b449f5d0ceea1b3e6aa40ee1e",
   transactionCommitmentHex:
-    "7b63351fbf58b7e19205a04f2e4796dac6d2dd66019729ac3e6314a7e4de761b",
+    "89de7a79482046596d7a217e20889350a26e5cb168c9cb69fdca382b4a402c7a",
   preWorkRootHex:
-    "91fa16b286979293e843a3666f9546400bce0d92a4f474fe5704d9711e9c7cb4",
+    "c355c350925b94503664350b6b6d7f44c0776ef44caef0e40ebdf5d6936b29c2",
   postWorkRootHex:
-    "465a228f0fb939b33bb7b488921aab9d6acbade749fc6c6587597302e98917cc",
+    "b39febf97e07ab5bd85330521e7205f074b12e8e20e0dd2e39a40e5868fdfce1",
   encodedLengthBeforeItem: 18_794,
   collectionProof: {
     fieldIndex: 2,

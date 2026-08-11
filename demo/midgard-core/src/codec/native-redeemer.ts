@@ -4,11 +4,22 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   assertMidgardPlutusDataWellFormedV1,
 } from "../plutus-data-cbor.js";
-import { asArray, asBytes, decodeSingleCbor, encodeCbor } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
-import { asFixedArray, asUnsigned } from "./native-validation.js";
+import {
+  decodeMidgardFieldPreimageV1,
+  encodeMidgardFieldPreimageV1,
+} from "./native-tx-field-access-v1.js";
+import {
+  decodeMidgardRedeemerWitnessItemV1,
+  midgardRedeemerPurposeFromTagV1,
+} from "./native-tx-field-item-decoders-v1.js";
+import {
+  encodeMidgardRedeemerWitnessItemV1,
+  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
+  type MidgardRedeemerPurposeV1,
+} from "./native-tx-field-items-v1.js";
 
-type NormalizedRedeemer = {
+export type NormalizedRedeemer = {
   readonly tag: CML.RedeemerTag;
   readonly index: bigint;
   readonly dataCbor: Buffer;
@@ -158,12 +169,62 @@ const normalizeCardanoPlutusData = (
   }
 };
 
+/**
+ * §5.3's `purpose_tag` for a Cardano `RedeemerTag`. Values 0–5 reuse Cardano's
+ * own numbering, so this is a lookup rather than a translation — but it is
+ * spelled through the §5.3 table rather than by passing the CML number along,
+ * so a future divergence between the two numberings surfaces here instead of
+ * silently changing committed bytes.
+ *
+ * The table read is `midgardRedeemerPurposeFromTagV1`, the §5.3 decoder's own —
+ * not a reverse scan of `MIDGARD_REDEEMER_PURPOSE_TAGS_V1` spelled again here.
+ * Only the diagnostic differs: a tag out of §5.3's set reached from Cardano is an
+ * unsupported *conversion*, which is the error class this module's callers
+ * discriminate on, so the decoder's grammar error is re-raised as one.
+ */
+const midgardRedeemerPurposeForCardanoTag = (
+  tag: CML.RedeemerTag,
+  fieldName: string,
+): MidgardRedeemerPurposeV1 => {
+  try {
+    return midgardRedeemerPurposeFromTagV1(Number(tag));
+  } catch {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.ConversionUnsupportedFeature,
+      "Cardano redeemer tag has no §5.3 purpose",
+      `${fieldName}.tag=${tag.toString()}`,
+    );
+  }
+};
+
+/**
+ * The §5.1 preimage of field 8 (`redeemer_tx_wits`).
+ *
+ * Each item is §5.3's four-element `enc_8` inside the per-item byte-string
+ * envelope. The retired counted scheme concatenated raw item CBOR here; §5.1
+ * prohibits that form for all nine fields.
+ */
+const encodeMidgardRedeemerPreimageCbor = (
+  redeemers: readonly NormalizedRedeemer[],
+  fieldName: string,
+): Buffer =>
+  encodeMidgardFieldPreimageV1(
+    redeemers.map((redeemer) =>
+      encodeMidgardRedeemerWitnessItemV1({
+        purpose: midgardRedeemerPurposeForCardanoTag(redeemer.tag, fieldName),
+        index: redeemer.index,
+        redeemerCbor: redeemer.dataCbor,
+        executionUnits: { memory: redeemer.memory, steps: redeemer.steps },
+      }),
+    ),
+  );
+
 export const cardanoRedeemersToMidgardPreimageCbor = (
   redeemers: CML.Redeemers | undefined,
   fieldName = "transaction_witness_set.redeemers",
 ): Buffer => {
   if (redeemers === undefined) {
-    return encodeCbor([]);
+    return encodeMidgardFieldPreimageV1([]);
   }
 
   const flat = redeemers.to_flat_format();
@@ -188,69 +249,51 @@ export const cardanoRedeemersToMidgardPreimageCbor = (
     });
   }
 
-  return encodeCbor(
-    normalizeRedeemers(normalized, fieldName).map((redeemer) => [
-      redeemer.tag,
-      redeemer.index,
-      redeemer.dataCbor,
-      [redeemer.memory, redeemer.steps],
-    ]),
+  return encodeMidgardRedeemerPreimageCbor(
+    normalizeRedeemers(normalized, fieldName),
+    fieldName,
   );
 };
+
+/**
+ * §5.1 then §5.3: the field-8 items, read back into the codec's normalized
+ * shape. Ordering and duplicate-pointer rejection stay in
+ * {@link normalizeRedeemers}, which both directions share.
+ */
+export const decodeMidgardRedeemerPreimageCbor = (
+  preimageCbor: Uint8Array,
+  fieldName = "native.redeemers",
+): readonly NormalizedRedeemer[] =>
+  normalizeRedeemers(
+    decodeMidgardFieldPreimageV1(preimageCbor)
+      .map(decodeMidgardRedeemerWitnessItemV1)
+      .map((witness, index): NormalizedRedeemer => {
+        const itemField = `${fieldName}[${index}]`;
+        return {
+          tag: ensureSupportedCardanoRedeemerTag(
+            MIDGARD_REDEEMER_PURPOSE_TAGS_V1[witness.purpose],
+            itemField,
+          ),
+          index: witness.index,
+          dataCbor: validateCanonicalPlutusDataCbor(
+            witness.redeemerCbor,
+            `${itemField}.data_cbor`,
+          ),
+          memory: witness.executionUnits.memory,
+          steps: witness.executionUnits.steps,
+        };
+      }),
+    fieldName,
+  );
 
 export const midgardRedeemersToCardano = (
   preimageCbor: Uint8Array,
   fieldName = "native.redeemers",
 ): CML.Redeemers | undefined => {
-  const decoded = decodeSingleCbor(preimageCbor);
-  const entries = asArray(decoded, fieldName);
-  if (entries.length === 0) {
+  const normalized = decodeMidgardRedeemerPreimageCbor(preimageCbor, fieldName);
+  if (normalized.length === 0) {
     return undefined;
   }
-
-  const normalized = normalizeRedeemers(
-    entries.map((entry, index): NormalizedRedeemer => {
-      const itemField = `${fieldName}[${index}]`;
-      const item = asFixedArray(entry, 4, itemField);
-      const tagValue = asUnsigned(item[0], `${itemField}.tag`);
-      if (tagValue > BigInt(Number.MAX_SAFE_INTEGER)) {
-        throw new MidgardTxCodecError(
-          MidgardTxCodecErrorCodes.InvalidFieldType,
-          `${itemField}.tag exceeds the supported integer range`,
-          tagValue.toString(),
-        );
-      }
-      const tag = ensureSupportedCardanoRedeemerTag(
-        Number(tagValue),
-        itemField,
-      );
-      const indexValue = asUnsigned(item[1], `${itemField}.index`);
-      const dataCbor = asBytes(item[2], `${itemField}.data_cbor`);
-      const cbor = validateCanonicalPlutusDataCbor(
-        dataCbor,
-        `${itemField}.data_cbor`,
-      );
-      const executionUnits = asFixedArray(
-        item[3],
-        2,
-        `${itemField}.execution_units`,
-      );
-      return {
-        tag,
-        index: indexValue,
-        dataCbor: cbor,
-        memory: asUnsigned(
-          executionUnits[0],
-          `${itemField}.execution_units.memory`,
-        ),
-        steps: asUnsigned(
-          executionUnits[1],
-          `${itemField}.execution_units.steps`,
-        ),
-      };
-    }),
-    fieldName,
-  );
 
   const redeemerMap = CML.MapRedeemerKeyToRedeemerVal.new();
   for (const redeemer of normalized) {

@@ -3,12 +3,12 @@ import {
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeFieldCollectionV1,
   deriveMidgardNativeTxWitnessSetCompactV1,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   MIDGARD_POSIX_TIME_NONE,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+  midgardFieldCommitmentV1,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { buildMidgardCanonicalCekProgramV1 } from "@al-ft/midgard-validation/cek-program";
@@ -464,11 +464,11 @@ describe("TxBuilder finalization", () => {
     const witnessCompact = deriveMidgardNativeTxWitnessSetCompactV1(
       tx.witnessSet,
     );
-    const fieldCommitment = (fieldIndex: number, preimageCbor: Uint8Array) =>
-      deriveMidgardNativeFieldCollectionV1({
-        fieldIndex,
-        preimageCbor,
-      }).commitment;
+    // §4: one plain `blake2b_256` per field over its §5.1 preimage bytes. The
+    // field index is not an argument because it is not in the hash input — field
+    // identity is positional, carried by the compact slot being compared.
+    const fieldCommitment = (_fieldIndex: number, preimageCbor: Uint8Array) =>
+      midgardFieldCommitmentV1(preimageCbor);
 
     expect(tx.compact.transactionBody.spendInputsHash).toEqual(
       fieldCommitment(0, tx.body.spendInputsPreimageCbor),
@@ -496,7 +496,11 @@ describe("TxBuilder finalization", () => {
     expect(witnessCompact.redeemerTxWitsHash).toEqual(
       fieldCommitment(8, EMPTY_CBOR_LIST),
     );
-    expect(tx.compact.transactionBody.spendInputsHash).not.toEqual(
+    // §4 is plain hashing over the preimage bytes, so the committed field hash
+    // *is* `blake2b_256` of the preimage. Under the retired counted scheme this
+    // was deliberately unequal — a domain-tagged Merkle root over decomposed
+    // items — and the inequality was what the assertion pinned.
+    expect(tx.compact.transactionBody.spendInputsHash).toEqual(
       computeHash32(tx.body.spendInputsPreimageCbor),
     );
     expect(tx.body.validityIntervalStart).toBe(MIDGARD_POSIX_TIME_NONE);

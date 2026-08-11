@@ -1,5 +1,6 @@
 import {
   computeMidgardNativeTxIdV1,
+  decodeMidgardMintFieldPreimageV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   decodeMidgardSpendInputItemV1,
@@ -7,8 +8,11 @@ import {
   decodeMidgardVersionedScriptListPreimage,
   deriveMidgardNativeTxCompactV1,
   deriveMidgardNativeTxWitnessSetCompactV1,
-  EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
+  encodeMidgardAddressWitnessItemV1,
+  encodeMidgardFieldPreimageForFieldV1,
+  encodeMidgardFieldPreimageV1,
+  encodeMidgardHash28ItemV1,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardSpendInputItemV1,
   encodeMidgardTxOutput,
@@ -21,19 +25,12 @@ import {
   type MidgardNativeTxBodyCanonicalV1,
   type MidgardNativeTxFullV1,
   type MidgardNativeTxWitnessSetCanonicalV1,
+  midgardRedeemerPurposeFromTagV1,
   MidgardTxCodecError,
   MidgardTxCodecErrorCodes,
   type MidgardTxOutput,
+  sortMidgardMintItemsV1,
 } from "@al-ft/midgard-core/codec";
-import {
-  asBytes,
-  asMap,
-  decodeSingleCbor,
-  encodeCbor,
-  encodeCborBytes,
-  encodeCborInteger,
-  encodeCborMapRaw,
-} from "@al-ft/midgard-core/codec/cbor";
 import { CML } from "@lucid-evolution/lucid";
 
 import {
@@ -107,17 +104,6 @@ class MidgardLedgerOutputDecodeError extends Error {
     this.causeValue = causeValue;
   }
 }
-
-const compareBytes = (left: Uint8Array, right: Uint8Array): number => {
-  const limit = Math.min(left.length, right.length);
-  for (let i = 0; i < limit; i += 1) {
-    const diff = left[i] - right[i];
-    if (diff !== 0) {
-      return diff;
-    }
-  }
-  return left.length - right.length;
-};
 
 const copyBuffer = (value: Uint8Array): Buffer => Buffer.from(value);
 
@@ -223,8 +209,13 @@ const copyNativeWitnessSetCompact = (
   redeemerTxWitsHash: copyBuffer(witnessSet.redeemerTxWitsHash),
 });
 
+/**
+ * The §5.1 envelope over `enc_i` bytes the caller already has. Routed through
+ * `midgard-core`'s one §5.1 encoder so the producer shares its width rules with
+ * `decodeMidgardNativeByteListPreimage`, which is what reads these back.
+ */
 const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
-  encodeCbor(items.map((item) => copyBuffer(item)));
+  encodeMidgardFieldPreimageV1(items);
 
 /**
  * §5.3 fields 0/1: `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes.
@@ -335,12 +326,19 @@ const decodeHashList = (
     },
   );
 
+/**
+ * §5.3 fields 3/4: the item *is* the raw 28-byte hash. `encodeMidgardHash28ItemV1`
+ * is the §5.3 encoder; `assertHash28` stays in front of it only to name the field
+ * and index in the diagnostic, which the grammar-level encoder cannot.
+ */
 const encodeHashList = (
   hashes: readonly Uint8Array[],
   fieldName: string,
 ): Buffer =>
   encodeByteList(
-    hashes.map((hash, index) => assertHash28(hash, `${fieldName}[${index}]`)),
+    hashes.map((hash, index) =>
+      encodeMidgardHash28ItemV1(assertHash28(hash, `${fieldName}[${index}]`)),
+    ),
   );
 
 const decodeObserverHashes = (preimageCbor: Uint8Array): MidgardScriptHash[] =>
@@ -453,12 +451,14 @@ const encodeVKeyWitnesses = (
       seenKeyHashes.add(keyHashHex);
       derivedWitnessKeyHashes.push(derivedKeyHash);
     }
-    return Buffer.from(
-      CML.Vkeywitness.new(
-        publicKey,
-        CML.Ed25519Signature.from_raw_bytes(witness.signature),
-      ).to_cbor_bytes(),
-    );
+    // §5.3 field 7 is `82 ‖ 58 20 vkey ‖ 58 40 signature`, a Midgard grammar rule
+    // — not "whatever CML serializes a Vkeywitness to". They agree today, which is
+    // exactly why the dependency was invisible; `encodeMidgardAddressWitnessItemV1`
+    // is the encoder that owes the on-chain reader its 101-byte width.
+    return encodeMidgardAddressWitnessItemV1({
+      verificationKey: Buffer.from(publicKey.to_raw_bytes()),
+      signature: witness.signature,
+    });
   });
 
   assertBufferArrayEquals(
@@ -532,64 +532,32 @@ const encodeScriptWitnesses = (
   return encodeMidgardVersionedScriptListPreimage(scripts);
 };
 
-const signedBigInt = (value: unknown, fieldName: string): bigint => {
-  if (typeof value === "bigint") {
-    return value;
-  }
-  if (typeof value === "number" && Number.isInteger(value)) {
-    return BigInt(value);
-  }
-  return failDecode(`${fieldName} must be an integer`);
-};
-
+/**
+ * §5.6: field 5 is the enveloped list of per-policy items. The §5.3 decoder
+ * enforces policy-id and asset-name ordering, rejects duplicates, an assetless
+ * policy and a zero quantity, and requires the 28-byte policy id — so the checks
+ * this function used to spell against a raw CBOR map now have exactly one home,
+ * shared with the producer's twin. An empty mint is `80`, like every other field.
+ */
 const decodeMint = (preimageCbor: Uint8Array): MidgardLedgerMint => {
-  const decoded = decodeSingleCbor(preimageCbor);
-  if (Array.isArray(decoded)) {
-    if (decoded.length === 0) {
-      return { assets: [] };
-    }
-    failDecode("native.mint must be an empty array or a CBOR map");
-  }
-
-  const policies = asMap(decoded, "native.mint");
-  if (policies.size === 0) {
-    failDecode("Midgard mint map cannot be empty");
+  let items;
+  try {
+    items = decodeMidgardMintFieldPreimageV1(preimageCbor);
+  } catch (e) {
+    return failDecode(
+      "native.mint is not a canonical \u00a75.6 mint field preimage",
+      String(e),
+    );
   }
   const assets: MidgardLedgerMintAsset[] = [];
-  let policyIndex = 0;
-  for (const [policyValue, assetsValue] of policies.entries()) {
-    const policyId = asBytes(policyValue, `native.mint[${policyIndex}].policy`);
-    if (policyId.length !== HASH28_LENGTH) {
-      failDecode(
-        "mint policy id must be 28 bytes",
-        `native.mint[${policyIndex}].policy length=${policyId.length}`,
-      );
-    }
-    const assetMap = asMap(assetsValue, `native.mint[${policyIndex}].assets`);
-    if (assetMap.size === 0) {
-      failDecode("Mint policy asset map cannot be empty");
-    }
-    let assetIndex = 0;
-    for (const [assetNameValue, quantityValue] of assetMap.entries()) {
-      const assetName = asBytes(
-        assetNameValue,
-        `native.mint[${policyIndex}].assets[${assetIndex}].name`,
-      );
-      const quantity = signedBigInt(
-        quantityValue,
-        `native.mint[${policyIndex}].assets[${assetIndex}].quantity`,
-      );
-      if (quantity === 0n) {
-        failDecode("mint quantity cannot be zero");
-      }
+  for (const policy of items) {
+    for (const asset of policy.assets) {
       assets.push({
-        policyId: copyBuffer(policyId),
-        assetName: copyBuffer(assetName),
-        quantity,
+        policyId: copyBuffer(policy.policyId),
+        assetName: copyBuffer(asset.assetName),
+        quantity: asset.quantity,
       });
-      assetIndex += 1;
     }
-    policyIndex += 1;
   }
   return { assets };
 };
@@ -608,11 +576,17 @@ const ensureAssetName = (
   return assetName;
 };
 
+/**
+ * §5.6: `82 \u2016 58 1C policy_id \u2016 map(k) \u2016 asset entries` per policy item, inside
+ * the §5.1 envelope. The retired raw-map form is prohibited.
+ *
+ * The flat asset list is grouped by policy here — that grouping and its
+ * duplicate check are this module's own invariant about `MidgardLedgerMint`'s
+ * shape, and they have no counterpart in the byte grammar. Ordering is then
+ * *enforced* by `encodeMidgardFieldPreimageForFieldV1` at both levels rather
+ * than merely applied here.
+ */
 const encodeMint = (mint: MidgardLedgerMint): Buffer => {
-  if (mint.assets.length === 0) {
-    return Buffer.from(EMPTY_CBOR_LIST);
-  }
-
   const policies = new Map<
     string,
     {
@@ -656,23 +630,15 @@ const encodeMint = (mint: MidgardLedgerMint): Buffer => {
     policies.set(policyKey, policy);
   }
 
-  const policyEntries = [...policies.values()]
-    .map((policy) => {
-      const policyKey = encodeCborBytes(policy.policyId);
-      const assetEntries = [...policy.assets.values()]
-        .map(
-          (asset) =>
-            [
-              encodeCborBytes(asset.assetName),
-              encodeCborInteger(asset.quantity),
-            ] as const,
-        )
-        .sort(([left], [right]) => compareBytes(left, right));
-      return [policyKey, encodeCborMapRaw(assetEntries)] as const;
-    })
-    .sort(([left], [right]) => compareBytes(left, right));
-
-  return encodeCborMapRaw(policyEntries);
+  return encodeMidgardFieldPreimageForFieldV1({
+    fieldIndex: 5,
+    items: sortMidgardMintItemsV1(
+      [...policies.values()].map((policy) => ({
+        policyId: policy.policyId,
+        assets: [...policy.assets.values()],
+      })),
+    ),
+  });
 };
 
 const decodeRedeemers = (preimageCbor: Uint8Array): MidgardLedgerRedeemer[] =>
@@ -686,12 +652,14 @@ const decodeRedeemers = (preimageCbor: Uint8Array): MidgardLedgerRedeemer[] =>
     },
   }));
 
+/**
+ * §5.1/§5.3: field 8 is the enveloped list of `enc_8` items. Pointer ordering and
+ * duplicate rejection stay here — they are this module's invariant about which
+ * redeemers may coexist, not a property of the byte grammar.
+ */
 const encodeRedeemers = (
   redeemers: readonly MidgardLedgerRedeemer[],
 ): Buffer => {
-  if (redeemers.length === 0) {
-    return Buffer.from(EMPTY_CBOR_LIST);
-  }
   const seen = new Set<string>();
   const ordered = [...redeemers].sort((left, right) => {
     if (left.tag !== right.tag) {
@@ -699,24 +667,28 @@ const encodeRedeemers = (
     }
     return left.index < right.index ? -1 : left.index > right.index ? 1 : 0;
   });
-  return encodeCbor(
-    ordered.map((redeemer) => {
+  return encodeMidgardFieldPreimageForFieldV1({
+    fieldIndex: 8,
+    items: ordered.map((redeemer) => {
       const key = `${redeemer.tag}:${redeemer.index.toString(10)}`;
       if (seen.has(key)) {
         failEncode("duplicate redeemer pointer", key);
       }
       seen.add(key);
-      return [
-        BigInt(redeemer.tag),
-        redeemer.index,
-        Buffer.from(
+      return {
+        purpose: midgardRedeemerPurposeFromTagV1(redeemer.tag),
+        index: redeemer.index,
+        redeemerCbor: Buffer.from(
           plutusDataToCborHex(redeemer.data, { canonical: true }),
           "hex",
         ),
-        [redeemer.exUnits.memory, redeemer.exUnits.steps],
-      ];
+        executionUnits: {
+          memory: redeemer.exUnits.memory,
+          steps: redeemer.exUnits.steps,
+        },
+      };
     }),
-  );
+  });
 };
 
 const expectedRequiresPlutusEvaluation = (

@@ -4,13 +4,13 @@ import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardNativeTxCanonicalV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeFieldCollectionV1,
   EMPTY_CBOR_LIST,
   EMPTY_CBOR_NULL,
   EMPTY_NULL_ROOT,
   encodeMidgardNativeTxBodyCompactV1,
   encodeMidgardNativeTxCanonicalV1,
   materializeMidgardNativeTxFromCanonicalV1,
+  MIDGARD_EMPTY_FIELD_COMMITMENT_V1,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
@@ -71,13 +71,15 @@ describe("Midgard native v1 codec", () => {
     expect(decoded.compact.transactionWitnessSetHash).toEqual(
       tx.compact.transactionWitnessSetHash,
     );
+    // §4/§5.6: an empty mint is exactly `80`, and its commitment is the plain
+    // `blake2b_256` of those bytes — the same value every empty field commits to,
+    // because §4's hash input carries no field index. Under the retired counted
+    // scheme this was a domain-tagged Merkle root and deliberately *not* the hash
+    // of `80`; that inequality is now an equality.
     expect(decoded.compact.transactionBody.mintHash).toEqual(
-      deriveMidgardNativeFieldCollectionV1({
-        fieldIndex: 5,
-        preimageCbor: EMPTY_CBOR_LIST,
-      }).commitment,
+      MIDGARD_EMPTY_FIELD_COMMITMENT_V1,
     );
-    expect(decoded.compact.transactionBody.mintHash).not.toEqual(
+    expect(decoded.compact.transactionBody.mintHash).toEqual(
       computeHash32(EMPTY_CBOR_LIST),
     );
   });

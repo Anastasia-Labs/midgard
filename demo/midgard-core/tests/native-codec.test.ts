@@ -10,6 +10,7 @@ import {
   computeMidgardNativeTxFullHashV1,
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
+  decodeMidgardFieldPreimageV1,
   decodeMidgardNativeScript,
   decodeMidgardNativeTxBodyCanonicalV1,
   decodeMidgardNativeTxBodyCompactV1,
@@ -20,14 +21,14 @@ import {
   decodeMidgardNativeTxWitnessPreimagesV1,
   decodeMidgardNativeTxWitnessSetCompactV1,
   decodeSingleCbor,
-  deriveMidgardNativeFieldCollectionV1,
-  deriveMidgardNativeFieldItemBytesV1,
   deriveMidgardNativeTxProofSourceV1,
   deriveMidgardNativeTxWitnessSetCompactV1,
   EMPTY_CBOR_LIST,
   EMPTY_CBOR_NULL,
   EMPTY_NULL_ROOT,
   encodeCbor,
+  encodeCborArrayRaw,
+  encodeMidgardFieldPreimageV1,
   encodeMidgardNativeScript,
   encodeMidgardNativeTxBodyCanonicalV1,
   encodeMidgardNativeTxBodyCompactV1,
@@ -35,9 +36,11 @@ import {
   encodeMidgardNativeTxProofFieldLengthsV1,
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_CONSENSUS_LIMITS_V1,
+  MIDGARD_EMPTY_FIELD_COMMITMENT_V1,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
+  midgardFieldCommitmentV1,
   type MidgardNativeScript,
   type MidgardNativeTxCanonicalV1,
   verifyMidgardNativeScript,
@@ -107,11 +110,10 @@ describe("Midgard native v1 codec", () => {
     expect(decoded.compact.transactionWitnessSetHash).toEqual(
       tx.compact.transactionWitnessSetHash,
     );
+    // §5.6: an empty mint is `80` like every other field, so its §4 commitment
+    // is the one every empty field shares.
     expect(decoded.compact.transactionBody.mintHash).toEqual(
-      deriveMidgardNativeFieldCollectionV1({
-        fieldIndex: 5,
-        preimageCbor: EMPTY_CBOR_LIST,
-      }).commitment,
+      MIDGARD_EMPTY_FIELD_COMMITMENT_V1,
     );
   });
 
@@ -142,30 +144,22 @@ describe("Midgard native v1 codec", () => {
     );
   });
 
-  it("binds field 6 to raw script items and field 7 to address bytes", () => {
+  it("wraps field 6 and field 7 items in the one §5.1 envelope", () => {
+    // §5.1: the per-item byte-string envelope applies to all nine fields. Under
+    // the retired counted scheme field 6 concatenated raw item CBOR; that form is
+    // prohibited, so the same item now appears as `bytes(enc_6)`.
     const scriptItem = encodeCbor([3n, Buffer.from("010203", "hex")]);
-    const scriptPreimage = encodeCbor([[3n, Buffer.from("010203", "hex")]]);
+    const scriptPreimage = encodeMidgardFieldPreimageV1([scriptItem]);
     const address = Buffer.from("aabbcc", "hex");
-    const addressPreimage = encodeCbor([address]);
+    const addressPreimage = encodeMidgardFieldPreimageV1([address]);
 
-    expect(
-      deriveMidgardNativeFieldItemBytesV1({
-        fieldIndex: 6,
-        preimageCbor: scriptPreimage,
-      }),
-    ).toEqual([scriptItem]);
-    expect(
-      deriveMidgardNativeFieldItemBytesV1({
-        fieldIndex: 7,
-        preimageCbor: addressPreimage,
-      }),
-    ).toEqual([address]);
+    expect(decodeMidgardFieldPreimageV1(scriptPreimage)).toEqual([scriptItem]);
+    expect(decodeMidgardFieldPreimageV1(addressPreimage)).toEqual([address]);
+    // The retired raw-concatenation form for field 6 no longer decodes: `82` is
+    // not a §5.1 definite byte-string header.
     expect(() =>
-      deriveMidgardNativeFieldItemBytesV1({
-        fieldIndex: 7,
-        preimageCbor: scriptPreimage,
-      }),
-    ).toThrow(/must be a CBOR byte string/u);
+      decodeMidgardFieldPreimageV1(encodeCborArrayRaw([scriptItem])),
+    ).toThrow(/not a §5.1 definite byte-string header/u);
 
     const witnessSet = {
       addrTxWitsPreimageCbor: addressPreimage,
@@ -174,16 +168,16 @@ describe("Midgard native v1 codec", () => {
     };
     const compact = deriveMidgardNativeTxWitnessSetCompactV1(witnessSet);
     expect(compact.scriptTxWitsHash).toEqual(
-      deriveMidgardNativeFieldCollectionV1({
-        fieldIndex: 6,
-        preimageCbor: scriptPreimage,
-      }).commitment,
+      midgardFieldCommitmentV1(scriptPreimage),
     );
     expect(compact.addrTxWitsHash).toEqual(
-      deriveMidgardNativeFieldCollectionV1({
-        fieldIndex: 7,
-        preimageCbor: addressPreimage,
-      }).commitment,
+      midgardFieldCommitmentV1(addressPreimage),
+    );
+    // §4 is plain hashing with no field index in the input, so fields 6 and 7
+    // alias on identical content — and the empty redeemer field shares the one
+    // empty commitment with all eight of its siblings.
+    expect(compact.redeemerTxWitsHash).toEqual(
+      MIDGARD_EMPTY_FIELD_COMMITMENT_V1,
     );
   });
 
@@ -295,6 +289,8 @@ describe("Midgard native v1 codec", () => {
       decodeMidgardNativeTxCanonicalV1(withoutLast(exact.canonical)),
     ).toThrow(/exactly 4 elements/u);
 
+    // `81 00` is a §5.1 array header followed by an integer where an item's
+    // byte-string wrapper must be.
     expect(() =>
       encodeMidgardNativeTxCanonicalV1({
         ...makeGoldenCanonical(),
@@ -303,12 +299,15 @@ describe("Midgard native v1 codec", () => {
           spendInputsPreimageCbor: encodeCbor([0n]),
         },
       }),
-    ).toThrow(/must be a CBOR byte string/u);
+    ).toThrow(/spend_inputs is not a canonical §5\.1 field preimage/u);
     const malformedNestedPreimage = Buffer.from(exact.canonical, "hex");
     malformedNestedPreimage[4] = 0x9f;
+    // Byte 4 is the `80` payload of the empty spend-inputs preimage; `9f` is
+    // CBOR's indefinite-length array head, which §5.1's minimal-width grammar
+    // refuses as an array header at all.
     expect(() =>
       decodeMidgardNativeTxCanonicalV1(malformedNestedPreimage),
-    ).toThrow(/Indefinite-length CBOR is not valid/u);
+    ).toThrow(/spend_inputs is not a canonical §5\.1 field preimage/u);
 
     const witnessMutated = materializeMidgardNativeTxFromCanonicalV1({
       ...makeGoldenCanonical(),

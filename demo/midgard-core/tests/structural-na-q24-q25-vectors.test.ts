@@ -21,16 +21,32 @@ const bytes = (hex: string): Uint8Array => Buffer.from(hex, "hex");
 
 // --- Q24 vectors -------------------------------------------------------------
 
-/** map{ h'' : map{ h'' : 5 } } — the ADA asset class has no 28-byte policy id. */
-const ADA_MINT_PREIMAGE_CBOR = "a140a14005";
+/**
+ * Field-5 preimages under §5.6's enveloped per-policy grammar:
+ * `81` array(1) then `bytes(enc_5)`, where `enc_5` is
+ * `82 ‖ bytes(policy_id) ‖ map(k) ‖ asset entries`.
+ *
+ * Byte-identical to `ada_mint_field_preimage_cbor` and
+ * `real_mint_field_preimage_cbor` in the Aiken module, verified by deriving them
+ * through `encodeMidgardFieldPreimageV1` and comparing.
+ */
+const ADA_MINT_FIELD_PREIMAGE_CBOR = "81458240a14005";
 
-/** map{ h'01'*28 : map{ h'01' : 5 } } — the adjacent well-formed control. */
-const REAL_MINT_PREIMAGE_CBOR =
-  "a1581c01010101010101010101010101010101010101010101010101010101a1410105";
+/** The adjacent well-formed 28-byte-policy control. */
+const REAL_MINT_FIELD_PREIMAGE_CBOR =
+  "81582382581c01010101010101010101010101010101010101010101010101010101a1410105";
 
 /** The same control with a 27-byte policy id (one byte short). */
-const SHORT_MINT_PREIMAGE_CBOR =
-  "a1581b0101010101010101010101010101010101010101010101010101ffa1410105";
+const SHORT_MINT_FIELD_PREIMAGE_CBOR =
+  "81582282581b0101010101010101010101010101010101010101010101010101ffa1410105";
+
+/**
+ * The retired raw-map form of the positive control, kept as a negative: §5.6
+ * replaced it, and §6.1 admits one byte form per value. The Aiken twin proves the
+ * same refusal in `q24_retired_raw_map_mint_preimage_is_refused`.
+ */
+const RETIRED_RAW_MAP_MINT_PREIMAGE_CBOR =
+  "a1581c01010101010101010101010101010101010101010101010101010101a1410105";
 
 // --- Q25 vectors -------------------------------------------------------------
 
@@ -51,18 +67,26 @@ const POLICY_ID_HEX =
 describe("Q24 ada-minted is unrepresentable in canonical V1", () => {
   it("rejects a mint entry whose policy id is the ADA asset class", () => {
     expect(() =>
-      decodeMidgardNativeMint(bytes(ADA_MINT_PREIMAGE_CBOR)),
-    ).toThrow(/Mint policy id must be 28 bytes/);
+      decodeMidgardNativeMint(bytes(ADA_MINT_FIELD_PREIMAGE_CBOR)),
+    ).toThrow(/mint policy id must be 28 bytes/i);
   });
 
   it("rejects a mint entry whose policy id is 27 bytes", () => {
     expect(() =>
-      decodeMidgardNativeMint(bytes(SHORT_MINT_PREIMAGE_CBOR)),
-    ).toThrow(/Mint policy id must be 28 bytes/);
+      decodeMidgardNativeMint(bytes(SHORT_MINT_FIELD_PREIMAGE_CBOR)),
+    ).toThrow(/mint policy id must be 28 bytes/i);
+  });
+
+  it("rejects the retired raw-map mint preimage form", () => {
+    expect(() =>
+      decodeMidgardNativeMint(bytes(RETIRED_RAW_MAP_MINT_PREIMAGE_CBOR)),
+    ).toThrow(/not a §5\.1 definite array header/u);
   });
 
   it("accepts the adjacent 28-byte-policy control", () => {
-    const decoded = decodeMidgardNativeMint(bytes(REAL_MINT_PREIMAGE_CBOR));
+    const decoded = decodeMidgardNativeMint(
+      bytes(REAL_MINT_FIELD_PREIMAGE_CBOR),
+    );
     expect(decoded?.policyIds).toEqual([POLICY_ID_HEX]);
   });
 

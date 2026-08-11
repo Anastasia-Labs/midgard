@@ -43,6 +43,7 @@ import {
   encodeCbor,
   encodeMidgardSpendInputItemV1,
   type MidgardBoundedCollectionItemProofV1,
+  midgardFieldCommitmentFromItemsV1,
   verifyMidgardBoundedCollectionItemProofV1,
 } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
@@ -630,16 +631,55 @@ export const encodeMidgardTxInputCanonicalV1 = (
   });
 
 /**
- * The `spend_inputs_hash` a native transaction body commits for `inputs`,
- * derived exactly as `bounded_collection_v1.from_items(0, ...)` does on-chain.
+ * The `spend_inputs_hash` a native transaction body commits for `inputs`:
+ * `docs/spec/midgard-tx.md` §4's flat `blake2b_256` over the §5.1 preimage the
+ * items assemble into, which is what `native_tx_field_access_v1.field_commitment`
+ * computes on-chain.
+ *
+ * §4's hash input carries no field index, so this is *not* specific to field 0 —
+ * an identical reference-input list commits to the same value. Field identity is
+ * positional, and the §4 positional-identity invariant is what keeps that safe:
+ * the caller compares against `body.spend_inputs_hash` from the committed compact
+ * structure, never against a free-standing argument.
  */
 export const inputNoIdxSpendInputsCommitmentV1 = (
   inputs: readonly MidgardTxInputData[],
 ): string =>
-  buildMidgardBoundedCollectionV1({
-    fieldIndex: INPUT_NO_IDX_SPEND_INPUTS_FIELD_INDEX_V1,
-    items: inputs.map(encodeMidgardTxInputCanonicalV1),
-  }).commitment.toString("hex");
+  midgardFieldCommitmentFromItemsV1(
+    inputs.map(encodeMidgardTxInputCanonicalV1),
+  ).toString("hex");
+
+// ## The step-02 fold family
+//
+// ⚠️ **STILL COUNTED, and deliberately so — the last counted per-item surface in
+// this module.** Everything above now derives §4's flat field commitment, but the
+// three declarations below (`InputNoIdxSpendInputFoldOpeningV1`,
+// `buildInputNoIdxSpendInputFoldOpeningsV1`,
+// `verifyInputNoIdxSpendInputFoldOpeningV1`) still route through
+// `buildMidgardBoundedCollectionV1` — the counted bounded-collection Merkle root
+// and its per-item openings.
+//
+// **Why it was not swapped here.** §4 gives a field one flat hash and no per-item
+// openings at all, so a flat rebind does not move these functions to a new
+// commitment: it deletes the concept they publish. The replacement is §8's
+// `authenticated_field_view` door plus §10's resumable walk — the same
+// re-pointing that #592 owns for `validation-machine-v1.ak`'s per-item evidence,
+// and the same class #587 retired for the tx-order receipt chain. Doing it here
+// would move the `fraud_proofs/input_no_idx/step_02` redeemer shape, i.e.
+// compiled on-chain code in a named validator, which this ticket's constraints
+// forbid.
+//
+// **What that means for callers today.** These openings are internally consistent
+// (counted root checked against counted opening), and
+// `demo/midgard-fault-proofs/src/submit-input-no-idx-step-02.ts` still builds a
+// redeemer from them — so they are live, not dead. But a counted root is not what
+// `body.spend_inputs_hash` carries any more, so chain will not accept the result:
+// exactly the module-header staleness, whose three concrete divergences are
+// written up once in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+// Owners: **#579** for the family rebind and the blueprint regeneration it lands
+// against, **#592** for the per-item evidence door these openings have to move
+// onto. Do not "fix" the drift by swapping the commitment under the openings —
+// that yields a shape neither language can check.
 
 /** One ordered field-0 opening used by the step-02 fold path. */
 export type InputNoIdxSpendInputFoldOpeningV1 = {
@@ -788,13 +828,12 @@ export const verifyInputNoIdxSpendInputFoldOpeningV1 = ({
 };
 
 /**
- * The `outputs_hash` a native transaction body commits for `outputs`, derived
- * exactly as `bounded_collection_v1.from_items(2, ...)` does on-chain.
+ * The `outputs_hash` a native transaction body commits for `outputs`: §4's flat
+ * `blake2b_256` over the §5.1 preimage the items assemble into.
  */
 export const inputNoIdxOutputsCommitmentV1 = (
   outputs: readonly MidgardTxOutput[],
 ): string =>
-  buildMidgardBoundedCollectionV1({
-    fieldIndex: INPUT_NO_IDX_OUTPUTS_FIELD_INDEX_V1,
-    items: outputs.map(encodeMidgardTxOutputCanonicalV1),
-  }).commitment.toString("hex");
+  midgardFieldCommitmentFromItemsV1(
+    outputs.map(encodeMidgardTxOutputCanonicalV1),
+  ).toString("hex");

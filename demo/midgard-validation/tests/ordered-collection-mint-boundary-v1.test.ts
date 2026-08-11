@@ -1,6 +1,6 @@
 import {
-  decodeSingleCbor,
-  deriveMidgardNativeFieldItemBytesV1,
+  decodeMidgardMintFieldPreimageV1,
+  encodeMidgardMintPolicyItemV1,
 } from "@al-ft/midgard-core";
 import { CML, Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -30,16 +30,16 @@ const MAXIMUM_MINT_POLICY_ADJACENT_SIGNED_BYTES_V1 = 16_500;
 
 const maximumMintTerminalFoldVectorV1 = {
   fieldCommitmentHex:
-    "7dc0480f6a10748bc18aed966ef23ca7dd70cd929f5a88b056d427e2f9453c32",
+    "7ba153c420ecc2fc34570ff76ea54d8b892b9b2f21baff8ae9bbaf95b7e1eab7",
   transactionIdHex:
-    "8a2947f98b0c56a59b8c7eb2d33ab74b759f45f7c10c86ae35060383bce149f2",
+    "7d05811c269235d01486fb1b9f5d9f08ee27dfd67f5b2f5553e98f5f63d2904c",
   transactionCommitmentHex:
-    "6cf2bfa302c7980b51114944079713aacc1b95fefbdb9d47a1c27aef40eeea74",
+    "53fab1e7ca307ed09192048fc8c4fe82b33e4cd9de40bd2e723207039d85b281",
   preWorkRootHex:
-    "e841b45df4501bc51ac727186bc83c99405008ffed6b9acd10b6a560f1ba70a8",
+    "4a04c1b0d3ab0307fcbad5cda4985636ac30cbd52d11f229967bb21d6e027868",
   postWorkRootHex:
-    "6392d6588e7c2bcdf78961d270a0254f1f0bed0052fcace9f2bb1de59ad400e1",
-  encodedLengthBeforeItem: 5_420,
+    "6b18ca10e35cdec5bf29736c0a43aa76b4fa32600949fce9208dde1c9fdbd798",
+  encodedLengthBeforeItem: 5807,
   collectionProof: {
     fieldIndex: 5,
     itemCount: 130,
@@ -287,37 +287,24 @@ describe("canonical V1 mint Cardano boundary", () => {
     );
     expect(mintField.itemCount).toBe(MAXIMUM_MINT_POLICY_ACCEPTED_COUNT_V1);
     expect(scriptField.itemCount).toBe(MAXIMUM_MINT_POLICY_ACCEPTED_COUNT_V1);
-    const nativeMintItems = deriveMidgardNativeFieldItemBytesV1({
-      fieldIndex: 5,
-      preimageCbor: Buffer.from(mintField.fieldPreimageCborHex, "hex"),
-    });
-    const nativeMintEntries = nativeMintItems.map((item, itemIndex) => {
-      const decoded = decodeSingleCbor(item);
-      if (
-        !Array.isArray(decoded) ||
-        decoded.length !== 2 ||
-        !(decoded[0] instanceof Uint8Array) ||
-        !(decoded[1] instanceof Map) ||
-        decoded[1].size !== 1
-      ) {
+    // §5.6: field 5 is the enveloped per-policy item list, and its decoder is
+    // where the one-policy/one-asset shape, the 28-byte policy id, canonical key
+    // order and non-zero quantities are enforced. The hand-rolled CBOR walk this
+    // replaced re-stated those rules against the retired raw-map form.
+    const nativeMintPolicyItems = decodeMidgardMintFieldPreimageV1(
+      Buffer.from(mintField.fieldPreimageCborHex, "hex"),
+    );
+    const nativeMintEntries = nativeMintPolicyItems.map((item, itemIndex) => {
+      if (item.assets.length !== 1) {
         throw new Error(
           `Canonical native mint item ${itemIndex.toString()} is not one exact policy/asset pair`,
         );
       }
-      const [[assetName, quantity]] = decoded[1].entries();
-      if (
-        !(assetName instanceof Uint8Array) ||
-        (typeof quantity !== "bigint" &&
-          (typeof quantity !== "number" || !Number.isSafeInteger(quantity)))
-      ) {
-        throw new Error(
-          `Canonical native mint item ${itemIndex.toString()} changed asset identity or signed quantity`,
-        );
-      }
+      const asset = item.assets[0]!;
       return {
-        policyIdHex: Buffer.from(decoded[0]).toString("hex"),
-        assetNameHex: Buffer.from(assetName).toString("hex"),
-        quantity: BigInt(quantity),
+        policyIdHex: Buffer.from(item.policyId).toString("hex"),
+        assetNameHex: Buffer.from(asset.assetName).toString("hex"),
+        quantity: asset.quantity,
       };
     });
     expect(nativeMintEntries.map(({ policyIdHex }) => policyIdHex)).toEqual(
@@ -410,8 +397,14 @@ describe("canonical V1 mint Cardano boundary", () => {
               mintMaxRevealBytes: mintField.maxRevealBytes,
               scriptWitnessItems: scriptField.itemCount,
               completeFoldSteps: mintField.completeFoldStepCount,
-              penultimateMintItemHex: Buffer.from(
-                nativeMintItems.at(-2) ?? Buffer.alloc(0),
+              // The §5.6 `enc_5` bytes of the penultimate policy item, re-encoded
+              // from the decoded item so the artifact records the canonical form
+              // rather than a slice of the preimage.
+              penultimateMintItemHex: encodeMidgardMintPolicyItemV1(
+                nativeMintPolicyItems.at(-2) ?? {
+                  policyId: Buffer.alloc(28),
+                  assets: [{ assetName: Buffer.alloc(0), quantity: 1n }],
+                },
               ).toString("hex"),
               terminalFoldVector: mintField.terminalFoldVector,
               adjacentRequestedPolicyCount:

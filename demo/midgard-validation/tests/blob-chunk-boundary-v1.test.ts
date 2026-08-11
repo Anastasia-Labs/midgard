@@ -8,6 +8,7 @@ import {
 import { CML, Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { publishAikenVectorV1 } from "./helpers/aiken-vector-channel.js";
 import {
   buildSignedCardanoInlineDatumCandidateV1,
   CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
@@ -32,18 +33,18 @@ const MAXIMUM_INLINE_DATUM_ADJACENT_DATUM_CBOR_BYTES_V1 = 16_174;
 
 const maximumInlineDatumBlobTerminalVectorV1 = {
   transactionIdHex:
-    "e6a945b4b120666ac555e9ca42e714179943da5ebbc3edba81200787d8c7250b",
+    "46001b1343578d758a9b543c9d673e65a517038007b8943d223fb795f58844ac",
   transactionCommitmentHex:
-    "c6c216b46181a13fa8ad40f5b652842677feb6222ff2b82fbd49df75ded123bc",
+    "7eee0e0bdb2a5da4bf0d593800014ec57b6919e9f80008504968f4574a21295a",
   compactCborHex:
-    "84018c58204dc5462fa75f970091526b50e11ff2161e020020f791756d77ed6cd8c45d111c5820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820d40dc24540734968ab6b8212814ab280ab51e0102c18294b1abf2c9e21db5a871a000d5ec920205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff58206295d6e5a837fa5a95389ebbd7ad38ffa316e09cd29d28a9e71639cae906aa2c00",
+    "84018c58202d56d604247c43792618a75b77864f8a6c6d35b9b5a66d25b944476d6930588e582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c058201e56c960b230680d781f77f08341cb9936b0f94813dfc441d8ccfc21ab1f04151a000d5ec92020582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff58203f3ac9a4ac6b4ea0ec0a27b54d7c19126e56c5601b3dacbb8bafdc6a85e75b2c00",
   witnessSetCompactCborHex:
-    "835820650b4c39edb0d2b447c9d9f25b892ef1b1e272201ddae9519989ed3ee927f4815820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
+    "835820b404be1942a40954073b837534858a12148fcc2a6b1d27f5b859056a2d683605582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
   fieldPreimageLengthsCborHex: "89182901193f6101010101186801",
   preWorkRootHex:
-    "7deabb98099010b3e4bdd504ee11ff1e801104d07c834ab5314a0915a4e9da93",
+    "f35a2d6843514959acd6bae4307ae79288b282ea911daeacfeb1b70e6b7b2437",
   postWorkRootHex:
-    "444630db7213867459910732a2014ef541e9df14c899cdc119607838f96880b0",
+    "bb748d14a67b2932d004a45d7bed13b9a619c3ea0ecbf022e367f46bd8cc8303",
   outputsFieldBytes: 16_225,
   itemLength: 16_221,
   itemCommitmentHex:
@@ -253,27 +254,44 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
     const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);
 
-    if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
-      console.info(
-        JSON.stringify({
-          blobChunkBoundaryV1: {
-            maxTxSize: emulator.protocolParameters.maxTxSize,
-            requestedDatumPayloadBytes: boundary.accepted.requestedItemCount,
-            datumCborBytes: accepted.datumCborBytes,
-            signedCardanoBytes: boundary.accepted.signedBytes,
-            signedCardanoByteMargin:
-              emulator.protocolParameters.maxTxSize -
-              boundary.accepted.signedBytes,
-            adjacentDatumPayloadBytes: boundary.adjacent.requestedItemCount,
-            adjacentSignedCardanoBytes: boundary.adjacent.signedBytes,
-            nativeCanonicalBytes: midgard.nativeCanonicalBytes,
-            outputsFieldBytes: midgard.fieldBytes,
-            revealSteps: midgard.revealStepCount,
-            completeFoldSteps: midgard.completeFoldStepCount,
-            terminalFoldVector: midgard.terminalFoldVector,
-          },
-        }),
-      );
-    }
+    // This suite is the producer for the generated constant block of
+    // `onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-inline-datum.test.ak`.
+    // Publishing the vector *after* the assertions above is what lets
+    // `generate-ordered-collection-boundary-aiken-goldens.mjs` rebind those
+    // constants instead of a human retyping them out of a terminal (#588) — which
+    // is how that module came to still pin retired counted field commitments
+    // after this suite's own expectations had already moved.
+    publishAikenVectorV1("blob-chunk-boundary-v1", {
+      maxTxSize: emulator.protocolParameters.maxTxSize,
+      requestedDatumPayloadBytes: boundary.accepted.requestedItemCount,
+      datumCborBytes: accepted.datumCborBytes,
+      signedCardanoBytes: boundary.accepted.signedBytes,
+      signedCardanoByteMargin:
+        emulator.protocolParameters.maxTxSize - boundary.accepted.signedBytes,
+      adjacentDatumPayloadBytes: boundary.adjacent.requestedItemCount,
+      adjacentSignedCardanoBytes: boundary.adjacent.signedBytes,
+      nativeCanonicalBytes: midgard.nativeCanonicalBytes,
+      outputsFieldBytes: midgard.fieldBytes,
+      revealSteps: midgard.revealStepCount,
+      completeFoldSteps: midgard.completeFoldStepCount,
+      transactionIdHex: terminal.transactionIdHex,
+      transactionCommitmentHex: terminal.transactionCommitmentHex,
+      compactCborHex: terminal.compactCborHex,
+      witnessSetCompactCborHex: terminal.witnessSetCompactCborHex,
+      fieldPreimageLengthsCborHex: terminal.fieldPreimageLengthsCborHex,
+      // Not among the pinned expectations above because the machine derives it
+      // from the consensus profile rather than from the boundary search, but the
+      // Aiken twin has to carry the identical bytes or its work roots cannot
+      // agree.
+      validationContextCborHex: terminal.validationContextCborHex,
+      preWorkRootHex: terminal.preWorkRootHex,
+      postWorkRootHex: terminal.postWorkRootHex,
+      // The whole terminal fold, beyond the flat constants the generator binds.
+      // The Aiken module's `ItemProofV1`/`ChunkProofV1` literals live inside a
+      // test function rather than in named constants, so the name-keyed rebinder
+      // cannot reach them; publishing them here means the follow-up that gives
+      // them a producer has nothing left to find out.
+      terminalFoldVector: midgard.terminalFoldVector,
+    });
   }, 300_000);
 });

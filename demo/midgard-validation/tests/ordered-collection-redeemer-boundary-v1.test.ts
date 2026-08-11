@@ -77,18 +77,18 @@ const MAXIMUM_REDEEMER_ADJACENT_SIGNED_BYTES_V1 = 16_433;
 
 const maximumRedeemerTerminalFoldVectorV1 = {
   fieldCommitmentHex:
-    "07da3c8aea4dd252510b18f872268ea7b7d752fe9d6874f3321286ec6d8c4133",
+    "48c9573caee7147b9cb991e575dd5e203cf09c52dda6dc6701976f1f72e81918",
   fieldPreimageHashHex:
-    "680079f9aebb6ab20240bf0a4b46a9b607181843413e0cdfbb293942aebe3d0a",
+    "48c9573caee7147b9cb991e575dd5e203cf09c52dda6dc6701976f1f72e81918",
   transactionIdHex:
-    "bb9eefcba3b233b08c3969d7e72dd6911353f5ae4fb0f78dd4fa94bec151e203",
+    "f5f996b9433cd5b58e08f0f6a65de8ab93b93c7d71a9d965166871deb0f72605",
   transactionCommitmentHex:
-    "c4670fb733c631fe5d11bfce0c8b70eeca201c074ed5aa3cba55f81c29755d7b",
+    "910c82e3f83b53c9c30132bdc2cf9f6ffe375405de035c5293efd1fcf343a66f",
   preWorkRootHex:
-    "c54966df530e3156a5d0312b2a4d441490dbd1996c3778cebc94f2e35ee22c62",
+    "eb6af1445c43188db21af5507139f8f6d49625b949782421d97e017b7f2bd049",
   postWorkRootHex:
-    "1e375126f821f3794f40887267a40a9d9b4cf1bc4b77a9e08b60eb46fa1e5051",
-  encodedLengthBeforeItem: 5_035,
+    "c517e8eb697fd4f265fcbd06f6799cbd6e13a2c5aad5048bc18c60fded4769ae",
+  encodedLengthBeforeItem: 5330,
   collectionProof: {
     fieldIndex: 8,
     itemCount: 296,
@@ -476,6 +476,11 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
     // constants instead of a human retyping them (#588).
     publishAikenVectorV1("spend-redeemer-boundary-v1", {
       redeemerCount: redeemerField.itemCount,
+      // §5.1 bytes of field 8 completed before the terminal item begins — the
+      // `encoded_length_before_item` the Aiken scan witness carries. Published
+      // because the envelope moved it: every preceding item gained its wrapper.
+      terminalEncodedLengthBeforeItem:
+        redeemerField.terminalFoldVector.encodedLengthBeforeItem,
       redeemerFieldBytes: redeemerField.fieldBytes,
       redeemerFieldPreimageCborHex: redeemerField.fieldPreimageCborHex,
       redeemerFieldPreimageHashHex: redeemerField.fieldPreimageHashHex,

@@ -1,3 +1,4 @@
+import { midgardFieldHeaderLengthForCountV1 } from "@al-ft/midgard-core";
 import { CML, Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -28,21 +29,21 @@ const MAXIMUM_OBSERVER_ADJACENT_SIGNED_BYTES_V1 = 16_410;
 
 const maximumObserverTerminalFoldVectorV1 = {
   transactionIdHex:
-    "dea55d4e6a14e025bdce718e1c21ebeeea77723058cabd65d9bbfed76af516af",
+    "b16b2f9ffdef875e489d13c518def5771131b15832e88cd0f79d6d3956fe168b",
   transactionCommitmentHex:
-    "8da6f4d07d4cc3728c53bfe50977d38163a24b7f9e03738ec36bc1375bb21a1f",
+    "5b79d540d0a51bb5e2ab678c63f5b8b88646d13e337c1d33f1e1ba6ca2db4d95",
   compactCborHex:
-    "84018c58204dc5462fa75f970091526b50e11ff2161e020020f791756d77ed6cd8c45d111c5820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820598bbaa08e9cc6dc4d9634b23089ead14091f45c5e1165dcf8a6288be95a1b001a000d570d201927105820e127f848e4bda8c1e9b42ddf4c89dfbd1479301dd90551baeff900fdfcec2e975820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff58205c66a9cb2310e13ca74d861c7d29f5b996030ad755920f1dfc2c325ec3cb015d00",
+    "84018c58202d56d604247c43792618a75b77864f8a6c6d35b9b5a66d25b944476d6930588e582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c05820b2b468552a6382aa0a02ece7767ee914a08a85a2527b117e048ca891ba560f351a000d570d2019271058206ba17d1becf6846cbc137424e22d01732cdefc5a2b14105f47babd83e6550668582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff582059778271799fb2f636923a2cb70dac0426ba8aa42ab730db4166b1968f01b29000",
   witnessSetCompactCborHex:
-    "8358209c3c9f949b41759fc4d9ea024e36e2aa7659f3d5dbe41611256f4dfc80a9a62d5820ad4dcd868783831d5bd321d25528c3295f55b1ea6c8d61d85c3216be9a73ea3d5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-  fieldPreimageLengthsCborHex: "89182901182c191a420101192682186801",
+    "83582091bef5c8f29aa474731c2ad6b30f1872403c692814a9bfd55e70687bfdc74810582039728233c559f2fdc7876f58aad839f313ea4af375a4e91d60e63e1a55adbe2e582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
+  fieldPreimageLengthsCborHex: "89182901182c191a420101192842186801",
   fieldCommitmentHex:
-    "e127f848e4bda8c1e9b42ddf4c89dfbd1479301dd90551baeff900fdfcec2e97",
+    "6ba17d1becf6846cbc137424e22d01732cdefc5a2b14105f47babd83e6550668",
   preWorkRootHex:
-    "fe92e3fb9e857d492cdf9a5540313e388c71a0b17af5190bf988ed5bcefb0b02",
+    "1078262a33daff30359c3e2b00ebc601b2058fd77e7587bdae0d67baf5478e19",
   postWorkRootHex:
-    "2f4cd74cdbb1cf7c719f50fd4f2be0c49c82fcf05757651e09b9134f4ad9cd0a",
-  encodedLengthBeforeItem: 6_692,
+    "5e98b6a8a98432b486d068899b3dad627f8c41dd6ae8afef51976b88fa0d84d4",
+  encodedLengthBeforeItem: 6692,
   collectionProof: {
     fieldIndex: 3,
     itemCount: 224,
@@ -321,6 +322,18 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
     // bind them. Publishing the vector after the assertions above is what lets
     // `generate-ordered-collection-boundary-aiken-goldens.mjs` rebind those
     // constants instead of a human retyping ~10 kB of hex (#588).
+    // §5.1's wrapped width of one field-6 item at this boundary — what the field
+    // grows by when one identical native script is added. Every item here is the
+    // same synthetic signer/expiry script, so the field is exactly its array
+    // header plus `count` strides, and the stride follows from that rather than
+    // from a literal. Published because the envelope moved it: under the retired
+    // counted grammar field 6 concatenated raw item CBOR, so the delta was the
+    // item alone, with no wrapper.
+    const scriptWitnessItemStrideBytesV1 =
+      (scriptField.fieldBytes -
+        midgardFieldHeaderLengthForCountV1(scriptField.itemCount)) /
+      scriptField.itemCount;
+    expect(Number.isInteger(scriptWitnessItemStrideBytesV1)).toBe(true);
     publishAikenVectorV1("observer-native-script-boundary-v1", {
       nativeScriptWitnessCount: acceptedCardano.nativeScriptWitnessCount,
       acceptedSignedCardanoBytes: boundary.accepted.signedBytes,
@@ -328,6 +341,7 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
       cardanoMaxTransactionBytes: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
       observerExpiryBase: Number(CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1),
       scriptWitnessFieldBytes: scriptField.fieldBytes,
+      scriptWitnessItemStrideBytes: scriptWitnessItemStrideBytesV1,
       nativeCanonicalBytes: scriptField.nativeCanonicalBytes,
       scriptWitnessFieldPreimageCborHex: scriptField.fieldPreimageCborHex,
       scriptWitnessFieldPreimageHashHex: scriptField.fieldPreimageHashHex,
@@ -389,6 +403,7 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
               observerMaxChunkBytes: observerField.maxChunkBytes,
               observerMaxRevealBytes: observerField.maxRevealBytes,
               scriptWitnessFieldBytes: scriptField.fieldBytes,
+              scriptWitnessItemStrideBytes: scriptWitnessItemStrideBytesV1,
               scriptWitnessItems: scriptField.itemCount,
               scriptWitnessRevealSteps: scriptField.revealStepCount,
               scriptWitnessMaxChunkBytes: scriptField.maxChunkBytes,

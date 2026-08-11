@@ -46,11 +46,13 @@ import {
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
 import {
   computeMidgardNativeTxIdV1,
+  decodeMidgardMintFieldPreimageV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeSingleCbor,
+  decodeMidgardRedeemerWitnessFieldPreimageV1,
   deriveMidgardNativeTxWitnessSetCompactV1,
   encodeMidgardNativeTxBodyCompactV1,
   encodeMidgardNativeTxCompactV1,
+  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
   midgardFieldCommitmentV1,
 } from "@al-ft/midgard-core";
 
@@ -66,29 +68,24 @@ const writeOrCheck = goldenChannelEmitter({ repositoryRoot, checkOnly });
 const readUtf8 = (filePath) => fs.readFileSync(filePath, "utf8");
 
 /**
- * The mint field's policy ids in the order the field commits them, and the
+ * The mint field's policy ids in §5.6's canonical key order, and the
  * `purpose_tag:index` redeemer pointers in field-8 order — the two derived facets
- * that are lists rather than scalars. An empty mint field is the `80` sentinel
- * rather than a map, so it yields no policies.
+ * that are lists rather than scalars. An empty mint field is `80` and yields no
+ * policies.
  *
  * Spelled here as well as in `tests/fixtures/native-tx-fixture-shape.ts` for the
  * same reason as everything else in this file: the two derivations run through
  * different builds of the codec and must agree.
  */
-const mintPolicyIds = (mintPreimageCbor) => {
-  const decoded = decodeSingleCbor(mintPreimageCbor);
-  if (decoded instanceof Map) {
-    return [...decoded.keys()].map((policy) => hex(policy));
-  }
-  if (Array.isArray(decoded) && decoded.length === 0) {
-    return [];
-  }
-  throw new Error("mint preimage must decode to a map or the empty sentinel");
-};
+const mintPolicyIds = (mintPreimageCbor) =>
+  decodeMidgardMintFieldPreimageV1(mintPreimageCbor).map((item) =>
+    hex(item.policyId),
+  );
 
 const redeemerPointers = (redeemerPreimageCbor) =>
-  decodeSingleCbor(redeemerPreimageCbor).map(
-    (entry) => `${String(entry[0])}:${String(entry[1])}`,
+  decodeMidgardRedeemerWitnessFieldPreimageV1(redeemerPreimageCbor).map(
+    (witness) =>
+      `${String(MIDGARD_REDEEMER_PURPOSE_TAGS_V1[witness.purpose])}:${witness.index.toString(10)}`,
   );
 
 /**
@@ -278,18 +275,28 @@ const FIXTURE_FAMILIES = [
       golden_core_witness_set_hash: "hashes.witnessSetHashHex",
     },
     integerConstants: {},
-    // §4's flat commitment of a preimage — `blake2b_256` over the bytes, which
-    // is what the Aiken twin computes. It is generated separately from the
-    // `hashes.*` above because the two are not the same quantity in this tree:
-    // the compact form still carries the retired counted commitment on the
-    // TypeScript side (#585), and the flat value is what the on-chain producers
-    // agree with. Keeping both generated means #585's convergence shows up as
-    // two constants becoming equal, rather than as a hand edit.
+    // §4's flat commitment of a preimage — `blake2b_256` over the bytes, which is
+    // what the Aiken twin computes. These were generated separately from the
+    // `hashes.*` above because the two were *not* the same quantity: the compact
+    // form carried the retired counted commitment on the TypeScript side while
+    // Aiken had been flat since #567, and keeping both generated meant the
+    // convergence would show up as two constants becoming equal rather than as a
+    // hand edit. #585 made them equal, and the `preimageCommitmentAgreement`
+    // map below now *enforces* it, so this pair is a cross-check rather than a
+    // gap.
     preimageCommitmentConstants: {
       golden_core_spend_inputs_preimage_hash: "preimages.spendInputsCborHex",
       golden_core_reference_inputs_preimage_hash:
         "preimages.referenceInputsCborHex",
       golden_core_empty_preimage_hash: "preimages.mintCborHex",
+    },
+    // Each `preimageCommitmentConstants` entry above and the `hashes.*` entry it
+    // shadows, so the generator can refuse to emit a pair that disagrees.
+    preimageCommitmentAgreement: {
+      golden_core_spend_inputs_preimage_hash: "hashes.spendInputsHashHex",
+      golden_core_reference_inputs_preimage_hash:
+        "hashes.referenceInputsHashHex",
+      golden_core_empty_preimage_hash: "hashes.mintHashHex",
     },
   },
 ];
@@ -340,9 +347,7 @@ const derivedFacetMismatches = (derived, fixtureSubtree, prefix = "") => {
         );
       }
     } else if (expected !== null && typeof expected === "object") {
-      mismatched.push(
-        ...derivedFacetMismatches(expected, actual, `${label}.`),
-      );
+      mismatched.push(...derivedFacetMismatches(expected, actual, `${label}.`));
     } else if (actual !== expected) {
       mismatched.push(`${label}: fixture=${actual} derived=${expected}`);
     }
@@ -392,21 +397,32 @@ for (const family of FIXTURE_FAMILIES) {
 
   const constants = {};
   for (const [name, dottedPath] of Object.entries(family.hexConstants)) {
-    constants[name] = bytes(
-      fixtureValueAt(fixture, dottedPath, family.label),
-    );
+    constants[name] = bytes(fixtureValueAt(fixture, dottedPath, family.label));
   }
   for (const [name, dottedPath] of Object.entries(family.integerConstants)) {
-    constants[name] = Number(
-      fixtureValueAt(fixture, dottedPath, family.label),
-    );
+    constants[name] = Number(fixtureValueAt(fixture, dottedPath, family.label));
   }
   for (const [name, dottedPath] of Object.entries(
     family.preimageCommitmentConstants ?? {},
   )) {
-    constants[name] = midgardFieldCommitmentV1(
+    const commitment = midgardFieldCommitmentV1(
       bytes(fixtureValueAt(fixture, dottedPath, family.label)),
     );
+    // §4: a field's committed hash *is* the flat commitment of its preimage.
+    // Before #585 these two derivations disagreed by construction; emitting a
+    // pair that disagrees again would publish a golden no on-chain door accepts.
+    const committedPath = family.preimageCommitmentAgreement?.[name];
+    if (committedPath !== undefined) {
+      const committed = fixtureValueAt(fixture, committedPath, family.label);
+      if (hex(commitment) !== committed) {
+        throw new Error(
+          `${family.label}: §4 commitment of ${dottedPath} is ${hex(commitment)}, ` +
+            `but the compact structure carries ${committed} at ${committedPath}; ` +
+            "the nine-field derivation and the flat commitment have diverged",
+        );
+      }
+    }
+    constants[name] = commitment;
   }
 
   const aikenPath = path.join(repositoryRoot, family.aiken);

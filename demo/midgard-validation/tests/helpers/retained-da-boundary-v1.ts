@@ -10,17 +10,16 @@ import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   decodeMidgardVersionedScriptListPreimage,
-  deriveMidgardNativeFieldCollectionV1,
   deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardV1TxFieldChunks,
+  deriveMidgardV1TxFieldPreimages,
   encodeMidgardCekProgramMaterialSidecarV1,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardVersionedScriptListPreimage,
   materializeMidgardNativeTxFromCanonicalV1,
   mergeMidgardCekProgramMaterialSidecarsV1,
   MIDGARD_CONSENSUS_LIMITS_V1,
-  reconstructMidgardTransactionV1FromChunks,
-  verifyMidgardV1TxFieldChunk,
+  midgardFieldCommitmentV1,
+  reconstructMidgardTransactionV1,
 } from "@al-ft/midgard-core";
 import {
   unwrapDaPayloadV1,
@@ -30,6 +29,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import { buildMidgardCanonicalScriptArtifactV1 } from "../../src/cek-program.js";
+import { countedMachineTransactionChunkStepsV1 } from "../../src/validation-machine.js";
 
 const ZERO_HASH_28 = "00".repeat(28);
 const EMPTY_ROOT = SDK.EMPTY_MERKLE_TREE_ROOT;
@@ -302,21 +302,20 @@ const reconstructRetainedClassificationV1 = ({
     fieldName: `${sourceKind} retained-DA source`,
   });
 
-  const chunkProofs = deriveMidgardV1TxFieldChunks(retainedCanonicalCbor);
-  for (const chunk of chunkProofs) {
-    verifyMidgardV1TxFieldChunk({
-      transactionId: retainedTransactionId,
-      transactionCommitment: retainedTransactionCommitment,
-      source: retainedProofSource,
-      collectionProof: chunk.collectionProof,
-      proof: chunk.proof,
-    });
-  }
-  const reconstructed = reconstructMidgardTransactionV1FromChunks({
+  // §4: each field authenticates once against the hash its compact structure
+  // carries, and `reconstructMidgardTransactionV1` performs all nine checks. The
+  // machine's chunk steps are still counted here, and still measured — they are
+  // its trace, not a publication claim (see `countedMachineFieldChunkStepsV1`).
+  const chunkProofs = countedMachineTransactionChunkStepsV1(
+    retainedCanonicalCbor,
+  );
+  const reconstructed = reconstructMidgardTransactionV1({
     transactionId: retainedTransactionId,
     transactionCommitment: retainedTransactionCommitment,
     source: retainedProofSource,
-    chunkProofs,
+    fieldPreimages: deriveMidgardV1TxFieldPreimages(retainedCanonicalCbor).map(
+      (field) => field.preimageCbor,
+    ),
   });
   if (!reconstructed.equals(retainedCanonicalCbor)) {
     throw new Error(
@@ -546,17 +545,14 @@ export const buildMidgardRetainedDaCanonicalScriptProjectionV1 = ({
     language: rawScript.language,
     sourceRawFlatProgramBytes: rawScript.scriptBytes,
   });
-  const redeemerField = deriveMidgardNativeFieldCollectionV1({
-    fieldIndex: 8,
-    preimageCbor: source.witnessSet.redeemerTxWitsPreimageCbor,
-  });
+
   const projected = materializeMidgardNativeTxFromCanonicalV1({
     version: source.version,
     validity: source.validity,
     body: {
       ...source.body,
       scriptIntegrityHash: computeScriptIntegrityHashForLanguages(
-        redeemerField.commitment,
+        midgardFieldCommitmentV1(source.witnessSet.redeemerTxWitsPreimageCbor),
         [rawScript.language],
       ),
     },

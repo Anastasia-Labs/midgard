@@ -24,14 +24,14 @@ const MAXIMUM_SIGNER_WITNESS_ADJACENT_SIGNED_BYTES_V1 = 16_482;
 
 const maximumRequiredSignerTerminalFoldVectorV1 = {
   transactionIdHex:
-    "9ffc4b4d44c94361301f605b85ddf0ecd917e10aaeda17181b99d89c780c54ad",
+    "7b4e4657e0083544359f4398fb092c482766220cd53ad99b598239297d1e9813",
   transactionCommitmentHex:
-    "3c0f49ab486f675cfca3869e7e4f356c90c9de775e202ad874e90465d77bde68",
+    "56ba4f868c6e37a2eb67542110b3cf1b87007e6f88493b97faa1e276cd1943ea",
   preWorkRootHex:
-    "caa12740b3c15ded3bccb9ef49a9377a78a14e27894d5c1cb59cc673bf6bb0b8",
+    "c39fcbe1b9077c6a2242f2cec28b84ad23fadb5b4065248f6cd6ecaab49a2c03",
   postWorkRootHex:
-    "92a3a4986cd45bf186afc789ecb81f0c1f6f1469e060edcd730f716a5d713307",
-  encodedLengthBeforeItem: 3_692,
+    "f34d2c3452c0168fc935a7a0c9de927311c8bfd372a53d83d7df8e0c5effec37",
+  encodedLengthBeforeItem: 3692,
   collectionProof: {
     fieldIndex: 4,
     itemCount: 124,

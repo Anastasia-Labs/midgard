@@ -41,7 +41,7 @@
  * the PlutusData encoding is positional, so re-ordering here would silently
  * produce redeemers the validators reject.
  */
-import { buildMidgardBoundedCollectionV1 } from "@al-ft/midgard-core";
+import { midgardFieldCommitmentFromItemsV1 } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "@/common.js";
@@ -90,30 +90,33 @@ export const isReferenceInputNoIdxViolationV1 = ({
 }): boolean => badReferenceInputOutputIndex >= BigInt(producingTxOutputCount);
 
 /**
- * The `reference_inputs_hash` a native transaction body commits, derived
- * exactly as `bounded_collection_v1.from_items(1, ...)` does on-chain. Reference
- * inputs and spend inputs share the per-item encoder but not the field index, so
- * a spend-inputs preimage can never open this commitment.
+ * The `reference_inputs_hash` a native transaction body commits: §4's flat
+ * `blake2b_256` over the §5.1 preimage the items assemble into.
+ *
+ * Reference inputs and spend inputs share the per-item encoder, and under §4 they
+ * also share the commitment — the field index is not in the hash input, so an
+ * identical spend-inputs list commits to exactly this value. The retired counted
+ * scheme salted each item with its field index and so separated them. What keeps
+ * the two apart now is positional: the caller reads
+ * `body.reference_inputs_hash` out of the committed compact structure.
  */
 export const referenceInputNoIdxReferenceInputsCommitmentV1 = (
   inputs: readonly MidgardTxInputData[],
 ): string =>
-  buildMidgardBoundedCollectionV1({
-    fieldIndex: REFERENCE_INPUT_NO_IDX_REFERENCE_INPUTS_FIELD_INDEX_V1,
-    items: inputs.map(encodeMidgardTxInputCanonicalV1),
-  }).commitment.toString("hex");
+  midgardFieldCommitmentFromItemsV1(
+    inputs.map(encodeMidgardTxInputCanonicalV1),
+  ).toString("hex");
 
 /**
- * The `outputs_hash` a native transaction body commits for `outputs`, derived
- * exactly as `bounded_collection_v1.from_items(2, ...)` does on-chain.
+ * The `outputs_hash` a native transaction body commits for `outputs`: §4's flat
+ * `blake2b_256` over the §5.1 preimage the items assemble into.
  */
 export const referenceInputNoIdxOutputsCommitmentV1 = (
   outputs: readonly MidgardTxOutput[],
 ): string =>
-  buildMidgardBoundedCollectionV1({
-    fieldIndex: REFERENCE_INPUT_NO_IDX_OUTPUTS_FIELD_INDEX_V1,
-    items: outputs.map(encodeMidgardTxOutputCanonicalV1),
-  }).commitment.toString("hex");
+  midgardFieldCommitmentFromItemsV1(
+    outputs.map(encodeMidgardTxOutputCanonicalV1),
+  ).toString("hex");
 
 // ## Shared step aliases
 

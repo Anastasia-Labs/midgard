@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Rebinds the Aiken constants produced by the three genuine signed-Cardano
+ * Rebinds the Aiken constants produced by the four genuine signed-Cardano
  * ordered-collection boundary suites:
  *
  *   * C20-7 — field 4/7, the coupled signer/vkey-witness maximum
@@ -9,9 +9,11 @@
  *   * C20-6 — field 3/6, the observer/native-script maximum
  *     (`tests/ordered-collection-observer-native-script-boundary-v1.test.ts`);
  *   * the field-8 spend-redeemer maximum
- *     (`tests/ordered-collection-redeemer-boundary-v1.test.ts`).
+ *     (`tests/ordered-collection-redeemer-boundary-v1.test.ts`);
+ *   * the field-2 inline-datum blob maximum
+ *     (`tests/blob-chunk-boundary-v1.test.ts`).
  *
- * All three were hand-mirrored families before #588: the suites search for the
+ * All four were hand-mirrored families before #588: the suites search for the
  * exact transaction that sits on the Cardano envelope, and the Aiken modules then
  * assert against its bytes — but nothing carried those bytes across. Greening the
  * Aiken side after a codec change meant a human copying ~30 kB of hex out of a
@@ -31,7 +33,7 @@
  * contract. A vector this generator can see is a vector its suite has already
  * accepted.
  *
- * The suites take about eleven seconds in total.
+ * The suites take about fifteen seconds in total.
  *
  * usage: node scripts/generate-ordered-collection-boundary-aiken-goldens.mjs [--check]
  */
@@ -49,7 +51,10 @@ import {
   parseGoldenChannelArguments,
   rebindAikenConstants,
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
-import { decodeSingleCbor } from "@al-ft/midgard-core";
+import {
+  decodeMidgardFieldPreimageV1,
+  decodeSingleCbor,
+} from "@al-ft/midgard-core";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, "..");
@@ -64,6 +69,7 @@ const PRODUCING_SUITES = [
   "tests/ordered-collection-signer-witness-boundary-v1.test.ts",
   "tests/ordered-collection-observer-native-script-boundary-v1.test.ts",
   "tests/ordered-collection-redeemer-boundary-v1.test.ts",
+  "tests/blob-chunk-boundary-v1.test.ts",
 ];
 
 const runProducingSuites = (vectorDirectory) => {
@@ -93,19 +99,24 @@ const runProducingSuites = (vectorDirectory) => {
   }
 };
 
-/** §5.1 byte-list fields (0/1/2/3/4/7): one definite byte string per item. */
-const byteListItems = (preimageHex) =>
-  decodeSingleCbor(bytes(preimageHex)).map((item) => Buffer.from(item));
+/**
+ * §5.1's one uniform split: a field preimage into its `enc_i` byte runs. All nine
+ * fields share it — the retired counted grammar needed two readers here, a
+ * byte-list one for fields 0/1/2/3/4/7 and a raw-concatenation one for 6/8, and
+ * §5.1 deletes that distinction.
+ */
+const fieldItems = (preimageHex) =>
+  decodeMidgardFieldPreimageV1(bytes(preimageHex));
 
-/** §5.1 raw-item fields (6/8): the item's own CBOR structure, undecorated. */
-const rawItems = (preimageHex) => decodeSingleCbor(bytes(preimageHex));
+/** The same items with each `enc_i` decoded into its own CBOR structure. */
+const fieldItemStructures = (preimageHex) =>
+  fieldItems(preimageHex).map((item) => decodeSingleCbor(item));
 
 /**
  * The `(verification_key, signature)` pair inside a field-7 item, which is itself
  * a definite byte string wrapping `82 ‖ 58 20 vkey ‖ 58 40 signature`.
  */
-const addressWitnessVerificationKey = (item) =>
-  hex(decodeSingleCbor(item)[0]);
+const addressWitnessVerificationKey = (item) => hex(decodeSingleCbor(item)[0]);
 
 const vectorDirectory = mkdtempSync(
   join(tmpdir(), "midgard-boundary-aiken-vectors-"),
@@ -118,6 +129,7 @@ try {
       "coupled-signer-witness-boundary-v1",
       "observer-native-script-boundary-v1",
       "spend-redeemer-boundary-v1",
+      "blob-chunk-boundary-v1",
     ].map((name) => [
       name,
       JSON.parse(readFileSync(join(vectorDirectory, `${name}.json`), "utf8")),
@@ -130,6 +142,7 @@ try {
 const signerWitness = vectors["coupled-signer-witness-boundary-v1"];
 const observerScript = vectors["observer-native-script-boundary-v1"];
 const spendRedeemer = vectors["spend-redeemer-boundary-v1"];
+const blobChunk = vectors["blob-chunk-boundary-v1"];
 
 // The Cardano transaction-size ceiling is one number shared by both C20 families
 // and spelled once in Aiken. Binding it from one suite while the other agrees is
@@ -143,13 +156,15 @@ if (
   );
 }
 
-const addressWitnessItems = byteListItems(
+const addressWitnessItems = fieldItems(
   signerWitness.addressWitnessFieldPreimageCborHex,
 );
-const scriptWitnessItems = rawItems(
+const scriptWitnessItems = fieldItemStructures(
   observerScript.scriptWitnessFieldPreimageCborHex,
 );
-const redeemerItems = rawItems(spendRedeemer.redeemerFieldPreimageCborHex);
+const redeemerItems = fieldItemStructures(
+  spendRedeemer.redeemerFieldPreimageCborHex,
+);
 
 /**
  * The field-6 maximum's native scripts are all
@@ -185,19 +200,15 @@ const AIKEN_FAMILIES = [
   {
     aiken: "onchain/aiken/lib/midgard/fraud-proofs/native-tx-v1.test.ak",
     constants: {
-      cardano_max_transaction_bytes:
-        signerWitness.cardanoMaxTransactionBytes,
+      cardano_max_transaction_bytes: signerWitness.cardanoMaxTransactionBytes,
 
-      c20_7_maximum_cardano_vkey_witness_count:
-        signerWitness.vkeyWitnessCount,
-      c20_7_maximum_cardano_field_bytes:
-        signerWitness.addressWitnessFieldBytes,
+      c20_7_maximum_cardano_vkey_witness_count: signerWitness.vkeyWitnessCount,
+      c20_7_maximum_cardano_field_bytes: signerWitness.addressWitnessFieldBytes,
       c20_7_maximum_cardano_signed_cardano_bytes:
         signerWitness.acceptedSignedCardanoBytes,
       c20_7_adjacent_cardano_signed_cardano_bytes:
         signerWitness.adjacentSignedCardanoBytes,
-      c20_7_maximum_cardano_canonical_bytes:
-        signerWitness.nativeCanonicalBytes,
+      c20_7_maximum_cardano_canonical_bytes: signerWitness.nativeCanonicalBytes,
       c20_7_maximum_cardano_transaction_id: bytes(
         signerWitness.transactionIdHex,
       ),
@@ -229,8 +240,7 @@ const AIKEN_FAMILIES = [
 
       c20_6_maximum_cardano_native_script_witness_count:
         observerScript.nativeScriptWitnessCount,
-      c20_6_maximum_cardano_field_bytes:
-        observerScript.scriptWitnessFieldBytes,
+      c20_6_maximum_cardano_field_bytes: observerScript.scriptWitnessFieldBytes,
       c20_6_maximum_cardano_signed_cardano_bytes:
         observerScript.acceptedSignedCardanoBytes,
       c20_6_adjacent_cardano_signed_cardano_bytes:
@@ -259,6 +269,11 @@ const AIKEN_FAMILIES = [
       c20_6_maximum_cardano_script_witnesses_preimage_cbor: bytes(
         observerScript.scriptWitnessFieldPreimageCborHex,
       ),
+      // §5.1's wrapped width of one field-6 item, so the adjacent-count test
+      // states the stride once instead of carrying a literal that the envelope
+      // silently invalidates.
+      c20_6_field_item_stride_bytes:
+        observerScript.scriptWitnessItemStrideBytes,
       c20_6_maximum_cardano_signer_hash: observerSignerHash(),
       c20_6_maximum_cardano_expiry_base: observerScript.observerExpiryBase,
     },
@@ -293,6 +308,8 @@ const AIKEN_FAMILIES = [
       maximum_cardano_validation_context_cbor: bytes(
         spendRedeemer.validationContextCborHex,
       ),
+      maximum_cardano_terminal_encoded_length_before_item:
+        spendRedeemer.terminalEncodedLengthBeforeItem,
       maximum_cardano_terminal_pre_work_root: bytes(
         spendRedeemer.preWorkRootHex,
       ),
@@ -301,6 +318,54 @@ const AIKEN_FAMILIES = [
       ),
     },
   },
+  {
+    aiken:
+      "onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-inline-datum.test.ak",
+    constants: {
+      maximum_cardano_inline_datum_transaction_id: bytes(
+        blobChunk.transactionIdHex,
+      ),
+      maximum_cardano_inline_datum_transaction_commitment: bytes(
+        blobChunk.transactionCommitmentHex,
+      ),
+      maximum_cardano_inline_datum_compact_cbor: bytes(
+        blobChunk.compactCborHex,
+      ),
+      maximum_cardano_inline_datum_witness_set_compact_cbor: bytes(
+        blobChunk.witnessSetCompactCborHex,
+      ),
+      maximum_cardano_inline_datum_field_preimage_lengths_cbor: bytes(
+        blobChunk.fieldPreimageLengthsCborHex,
+      ),
+      maximum_cardano_inline_datum_validation_context_cbor: bytes(
+        blobChunk.validationContextCborHex,
+      ),
+      maximum_cardano_inline_datum_terminal_pre_work_root: bytes(
+        blobChunk.preWorkRootHex,
+      ),
+      maximum_cardano_inline_datum_terminal_post_work_root: bytes(
+        blobChunk.postWorkRootHex,
+      ),
+    },
+  },
+  // The field-8 maximum is also the adversarial proof-fit case for the
+  // `da-hash-preimage` framing rule, and both of its steps carried their own
+  // copy of the pair. Copies documented as "pinned in
+  // `native-tx.max-redeemers.test.ak`" are exactly the drift this channel
+  // exists to close: a stale copy stays green because the id it pins is the id
+  // of the compact it pins beside it, while the shape is one the codec can no
+  // longer emit. Binding them from the same vector is what makes the comment
+  // true.
+  ...[
+    "onchain/aiken/validators/fraud-proofs/da-hash-preimage/step-01.ak",
+    "onchain/aiken/validators/fraud-proofs/da-hash-preimage/step-02.ak",
+  ].map((aiken) => ({
+    aiken,
+    constants: {
+      maximum_cardano_compact_cbor: bytes(spendRedeemer.compactCborHex),
+      maximum_cardano_transaction_id: bytes(spendRedeemer.transactionIdHex),
+    },
+  })),
 ];
 
 for (const family of AIKEN_FAMILIES) {

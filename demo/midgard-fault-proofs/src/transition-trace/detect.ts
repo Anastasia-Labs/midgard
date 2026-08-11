@@ -1,5 +1,5 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
-import { buildMidgardBoundedCollectionV1 } from "@al-ft/midgard-core";
+import { midgardFieldCommitmentFromItemsV1 } from "@al-ft/midgard-core";
 import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxCompactV1,
@@ -1285,24 +1285,26 @@ const authenticatedL2TransactionSource = (
 };
 
 const requireCanonicalFieldCommitment = ({
-  fieldIndex,
   items,
   expectedCommitment,
   label,
 }: {
-  readonly fieldIndex: 0 | 2;
   readonly items: readonly Buffer[];
   readonly expectedCommitment: Buffer;
   readonly label: string;
 }): void => {
-  const actualCommitment = buildMidgardBoundedCollectionV1({
-    fieldIndex,
-    items,
-  }).commitment;
+  // §4: the field commits to a flat `blake2b_256` of its §5.1 preimage, so the
+  // check is over the assembled bytes rather than a counted per-item root — and
+  // the field index is no longer an input, because §4 puts no field index in the
+  // hash. Which field this *is* comes from `expectedCommitment`: the caller reads
+  // it out of the authenticated compact structure, which is what §4's
+  // positional-identity invariant requires and the only thing separating fields
+  // 0 and 2 for identical content.
+  const actualCommitment = midgardFieldCommitmentFromItemsV1(items);
   if (!actualCommitment.equals(expectedCommitment)) {
     throw transitionTraceError(
       "missingWitnessData",
-      `${label} canonical bounded-collection commitment does not match the authenticated transaction compact.`,
+      `${label} canonical field commitment does not match the authenticated transaction compact.`,
     );
   }
 };
@@ -1335,13 +1337,11 @@ const replayL2TransactionTransition = (
     witness.source_membership,
   );
   requireCanonicalFieldCommitment({
-    fieldIndex: 0,
     items: spendInputs,
     expectedCommitment: compact.transactionBody.spendInputsHash,
     label: "L2 transaction spend-input preimage",
   });
   requireCanonicalFieldCommitment({
-    fieldIndex: 2,
     items: outputs,
     expectedCommitment: compact.transactionBody.outputsHash,
     label: "L2 transaction output preimage",

@@ -4,14 +4,14 @@ import {
   computeMidgardNativeTxCanonicalSizeFromProofSourceV1,
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
+  decodeMidgardFieldPreimageV1,
   deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardV1TxFieldChunks,
-  deriveMidgardV1TxFieldEvidence,
   deriveMidgardV1TxFieldPreimages,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardCekProgramEnvelopeV1,
+  encodeMidgardFieldPreimageForFieldV1,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScriptListPreimage,
@@ -21,17 +21,18 @@ import {
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   midgardAddressFromText,
+  midgardExpectedChunkCountV1,
+  midgardFieldCommitmentFromItemsV1,
+  midgardFieldCommitmentV1,
   type MidgardNativeScript,
   type MidgardNativeTxCanonicalV1,
   type MidgardTxOutput,
   protectMidgardAddress,
   reconstructMidgardTransactionV1,
-  reconstructMidgardTransactionV1FromChunks,
+  splitMidgardFieldPreimageIntoChunksV1,
   validateMidgardConsensusV1Tx,
   validateMidgardConsensusV1TxCbor,
   verifyMidgardNativeTxProofSourceV1,
-  verifyMidgardV1TxFieldChunk,
-  verifyMidgardV1TxFieldItem,
   verifyMidgardV1TxFieldPreimage,
 } from "../src/index.js";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "../src/plutus-data-cbor.js";
@@ -83,11 +84,16 @@ const canonical = (
     validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
     requiredObserversPreimageCbor: encodeCbor([Buffer.alloc(28, 7)]),
     requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-    mintPreimageCbor: encodeCbor(
-      new Map([
-        [Buffer.alloc(28, 8), new Map([[Buffer.from("asset", "ascii"), 1n]])],
-      ]),
-    ),
+    // §5.6: the enveloped per-policy item list, not the retired raw map.
+    mintPreimageCbor: encodeMidgardFieldPreimageForFieldV1({
+      fieldIndex: 5,
+      items: [
+        {
+          policyId: Buffer.alloc(28, 8),
+          assets: [{ assetName: Buffer.from("asset", "ascii"), quantity: 1n }],
+        },
+      ],
+    }),
     scriptIntegrityHash: Buffer.alloc(32, 9),
     auxiliaryDataHash: EMPTY_NULL_ROOT,
     networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -97,7 +103,17 @@ const canonical = (
     scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage([
       { language: "MidgardV1", scriptBytes: cekProgramEnvelope() },
     ]),
-    redeemerTxWitsPreimageCbor: encodeCbor([Buffer.from([0x80])]),
+    redeemerTxWitsPreimageCbor: encodeMidgardFieldPreimageForFieldV1({
+      fieldIndex: 8,
+      items: [
+        {
+          purpose: "Spend",
+          index: 0n,
+          redeemerCbor: Buffer.from([0x80]),
+          executionUnits: { memory: 0n, steps: 0n },
+        },
+      ],
+    }),
   },
 });
 
@@ -191,89 +207,73 @@ describe("canonical V1 consensus transaction bounds", () => {
     ).toThrow(/unknown V1 transaction field index/u);
   });
 
-  it("authenticates a transaction field one bounded chunk at a time", () => {
+  it("carries §4 flat commitments in the compact structure and nothing else", () => {
+    // What the retired counted publication chain's tests were for: proving the
+    // compact's nine hashes are reachable from the revealed bytes. Under §4 that
+    // is one `blake2b_256` per field with no domain tag, version prefix or field
+    // index in the input, so the property is stated directly instead of through
+    // per-item openings — which §4 leaves nothing to check against.
     const tx = materializeMidgardNativeTxFromCanonicalV1(canonical());
-    const source = deriveMidgardNativeTxProofSourceV1(tx);
-    const transactionId = computeMidgardNativeTxIdV1(tx);
-    const transactionCommitment =
-      computeMidgardNativeTxProofCommitmentV1(source);
-    const entry = deriveMidgardV1TxFieldChunks(
-      encodeMidgardNativeTxCanonicalV1(tx),
-    ).find((field) => field.proof.fieldIndex === 2)!;
-    const { collectionProof, proof } = entry;
+    const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
 
-    expect(
-      verifyMidgardV1TxFieldChunk({
-        transactionId,
-        transactionCommitment,
-        source,
-        collectionProof,
-        proof,
-      }),
-    ).toEqual(proof);
-    expect(() =>
-      verifyMidgardV1TxFieldChunk({
-        transactionId,
-        transactionCommitment,
-        source,
-        collectionProof,
-        proof: { ...proof, fieldIndex: 1 },
-      }),
-    ).toThrow(/item descriptor|chunk proof is invalid/u);
-    expect(() =>
-      verifyMidgardV1TxFieldChunk({
-        transactionId,
-        transactionCommitment: Buffer.alloc(32),
-        source,
-        collectionProof,
-        proof,
-      }),
-    ).toThrow(/does not match transaction commitment/u);
+    for (const field of deriveMidgardV1TxFieldPreimages(txCbor)) {
+      expect(field.expectedHash).toEqual(
+        midgardFieldCommitmentV1(field.preimageCbor),
+      );
+      // The commitment is over the bytes alone: re-hashing the items through the
+      // §5.1 envelope reproduces it, and no per-field salt exists to make the
+      // two disagree.
+      expect(field.expectedHash).toEqual(
+        midgardFieldCommitmentFromItemsV1(
+          decodeMidgardFieldPreimageV1(field.preimageCbor),
+        ),
+      );
+    }
   });
 
-  it("keeps fitting canonical proof items complete and commitment-bound", () => {
+  it("reveals a field through §8 carriage rather than per-item openings", () => {
+    // The replacement for chunked per-item publication: a preimage too large for
+    // tier 1 is split deterministically, the chunks are re-joined, and the field
+    // authenticates once against the same compact hash. Nothing per-item is
+    // published, and nothing per-item is verified.
     const tx = materializeMidgardNativeTxFromCanonicalV1(canonical());
-    const canonicalCbor = encodeMidgardNativeTxCanonicalV1(tx);
+    const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
     const source = deriveMidgardNativeTxProofSourceV1(tx);
     const transactionId = computeMidgardNativeTxIdV1(tx);
     const transactionCommitment =
       computeMidgardNativeTxProofCommitmentV1(source);
-    const evidence = deriveMidgardV1TxFieldEvidence(canonicalCbor);
-    const item = evidence.find(
-      (entry) =>
-        entry.kind === "completeItem" && entry.collectionProof.fieldIndex === 2,
+    const field = deriveMidgardV1TxFieldPreimages(txCbor).find(
+      (candidate) => candidate.fieldIndex === 2,
+    )!;
+
+    const chunks = splitMidgardFieldPreimageIntoChunksV1(field.preimageCbor);
+    expect(chunks).toHaveLength(
+      midgardExpectedChunkCountV1(field.preimageCbor.length),
     );
-    expect(item?.kind).toBe("completeItem");
-    if (item?.kind !== "completeItem") {
-      throw new Error("expected a complete output item");
-    }
+    expect(Buffer.concat(chunks)).toEqual(field.preimageCbor);
     expect(
-      verifyMidgardV1TxFieldItem({
+      verifyMidgardV1TxFieldPreimage({
         transactionId,
         transactionCommitment,
         source,
-        collectionProof: item.collectionProof,
-        itemCbor: item.itemCbor,
+        fieldIndex: 2,
+        preimageCbor: Buffer.concat(chunks),
       }),
-    ).toEqual(item.itemCbor);
+    ).toEqual(field);
+
+    // A chunk boundary is not a trust boundary: dropping one changes the bytes,
+    // and the single §4 check is what catches it.
     expect(() =>
-      verifyMidgardV1TxFieldItem({
+      verifyMidgardV1TxFieldPreimage({
         transactionId,
         transactionCommitment,
         source,
-        collectionProof: item.collectionProof,
-        itemCbor: Buffer.concat([item.itemCbor, Buffer.from([0])]),
+        fieldIndex: 2,
+        preimageCbor: Buffer.concat(chunks.slice(0, -1)),
       }),
-    ).toThrow(/length|commitment/u);
-    expect(
-      evidence
-        .filter((entry) => entry.kind === "completeItem")
-        .every(
-          (entry) =>
-            entry.itemCbor.length <=
-            MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
-        ),
-    ).toBe(true);
+    ).toThrow(
+      /preimage length does not match its compact source|hash mismatch/u,
+    );
   });
 
   it("reconstructs the exact canonical forced transaction from nine authenticated fragments", () => {
@@ -301,41 +301,6 @@ describe("canonical V1 consensus transaction bounds", () => {
         fieldPreimages: fields.slice(0, 8).map((field) => field.preimageCbor),
       }),
     ).toThrow(/exactly 9 field preimages/u);
-  });
-
-  it("reconstructs exactly from the canonical complete chunk sequence", () => {
-    const tx = materializeMidgardNativeTxFromCanonicalV1(canonical());
-    const expected = encodeMidgardNativeTxCanonicalV1(tx);
-    const source = deriveMidgardNativeTxProofSourceV1(tx);
-    const transactionId = computeMidgardNativeTxIdV1(tx);
-    const transactionCommitment =
-      computeMidgardNativeTxProofCommitmentV1(source);
-    const proofs = deriveMidgardV1TxFieldChunks(expected);
-
-    expect(
-      reconstructMidgardTransactionV1FromChunks({
-        transactionId,
-        transactionCommitment,
-        source,
-        chunkProofs: proofs,
-      }),
-    ).toEqual(expected);
-    expect(() =>
-      reconstructMidgardTransactionV1FromChunks({
-        transactionId,
-        transactionCommitment,
-        source,
-        chunkProofs: proofs.slice(1),
-      }),
-    ).toThrow(/sequence diverges|reconstructed length/u);
-    expect(() =>
-      reconstructMidgardTransactionV1FromChunks({
-        transactionId,
-        transactionCommitment,
-        source,
-        chunkProofs: [proofs[1]!, proofs[0]!, ...proofs.slice(2)],
-      }),
-    ).toThrow(/sequence diverges|reconstructed length/u);
   });
 
   it("rejects every unsupported transaction version", () => {
@@ -590,7 +555,12 @@ describe("canonical V1 consensus transaction bounds", () => {
     expect(
       validateMidgardConsensusV1Tx(transactionWithScripts(aboveOldLimit), 1),
     ).toBeNull();
-    expect(() => transactionWithScripts(malformed)).toThrow(/trailing bytes/u);
+    // 40,000 bytes of `0x80` is `80` — a §5.1 empty-field header — followed by
+    // 39,999 trailing bytes, so materialisation refuses it at the grammar check
+    // rather than committing to bytes no decoder accepts.
+    expect(() => transactionWithScripts(malformed)).toThrow(
+      /script_tx_wits is not a canonical §5\.1 field preimage/u,
+    );
   });
 
   it("does not impose the old arbitrary 128-asset transaction cap", () => {

@@ -36,11 +36,11 @@
  * produce redeemers the validators reject.
  */
 import {
-  buildMidgardBoundedCollectionV1,
   computeHash32,
   decodeSingleCbor,
   encodeCbor,
   encodeMidgardNativeTxWitnessSetCompactV1,
+  midgardFieldCommitmentFromItemsV1,
 } from "@al-ft/midgard-core";
 import { CML, Data } from "@lucid-evolution/lucid";
 
@@ -104,10 +104,9 @@ export const encodeMidgardAddressWitnessCanonicalV1 = (
 export const invalidSignatureAddressWitnessesCommitmentV1 = (
   witnesses: readonly MidgardAddressWitnessData[],
 ): string =>
-  buildMidgardBoundedCollectionV1({
-    fieldIndex: INVALID_SIGNATURE_ADDR_TX_WITS_FIELD_INDEX_V1,
-    items: witnesses.map(encodeMidgardAddressWitnessCanonicalV1),
-  }).commitment.toString("hex");
+  midgardFieldCommitmentFromItemsV1(
+    witnesses.map(encodeMidgardAddressWitnessCanonicalV1),
+  ).toString("hex");
 
 /**
  * Re-encode a positional witness list into the byte-list preimage the node

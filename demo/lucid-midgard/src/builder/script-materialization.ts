@@ -10,16 +10,20 @@ import {
   computeHash32,
   computeScriptIntegrityHashForLanguages,
   decodeMidgardNativeByteListPreimage,
-  deriveMidgardNativeFieldCollectionV1,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeCbor,
+  encodeMidgardFieldPreimageForFieldV1,
+  encodeMidgardHash28ItemV1,
   encodeMidgardVersionedScript,
   encodeMidgardVersionedScriptListPreimage,
   hashMidgardVersionedScript,
+  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
+  midgardFieldCommitmentV1,
   type MidgardNativeTxFullV1,
+  midgardRedeemerPurposeFromTagV1,
   type MidgardVersionedScript,
   type ScriptLanguageName,
+  sortMidgardMintItemsV1,
 } from "@al-ft/midgard-core/codec";
 import { hexToBytes, normalizeHex } from "@al-ft/midgard-core/hex";
 import {
@@ -82,11 +86,21 @@ type DerivedRedeemer = {
   readonly redeemer: Redeemer;
 };
 
+/**
+ * The four §5.3 `purpose_tag` values the Midgard builder emits, taken from the
+ * spec's own table rather than re-derived from `CML.RedeemerTag`. §5.3 reuses
+ * Cardano's numbering for 0–5, so the values are the same either way — but there
+ * is one place the value set lives, and `Receive` (6) is Midgard-only and has no
+ * CML spelling at all.
+ *
+ * The format's bound is the full seven-value set; this is deliberately the
+ * narrower builder subset (§5.3 names both).
+ */
 const RedeemerTags = {
-  Spend: Number(CML.RedeemerTag.Spend),
-  Mint: Number(CML.RedeemerTag.Mint),
-  Reward: Number(CML.RedeemerTag.Reward),
-  Receive: 6,
+  Spend: MIDGARD_REDEEMER_PURPOSE_TAGS_V1.Spend,
+  Mint: MIDGARD_REDEEMER_PURPOSE_TAGS_V1.Mint,
+  Reward: MIDGARD_REDEEMER_PURPOSE_TAGS_V1.Reward,
+  Receive: MIDGARD_REDEEMER_PURPOSE_TAGS_V1.Receive,
 } as const;
 
 const compareCanonicalStrings = (left: string, right: string): number =>
@@ -750,21 +764,36 @@ const effectiveMints = (
     }));
 };
 
-const mintPreimageCbor = (mints: readonly EffectiveMint[]): Buffer => {
-  if (mints.length === 0) {
-    return Buffer.from(EMPTY_CBOR_LIST);
-  }
-  const cborMap = new Map<Buffer, Map<Buffer, bigint>>();
-  for (const { policyId, assets } of mints) {
-    const assetMap = new Map<Buffer, bigint>();
-    for (const [assetName, quantity] of Object.entries(assets)) {
-      assetMap.set(Buffer.from(assetName, "hex"), quantity);
-    }
-    cborMap.set(Buffer.from(policyId, "hex"), assetMap);
-  }
-  return encodeCbor(cborMap);
-};
+/**
+ * §5.6: field 5 is the **enveloped list of per-policy items** under the §5.1
+ * grammar — `82 ‖ 58 1C policy_id ‖ map(k) ‖ asset entries` per item, and an
+ * empty mint is exactly `80` like every other field. The retired raw-map
+ * `encode_mint_preimage` form (`a0` when empty) is prohibited.
+ *
+ * `sortMidgardMintItemsV1` puts the items into §5.6's canonical key order at both
+ * levels; `encodeMidgardFieldPreimageForFieldV1` then *enforces* that order rather
+ * than trusting it, so a builder cannot emit a preimage no decoder accepts.
+ */
+const mintPreimageCbor = (mints: readonly EffectiveMint[]): Buffer =>
+  encodeMidgardFieldPreimageForFieldV1({
+    fieldIndex: 5,
+    items: sortMidgardMintItemsV1(
+      mints.map(({ policyId, assets }) => ({
+        policyId: Buffer.from(policyId, "hex"),
+        assets: Object.entries(assets).map(([assetName, quantity]) => ({
+          assetName: Buffer.from(assetName, "hex"),
+          quantity,
+        })),
+      })),
+    ),
+  });
 
+/**
+ * §5.3 field 3 items: the raw 28-byte observer script hash, no interior CBOR.
+ * Built with the §5.3 encoder so the width the on-chain stride-30 arithmetic
+ * assumes is asserted by the producer rather than inherited from whatever
+ * `normalizeScriptHash` happened to admit.
+ */
 const requiredObserversPreimageCbor = (
   observers: readonly ObserverIntent[],
 ): Buffer =>
@@ -773,7 +802,7 @@ const requiredObserversPreimageCbor = (
     : encodeByteListPreimage(
         [...new Set(observers.map(({ scriptHash }) => scriptHash))]
           .sort()
-          .map((hash) => Buffer.from(hash, "hex")),
+          .map((hash) => encodeMidgardHash28ItemV1(Buffer.from(hash, "hex"))),
       );
 
 const pointerKey = (pointer: RedeemerPointer): string =>
@@ -917,10 +946,17 @@ const addRequiredExecution = ({
   redeemers.push({ pointer, redeemer });
 };
 
+/**
+ * §5.1/§5.3: field 8 is the enveloped list of `enc_8` items
+ * (`84 ‖ uint(purpose_tag) ‖ uint(index) ‖ bytes(redeemer_cbor) ‖ 82 ‖ uint(ex_memory) ‖ uint(ex_steps)`).
+ * The retired counted scheme concatenated the raw item arrays with no per-item
+ * envelope; §5.1 prohibits that form for all nine fields.
+ *
+ * Pointer ordering and duplicate rejection stay here — they are a builder
+ * invariant about which redeemers may coexist, not a property of the byte
+ * grammar, and the error the caller wants is `BuilderInvariantError`.
+ */
 const encodeRedeemers = (redeemers: readonly DerivedRedeemer[]): Buffer => {
-  if (redeemers.length === 0) {
-    return Buffer.from(EMPTY_CBOR_LIST);
-  }
   const seen = new Set<string>();
   const entries = [...redeemers].sort((left, right) => {
     if (left.pointer.tag !== right.pointer.tag) {
@@ -932,22 +968,23 @@ const encodeRedeemers = (redeemers: readonly DerivedRedeemer[]): Buffer => {
         ? 1
         : 0;
   });
-  const encoded: [bigint, bigint, Buffer, readonly [bigint, bigint]][] = [];
-  for (const entry of entries) {
-    const key = pointerKey(entry.pointer);
-    if (seen.has(key)) {
-      throw new BuilderInvariantError("Duplicate redeemer pointer", key);
-    }
-    seen.add(key);
-    const exUnits = normalizeExUnits(entry.redeemer);
-    encoded.push([
-      BigInt(entry.pointer.tag),
-      entry.pointer.index,
-      redeemerDataBytes(entry.redeemer),
-      [exUnits.mem, exUnits.steps],
-    ]);
-  }
-  return encodeCbor(encoded);
+  return encodeMidgardFieldPreimageForFieldV1({
+    fieldIndex: 8,
+    items: entries.map((entry) => {
+      const key = pointerKey(entry.pointer);
+      if (seen.has(key)) {
+        throw new BuilderInvariantError("Duplicate redeemer pointer", key);
+      }
+      seen.add(key);
+      const exUnits = normalizeExUnits(entry.redeemer);
+      return {
+        purpose: midgardRedeemerPurposeFromTagV1(entry.pointer.tag),
+        index: entry.pointer.index,
+        redeemerCbor: redeemerDataBytes(entry.redeemer),
+        executionUnits: { memory: exUnits.mem, steps: exUnits.steps },
+      };
+    }),
+  });
 };
 
 export const deriveScriptMaterialization = (
@@ -1081,10 +1118,9 @@ export const deriveScriptMaterialization = (
   }
 
   const redeemerTxWitsPreimageCbor = encodeRedeemers(redeemers);
-  const redeemerTxWitsHash = deriveMidgardNativeFieldCollectionV1({
-    fieldIndex: 8,
-    preimageCbor: redeemerTxWitsPreimageCbor,
-  }).commitment;
+  const redeemerTxWitsHash = midgardFieldCommitmentV1(
+    redeemerTxWitsPreimageCbor,
+  );
   const requiredLanguages = [...languages].sort();
   return {
     requiredObserversPreimageCbor: requiredObserversPreimageCbor(

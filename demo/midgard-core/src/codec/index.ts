@@ -4,7 +4,6 @@ export * from "./datum.js";
 export * from "./errors.js";
 export * from "./hash.js";
 export * from "./native.js";
-export * from "./native-field-items.js";
 export * from "./native-script.js";
 export * from "./native-tx-carriage-v1.js";
 export * from "./native-tx-field-access-v1.js";

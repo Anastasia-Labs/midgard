@@ -49,38 +49,108 @@ export const nativeTxVectorCanonicalV1 = (codec) => ({
 });
 
 /**
- * The same transaction with nine **distinct, ascending** field lengths, which is
- * the only way to prove the `n08` length tuple is positional rather than
- * accidentally symmetric. Field 5 is a one-policy mint map because a mint field
- * cannot be given an arbitrary length by padding.
+ * The same transaction with nine **distinct** field lengths, which is what proves
+ * the `n08` length tuple is positional rather than accidentally symmetric.
+ *
+ * The lengths are deliberately *not* sorted. Under §5.1 each field's minimum
+ * width is fixed by its own item encoding — fields 0/1 are stride 40, fields 3/4
+ * stride 30, field 7 stride 103, and §5.6's smallest mint policy item is 34 bytes
+ * — so an ascending run in wire order is not constructible without padding every
+ * field into a size that says nothing. An unsorted tuple is also the stronger
+ * test: a sorted one survives a stable-sort bug in the encoder, an unsorted one
+ * does not.
+ *
+ * Every field is built through its §5.3/§5.6 item encoder rather than by padding
+ * bytes, so the resulting lengths are the ones the grammar actually produces.
  */
 export const nativeTxVectorOrderedLengthCanonicalV1 = (codec) => {
   const base = nativeTxVectorCanonicalV1(codec);
+  const input = (index) => ({
+    txId: Buffer.alloc(32, 0xab),
+    outputIndex: index,
+  });
   return {
     ...base,
     body: {
       ...base.body,
-      spendInputsPreimageCbor: codec.encodeCbor([]),
-      referenceInputsPreimageCbor: codec.encodeCbor([Buffer.alloc(0)]),
-      outputsPreimageCbor: codec.encodeCbor([Buffer.alloc(1)]),
-      requiredObserversPreimageCbor: codec.encodeCbor([Buffer.alloc(2)]),
-      requiredSignersPreimageCbor: codec.encodeCbor([Buffer.alloc(3)]),
-      mintPreimageCbor: codec.encodeCbor(
-        new Map([[Buffer.alloc(28), new Map([[Buffer.alloc(0), 1n]])]]),
+      // 0 items — `80`.
+      spendInputsPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+        fieldIndex: 0,
+        items: [],
+      }),
+      // 1 item — stride 40.
+      referenceInputsPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+        fieldIndex: 1,
+        items: [input(7)],
+      }),
+      // 1 output with an address and a bare-lovelace value.
+      outputsPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+        fieldIndex: 2,
+        items: [
+          {
+            // A Midgard address payload: one header byte then a 28-byte payment
+            // hash, no stake part (§5.5).
+            address: Buffer.concat([
+              Buffer.from([0x60]),
+              Buffer.alloc(28, 0xcd),
+            ]),
+            value: { lovelace: 0n, assets: new Map() },
+          },
+        ],
+      }),
+      // 1 × 28-byte hash — stride 30.
+      requiredObserversPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1(
+        {
+          fieldIndex: 3,
+          items: [Buffer.alloc(28, 0x02)],
+        },
       ),
+      // 2 × 28-byte hashes, ascending so §5.3's order rule holds.
+      requiredSignersPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+        fieldIndex: 4,
+        items: [Buffer.alloc(28, 0x03), Buffer.alloc(28, 0x04)],
+      }),
+      // §5.6's smallest policy item: one policy, one empty-named asset.
+      mintPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+        fieldIndex: 5,
+        items: [
+          {
+            policyId: Buffer.alloc(28, 0x05),
+            assets: [{ assetName: Buffer.alloc(0), quantity: 1n }],
+          },
+        ],
+      }),
     },
     witnessSet: {
-      addrTxWitsPreimageCbor: codec.encodeCbor([Buffer.alloc(4)]),
-      scriptTxWitsPreimageCbor: codec.encodeCbor([0n, 1n, 2n, 3n, 4n, 5n]),
-      redeemerTxWitsPreimageCbor: codec.encodeCbor([
-        0n,
-        1n,
-        2n,
-        3n,
-        4n,
-        5n,
-        6n,
-      ]),
+      // 1 witness — stride 103.
+      addrTxWitsPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+        fieldIndex: 7,
+        items: [
+          {
+            verificationKey: Buffer.alloc(32, 0x06),
+            signature: Buffer.alloc(64, 0x07),
+          },
+        ],
+      }),
+      // The narrowest §5.3 field-6 item: `82 03 40`. `PlutusV3` rather than
+      // `NativeCardano` because §5.3 makes the native language carry a script
+      // *structure*, not a raw payload, so it has no empty form.
+      scriptTxWitsPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+        fieldIndex: 6,
+        items: [{ language: "PlutusV3", scriptBytes: Buffer.alloc(0) }],
+      }),
+      // The narrowest §5.3 field-8 item: `84 00 00 40 82 00 00`.
+      redeemerTxWitsPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+        fieldIndex: 8,
+        items: [
+          {
+            purpose: "Spend",
+            index: 0n,
+            redeemerCbor: Buffer.alloc(0),
+            executionUnits: { memory: 0n, steps: 0n },
+          },
+        ],
+      }),
     },
   };
 };
@@ -128,9 +198,7 @@ export const deriveNativeTxVectorV1 = (codec) => {
     proofWitnessCompact: hex(source.witnessSetCompactCbor),
     proofLengths: hex(source.fieldPreimageLengthsCbor),
     proofSource: hex(codec.encodeMidgardNativeTxProofSourceV1(source)),
-    proofCommitment: hex(
-      codec.computeMidgardNativeTxProofCommitmentV1(source),
-    ),
+    proofCommitment: hex(codec.computeMidgardNativeTxProofCommitmentV1(source)),
     canonicalSize:
       codec.computeMidgardNativeTxCanonicalSizeFromProofSourceV1(source),
     orderedLengthTuple: hex(

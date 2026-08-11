@@ -8,13 +8,11 @@ import {
   computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
-  deriveMidgardV1TxFieldChunks,
   deriveMidgardV1TxFieldPreimages,
   encodeCbor,
   hashMidgardValidationWorkWitnessV1,
   midgardBoundedItemChunkCountV1,
-  reconstructMidgardTransactionV1FromChunks,
-  verifyMidgardV1TxFieldChunk,
+  reconstructMidgardTransactionV1,
 } from "@al-ft/midgard-core";
 import {
   MIDGARD_CONSENSUS_LIMITS_V1,
@@ -29,6 +27,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { selectValidationCompleteItemCarriageV1 } from "../../../midgard-fault-proofs/src/validation-dispute/submit.js";
+import { countedMachineTransactionChunkStepsV1 } from "../../src/validation-machine.js";
 import { encodeValidationAuxiliaryWitnessCborV1 } from "../../src/validation-machine-data.js";
 
 export const CARDANO_BOUNDARY_MAX_TX_SIZE_V1 = 16_384;
@@ -1797,9 +1796,10 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
       `Canonical Midgard transaction does not contain field ${fieldIndex.toString()}`,
     );
   }
-  const completeChunks = deriveMidgardV1TxFieldChunks(nativeCanonicalCbor);
+  const completeChunks =
+    countedMachineTransactionChunkStepsV1(nativeCanonicalCbor);
   const fieldChunks = completeChunks.filter(
-    (chunk) => chunk.proof.fieldIndex === fieldIndex,
+    (chunk) => chunk.fieldIndex === fieldIndex,
   );
   if (fieldChunks.length === 0) {
     throw new Error(
@@ -1807,21 +1807,17 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
     );
   }
 
-  for (const chunk of fieldChunks) {
-    verifyMidgardV1TxFieldChunk({
-      transactionId,
-      transactionCommitment,
-      source,
-      collectionProof: chunk.collectionProof,
-      proof: chunk.proof,
-    });
-  }
-
-  const reconstructed = reconstructMidgardTransactionV1FromChunks({
+  // §4 authenticates a field once, over its whole preimage, against the hash the
+  // compact structure carries. The retired counted chain verified each chunk
+  // opening here instead; under §4 a per-item opening has nothing to be checked
+  // against, so the single whole-field check is the authentication.
+  const reconstructed = reconstructMidgardTransactionV1({
     transactionId,
     transactionCommitment,
     source,
-    chunkProofs: completeChunks,
+    fieldPreimages: deriveMidgardV1TxFieldPreimages(nativeCanonicalCbor).map(
+      (candidate) => candidate.preimageCbor,
+    ),
   });
   if (!reconstructed.equals(nativeCanonicalCbor)) {
     throw new Error(
@@ -1842,7 +1838,8 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
     "hex",
   );
   const firstTerminalItemStepIndex = fieldChunks.findIndex(
-    (step) => step.proof.itemIndex === terminalFieldStep.proof.itemIndex,
+    (step) =>
+      step.chunkProof.itemIndex === terminalFieldStep.chunkProof.itemIndex,
   );
   const precedingItemStep =
     firstTerminalItemStepIndex > 0
@@ -1867,8 +1864,8 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
     source.fieldPreimageLengthsCbor,
     validationContextCbor,
     BigInt(fieldIndex),
-    BigInt(terminalFieldStep.proof.itemIndex),
-    BigInt(terminalFieldStep.proof.chunkIndex),
+    BigInt(terminalFieldStep.chunkProof.itemIndex),
+    BigInt(terminalFieldStep.chunkProof.chunkIndex),
     BigInt(terminalFieldStep.collectionProof.itemCount),
     BigInt(encodedLengthBeforeItem),
   ]);
@@ -1912,12 +1909,12 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
           encodeValidationAuxiliaryWitnessCborV1({
             kind: "transactionFieldChunk",
             collectionProof: chunk.collectionProof,
-            chunkProof: chunk.proof,
+            chunkProof: chunk.chunkProof,
           }).length,
       ),
     ),
     maxChunkBytes: Math.max(
-      ...fieldChunks.map((chunk) => chunk.proof.chunk.length),
+      ...fieldChunks.map((chunk) => chunk.chunkProof.chunk.length),
     ),
     terminalFoldVector: {
       transactionIdHex: transactionId.toString("hex"),
@@ -1960,16 +1957,16 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
         ),
       },
       chunkProof: {
-        fieldIndex: terminalFieldStep.proof.fieldIndex,
-        itemIndex: terminalFieldStep.proof.itemIndex,
-        totalLength: terminalFieldStep.proof.totalLength,
-        chunkIndex: terminalFieldStep.proof.chunkIndex,
-        chunkHex: terminalFieldStep.proof.chunk.toString("hex"),
-        frontier: terminalFieldStep.proof.frontier.peaks.map((peak) => ({
+        fieldIndex: terminalFieldStep.chunkProof.fieldIndex,
+        itemIndex: terminalFieldStep.chunkProof.itemIndex,
+        totalLength: terminalFieldStep.chunkProof.totalLength,
+        chunkIndex: terminalFieldStep.chunkProof.chunkIndex,
+        chunkHex: terminalFieldStep.chunkProof.chunk.toString("hex"),
+        frontier: terminalFieldStep.chunkProof.frontier.peaks.map((peak) => ({
           height: peak.height,
           hashHex: peak.hash.toString("hex"),
         })),
-        siblingHexes: terminalFieldStep.proof.siblings.map((sibling) =>
+        siblingHexes: terminalFieldStep.chunkProof.siblings.map((sibling) =>
           sibling.toString("hex"),
         ),
       },

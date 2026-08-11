@@ -13,8 +13,8 @@ import {
   decodeMidgardNativeTxProofFieldLengthsV1,
 } from "@al-ft/midgard-core/codec";
 // `authenticatedMidgardFieldViewV1` is deliberately not imported — see
-// `reconstructTxOrderMaterialV1`'s note on why the §8.8 door cannot be the
-// authenticator on this path until #585 swaps the nine-field derivation to §4.
+// `reconstructTxOrderMaterialV1`'s note on why the §8.8 door has no carriage to
+// open on this path until #589 lands the §8.6 certificate.
 import { encodeMidgardFieldArrayHeaderV1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
   isMidgardConsensusProfileV1,
@@ -141,7 +141,8 @@ export const publishedProgramMaterialSnapshotError = (
  * and a ±1 chunk offset that existed solely because field 5 was a raw CBOR map.
  * All of that retired with the chain in #587: under `docs/spec/midgard-tx.md` §4
  * a field is committed by one flat hash over its whole preimage, so a preimage is
- * authenticated once and read whole rather than assembled from openings.
+ * authenticated once and read whole rather than assembled from openings. #585
+ * then made the TypeScript side actually derive those hashes that way.
  *
  * **What it is now.** It reads the committed field lengths, refuses any order that
  * carries material, and reconstructs the transaction from nine §5.1 empty-field
@@ -150,18 +151,28 @@ export const publishedProgramMaterialSnapshotError = (
  * re-derives the tx-id and the proof commitment from the same bytes, so a payload
  * whose lengths, hashes and id do not agree is refused.
  *
- * **Why the §8.8 door is not the authenticator here, yet.** #587's ruling named
+ * **Why the §8.8 door is not the authenticator here.** #587's ruling named
  * `authenticatedMidgardFieldViewV1` — deliberately not imported, so this is a
- * name and not a `{@link}` that would dangle — and that is the right destination,
- * but
- * the door authenticates a preimage against a **§4 flat commitment**, and
- * `deriveNativeTxBodyCompact` still derives the nine field hashes under the retired
- * counted bounded-collection scheme. That residual is documented in full at its
- * source and owned by #585. Until it swaps, the only §4 commitment available on
- * this path is the empty field's, which is a constant — so a door call here would
- * compare a constant against a constant and pass whatever the payload said. A check
- * that cannot fail is worse than no check, so this uses the authenticator that is
- * actually bound to the payload and says why.
+ * name and not a `{@link}` that would dangle — and that is still the destination.
+ * What has changed since that ruling is the reason it is not reached yet.
+ *
+ * It used to be that `deriveNativeTxBodyCompact` derived the nine field hashes
+ * under the retired counted scheme, so no §4 commitment existed on this path
+ * except the empty field's constant, and a door call would have compared a
+ * constant against a constant. #585 swapped that: the nine hashes are now §4 flat
+ * commitments, and `verifyMidgardV1TxFieldPreimage` — which is what
+ * `reconstructMidgardTransactionV1` calls per field — performs exactly the §4
+ * check the door would, taking each expected hash from the compact structure in
+ * view as §4's positional-identity invariant requires. So the check here is real,
+ * and it is the same check.
+ *
+ * What is still missing is the door's *subject*: it opens a field out of §8
+ * carriage, and this path has no carriage to open. The tx-order mint's
+ * `verify_order_material` admits only the canonically-empty transaction, so the
+ * only preimages reachable here are the nine empty ones, which arrive as a
+ * constant rather than through a carriage tier. #589 owns the §8.6 certificate
+ * work that gives this path real carriage, and owns moving this function onto the
+ * door at the same time — the two are one change, not two.
  *
  * The material limit is the other half: the tx-order mint's
  * `verify_order_material` admits only the canonically-empty transaction. See its
@@ -287,12 +298,34 @@ const txOrderUTxOToEntry = (
       operatorValidity: decoded.validity,
       consensusProfile: consensusProfile satisfies MidgardConsensusProfileV1,
     });
+    // The two identity columns this row carries are **recomputed** from the
+    // reconstructed canonical bytes, not copied out of the datum:
+    // `encodeForcedInclusionValueV1` re-derives the proof source from
+    // `nativeTxCbor` and hashes it. The datum's own values are already bound —
+    // `reconstructTxOrderMaterialV1` fed both to `reconstructMidgardTransactionV1`,
+    // whose per-field `verifyMidgardV1TxFieldPreimage` refuses a source that does
+    // not hash to the datum's `transaction_commitment` — but that binding is
+    // transitive, through a round-trip. These two checks make it direct, so a
+    // reconstruction that lost identity on the way out cannot be persisted under
+    // the datum's name.
     if (payload.tx_id !== encoded.txId.toString("hex")) {
       return yield* Effect.fail(
         new SDK.LucidError({
           message:
             "V1 tx-order transaction id does not match its canonical transaction",
           cause: `datum=${payload.tx_id},derived=${encoded.txId.toString("hex")}`,
+        }),
+      );
+    }
+    if (
+      payload.transaction_commitment !==
+      encoded.transactionCommitment.toString("hex")
+    ) {
+      return yield* Effect.fail(
+        new SDK.LucidError({
+          message:
+            "V1 tx-order transaction commitment does not match its canonical transaction",
+          cause: `datum=${payload.transaction_commitment},derived=${encoded.transactionCommitment.toString("hex")}`,
         }),
       );
     }

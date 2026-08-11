@@ -12,14 +12,15 @@ import {
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   decodeMidgardTxOutput,
   deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardV1TxFieldChunks,
+  deriveMidgardV1TxFieldPreimages,
   encodeCbor,
+  encodeMidgardFieldPreimageV1,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardTxOutput,
   materializeMidgardNativeTxFromCanonicalV1,
-  reconstructMidgardTransactionV1FromChunks,
+  reconstructMidgardTransactionV1,
   validateMidgardConsensusV1Tx,
-  verifyMidgardV1TxFieldChunk,
+  verifyMidgardV1TxFieldPreimage,
 } from "../src/index.js";
 
 /**
@@ -203,24 +204,32 @@ const exerciseRetainedReconstruction = (
   const transactionId = computeMidgardNativeTxIdV1(native);
   const source = deriveMidgardNativeTxProofSourceV1(native);
   const transactionCommitment = computeMidgardNativeTxProofCommitmentV1(source);
-  const chunkProofs = deriveMidgardV1TxFieldChunks(canonical);
-  for (const chunk of chunkProofs) {
-    verifyMidgardV1TxFieldChunk({
+  const fields = deriveMidgardV1TxFieldPreimages(canonical);
+  for (const field of fields) {
+    verifyMidgardV1TxFieldPreimage({
       transactionId,
       transactionCommitment,
       source,
-      collectionProof: chunk.collectionProof,
-      proof: chunk.proof,
+      fieldIndex: field.fieldIndex,
+      preimageCbor: field.preimageCbor,
     });
   }
-  const reconstructed = reconstructMidgardTransactionV1FromChunks({
+  const reconstructed = reconstructMidgardTransactionV1({
     transactionId,
     transactionCommitment,
     source,
-    chunkProofs,
+    fieldPreimages: fields.map((field) => field.preimageCbor),
   });
   expect(reconstructed.equals(canonical)).toBe(true);
-  return { revealStepCount: chunkProofs.length };
+  // §4 is authenticate-once per field, so a reveal is one step per field that
+  // carries material — not one step per item chunk, which is what the retired
+  // counted publication chain counted here. An empty field is exactly `80`.
+  const emptyPreimage = encodeMidgardFieldPreimageV1([]);
+  return {
+    revealStepCount: fields.filter(
+      (field) => !field.preimageCbor.equals(emptyPreimage),
+    ).length,
+  };
 };
 
 const sha256Hex = (bytes: Uint8Array): string =>
@@ -261,7 +270,10 @@ describe("canonical V1 deep unary datum with stock CML", () => {
       canonical,
       4_043,
     );
-    expect(revealStepCount).toBe(6);
+    // §4 pays one authenticate-once per field that carries material, so the
+    // 16,472-byte maximum reveals in 3 steps rather than the 6 per-item chunk
+    // openings the retired counted publication chain needed for the same bytes.
+    expect(revealStepCount).toBe(3);
   }, 60_000);
 
   it("also handles the adjacent depth-4,044 datum as canonical Midgard content", () => {

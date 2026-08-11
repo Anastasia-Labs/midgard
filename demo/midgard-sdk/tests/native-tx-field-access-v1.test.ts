@@ -304,21 +304,21 @@ describe("§4/§8.6 values a builder must reproduce", () => {
     );
   });
 
-  it("computes the empty spend-inputs hash under the counted scheme, not the flat §4 empty-field commitment", () => {
-    // The `fraud_proofs/zero_input/step_02` *source* requires the flat §4
-    // commitment. `EMPTY_SPEND_INPUTS_HASH` is the value the *codec* computes,
-    // and it is still the counted one: #569 added the flat per-field producers
-    // and their cross-language vectors, but the nine-field consumer path
-    // (`deriveNativeTxBodyCompact` and its downstream callers) has not
-    // re-pointed (#585), and the blueprint has not been regenerated (#579).
-    // See the constant's own note for why moving it before both would break
-    // the fault-proof emulator.
-    // Asserting the gap keeps it visible instead of letting a builder quietly
-    // emit a datum the validator rejects.
-    expect(EMPTY_SPEND_INPUTS_HASH).not.toBe(EMPTY_FIELD_COMMITMENT_HEX_V1);
-    expect(EMPTY_SPEND_INPUTS_HASH).toBe(
-      "eb25ed4ae02426602eee44b29d93e9dcd0be514b2087eda02f398b16fbb0ec76",
-    );
+  it("computes the empty spend-inputs hash as the flat §4 empty-field commitment", () => {
+    // The convergence #585 exists to produce. `fraud_proofs/zero_input/step_02`
+    // compares its `bad_tx_spend_inputs_hash` against
+    // `native_tx_field_access_v1.empty_field_commitment`, and
+    // `EMPTY_SPEND_INPUTS_HASH` is what the codec computes for a body that spends
+    // nothing — before the nine-field consumer swap the two disagreed
+    // (`eb25ed4a…` against `45b0cfc2…`) and a builder could emit a datum the
+    // validator rejects.
+    //
+    // They now agree by construction: `deriveNativeTxBodyCompact` derives §4's
+    // flat `blake2b_256` over the §5.1 preimage, and the empty field is exactly
+    // `80`. Asserting equality rather than the gap is what keeps a regression from
+    // silently re-opening it. The blueprint that pins the on-chain half is
+    // regenerated once, in #579.
+    expect(EMPTY_SPEND_INPUTS_HASH).toBe(EMPTY_FIELD_COMMITMENT_HEX_V1);
   });
 
   it("derives the certificate token name from (tx_id, field_index)", () => {
