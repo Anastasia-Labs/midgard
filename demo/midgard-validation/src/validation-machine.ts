@@ -182,6 +182,17 @@ import type { QueuedTx, RejectCode, RejectedTx } from "./types.js";
  * owns only the single blueprint regeneration #592 has to land before, not this
  * rework.)
  *
+ * **How large "both halves" is, measured rather than estimated (#593).** The
+ * on-chain half is not the two `verify_canonical_decode_*` predicates #592's body
+ * names: the counted opening occurs at fifteen sites across eight machine phases,
+ * and nine of them reach their evidence through the single
+ * `TransactionFieldChunkWitness` constructor. So this trace cannot be retired for
+ * one phase at a time either — the constructor's fields change once, for every
+ * phase at once, and this producer moves with them. #593 carries the site list and
+ * the two rulings (which §8 carriage tiers a machine step may name, and how an
+ * ungrammatical *committed* preimage is rejected rather than aborted) that have to
+ * land before either half can be written.
+ *
  * What *did* change with the reversion is the input: the items come from §5.1's
  * one uniform enveloped byte-list decode, replacing the retired counted-era
  * three-way split (byte lists / raw item concatenation / the field-5 raw map).

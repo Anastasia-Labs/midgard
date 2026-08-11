@@ -564,8 +564,17 @@ pub fn encode_input_sets_scan_witness(
   expect reference_count >= -1
   expect spend_seen >= 0
   expect reference_seen >= 0
-  expect
-    bytearray.length(previous_key) == 0 || bytearray.length(previous_key) == 36
+  // `previous_key` is the §5.3 spend-/reference-input item this scan last read
+  // (`verify_input_sets_item` takes it straight off the item it decoded), so its
+  // one admissible width is the item width the field grammar declares. Named off
+  // `native_tx_field_access_v1` rather than restated as a literal: the retired
+  // minimal-index spelling was 36 bytes, this domain assertion still said 36
+  // after #586 moved the item to the fixed 3-byte output index, and a scan that
+  // reads one input could then not encode its own successor witness at all.
+  expect or {
+      bytearray.length(previous_key) == 0,
+      bytearray.length(previous_key) == native_tx_field_access_v1.spend_input_item_bytes,
+    }
   expect bytearray.length(resolution_schedule_hash) == 32
   encode_definite_array_header(10)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
@@ -2180,7 +2189,9 @@ fn input_sets_control_is_bound(
         control.resolution_schedule_hash == empty_resolution_schedule_hash(),
       }
     } else {
-      bytearray.length(control.previous_key) == 36
+      // The same §5.3 item width `encode_input_sets_scan_witness` admits, and
+      // named off the same constant so the two cannot drift apart again.
+      bytearray.length(control.previous_key) == native_tx_field_access_v1.spend_input_item_bytes
     },
     bytearray.length(control.resolution_schedule_hash) == 32,
     witness.work_witness_cbor == encode_input_sets_scan_witness(
