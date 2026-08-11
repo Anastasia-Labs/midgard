@@ -142,10 +142,26 @@ jobs:
       # cross-language claim is unfalsifiable.
       - name: Check native V1 carriage wire golden vectors
         run: pnpm --dir demo/midgard-sdk run fixtures:native-tx-carriage-wire-v1:check
+      # The `n01`-`n09` transaction vectors (#588). Same footing as the three
+      # channels above, with one difference worth naming: the eleven Aiken
+      # constants this gates live inside a hand-written 1,700-line test module, so
+      # the generator rebinds them in place rather than emitting the module. That
+      # makes the gate more load-bearing, not less — nothing about the module's
+      # appearance reveals which of its constants are generated.
+      - name: Check native V1 n01-n09 transaction vectors
+        run: pnpm --dir demo/midgard-core run fixtures:native-tx-vector-v1:check
       - name: Build, typecheck, and test Midgard SDK
         run: pnpm --dir demo/midgard-sdk run build && pnpm --dir demo/midgard-sdk run typecheck && pnpm --dir demo/midgard-sdk test
       - name: Build, typecheck, and test Midgard validation
         run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
+      # The C20-6, C20-7 and field-8 maximum constant families in
+      # `native-tx-v1.test.ak` and `native-tx.max-redeemers.test.ak` are produced by
+      # the three ordered-collection boundary suites, which is why this gate runs
+      # them again rather than recomputing anything: the genuine signed-Cardano
+      # boundary is only findable under vitest. Without it, those constants are
+      # hand-mirrored twins again the moment the boundary moves (#588).
+      - name: Check ordered-collection boundary Aiken constants
+        run: pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:check
       - name: Build, typecheck, and test fault-proof tooling
         run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs test
       - name: Verify DA committee transport and admission

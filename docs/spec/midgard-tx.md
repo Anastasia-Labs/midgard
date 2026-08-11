@@ -1516,6 +1516,37 @@ This is also the measurement that produced **erratum E1**: `K = 15,900` overruns
    its adjudication MUST read only that unit. And an adjudication MUST re-run
    the per-code shape rule: §12.1's type is deliberately public, so a statement
    may reach it without having passed through the §12.2 decoder.
+8. The cross-language **vector and fixture families of the nine-field encoding**
+   have producers, and their seeds are not hand-maintained. A "seed" is the input
+   a family is derived from — a canonical transaction's bytes, a genuine
+   signed-Cardano boundary, a declared construction's parameters — as distinct
+   from the derived constants an implementation then asserts. For those families,
+   both halves are held:
+   * every derived constant, in either language, is emitted by a script that also
+     runs in `--check` mode, so a constant that no producer emits is a failure
+     rather than a green test; and
+   * the seed is itself produced — from a construction stated in parameters, or
+     from a search whose implementation is the vector's single source — so that a
+     format change is absorbed by re-running producers and never by editing
+     constants.
+
+   Concretely, the families in scope are the `n01`–`n09` native-transaction
+   vectors, the three native-transaction conformance fixtures (high-cardinality,
+   size-balanced, and the ordinary core golden) with the Aiken constants derived
+   from each, the maximum-Cardano ordered-collection boundary constants, and the
+   field-access, field-item and carriage channels. Their **terminal-fold proof
+   structures** are the known exception: those are still mirrored by hand into
+   Aiken struct literals that a name-keyed constant rebinder cannot reach, and
+   issue #590 tracks bringing them to the same standard. This item states the
+   standard, not a claim that every value in the tree already meets it.
+
+   The standard is not a style preference. A hand-maintained seed makes the two
+   languages' agreement unfalsifiable in exactly the case that matters: after the
+   format moves, the only route to a green suite is a human transcribing bytes
+   between them, and a transcription error is indistinguishable from agreement.
+   Where a generated constant and a hand-written test module must coexist, the
+   generator rebinds named constants in place and never reformats the module
+   around them.
 
 ## 10. The resumable walk and its checkpoints
 

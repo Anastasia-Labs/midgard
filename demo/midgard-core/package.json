@@ -197,6 +197,8 @@
     "fixtures:native-tx-field-access-v1:sync": "pnpm run build && node scripts/generate-native-tx-field-access-v1-goldens.mjs",
     "fixtures:native-tx-field-items-v1:check": "pnpm run build && node scripts/generate-native-tx-field-items-v1-goldens.mjs --check",
     "fixtures:native-tx-field-items-v1:sync": "pnpm run build && node scripts/generate-native-tx-field-items-v1-goldens.mjs",
+    "fixtures:native-tx-vector-v1:check": "pnpm run build && node scripts/generate-native-tx-vector-v1-goldens.mjs --check",
+    "fixtures:native-tx-vector-v1:sync": "pnpm run build && node scripts/generate-native-tx-vector-v1-goldens.mjs",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",

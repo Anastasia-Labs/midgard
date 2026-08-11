@@ -1,3 +1,13 @@
+// The `maximum_cardano_*` constants in this module are GENERATED; the tests
+// around them are written by hand.
+//
+//   producer: pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:sync
+//
+// Their source is the genuine signed-Cardano field-8 boundary found by
+// `demo/midgard-validation/tests/ordered-collection-redeemer-boundary-v1.test.ts`,
+// which is the only implementation of that search; the producer runs the suite and
+// rebinds these constants from the vector it publishes (#588).
+
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
@@ -19,6 +29,15 @@ use midgard/validation_trace_v1
 // Derived by the genuine Cardano boundary fixture in
 // demo/midgard-validation/tests/ordered-collection-redeemer-boundary-v1.test.ts.
 const maximum_cardano_spend_redeemer_count = 296
+
+/// The redeemer datum and execution units every item of the field-8 maximum
+/// fixture carries. Declared by the TypeScript boundary fixture, which chose
+/// them to land the transaction exactly on the Cardano execution envelope.
+const maximum_cardano_spend_redeemer_cbor = #"d87980"
+
+const maximum_cardano_spend_redeemer_ex_memory = 1601
+
+const maximum_cardano_spend_redeemer_ex_steps = 316149
 
 const maximum_cardano_spend_redeemer_preimage_bytes = 5053
 
@@ -64,8 +83,11 @@ fn maximum_cardano_spend_redeemers_from(
       MidgardRedeemerWitness {
         purpose: SpendRedeemer,
         index: pointer_index,
-        redeemer_cbor: #"d87980",
-        execution_units: MidgardExecutionUnits { memory: 1601, steps: 316149 },
+        redeemer_cbor: maximum_cardano_spend_redeemer_cbor,
+        execution_units: MidgardExecutionUnits {
+          memory: maximum_cardano_spend_redeemer_ex_memory,
+          steps: maximum_cardano_spend_redeemer_ex_steps,
+        },
       },
       ..maximum_cardano_spend_redeemers_from(pointer_index + 1)
     ]
@@ -106,9 +128,9 @@ test maximum_cardano_spend_redeemer_field_matches_typescript_terminal_commitment
       fn(redeemer) {
         and {
           redeemer.purpose == SpendRedeemer,
-          redeemer.redeemer_cbor == #"d87980",
-          redeemer.execution_units.memory == 1601,
-          redeemer.execution_units.steps == 316149,
+          redeemer.redeemer_cbor == maximum_cardano_spend_redeemer_cbor,
+          redeemer.execution_units.memory == maximum_cardano_spend_redeemer_ex_memory,
+          redeemer.execution_units.steps == maximum_cardano_spend_redeemer_ex_steps,
         }
       },
     ),

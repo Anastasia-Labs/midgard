@@ -1,9 +1,11 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
+import * as codec from "../src/index.js";
 import {
   assertNativePosixTimeOrNone,
   computeHash32,
-  computeMidgardNativeTxCanonicalSizeFromProofSourceV1,
   computeMidgardNativeTxFullHashFromCanonicalCborV1,
   computeMidgardNativeTxFullHashV1,
   computeMidgardNativeTxIdV1,
@@ -30,11 +32,7 @@ import {
   encodeMidgardNativeTxBodyCanonicalV1,
   encodeMidgardNativeTxBodyCompactV1,
   encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
   encodeMidgardNativeTxProofFieldLengthsV1,
-  encodeMidgardNativeTxProofSourceV1,
-  encodeMidgardNativeTxWitnessPreimagesV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -45,6 +43,10 @@ import {
   verifyMidgardNativeScript,
   verifyMidgardNativeTxProofSourceV1,
 } from "../src/index.js";
+import {
+  deriveNativeTxVectorV1,
+  nativeTxVectorCanonicalV1,
+} from "./fixtures/native-tx-vector-v1.vectors.mjs";
 
 const makeCanonical = (): MidgardNativeTxCanonicalV1 => ({
   version: MIDGARD_NATIVE_TX_V1_VERSION,
@@ -70,18 +72,29 @@ const makeCanonical = (): MidgardNativeTxCanonicalV1 => ({
   },
 });
 
-const makeGoldenCanonical = (): MidgardNativeTxCanonicalV1 => ({
-  ...makeCanonical(),
-  validity: "FailedScript",
-  body: {
-    ...makeCanonical().body,
-    fee: 23n,
-    validityIntervalEnd: 24n,
-    scriptIntegrityHash: Buffer.alloc(32, 0x11),
-    auxiliaryDataHash: Buffer.alloc(32, 0x22),
-    networkId: 1n,
-  },
-});
+/**
+ * The `n01`–`n09` golden, defined once in
+ * `tests/fixtures/native-tx-vector-v1.vectors.mjs` and driven from here through
+ * `src/` while `scripts/generate-native-tx-vector-v1-goldens.mjs` drives the same
+ * definition through `dist/`. That is what lets the Aiken `n0x` constants be
+ * generated rather than hand-mirrored (#588).
+ */
+const makeGoldenCanonical = (): MidgardNativeTxCanonicalV1 =>
+  nativeTxVectorCanonicalV1(codec);
+
+/**
+ * The checked-in vector fixture. Recomputing it here rather than pinning the
+ * bytes inline is the TypeScript half of the golden channel: a codec that drifts
+ * fails here, not only under the generator's `--check` or on the Aiken side.
+ */
+const generatedNativeTxVector: unknown = (
+  JSON.parse(
+    readFileSync(
+      new URL("./fixtures/native-tx-vector-v1.generated.json", import.meta.url),
+      "utf8",
+    ),
+  ) as { readonly vector: unknown }
+).vector;
 
 describe("Midgard native v1 codec", () => {
   it("round trips canonical transaction CBOR into a materialized full transaction", () => {
@@ -177,88 +190,9 @@ describe("Midgard native v1 codec", () => {
   it("pins every native-V1 transaction schema and commitment language", () => {
     const tx = materializeMidgardNativeTxFromCanonicalV1(makeGoldenCanonical());
     const source = deriveMidgardNativeTxProofSourceV1(tx);
-    const orderedLengthTx = materializeMidgardNativeTxFromCanonicalV1({
-      ...makeGoldenCanonical(),
-      body: {
-        ...makeGoldenCanonical().body,
-        spendInputsPreimageCbor: encodeCbor([]),
-        referenceInputsPreimageCbor: encodeCbor([Buffer.alloc(0)]),
-        outputsPreimageCbor: encodeCbor([Buffer.alloc(1)]),
-        requiredObserversPreimageCbor: encodeCbor([Buffer.alloc(2)]),
-        requiredSignersPreimageCbor: encodeCbor([Buffer.alloc(3)]),
-        mintPreimageCbor: encodeCbor(
-          new Map([[Buffer.alloc(28), new Map([[Buffer.alloc(0), 1n]])]]),
-        ),
-      },
-      witnessSet: {
-        addrTxWitsPreimageCbor: encodeCbor([Buffer.alloc(4)]),
-        scriptTxWitsPreimageCbor: encodeCbor([0n, 1n, 2n, 3n, 4n, 5n]),
-        redeemerTxWitsPreimageCbor: encodeCbor([0n, 1n, 2n, 3n, 4n, 5n, 6n]),
-      },
-    });
-    const exact = {
-      bodyCanonical: encodeMidgardNativeTxBodyCanonicalV1(tx.body).toString(
-        "hex",
-      ),
-      bodyCompact: encodeMidgardNativeTxBodyCompactV1(
-        tx.compact.transactionBody,
-      ).toString("hex"),
-      witnessPreimages: encodeMidgardNativeTxWitnessPreimagesV1(
-        tx.witnessSet,
-      ).toString("hex"),
-      witnessCompact: encodeMidgardNativeTxWitnessSetCompactV1(
-        deriveMidgardNativeTxWitnessSetCompactV1(tx.witnessSet),
-      ).toString("hex"),
-      compact: encodeMidgardNativeTxCompactV1(tx.compact).toString("hex"),
-      canonical: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
-      transactionId: computeMidgardNativeTxIdV1(tx).toString("hex"),
-      fullHash: computeMidgardNativeTxFullHashV1(tx).toString("hex"),
-      proofCompact: source.compactCbor.toString("hex"),
-      proofWitnessCompact: source.witnessSetCompactCbor.toString("hex"),
-      proofLengths: source.fieldPreimageLengthsCbor.toString("hex"),
-      proofSource: encodeMidgardNativeTxProofSourceV1(source).toString("hex"),
-      proofCommitment:
-        computeMidgardNativeTxProofCommitmentV1(source).toString("hex"),
-      canonicalSize:
-        computeMidgardNativeTxCanonicalSizeFromProofSourceV1(source),
-      orderedLengthTuple: encodeMidgardNativeTxProofFieldLengthsV1([
-        1, 2, 3, 4, 5, 6, 7, 8, 9,
-      ]).toString("hex"),
-      derivedOrderedLengthTuple:
-        deriveMidgardNativeTxProofSourceV1(
-          orderedLengthTx,
-        ).fieldPreimageLengthsCbor.toString("hex"),
-    };
+    const exact = deriveNativeTxVectorV1(codec);
 
-    expect(exact).toEqual({
-      bodyCanonical:
-        "8c41804180418017201818418041804180582011111111111111111111111111111111111111111111111111111111111111115820222222222222222222222222222222222222222222222222222222222222222201",
-      bodyCompact:
-        "8c5820eb25ed4ae02426602eee44b29d93e9dcd0be514b2087eda02f398b16fbb0ec765820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f58203e8a3792d0d05e816cc08e97bdbd1f0e4375a9ef83f196c8c51705ec6f463e20172018185820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582011111111111111111111111111111111111111111111111111111111111111115820222222222222222222222222222222222222222222222222222222222222222201",
-      witnessPreimages: "83418041804180",
-      witnessCompact:
-        "835820a8c162c7cb77ea61f1195a083ecb8a64b97410652666d380b0e52f90eb74bb9e5820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-      compact:
-        "84018c5820eb25ed4ae02426602eee44b29d93e9dcd0be514b2087eda02f398b16fbb0ec765820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f58203e8a3792d0d05e816cc08e97bdbd1f0e4375a9ef83f196c8c51705ec6f463e20172018185820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d58201111111111111111111111111111111111111111111111111111111111111111582022222222222222222222222222222222222222222222222222222222222222220158206ab07ab512fb3a2860ddc7f57ca940073e9300c01e62c9b51cf2de2a0d7d964303",
-      canonical:
-        "84018c418041804180172018184180418041805820111111111111111111111111111111111111111111111111111111111111111158202222222222222222222222222222222222222222222222222222222222222222018341804180418003",
-      transactionId:
-        "7d098ce4ee22ae378974ca4560877d3ae850c90ff3b36b5ddcc4675dbb77dedc",
-      fullHash:
-        "aee3bfa02625d824be4c2b786d5e6f4d159a1903ef282ab3434634e4da2735e1",
-      proofCompact:
-        "84018c5820eb25ed4ae02426602eee44b29d93e9dcd0be514b2087eda02f398b16fbb0ec765820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f58203e8a3792d0d05e816cc08e97bdbd1f0e4375a9ef83f196c8c51705ec6f463e20172018185820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d58201111111111111111111111111111111111111111111111111111111111111111582022222222222222222222222222222222222222222222222222222222222222220158206ab07ab512fb3a2860ddc7f57ca940073e9300c01e62c9b51cf2de2a0d7d964303",
-      proofWitnessCompact:
-        "835820a8c162c7cb77ea61f1195a083ecb8a64b97410652666d380b0e52f90eb74bb9e5820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-      proofLengths: "89010101010101010101",
-      proofSource:
-        "8359013b84018c5820eb25ed4ae02426602eee44b29d93e9dcd0be514b2087eda02f398b16fbb0ec765820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f58203e8a3792d0d05e816cc08e97bdbd1f0e4375a9ef83f196c8c51705ec6f463e20172018185820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d58201111111111111111111111111111111111111111111111111111111111111111582022222222222222222222222222222222222222222222222222222222222222220158206ab07ab512fb3a2860ddc7f57ca940073e9300c01e62c9b51cf2de2a0d7d9643035867835820a8c162c7cb77ea61f1195a083ecb8a64b97410652666d380b0e52f90eb74bb9e5820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef34a89010101010101010101",
-      proofCommitment:
-        "b5abe2283df143ce1d2da68a8c439ebf826af7d43324216cec3e1068f824a8a2",
-      canonicalSize: 96,
-      orderedLengthTuple: "89010203040506070809",
-      derivedOrderedLengthTuple: "8901020304051822070608",
-    });
+    expect(exact).toEqual(generatedNativeTxVector);
 
     expect(
       decodeMidgardNativeTxBodyCanonicalV1(

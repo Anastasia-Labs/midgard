@@ -1,6 +1,7 @@
 import { CML, Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { publishAikenVectorV1 } from "./helpers/aiken-vector-channel.js";
 import {
   buildSignedCardanoObserverNativeScriptsCandidateV1,
   CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
@@ -314,6 +315,33 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
       collectionProof: observerField.terminalFoldVector.collectionProof,
       chunkProof: observerField.terminalFoldVector.chunkProof,
     }).toEqual(maximumObserverTerminalFoldVectorV1);
+    // This suite is the producer for the C20-6 constant family in
+    // `onchain/aiken/lib/midgard/fraud-proofs/native-tx-v1.test.ak`: field 6's
+    // 224 native-script witnesses, their preimage, and the compact forms that
+    // bind them. Publishing the vector after the assertions above is what lets
+    // `generate-ordered-collection-boundary-aiken-goldens.mjs` rebind those
+    // constants instead of a human retyping ~10 kB of hex (#588).
+    publishAikenVectorV1("observer-native-script-boundary-v1", {
+      nativeScriptWitnessCount: acceptedCardano.nativeScriptWitnessCount,
+      acceptedSignedCardanoBytes: boundary.accepted.signedBytes,
+      adjacentSignedCardanoBytes: boundary.adjacent.signedBytes,
+      cardanoMaxTransactionBytes: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      observerExpiryBase: Number(CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1),
+      scriptWitnessFieldBytes: scriptField.fieldBytes,
+      nativeCanonicalBytes: scriptField.nativeCanonicalBytes,
+      scriptWitnessFieldPreimageCborHex: scriptField.fieldPreimageCborHex,
+      scriptWitnessFieldPreimageHashHex: scriptField.fieldPreimageHashHex,
+      scriptWitnessFieldCommitmentHex: scriptField.fieldCommitmentHex,
+      transactionIdHex: scriptField.terminalFoldVector.transactionIdHex,
+      transactionCommitmentHex:
+        scriptField.terminalFoldVector.transactionCommitmentHex,
+      compactCborHex: scriptField.terminalFoldVector.compactCborHex,
+      witnessSetCompactCborHex:
+        scriptField.terminalFoldVector.witnessSetCompactCborHex,
+      fieldPreimageLengthsCborHex:
+        scriptField.terminalFoldVector.fieldPreimageLengthsCborHex,
+      observerFieldTerminalFoldVector: observerField.terminalFoldVector,
+    });
 
     for (const rewardAddress of acceptedCardano.rewardAddressBech32s) {
       emulator.chain[rewardAddress] = {

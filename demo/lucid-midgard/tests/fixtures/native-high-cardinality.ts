@@ -1,11 +1,7 @@
 import type { MidgardCekProgramMaterialEntryV1 } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeMidgardNativeTxIdV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   decodeSingleCbor,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardNativeTxBodyCompactV1,
-  encodeMidgardNativeTxCompactV1,
   hashMidgardVersionedScript,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
@@ -24,6 +20,10 @@ import {
   type Redeemer,
   walletFromSeedPhrase,
 } from "../../src/index.js";
+import {
+  deriveNativeTxFixtureFacetsV1,
+  type NativeTxFixtureEnvelope,
+} from "./native-tx-fixture-shape.js";
 
 export const HIGH_CARDINALITY_FIXTURE_NAME =
   "high-cardinality-combined-v1" as const;
@@ -39,58 +39,15 @@ export const HIGH_CARDINALITY_COUNTS = {
   receiveRedeemers: 2,
   totalRedeemers: 13,
 } as const;
-export type NativeTxFixtureSizes = {
-  readonly fullTxCborBytes: number;
-  readonly compactTxCborBytes: number;
-  readonly compactBodyCborBytes: number;
-  readonly fee: string;
-  readonly preimages: {
-    readonly spendInputs: number;
-    readonly referenceInputs: number;
-    readonly outputs: number;
-    readonly requiredObservers: number;
-    readonly requiredSigners: number;
-    readonly mint: number;
-    readonly addrTxWits: number;
-    readonly scriptTxWits: number;
-    readonly redeemerTxWits: number;
-  };
-};
 
-export type HighCardinalityNativeTxFixture = {
+export const HIGH_CARDINALITY_PRODUCER =
+  "pnpm --dir demo/lucid-midgard run fixtures:native-high-cardinality:sync";
+
+export type HighCardinalityNativeTxFixture = NativeTxFixtureEnvelope<{
   readonly name: typeof HIGH_CARDINALITY_FIXTURE_NAME;
-  readonly txIdHex: string;
-  readonly fullTxCborHex: string;
-  readonly compactTxCborHex: string;
-  readonly compactBodyCborHex: string;
+  readonly producer: string;
   readonly counts: typeof HIGH_CARDINALITY_COUNTS;
-  readonly sizes: NativeTxFixtureSizes;
-  readonly mintPolicyIdsInTxInfoOrder: readonly string[];
-  readonly redeemerPointers: readonly string[];
-  readonly preimages: {
-    readonly spendInputsCborHex: string;
-    readonly referenceInputsCborHex: string;
-    readonly outputsCborHex: string;
-    readonly requiredObserversCborHex: string;
-    readonly requiredSignersCborHex: string;
-    readonly mintCborHex: string;
-    readonly addrTxWitsCborHex: string;
-    readonly scriptTxWitsCborHex: string;
-    readonly redeemerTxWitsCborHex: string;
-  };
-  readonly hashes: {
-    readonly spendInputsHashHex: string;
-    readonly referenceInputsHashHex: string;
-    readonly outputsHashHex: string;
-    readonly requiredObserversHashHex: string;
-    readonly requiredSignersHashHex: string;
-    readonly mintHashHex: string;
-    readonly addrTxWitsHashHex: string;
-    readonly scriptTxWitsHashHex: string;
-    readonly redeemerTxWitsHashHex: string;
-    readonly witnessSetHashHex: string;
-  };
-};
+}>;
 const seedPhrase =
   "test test test test test test test test test test test junk";
 
@@ -250,8 +207,6 @@ const redeemer = (value: bigint, mem = 1n, steps = 2n): Redeemer => ({
   exUnits: { mem, steps },
 });
 
-const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
-
 const asArray = (value: unknown, label: string): readonly unknown[] => {
   if (!Array.isArray(value)) {
     throw new Error(`${label} must decode to an array`);
@@ -269,39 +224,11 @@ const asMap = (
   return value;
 };
 
-const redeemerPointers = (preimageCbor: Uint8Array): readonly string[] =>
-  asArray(decodeSingleCbor(preimageCbor), "redeemer preimage").map((entry) => {
-    const fields = asArray(entry, "redeemer entry");
-    return `${fields[0]!.toString()}:${fields[1]!.toString()}`;
-  });
-
 const makeAssetName = (prefix: number, index: number): string =>
   `${prefix.toString(16).padStart(2, "0")}${index
     .toString(16)
     .padStart(2, "0")}`;
 
-const fixtureSizes = (
-  tx: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>,
-  compactTxCbor: Uint8Array,
-  compactBodyCbor: Uint8Array,
-  fullTxCbor: Uint8Array,
-): NativeTxFixtureSizes => ({
-  fullTxCborBytes: fullTxCbor.length,
-  compactTxCborBytes: compactTxCbor.length,
-  compactBodyCborBytes: compactBodyCbor.length,
-  fee: tx.body.fee.toString(10),
-  preimages: {
-    spendInputs: tx.body.spendInputsPreimageCbor.length,
-    referenceInputs: tx.body.referenceInputsPreimageCbor.length,
-    outputs: tx.body.outputsPreimageCbor.length,
-    requiredObservers: tx.body.requiredObserversPreimageCbor.length,
-    requiredSigners: tx.body.requiredSignersPreimageCbor.length,
-    mint: tx.body.mintPreimageCbor.length,
-    addrTxWits: tx.witnessSet.addrTxWitsPreimageCbor.length,
-    scriptTxWits: tx.witnessSet.scriptTxWitsPreimageCbor.length,
-    redeemerTxWits: tx.witnessSet.redeemerTxWitsPreimageCbor.length,
-  },
-});
 export const buildHighCardinalityNativeTxFixture =
   async (): Promise<HighCardinalityNativeTxFixture> => {
     const wallet = walletFromSeedPhrase(seedPhrase, {
@@ -466,16 +393,13 @@ export const buildHighCardinalityNativeTxFixture =
     const completed = await builder.complete({ programMaterial });
     const signed = await completed.sign(wallet);
     const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(signed.txCbor);
-    // The compact witness-set fields commit to the V1 bounded-collection
-    // commitment of each preimage (native-witness.ts deriveNativeTxWitnessSetCompact),
-    // not to a raw blake2b of the preimage CBOR.
-    const witnessSetCompact = deriveMidgardNativeTxWitnessSetCompactV1(
-      tx.witnessSet,
-    );
-    const compactTxCbor = encodeMidgardNativeTxCompactV1(tx.compact);
-    const compactBodyCbor = encodeMidgardNativeTxBodyCompactV1(
-      tx.compact.transactionBody,
-    );
+    // Every field the fixture advertises past this point is derived from the
+    // signed canonical bytes by the one shared derivation, so the three fixtures
+    // in this directory cannot disagree about what a compact form or a field
+    // commitment is. The witness-set fields in particular commit per
+    // `deriveMidgardNativeTxWitnessSetCompactV1`, not to a raw blake2b of the
+    // preimage CBOR.
+    const facets = deriveNativeTxFixtureFacetsV1(signed.txCbor);
 
     const spendInputs = asArray(
       decodeSingleCbor(tx.body.spendInputsPreimageCbor),
@@ -490,9 +414,6 @@ export const buildHighCardinalityNativeTxFixture =
       "outputs",
     );
     const mint = asMap(decodeSingleCbor(tx.body.mintPreimageCbor), "mint");
-    const redeemers = redeemerPointers(
-      tx.witnessSet.redeemerTxWitsPreimageCbor,
-    );
 
     if (
       spendInputs.length !== HIGH_CARDINALITY_COUNTS.spendInputs ||
@@ -500,55 +421,23 @@ export const buildHighCardinalityNativeTxFixture =
         HIGH_CARDINALITY_COUNTS.referenceInputs ||
       outputs.length !== HIGH_CARDINALITY_COUNTS.outputs ||
       mint.size !== HIGH_CARDINALITY_COUNTS.mintPolicies ||
-      redeemers.length !== HIGH_CARDINALITY_COUNTS.totalRedeemers
+      facets.redeemerPointers.length !== HIGH_CARDINALITY_COUNTS.totalRedeemers
     ) {
       throw new Error("High-cardinality native tx fixture shape drifted");
     }
 
     return {
       name: HIGH_CARDINALITY_FIXTURE_NAME,
-      txIdHex: hex(computeMidgardNativeTxIdV1(tx)),
-      fullTxCborHex: hex(signed.txCbor),
-      compactTxCborHex: hex(compactTxCbor),
-      compactBodyCborHex: hex(compactBodyCbor),
+      producer: HIGH_CARDINALITY_PRODUCER,
+      txIdHex: facets.txIdHex,
+      fullTxCborHex: facets.fullTxCborHex,
+      compactTxCborHex: facets.compactTxCborHex,
+      compactBodyCborHex: facets.compactBodyCborHex,
       counts: HIGH_CARDINALITY_COUNTS,
-      sizes: fixtureSizes(tx, compactTxCbor, compactBodyCbor, signed.txCbor),
-      mintPolicyIdsInTxInfoOrder: [...mint.keys()].map((policy) =>
-        hex(policy as Uint8Array),
-      ),
-      redeemerPointers: redeemers,
-      preimages: {
-        spendInputsCborHex: hex(tx.body.spendInputsPreimageCbor),
-        referenceInputsCborHex: hex(tx.body.referenceInputsPreimageCbor),
-        outputsCborHex: hex(tx.body.outputsPreimageCbor),
-        requiredObserversCborHex: hex(tx.body.requiredObserversPreimageCbor),
-        requiredSignersCborHex: hex(tx.body.requiredSignersPreimageCbor),
-        mintCborHex: hex(tx.body.mintPreimageCbor),
-        addrTxWitsCborHex: hex(tx.witnessSet.addrTxWitsPreimageCbor),
-        scriptTxWitsCborHex: hex(tx.witnessSet.scriptTxWitsPreimageCbor),
-        redeemerTxWitsCborHex: hex(tx.witnessSet.redeemerTxWitsPreimageCbor),
-      },
-      hashes: {
-        spendInputsHashHex: hex(tx.compact.transactionBody.spendInputsHash),
-        referenceInputsHashHex: hex(
-          tx.compact.transactionBody.referenceInputsHash,
-        ),
-        outputsHashHex: hex(tx.compact.transactionBody.outputsHash),
-        requiredObserversHashHex: hex(
-          tx.compact.transactionBody.requiredObserversHash,
-        ),
-        requiredSignersHashHex: hex(
-          tx.compact.transactionBody.requiredSignersHash,
-        ),
-        mintHashHex: hex(tx.compact.transactionBody.mintHash),
-        addrTxWitsHashHex: hex(witnessSetCompact.addrTxWitsHash),
-        scriptTxWitsHashHex: hex(witnessSetCompact.scriptTxWitsHash),
-        redeemerTxWitsHashHex: hex(witnessSetCompact.redeemerTxWitsHash),
-        witnessSetHashHex: hex(tx.compact.transactionWitnessSetHash),
-      },
+      sizes: facets.sizes,
+      mintPolicyIdsInTxInfoOrder: facets.mintPolicyIdsInTxInfoOrder,
+      redeemerPointers: facets.redeemerPointers,
+      preimages: facets.preimages,
+      hashes: facets.hashes,
     };
   };
-
-export const stableFixtureJson = (
-  fixture: HighCardinalityNativeTxFixture,
-): string => `${JSON.stringify(fixture, null, 2)}\n`;

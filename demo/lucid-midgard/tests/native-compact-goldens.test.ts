@@ -25,6 +25,7 @@ const generatorRelativePath =
 const generatorPath = path.join(repositoryRoot, generatorRelativePath);
 const generatedRelativePaths = [
   "demo/lucid-midgard/tests/fixtures/native-high-cardinality.json",
+  "demo/lucid-midgard/tests/fixtures/native-ordinary-golden.json",
   "demo/lucid-midgard/tests/fixtures/native-size-balanced-15_5k.json",
   "onchain/aiken/lib/midgard/fraud-proofs/native-tx.high-cardinality.test.ak",
   "onchain/aiken/lib/midgard/fraud-proofs/native-tx.size-balanced.test.ak",
@@ -55,11 +56,21 @@ const copyGeneratorMirror = (root: string): string => {
     copyFileSync(path.join(repositoryRoot, relativePath), destination);
   }
 
-  const coreDestination = path.join(root, "demo/midgard-core");
-  mkdirSync(path.dirname(coreDestination), { recursive: true });
+  // The mirror has to reproduce the generator's *module resolution*, not just its
+  // inputs. It imports `@al-ft/midgard-core` and
+  // `@al-ft/midgard-core/scripts/golden-channel.mjs` through the package's export
+  // map, so the workspace link those specifiers resolve through has to exist here
+  // too — without it the generator dies on an unresolved import, and this test
+  // would be asserting a module-resolution failure while claiming to assert the
+  // staleness refusal.
+  const modulesDestination = path.join(
+    root,
+    "demo/lucid-midgard/node_modules",
+  );
+  mkdirSync(path.dirname(modulesDestination), { recursive: true });
   symlinkSync(
-    path.join(repositoryRoot, "demo/midgard-core"),
-    coreDestination,
+    path.join(packageRoot, "node_modules"),
+    modulesDestination,
     "dir",
   );
   return path.join(root, generatorRelativePath);

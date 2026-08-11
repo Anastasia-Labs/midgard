@@ -1,6 +1,7 @@
 import { CML, Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { publishAikenVectorV1 } from "./helpers/aiken-vector-channel.js";
 import {
   buildSignedCardanoSignersCandidateV1,
   CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
@@ -210,23 +211,32 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
         chunkHex: signerField.terminalFoldVector.chunkProof.chunkHex,
       },
     }).toEqual(maximumRequiredSignerTerminalFoldVectorV1);
-    // The producing channel for this boundary's Aiken twin. The compact
-    // transaction, its witness-set compact form and the nine field-preimage
-    // lengths are mirrored by the fixture in
-    // `onchain/aiken/lib/midgard/validation-machine-v1.test.ak` but are not
-    // covered by the pinned object above, so print them on demand rather than
-    // re-deriving them by hand. Same contract as the sibling boundary suites.
-    if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
-      console.info(
-        JSON.stringify({
-          compactCborHex: signerField.terminalFoldVector.compactCborHex,
-          witnessSetCompactCborHex:
-            signerField.terminalFoldVector.witnessSetCompactCborHex,
-          fieldPreimageLengthsCborHex:
-            signerField.terminalFoldVector.fieldPreimageLengthsCborHex,
-        }),
-      );
-    }
+    // This suite is the producer for the C20-7 constant family in
+    // `onchain/aiken/lib/midgard/fraud-proofs/native-tx-v1.test.ak` (and for the
+    // signer-field terminal fixture in `validation-machine-v1.test.ak`). Publishing
+    // the vector here — after every assertion above has already checked it — is
+    // what lets `generate-ordered-collection-boundary-aiken-goldens.mjs` rebind
+    // those constants instead of a human retyping them (#588).
+    publishAikenVectorV1("coupled-signer-witness-boundary-v1", {
+      vkeyWitnessCount: boundary.accepted.requestedItemCount,
+      acceptedSignedCardanoBytes: boundary.accepted.signedBytes,
+      adjacentSignedCardanoBytes: boundary.adjacent.signedBytes,
+      cardanoMaxTransactionBytes: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      addressWitnessFieldBytes: witnessField.fieldBytes,
+      nativeCanonicalBytes: witnessField.nativeCanonicalBytes,
+      addressWitnessFieldPreimageCborHex: witnessField.fieldPreimageCborHex,
+      addressWitnessFieldPreimageHashHex: witnessField.fieldPreimageHashHex,
+      addressWitnessFieldCommitmentHex: witnessField.fieldCommitmentHex,
+      transactionIdHex: witnessField.terminalFoldVector.transactionIdHex,
+      transactionCommitmentHex:
+        witnessField.terminalFoldVector.transactionCommitmentHex,
+      compactCborHex: witnessField.terminalFoldVector.compactCborHex,
+      witnessSetCompactCborHex:
+        witnessField.terminalFoldVector.witnessSetCompactCborHex,
+      fieldPreimageLengthsCborHex:
+        witnessField.terminalFoldVector.fieldPreimageLengthsCborHex,
+      signerFieldTerminalFoldVector: signerField.terminalFoldVector,
+    });
 
     const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);

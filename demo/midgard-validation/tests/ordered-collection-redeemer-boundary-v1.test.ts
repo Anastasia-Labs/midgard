@@ -16,6 +16,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { publishAikenVectorV1 } from "./helpers/aiken-vector-channel.js";
 import {
   buildCollateralFreeMidgardSchemaParallelCandidateV1,
   buildSignedCardanoSpendRedeemersCandidateV1,
@@ -454,32 +455,6 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
     expect(productionRetainedDa.forced.reconstructedCanonicalBytes).toBe(
       retainedProjection.canonicalTransactionCbor.length,
     );
-    // The producing channel for the Aiken twins of this boundary. Two of them
-    // — `maximum_cardano_compact_cbor` and
-    // `maximum_cardano_witness_set_compact_cbor` in
-    // `lib/midgard/fraud-proofs/native-tx.max-redeemers.test.ak` and in the two
-    // `validators/fraud-proofs/da-hash-preimage` steps — are not covered by the
-    // pinned object below, so print them on demand rather than re-deriving them
-    // by hand. Same contract as the sibling boundary suites.
-    if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
-      console.info(
-        JSON.stringify(
-          {
-            compactCborHex: redeemerField.terminalFoldVector.compactCborHex,
-            witnessSetCompactCborHex:
-              redeemerField.terminalFoldVector.witnessSetCompactCborHex,
-            fieldPreimageLengthsCborHex:
-              redeemerField.terminalFoldVector.fieldPreimageLengthsCborHex,
-            fieldBytes: redeemerField.fieldBytes,
-            fieldPreimageHashHex: redeemerField.fieldPreimageHashHex,
-            fieldCommitmentHex: redeemerField.fieldCommitmentHex,
-            itemCount: redeemerField.itemCount,
-          },
-          null,
-          2,
-        ),
-      );
-    }
     expect({
       fieldCommitmentHex: redeemerField.fieldCommitmentHex,
       fieldPreimageHashHex: redeemerField.fieldPreimageHashHex,
@@ -493,6 +468,40 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
       collectionProof: redeemerField.terminalFoldVector.collectionProof,
       chunkProof: redeemerField.terminalFoldVector.chunkProof,
     }).toEqual(maximumRedeemerTerminalFoldVectorV1);
+    // This suite is the producer for the whole constant block of
+    // `onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-redeemers.test.ak`
+    // (and for the two `validators/fraud-proofs/da-hash-preimage` steps' compact
+    // forms). Publishing the vector after the assertions above is what lets
+    // `generate-ordered-collection-boundary-aiken-goldens.mjs` rebind those
+    // constants instead of a human retyping them (#588).
+    publishAikenVectorV1("spend-redeemer-boundary-v1", {
+      redeemerCount: redeemerField.itemCount,
+      redeemerFieldBytes: redeemerField.fieldBytes,
+      redeemerFieldPreimageCborHex: redeemerField.fieldPreimageCborHex,
+      redeemerFieldPreimageHashHex: redeemerField.fieldPreimageHashHex,
+      redeemerFieldCommitmentHex: redeemerField.fieldCommitmentHex,
+      transactionIdHex: redeemerField.terminalFoldVector.transactionIdHex,
+      transactionCommitmentHex:
+        redeemerField.terminalFoldVector.transactionCommitmentHex,
+      compactCborHex: redeemerField.terminalFoldVector.compactCborHex,
+      witnessSetCompactCborHex:
+        redeemerField.terminalFoldVector.witnessSetCompactCborHex,
+      fieldPreimageLengthsCborHex:
+        redeemerField.terminalFoldVector.fieldPreimageLengthsCborHex,
+      validationContextCborHex:
+        redeemerField.terminalFoldVector.validationContextCborHex,
+      preWorkRootHex: redeemerField.terminalFoldVector.preWorkRootHex,
+      postWorkRootHex: redeemerField.terminalFoldVector.postWorkRootHex,
+      // The whole terminal fold, beyond the flat fields the generator binds
+      // today. `native-tx.max-redeemers.test.ak`'s second test and the
+      // `maximum_*_field_terminal_fixture_v1` family in
+      // `validation-machine-v1.test.ak` still spell these proof structures out by
+      // hand — they are struct literals inside functions rather than named
+      // constants, so the name-keyed rebinder cannot reach them. Publishing them
+      // here means the follow-up that gives them a producer has nothing left to
+      // find out.
+      terminalFoldVector: redeemerField.terminalFoldVector,
+    });
     const parallelNative = decodeMidgardNativeTxFullV1FromCanonicalCbor(
       cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
         Buffer.from(parallel.cborHex, "hex"),
@@ -587,16 +596,6 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
           null,
           2,
         ),
-      );
-    }
-    if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
-      console.info(
-        JSON.stringify({
-          redeemerFieldPreimageCborHex: redeemerField.fieldPreimageCborHex,
-          redeemerFieldCommitmentHex: redeemerField.fieldCommitmentHex,
-          redeemerFieldPreimageHashHex: redeemerField.fieldPreimageHashHex,
-          terminalFoldVector: redeemerField.terminalFoldVector,
-        }),
       );
     }
   }, 300_000);

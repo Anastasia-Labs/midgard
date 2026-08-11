@@ -128,6 +128,8 @@
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
+    "fixtures:ordered-collection-boundary-aiken:sync": "pnpm run build && node scripts/generate-ordered-collection-boundary-aiken-goldens.mjs",
+    "fixtures:ordered-collection-boundary-aiken:check": "pnpm run build && node scripts/generate-ordered-collection-boundary-aiken-goldens.mjs --check",
     "test": "vitest run",
     "test:cardano-capability-p2:data-breadth": "NODE_OPTIONS=--max-old-space-size=4096 node scripts/verify-goal-cardano-capability-p2-data-breadth.mjs"
   },

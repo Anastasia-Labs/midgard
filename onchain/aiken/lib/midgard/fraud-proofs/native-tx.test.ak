@@ -1,3 +1,16 @@
+// Some constants in this module are GENERATED; the tests around them are written
+// by hand.
+//
+//   seed:     demo/lucid-midgard/tests/fixtures/native-ordinary.ts
+//   writer:   pnpm --dir demo/lucid-midgard run fixtures:native-ordinary:sync
+//   rebinder: pnpm --dir demo/lucid-midgard run fixtures:native-compact
+//
+// The `golden_core_*` constants are the generated set — the ordinary golden's
+// canonical bytes, its compact forms, its transaction id, its three non-empty
+// preimages and their commitments. Before #588 the full-CBOR seed was
+// hand-maintained while everything derived from it was generated, which made a
+// format change a transcription exercise.
+
 use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
@@ -44,27 +57,48 @@ use midgard/fraud_proofs/native_tx/types.{
 use midgard/native_tx_field_access_v1
 
 const golden_core_native_full_tx_cbor =
-  #"84018c58278158248258201111111111111111111111111111111111111111111111111111111111111111005827815824825820222222222222222222222222222222222222222222222222222222222222222201585081584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405182a2018644180418041805820333333333333333333333333333333333333333333333333333333333333333358204444444444444444444444444444444444444444444444444444444444444444008341804180418000"
+  #"84018c5829815826825820111111111111111111111111111111111111111111111111111111111111111119000058298158268258202222222222222222222222222222222222222222222222222222222222222222190001585081584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405182a2018644180418041805820333333333333333333333333333333333333333333333333333333333333333358204444444444444444444444444444444444444444444444444444444444444444008341804180418000"
 
 const golden_core_native_compact_tx_cbor =
-  #"84018c58205e0d1a550b9170eb36be56c637a28ff42b7832b0f749310490995b230e329d9258206a72ecdde03ad548776a3431f6c925d0e85e875b698615ad189f179fbb9a20425820fb82d41490cf0acecf93c2c7cc331ed5da544f4178c73d85b221f397b732ced3182a2018645820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d58203333333333333333333333333333333333333333333333333333333333333333582044444444444444444444444444444444444444444444444444444444444444440058206ab07ab512fb3a2860ddc7f57ca940073e9300c01e62c9b51cf2de2a0d7d964300"
+  #"84018c58202028f78dca012c1f4de5fd4cc619e62cf3292cd62774c666fc777d665b100373582088a01ec414d7cafc422f4859fd96a37fc57f3a67ecfdaf5dfceb6093cd04099a5820fb82d41490cf0acecf93c2c7cc331ed5da544f4178c73d85b221f397b732ced3182a2018645820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d58203333333333333333333333333333333333333333333333333333333333333333582044444444444444444444444444444444444444444444444444444444444444440058206ab07ab512fb3a2860ddc7f57ca940073e9300c01e62c9b51cf2de2a0d7d964300"
 
 const golden_core_native_tx_id =
-  #"2037f7a4728ac05582798cf49151c13a6350dbd88215da18db9d829974fa4eac"
+  #"2d5e71a63ab0a996b06a90cc0ab2b6a6d56495ead1c57a0efe683167463a2a32"
 
 const zero_hash =
   #"0000000000000000000000000000000000000000000000000000000000000000"
 
 const golden_core_spend_inputs_preimage_cbor =
-  #"815824825820111111111111111111111111111111111111111111111111111111111111111100"
+  #"8158268258201111111111111111111111111111111111111111111111111111111111111111190000"
 
 const golden_core_reference_inputs_preimage_cbor =
-  #"815824825820222222222222222222222222222222222222222222222222222222222222222201"
+  #"8158268258202222222222222222222222222222222222222222222222222222222222222222190001"
 
 const golden_core_outputs_preimage_cbor =
   #"81584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405"
 
 const golden_core_empty_preimage_cbor = #"80"
+
+const golden_core_spend_inputs_hash =
+  #"2028f78dca012c1f4de5fd4cc619e62cf3292cd62774c666fc777d665b100373"
+
+const golden_core_reference_inputs_hash =
+  #"88a01ec414d7cafc422f4859fd96a37fc57f3a67ecfdaf5dfceb6093cd04099a"
+
+const golden_core_outputs_hash =
+  #"fb82d41490cf0acecf93c2c7cc331ed5da544f4178c73d85b221f397b732ced3"
+
+const golden_core_witness_set_hash =
+  #"6ab07ab512fb3a2860ddc7f57ca940073e9300c01e62c9b51cf2de2a0d7d9643"
+
+const golden_core_spend_inputs_preimage_hash =
+  #"214c88efa8d641e100907432a62d5a6090c840f5c845f4d97785e72842df9795"
+
+const golden_core_reference_inputs_preimage_hash =
+  #"c7d58dc93d2a5850ba53d9c3b54199c68bb009fc43d808d98860416d2e3bc6e0"
+
+const golden_core_empty_preimage_hash =
+  #"45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
 
 fn sample_golden_core_native_full_tx_cbor(_size: Int) -> Fuzzer<ByteArray> {
   fuzz.constant(golden_core_native_full_tx_cbor)
@@ -536,7 +570,7 @@ test decode_midgard_value_preserves_unsorted_asset_order() {
 }
 
 test golden_midgard_core_native_full_tx_decodes() {
-  let tx_cbor = #"84018c58278158248258201111111111111111111111111111111111111111111111111111111111111111005827815824825820222222222222222222222222222222222222222222222222222222222222222201585081584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405182a2018644180418041805820333333333333333333333333333333333333333333333333333333333333333358204444444444444444444444444444444444444444444444444444444444444444008341804180418000"
+  let tx_cbor = golden_core_native_full_tx_cbor
   let compact_cbor = golden_core_native_compact_tx_cbor
   let tx_id = golden_core_native_tx_id
   let decoded = decode_midgard_transaction_v1(tx_cbor)
@@ -566,10 +600,10 @@ test golden_midgard_core_native_full_tx_decodes() {
     output.value.lovelace == 2_000_000,
     asset_unit == #"7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a4d4944",
     quantity == 5,
-    compact.body.spend_inputs_hash == #"5e0d1a550b9170eb36be56c637a28ff42b7832b0f749310490995b230e329d92",
-    compact.body.reference_inputs_hash == #"6a72ecdde03ad548776a3431f6c925d0e85e875b698615ad189f179fbb9a2042",
-    compact.body.outputs_hash == #"fb82d41490cf0acecf93c2c7cc331ed5da544f4178c73d85b221f397b732ced3",
-    compact.witness_set_hash == #"6ab07ab512fb3a2860ddc7f57ca940073e9300c01e62c9b51cf2de2a0d7d9643",
+    compact.body.spend_inputs_hash == golden_core_spend_inputs_hash,
+    compact.body.reference_inputs_hash == golden_core_reference_inputs_hash,
+    compact.body.outputs_hash == golden_core_outputs_hash,
+    compact.witness_set_hash == golden_core_witness_set_hash,
     encode_native_tx_compact_v1(compact) == compact_cbor,
     native_tx_id_for_version(
       decoded.version,
@@ -586,11 +620,11 @@ test golden_midgard_core_native_full_tx_decodes() {
 /// (`encodeMidgardFieldPreimageForFieldV1`, fields 0 and 1); the same encoding
 /// is pinned per-field by `native-tx-field-items-v1-golden.test.ak`.
 test golden_midgard_core_native_preimage_cbor_decoders() {
-  let spend_preimage_cbor = #"8158268258201111111111111111111111111111111111111111111111111111111111111111190000"
-  let reference_preimage_cbor = #"8158268258202222222222222222222222222222222222222222222222222222222222222222190001"
-  let outputs_preimage_cbor = #"81584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405"
-  let empty_preimage_cbor = #"80"
-  let empty_preimage_hash = #"45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
+  let spend_preimage_cbor = golden_core_spend_inputs_preimage_cbor
+  let reference_preimage_cbor = golden_core_reference_inputs_preimage_cbor
+  let outputs_preimage_cbor = golden_core_outputs_preimage_cbor
+  let empty_preimage_cbor = golden_core_empty_preimage_cbor
+  let empty_preimage_hash = golden_core_empty_preimage_hash
   let empty_mint: Data = []
 
   expect [spend_input] = decode_midgard_tx_inputs_preimage_cbor(
@@ -605,10 +639,10 @@ test golden_midgard_core_native_preimage_cbor_decoders() {
   expect [Pair(asset_unit, quantity)] = output.value.assets
 
   and {
-    blake2b_256(spend_preimage_cbor) == #"214c88efa8d641e100907432a62d5a6090c840f5c845f4d97785e72842df9795",
+    blake2b_256(spend_preimage_cbor) == golden_core_spend_inputs_preimage_hash,
     spend_input.tx_id == #"1111111111111111111111111111111111111111111111111111111111111111",
     spend_input.output_index == 0,
-    blake2b_256(reference_preimage_cbor) == #"c7d58dc93d2a5850ba53d9c3b54199c68bb009fc43d808d98860416d2e3bc6e0",
+    blake2b_256(reference_preimage_cbor) == golden_core_reference_inputs_preimage_hash,
     reference_input.tx_id == #"2222222222222222222222222222222222222222222222222222222222222222",
     reference_input.output_index == 1,
     output.value.lovelace == 2_000_000,
@@ -633,10 +667,10 @@ test golden_midgard_core_native_compact_tx_decodes() {
   and {
     verified_from_cbor == verified,
     verified.tx_compact.validity_code == 0,
-    verified.tx_compact.body.spend_inputs_hash == #"5e0d1a550b9170eb36be56c637a28ff42b7832b0f749310490995b230e329d92",
-    verified.tx_compact.body.reference_inputs_hash == #"6a72ecdde03ad548776a3431f6c925d0e85e875b698615ad189f179fbb9a2042",
-    verified.tx_compact.body.outputs_hash == #"fb82d41490cf0acecf93c2c7cc331ed5da544f4178c73d85b221f397b732ced3",
-    verified.tx_compact.witness_set_hash == #"6ab07ab512fb3a2860ddc7f57ca940073e9300c01e62c9b51cf2de2a0d7d9643",
+    verified.tx_compact.body.spend_inputs_hash == golden_core_spend_inputs_hash,
+    verified.tx_compact.body.reference_inputs_hash == golden_core_reference_inputs_hash,
+    verified.tx_compact.body.outputs_hash == golden_core_outputs_hash,
+    verified.tx_compact.witness_set_hash == golden_core_witness_set_hash,
   }
 }
 

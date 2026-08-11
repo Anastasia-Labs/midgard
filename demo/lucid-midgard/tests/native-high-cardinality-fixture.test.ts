@@ -8,8 +8,8 @@ import {
   buildHighCardinalityNativeTxFixture,
   HIGH_CARDINALITY_COUNTS,
   type HighCardinalityNativeTxFixture,
-  stableFixtureJson,
 } from "./fixtures/native-high-cardinality.js";
+import { stableNativeTxFixtureJson } from "./fixtures/native-tx-fixture-shape.js";
 
 const fixturePath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -70,11 +70,11 @@ describe("native high-cardinality conformance fixture", () => {
     );
 
     if (syncing) {
-      fs.writeFileSync(fixturePath, stableFixtureJson(rebuilt));
+      fs.writeFileSync(fixturePath, stableNativeTxFixtureJson(rebuilt));
       return;
     }
 
-    expect(stableFixtureJson(rebuilt)).toBe(
+    expect(stableNativeTxFixtureJson(rebuilt)).toBe(
       fs.readFileSync(fixturePath, "utf8"),
     );
     expect(readFixture()).toEqual(rebuilt);
