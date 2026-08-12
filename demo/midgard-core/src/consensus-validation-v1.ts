@@ -72,6 +72,42 @@ export type MidgardV1TxFieldPreimage = {
   readonly expectedHash: Buffer;
 };
 
+/**
+ * §4's nine committed field hashes, extracted **positionally** from a proof
+ * source's own compact structures.
+ *
+ * The twin of `native_tx_field_access_v1.field_commitment_at`, and the reason
+ * both halves of a §8 door call can name the same expected commitment: §4 removed
+ * field-index domain separation, so a flat hash says nothing about which slot it
+ * came from and the slot has to come from the structure. Fields 0–5 are read off
+ * the compact body, 6–8 off the compact witness set — §2.5's split, which is why
+ * a consumer that only checked one of the two structures would pass a transaction
+ * whose material lives in the other.
+ *
+ * It does **not** authenticate the source. `verifyMidgardNativeTxProofSourceV1`
+ * and the `transaction_commitment` comparison are the caller's, exactly as the
+ * on-chain door leaves `witness_set_hash`'s own provenance to its caller.
+ */
+export const midgardV1TxFieldCommitmentsFromSourceV1 = (
+  source: MidgardNativeTxProofSourceV1,
+): readonly Buffer[] => {
+  const compact = decodeMidgardNativeTxCompactV1(source.compactCbor);
+  const witnessSet = decodeMidgardNativeTxWitnessSetCompactV1(
+    source.witnessSetCompactCbor,
+  );
+  return [
+    compact.transactionBody.spendInputsHash,
+    compact.transactionBody.referenceInputsHash,
+    compact.transactionBody.outputsHash,
+    compact.transactionBody.requiredObserversHash,
+    compact.transactionBody.requiredSignersHash,
+    compact.transactionBody.mintHash,
+    witnessSet.scriptTxWitsHash,
+    witnessSet.addrTxWitsHash,
+    witnessSet.redeemerTxWitsHash,
+  ].map((hash) => Buffer.from(hash));
+};
+
 export const deriveMidgardV1TxFieldPreimages = (
   canonicalTransactionCbor: Uint8Array,
 ): readonly MidgardV1TxFieldPreimage[] => {
@@ -80,10 +116,6 @@ export const deriveMidgardV1TxFieldPreimages = (
   );
   const source = deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
     canonicalTransactionCbor,
-  );
-  const compact = decodeMidgardNativeTxCompactV1(source.compactCbor);
-  const witnessSet = decodeMidgardNativeTxWitnessSetCompactV1(
-    source.witnessSetCompactCbor,
   );
   const preimages = [
     tx.body.spendInputsPreimageCbor,
@@ -96,22 +128,12 @@ export const deriveMidgardV1TxFieldPreimages = (
     tx.witnessSet.addrTxWitsPreimageCbor,
     tx.witnessSet.redeemerTxWitsPreimageCbor,
   ] as const;
-  const hashes = [
-    compact.transactionBody.spendInputsHash,
-    compact.transactionBody.referenceInputsHash,
-    compact.transactionBody.outputsHash,
-    compact.transactionBody.requiredObserversHash,
-    compact.transactionBody.requiredSignersHash,
-    compact.transactionBody.mintHash,
-    witnessSet.scriptTxWitsHash,
-    witnessSet.addrTxWitsHash,
-    witnessSet.redeemerTxWitsHash,
-  ] as const;
+  const hashes = midgardV1TxFieldCommitmentsFromSourceV1(source);
   return preimages.map((preimageCbor, fieldIndex) => ({
     fieldIndex,
     fieldName: MIDGARD_V1_TX_FIELD_NAMES[fieldIndex]!,
     preimageCbor: Buffer.from(preimageCbor),
-    expectedHash: Buffer.from(hashes[fieldIndex]!),
+    expectedHash: hashes[fieldIndex]!,
   }));
 };
 
@@ -142,21 +164,7 @@ export const verifyMidgardV1TxFieldPreimage = ({
       "V1 transaction field source does not match transaction commitment",
     );
   }
-  const compact = decodeMidgardNativeTxCompactV1(source.compactCbor);
-  const witnessSet = decodeMidgardNativeTxWitnessSetCompactV1(
-    source.witnessSetCompactCbor,
-  );
-  const hashes = [
-    compact.transactionBody.spendInputsHash,
-    compact.transactionBody.referenceInputsHash,
-    compact.transactionBody.outputsHash,
-    compact.transactionBody.requiredObserversHash,
-    compact.transactionBody.requiredSignersHash,
-    compact.transactionBody.mintHash,
-    witnessSet.scriptTxWitsHash,
-    witnessSet.addrTxWitsHash,
-    witnessSet.redeemerTxWitsHash,
-  ] as const;
+  const hashes = midgardV1TxFieldCommitmentsFromSourceV1(source);
   const committedLength = decodeMidgardNativeTxProofFieldLengthsV1(
     source.fieldPreimageLengthsCbor,
   )[fieldIndex]!;
@@ -165,7 +173,7 @@ export const verifyMidgardV1TxFieldPreimage = ({
       `V1 ${MIDGARD_V1_TX_FIELD_NAMES[fieldIndex]} preimage length does not match its compact source: ${preimageCbor.length.toString()} != ${committedLength.toString()}`,
     );
   }
-  const expectedHash = Buffer.from(hashes[fieldIndex]!);
+  const expectedHash = hashes[fieldIndex]!;
   if (!midgardFieldCommitmentV1(preimageCbor).equals(expectedHash)) {
     throw new Error(
       `V1 ${MIDGARD_V1_TX_FIELD_NAMES[fieldIndex]} preimage hash mismatch`,

@@ -157,17 +157,31 @@ export type MidgardFieldCarriagePlanV1 = {
  * `owner` is the min-Ada reclaim authority the certificate records (§8.6). It
  * is the only part of a plan that is the publisher's own choice, and no
  * consuming step reads it.
+ *
+ * `publish` demotes tier 1 to tier 2 and is the **one** tier choice §8 leaves
+ * open. The on-chain partition §8.4 enforces is at the *top* of the ladder — the
+ * door refuses a certificate whose `total_length ≤ K`, so a field that fits one
+ * publication can never be re-carried as a one-chunk manifest. Below that
+ * boundary tiers 1 and 2 are indistinguishable to the door: `whole_view` hashes
+ * the same bytes against the same commitment whether they arrived in a redeemer
+ * or in a referenced datum. What separates them is whose byte budget pays —
+ * tier 1 spends the consuming transaction's, tier 2 spends a prior one's — and
+ * that is a property of the consuming transaction, not of the preimage. See
+ * `planTxOrderMaterialCarriageV1` in the SDK for the caller this exists for: a
+ * forced order whose fields fit tier 1 individually but not all at once.
  */
 export const planMidgardFieldCarriageV1 = ({
   owner,
   txId,
   fieldIndex,
   preimage,
+  publish = false,
 }: {
   readonly owner: Uint8Array;
   readonly txId: Uint8Array;
   readonly fieldIndex: number;
   readonly preimage: Uint8Array;
+  readonly publish?: boolean;
 }): MidgardFieldCarriagePlanV1 => {
   const bytes = Buffer.from(preimage);
   if (bytes.length === 0) {
@@ -187,7 +201,8 @@ export const planMidgardFieldCarriageV1 = ({
   if (exactTxId.length !== 32) {
     fail("a transaction id is 32 bytes", `length=${exactTxId.length}`);
   }
-  const tier = selectMidgardFieldCarriageTierV1(bytes.length);
+  const selected = selectMidgardFieldCarriageTierV1(bytes.length);
+  const tier = publish && selected === "Inline" ? "RawUtxo" : selected;
   const commitment = midgardFieldCommitmentV1(bytes);
   const base = {
     tier,
@@ -272,13 +287,26 @@ export const healMidgardFieldCarriageV1 = ({
   txId,
   fieldIndex,
   preimage,
+  publish = false,
 }: {
   readonly healer: Uint8Array;
   readonly txId: Uint8Array;
   readonly fieldIndex: number;
   readonly preimage: Uint8Array;
+  /**
+   * Set when the carriage being healed is a tier-1-sized field that its consumer
+   * demoted to tier 2. Without it the healer would re-plan the field as tier 1
+   * and produce a plan with no publications — nothing to heal with.
+   */
+  readonly publish?: boolean;
 }): MidgardFieldCarriagePlanV1 =>
-  planMidgardFieldCarriageV1({ owner: healer, txId, fieldIndex, preimage });
+  planMidgardFieldCarriageV1({
+    owner: healer,
+    txId,
+    fieldIndex,
+    preimage,
+    publish,
+  });
 
 /**
  * Whether two plans describe the same carriage — the property §8.7's healing
@@ -540,7 +568,9 @@ export const midgardCarriageDataByteStringBytesV1 = (
   const remainder = payloadBytes % DATA_BYTE_STRING_CHUNK_BYTES;
   return (
     1 + // 5f — indefinite-length byte string
-    fullChunks * (cborHeadBytes(DATA_BYTE_STRING_CHUNK_BYTES) + DATA_BYTE_STRING_CHUNK_BYTES) +
+    fullChunks *
+      (cborHeadBytes(DATA_BYTE_STRING_CHUNK_BYTES) +
+        DATA_BYTE_STRING_CHUNK_BYTES) +
     (remainder === 0 ? 0 : cborHeadBytes(remainder) + remainder) +
     1 // ff — break
   );

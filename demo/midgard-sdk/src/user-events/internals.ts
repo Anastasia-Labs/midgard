@@ -142,28 +142,38 @@ export type UserEventWitnessPublishRedeemer = Data.Static<
 export const UserEventWitnessPublishRedeemer =
   UserEventWitnessPublishRedeemerSchema as unknown as UserEventWitnessPublishRedeemer;
 
-type UserEventAuthenticateMintRedeemerParams = {
+export type UserEventAuthenticateMintRedeemerParams = {
   readonly nonceInputIndex: bigint;
   readonly eventOutputIndex: bigint;
   readonly hubRefInputIndex: bigint;
   readonly witnessRegistrationRedeemerIndex: bigint;
 };
 
+/**
+ * The typed `user_events.MintRedeemer` for an authenticating mint.
+ *
+ * Exported as a *value* rather than only as encoded bytes because one policy — the
+ * tx-order minting policy — carries this redeemer nested inside its own
+ * `MintRedeemer` beside the §8 carriage vector (#594), so it needs the value and
+ * cannot use the encoder. Hand-copying the four-field mapping there instead is how
+ * a renamed or reordered field ends up spelled two ways.
+ */
+export const userEventAuthenticateMintRedeemer = (
+  params: UserEventAuthenticateMintRedeemerParams,
+): UserEventMintRedeemer => ({
+  AuthenticateEvent: {
+    nonce_input_index: params.nonceInputIndex,
+    event_output_index: params.eventOutputIndex,
+    hub_ref_input_index: params.hubRefInputIndex,
+    witness_registration_redeemer_index:
+      params.witnessRegistrationRedeemerIndex,
+  },
+});
+
 const encodeUserEventAuthenticateMintRedeemer = (
   params: UserEventAuthenticateMintRedeemerParams,
 ): string =>
-  Data.to(
-    {
-      AuthenticateEvent: {
-        nonce_input_index: params.nonceInputIndex,
-        event_output_index: params.eventOutputIndex,
-        hub_ref_input_index: params.hubRefInputIndex,
-        witness_registration_redeemer_index:
-          params.witnessRegistrationRedeemerIndex,
-      },
-    } satisfies UserEventMintRedeemer,
-    UserEventMintRedeemer,
-  );
+  Data.to(userEventAuthenticateMintRedeemer(params), UserEventMintRedeemer);
 
 export const encodeUserEventWitnessMintOrBurnRedeemer = (
   targetPolicy: PolicyId,
@@ -426,11 +436,30 @@ export type BuildCompletedUserEventMintTxParams = {
   readonly witnessScript: CertificateValidator;
   readonly witnessRegistrationRedeemer: string;
   readonly label: string;
+  /**
+   * Wraps or replaces the mint redeemer this event policy expects.
+   *
+   * Every user-event policy but one takes `user_events.MintRedeemer` unchanged,
+   * which is the default. The tx-order policy takes it inside its own
+   * `MintRedeemer` beside the §8 carriage vector for the order's material
+   * (#594), and that vector's reference-input indices are positional in the
+   * *final* transaction — so the hook is handed the resolved redeemer context
+   * rather than being allowed to guess them from the order the builder collected
+   * reference inputs in.
+   */
+  readonly encodeMintRedeemer?: (params: {
+    readonly layout: UserEventAuthenticateMintRedeemerParams;
+    readonly ctx: Parameters<BuildTxWithRedeemer>[0];
+  }) => string;
 };
 
 type UserEventMintRedeemerParams = Pick<
   BuildCompletedUserEventMintTxParams,
-  "eventUnit" | "hubOracleRefInput" | "label" | "nonceInput"
+  | "encodeMintRedeemer"
+  | "eventUnit"
+  | "hubOracleRefInput"
+  | "label"
+  | "nonceInput"
 >;
 
 type UserEventMintRedeemerLayout = UserEventAuthenticateMintRedeemerParams;
@@ -463,12 +492,16 @@ const deriveUserEventMintRedeemerLayout = (
 const makeUserEventMintRedeemer =
   (
     params: UserEventMintRedeemerParams,
-    onLayout?: (layout: UserEventMintRedeemerLayout) => void,
+    onEncoded?: (redeemer: string) => void,
   ): BuildTxWithRedeemer =>
   (ctx) => {
     const layout = deriveUserEventMintRedeemerLayout(params, ctx);
-    onLayout?.(layout);
-    return encodeUserEventAuthenticateMintRedeemer(layout);
+    const redeemer =
+      params.encodeMintRedeemer === undefined
+        ? encodeUserEventAuthenticateMintRedeemer(layout)
+        : params.encodeMintRedeemer({ layout, ctx });
+    onEncoded?.(redeemer);
+    return redeemer;
   };
 
 export const buildCompletedUserEventMintTxProgram = (
@@ -505,20 +538,24 @@ export const buildCompletedUserEventMintTxProgram = (
           );
       };
 
-      let resolvedLayout: UserEventMintRedeemerLayout | undefined;
+      // Two passes: the first resolves the positional redeemer against the
+      // completed transaction, the second rebuilds with that redeemer as a fixed
+      // string so nothing can shift under it. The encoded bytes are captured
+      // rather than re-derived from the layout, because a redeemer may carry more
+      // than the layout does — the tx-order policy's carries the §8 carriage
+      // vector — and re-deriving would silently drop it in the second pass.
+      let resolvedRedeemer: string | undefined;
       await buildTx(
-        makeUserEventMintRedeemer(params, (layout) => {
-          resolvedLayout = layout;
+        makeUserEventMintRedeemer(params, (redeemer) => {
+          resolvedRedeemer = redeemer;
         }),
       ).complete({ localUPLCEval: true });
-      if (resolvedLayout === undefined) {
+      if (resolvedRedeemer === undefined) {
         throw new Error(
           `Failed to resolve ${params.label} mint redeemer context`,
         );
       }
-      return buildTx(
-        encodeUserEventAuthenticateMintRedeemer(resolvedLayout),
-      ).complete({ localUPLCEval: true });
+      return buildTx(resolvedRedeemer).complete({ localUPLCEval: true });
     },
     catch: (cause) =>
       new UserEventBuildError({

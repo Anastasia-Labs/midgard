@@ -19,6 +19,7 @@ import {
   SettlementDatumSchema,
   TxOrderDatumV1Schema,
   TxOrderEventV1Schema,
+  TxOrderMintRedeemerV1,
   TxOrderSpendRedeemerV1Schema,
   UserEventMintRedeemer,
   UserEventWitnessPublishRedeemer,
@@ -35,6 +36,8 @@ import {
   decodeMidgardNativeTxProofFieldLengthsV1,
   verifyMidgardNativeTxProofSourceV1,
 } from "../../midgard-core/src/codec/native.js";
+import { MIDGARD_EMPTY_FIELD_COMMITMENT_V1 } from "../../midgard-core/src/codec/native-tx-field-access-v1.js";
+import { midgardV1TxFieldCommitmentsFromSourceV1 } from "../../midgard-core/src/consensus-validation-v1.js";
 import {
   type DeploymentMarkerV1,
   MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
@@ -872,9 +875,7 @@ const redeemerAtGlobalIndex = (
     ? (transaction.redeemers[Number(index)] ?? null)
     : null;
 
-const decodeMintRedeemer = (
-  bytesHex: string,
-):
+type UserEventMintRedeemerBody =
   | Readonly<{
       AuthenticateEvent: Readonly<{
         nonce_input_index: bigint;
@@ -888,9 +889,107 @@ const decodeMintRedeemer = (
         nonce_asset_name: string;
         witness_unregistration_redeemer_index: bigint;
       }>;
+    }>;
+
+type DecodedUserEventMintRedeemer = Readonly<{
+  event: UserEventMintRedeemerBody;
+  /**
+   * The §8 carriage vector, present only at the tx-order policy. `null` at the
+   * three policies whose redeemer is the bare enum — a distinction the type keeps
+   * so a later reader cannot mistake "this policy carries no material" for "this
+   * order declared no carriage".
+   */
+  materialCarriage: readonly unknown[] | null;
+}>;
+
+/**
+ * Decodes a user-event mint redeemer at the spelling the policy in question
+ * actually uses.
+ *
+ * Three of the four user-event policies take `user_events.MintRedeemer`
+ * unchanged. **The tx-order policy does not**: #594's owner ruling gave it its own
+ * `MintRedeemer`, which wraps that enum beside the §8 `FieldCarriageV1` vector for
+ * the order's material. Its wire form is therefore `Constr 0 [<enum>, <list>]`,
+ * and a bare-enum decode of it fails — which is why this takes `kind` and is not
+ * one schema for all four.
+ *
+ * Discriminating on the policy rather than trying both spellings is deliberate.
+ * The two forms are structurally distinguishable, so a permissive decoder is
+ * writable, but it would index a forced order out of a redeemer shape the tx-order
+ * mint cannot accept, and a verifier that accepts more than the validator does is
+ * worse than no verifier. An old-shape redeemer at the tx-order policy is
+ * therefore a decode failure, and its consequence is this module's ordinary one:
+ * the containing block yields no observation at all (see `scanCreatedEvents`).
+ */
+const decodeMintRedeemer = (
+  bytesHex: string,
+  kind: WatcherUserEventKindV1,
+): DecodedUserEventMintRedeemer | null => {
+  if (kind !== "forced_order") {
+    const event = dataRoundTrip<UserEventMintRedeemerBody>(
+      bytesHex,
+      UserEventMintRedeemer as unknown as EventSchema,
+    );
+    return event === null ? null : { event, materialCarriage: null };
+  }
+  const wrapped = dataRoundTrip<
+    Readonly<{
+      event: UserEventMintRedeemerBody;
+      material_carriage: readonly unknown[];
     }>
-  | null =>
-  dataRoundTrip(bytesHex, UserEventMintRedeemer as unknown as EventSchema);
+  >(bytesHex, TxOrderMintRedeemerV1 as unknown as EventSchema);
+  return wrapped === null
+    ? null
+    : { event: wrapped.event, materialCarriage: wrapped.material_carriage };
+};
+
+/**
+ * How many of §2.5's nine slots a forced order's payload commits material to.
+ *
+ * This is the whole input the mint's **exhaustion** rule needs beyond the
+ * redeemer itself: the vector is positional over the non-empty slots, so its
+ * length must equal this count exactly. The nine commitments come out of the
+ * payload's own compact structures positionally (§4 has no field-index domain
+ * separation, so the slot has to come from the structure), and
+ * `forcedPayloadMatchesNativeSource` has already bound those structures to the
+ * carried `tx_id` and commitment by the time this is consulted.
+ *
+ * Returns `null` when the payload is not a decodable §4 binding, so a caller
+ * cannot read a count off a payload nothing authenticated.
+ */
+const forcedOrderMaterialFieldCount = (payload: unknown): number | null => {
+  const candidate = payload as {
+    source?: {
+      compact_cbor?: unknown;
+      witness_set_compact_cbor?: unknown;
+      field_preimage_lengths_cbor?: unknown;
+    };
+  };
+  if (
+    !isHexBytes(candidate.source?.compact_cbor) ||
+    !isHexBytes(candidate.source.witness_set_compact_cbor) ||
+    !isHexBytes(candidate.source.field_preimage_lengths_cbor)
+  ) {
+    return null;
+  }
+  try {
+    return midgardV1TxFieldCommitmentsFromSourceV1({
+      compactCbor: Buffer.from(candidate.source.compact_cbor, "hex"),
+      witnessSetCompactCbor: Buffer.from(
+        candidate.source.witness_set_compact_cbor,
+        "hex",
+      ),
+      fieldPreimageLengthsCbor: Buffer.from(
+        candidate.source.field_preimage_lengths_cbor,
+        "hex",
+      ),
+    }).filter(
+      (commitment) => !commitment.equals(MIDGARD_EMPTY_FIELD_COMMITMENT_V1),
+    ).length;
+  } catch {
+    return null;
+  }
+};
 
 const decodeWitnessRedeemer = (
   bytesHex: string,
@@ -1171,7 +1270,9 @@ const scanCreatedEvents = (
           ? null
           : matchingRedeemer(transaction, "mint", policyIndex);
       const decoded =
-        redeemer === null ? null : decodeMintRedeemer(redeemer.bytes.bytesHex);
+        redeemer === null
+          ? null
+          : decodeMintRedeemer(redeemer.bytes.bytesHex, kind);
       if (
         nft === null ||
         nft.quantity !== 1n ||
@@ -1182,11 +1283,11 @@ const scanCreatedEvents = (
         ) !== 1n ||
         mint.get_assets(CML.ScriptHash.from_hex(policyId))?.len() !== 1 ||
         decoded === null ||
-        !("AuthenticateEvent" in decoded)
+        !("AuthenticateEvent" in decoded.event)
       ) {
         return failCreated("nft-or-mint");
       }
-      const auth = decoded.AuthenticateEvent;
+      const auth = decoded.event.AuthenticateEvent;
       if (
         auth.event_output_index !== BigInt(outputIndex) ||
         auth.nonce_input_index < 0n ||
@@ -1272,7 +1373,20 @@ const scanCreatedEvents = (
         (kind === "forced_order" &&
           (!isHex32(forcedEvent?.id?.transactionId) ||
             typeof forcedEvent.id.outputIndex !== "bigint" ||
-            !forcedPayloadMatchesNativeSource(forcedEvent.tx)))
+            !forcedPayloadMatchesNativeSource(forcedEvent.tx) ||
+            // #594's exhaustion rule, re-derived. The redeemer's carriage vector
+            // is positional over the payload's non-empty slots, so its length
+            // must equal their count exactly — a short vector leaves a field's
+            // material uncarried, a spare entry lets two distinct redeemers spell
+            // one order (§8.11). Both inputs are in hand here: the vector came
+            // out of the mint redeemer above and the count out of the payload
+            // whose binding the previous clause just verified. The per-field
+            // *hash* half is not reachable from this module — see
+            // `forcedPayloadMatchesNativeSource` — but this half is, so it is
+            // checked rather than deferred with it.
+            decoded.materialCarriage === null ||
+            decoded.materialCarriage.length !==
+              forcedOrderMaterialFieldCount(forcedEvent.tx)))
       ) {
         return failCreated(
           `datum-time parsed=${String(parsedDatum === null)} ttl=${String(ttl)}`,
@@ -1672,48 +1786,57 @@ const authenticReferenceDatum = (
  * ### What this deliberately does not re-derive, and why
  *
  * The tx-order mint runs `tx_order_v1.verify_order_material`, which is
- * `material_directory` — re-derived below in full — followed by
- * `next_non_empty_field(..) == 9`, i.e. *all nine fields empty*. That trailing
- * clause is not re-derived here, and the omission is deliberate rather than
- * overlooked: emptiness is a pure function of the length vector decoded below, so
- * the watcher can see it perfectly well.
+ * `material_directory` — re-derived below in full — followed by a walk of §2.5's
+ * nine slots that opens the §8.8 field-access door at every slot carrying
+ * material, against a `FieldCarriageV1` vector the **mint redeemer** supplies
+ * (#594's owner ruling). That walk is not re-derived here.
  *
- * It is not re-derived because the watcher is a verifier of state that is already
- * on chain, and this clause is a producer-side deployability stopgap, not a
- * protocol rule. `verify_order_material`'s own docstring records why it is
- * temporary: the §8.6 `FieldPreimageCertificateV1` carriage that authenticates
- * non-empty material is not in the frozen blueprint and §8.4's tier-1 ladder
- * routes preimages to redeemer carriage that does not outlive its transaction.
- * That is tracked as #587's Deviation, re-homed to #589. The SDK's publish path
- * and the node's ingestion walk *must* refuse material — one builds a mint the L1
- * would reject, the other needs preimage bytes that no carriage delivers — but
- * mirroring their refusal here would buy nothing and cost the watcher a
- * capability:
+ * The omission used to be about deployability: while §8's availability
+ * re-expression was unwired the clause admitted only the canonically-empty
+ * transaction, and mirroring a producer-side stopgap would have cost the watcher
+ * the ability to observe any forced order that moves anything. #594 wired the
+ * mechanism, so that reasoning is spent and this is the reason that replaces it.
  *
- *   - It buys nothing. This predicate only ever runs against a tx-order output
- *     whose NFT a mint already authenticated, so it is never the first line of
- *     defence. The mint in this tree refuses material-bearing orders outright
- *     (`verify_order_material`'s all-empty clause). The deployed receipt-era mint
- *     was narrower but not closed: its per-item opening is unsatisfiable for any
- *     payload whose commitments are the §4 flat hashes of real material, yet a
- *     payload *declaring* counted roots in place of flat commitments could
- *     satisfy it, so it could authenticate a material-bearing order. That
- *     residual is not something this predicate ever covered — what stood here was
- *     the same receipt walk that mint gated on, accepting exactly the payloads
- *     the mint accepted, declaring payload included. Reinstating a mirror of the
- *     mint adds no check that was ever here.
- *   - It costs a capability. Refusing here returns `null` for the whole block, so
- *     the watcher would be unable to observe *any* forced order carrying an actual
- *     L2 transaction — and a forced order over the canonically-empty transaction
- *     moves nothing. The watcher's forced-inclusion verification (the
- *     `MidgardTxValidity` classification in `event-classification-verifier.ts` and
- *     the `ForcedTransaction` replay in `block-replay.ts`) would become
- *     unreachable, verifying a null capability.
+ * **The carriage is not in the payload, by design.** §8.7's mandatory content
+ * addressing prohibits identifying carriage by UTxO identity, so
+ * `TxOrderPayloadV1` deliberately carries no carriage reference — the nine
+ * commitments *are* the material directory, and this predicate re-derives them in
+ * full. There is therefore nothing in a payload for a payload-shaped predicate to
+ * check the carriage against, and adding a field to the datum to give it one is
+ * exactly what the ruling refused. (The ruling's own text cites §8.5 for the
+ * content-addressing rule; §8.5 is _Custody_ and the rule is §8.7's. Corrected
+ * here and in §8.11.)
  *
- * When #589 lands the certificate, `TxOrderPayloadV1` regains availability
- * evidence and *that* is what this predicate must then check — the re-pointing
- * target the retired receipt walk had. Until the datum carries it there is
- * nothing here to point at.
+ * **The exhaustion half is reachable and is not omitted.** The walk's rule that
+ * the redeemer's vector be exhausted exactly needs two things: the vector, which
+ * `scanCreatedEvents` decodes out of the tx-order mint redeemer, and the count of
+ * non-empty slots, which comes out of this payload's own compact structures. Both
+ * are in this module, so that clause is re-derived — at the redeemer site rather
+ * than here, because this predicate never sees a redeemer. See
+ * `forcedOrderMaterialFieldCount` and its caller. The burn's empty-vector rule is
+ * likewise re-derived, in `scanConsumedEvents`.
+ *
+ * **What is genuinely not reachable is the per-field hash.** An `Inline` field's
+ * preimage does ride the mint redeemer this module already reads, so tier 1 is
+ * reachable in principle; a `RawUtxo`/`Certified` field's bytes live in a
+ * reference input's *datum*, and this indexer sees reference inputs as output
+ * references, not as the outputs they name. So tiers 2 and 3 have nothing to hash
+ * and a complete re-derivation belongs with the resolved-input view rather than
+ * here. Doing tier 1 alone would be a check whose coverage depends on the
+ * creator's byte budget, which is not a property worth asserting.
+ *
+ * **What this predicate is not.** It is not the first line of defence, but the
+ * reason is narrower than "the mint already checked". The mint in *this tree*
+ * hashes every non-empty field's preimage against its committed hash before the
+ * NFT exists. The mint currently **deployed** is the receipt-era one behind the
+ * frozen blueprint (#579 owns the regeneration): its per-item opening is
+ * unsatisfiable for a payload whose commitments are §4 flat hashes of real
+ * material, but a payload *declaring* counted roots in place of flat commitments
+ * could satisfy it, so it can authenticate a material-bearing order. That
+ * residual is real and is not covered here — what stood here before #587 was the
+ * same receipt walk that mint gates on, accepting exactly the payloads it
+ * accepted, so no version of this predicate ever closed it. It closes when the
+ * blueprint is regenerated, not by anything written in this module.
  */
 const forcedPayloadMatchesNativeSource = (payload: unknown): boolean => {
   const candidate = payload as {
@@ -2095,7 +2218,7 @@ const scanConsumedEvents = (
       const decodedMint =
         mintRedeemer === null
           ? null
-          : decodeMintRedeemer(mintRedeemer.bytes.bytesHex);
+          : decodeMintRedeemer(mintRedeemer.bytes.bytesHex, event.kind);
       if (terminalSpend === null) {
         return null;
       }
@@ -2120,15 +2243,23 @@ const scanConsumedEvents = (
         ) !== -1n ||
         mint.get_assets(CML.ScriptHash.from_hex(event.policyId))?.len() !== 1 ||
         decodedMint === null ||
-        !("BurnEventNFT" in decodedMint) ||
-        decodedMint.BurnEventNFT.nonce_asset_name !== event.assetNameHex ||
-        decodedMint.BurnEventNFT.witness_unregistration_redeemer_index < 0n
+        !("BurnEventNFT" in decodedMint.event) ||
+        decodedMint.event.BurnEventNFT.nonce_asset_name !==
+          event.assetNameHex ||
+        decodedMint.event.BurnEventNFT.witness_unregistration_redeemer_index <
+          0n ||
+        // #594: the tx-order policy requires a burn's carriage vector to be
+        // empty, because a burn reads no material and an unread wire field is a
+        // second spelling of the same transaction (§8.11, §6.1). `null` here is
+        // the three unwrapped policies, which have no vector to constrain.
+        (decodedMint.materialCarriage !== null &&
+          decodedMint.materialCarriage.length !== 0)
       ) {
         return null;
       }
       const certificateRedeemer = redeemerAtGlobalIndex(
         transaction,
-        decodedMint.BurnEventNFT.witness_unregistration_redeemer_index,
+        decodedMint.event.BurnEventNFT.witness_unregistration_redeemer_index,
       );
       const certificateIndex =
         certificateRedeemer?.purpose === "certificate" &&

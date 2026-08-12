@@ -55,6 +55,13 @@ import { NodeConfig, type NodeConfigDep } from "./config.js";
 type BlueprintValidator = {
   title: string;
   compiledCode: string;
+  /**
+   * The compile-time parameters the blueprint declares for this validator, in
+   * order. Read only by {@link applyBlueprintDeclaredParams}, which is why it is
+   * optional: an older blueprint that omits the key is not a reason to fail, only
+   * a reason for that check to abstain and say so.
+   */
+  parameters?: readonly { title?: string }[];
 };
 
 type Blueprint = {
@@ -958,10 +965,10 @@ const normalizeHubOracleOneShotOutRef = (
 /**
  * Looks up a compiled script by title inside the resolved blueprint.
  */
-const getCompiledScript = (
+const getBlueprintValidator = (
   blueprint: Blueprint,
   title: string,
-): Effect.Effect<string, Error> =>
+): Effect.Effect<BlueprintValidator, Error> =>
   Effect.gen(function* () {
     const found = blueprint.validators.find(
       (validator) => validator.title === title,
@@ -971,7 +978,53 @@ const getCompiledScript = (
         new Error(`Validator with title "${title}" not found in blueprint`),
       );
     }
-    return found.compiledCode;
+    return found;
+  });
+
+const getCompiledScript = (
+  blueprint: Blueprint,
+  title: string,
+): Effect.Effect<string, Error> =>
+  Effect.map(
+    getBlueprintValidator(blueprint, title),
+    (validator) => validator.compiledCode,
+  );
+
+/**
+ * `applyParamsToScript` with the blueprint's own declared arity asserted first.
+ *
+ * `applyParamsToScript` applies whatever list it is handed. Applying three terms
+ * to a two-parameter validator does not fail there: it yields a well-formed script
+ * with a wrong hash, so the mismatch surfaces as a policy id that matches nothing
+ * on chain — days later and nowhere near this line.
+ *
+ * That is not hypothetical here. The tx-order mint's source arity moved in #594
+ * (three receipt-era parameters to `(hub_oracle,
+ * field_preimage_certificate_policy_id)`) while `plutus.json` still declares the
+ * old three, and the regeneration that closes the gap is #579's single event. This
+ * check is what makes that regeneration a loud failure at the load site instead of
+ * a silently wrong script hash — and it is applied at that one call site rather
+ * than everywhere because that is the one site whose source has already moved out
+ * from under the blueprint.
+ */
+const applyBlueprintDeclaredParams = (
+  validator: BlueprintValidator,
+  params: readonly string[],
+): Effect.Effect<string, Error> =>
+  Effect.gen(function* () {
+    const declared = validator.parameters;
+    if (declared !== undefined && declared.length !== params.length) {
+      return yield* Effect.fail(
+        new Error(
+          `Blueprint validator "${validator.title}" declares ${declared.length.toString()} ` +
+            `parameter(s) (${declared
+              .map((parameter) => parameter.title ?? "?")
+              .join(", ")}) but ${params.length.toString()} were applied. ` +
+            "Regenerate the blueprint and update this load site together (#579).",
+        ),
+      );
+    }
+    return applyParamsToScript(validator.compiledCode, [...params]);
   });
 
 const makeMintingPolicy = (mintingScriptCBOR: string): SDK.MintingValidator => {
@@ -1638,10 +1691,18 @@ export type TxOrderContracts = {
 };
 
 /**
- * Derives the indivisible V1 tx-order script family. The dependency
- * order is consensus-critical: parameterless fragment/receipt locks first,
- * then the receipt policy, and finally the tx-order policy that authenticates
- * compact receipt references.
+ * Derives the indivisible V1 tx-order script family. The dependency order is
+ * consensus-critical: parameterless fragment/receipt locks first, then the receipt
+ * policy, and finally the tx-order policy.
+ *
+ * **The receipt half is dead source kept alive by a stale blueprint.** #587 deleted
+ * the `tx_field_receipt_v1` validators and #594 replaced the tx-order mint's
+ * receipt parameters with the §8.6 certificate policy id, but `plutus.json` at the
+ * head of this branch predates both, so the titles below still resolve and the
+ * three-parameter application below still matches what the blueprint declares.
+ * #579's regeneration removes the receipt titles and the receipt parameters
+ * together; see the note at the application itself for what fails loudly when it
+ * does.
  */
 export const buildRealTxOrderContracts = (
   network: Network,
@@ -1679,7 +1740,7 @@ export const buildRealTxOrderContracts = (
         fieldReceiptSpend.spendingScriptHash,
       ]),
     );
-    const txOrderMintBase = yield* getCompiledScript(
+    const txOrderMintValidator = yield* getBlueprintValidator(
       blueprint,
       REAL_TX_ORDER_SCRIPT_TITLES.mint,
     );
@@ -1687,9 +1748,25 @@ export const buildRealTxOrderContracts = (
       blueprint,
       REAL_TX_ORDER_SCRIPT_TITLES.spend,
     );
+    // The three parameters below are the **receipt-era** form and they match the
+    // frozen `plutus.json`, which still declares
+    // `(hub_oracle, receipt_script_hash, field_receipt_policy_id)`. The Aiken
+    // source no longer does: #594 retired the receipt family and the mint now takes
+    // `(hub_oracle, field_preimage_certificate_policy_id)`, the §8.6 certificate
+    // policy that the field-access door consults on tier-3 carriage.
+    //
+    // It cannot be applied here yet, and the reason is a missing value rather than
+    // a missing edit: the certificate validator is outside the frozen blueprint and
+    // has no deployment-registry role, so there is no policy id to pass. Both land
+    // in #579's single regeneration event (rider 2), and until then this call site
+    // has to speak the blueprint it is given.
+    //
+    // `applyBlueprintDeclaredParams` is what keeps that honest: the moment the
+    // blueprint declares two parameters, this fails by name instead of producing a
+    // wrong policy id from a three-term application.
     const txOrder = makeAuthenticatedValidator(
       network,
-      applyParamsToScript(txOrderMintBase, [
+      yield* applyBlueprintDeclaredParams(txOrderMintValidator, [
         hubOraclePolicyId,
         fieldReceiptSpend.spendingScriptHash,
         fieldReceiptMint.policyId,

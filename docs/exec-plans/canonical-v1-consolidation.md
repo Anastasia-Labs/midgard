@@ -194,11 +194,13 @@ roots could satisfy it — which is why the replacement below closes the gap by
 construction rather than relying on that arithmetic. #587 deleted both validators, both
 libraries, and both SDK twins. The role the family was supposed to serve — L1
 availability of a forced order's material — is now §8 carriage: a §8.6
-`FieldPreimageCertificateV1` per non-empty field, read through
-`native_tx_field_access_v1.authenticated_field_view`. That re-expression is not
-yet deployable (the certificate validator is outside the frozen blueprint and
-§8.4's tier-1 ladder publishes no durable UTxO), so `verify_order_material`
-admits only the canonically-empty transaction; issue #589 owns closing it.
+prover-chosen `FieldCarriageV1` per non-empty field, supplied in the tx-order
+mint redeemer and read through the §8.8 field-access door. #594's owner ruling
+wired it: `verify_order_material` now authenticates every field whose committed
+hash is not `empty_field_commitment` against that carriage, at all three tiers.
+The certificate validator's *deployment* role remains outside the frozen
+blueprint and lands with #579's single regeneration event, which is the only
+part of the tier-3 path still pending. #589 closed as superseded by #594.
 
 ### 3.1 Exhaustive format registry gate
 

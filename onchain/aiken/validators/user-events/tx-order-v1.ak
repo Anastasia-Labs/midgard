@@ -9,7 +9,8 @@ use midgard/settlement
 use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/tx_order_v1.{
-  Datum, SpendRedeemer, forced_inclusion_key_value, verify_order_material,
+  Datum, MintRedeemer, SpendRedeemer, forced_inclusion_key_value,
+  material_carriage_matches_event, verify_order_material,
 }
 
 validator spend(hub_oracle: ScriptHash) {
@@ -116,19 +117,33 @@ validator spend(hub_oracle: ScriptHash) {
   }
 }
 
-validator mint(hub_oracle: ScriptHash) {
-  mint(
-    redeemer: user_events.MintRedeemer,
-    own_policy: PolicyId,
-    tx: Transaction,
-  ) {
+/// `field_preimage_certificate_policy_id` is the §8.6 certificate minting
+/// policy, consulted by the field-access door on tier-3 carriage only. It is the
+/// same deployment role #592 threads into the validation-trace validators, so one
+/// deployed certificate policy serves both readers; the catalogue,
+/// deployment-registry and format-pin churn this parameter causes is recorded for
+/// #579's single regeneration batch (rider 2 of its owner-authorized scope
+/// amendment) and is never edited in this lane.
+validator mint(
+  hub_oracle: ScriptHash,
+  field_preimage_certificate_policy_id: PolicyId,
+) {
+  mint(redeemer: MintRedeemer, own_policy: PolicyId, tx: Transaction) {
+    let MintRedeemer { event, material_carriage } = redeemer
+
+    // A burn reads no material, so it must carry no vector rather than carry one
+    // nothing looks at: an unread wire field is where a second spelling of the
+    // same transaction hides (§6.1). The rule lives in the library so it has a
+    // refuting negative — this module has no test harness.
+    expect material_carriage_matches_event(event, material_carriage)
+
     let l1_id, output_tx_order_value, tx_order_payload_data <- user_events.validate_mint(
       hub_oracle,
       fn(hub_datum) {
         let hub.Datum { tx_order_addr, .. } = hub_datum
         tx_order_addr
       },
-      redeemer,
+      event,
       own_policy,
       tx,
     )
@@ -139,7 +154,13 @@ validator mint(hub_oracle: ScriptHash) {
     expect output_tx_order_nft_triplet == (own_policy, l1_id, 1)
 
     expect tx_order_payload: ledger_state.TxOrderPayloadV1 = tx_order_payload_data
-    expect verify_order_material(tx_order_payload)
+    expect
+      verify_order_material(
+        tx_order_payload,
+        material_carriage,
+        tx.reference_inputs,
+        field_preimage_certificate_policy_id,
+      )
 
     True
   }

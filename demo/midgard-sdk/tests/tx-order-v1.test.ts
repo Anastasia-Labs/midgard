@@ -311,6 +311,104 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
     expect(outputs.plan.txId.toString("hex")).toBe(material.transactionId);
   });
 
+  it("plans inline carriage under the order reserve and publishes what will not fit", () => {
+    const cbor = transactionCbor();
+    const owner = Buffer.alloc(28, 0x44);
+    const material = SDK.deriveTxOrderMaterialV1({ nativeTxCbor: cbor, owner });
+    const [outputs] = material.carriage;
+    expect(outputs).toBeDefined();
+
+    // Under the default reserve the one field fits the order transaction's own
+    // redeemer, so nothing has to be published first.
+    const inline = SDK.planTxOrderMaterialCarriageV1({ material, owner });
+    expect(inline.carriage.map((field) => field.plan.tier)).toEqual(["Inline"]);
+    expect(inline.referenced).toEqual([]);
+    expect(inline.inlineBytes).toBe(outputs!.preimage.length);
+    expect(inline.inlineReserveBytes).toBe(
+      SDK.MIDGARD_TX_ORDER_INLINE_CARRIAGE_RESERVE_BYTES_V1,
+    );
+
+    // One byte short of the field's own length is the whole decision: there is no
+    // consensus threshold here, only this transaction's budget (§8.11), so the
+    // same field is demoted to tier 2 and gets one publication at the creator's
+    // own wallet address.
+    const published = SDK.planTxOrderMaterialCarriageV1({
+      material,
+      owner,
+      inlineReserveBytes: outputs!.preimage.length - 1,
+    });
+    expect(published.inline).toEqual([]);
+    expect(published.inlineBytes).toBe(0);
+    expect(published.referenced.map((field) => field.plan.tier)).toEqual([
+      "RawUtxo",
+    ]);
+    const [demoted] = published.referenced;
+    expect(demoted!.plan.inlinePreimage).toBeNull();
+    expect(demoted!.plan.publications.map((entry) => entry.bytes)).toEqual([
+      outputs!.preimage,
+    ]);
+    // Demotion changes whose budget pays and nothing about the bytes: the §4
+    // commitment the door checks is the same one either way.
+    expect(demoted!.plan.commitment).toEqual(outputs!.plan.commitment);
+  });
+
+  it("pins the tx-order mint redeemer wire form against its Aiken vector", () => {
+    // The same three bytes-level vectors
+    // `midgard/user_events/tx_order_v1.test`'s
+    // `tx_order_mint_redeemer_wire_form_is_the_event_plus_the_carriage_vector`
+    // pins. Both halves emit `Constr 0 [<user event redeemer>, <carriage list>]`,
+    // and the carriage constructors keep §8.8's frozen tags 0/1/2.
+    const event = {
+      AuthenticateEvent: {
+        nonce_input_index: 0n,
+        event_output_index: 1n,
+        hub_ref_input_index: 2n,
+        witness_registration_redeemer_index: 3n,
+      },
+    } as const;
+
+    expect(
+      Data.to(
+        { event, material_carriage: [] } satisfies SDK.TxOrderMintRedeemerV1,
+        SDK.TxOrderMintRedeemerV1,
+      ),
+    ).toBe("d8799fd8799f00010203ff80ff");
+    expect(
+      Data.to(
+        {
+          event: {
+            BurnEventNFT: {
+              nonce_asset_name: "aabb",
+              witness_unregistration_redeemer_index: 4n,
+            },
+          },
+          material_carriage: [],
+        } satisfies SDK.TxOrderMintRedeemerV1,
+        SDK.TxOrderMintRedeemerV1,
+      ),
+    ).toBe("d8799fd87a9f42aabb04ff80ff");
+    expect(
+      Data.to(
+        {
+          event,
+          material_carriage: [
+            { Inline: { preimage: "80" } },
+            { RawUtxo: { ref_input_index: 5n } },
+            {
+              Certified: {
+                cert_ref_input_index: 6n,
+                chunk_ref_input_indices: [7n, 8n],
+              },
+            },
+          ],
+        } satisfies SDK.TxOrderMintRedeemerV1,
+        SDK.TxOrderMintRedeemerV1,
+      ),
+    ).toBe(
+      "d8799fd8799f00010203ff9fd8799f4180ffd87a9f05ffd87b9f069f0708ffffffff",
+    );
+  });
+
   it("refuses material it cannot bind to a canonical transaction", () => {
     expect(() =>
       SDK.deriveTxOrderMaterialV1({

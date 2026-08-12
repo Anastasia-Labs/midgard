@@ -496,6 +496,43 @@ export const resolveChunkReferenceIndicesV1 = ({
 };
 
 /**
+ * Locates a tier-3 certificate in a resolved reference-input set by its
+ * **content-addressed token**, never by `OutputReference` (§8.7).
+ *
+ * The token is the binding the door itself checks: `certified_chunks` requires
+ * the named reference input to hold one unit of the certificate policy under
+ * §8.6's `blake2b_256(field_index ‖ tx_id)` name, so matching on that token here
+ * is matching on exactly what the validator will look for. Two certificates for
+ * the same `(tx_id, field_index)` are interchangeable by construction — that is
+ * §8.7's healing property — so the first match is as good as any.
+ */
+export const resolveCertificateReferenceIndexV1 = ({
+  certificatePolicyId,
+  certificateAssetName,
+  referenceInputs,
+  label,
+}: {
+  readonly certificatePolicyId: string;
+  readonly certificateAssetName: Uint8Array;
+  readonly referenceInputs: readonly UTxO[];
+  readonly label: string;
+}): number => {
+  const unit = `${certificatePolicyId}${Buffer.from(certificateAssetName).toString("hex")}`;
+  // Canonical `(txHash, outputIndex)` order, for the same reason
+  // `resolveChunkReferenceIndicesV1` sorts: positional indices are indices into
+  // the ledger's reference-input list, not into the order a builder collected.
+  const index = [...referenceInputs]
+    .sort(compareOutRefs)
+    .findIndex((utxo) => (utxo.assets[unit] ?? 0n) === 1n);
+  if (index === -1) {
+    throw new Error(
+      `${label} §8.6 certificate ${unit} is not among the transaction's reference inputs`,
+    );
+  }
+  return index;
+};
+
+/**
  * Certifies a tier-3 plan: one mint of the content-addressed token, one
  * certificate output at the validator's own address carrying the manifest as an
  * inline datum, and the plan's chunks as reference inputs.

@@ -8,19 +8,24 @@ import {
   midgardCekProgramMaterialKindFromTagV1,
   MidgardCekProgramMaterialMissingRootError,
 } from "@al-ft/midgard-core/cek-proof";
+import { decodeMidgardNativeTxFullV1FromCanonicalCbor } from "@al-ft/midgard-core/codec";
 import {
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardNativeTxProofFieldLengthsV1,
-} from "@al-ft/midgard-core/codec";
-// `authenticatedMidgardFieldViewV1` is deliberately not imported — see
-// `reconstructTxOrderMaterialV1`'s note on why the §8.8 door has no carriage to
-// open on this path until #589 lands the §8.6 certificate.
-import { encodeMidgardFieldArrayHeaderV1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+  authenticatedMidgardFieldViewV1,
+  encodeMidgardFieldArrayHeaderV1,
+  MIDGARD_EMPTY_FIELD_COMMITMENT_V1,
+  type MidgardFieldCarriageV1,
+  midgardFieldReadRangeV1,
+  midgardFieldTotalLengthV1,
+  type ResolvedCarriageReferenceInputV1,
+} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
   isMidgardConsensusProfileV1,
   type MidgardConsensusProfileV1,
 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { reconstructMidgardTransactionV1 } from "@al-ft/midgard-core/consensus-validation-v1";
+import {
+  midgardV1TxFieldCommitmentsFromSourceV1,
+  reconstructMidgardTransactionV1,
+} from "@al-ft/midgard-core/consensus-validation-v1";
 import { collectMidgardV1AttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
@@ -130,6 +135,20 @@ export const publishedProgramMaterialSnapshotError = (
     : undefined;
 
 /**
+ * The §8 carriage an order's material rides, as this walk receives it.
+ *
+ * `carriage` is positional over the order's **non-empty** fields in ascending
+ * field index — byte-for-byte the same vector the order's mint redeemer carried,
+ * because it is the same claim read back. `referenceInputs` are the resolved
+ * carriage UTxOs the `RawUtxo`/`Certified` entries index into, in the order the
+ * ledger presented them to the mint.
+ */
+export type TxOrderMaterialCarriageV1 = {
+  readonly carriage: readonly MidgardFieldCarriageV1[];
+  readonly referenceInputs?: readonly ResolvedCarriageReferenceInputV1[];
+};
+
+/**
  * Reconstructs the canonical native-V1 transaction an L1 forced order committed
  * to, from the §8 carriage of its nine field preimages.
  *
@@ -141,49 +160,70 @@ export const publishedProgramMaterialSnapshotError = (
  * and a ±1 chunk offset that existed solely because field 5 was a raw CBOR map.
  * All of that retired with the chain in #587: under `docs/spec/midgard-tx.md` §4
  * a field is committed by one flat hash over its whole preimage, so a preimage is
- * authenticated once and read whole rather than assembled from openings. #585
- * then made the TypeScript side actually derive those hashes that way.
+ * authenticated once and read whole rather than assembled from openings.
  *
- * **What it is now.** It reads the committed field lengths, refuses any order that
- * carries material, and reconstructs the transaction from nine §5.1 empty-field
- * preimages. `reconstructMidgardTransactionV1` is what authenticates: it checks
- * every preimage against the field hash the compact structure carries, and
- * re-derives the tx-id and the proof commitment from the same bytes, so a payload
- * whose lengths, hashes and id do not agree is refused.
+ * It then spent one round refusing every order that carried material at all,
+ * because the tx-order mint did: `verify_order_material` admitted only the
+ * canonically-empty transaction while §8's availability re-expression was
+ * unwired. #594's owner ruling wired it, and this is the ingestion half.
  *
- * **Why the §8.8 door is not the authenticator here.** #587's ruling named
- * `authenticatedMidgardFieldViewV1` — deliberately not imported, so this is a
- * name and not a `{@link}` that would dangle — and that is still the destination.
- * What has changed since that ruling is the reason it is not reached yet.
+ * **What it is now.** The same §8.8 door the mint runs, read in the same order.
+ * The nine committed hashes are extracted positionally from the payload's own
+ * compact structures (§4), and for each slot whose hash is not the empty-field
+ * constant one carriage entry is consumed and opened through
+ * `authenticatedMidgardFieldViewV1`. The vector must be exhausted exactly, which
+ * is the mint's own exhaustion rule and is what makes this a re-derivation of the
+ * mint's verdict rather than a lenient re-read of it.
  *
- * It used to be that `deriveNativeTxBodyCompact` derived the nine field hashes
- * under the retired counted scheme, so no §4 commitment existed on this path
- * except the empty field's constant, and a door call would have compared a
- * constant against a constant. #585 swapped that: the nine hashes are now §4 flat
- * commitments, and `verifyMidgardV1TxFieldPreimage` — which is what
- * `reconstructMidgardTransactionV1` calls per field — performs exactly the §4
- * check the door would, taking each expected hash from the compact structure in
- * view as §4's positional-identity invariant requires. So the check here is real,
- * and it is the same check.
+ * The Aiken counterpart for the property that matters here — the whole preimage
+ * hashed against the commitment at **every** tier, tier 3 included — is
+ * `authenticated_whole_field_view`, which is what the tx-order mint opens. Plain
+ * `authenticated_field_view` is the *lazy* tier-3 form and leaves a `Certified`
+ * field's chunk bytes unhashed until an accessor touches one; naming it here would
+ * claim a check it does not make. The two TypeScript/Aiken acceptance sets are not
+ * identical at tier 3 either, in both directions — see
+ * `authenticatedMidgardFieldViewV1`'s own note in
+ * `@al-ft/midgard-core/codec/native-tx-field-access-v1` for the two divergences
+ * and why the certificate's digest pin makes both unreachable.
  *
- * What is still missing is the door's *subject*: it opens a field out of §8
- * carriage, and this path has no carriage to open. The tx-order mint's
- * `verify_order_material` admits only the canonically-empty transaction, so the
- * only preimages reachable here are the nine empty ones, which arrive as a
- * constant rather than through a carriage tier. #589 owns the §8.6 certificate
- * work that gives this path real carriage, and owns moving this function onto the
- * door at the same time — the two are one change, not two.
+ * `reconstructMidgardTransactionV1` then re-checks all nine preimages against the
+ * compact structures and re-derives the tx-id and the proof commitment from the
+ * same bytes. That is a second, independent pass over the same claim and it is
+ * kept: it is what refuses a payload whose lengths, hashes and id do not agree,
+ * and it costs one hash per field.
  *
- * The material limit is the other half: the tx-order mint's
- * `verify_order_material` admits only the canonically-empty transaction. See its
- * `field_carriage_availability` note and #587's Deviation for why; issue #589
- * owns the §8.6 certificate work that lifts it, and owns moving this function
- * onto the door.
+ * **Where the bytes come from, and who can supply them.** L1 history, which is
+ * what #594's ruling means by durable availability — but *this fiber cannot read
+ * that history*, and `material` is optional for exactly that reason.
+ *
+ * The fiber's only L1 data source is the `Lucid` service, whose provider is
+ * `LE.Kupmios(L1_KUPO_KEY, L1_OGMIOS_KEY)` (`src/services/lucid.ts`). `Kupmios`'s
+ * whole public surface is `getProtocolParameters`, `getTreasury`, `getUtxos`,
+ * `getUtxosWithUnit`, `getUtxosWithPolicy`, `getUtxoByUnit`, `getUtxosByOutRef`,
+ * `getRewardAccount`, `getDelegation`, `getDatum`, `getTransactionStatus`,
+ * `awaitTx`, `submitTx` and `evaluateTx`. **None of them returns a transaction's
+ * body or witness set.** So the order-creation transaction's mint redeemer — where
+ * an `Inline` field's preimage rides, and where a `RawUtxo`/`Certified` field's
+ * reference-input indices are — is not fetchable here, and neither are the
+ * out-refs that would let `getUtxosByOutRef` resolve the carriage UTxOs. The
+ * node's only Ogmios calls are `queryNetwork/tip` and
+ * `queryNetwork/genesisConfiguration`; it has no chain-sync consumer, so there is
+ * no block-level view of witness sets anywhere in this package.
+ *
+ * That makes `material` a parameter and not a fetch: this function authenticates
+ * carriage, and an observer that *does* see witness sets supplies it. The watcher
+ * is that observer — its normalized L1 block carries per-transaction redeemers —
+ * and building the equivalent follower inside the node is a component, not a
+ * wiring change. Recorded as a Deviation on #594 with its blocker; until it lands,
+ * the production caller below reaches this function with no `material` and a
+ * material-bearing order is refused by name.
  */
 export const reconstructTxOrderMaterialV1 = ({
   payload,
+  material,
 }: {
   readonly payload: TxOrderPayloadV1;
+  readonly material?: TxOrderMaterialCarriageV1;
 }): Effect.Effect<Buffer, SDK.LucidError> =>
   Effect.try({
     try: () => {
@@ -199,20 +239,53 @@ export const reconstructTxOrderMaterialV1 = ({
           "hex",
         ),
       };
-      const fieldLengths = decodeMidgardNativeTxProofFieldLengthsV1(
-        source.fieldPreimageLengthsCbor,
-      );
       const emptyFieldPreimage = encodeMidgardFieldArrayHeaderV1(0);
-      const withMaterial = fieldLengths.flatMap((length, fieldIndex) =>
-        length === emptyFieldPreimage.length ? [] : [fieldIndex],
-      );
-      if (withMaterial.length > 0) {
+      const commitments = midgardV1TxFieldCommitmentsFromSourceV1(source);
+      const referenceInputs = material?.referenceInputs ?? [];
+      const unconsumed = [...(material?.carriage ?? [])];
+      const fieldPreimages = commitments.map((commitment, fieldIndex) => {
+        if (commitment.equals(MIDGARD_EMPTY_FIELD_COMMITMENT_V1)) {
+          return emptyFieldPreimage;
+        }
+        const carriage = unconsumed.shift();
+        if (carriage === undefined) {
+          // Two distinguishable causes share this refusal, and the message says
+          // both rather than guessing: either the supplied vector is genuinely
+          // short of what the nine commitments name (§8.11's exhaustion rule,
+          // failing in the missing direction), or no vector was supplied at all
+          // because the caller has no witness-set view to take one from. The
+          // second is this fiber's own production path — see the note above on
+          // `Kupmios`'s surface — and it is a missing capability, not a bad order.
+          throw new Error(
+            `forced order carries material in field ${fieldIndex.toString()} ` +
+              `with no §8 carriage supplied for it (${(
+                material?.carriage ?? []
+              ).length.toString()} entr${
+                (material?.carriage ?? []).length === 1 ? "y" : "ies"
+              } supplied): either the vector is short of the ` +
+              "commitments, or this caller has no view of the order-creation " +
+              "transaction's mint redeemer to take one from",
+          );
+        }
+        const view = authenticatedMidgardFieldViewV1({
+          fieldIndex,
+          txId: transactionId,
+          expectedCommitment: commitment,
+          carriage,
+          referenceInputs,
+        });
+        return midgardFieldReadRangeV1(
+          view,
+          0,
+          midgardFieldTotalLengthV1(view),
+        );
+      });
+      if (unconsumed.length > 0) {
+        // The mint's exhaustion rule, re-derived. A spare entry means the vector
+        // being read is not the one the mint authenticated.
         throw new Error(
-          `forced order carries material in field(s) ${withMaterial.join(", ")}; ` +
-            "the §8.6-certified carriage the tx-order mint needs for non-empty " +
-            "material is not deployable yet (see #587's Deviation and issue #589, " +
-            "which owns the blocker), so no such order can be authenticated on L1 " +
-            "and none can be ingested here",
+          `forced order supplied ${unconsumed.length.toString()} §8 carriage ` +
+            "entries more than its nine commitments name",
         );
       }
       return reconstructMidgardTransactionV1({
@@ -222,7 +295,7 @@ export const reconstructTxOrderMaterialV1 = ({
           "hex",
         ),
         source,
-        fieldPreimages: fieldLengths.map(() => emptyFieldPreimage),
+        fieldPreimages,
       });
     },
     catch: (cause) =>
@@ -255,6 +328,13 @@ const txOrderUTxOToEntry = (
     }
     const txOrderUTxOV1 = txOrderUTxO;
     const payload = txOrderUTxOV1.datum.event.tx;
+    // No `material`, and the omission is a measured capability gap rather than an
+    // oversight: `fetchTxOrderUTxOs` reads the tx-order UTxO set through
+    // `lucid.utxosAt`, and the `Kupmios` provider behind it exposes no method that
+    // returns the order-creation transaction's witness set. See
+    // `reconstructTxOrderMaterialV1`'s note for the enumerated surface and the
+    // Deviation on #594. A canonically-empty order needs no carriage and ingests;
+    // a material-bearing one is refused by name here, with the cause stated.
     const nativeTxCbor = yield* reconstructTxOrderMaterialV1({ payload });
     const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeTxCbor);
     const attachedProgramEnvelopes = yield* Effect.try({

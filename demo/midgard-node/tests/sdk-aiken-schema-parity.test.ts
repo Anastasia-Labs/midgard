@@ -45,7 +45,7 @@ const testDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(testDir, "../../..");
 /**
  * KNOWN RED against the blueprint currently in the tree, and the set grew in
- * #587.
+ * #587 and again in #594.
  *
  * #584 retired `transaction_commitment` from the committed source leaves without
  * regenerating `plutus.json`, so four rows compare a two- or three-field SDK
@@ -63,13 +63,26 @@ const repoRoot = path.resolve(testDir, "../../..");
  * blueprint, while a mapping to a type that no longer exists on the SDK side would
  * assert a retired surface.
  *
- * Measured on 2026-08-10 after #587: `7 failed | 22 passed (29)`. Regenerating the
+ * #594 then re-expressed `verify_order_material` on the §8.8 field-access door and
+ * gave the tx-order minting policy its own redeemer — `user_events.MintRedeemer`
+ * wrapped beside the §8 carriage vector. That adds an **eighth** red row,
+ * `TxOrderMintRedeemerV1Schema`, and it is red for a different reason from the
+ * other seven: they compare a moved SDK schema against a stale blueprint
+ * definition and fail on field count, while this one has **no blueprint definition
+ * at all** (`missing Aiken blueprint definition
+ * midgard/user_events/tx_order_v1/MintRedeemer`) because the type is new in this
+ * round. The mapping is kept rather than deferred: the SDK type exists, the Aiken
+ * type exists, and the only thing missing is the regeneration that publishes it —
+ * which is exactly what a red row here is for.
+ *
+ * Measured on 2026-08-12 after #594: `8 failed | 22 passed (30)`; the same command
+ * measured `7 failed | 22 passed (29)` on 2026-08-10 after #587. Regenerating the
  * blueprint is [#579](https://github.com/Anastasia-Labs/midgard/issues/579)'s; all
- * seven are rows 7-13 of the thirteen-test handoff set enumerated in
+ * eight are rows 7-14 of the fourteen-test handoff set enumerated in
  * `demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts` (#584's
- * four as rows 7-10, #587's three as 11-13), which also owns the six emulator
- * scenarios red for the same cause. Point `MIDGARD_REAL_BLUEPRINT_PATH` at a
- * regenerated blueprint to check the fix.
+ * four as rows 7-10, #587's three as 11-13, #594's one as 14), which also owns the
+ * six emulator scenarios red for the same cause. Point
+ * `MIDGARD_REAL_BLUEPRINT_PATH` at a regenerated blueprint to check the fix.
  */
 const blueprintPath =
   process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
@@ -170,6 +183,10 @@ const ABI_MAPPINGS = [
   [
     "TxOrderSpendRedeemerV1Schema",
     "midgard/user_events/tx_order_v1/SpendRedeemer",
+  ],
+  [
+    "TxOrderMintRedeemerV1Schema",
+    "midgard/user_events/tx_order_v1/MintRedeemer",
   ],
   [
     "ValidationMachineStateV1Schema",

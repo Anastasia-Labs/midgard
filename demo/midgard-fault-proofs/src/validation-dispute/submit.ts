@@ -7,7 +7,6 @@ import {
   computeHash32,
   decodeMidgardCekProgramMaterialSidecarV1,
   decodeMidgardNativeTxProofFieldLengthsV1,
-  decodeMidgardNativeTxWitnessSetCompactV1,
   decodeSingleCbor,
   encodeCbor,
   encodeCborArrayRaw,
@@ -30,6 +29,7 @@ import {
   MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_V1_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { midgardV1TxFieldCommitmentsFromSourceV1 } from "@al-ft/midgard-core/consensus-validation-v1";
 import {
   AuthenticatedCanonicalDecodeItemDatumV1,
   BoundedCollectionItemProofV1,
@@ -4950,30 +4950,23 @@ const deriveCanonicalDecodeItemStageDataV1 = ({
     witnessSetCompactCbor,
     fieldPreimageLengthsCbor,
   };
-  const compact = verifyMidgardNativeTxProofSourceV1({
+  // Called for its verification, not its value: it binds these compact structures
+  // to the disputed transaction id, which the positional extraction below does not.
+  verifyMidgardNativeTxProofSourceV1({
     transactionId: Buffer.from(
       preparedResolution.resolution.pre_state.transaction_id,
       "hex",
     ),
     source: proofSource,
   });
-  const witnessSet = decodeMidgardNativeTxWitnessSetCompactV1(
-    witnessSetCompactCbor,
-  );
   const lengths = decodeMidgardNativeTxProofFieldLengthsV1(
     fieldPreimageLengthsCbor,
   );
-  const fieldCommitments = [
-    compact.transactionBody.spendInputsHash,
-    compact.transactionBody.referenceInputsHash,
-    compact.transactionBody.outputsHash,
-    compact.transactionBody.requiredObserversHash,
-    compact.transactionBody.requiredSignersHash,
-    compact.transactionBody.mintHash,
-    witnessSet.scriptTxWitsHash,
-    witnessSet.addrTxWitsHash,
-    witnessSet.redeemerTxWitsHash,
-  ] as const;
+  // The §4 positional extraction, taken from the one implementation of it rather
+  // than hand-copied for a third time. `verifyMidgardNativeTxProofSourceV1` above
+  // stays: the helper deliberately does not authenticate the source, and binding
+  // these structures to `pre_state.transaction_id` is what that call is for.
+  const fieldCommitments = midgardV1TxFieldCommitmentsFromSourceV1(proofSource);
   const expectedFieldCommitment = fieldCommitments[fieldIndex];
   const expectedFieldLength = lengths[fieldIndex];
   if (

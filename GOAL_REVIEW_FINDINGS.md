@@ -47,8 +47,12 @@ deleted — the receipt mint gated on
 makes unsatisfiable, so no receipt could be minted for any field carrying an
 item. The mint now binds `verify_order_material` under `expect`
 (`onchain/aiken/validators/user-events/tx-order-v1.ak`), which is the assertion
-this row asked for, applied to the surviving check. The remaining availability
-gap is recorded as #587's Deviation and owned by #589. Row kept for history.
+this row asked for, applied to the surviving check. The availability gap that
+remained after that — the mint admitting only the canonically-empty transaction —
+was closed by #594's owner ruling, which re-expressed `verify_order_material` on
+the §8.8 field-access door against carriage supplied in the mint redeemer, with
+positive and negative selectors per tier. #589 closed as superseded. Row kept for
+history.
 
 ### RF-002 — False MPF non-membership proofs are accepted
 

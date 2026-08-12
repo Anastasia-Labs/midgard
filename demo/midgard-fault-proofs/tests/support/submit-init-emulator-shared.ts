@@ -185,9 +185,11 @@ export const repoRoot = resolve(moduleDir, "../../../..");
  * field that is no longer there, so the scenario dies inside the validator with
  * an `EvaluatorError` reading `unexpected empty list`. #587 then retired the
  * counted publication receipt chain, which took `terminal_receipt_reference` out
- * of `ledger_state.TxOrderPayloadV1` — the same staleness, three more rows.
- * Regenerating the blueprint is #579's, and these are the THIRTEEN tests it has
- * to turn green again.
+ * of `ledger_state.TxOrderPayloadV1` — the same staleness, three more rows. #594
+ * then gave the tx-order minting policy its own wrapped mint redeemer, a type the
+ * frozen blueprint never declared at all — one more row, and the only one red for
+ * a *missing* definition rather than a stale one. Regenerating the blueprint is
+ * #579's, and these are the FOURTEEN tests it has to turn green again.
  *
  * Six of them are emulator scenarios in this directory. All six die at the same
  * `Spend[0] unexpected empty list`:
@@ -217,17 +219,25 @@ export const repoRoot = resolve(moduleDir, "../../../..");
  * stale arity never reaches a script. Running these three files gives
  * `6 failed | 2 passed (8)`.
  *
- * Rows 1-3 need reading rather than only re-running: their expected failure
+ * Rows 2 and 3 need reading rather than only re-running: their expected failure
  * *stage* moved (from prepare-selected / semantic-resolution to open), so they
- * present as an assertion about the wrong stage rather than as an evaluator
- * error, while being this same stale script underneath.
+ * present as an assertion about the wrong stage — `expected [Function] to throw
+ * error matching /…prepare-sel…/ but got 'emulator lifecycle stage open failed:…'`
+ * — rather than as an evaluator error, while being this same stale script
+ * underneath. Row 1 surfaces the `EvaluatorError` directly.
  *
- * The remaining seven are schema-parity rows, not emulator scenarios, and they
+ * The remaining eight are schema-parity rows, not emulator scenarios, and they
  * live in `demo/midgard-node/tests/sdk-aiken-schema-parity.test.ts`. They compare
  * each SDK `Data` schema against the blueprint definition of the same name, so
  * the stale arity shows up directly as a field-count mismatch rather than as an
  * evaluator error. Rows 7-10 are #584's; rows 11-13 are #587's, and the last two
- * of those are red only because they embed the payload:
+ * of those are red only because they embed the payload. Row 14 is #594's and is
+ * the one row whose cause differs in kind: the tx-order minting policy's new
+ * wrapped mint-redeemer type — `user_events.MintRedeemer` carried beside the §8
+ * carriage vector — is **absent** from the frozen blueprint rather than stale, so
+ * it fails on a missing definition (`missing Aiken blueprint definition
+ * midgard/user_events/tx_order_v1/MintRedeemer`) instead of on the field-count
+ * mismatch that fails rows 7-13:
  *
  *   7. "matches ForcedInclusionTxV1Schema to
  *      midgard/ledger_state/ForcedInclusionTxV1 recursively"
@@ -243,17 +253,22 @@ export const repoRoot = resolve(moduleDir, "../../../..");
  *      recursively"
  *  13. "matches TxOrderDatumV1Schema to midgard/user_events/tx_order_v1/Datum
  *      recursively"
+ *  14. "matches TxOrderMintRedeemerV1Schema to
+ *      midgard/user_events/tx_order_v1/MintRedeemer recursively"
  *
- * That file gives `7 failed | 22 passed (29)`. Its total moved with the set: #587
- * deleted the two mappings for the retired receipt datums and the one for the
+ * That file gives `8 failed | 22 passed (30)`. Its total moved with the set twice:
+ * #587 deleted the two mappings for the retired receipt datums and the one for the
  * retired receipt mint redeemer, because a mapping to a type that no longer
  * exists on the SDK side would assert a retired surface rather than measure a
- * stale blueprint.
+ * stale blueprint; #594 then added row 14 for the tx-order minting policy's own
+ * redeemer, which wraps `user_events.MintRedeemer` beside the §8 carriage vector.
  *
- * THIRTEEN with those names is the handoff figure, and it is written down here
+ * FOURTEEN with those names is the handoff figure, and it is written down here
  * rather than left in a review thread so a later reviewer diffing #579 against it
- * is diffing against the real set. Nothing outside these thirteen is expected red
- * for this reason. Both counts above were re-measured on 2026-08-10, after #587:
+ * is diffing against the real set. Nothing outside these fourteen is expected red
+ * for this reason. Both figures were re-measured on 2026-08-12 after #594 — the
+ * parity figure moved to eight red rows, the emulator figure held at the six it
+ * has shown since #587:
  * `vitest run tests/submit-init-emulator-soundness.test.ts
  * tests/submit-init-emulator-transition-trace.test.ts
  * tests/submit-init-emulator-validation-dispute.test.ts --pool=forks

@@ -25,6 +25,7 @@ import {
   RootDomain,
   SettlementDatum,
   TxOrderDatumV1,
+  TxOrderMintRedeemerV1,
   TxOrderSpendRedeemerV1,
   UserEventMintRedeemer,
   UserEventWitnessPublishRedeemer,
@@ -179,6 +180,27 @@ const encodeData = Data.to as unknown as (
   value: unknown,
   schema: unknown,
 ) => string;
+/**
+ * A user-event mint redeemer at the spelling the policy in question takes.
+ *
+ * The tx-order policy's redeemer is `user_events.MintRedeemer` inside its own
+ * `MintRedeemer`, beside the §8 carriage vector (#594); the deposit, withdrawal
+ * and witness policies take the bare enum. Every forced-order payload built here
+ * is the canonically-empty transaction, so its vector is empty — §8.11's walk
+ * consumes one entry per non-empty slot and there are none.
+ */
+const encodeUserEventMintRedeemerFor = (
+  kind: WatcherUserEventKindV1,
+  event: unknown,
+  materialCarriage: readonly unknown[] = [],
+): string =>
+  kind === "forced_order"
+    ? encodeData(
+        { event, material_carriage: materialCarriage },
+        TxOrderMintRedeemerV1,
+      )
+    : encodeData(event, UserEventMintRedeemer);
+
 const adjacentConstructor = (cborHex: string): string => {
   const constructor =
     CML.PlutusData.from_cbor_hex(cborHex).as_constr_plutus_data()!;
@@ -686,6 +708,25 @@ const nonEmptyNativePayload = {
   },
 };
 
+/**
+ * The §8 carriage vector a forced order over `nonEmptyNativeCanonical` supplies.
+ *
+ * Exactly one of §2.5's nine slots is non-empty there — field 4, required signers
+ * — so the vector is one entry long and carries that field's own §5.1 preimage
+ * inline. §8.11's vector is positional over the non-empty slots and MUST be
+ * exhausted exactly, so this is not a free choice: one entry is what the tx-order
+ * mint accepts for this payload, and the indexer re-derives that count.
+ */
+const nonEmptyNativeCarriage = Object.freeze([
+  Object.freeze({
+    Inline: Object.freeze({
+      preimage: Buffer.from(
+        nonEmptyNativeCanonical.body.requiredSignersPreimageCbor,
+      ).toString("hex"),
+    }),
+  }),
+]);
+
 const policy = makeWatcherUserEventIndexerPolicyV1({
   network: "Preprod",
   releaseEvidenceDigest: RELEASE_DIGEST,
@@ -1072,6 +1113,8 @@ type EventFixture = Readonly<{
     | "withdrawal"
     | "forcedOrder"];
   extraReferenceOutRefs: readonly string[];
+  /** The tx-order policy's §8 carriage vector; empty at the other policies. */
+  materialCarriage: readonly unknown[];
 }>;
 
 const makeEventFixture = (
@@ -1092,6 +1135,7 @@ const makeEventFixture = (
     }>;
   }>,
   extraReferenceOutRefs: readonly string[] = [],
+  materialCarriage: readonly unknown[] = [],
 ): EventFixture => {
   const fields =
     kind === "deposit"
@@ -1189,7 +1233,9 @@ const makeEventFixture = (
     datumCborHex,
     assetNameHex,
     nonceInput,
-    mintRedeemerHex: encodeData(
+    materialCarriage,
+    mintRedeemerHex: encodeUserEventMintRedeemerFor(
+      kind,
       {
         AuthenticateEvent: {
           nonce_input_index: 0n,
@@ -1198,7 +1244,7 @@ const makeEventFixture = (
           witness_registration_redeemer_index: 0n,
         },
       },
-      UserEventMintRedeemer,
+      materialCarriage,
     ),
     certificateRedeemerHex: encodeData(
       { MintOrBurn: { targetPolicy: fields.policyId } },
@@ -1581,7 +1627,8 @@ const blockBundle = (
         purpose: mintPurpose,
         index: index.toString(),
         bytes: makeWatcherL1PublicBytesV1(
-          encodeData(
+          encodeUserEventMintRedeemerFor(
+            fixture.kind,
             {
               AuthenticateEvent: {
                 nonce_input_index: BigInt(index),
@@ -1592,7 +1639,7 @@ const blockBundle = (
                 ),
               },
             },
-            UserEventMintRedeemer,
+            fixture.materialCarriage,
           ),
         ),
       });
@@ -2056,15 +2103,14 @@ const nonDepositSpendBundle = (
           },
           TxOrderSpendRedeemerV1,
         );
-  const burnRedeemer = encodeData(
-    {
-      BurnEventNFT: {
-        nonce_asset_name: event.assetNameHex,
-        witness_unregistration_redeemer_index: BigInt(certificateGlobalIndex),
-      },
+  // §8.11: a burn reads no material, so the tx-order policy requires its vector
+  // to be empty, which the helper's default supplies.
+  const burnRedeemer = encodeUserEventMintRedeemerFor(event.kind, {
+    BurnEventNFT: {
+      nonce_asset_name: event.assetNameHex,
+      witness_unregistration_redeemer_index: BigInt(certificateGlobalIndex),
     },
-    UserEventMintRedeemer,
-  );
+  });
   const certificateRedeemer = encodeData(
     { MintOrBurn: { targetPolicy: event.policyId } },
     UserEventWitnessPublishRedeemer,
@@ -3023,6 +3069,41 @@ describe("canonical authenticated user-event indexer", () => {
           terminalFinalityStatus: "pending",
         },
       ]);
+      if (kind === "forced_order") {
+        // §8.11: a burn reads no material, so the tx-order policy requires its
+        // carriage vector to be empty rather than ignore it — an unread wire field
+        // is a second spelling of the same transaction (§6.1). Re-derived here,
+        // and this is the refutation: the same burn with one entry in the vector
+        // yields no observation.
+        const carryingBurn = nonDepositSpendBundle(
+          active,
+          created.store,
+          (redeemers) => {
+            const burn = redeemers.find(
+              (candidate) => candidate.purpose === "mint",
+            )!;
+            burn.bytes = makeWatcherL1PublicBytesV1(
+              encodeUserEventMintRedeemerFor(
+                "forced_order",
+                (
+                  Data.from(
+                    (burn.bytes as { bytesHex: string }).bytesHex,
+                    TxOrderMintRedeemerV1 as never,
+                  ) as { event: unknown }
+                ).event,
+                [{ Inline: { preimage: "80" } }],
+              ),
+            );
+          },
+        );
+        expect(
+          deriveWatcherUserEventObservationV1(
+            policy,
+            active,
+            carryingBurn.context,
+          ),
+        ).toBeNull();
+      }
       const terminalEvent = terminal.snapshot.terminalEvents[0]!;
       if (kind === "forced_order") {
         expect(terminalEvent.terminalClassification).toStrictEqual({
@@ -3194,6 +3275,8 @@ describe("canonical authenticated user-event indexer", () => {
       undefined,
       undefined,
       nonEmptyNativePayload,
+      [],
+      nonEmptyNativeCarriage,
     );
     const bundle = blockBundle([fixture], null, 100, 1);
     const observation = deriveWatcherUserEventObservationV1(
@@ -3217,6 +3300,97 @@ describe("canonical authenticated user-event indexer", () => {
         },
       },
     });
+  });
+
+  it("refuses a tx-order mint redeemer in the retired bare-enum shape", () => {
+    // #594 gave the tx-order minting policy its own `MintRedeemer` — the shared
+    // `user_events.MintRedeemer` wrapped beside the §8 carriage vector — so the
+    // wire form at that policy is `Constr 0 [<enum>, <list>]`. A redeemer in the
+    // *old* bare-enum spelling is what the deployed policy will refuse once the
+    // blueprint is regenerated, and it must not be indexed here either.
+    //
+    // The refusal is loud in this module's only sense of the word: no observation
+    // for the containing block at all, which is the same taxonomy every other
+    // malformed mint redeemer takes (`scanCreatedEvents` returns `null`, and the
+    // caller turns that into a null observation). It is not a per-event drop —
+    // there is no code path in this indexer that skips one event and keeps the
+    // rest, and the negative below pins that a stale watcher against a new mint
+    // stops rather than quietly shipping an incomplete active set.
+    const fixture = makeEventFixture("forced_order", "b9", 0, 1_000n);
+    const bareEnum = blockBundle(
+      [fixture],
+      null,
+      100,
+      1,
+      "mint",
+      (redeemers) => {
+        redeemers[0]!.bytes = makeWatcherL1PublicBytesV1(
+          encodeData(
+            {
+              AuthenticateEvent: {
+                nonce_input_index: 0n,
+                event_output_index: 0n,
+                hub_ref_input_index: 0n,
+                witness_registration_redeemer_index: 1n,
+              },
+            },
+            UserEventMintRedeemer,
+          ),
+        );
+      },
+    );
+    expect(
+      deriveWatcherUserEventObservationV1(policy, null, bareEnum.context),
+    ).toBeNull();
+  });
+
+  it("refuses a forced order whose carriage vector its nine commitments do not exhaust", () => {
+    // §8.11's exhaustion rule, re-derived. A spare entry lets two distinct
+    // redeemers spell one order, the second naming reference inputs nothing in the
+    // mint's walk ever read; a short vector leaves a field's material uncarried.
+    // Both directions are reachable from this module — the vector is in the
+    // redeemer and the non-empty slot count is in the payload — so both are
+    // checked, and the per-field hash half that is *not* reachable is documented
+    // on `forcedPayloadMatchesNativeSource`.
+    const spare = makeEventFixture(
+      "forced_order",
+      "ba",
+      0,
+      1_000n,
+      0n,
+      undefined,
+      undefined,
+      nonEmptyNativePayload,
+      [],
+      [...nonEmptyNativeCarriage, { Inline: { preimage: "80" } }],
+    );
+    expect(
+      deriveWatcherUserEventObservationV1(
+        policy,
+        null,
+        blockBundle([spare], null, 100, 1).context,
+      ),
+    ).toBeNull();
+
+    const short = makeEventFixture(
+      "forced_order",
+      "bb",
+      0,
+      1_000n,
+      0n,
+      undefined,
+      undefined,
+      nonEmptyNativePayload,
+      [],
+      [],
+    );
+    expect(
+      deriveWatcherUserEventObservationV1(
+        policy,
+        null,
+        blockBundle([short], null, 100, 1).context,
+      ),
+    ).toBeNull();
   });
 
   it("rejects a material-bearing forced order whose carried commitment is not its source's", () => {

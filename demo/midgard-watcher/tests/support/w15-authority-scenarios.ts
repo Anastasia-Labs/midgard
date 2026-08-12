@@ -26,6 +26,7 @@ import {
   RootDomain,
   SettlementDatum,
   TxOrderDatumV1,
+  TxOrderMintRedeemerV1,
   TxOrderSpendRedeemerV1,
   UserEventMintRedeemer,
   UserEventWitnessPublishRedeemer,
@@ -41,7 +42,9 @@ import { computeHash32 } from "../../../midgard-core/src/codec/hash.js";
 import {
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1,
+  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   materializeMidgardNativeTxFromCanonicalV1,
   type MidgardNativeTxCanonicalV1,
 } from "../../../midgard-core/src/codec/native.js";
@@ -52,10 +55,12 @@ import {
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "../../../midgard-core/src/codec/native-constants.js";
+import { MIDGARD_EMPTY_FIELD_COMMITMENT_V1 } from "../../../midgard-core/src/codec/native-tx-field-access-v1.js";
 import {
   MIDGARD_CONSENSUS_PROFILE_V1,
   MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
 } from "../../../midgard-core/src/consensus-profile-v1.js";
+import { deriveMidgardV1TxFieldPreimages } from "../../../midgard-core/src/consensus-validation-v1.js";
 import {
   DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
   DA_TRANSPORT_LIMITS_V1,
@@ -140,6 +145,32 @@ const encodeData = Data.to as unknown as (
   value: unknown,
   schema: unknown,
 ) => string;
+
+/**
+ * A user-event mint redeemer at the spelling the policy in question takes.
+ *
+ * Three of the four user-event policies take `user_events.MintRedeemer`
+ * unchanged. The tx-order policy takes it inside its own `MintRedeemer` beside the
+ * §8 carriage vector (#594's owner ruling), so a forced-order fixture that emitted
+ * the bare enum would be pinning a wire form the deployed policy cannot parse and
+ * the indexer must refuse.
+ *
+ * Every forced-order payload these fixtures carry is the canonically-empty
+ * transaction, whose nine slots are all empty, so the vector is empty: §8.11's
+ * walk consumes one entry per *non-empty* slot and there are none.
+ */
+const encodeUserEventMintRedeemerFor = (
+  kind: WatcherUserEventKindV1,
+  event: unknown,
+  materialCarriage: readonly unknown[] = [],
+): string =>
+  kind === "forced_order"
+    ? encodeData(
+        { event, material_carriage: materialCarriage },
+        TxOrderMintRedeemerV1,
+      )
+    : encodeData(event, UserEventMintRedeemer);
+
 const scriptAddress = (scriptHash: string): string => `70${scriptHash}`;
 
 type MutableRecord = Record<string, unknown>;
@@ -622,6 +653,8 @@ const emptyNativePayload = {
     field_preimage_lengths_cbor:
       emptyNativeSource.fieldPreimageLengthsCbor.toString("hex"),
   },
+  // Nine empty slots consume no carriage entry, so §8.11's vector is empty.
+  carriage: [],
 };
 const policy = makeWatcherUserEventIndexerPolicyV1({
   network: "Preprod",
@@ -1055,8 +1088,21 @@ type EventFixture = Readonly<{
     | "withdrawal"
     | "forcedOrder"];
   extraReferenceOutRefs: readonly string[];
+  /** The tx-order policy's §8 carriage vector; empty at the other policies. */
+  materialCarriage: readonly unknown[];
 }>;
 
+/**
+ * A forced order's datum payload **and** the §8 carriage vector its mint redeemer
+ * supplies, which §8.11 makes one claim: the vector is positional over the
+ * payload's non-empty slots and MUST be exhausted exactly, so a payload handed to
+ * a fixture without its vector is a payload no tx-order mint would authenticate.
+ *
+ * `carriage` is deliberately *not* a datum field — §8.7's content addressing is
+ * why `TxOrderPayloadV1` carries no carriage identity — so `forcedDatumPayload`
+ * projects the three fields that are, and this type is the pair the builders pass
+ * around.
+ */
 export type GenuineW15ForcedPayloadV1 = Readonly<{
   tx_id: string;
   transaction_commitment: string;
@@ -1065,7 +1111,58 @@ export type GenuineW15ForcedPayloadV1 = Readonly<{
     witness_set_compact_cbor: string;
     field_preimage_lengths_cbor: string;
   }>;
+  carriage: readonly unknown[];
 }>;
+
+/** The three fields `TxOrderPayloadV1` actually has, with `carriage` dropped. */
+const forcedDatumPayload = (payload: GenuineW15ForcedPayloadV1) => ({
+  tx_id: payload.tx_id,
+  transaction_commitment: payload.transaction_commitment,
+  source: payload.source,
+});
+
+/**
+ * The payload and §8 carriage for a forced order over `canonicalTxCbor`.
+ *
+ * The carriage is one `Inline` entry per non-empty slot, in ascending field index,
+ * carrying that field's own §5.1 preimage — which is what a real order under
+ * §8.11 supplies when its fields fit the transaction's byte budget, and what the
+ * indexer's exhaustion re-derivation counts. Shared rather than hand-rolled per
+ * test file so the two cannot drift apart from each other or from the rule.
+ */
+export const genuineW15ForcedPayloadForCanonicalTxV1 = (
+  canonicalTxCbor: Uint8Array,
+): GenuineW15ForcedPayloadV1 => {
+  const source =
+    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalTxCbor);
+  return Object.freeze({
+    tx_id: computeMidgardNativeTxIdV1(
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalTxCbor),
+    ).toString("hex"),
+    transaction_commitment:
+      computeMidgardNativeTxProofCommitmentV1(source).toString("hex"),
+    source: Object.freeze({
+      compact_cbor: source.compactCbor.toString("hex"),
+      witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        source.fieldPreimageLengthsCbor.toString("hex"),
+    }),
+    carriage: Object.freeze(
+      deriveMidgardV1TxFieldPreimages(canonicalTxCbor)
+        .filter(
+          (field) =>
+            !field.expectedHash.equals(MIDGARD_EMPTY_FIELD_COMMITMENT_V1),
+        )
+        .map((field) =>
+          Object.freeze({
+            Inline: Object.freeze({
+              preimage: field.preimageCbor.toString("hex"),
+            }),
+          }),
+        ),
+    ),
+  });
+};
 
 const makeEventFixture = (
   kind: WatcherUserEventKindV1,
@@ -1143,13 +1240,23 @@ const makeEventFixture = (
         : {
             event: {
               id: eventId,
-              tx: forcedPayloadOverride ?? emptyNativePayload,
+              tx: forcedDatumPayload(
+                forcedPayloadOverride ?? emptyNativePayload,
+              ),
             },
             inclusion_time,
             witness,
             refund_address: addressData,
             refund_datum: "NoDatum" as const,
           };
+  // Only the tx-order policy's redeemer has a carriage vector, and its contents
+  // are fixed by the payload: one entry per non-empty slot, which §8.11 requires
+  // exhausted exactly. Reading it off the payload rather than taking it as a
+  // separate argument is what keeps the two from being set inconsistently.
+  const materialCarriage: readonly unknown[] =
+    kind === "forced_order"
+      ? (forcedPayloadOverride ?? emptyNativePayload).carriage
+      : [];
   const schema =
     kind === "deposit"
       ? DepositDatum
@@ -1181,7 +1288,9 @@ const makeEventFixture = (
     datumCborHex,
     assetNameHex,
     nonceInput,
-    mintRedeemerHex: encodeData(
+    materialCarriage,
+    mintRedeemerHex: encodeUserEventMintRedeemerFor(
+      kind,
       {
         AuthenticateEvent: {
           nonce_input_index: 0n,
@@ -1190,7 +1299,7 @@ const makeEventFixture = (
           witness_registration_redeemer_index: 0n,
         },
       },
-      UserEventMintRedeemer,
+      materialCarriage,
     ),
     certificateRedeemerHex: encodeData(
       { MintOrBurn: { targetPolicy: fields.policyId } },
@@ -1573,7 +1682,8 @@ const blockBundle = (
         purpose: mintPurpose,
         index: index.toString(),
         bytes: makeWatcherL1PublicBytesV1(
-          encodeData(
+          encodeUserEventMintRedeemerFor(
+            fixture.kind,
             {
               AuthenticateEvent: {
                 nonce_input_index: BigInt(index),
@@ -1584,7 +1694,7 @@ const blockBundle = (
                 ),
               },
             },
-            UserEventMintRedeemer,
+            fixture.materialCarriage,
           ),
         ),
       });
@@ -2226,15 +2336,14 @@ const nonDepositSpendBundle = (
           },
           TxOrderSpendRedeemerV1,
         );
-  const burnRedeemer = encodeData(
-    {
-      BurnEventNFT: {
-        nonce_asset_name: event.assetNameHex,
-        witness_unregistration_redeemer_index: BigInt(certificateGlobalIndex),
-      },
+  // A burn reads no material, so §8.11 requires the tx-order policy's vector to
+  // be empty — which `encodeUserEventMintRedeemerFor`'s default supplies.
+  const burnRedeemer = encodeUserEventMintRedeemerFor(event.kind, {
+    BurnEventNFT: {
+      nonce_asset_name: event.assetNameHex,
+      witness_unregistration_redeemer_index: BigInt(certificateGlobalIndex),
     },
-    UserEventMintRedeemer,
-  );
+  });
   const certificateRedeemer = encodeData(
     { MintOrBurn: { targetPolicy: event.policyId } },
     UserEventWitnessPublishRedeemer,

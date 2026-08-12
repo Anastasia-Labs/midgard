@@ -9,7 +9,6 @@
  */
 import {
   computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
@@ -91,6 +90,7 @@ import type { WatcherStateQueueHeaderV1 } from "../src/state-queue-indexer.js";
 import {
   createGenuineW15DepositWithdrawalAuthoritiesV1,
   type GenuineW15AuthorityFixtureSetV1,
+  genuineW15ForcedPayloadForCanonicalTxV1,
   type W15AcceptedAuthorityScenarioV1,
 } from "./support/w15-authority-scenarios.js";
 import {
@@ -190,23 +190,12 @@ const FORCED_INVALID_CASES = Object.freeze({
   }),
 });
 
-const forcedPayloadForNative = (native: ReturnType<typeof makeNativeTx>) => {
-  const source = deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
-    native.txCbor,
-  );
-  const full = decodeMidgardNativeTxFullV1FromCanonicalCbor(native.txCbor);
-  return Object.freeze({
-    tx_id: computeMidgardNativeTxIdV1(full).toString("hex"),
-    transaction_commitment:
-      computeMidgardNativeTxProofCommitmentV1(source).toString("hex"),
-    source: Object.freeze({
-      compact_cbor: source.compactCbor.toString("hex"),
-      witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
-      field_preimage_lengths_cbor:
-        source.fieldPreimageLengthsCbor.toString("hex"),
-    }),
-  });
-};
+// Routed through the shared derivation rather than rebuilt here: the payload now
+// travels with the §8 carriage vector its mint redeemer supplies (#594), and two
+// hand-rolled copies of that pairing would be two chances to get the vector wrong
+// in a way the fixture cannot detect.
+const forcedPayloadForNative = (native: ReturnType<typeof makeNativeTx>) =>
+  genuineW15ForcedPayloadForCanonicalTxV1(native.txCbor);
 
 let genuineW15: GenuineW15AuthorityFixtureSetV1;
 let genuineW16: GenuineW16SettlementAuthorityFixtureSetV1;

@@ -42,10 +42,48 @@
  *     is a public function of public inputs, so it says which manifest a
  *     carriage means and nothing about whether its bytes are the field's — the
  *     door therefore discharges the policy's obligation itself, hashing the
- *     concatenated chunks against `expectedCommitment`. The result is the same
- *     acceptance set as on-chain, reached without a minting policy. See
+ *     concatenated chunks against `expectedCommitment`. See
  *     {@link buildMidgardChunkedFieldViewV1} for what it costs and why §4
  *     leaves no cheaper option.
+ *
+ * **The two acceptance sets are not identical at tier 3, and diverge in both
+ * directions.** An earlier revision of this header claimed they were; they are
+ * not, and the claim was doing no work that stating the real relationship does not
+ * do better. Aiken has *two* tier-3 entry points and this module corresponds to
+ * neither exactly:
+ *
+ *   * Against Aiken's lazy `authenticated_field_view`, this module is **stricter**:
+ *     that door authenticates a `Certified` field by requiring the §8.6 token and
+ *     leaves the chunk bytes unhashed until an accessor touches one, while this one
+ *     hashes the concatenation at construction (third deviation above).
+ *   * Against Aiken's `authenticated_whole_field_view` — the entry point the
+ *     tx-order mint opens — this module is **looser in one place and stricter in
+ *     another**. Looser: that door concatenates the chunks and hands them to
+ *     `whole_view`, which runs the full §5.1 `walk_to_end` count-consistency check
+ *     for the variable-width fields; this module deliberately does not (see
+ *     {@link buildMidgardChunkedFieldViewV1}, "Why no walk here") and substitutes
+ *     the O(1) `header_len + count ≤ total_length` bound. Stricter: that door
+ *     collapses to a `Whole` view and *discards* the certificate's digest vector,
+ *     so nothing afterwards ever checks a chunk against its certified digest,
+ *     whereas this module keeps the vector and verifies each chunk the first time a
+ *     read reaches it.
+ *
+ * **Why neither divergence has a witness in the paths that exist.** The stricter
+ * direction cannot refuse anything the whole-door accepts: a chunk that is part of
+ * a concatenation which already matched §4's `expectedCommitment` also matches its
+ * own certified digest, whenever the certificate is the one §8.6's policy minted
+ * for those chunks — and a certificate for any other chunk set is refused at the
+ * cert-name and digest-vector checks before a byte is read. The looser direction
+ * needs a tier-3 preimage that matches the committed field hash yet whose §5.1
+ * header count does not reconcile with its content; both sides reach a tier-3 view
+ * only through such a certificate, so they are looking at the *same* bytes, and the
+ * question is only whether those bytes are structurally well-formed. Where the
+ * on-chain whole-door is the authority it refuses first — a tx-order mint over such
+ * a payload never produces an order NFT, so ingestion never receives it — and where
+ * this module is used to predict an on-chain step, a looser prediction yields a
+ * step the chain rejects rather than a state it accepts. The residual is therefore
+ * that this module is not a substitute for the on-chain walk on adversarial input;
+ * it is honest about that rather than claiming a parity it does not have.
  */
 
 import {
@@ -903,8 +941,15 @@ const countFromTotalLength = (stride: number, totalLength: number): number => {
  * per read. What it does *not* buy back is chunk-level laziness at the door: a
  * caller that reads one item still hashes the whole preimage, because §4 gives
  * no way to authenticate less. Laziness below the door is untouched — the
- * per-chunk digest check still happens only on the chunks a read reaches, which
- * keeps the acceptance set identical to the on-chain door's.
+ * per-chunk digest check still happens only on the chunks a read reaches. That
+ * retained check is one of the two tier-3 divergences this module's header
+ * enumerates, not a parity: it matches Aiken's *lazy* `authenticated_field_view`,
+ * which also verifies a touched chunk against the certificate's digest, but
+ * `authenticated_whole_field_view` — the entry point the tx-order mint opens —
+ * collapses to a `Whole` view and discards the digest vector, so nothing there
+ * ever re-checks a chunk. Against that door this module is therefore stricter
+ * here, and the header's "Why neither divergence has a witness" paragraph is why
+ * the extra strictness cannot refuse anything the whole-door accepts.
  *
  * Everything `totalLength` is used for is authenticated as a consequence: the
  * chunk lengths are checked against §8.4's split before the hash, so a

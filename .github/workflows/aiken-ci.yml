@@ -173,6 +173,18 @@ jobs:
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
         run: node scripts/verify-q21-exec-ledger-v1.mjs
+      # Issue #594, the §8.11 forced-order material carriage lane. §8.11
+      # publishes a cost for the tx-order mint — the whole-materialising door's
+      # full-preimage re-hash, "bounded by §5.4's 32,768-byte aggregate" — and
+      # the mint is the only on-chain reader of an order's material, so a cost
+      # claim nobody can falsify decides whether that material reaches L1 at
+      # all. The ledger pins the nine-field walk at §5.4's bound and, at two
+      # cardinalities, the per-item cost of the variable-width fields'
+      # `walk_to_end` that the published sentence does not mention.
+      - name: Pin the tx-order mint material-carriage execution ledger
+        env:
+          MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
+        run: node scripts/verify-tx-order-mint-exec-ledger-v1.mjs
       # Issue #521. The released compiler keys generated expect-decoders by
       # local type name only, so two same-named types in different modules
       # share one decoder and the shipped blueprint silently gets a decoder

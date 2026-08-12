@@ -1482,6 +1482,137 @@ This is also the measurement that produced **erratum E1**: `K = 15,900` overruns
 `maxTxSize` by 264 bytes and was re-pinned to the reliable frontier, 15,148 —
 applied in both languages. See §8.3.
 
+### 8.11 Forced-order material carriage (normative)
+
+An **L1 forced order** commits to an L2 transaction it wants included: its datum
+is `TxOrderPayloadV1 { tx_id, transaction_commitment, source }`, and its
+`source`'s compact structures carry §4's nine field commitments. This subsection
+is normative for how that transaction's material reaches L1. (Owner ruling,
+2026-08-11; it supersedes the earlier all-fields-empty stopgap.)
+
+**Durable availability is L1 history plus digest addressing, not a live UTxO.**
+The order **mint** is the only on-chain reader of the material. The order's spend
+path verifies settlement `forced_transactions_root` membership and never touches
+a preimage; a later dispute re-carries the bytes digest-checked under this
+section. So once the mint has authenticated a field's preimage against its
+committed hash, those bytes are permanent L1 history — which is what the operator
+and the node's ingestion walk read — and nothing afterwards depends on the
+carriage UTxO continuing to exist.
+
+**The order datum carries no carriage identity.** No `OutputReference` list, no
+preimage bytes: §8.7's mandatory content-addressing rule applies here with no
+exception, so the nine commitments are the whole material directory. A consumer
+that wants a field looks it up by digest. (The 2026-08-11 ruling text cites §8.5
+for this rule; §8.5 is _Custody_ and the content-addressing requirement is
+§8.7's. The correction is recorded on #594 and every downstream citation is
+written against §8.7.)
+
+**Carriage is prover-chosen per non-empty field, supplied in the mint
+redeemer.** For each of §2.5's nine slots whose committed hash is not
+`field_commitment(#"80")`, the order's mint redeemer supplies one §8.8
+`FieldCarriageV1`, and the mint authenticates it against that slot's commitment
+through the field-access door:
+
+- The vector is **positional over the non-empty slots in ascending field
+  index**, not `(field_index, carriage)` pairs. §4 has no field-index domain
+  separation, so a supplied index would have to be checked against the slot it
+  claims before it could be used, and the mint's walk over the nine commitments
+  already knows that slot.
+- The vector MUST be **exhausted exactly**. A short vector leaves a field with
+  material uncarried; a spare entry lets two distinct redeemers authenticate one
+  order, the second naming reference inputs nothing verified.
+- An **empty slot consumes no entry, and its declared length MUST be 1.** A slot
+  whose committed hash equals `field_commitment(#"80")` has no carriage, so the
+  door never runs there and nothing else in the walk would ever look at the §2.4
+  entry for it — yet that entry is inside `transaction_commitment`. §5.1 fixes the
+  empty preimage at the one-byte header `80`, so the mint MUST assert
+  `declared_length == 1` at every empty slot. Skipping the assertion leaves one
+  committed claim per empty field unchecked, which is nine of them for the
+  canonically-empty order.
+- The mint MUST additionally require each authenticated preimage's own length to
+  equal the §2.4 `NativeTxFieldPreimageLengthsV1` entry for its slot. The two are
+  independently committed statements about one field and §4's flat hash does not
+  collapse them (§12's `reject_field_preimage_size` is the dispute-side form of
+  the same disagreement); for an order it is the creator's payload contradicting
+  itself and the mint fails closed.
+- The door entry point MUST be the **whole-materialising** one. Under the lazy
+  tier-3 form a `Certified` field's chunk bytes stay unhashed until an accessor
+  touches one, and this mint touches no items — so a tier-3 order would be
+  authenticated with the manifest checked and the named chunk reference inputs
+  never read, which is precisely the availability claim being made.
+
+**Cost of the walk (measured, #594).** It splits exactly where `whole_view`'s
+§5.1 count-consistency check splits, and the earlier one-line claim — "bounded by
+§5.4's 32,768-byte aggregate" — is true about bytes and wrong about execution:
+
+- For the five **fixed-stride** fields (0, 1, 3, 4, 7) the cost is §12.5's tier-2
+  per-step full-preimage re-hash and is bounded by §5.4's **per-field** byte
+  bound, as published. Measured: field 0 at 819 items / 32,763 bytes costs
+  1,088,129 memory units against 1,008,355 at one item — 79,774 more for 32,758
+  more bytes.
+- For the four **variable-width** fields (2, 5, 6, 8) it additionally pays §5.1's
+  `walk_to_end`, one item head per item. Measured at ≈21,062 memory units per
+  item, which reaches §3.3's execution basis near **537 items** while §5.4's byte
+  bound admits 16,382 minimum-width items in one such field. On those slots the
+  item count, not the byte count, is the operative bound; the worst shape this
+  mint admits at §5.4's bound measures 344,075,442 memory units, 26× the basis.
+  Pinned by `onchain/aiken/scripts/tx-order-mint-exec-ledger-v1.json`; the
+  over-basis shape and its erratum are recorded on #594 for #580.
+- **The bound the mint enforces is per-field, not aggregate.** `whole_view`
+  checks `total_length ≤ max_transaction_aggregate_field_bytes` at each opening
+  and nothing in the walk sums the nine, so nine fields at 32,768 bytes each are
+  mint-admissible. §5.4's aggregate is a property of a valid L2 transaction that
+  the consensus rules enforce elsewhere; it is not a mint guard, and this
+  subsection does not claim it as one. Whether the mint should also enforce the
+  aggregate is recorded on #594.
+
+**A burn carries no vector.** The tx-order minting policy's redeemer is the
+shared user-event mint redeemer wrapped beside the carriage vector, so both the
+authenticating mint and the NFT burn parse the same type. A burn reads no
+material, so the policy MUST require its vector to be **empty** rather than
+ignore it: an unread wire field is a second spelling of the same transaction
+(§6.1), and two burn redeemers differing only in bytes nothing reads would both
+be admissible. An authenticating mint's vector is not length-constrained by this
+rule — the walk above is what consumes and exhausts it.
+
+**Tier selection is the creator's, under the L1 transaction budget.**
+
+| tier         | where the bytes are                                                              | what gates the choice                                                                                                              |
+| ------------ | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `Inline`     | the order transaction's own mint redeemer                                        | **no on-chain threshold constant** — the L1 16,384-byte transaction limit is the gate, so the inline/reference split is an off-chain planning concern |
+| `RawUtxo`    | one nothing-but-bytes inline datum published in a **prior** transaction          | `preimage_len ≤ K`; referenced datums are not part of the order transaction's bytes                                                  |
+| `Certified`  | §8.4 chunks plus one §8.6 manifest, published in **prior** transactions          | `preimage_len > K`, enforced by the door — §8.4's partition still holds at the top of the ladder                                     |
+
+Tiers 1 and 2 are indistinguishable to the door below `K`: it hashes the same
+bytes against the same commitment whether they arrived in a redeemer or a
+referenced datum. What separates them is whose byte budget pays, which is a
+property of the consuming transaction and not of the preimage — so a field that
+fits a redeemer alone may still have to be published when eight siblings also
+want the redeemer. Off-chain planning takes the aggregate reserve
+largest-field-first, so a small field never spends budget a large one then cannot
+have.
+
+**Custody: the creator's own key, and reclaim is unconditional.** Raw
+preimage/chunk UTxOs are published at the **order creator's own wallet address**,
+and the §8.6 certificate records the creator's payment key hash as its min-Ada
+authority. Reclaim is an **ordinary key spend at any time after the mint**:
+
+- **no reclaim contract** — nothing script-guards the min-Ada;
+- **no time gate** — not a maturity window, not the order's inclusion time, not
+  the tx-order NFT's lifetime.
+
+That is sound because of the first paragraph: the mint has already read the
+bytes, they are in L1 history, and no later reader depends on the UTxO. §8.5's
+custody rule (raw carriage at the prover's own key address, min-Ada reclaimed by
+ordinary key spend) and §8.7's cleanup rule both apply as written — cleanup is
+owner-discretionary, there are no forced-cleanup or time-lock rules, and a yank
+is self-healing because republication of identical bytes is interchangeable.
+
+**The mint is parameterized by the §8.6 certificate minting policy id**, which the
+door consults on tier 3 only. It is the same deployment role the validation-trace
+validators take (§8.6, _Consumption_): one deployed certificate policy serves
+both readers.
+
 ## 9. Conformance
 
 1. Aiken and TypeScript twins emit byte-identical preimages, compact
