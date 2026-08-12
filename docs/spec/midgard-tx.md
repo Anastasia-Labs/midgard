@@ -28,9 +28,10 @@
   pinned by analysis and are re-measured in Phase 4 of the reversion
   program; falsification by measurement is an amendment-level erratum to
   this document by design, and does not reopen GOAL_SPEC acceptance
-  criteria. **One has been falsified**: `K` is superseded by §8.3 erratum E1
-  (2026-08-09), which re-pins it from 15,900 to 15,148 bytes and opens a window
-  of preimage lengths that carry no admissible carriage until the re-pin lands.
+  criteria. **One has been falsified and repaired**: `K` was superseded by §8.3
+  erratum E1 (2026-08-09), which re-pinned it from 15,900 to 15,148 bytes; the
+  re-pin has since landed in both languages, so the window of preimage lengths
+  that carried no admissible carriage is closed.
   `maxTier1RedeemerPreimageBytes` remains provisional and unmeasured, though E1
   narrows the headroom it was reasoned from.
 - **Errata:** §8.3 erratum E1 — `K` re-pinned by Phase-4 measurement; §8.3
@@ -506,16 +507,17 @@ neighbours read against this table.
 
 | constant                            | value                               | status                                                                                                                                                                                     |
 | ----------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `K` (chunk size / tier-2 bound)     | ~~15,900 bytes~~ → **15,148 bytes** | **FALSIFIED and re-pinned — erratum E1 below is normative for this row.** 15,900 is what `chunk_bytes_k` still reads in code, pending #565's serialized patch; it is not the value of `K`. |
+| `K` (chunk size / tier-2 bound)     | ~~15,900 bytes~~ → **15,148 bytes** | **FALSIFIED, re-pinned and applied — erratum E1 below is normative for this row.** 15,148 is the measured reserve-clearing publication frontier, and both `chunk_bytes_k` and `MIDGARD_CHUNK_BYTES_K_V1` now read it. |
 | `maxTier1RedeemerPreimageBytes`     | **14,336 bytes**                    | **provisional** (not yet measured); E1 narrows its headroom                                                                                                                                |
 | `maxTransactionAggregateFieldBytes` | 32,768 bytes                        | retained                                                                                                                                                                                   |
 | maximum tier-3 chunk count          | `⌈32,768 / K⌉ = 3`                  | derived; unchanged by the re-pin                                                                                                                                                           |
 
-**Every number below this table that is quoted at `K` is quoted at the
-superseded 15,900**, because the fixtures and the compiled validator are still
-pinned there — the §8.10 three-chunk corner splits `[15,900, 15,900, 963]`, and
-the §11.4 and §12.5 rows sit at `chunk_bytes_k`. They are labelled where they
-appear. Re-taking them is part of the serialized re-pin, not of this table.
+**Every number below this table that is quoted at `K` is quoted at the repaired
+15,148**, because the fixtures, the goldens and the compiled validator all sit
+there now — the §8.10 three-chunk corner splits `[15,148, 15,148, 2,467]`, and the
+§11.4 and §12.5 rows were re-taken at `chunk_bytes_k` when it moved. Where a
+superseded figure is retained it is labelled as superseded, because part of what
+E1 records is where the earlier analysis went wrong.
 
 Basis. Both values were pinned **provisional-pending-Phase-4-measurement**: each
 by analysis over existing measurements, not by a measurement of the final
@@ -671,31 +673,37 @@ maximum tier-3 chunk count is unchanged and no other constant in this table
 moves. (The floor below which the chunk count would become 4 is 10,923; the
 re-pin is nowhere near it.)
 
-**Nothing above 15,148 bytes is carriable on L1 today, and tier 3 is
-inoperative.** This is the operative consequence of the measurement, and it is
-much larger than the gap between the two values of `K`. Under the **compiled**
-constants:
+**What the outage was, before the re-pin landed.** This is recorded because the
+size of the consequence is the reason the erratum is amendment-level, and because
+the shape of it is what the repair had to close. Under the superseded `K`:
 
 - **Tier 2** carries a whole preimage in one publication, so a preimage in
-  `(15,148, 15,900]` publishes as a transaction over the reserve — a 15,500-byte
+  `(15,148, 15,900]` published as a transaction over the reserve — a 15,500-byte
   preimage publishes as 16,235 bytes, 363 over the reserve and 149 under
   `maxTxSize` even without one — and above 15,644 it does not fit `maxTxSize` at
   all.
-- **Tier 3** fares worse, not better. The chunker cuts at `chunk_bytes_k` =
-  15,900 and the §8.3 guard is a refusal, **not a re-split**, so *every* tier-3
-  plan — at every preimage length from 15,901 bytes to the §5.4 cap — has a
-  first chunk of exactly 15,900 bytes, which publishes as 16,648 bytes and is
-  264 over `maxTxSize`. There is no tier-3 preimage whose carriage can be
-  published.
+- **Tier 3** fared worse, not better. The chunker cuts at `chunk_bytes_k`, and the
+  §8.3 guard is a refusal, **not a re-split**, so at `K` = 15,900 *every* tier-3
+  plan — at every preimage length from 15,901 bytes to the §5.4 cap — had a first
+  chunk of exactly 15,900 bytes, which publishes as 16,648 bytes and is 264 over
+  `maxTxSize`. There was no tier-3 preimage whose carriage could be published.
 
-The unpublishable window is therefore the whole of **(15,148, 32,768]** — every
+The unpublishable window was therefore the whole of **(15,148, 32,768]** — every
 size above the reliable frontier up to the §5.4 aggregate cap — and not the
 `(15,148, 15,900]` sliver a previous revision of this erratum named. That
 revision was wrong by a factor of about 23 in the width of the outage and wrong
-in kind about tier 3, which it described as merely mis-partitioned when in fact
-it does not function. **Tier 3 is inoperative on L1 until #565 re-pins `K`.**
-An implementation MUST NOT publish carriage larger than 15,148 bytes, and MUST
-fail closed rather than build such a publication.
+in kind about tier 3, which it described as merely mis-partitioned when in fact it
+did not function.
+
+**With the re-pin applied the window is empty, and that is a property of the
+repair rather than a coincidence.** `K` is now *defined* as the reserve-clearing
+publication frontier, so the largest chunk the chunker can cut is the largest
+chunk that can be published: tier 2 admits exactly the preimages that fit one
+publication, and every chunk of every tier-3 plan — including the two full-`K`
+chunks of the §8.10 corner — publishes inside the reserve. An implementation MUST
+still refuse to publish carriage larger than 15,148 bytes and MUST fail closed
+rather than build such a publication; what has changed is that no honest §8.4 plan
+asks it to.
 
 **The prohibition is on publication, not on planning.** A previous revision told
 implementations not to *plan* a field into the affected window. That is the
@@ -708,71 +716,85 @@ about bytes and the §8.4 split is the pure function that healing and
 certification are defined over; it stays total. The refusal belongs where a
 transaction is built.
 
-**The mitigation is enforced by default — and it is a refusal, not a repair.**
-A caller may raise the builder's limit (bounded by the §5.4 cap) for
-measurement work, so the guard is a fail-closed default rather than an
-inescapable invariant. The tooling fails closed unless so overridden:
-`midgardFieldCarriagePublishabilityV1` reports
-every chunk of a plan that `maxTxSize` will not accept and by how much, and
-`buildUnsignedFieldPreimagePublicationV1Program` refuses to build one, naming
-this erratum. The guard is deliberately not a re-split, because the §8.4 chunk
-boundaries are verified on-chain against `chunk_bytes_k` and re-cutting them
-off-schedule would produce carriage the compiled validator rejects. Refusal is
-the only sound behaviour available to the off-chain half. It is therefore
-correct **and it does not restore tier 3**: what it buys is that the failure is
-now visible at build time instead of at submission, which is the whole of what
-this lane can deliver without the serialized patch.
+**The build-time guard stays, and is now a guard rather than the mitigation.**
+`midgardFieldCarriagePublishabilityV1` reports every chunk of a plan that
+`maxTxSize` will not accept and by how much, and
+`buildUnsignedFieldPreimagePublicationV1Program` refuses to build one, naming this
+erratum. A caller may raise the builder's limit (bounded by the §5.4 cap) for
+measurement work, so it is a fail-closed default rather than an inescapable
+invariant. What the re-pin changed is what the guard catches: before it, *every*
+tier-3 plan, which is how the outage became visible at build time instead of at
+submission; after it, only a chunk list that did not come from this chunker, or a
+deliberately raised limit. The guard is still deliberately not a re-split, because
+the §8.4 chunk boundaries are verified on-chain against `chunk_bytes_k` and
+re-cutting them off-schedule would produce carriage the compiled validator
+rejects.
 
-**Why the constant in code still reads 15,900, and what that costs.**
-`chunk_bytes_k` is declared in `native_tx_field_access_v1`, which #573 froze as
-a shared surface, and changing it re-cuts every chunk boundary in the system:
-the #569 cross-language straddle vector (`chunkLengths [15900, 103]`), the #568
-chunk-count goldens, the §11.4 and §12.5 measured rows whose fixtures are pinned
-*at* `chunk_bytes_k`, and the §8.10 corner below. That is a serialized
-Phase-1-surface change under #565's sequencing, not a local edit by the lane
-that found it, and re-deriving two landed lanes' evidence from this one would be
-the larger error.
+**The re-pin is applied in both languages, and what it re-cut.** `K` is the
+*split*, not merely a bound, so moving it moved every chunk boundary in the
+system, and all of it moved in one commit rather than being carried as a live
+spec/code divergence:
 
-The price of that freeze is stated plainly, because AGENTS.md's pre-mainnet rule
-is to converge divergences rather than carry them: **this document's normative
-`K` = 15,148 and the compiled `chunk_bytes_k` = 15,900 disagree, live, in the
-tree.** `expect total_length > chunk_bytes_k` is compiled into
+- `chunk_bytes_k` in `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak` and
+  `MIDGARD_CHUNK_BYTES_K_V1` in
+  `demo/midgard-core/src/codec/native-tx-field-access-v1.ts` both read 15,148.
+  The TypeScript half is asserted **equal to the derived frontier**
+  (`MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1`) rather than merely equal to a
+  literal, so `K` cannot drift away from the measurement that fixes it.
+- The #569 cross-language straddle vector re-derived from its producer:
+  `chunkLengths [15,148, 855]`, and the straddling item moved from 397 to **378**
+  (payload `[15,125, 15,163)`, crossing chunk 0's end at 15,148). The producer
+  refuses to emit a vector whose named item is not the sole straddling read, so
+  the index cannot fall behind a future re-pin.
+- The #568 chunk-count goldens re-derived from their producer.
+- The §8.10 three-chunk corner re-cut to `[15,148, 15,148, 2,467]` on both the
+  door side and the certification side, with the two straddling reads now at items
+  378 and 757; §8.10's execution ledger re-taken and its table and readings moved
+  in the same commit.
+- The §12.5 tier-2 fixtures re-taken at the new bound: 378 field-1 items / 15,123
+  bytes, and 1,372 field-6 items / 15,095 bytes.
+- The emulator suite re-measured. Its raised-`maxTxSize` blocks were the ones the
+  outage forced, and all but the frontier sweep — which must build past the limit
+  to find it — now run at the real 16,384 with full-`K` chunks going through the
+  ledger.
+
+`expect total_length > chunk_bytes_k` is compiled into
 `native_tx_field_access_v1`'s tier-3 view construction and into
 `native_tx_carriage_v1`'s certification, precisely so §8.4's partition is a
-property of the format rather than a convention — so the disagreement is not
-cosmetic: for a preimage in `(15,148, 15,900]` the spec says tier 3 and the
-deployed validator says tier 2. Carrying a live spec/code divergence is a real
-cost, accepted here only because the alternative is an unserialized edit to a
-frozen shared surface, and bounded by the fact that no preimage in the disputed
-range can be carried under either value. Both `K` doc comments — the Aiken
-`chunk_bytes_k` in `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak` and
-the TypeScript `MIDGARD_CHUNK_BYTES_K_V1` in
-`demo/midgard-core/src/codec/native-tx-field-access-v1.ts` — point here.
+property of the format rather than a convention; with the two halves agreeing,
+that partition and this document's `K` are the same number. Both `K` doc comments
+point here.
 
 **What #574 discharges, and what it defers.** #574's AC-1 asks that publish
 tooling carry a preimage of any size up to the §5.4 cap. **Half of that is not
-discharged and cannot be by this lane.** Only `[1, 15,148]` is carriable at the
-real `maxTxSize`; the tier-3 end-to-end exercise is demonstrated on an emulator
-configured with an inflated `maxTxSize`, which is honest as a measurement of the
-*format* and is not evidence that the carriage is publishable on L1. The
-full-cap half of AC-1 is dischargeable only by #565's serialized re-pin of `K`.
-What **is** discharged today and stands on its own: correct fail-closed publish
+discharged as of #574 and was discharged by E1's repair instead.** At the
+superseded `K` only `[1, 15,148]` was carriable at the real `maxTxSize`, and the
+tier-3 end-to-end exercise ran on an emulator configured with an inflated
+`maxTxSize` — honest as a measurement of the *format*, and not evidence that the
+carriage was publishable on L1. **The re-pin closes that half.** Every chunk of
+every §8.4 plan up to the §5.4 cap now publishes inside the reserve, and the
+emulator blocks that had to be inflated — the tier ladder, the tier-3 corner
+healing, the min-Ada measurements and the certification round trip — run at the
+real 16,384 with full-`K` chunks going through the ledger. The one block that
+still raises the limit is the frontier sweep, which has to build transactions past
+the limit in order to find where the limit is.
+
+What #574 discharged on its own, and stands unchanged: correct fail-closed publish
 tooling; tier-invisible reads through one authenticated view; healing at every
-publishable size; and a byte-exact publication cost model derived from, and
-pinned against, real signed transactions. When `K` is re-pinned, the tests that
-turn red are known and named — the §8.10 corner rows in
+publishable size; and a byte-exact publication cost model derived from, and pinned
+against, real signed transactions. The re-pin's own crossing is recorded in E1
+above: the §8.10 corner rows in
 `onchain/aiken/lib/midgard/native-tx-carriage-v1.test.ak` and
 `onchain/aiken/validators/field-preimage-certificate-handlers.test.ak` (whose
-`[15,900, 15,900, 963]` split becomes a different split), the #569 straddle
-vector, the #568 chunk-count goldens, the §8.10 execution ledger
-(`onchain/aiken/scripts/native-tx-carriage-exec-ledger-v1.json`, which must be
-re-taken with `--update` in the same commit as the spec table), and the
-emulator suite's raised-limit blocks, which stop needing to be raised. Two
-further limits of the discharge, stated so silence does not imply them: no
-dispute transaction is built for any tier — every read in these tests is an
-in-process codec call over an authenticated view, not an on-chain step — and
-tier 1 never reaches a ledger at all, so E1's tier-1 wire-cost caution rests
-on arithmetic, not on a submitted transaction.
+`[15,900, 15,900, 963]` split became `[15,148, 15,148, 2,467]`), the #569 straddle
+vector, the #568 chunk-count goldens, and the §8.10 execution ledger
+(`onchain/aiken/scripts/native-tx-carriage-exec-ledger-v1.json`, re-taken with
+`--update` in the same commit as the spec table) all moved together. Two further
+limits of the discharge, stated so silence does not imply them: no dispute
+transaction is built for any tier — every read in these tests is an in-process
+codec call over an authenticated view, not an on-chain step — and tier 1 never
+reaches a ledger at all, so E1's tier-1 wire-cost caution rests on arithmetic, not
+on a submitted transaction.
 
 **Scope note.** §9's conformance rewrite, the SDK golden generator, the wire
 golden tests and the CI step that gates them are #568/#573 surface, not #574's.
@@ -1198,9 +1220,9 @@ Three measurements were owed, and the third produced erratum E1 (§8.3).
 the three-chunk corner opened through the real door with the four reference
 inputs a consuming step carries — one certificate and three chunks. The fixture
 is field 1 (stride 40) at 819 items and 32,763 bytes, the largest fixed-stride
-preimage under the §5.4 cap; it splits `[15,900, 15,900, 963]` — **at the
-superseded `K`** (§8.3 E1), which is where the compiled validator and every
-fixture still sit — both chunk boundaries fall inside an item, and
+preimage under the §5.4 cap; it splits `[15,148, 15,148, 2,467]` — at the
+**repaired** `K` (§8.3 E1), which is where the compiled validator and every
+fixture now sit — both chunk boundaries fall inside an item, and
 `tier3_corner_fixture_sits_at_the_three_chunk_corner` asserts every one of those
 so the rows stay quoted where they were taken.
 
@@ -1211,13 +1233,30 @@ exactly as §12.5 found — subtracts out.
 
 | #   | seam test                             | what it adds                  | memory  | CPU         |
 | --- | ------------------------------------- | ----------------------------- | ------- | ----------- |
-| 0   | `tier3_corner_fixture_only`           | fixture only, door unopened   | 406,217 | 195,100,192 |
-| 1   | `tier3_corner_open_only`              | + the door                    | 637,162 | 264,352,699 |
-| 2   | `tier3_corner_one_read`               | + one item in chunk 0         | 792,404 | 360,784,354 |
-| 3   | `tier3_corner_two_reads`              | + a second item in chunk 0    | 949,150 | 457,631,357 |
-| 4   | `tier3_corner_straddling_read`        | one item across chunks 0/1    | 830,057 | 388,512,657 |
-| 5   | `tier3_corner_second_straddling_read` | one item across chunks 1/2    | 853,002 | 380,048,287 |
-| 6   | `tier3_corner_last_chunk_read`        | one item in the 963-byte tail | 825,111 | 323,895,098 |
+| 0   | `tier3_corner_fixture_only`           | fixture only, door unopened     | 406,217 | 195,100,192 |
+| 1   | `tier3_corner_open_only`              | + the door                      | 645,430 | 266,889,706 |
+| 2   | `tier3_corner_one_read`               | + one item in chunk 0           | 800,572 | 360,948,687 |
+| 3   | `tier3_corner_two_reads`              | + a second item in chunk 0      | 957,318 | 455,439,016 |
+| 4   | `tier3_corner_straddling_read`        | one item across chunks 0/1      | 838,225 | 387,891,432 |
+| 5   | `tier3_corner_second_straddling_read` | one item across chunks 1/2      | 861,170 | 381,783,736 |
+| 6   | `tier3_corner_last_chunk_read`        | one item in the 2,467-byte tail | 833,279 | 331,129,453 |
+
+**Rows 1–6 re-taken under #592, by one fixed per-view amount, and row 0 did not
+move.** Every measured row above rose by exactly **+5,944 mem / +1,838,206 cpu**.
+The cause is that tier 3 is now read two ways: `certified_view` keeps the lazy,
+chunk-by-chunk form these rows measure, and `authenticated_whole_field_view` —
+which the validation machine needs, because its phases consume §5.2's item count
+and the lazy view refuses to answer it for a variable-width field — materialises
+the same chunks whole. Both need the identical §8.4/§8.6 manifest checks, so
+those moved into one `certified_chunks` returning a `CertifiedChunksV1` record,
+and a tier-3 view construction now pays one record construction and destructure
+more than it did. The shift is **per view**, not per read, and the measurements
+say so: it is the same figure on the open-only row and on every read row, so it
+cancels out of readings 2, 3 and 4 below, which are unchanged to the unit. Only
+reading 1 — the cost of opening the corner, which is row 1 minus row 0 — moves.
+Row 0 never opens a door and did not move at all. +5,944 is 0.045 % of the §3.3
+memory basis and +1,838,206 is 0.023 % of the CPU basis; no `basisFit` and no
+budget conclusion turns on it.
 
 Absolute units, not rounded figures, because the readings are **differences** and
 a difference of rounded numbers is not a measurement. Every row is the
@@ -1255,40 +1294,53 @@ not reads that would have returned something for any bytes at all.
 
 Four readings.
 
-1. **Opening the corner costs 230,945 mem / 69.25 M CPU and no chunk hash**
-   (row 1 − row 0). That is 1.75 % of the memory basis and 0.87 % of the CPU
+1. **Opening the corner costs 239,213 mem / 71.79 M CPU and no chunk hash**
+   (row 1 − row 0). That is 1.81 % of the memory basis and 0.90 % of the CPU
    basis, for four reference inputs resolved, the certificate's token and
    `(tx_id, field_index)` matched, the split shape checked and the count derived.
    §8.6's "no chunk hash spent" for a fixed-stride count is not a figure of
-   speech: three 15.9 KB chunks sit in the view unhashed.
-2. **One item read costs 155,242 mem / 96.43 M CPU** (row 2 − row 1) — a wrapper
-   read and a payload read, each re-verifying the 15,900-byte chunk they land in.
+   speech: three chunks — two of 15,148 bytes and one of 2,467 — sit in the view
+   unhashed.
+2. **One item read costs 155,142 mem / 94.06 M CPU** (row 2 − row 1) — a wrapper
+   read and a payload read, each re-verifying the 15,148-byte chunk they land in.
 3. **Reads are linear and there is nothing to amortise.** Row 3 − row 2 is
-   156,746 mem / 96.85 M CPU, within 1 % of the first read. Tier 3 re-verifies
+   156,746 mem / 94.49 M CPU, within 1 % of the first read. Tier 3 re-verifies
    per read exactly as §8.4 says, and a re-take that found a cheaper second read
    would be finding a bug, not an improvement.
 4. **Per-read cost tracks the chunk touched, not the preimage.** Against row 2:
-   a straddling read at boundary 0/1 adds 37,653 mem / 27.73 M CPU (one further
-   full-chunk verification); at boundary 1/2 it adds 60,598 mem / 19.26 M CPU,
-   less CPU because the third chunk is 963 bytes rather than 15,900; and reading
-   wholly inside that ragged tail **saves** 36.89 M CPU. This is the property
-   tier 3 is sold on, and it is now measured rather than argued. The saving is
-   on the CPU axis only, and the two axes disagree: row 6 costs 32,707 memory
-   units *more* than row 2 (825,111 against 792,404) while costing 36.89 M CPU
-   less, because the read still allocates a view over three chunks and only the
-   hashing shrinks. Quoting the CPU saving without the memory rise would be
+   a straddling read at boundary 0/1 adds 37,653 mem / 26.94 M CPU (one further
+   full-chunk verification); at boundary 1/2 it adds 60,598 mem / 20.84 M CPU,
+   less CPU because the third chunk is 2,467 bytes rather than 15,148; and
+   reading wholly inside that ragged tail **saves** 29.82 M CPU. This is the
+   property tier 3 is sold on, and it is now measured rather than argued. The
+   saving is on the CPU axis only, and the two axes disagree: row 6 costs 32,707
+   memory units *more* than row 2 (833,279 against 800,572) while costing 29.82 M
+   CPU less, because the read still allocates a view over three chunks and only
+   the hashing shrinks. Quoting the CPU saving without the memory rise would be
    quoting half a measurement — the tail read is cheaper on the axis that is
    quoted and dearer on the other one.
 
-**The per-step read budget at the corner is ≈ 82 items**, and the two axes agree
-almost exactly: `(13,200,000 − 230,945) / 155,242 = 83.5` by memory and
-`(8,000,000,000 − 69,252,507) / 96,431,655 = 82.2` by CPU. **CPU is the binding
-axis** — 82.2 is the smaller of the two, so the ≈ 82 figure is the CPU one and a
-budget taken from the memory axis alone would be optimistic by a read and a
-half. The margin between the axes is thin enough (1.6 %) that a re-take could
-swap them, which is why both are published rather than only the binding one. A
-dispute needing more reads than that over one field at the corner is a dispute
-that must checkpoint (§10), which is what §10 is for.
+   **The ragged tail's CPU saving shrank with §8.3 erratum E1's repair of `K`,
+   and that is the arithmetic rather than a regression.** At the superseded
+   `K` = 15,900 the tail was 963 bytes against a 15,900-byte full chunk and the
+   saving was 36.89 M CPU; at 15,148 the tail is 2,467 bytes against a
+   15,148-byte full chunk, so both the ratio and the absolute saving are
+   smaller. The property being measured — per-read cost tracks the chunk
+   touched — is unchanged and is what the two figures agree on.
+
+**The per-step read budget at the corner is ≈ 83 items**, and the two axes agree
+almost exactly: `(13,200,000 − 239,213) / 155,142 = 83.5` by memory and
+`(8,000,000,000 − 71,789,514) / 94,058,981 = 84.3` by CPU. **Memory is the
+binding axis** — 83.5 is the smaller of the two, so the ≈ 83 figure is the memory
+one and a budget taken from the CPU axis alone would be optimistic by most of a
+read. The margin between the axes is thin (0.9 %) and **the binding axis has
+already swapped once**: at the superseded `K` = 15,900 CPU bound it at 82.2
+against memory's 83.5, and §8.3 erratum E1's repair cut the per-read chunk hash
+enough to move CPU above memory. That is why both axes are published rather than
+only the binding one, and why the ledger records which axis binds as a derived
+value rather than leaving it in prose. A dispute needing more reads than that over
+one field at the corner is a dispute that must checkpoint (§10), which is what
+§10 is for.
 
 #### Certificate mint and spend
 
@@ -1303,26 +1355,27 @@ the corner certification with one byte of the ragged tail changed, refused.
 Without it the corner row would be a measurement of a handler that might have
 returned `True` for anything.
 
-Both `mint` rows are taken at the **superseded** `K` = 15,900 (§8.3 E1): the
+Both `mint` rows are taken at the **repaired** `K` = 15,148 (§8.3 E1): the
 smaller is a `K + 1` two-chunk certification and the corner splits
-`[15,900, 15,900, 963]`. Re-taking them at the re-pinned `K` = 15,148 is part of
-#565's serialized patch.
+`[15,148, 15,148, 2,467]`. They moved on the CPU axis when `K` did — a full chunk
+is 752 bytes shorter to hash — and were re-taken in the same commit as the
+re-pin.
 
 | handler          | size               | control mem | measured mem | control CPU | measured CPU | **handler cost**                  | % of basis      |
 | ---------------- | ------------------ | ----------- | ------------ | ----------- | ------------ | --------------------------------- | --------------- |
-| `mint` (Certify) | `K + 1`, 2 chunks  | 688,584     | 1,331,699    | 297,698,461 | 562,080,595  | **643,115 mem / 264,382,134 CPU** | 4.87 % / 3.30 % |
-| `mint` (Certify) | 32,763 B, 3 chunks | 642,305     | 1,381,528    | 333,486,628 | 692,292,303  | **739,223 mem / 358,805,675 CPU** | 5.60 % / 4.49 % |
-| `spend` (retire) | any                | 519,960     | 756,635      | 257,372,750 | 371,882,883  | **236,675 mem / 114,510,133 CPU** | 1.79 % / 1.43 % |
+| `mint` (Certify) | `K + 1`, 2 chunks  | 688,584     | 1,331,511    | 294,556,041 | 556,549,259  | **642,927 mem / 261,993,218 CPU** | 4.87 % / 3.27 % |
+| `mint` (Certify) | 32,763 B, 3 chunks | 642,305     | 1,381,246    | 331,915,700 | 689,887,125  | **738,941 mem / 357,971,425 CPU** | 5.60 % / 4.47 % |
+| `spend` (retire) | any                | 519,960     | 756,635      | 254,230,706 | 367,169,723  | **236,675 mem / 112,939,017 CPU** | 1.79 % / 1.41 % |
 
 Both axes carry their control and their measured reading, so every published
 cost is a subtraction the reader can perform. The earlier revision of this table
 published the CPU deltas alone, which made them un-recomputable and therefore
 un-checkable — the one thing a controlled measurement is for.
 
-Certification at the corner is 5.60 % of the memory basis and 4.49 % of the CPU
+Certification at the corner is 5.60 % of the memory basis and 4.47 % of the CPU
 basis, so it fits its transaction with an order of magnitude to spare, and the
-step from two chunks to three costs 96,108 mem — one more chunk digest and 16 KB
-more reconstruction hash. Retirement is size-independent by construction: the
+step from two chunks to three costs 96,014 mem — one more chunk digest and one
+more full chunk of reconstruction hash. Retirement is size-independent by construction: the
 spend handler reads the datum, derives the name and checks the token does not
 survive, and never touches carriage.
 
@@ -1332,21 +1385,28 @@ survive, and never touches carriage.
 | output                                          | payload  | inline datum | min-Ada (lovelace) | min-Ada         |
 | ----------------------------------------------- | -------- | ------------ | ------------------ | --------------- |
 | certificate manifest (3 digests)                | —        | 176 B        | 1,939,500          | **1.9395 ADA**  |
-| full chunk (`K` bytes, superseded `K` = 15,900) | 15,900 B | 16,400 B     | 71,576,170         | **71.5762 ADA** |
-| ragged tail chunk                               | 963 B    | 996 B        | 5,184,930          | **5.1849 ADA**  |
+| full chunk (`K` bytes, repaired `K` = 15,148)   | 15,148 B | 15,624 B     | 68,231,610         | **68.2316 ADA** |
+| ragged tail chunk                               | 2,467 B  | 2,547 B      | 11,869,740         | **11.8697 ADA** |
 
 The payload and datum columns are separate on purpose: min-Ada is charged on the
 serialised output, so it is the **datum** column it is proportional to, and the
 gap between the two is the §8.3 E1 Plutus-Data chunking cost (≈ 3.125 %) turning
-up as deposit. An earlier revision of this table labelled the 16,400-byte datum
-"15,900 B datum", which is the payload.
+up as deposit. An earlier revision of this table labelled the datum column with
+the payload figure, which is what the two columns exist to keep apart. All three
+rows were re-taken when erratum E1 repaired `K`; the manifest row is unmoved
+because three digests are three digests either way, while the full chunk fell
+from 71.5762 ADA (15,900 B in a 16,400-byte datum) and the ragged tail rose from
+5.1849 (963 B in 996) as the split moved.
 
 The asymmetry is the point of tier 3: certifying is nearly free, and the deposit
 that is actually large sits on raw carriage the publisher reclaims by an ordinary
 key spend (§8.5). A three-chunk corner ties up ≈ 150 ADA in reclaimable deposits
 for the life of the dispute — **derived**, as the sum of the measured rows above
-(2 × 71.5762 + 5.1849 + 1.9395 = 150.2768), and stated to the ADA because that
-is the resolution the claim is made at. The four rows it sums are the pinned
+(2 × 68.2316 + 11.8697 + 1.9395 = 150.2724), and stated to the ADA because that
+is the resolution the claim is made at. (The total is all but unmoved by erratum
+E1's repair of `K`, and that is arithmetic rather than luck: the deposit tracks
+the serialised bytes, and re-cutting the same 32,763-byte preimage moves bytes
+between the full chunks and the tail without changing how many there are.) The four rows it sums are the pinned
 quantities; this total is a convenience.
 
 **Last-chunk publication and certification do not fit one transaction, and the
@@ -1355,11 +1415,15 @@ reason is structural rather than budgetary.** §8.6 resolves chunks from
 UTxO set as it stands **before** the transaction; an output the same transaction
 creates is therefore not available to it, at any size and under any protocol
 parameters. A second and independent reason is measured: a signed full-`K`
-publication is already 16,648 bytes on its own (erratum E1), and adding the
+publication is already 15,872 bytes on its own — the whole reserve-clearing
+budget (erratum E1) — and adding the
 §8.6 redeemer (531 B over a 400-byte compact structure and a 100-byte witness
-set) and the manifest output (176 B) puts a lower bound of 17,355 bytes on the
+set) and the manifest output (176 B) puts a lower bound of 16,579 bytes on the
 combination against a
-16,384-byte limit — over budget even before the minting-policy witness. **A
+16,384-byte limit — over budget even before the minting-policy witness. (At the
+superseded `K` the publication alone was 16,648 bytes and the bound was 17,355;
+E1's repair brings the publication to 15,872 and the bound to 16,579, which is
+still over.) **A
 tier-3 publication is therefore always `n + 1` transactions**, and builders
 must not be written expecting otherwise.
 
@@ -1415,8 +1479,8 @@ They are illustrative of why the comparison was wrong, and nothing in the flat
 format depends on them.)
 
 This is also the measurement that produced **erratum E1**: `K = 15,900` overruns
-`maxTxSize` by 264 bytes and is re-pinned to the reliable frontier, 15,148. See
-§8.3.
+`maxTxSize` by 264 bytes and was re-pinned to the reliable frontier, 15,148 —
+applied in both languages. See §8.3.
 
 ## 9. Conformance
 
@@ -2607,10 +2671,18 @@ the suite asserts that so the numbers stay quoted where they were taken.
 
 | # | seam test | field | preimage | opens | memory |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `tier2_fixed_stride_one_open` | 1 (stride 40, 397 items) | 15,883 B | 1 | 10,523,057 (10.52 M) |
-| 2 | `tier2_fixed_stride_two_opens` | 1 (stride 40, 397 items) | 15,883 B | 2 | 10,614,754 (10.61 M) |
-| 3 | `tier2_variable_width_one_open` | 6 (variable, 1,442 items) | 15,865 B | 1 | 61,807,864 (61.80 M) |
-| 4 | `tier2_variable_width_two_opens` | 6 (variable, 1,442 items) | 15,865 B | 2 | 91,106,622 (91.10 M) |
+| 1 | `tier2_fixed_stride_one_open` | 1 (stride 40, 378 items) | 15,123 B | 1 | 10,011,478 (10.01 M) |
+| 2 | `tier2_fixed_stride_two_opens` | 1 (stride 40, 378 items) | 15,123 B | 2 | 10,105,299 (10.11 M) |
+| 3 | `tier2_variable_width_one_open` | 6 (variable, 1,372 items) | 15,095 B | 1 | 58,753,191 (58.75 M) |
+| 4 | `tier2_variable_width_two_opens` | 6 (variable, 1,372 items) | 15,095 B | 2 | 86,638,113 (86.64 M) |
+
+**Both fixtures moved with §8.3 erratum E1's repair of `K`** (15,900 → 15,148),
+because "at the tier-2 bound" is a statement about `K`: the largest fixed-stride
+field-1 preimage that still fits is 378 items rather than 397, and the largest
+whole number of `script_item`'s seven-wide cycle is 1,372 items rather than 1,442.
+All four rows were re-taken at the new fixtures in the same commit as the re-pin;
+`tier2_fixtures_sit_at_the_tier_two_bound` asserts that one stride more would
+leave the bound, so "largest" is checked rather than asserted.
 
 Absolute units, not only the rounded figures, because the readings below are
 **differences** and a difference of rounded numbers is not a measurement. Every
@@ -2633,21 +2705,24 @@ published as a measurement.
 Three readings, and the third is the one a re-take must not lose.
 
 1. **The re-hash proper is free at the tier-2 bound, and now measurably so.**
-   Row 2 against row 1 is **91,697 units (≈ 0.09 M)** — one tier-2 carriage
-   extraction, one `blake2b_256` over 15,883 bytes, and §7 invariant 4's
-   arithmetic count check. That is **0.70 % of the basis**, which is what §8.2's
+   Row 2 against row 1 is **93,821 units (≈ 0.09 M)** — one tier-2 carriage
+   extraction, one `blake2b_256` over 15,123 bytes, and §7 invariant 4's
+   arithmetic count check. That is **0.71 % of the basis**, which is what §8.2's
    "measured free at ≤ 32 KB" had been asserting and had never been shown. A
    dispute over a fixed-stride field may therefore be spread over as many steps
    as its item budget needs without the re-authentication becoming the
    constraint.
 2. **A variable-width field's step re-pays much more than the hash.** Row 4
-   against row 3 is **29,298,758 units (≈ 29.30 M)** — 2.22× the basis on its
+   against row 3 is **27,884,922 units (≈ 27.88 M)** — 2.11× the basis on its
    own. The hash is the
-   same 0.09 M; the remaining 29,207,061 (≈ 29.21 M) is §7 invariant 4's
+   same 0.09 M; the remaining 27,791,101 (≈ 27.79 M) is §7 invariant 4's
    **full-content walk**,
    which `whole_view` must run at construction for a variable-width field because
-   that walk is the only way to know where its items end. At 1,442 items that is
-   ≈ 20,255 units per item, and it is re-paid in full by every step.
+   that walk is the only way to know where its items end. At 1,372 items that is
+   ≈ 20,256 units per item, and it is re-paid in full by every step. (The
+   per-item figure is what survives E1's re-pin unchanged — it was ≈ 20,255 at
+   1,442 items — which is the evidence that the walk is linear in items and that
+   the row moved because the fixture did, not because the door did.)
 
    The consequence is a design conclusion, not a caveat: **a variable-width field
    near the tier-2 bound cannot be resumed across steps under tier-2 carriage.**
@@ -2660,11 +2735,11 @@ Three readings, and the third is the one a re-take must not lose.
    fields 2 and 5 are both variable-width, which is why a conservation
    adjudication is one invocation's work and its sweeps have no wire form.
 3. **Rows 3 and 4 are not budget verdicts, and a re-take must not read them as
-   such.** Both exceed the basis outright, because building a 1,442-item fixture
+   such.** Both exceed the basis outright, because building a 1,372-item fixture
    inside a test dominates both arms. Only the **difference** within a pair is
    attributable to the door, which is why the rows come in pairs at all and why
    neither pair's absolute figure is quoted as a fit. The same caution applies to
-   rows 1 and 2, whose 10.5 M is likewise mostly fixture.
+   rows 1 and 2, whose 10.0 M is likewise mostly fixture.
 
 Phase 7 re-takes all four rows against the final blueprint. Should the
 variable-width delta move materially, the conclusion in reading 2 — not merely

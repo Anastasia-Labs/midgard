@@ -158,17 +158,19 @@ const LANGUAGE_TAG_VECTORS = [
 // ---------------------------------------------------------------------------
 
 /**
- * A real tier-3 field-1 carriage whose item 397 crosses the chunk boundary.
+ * A real tier-3 field-1 carriage whose item 378 crosses the chunk boundary.
  *
  * The preimage is a 400-byte block of ten distinct stride-40 elements repeated
  * forty times, so both languages rebuild all 16,003 bytes from 400 and hash the
  * chunks for themselves rather than each trusting a digest the other computed.
  * Item `i` therefore carries pattern `i mod 10`, which is what makes an
- * off-by-one read visible: item 396 and item 398 are different bytes from 397.
+ * off-by-one read visible: item 377 and item 379 are different bytes from 378.
  *
- * K is 15,900 and item 397's payload spans [15,885, 15,923), so reading it
- * stitches 15 bytes out of chunk 0 and 23 out of chunk 1 — the straddle the
- * §8.8 door has to survive, at the stride fields 0/1 actually use.
+ * K is 15,148 (§8.3 erratum E1's repaired value) and item 378's payload spans
+ * [15,125, 15,163), so reading it stitches 23 bytes out of chunk 0 and 15 out of
+ * chunk 1 — the straddle the §8.8 door has to survive, at the stride fields 0/1
+ * actually use. The index is a function of K and moved with it; the assertion
+ * below is what refuses to emit a vector whose named item does not straddle.
  *
  * **Field 1 rather than field 0**, and the difference is §5.4, not taste: both
  * carry inputs under the same encoder and stride, so the bytes are the same
@@ -212,6 +214,28 @@ const assertStraddleIsReachableV1 = (headerLength, preimageLength) => {
       `§8.4: a ${preimageLength}-byte preimage does not exceed ` +
         `K=${MIDGARD_CHUNK_BYTES_K_V1}, so it is not a tier-3 carriage at all`,
     );
+  }
+};
+
+/**
+ * The tier-boundary sweep has to sit *on* `K`, and `K` is a value this module
+ * imports while the vector file cannot (see that file's header). Asserted here so
+ * a re-pin of `K` — §8.3 erratum E1 moved it once already — cannot leave the
+ * sweep pinned at the superseded boundary and go on reporting a partition it is
+ * no longer sampling.
+ */
+const assertCarriageBoundariesStraddleKV1 = () => {
+  for (const required of [
+    MIDGARD_CHUNK_BYTES_K_V1,
+    MIDGARD_CHUNK_BYTES_K_V1 + 1,
+  ]) {
+    if (!CARRIAGE_BOUNDARY_LENGTHS.includes(required)) {
+      throw new Error(
+        `§8.3: CARRIAGE_BOUNDARY_LENGTHS must sample ${required.toString()} ` +
+          `(K=${MIDGARD_CHUNK_BYTES_K_V1.toString()} and K+1); got ` +
+          `[${CARRIAGE_BOUNDARY_LENGTHS.join(", ")}]`,
+      );
+    }
   }
 };
 
@@ -388,6 +412,8 @@ const buildGolden = () => {
         `match the declared wire order (got ${fieldPreimageLengths.join(",")})`,
     );
   }
+
+  assertCarriageBoundariesStraddleKV1();
 
   return {
     schema: "midgard-native-tx-field-items-v1-golden",

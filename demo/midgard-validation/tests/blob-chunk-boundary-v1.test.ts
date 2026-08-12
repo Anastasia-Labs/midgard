@@ -287,11 +287,25 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
       preWorkRootHex: terminal.preWorkRootHex,
       postWorkRootHex: terminal.postWorkRootHex,
       // The whole terminal fold, beyond the flat constants the generator binds.
-      // The Aiken module's `ItemProofV1`/`ChunkProofV1` literals live inside a
-      // test function rather than in named constants, so the name-keyed rebinder
-      // cannot reach them; publishing them here means the follow-up that gives
-      // them a producer has nothing left to find out.
+      // The Aiken module's proof literals live inside a test function rather than
+      // in named constants, so the name-keyed rebinder cannot reach them;
+      // publishing them here means the follow-up that gives them a producer has
+      // nothing left to find out.
       terminalFoldVector: midgard.terminalFoldVector,
+      // #592: `native-tx.max-inline-datum.test.ak` is the one Aiken row whose
+      // §8 carriage is not derivable in-module — its field-2 preimage is a single
+      // 16,221-byte output item and that module only ever built the terminal
+      // 3,936-byte chunk. This is the value it needs. Published as the *field
+      // preimage*, one value, with §5.1's splitter applied on the generator side
+      // so the Aiken constant is the bare item and the §5.1 envelope is still
+      // derived in Aiken by `encode_field_preimage` — one published value that
+      // cannot disagree with itself, rather than an item and an envelope that
+      // could.
+      outputsFieldPreimageCborHex: midgard.fieldPreimageCborHex,
+      outputsFieldCommitmentHex: midgard.fieldCommitmentHex,
+      terminalChunkIndex: midgard.terminalFoldVector.chunkProof.chunkIndex,
+      terminalItemIndex: midgard.terminalFoldVector.collectionProof.itemIndex,
+      terminalItemCount: midgard.terminalFoldVector.collectionProof.itemCount,
     });
   }, 300_000);
 });

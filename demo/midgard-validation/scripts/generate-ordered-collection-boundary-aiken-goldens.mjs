@@ -70,6 +70,13 @@ const PRODUCING_SUITES = [
   "tests/ordered-collection-observer-native-script-boundary-v1.test.ts",
   "tests/ordered-collection-redeemer-boundary-v1.test.ts",
   "tests/blob-chunk-boundary-v1.test.ts",
+  // Added by #592. These four gained a write channel (#590 scope item 0) because
+  // the machine's terminal-fold fixtures now carry §8's carriage — the field's
+  // whole §5.1 preimage — and a preimage is not a value a human mirrors.
+  "tests/ordered-collection-spend-inputs-boundary-v1.test.ts",
+  "tests/ordered-collection-reference-inputs-boundary-v1.test.ts",
+  "tests/ordered-collection-mint-boundary-v1.test.ts",
+  "tests/ordered-collection-boundary-v1.test.ts",
 ];
 
 const runProducingSuites = (vectorDirectory) => {
@@ -108,6 +115,23 @@ const runProducingSuites = (vectorDirectory) => {
 const fieldItems = (preimageHex) =>
   decodeMidgardFieldPreimageV1(bytes(preimageHex));
 
+/**
+ * The single item of a one-item field preimage.
+ *
+ * Asserting the count here rather than trusting it is what keeps "the item" a
+ * meaningful name: a field that grew a second item would silently bind the wrong
+ * bytes.
+ */
+const singleFieldItem = (preimageHex) => {
+  const items = fieldItems(preimageHex);
+  if (items.length !== 1) {
+    throw new Error(
+      `expected a single-item field preimage, found ${items.length} items`,
+    );
+  }
+  return Buffer.from(items[0]);
+};
+
 /** The same items with each `enc_i` decoded into its own CBOR structure. */
 const fieldItemStructures = (preimageHex) =>
   fieldItems(preimageHex).map((item) => decodeSingleCbor(item));
@@ -130,6 +154,10 @@ try {
       "observer-native-script-boundary-v1",
       "spend-redeemer-boundary-v1",
       "blob-chunk-boundary-v1",
+      "spend-inputs-boundary-v1",
+      "reference-inputs-boundary-v1",
+      "mint-boundary-v1",
+      "output-boundary-v1",
     ].map((name) => [
       name,
       JSON.parse(readFileSync(join(vectorDirectory, `${name}.json`), "utf8")),
@@ -143,6 +171,87 @@ const signerWitness = vectors["coupled-signer-witness-boundary-v1"];
 const observerScript = vectors["observer-native-script-boundary-v1"];
 const spendRedeemer = vectors["spend-redeemer-boundary-v1"];
 const blobChunk = vectors["blob-chunk-boundary-v1"];
+const spendInputs = vectors["spend-inputs-boundary-v1"];
+const referenceInputs = vectors["reference-inputs-boundary-v1"];
+const mint = vectors["mint-boundary-v1"];
+const outputs = vectors["output-boundary-v1"];
+
+/**
+ * The constants of one `MaximumFieldTerminalFixtureV1` member, keyed by its Aiken
+ * prefix.
+ *
+ * #592 turned these fixtures from struct literals inside `fn`s — unreachable by
+ * `rebindAikenConstants`, which is #590's whole complaint — into named constants,
+ * because §8's carriage is the field's whole §5.1 preimage and there is no
+ * version of that a human mirrors correctly. Two vectors carry their terminal
+ * fold in a nested object (the coupled signer/witness and observer/native-script
+ * suites each measure two fields), so `fold` is passed separately from the
+ * vector that owns the preimage.
+ */
+const normalizeTerminalFold = (published) =>
+  published.collectionProof === undefined
+    ? {
+        ...published,
+        collectionProof: {
+          itemCount: published.itemCount,
+          itemIndex: published.itemIndex,
+        },
+        chunkProof: { chunkIndex: published.terminalChunkIndex },
+      }
+    : published;
+
+const terminalFixtureConstants = ({
+  prefix,
+  fold: published,
+  preimageHex,
+  itemCount,
+}) => {
+  const fold = normalizeTerminalFold(published);
+  return {
+    [`${prefix}_terminal_transaction_id`]: bytes(fold.transactionIdHex),
+    [`${prefix}_terminal_transaction_commitment`]: bytes(
+      fold.transactionCommitmentHex,
+    ),
+    [`${prefix}_terminal_compact_cbor`]: bytes(fold.compactCborHex),
+    [`${prefix}_terminal_witness_set_compact_cbor`]: bytes(
+      fold.witnessSetCompactCborHex,
+    ),
+    [`${prefix}_terminal_field_preimage_lengths_cbor`]: bytes(
+      fold.fieldPreimageLengthsCborHex,
+    ),
+    [`${prefix}_terminal_field_preimage_cbor`]: bytes(preimageHex),
+    [`${prefix}_terminal_item_count`]: itemCount,
+    [`${prefix}_terminal_item_index`]: fold.collectionProof.itemIndex,
+    [`${prefix}_terminal_terminal_chunk_index`]: fold.chunkProof.chunkIndex,
+    [`${prefix}_terminal_encoded_length_before_item`]:
+      fold.encodedLengthBeforeItem,
+    [`${prefix}_terminal_pre_work_root`]: bytes(fold.preWorkRootHex),
+    [`${prefix}_terminal_post_work_root`]: bytes(fold.postWorkRootHex),
+  };
+};
+
+/**
+ * The machine's fixtures re-derive their §5.1 envelope from the item list, so the
+ * published preimage's own item count is the authority on `item_count` — and
+ * checking it against the fold's `collectionProof.itemCount` here is what makes
+ * a disagreement between the two a generator failure rather than a red Aiken row
+ * with no explanation.
+ */
+const terminalItemCount = (preimageHex, published) => {
+  const fold = normalizeTerminalFold(published);
+  const count = fieldItems(preimageHex).length;
+  if (count !== fold.collectionProof.itemCount) {
+    throw new Error(
+      `published preimage has ${count} items but its terminal fold claims ${fold.collectionProof.itemCount}`,
+    );
+  }
+  if (fold.collectionProof.itemIndex + 1 !== count) {
+    throw new Error(
+      "the terminal fold does not name the last item of its own field",
+    );
+  }
+  return count;
+};
 
 // The Cardano transaction-size ceiling is one number shared by both C20 families
 // and spelled once in Aiken. Binding it from one suite while the other agrees is
@@ -346,6 +455,69 @@ const AIKEN_FAMILIES = [
       maximum_cardano_inline_datum_terminal_post_work_root: bytes(
         blobChunk.postWorkRootHex,
       ),
+      // #592: the one genuinely new producer value the machine rebind needed.
+      // §8's carriage is the field's whole §5.1 preimage, and that module's
+      // field-2 preimage is a single 16,221-byte output item it only ever built
+      // the terminal 3,936-byte chunk of. §5.1's splitter is applied here so the
+      // Aiken constant is the bare *item* and the envelope stays derived in
+      // Aiken by `encode_field_preimage` — one published value that cannot
+      // disagree with itself.
+      maximum_cardano_inline_datum_item_cbor: singleFieldItem(
+        blobChunk.outputsFieldPreimageCborHex,
+      ),
+    },
+  },
+  {
+    aiken: "onchain/aiken/lib/midgard/validation-machine-v1.test.ak",
+    constants: {
+      ...terminalFixtureConstants({
+        prefix: "maximum_spend_input",
+        fold: spendInputs,
+        preimageHex: spendInputs.fieldPreimageCborHex,
+        itemCount: terminalItemCount(
+          spendInputs.fieldPreimageCborHex,
+          spendInputs,
+        ),
+      }),
+      ...terminalFixtureConstants({
+        prefix: "maximum_reference_input",
+        fold: referenceInputs,
+        preimageHex: referenceInputs.fieldPreimageCborHex,
+        itemCount: terminalItemCount(
+          referenceInputs.fieldPreimageCborHex,
+          referenceInputs,
+        ),
+      }),
+      ...terminalFixtureConstants({
+        prefix: "maximum_observer",
+        fold: observerScript.observerFieldTerminalFoldVector,
+        preimageHex: observerScript.observerFieldPreimageCborHex,
+        itemCount: terminalItemCount(
+          observerScript.observerFieldPreimageCborHex,
+          observerScript.observerFieldTerminalFoldVector,
+        ),
+      }),
+      ...terminalFixtureConstants({
+        prefix: "maximum_output",
+        fold: outputs,
+        preimageHex: outputs.fieldPreimageCborHex,
+        itemCount: terminalItemCount(outputs.fieldPreimageCborHex, outputs),
+      }),
+      ...terminalFixtureConstants({
+        prefix: "maximum_required_signer",
+        fold: signerWitness.signerFieldTerminalFoldVector,
+        preimageHex: signerWitness.signerFieldPreimageCborHex,
+        itemCount: terminalItemCount(
+          signerWitness.signerFieldPreimageCborHex,
+          signerWitness.signerFieldTerminalFoldVector,
+        ),
+      }),
+      ...terminalFixtureConstants({
+        prefix: "maximum_mint",
+        fold: mint,
+        preimageHex: mint.fieldPreimageCborHex,
+        itemCount: terminalItemCount(mint.fieldPreimageCborHex, mint),
+      }),
     },
   },
   // The field-8 maximum is also the adversarial proof-fit case for the

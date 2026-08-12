@@ -53,12 +53,12 @@ const golden_filler_256 =
 const golden_tier3_preimage_block =
   #"565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f"
 
-const golden_tier3_total_length: Int = 16417
+const golden_tier3_total_length: Int = 15665
 
 const golden_tier3_chunk_digests: List<ByteArray> =
   [
-    #"eabb6cf3843972474294c28713974f244be7335cd05559417f1f5bd061a72e74",
-    #"c7e754df8126357f25157e78b1b1612e400921e11ab80d82c7a55f025e0fbfed",
+    #"c3b785d45ea8ca1a1d8c825057ffbc73fbc845640c9606e43d7fc2c7b5ae24c4",
+    #"78e30bbc64277987b3c51c26ec62345bfe64e7e4018112b24e1ecff83dd8f9ec",
   ]
 
 const golden_empty_envelope_items: List<ByteArray> = []
@@ -252,7 +252,7 @@ test golden_carriage_constants_match_typescript() {
     max_transaction_aggregate_field_bytes == 32768,
     max_spend_inputs_preimage_bytes == 32768,
     maximum_cardano_spend_redeemer_count == 296,
-    chunk_bytes_k == 15900,
+    chunk_bytes_k == 15148,
     max_tier1_redeemer_preimage_bytes == 14336,
     max_tier3_chunk_count == 3,
     spend_input_item_bytes == 38,
@@ -359,10 +359,10 @@ test golden_item_wrappers_match_typescript() {
 
 test golden_expected_chunk_counts_match_typescript() {
   and {
-    expected_chunk_count(15900) == 1,
-    expected_chunk_count(15901) == 2,
-    expected_chunk_count(31800) == 2,
-    expected_chunk_count(31801) == 3,
+    expected_chunk_count(15148) == 1,
+    expected_chunk_count(15149) == 2,
+    expected_chunk_count(30296) == 2,
+    expected_chunk_count(30297) == 3,
     expected_chunk_count(32768) == 3,
   }
 }
@@ -418,8 +418,8 @@ test golden_tier3_chunk_digests_match_typescript() {
   let preimage = golden_tier3_preimage()
   let chunks = golden_tier3_chunks(preimage)
   and {
-    bytearray.length(preimage) == 16417,
-    list.map(chunks, bytearray.length) == [15900, 517],
+    bytearray.length(preimage) == 15665,
+    list.map(chunks, bytearray.length) == [15148, 517],
     list.map(chunks, blake2b_256) == golden_tier3_chunk_digests,
   }
 }
@@ -443,13 +443,13 @@ test golden_certificate_asset_names_match_typescript() {
 }
 
 /// The tier-3 manifest a TypeScript publisher derives for a preimage of
-/// 16417 bytes: chunk lengths 15900 + 517, one
+/// 15665 bytes: chunk lengths 15148 + 517, one
 /// digest per chunk, and the §8.6 token name. This test pins the manifest's
 /// shape; the digest *values* are recomputed from the rebuilt payload by
 /// `golden_tier3_chunk_digests_match_typescript` above.
 test golden_tier3_certificate_shape_matches_typescript() {
   and {
-    expected_chunk_count(16417) == 2,
+    expected_chunk_count(15665) == 2,
     list.length(golden_tier3_chunk_digests) == 2,
     field_preimage_certificate_asset_name(golden_certificate_tx_id, 0) == #"7df7bbbe2ab0d3756058cf13f94dc275c78dfbd057eb33687a7eb64206e7f170",
   }

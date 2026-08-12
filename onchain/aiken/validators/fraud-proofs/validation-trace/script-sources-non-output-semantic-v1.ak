@@ -3,6 +3,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
+use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
 use midgard/validation_machine_v1.{
   ValidationAuxiliaryWitnessV1, ValidationOneStepEvidenceV1,
   ValidationOneStepWitnessV1, verify_script_sources_non_output_semantics_v1,
@@ -25,6 +26,7 @@ pub type SpendRedeemer =
 validator main(
   award_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
+  field_preimage_certificate_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -49,6 +51,10 @@ validator main(
         auxiliary,
       }) -> {
         let auxiliary_data: Data = auxiliary
+        let door = MachineFieldDoorV1 {
+          reference_inputs: tx.reference_inputs,
+          certificate_policy_id: field_preimage_certificate_policy_id,
+        }
         continue_winning(
           ScriptSources,
           award_script_hash,
@@ -61,6 +67,7 @@ validator main(
           verify_script_sources_non_output_semantics_v1(
             datum |> semantic_pre_state,
             ValidationOneStepEvidenceV1 { transition, auxiliary },
+            door,
           ),
           own_out_ref,
           tx,

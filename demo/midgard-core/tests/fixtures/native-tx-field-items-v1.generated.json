@@ -1047,11 +1047,11 @@
       "tier": "RawUtxo"
     },
     {
-      "preimageLength": 15900,
+      "preimageLength": 15148,
       "tier": "RawUtxo"
     },
     {
-      "preimageLength": 15901,
+      "preimageLength": 15149,
       "tier": "Certified"
     },
     {
@@ -1071,34 +1071,34 @@
     "commitmentHex": "c33cac158cd252aeb86e3fafb6776fd03e7afacffa7923c05878afca870b4ef1",
     "carriageTier": "Certified",
     "chunkLengths": [
-      15900,
-      103
+      15148,
+      855
     ],
     "chunkDigestsHex": [
-      "3d472a8b6608fd6572a3de26a9f95a37c86c9ba739c39b5b8314f860bc908806",
-      "7243f0ea84ad415d83212fc24569d54be7e81f50198a257f93de50cfcb3d7cb2"
+      "aca116dea52dcd7df1d81db0f89b6538c62f12a9a058bb2a9746aafe80ca4282",
+      "2a5f24003a2f2ea29bd7bb3e2a8d305772011e94ccc2f862c2f19d2cb93fd8a4"
     ],
     "reads": [
       {
-        "itemIndex": 396,
-        "offset": 15845,
+        "itemIndex": 377,
+        "offset": 15085,
         "length": 38,
         "straddles": false,
-        "itemHex": "825820d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2190006"
-      },
-      {
-        "itemIndex": 397,
-        "offset": 15885,
-        "length": 38,
-        "straddles": true,
         "itemHex": "825820f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1190007"
       },
       {
-        "itemIndex": 398,
-        "offset": 15925,
+        "itemIndex": 378,
+        "offset": 15125,
+        "length": 38,
+        "straddles": true,
+        "itemHex": "825820171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0190008"
+      },
+      {
+        "itemIndex": 379,
+        "offset": 15165,
         "length": 38,
         "straddles": false,
-        "itemHex": "825820171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0190008"
+        "itemHex": "825820363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f190009"
       }
     ],
     "itemsHex": [

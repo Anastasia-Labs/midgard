@@ -5,10 +5,10 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
-use midgard/bounded_collection_v1
 use midgard/canonical_decode_item_staging_v1 as staging
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/native_tx_field_access_v1.{FieldCarriageV1, Inline}
 use midgard/validation_machine_v1.{
   TransactionFieldItemWitness, ValidationAuxiliaryWitnessV1,
   ValidationOneStepWitnessV1, ValidationProofItemDatumV1,
@@ -22,8 +22,7 @@ pub type ActionV1 {
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
-    collection_proof: bounded_collection_v1.ItemProofV1,
-    item_cbor: ByteArray,
+    carriage: FieldCarriageV1,
   }
   VerifyReference {
     input_index: Int,
@@ -57,13 +56,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Verify {
-        input_index,
-        output_index,
-        transition,
-        collection_proof,
-        item_cbor,
-      }) ->
+      ct.Continue(Verify { input_index, output_index, transition, carriage }) ->
         bind_item_source(
           source_binder_script_hash,
           computation_thread_policy_id,
@@ -71,7 +64,7 @@ validator main(
           input_index,
           output_index,
           transition,
-          TransactionFieldItemWitness { collection_proof, item_cbor },
+          TransactionFieldItemWitness { carriage },
           own_out_ref,
           tx,
         )
@@ -88,7 +81,7 @@ validator main(
           reference_input_index,
           tx.reference_inputs,
         )
-        expect TransactionFieldItemWitness { collection_proof, item_cbor } = auxiliary
+        expect TransactionFieldItemWitness { carriage } = auxiliary
         bind_item_source(
           source_binder_script_hash,
           computation_thread_policy_id,
@@ -96,7 +89,7 @@ validator main(
           input_index,
           output_index,
           transition,
-          TransactionFieldItemWitness { collection_proof, item_cbor },
+          TransactionFieldItemWitness { carriage },
           own_out_ref,
           tx,
         )
@@ -157,7 +150,7 @@ fn proof_item_from_reference(
   reference_input_index: Int,
   reference_inputs: List<Input>,
 ) -> ValidationAuxiliaryWitnessV1 {
-  expect
+  expect  
       Some(Input {
         output: Output {
           address,
@@ -174,9 +167,11 @@ fn proof_item_from_reference(
   expect proof_item.version == 1
   expect proof_item.transaction_id == pre.transaction_id
   expect proof_item.transaction_commitment == pre.transaction_commitment
+  // §8.1 `Inline` is constructed here, from bytes read off the publication's
+  // own datum: the consuming step names a reference input, not a tier, so no
+  // prover can name a carriage the door was not going to hash itself.
   TransactionFieldItemWitness {
-    collection_proof: proof_item.collection_proof,
-    item_cbor: proof_item.item_cbor,
+    carriage: Inline { preimage: proof_item.field_preimage },
   }
 }
 

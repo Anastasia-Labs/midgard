@@ -16,12 +16,24 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTxInput, TxIsValid, native_tx_version_v1,
 }
 use midgard/ledger_state.{CekProgramMaterialDatumV1}
+use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_machine_v1
 use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1
 use midgard/validation_resolver_v1
 use midgard/validation_semantic_v1
 use midgard/validation_trace_v1
+
+/// §8's door context for a tier-1 step. See the twin in
+/// `validation-machine-v1.test.ak`: every step here carries an `Inline`
+/// carriage, so neither reference inputs (tier 2) nor the §8.6 certificate
+/// minting policy id (tier 3) is reachable or needed.
+fn inline_field_door() -> field_door.MachineFieldDoorV1 {
+  field_door.MachineFieldDoorV1 {
+    reference_inputs: [],
+    certificate_policy_id: #"",
+  }
+}
 
 const zero = #"0000000000000000000000000000000000000000000000000000000000000000"
 
@@ -1174,6 +1186,7 @@ test semantic_handoff_accepts_exact_prepared_phase_a_evidence() {
     validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
       pre,
       evidence,
+      inline_field_door(),
     ),
     validation_semantic_v1.continue_winning(
       validation_trace_v1.PhaseAScriptPreconditions,
@@ -1187,6 +1200,7 @@ test semantic_handoff_accepts_exact_prepared_phase_a_evidence() {
       validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
         pre,
         evidence,
+        inline_field_door(),
       ),
       own_out_ref,
       semantic_transaction(prepared_state, input_script_hash),
@@ -1221,6 +1235,7 @@ test semantic_handoff_rejects_script_sources_auxiliary_substitution() {
     validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
       pre,
       committed_evidence,
+      inline_field_door(),
     ),
     !validation_semantic_v1.continue_winning(
       validation_trace_v1.PhaseAScriptPreconditions,
@@ -1234,6 +1249,7 @@ test semantic_handoff_rejects_script_sources_auxiliary_substitution() {
       validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
         pre,
         cross_family_evidence,
+        inline_field_door(),
       ),
       own_out_ref,
       semantic_transaction(prepared_state, input_script_hash),
@@ -1281,6 +1297,7 @@ test semantic_handoff_rejects_cross_family_action_substitution() {
     validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
       pre,
       committed_evidence,
+      inline_field_door(),
     ),
     !validation_semantic_v1.continue_winning(
       validation_trace_v1.PhaseAScriptPreconditions,
@@ -1294,6 +1311,7 @@ test semantic_handoff_rejects_cross_family_action_substitution() {
       validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
         pre,
         cross_family_evidence,
+        inline_field_door(),
       ),
       own_out_ref,
       semantic_transaction(prepared_state, input_script_hash),

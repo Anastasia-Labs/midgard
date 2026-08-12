@@ -18,8 +18,7 @@ use midgard/cek_proof_v1
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_compact_v1, decode_native_tx_field_preimage_lengths_v1,
   decode_native_tx_witness_set_compact, encode_native_tx_body_compact,
-  encode_native_tx_compact_v1, encode_native_tx_field_preimage_lengths_v1,
-  encode_native_tx_witness_set_compact, native_tx_canonical_size_v1,
+  encode_native_tx_field_preimage_lengths_v1, native_tx_canonical_size_v1,
   native_tx_id_for_version, native_tx_proof_commitment_v1,
 }
 use midgard/fraud_proofs/native_tx/components.{
@@ -28,11 +27,12 @@ use midgard/fraud_proofs/native_tx/components.{
   encode_midgard_versioned_script,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
+  decode_midgard_tx_byte_list_preimage_cbor,
   decode_midgard_tx_mint_preimage_cbor,
 }
 use midgard/fraud_proofs/native_tx/transaction.{
   midgard_transaction_proof_commitment_v1, midgard_transaction_proof_source_v1,
-  midgard_transaction_to_compact, verify_midgard_transaction_field_chunk_v1,
+  midgard_transaction_to_compact,
 }
 use midgard/fraud_proofs/native_tx/types.{
   MidgardAddress, MidgardAddressWitness, MidgardExecutionUnits,
@@ -51,6 +51,7 @@ use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
 use midgard/script_context_v1
 use midgard/script_proof_v1
+use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_machine_v1
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
@@ -66,6 +67,39 @@ const h_28_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 const h_28_b = #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 const zero = #"0000000000000000000000000000000000000000000000000000000000000000"
+
+/// §8's door context for a step whose carriage is tier 1.
+///
+/// Every hand-written step in this module names an `Inline` carriage — the
+/// preimage travels in the evidence — so the door needs neither the
+/// consuming transaction's reference inputs (§8.2, tier 2) nor the §8.6
+/// certificate minting policy id (§8.4, tier 3). Both are supplied empty, and
+/// that is a *fact about these vectors* rather than a convenience: the tier-2
+/// and tier-3 ladders are exercised where they belong, in
+/// `native-tx-field-access-v1.test.ak`, against the door itself. A step here
+/// that accidentally named a reference tier would fail closed rather than pass
+/// with an unused context.
+fn inline_field_door() -> field_door.MachineFieldDoorV1 {
+  field_door.MachineFieldDoorV1 {
+    reference_inputs: [],
+    certificate_policy_id: #"",
+  }
+}
+
+/// A tier-1 carriage over a field whose §5.1 preimage is exactly `items`.
+///
+/// The replacement for the retired `singleton_field_item_proofs` collection
+/// half: instead of asserting a per-item Merkle opening against the field's
+/// flat commitment, a step now carries the field's whole preimage and the door
+/// hashes it once (§4, §8.8). Built through `encode_field_preimage`, so a
+/// fixture cannot drift away from §5.1's array header and byte-string wrappers.
+fn inline_field_carriage(
+  items: List<ByteArray>,
+) -> native_tx_field_access_v1.FieldCarriageV1 {
+  native_tx_field_access_v1.Inline {
+    preimage: native_tx_field_access_v1.encode_field_preimage(items),
+  }
+}
 
 const maximum_mint_policy_item_cbor =
   #"82581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab88058200000000000000000000000000000000000000000000000000000000000000000015820000000000000000000000000000000000000000000000000000000000000000101582000000000000000000000000000000000000000000000000000000000000000020158200000000000000000000000000000000000000000000000000000000000000003015820000000000000000000000000000000000000000000000000000000000000000401582000000000000000000000000000000000000000000000000000000000000000050158200000000000000000000000000000000000000000000000000000000000000006015820000000000000000000000000000000000000000000000000000000000000000701582000000000000000000000000000000000000000000000000000000000000000080158200000000000000000000000000000000000000000000000000000000000000009015820000000000000000000000000000000000000000000000000000000000000000a015820000000000000000000000000000000000000000000000000000000000000000b015820000000000000000000000000000000000000000000000000000000000000000c015820000000000000000000000000000000000000000000000000000000000000000d015820000000000000000000000000000000000000000000000000000000000000000e015820000000000000000000000000000000000000000000000000000000000000000f0158200000000000000000000000000000000000000000000000000000000000000010015820000000000000000000000000000000000000000000000000000000000000001101582000000000000000000000000000000000000000000000000000000000000000120158200000000000000000000000000000000000000000000000000000000000000013015820000000000000000000000000000000000000000000000000000000000000001401582000000000000000000000000000000000000000000000000000000000000000150158200000000000000000000000000000000000000000000000000000000000000016015820000000000000000000000000000000000000000000000000000000000000001701582000000000000000000000000000000000000000000000000000000000000000180158200000000000000000000000000000000000000000000000000000000000000019015820000000000000000000000000000000000000000000000000000000000000001a015820000000000000000000000000000000000000000000000000000000000000001b015820000000000000000000000000000000000000000000000000000000000000001c015820000000000000000000000000000000000000000000000000000000000000001d015820000000000000000000000000000000000000000000000000000000000000001e015820000000000000000000000000000000000000000000000000000000000000001f0158200000000000000000000000000000000000000000000000000000000000000020015820000000000000000000000000000000000000000000000000000000000000002101582000000000000000000000000000000000000000000000000000000000000000220158200000000000000000000000000000000000000000000000000000000000000023015820000000000000000000000000000000000000000000000000000000000000002401582000000000000000000000000000000000000000000000000000000000000000250158200000000000000000000000000000000000000000000000000000000000000026015820000000000000000000000000000000000000000000000000000000000000002701582000000000000000000000000000000000000000000000000000000000000000280158200000000000000000000000000000000000000000000000000000000000000029015820000000000000000000000000000000000000000000000000000000000000002a015820000000000000000000000000000000000000000000000000000000000000002b015820000000000000000000000000000000000000000000000000000000000000002c015820000000000000000000000000000000000000000000000000000000000000002d015820000000000000000000000000000000000000000000000000000000000000002e015820000000000000000000000000000000000000000000000000000000000000002f0158200000000000000000000000000000000000000000000000000000000000000030015820000000000000000000000000000000000000000000000000000000000000003101582000000000000000000000000000000000000000000000000000000000000000320158200000000000000000000000000000000000000000000000000000000000000033015820000000000000000000000000000000000000000000000000000000000000003401582000000000000000000000000000000000000000000000000000000000000000350158200000000000000000000000000000000000000000000000000000000000000036015820000000000000000000000000000000000000000000000000000000000000003701582000000000000000000000000000000000000000000000000000000000000000380158200000000000000000000000000000000000000000000000000000000000000039015820000000000000000000000000000000000000000000000000000000000000003a015820000000000000000000000000000000000000000000000000000000000000003b015820000000000000000000000000000000000000000000000000000000000000003c015820000000000000000000000000000000000000000000000000000000000000003d015820000000000000000000000000000000000000000000000000000000000000003e015820000000000000000000000000000000000000000000000000000000000000003f0158200000000000000000000000000000000000000000000000000000000000000040015820000000000000000000000000000000000000000000000000000000000000004101582000000000000000000000000000000000000000000000000000000000000000420158200000000000000000000000000000000000000000000000000000000000000043015820000000000000000000000000000000000000000000000000000000000000004401582000000000000000000000000000000000000000000000000000000000000000450158200000000000000000000000000000000000000000000000000000000000000046015820000000000000000000000000000000000000000000000000000000000000004701582000000000000000000000000000000000000000000000000000000000000000480158200000000000000000000000000000000000000000000000000000000000000049015820000000000000000000000000000000000000000000000000000000000000004a015820000000000000000000000000000000000000000000000000000000000000004b015820000000000000000000000000000000000000000000000000000000000000004c015820000000000000000000000000000000000000000000000000000000000000004d015820000000000000000000000000000000000000000000000000000000000000004e015820000000000000000000000000000000000000000000000000000000000000004f0158200000000000000000000000000000000000000000000000000000000000000050015820000000000000000000000000000000000000000000000000000000000000005101582000000000000000000000000000000000000000000000000000000000000000520158200000000000000000000000000000000000000000000000000000000000000053015820000000000000000000000000000000000000000000000000000000000000005401582000000000000000000000000000000000000000000000000000000000000000550158200000000000000000000000000000000000000000000000000000000000000056015820000000000000000000000000000000000000000000000000000000000000005701582000000000000000000000000000000000000000000000000000000000000000580158200000000000000000000000000000000000000000000000000000000000000059015820000000000000000000000000000000000000000000000000000000000000005a015820000000000000000000000000000000000000000000000000000000000000005b015820000000000000000000000000000000000000000000000000000000000000005c015820000000000000000000000000000000000000000000000000000000000000005d015820000000000000000000000000000000000000000000000000000000000000005e015820000000000000000000000000000000000000000000000000000000000000005f0158200000000000000000000000000000000000000000000000000000000000000060015820000000000000000000000000000000000000000000000000000000000000006101582000000000000000000000000000000000000000000000000000000000000000620158200000000000000000000000000000000000000000000000000000000000000063015820000000000000000000000000000000000000000000000000000000000000006401582000000000000000000000000000000000000000000000000000000000000000650158200000000000000000000000000000000000000000000000000000000000000066015820000000000000000000000000000000000000000000000000000000000000006701582000000000000000000000000000000000000000000000000000000000000000680158200000000000000000000000000000000000000000000000000000000000000069015820000000000000000000000000000000000000000000000000000000000000006a015820000000000000000000000000000000000000000000000000000000000000006b015820000000000000000000000000000000000000000000000000000000000000006c015820000000000000000000000000000000000000000000000000000000000000006d015820000000000000000000000000000000000000000000000000000000000000006e015820000000000000000000000000000000000000000000000000000000000000006f0158200000000000000000000000000000000000000000000000000000000000000070015820000000000000000000000000000000000000000000000000000000000000007101582000000000000000000000000000000000000000000000000000000000000000720158200000000000000000000000000000000000000000000000000000000000000073015820000000000000000000000000000000000000000000000000000000000000007401582000000000000000000000000000000000000000000000000000000000000000750158200000000000000000000000000000000000000000000000000000000000000076015820000000000000000000000000000000000000000000000000000000000000007701582000000000000000000000000000000000000000000000000000000000000000780158200000000000000000000000000000000000000000000000000000000000000079015820000000000000000000000000000000000000000000000000000000000000007a015820000000000000000000000000000000000000000000000000000000000000007b015820000000000000000000000000000000000000000000000000000000000000007c015820000000000000000000000000000000000000000000000000000000000000007d015820000000000000000000000000000000000000000000000000000000000000007e015820000000000000000000000000000000000000000000000000000000000000007f01"
@@ -436,50 +470,37 @@ fn next_phase_a_native_state(
   }
 }
 
-fn singleton_field_item_proofs(
+/// The single-chunk `bounded_item_v1` proof over item 0 of a single-item field.
+///
+/// This is what survives of the retired `singleton_field_item_proofs`. Its
+/// collection half is gone: no step opens a per-item collection proof against a
+/// §4 flat field commitment any more, and the carriage that replaced it is
+/// `inline_field_carriage([key])`. The **chunk** half stays because four phases
+/// hand a partially-read item forward across steps and their control state
+/// carries a genuine `bounded_item_v1` root the later step opens against
+/// (`NativeScriptTokenWitness`, `NativeExecutionScanWitness.first_chunk_proof`,
+/// the redeemer item proof) — a satisfiable opening the flat reversion never
+/// touched.
+fn singleton_field_item_chunk_proof(
   field_index: Int,
   key: ByteArray,
-) -> Pair<bounded_collection_v1.ItemProofV1, bounded_item_v1.ChunkProofV1> {
-  let item_commitment = bounded_item_v1.from_bytes(field_index, 0, key)
+) -> bounded_item_v1.ChunkProofV1 {
   let chunk_frontier = [
     validation_merkle_v1.FrontierPeak {
       height: 0,
       hash: bounded_item_v1.hash_chunk(field_index, 0, 0, key),
     },
   ]
-  let collection_frontier = [
-    validation_merkle_v1.FrontierPeak {
-      height: 0,
-      hash: bounded_collection_v1.hash_item(
-        field_index,
-        0,
-        bytearray.length(key),
-        item_commitment,
-      ),
-    },
-  ]
-  Pair(
-    bounded_collection_v1.ItemProofV1 {
-      version: bounded_collection_v1.version,
-      field_index,
-      item_count: 1,
-      item_index: 0,
-      item_length: bytearray.length(key),
-      item_commitment,
-      frontier: collection_frontier,
-      siblings: [],
-    },
-    bounded_item_v1.ChunkProofV1 {
-      version: bounded_item_v1.version,
-      field_index,
-      item_index: 0,
-      total_length: bytearray.length(key),
-      chunk_index: 0,
-      chunk: key,
-      frontier: chunk_frontier,
-      siblings: [],
-    },
-  )
+  bounded_item_v1.ChunkProofV1 {
+    version: bounded_item_v1.version,
+    field_index,
+    item_index: 0,
+    total_length: bytearray.length(key),
+    chunk_index: 0,
+    chunk: key,
+    frontier: chunk_frontier,
+    siblings: [],
+  }
 }
 
 fn indexed_inline_source_leaves(
@@ -703,62 +724,16 @@ test phase_a_script_preconditions_control_cbor_is_canonical() {
   }
 }
 
-fn duplicate_observer_field_item_proofs(
-  item_index: Int,
-) -> Pair<bounded_collection_v1.ItemProofV1, bounded_item_v1.ChunkProofV1> {
-  expect item_index == 0 || item_index == 1
-  let first_item_commitment = bounded_item_v1.from_bytes(3, 0, h_28_a)
-  let second_item_commitment = bounded_item_v1.from_bytes(3, 1, h_28_a)
-  let first_leaf = bounded_collection_v1.hash_item(
-    3,
-    0,
-    28,
-    first_item_commitment,
-  )
-  let second_leaf = bounded_collection_v1.hash_item(
-    3,
-    1,
-    28,
-    second_item_commitment,
-  )
-  let collection_frontier = validation_merkle_v1.build_frontier(
-    [first_leaf, second_leaf],
-  )
-  let item_commitment = if item_index == 0 {
-    first_item_commitment
-  } else {
-    second_item_commitment
-  }
-  let collection_sibling = if item_index == 0 {
-    second_leaf
-  } else {
-    first_leaf
-  }
-  let chunk_frontier = validation_merkle_v1.build_frontier(
-    [bounded_item_v1.hash_chunk(3, item_index, 0, h_28_a)],
-  )
-  Pair(
-    bounded_collection_v1.ItemProofV1 {
-      version: bounded_collection_v1.version,
-      field_index: 3,
-      item_count: 2,
-      item_index,
-      item_length: 28,
-      item_commitment,
-      frontier: collection_frontier.peaks,
-      siblings: [collection_sibling],
-    },
-    bounded_item_v1.ChunkProofV1 {
-      version: bounded_item_v1.version,
-      field_index: 3,
-      item_index,
-      total_length: 28,
-      chunk_index: 0,
-      chunk: h_28_a,
-      frontier: chunk_frontier.peaks,
-      siblings: [],
-    },
-  )
+/// The field-3 preimage of the duplicate-observer fixture: two items, both the
+/// same 28-byte observer hash.
+///
+/// Under the retired counted scheme this had to be a pair of per-item openings
+/// with a shared collection frontier and a sibling each. Under §8's door the
+/// duplicate *is* the preimage, and which of the two items a step reads is the
+/// `item_index` it names — which is the whole point of the fixture, and is now
+/// visible in one line instead of thirty.
+fn duplicate_observer_field_carriage() -> native_tx_field_access_v1.FieldCarriageV1 {
+  inline_field_carriage([h_28_a, h_28_a])
 }
 
 fn observer_hash_at(item_index: Int) -> ByteArray {
@@ -814,41 +789,17 @@ fn observer_collection_subtree_root(start: Int, size: Int) -> ByteArray {
   }
 }
 
-fn observer_field_item_proofs(
+/// The field-3 preimage of an `item_count`-observer fixture, as a tier-1
+/// carriage.
+///
+/// Replaces `observer_field_item_proofs`: no per-item frontier, no siblings
+/// argument. The item a step reads is chosen by the `item_index` in its
+/// evidence, and the field's §5.2 count is the authenticated header of these
+/// very bytes, so a step cannot understate it.
+fn observer_field_carriage(
   item_count: Int,
-  item_index: Int,
-  siblings: List<ByteArray>,
-) -> Pair<bounded_collection_v1.ItemProofV1, bounded_item_v1.ChunkProofV1> {
-  let observer_hash = observer_hash_at(item_index)
-  let item_commitment = bounded_item_v1.from_bytes(3, item_index, observer_hash)
-  let collection_frontier = validation_merkle_v1.build_frontier(
-    observer_collection_leaves_from(0, item_count),
-  )
-  let chunk_frontier = validation_merkle_v1.build_frontier(
-    [bounded_item_v1.hash_chunk(3, item_index, 0, observer_hash)],
-  )
-  Pair(
-    bounded_collection_v1.ItemProofV1 {
-      version: bounded_collection_v1.version,
-      field_index: 3,
-      item_count,
-      item_index,
-      item_length: 28,
-      item_commitment,
-      frontier: collection_frontier.peaks,
-      siblings,
-    },
-    bounded_item_v1.ChunkProofV1 {
-      version: bounded_item_v1.version,
-      field_index: 3,
-      item_index,
-      total_length: 28,
-      chunk_index: 0,
-      chunk: observer_hash,
-      frontier: chunk_frontier.peaks,
-      siblings: [],
-    },
-  )
+) -> native_tx_field_access_v1.FieldCarriageV1 {
+  inline_field_carriage(observer_hashes_from(0, item_count))
 }
 
 fn resolve_inputs_step_fixture(
@@ -1184,7 +1135,7 @@ fn advanced_output_proof(
 fn authenticated_output_material(
   output_cbor: ByteArray,
 ) -> AuthenticatedOutputMaterialV1 {
-  let Pair(_, chunk_proof) = singleton_field_item_proofs(2, output_cbor)
+  let chunk_proof = singleton_field_item_chunk_proof(2, output_cbor)
   let item_commitment = bounded_item_v1.from_bytes(2, 0, output_cbor)
   let initial = ledger_output_proof_v1.initial_control_v1(
     0,
@@ -1940,6 +1891,7 @@ fn verify_cek_context_transition_fixture(
     0,
     0,
     0,
+    inline_field_door(),
   )
 }
 
@@ -1989,6 +1941,7 @@ fn verify_cek_context_source_transition_fixture(
     0,
     0,
     0,
+    inline_field_door(),
   )
 }
 
@@ -2129,7 +2082,11 @@ fn canonical_step_fixture() -> Pair<
 
 test canonical_v1_decode_is_independently_verified_on_l1() {
   let Pair(pre, evidence) = canonical_step_fixture()
-  validation_machine_v1.verify_canonical_decode_one_step_v1(pre, evidence)
+  validation_machine_v1.verify_canonical_decode_one_step_v1(
+    pre,
+    evidence,
+    inline_field_door(),
+  )
 }
 
 test canonical_decode_authenticates_one_bounded_script_item() {
@@ -2152,25 +2109,6 @@ test canonical_decode_authenticates_one_bounded_script_item() {
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let item_cbor = encode_midgard_versioned_script(script)
-  let chunk_hash = bounded_item_v1.hash_chunk(6, 0, 0, item_cbor)
-  let chunk_frontier = [
-    validation_merkle_v1.FrontierPeak { height: 0, hash: chunk_hash },
-  ]
-  let item_commitment = bounded_item_v1.commitment(
-    6,
-    0,
-    bytearray.length(item_cbor),
-    chunk_frontier,
-  )
-  let item_hash = bounded_collection_v1.hash_item(
-    6,
-    0,
-    bytearray.length(item_cbor),
-    item_commitment,
-  )
-  let collection_frontier = [
-    validation_merkle_v1.FrontierPeak { height: 0, hash: item_hash },
-  ]
   let work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
@@ -2232,29 +2170,17 @@ test canonical_decode_authenticates_one_bounded_script_item() {
         work_witness_cbor,
         claimed_successor: post,
       },
+      // §8.1 tier 1: the field-6 preimage travels in the evidence and the door
+      // hashes it once against `script_tx_wits_hash`. The retired form asserted
+      // a per-item collection opening against that same flat hash, which is the
+      // unsatisfiable predicate #592 is about.
       auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
-        collection_proof: bounded_collection_v1.ItemProofV1 {
-          version: bounded_collection_v1.version,
-          field_index: 6,
-          item_count: 1,
-          item_index: 0,
-          item_length: bytearray.length(item_cbor),
-          item_commitment,
-          frontier: collection_frontier,
-          siblings: [],
-        },
-        chunk_proof: bounded_item_v1.ChunkProofV1 {
-          version: bounded_item_v1.version,
-          field_index: 6,
-          item_index: 0,
-          total_length: bytearray.length(item_cbor),
-          chunk_index: 0,
-          chunk: item_cbor,
-          frontier: chunk_frontier,
-          siblings: [],
-        },
+        field_index: 6,
+        item_index: 0,
+        carriage: inline_field_carriage([item_cbor]),
       },
     },
+    inline_field_door(),
   )
 }
 
@@ -2278,25 +2204,6 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let item_cbor = encode_midgard_versioned_script(script)
-  let chunk_hash = bounded_item_v1.hash_chunk(7, 0, 0, item_cbor)
-  let chunk_frontier = [
-    validation_merkle_v1.FrontierPeak { height: 0, hash: chunk_hash },
-  ]
-  let item_commitment = bounded_item_v1.commitment(
-    6,
-    0,
-    bytearray.length(item_cbor),
-    chunk_frontier,
-  )
-  let item_hash = bounded_collection_v1.hash_item(
-    6,
-    0,
-    bytearray.length(item_cbor),
-    item_commitment,
-  )
-  let collection_frontier = [
-    validation_merkle_v1.FrontierPeak { height: 0, hash: item_hash },
-  ]
   let work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
@@ -2355,55 +2262,56 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
     work_witness_cbor,
     claimed_successor: post,
   }
-  let collection_proof = bounded_collection_v1.ItemProofV1 {
-    version: bounded_collection_v1.version,
-    field_index: 6,
-    item_count: 1,
-    item_index: 0,
-    item_length: bytearray.length(item_cbor),
-    item_commitment,
-    frontier: collection_frontier,
-    siblings: [],
-  }
-  // C29: every conjunct below is pinned to its own measured disposition. The
-  // earlier form was `test ... fail` over this same `and {}`, which went green
-  // as soon as ANY conjunct was false and therefore could not distinguish a
-  // legacy field-7 substitution from a wholly unauthenticated proof. Measured
-  // dispositions: the field-7 chunk frontier poisons the field-6 commitment,
-  // so the recomputed commitment, the chunk semantics, and the item semantics
-  // all reject, and the substituted item bytes reject as well.
+  let honest_carriage = inline_field_carriage([item_cbor])
+  // C29, rewritten for #592. The substitution is now refused by the machine's
+  // own field-index check rather than by domain-separated hashing. §4 removed
+  // field-index domain separation — two fields holding the same items commit to
+  // the same 32 bytes and a flat hash says nothing about which slot it came
+  // from — so §8's door authenticates whichever slot the step's *control* names
+  // and it is `field_index == control.field_index` inside
+  // `verify_canonical_decode_chunk` that refuses evidence pointing at the
+  // retired field-7 slot. Every conjunct below is pinned to its own measured
+  // disposition, as the earlier `test ... fail` form could not be.
   and {
-    // Legacy field-7 chunk hashing does not reproduce the field-6 commitment.
-    bounded_item_v1.from_bytes(6, 0, item_cbor) != item_commitment,
-    // ... so no field-6 chunk proof over the legacy frontier authenticates.
+    // The substitution is a real one and not a collision: this transaction's
+    // field-6 preimage does not commit to the same 32 bytes as its (empty)
+    // field-7 slot.
+    native_tx_field_access_v1.field_commitment(
+      native_tx_field_access_v1.encode_field_preimage([item_cbor]),
+    ) != native_tx_field_access_v1.empty_field_commitment,
+    // Field-7-flavoured evidence does not authenticate a field-6 item on the
+    // semantic path ...
     !validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
       pre,
       transition,
-      collection_proof,
-      bounded_item_v1.ChunkProofV1 {
-        version: bounded_item_v1.version,
-        field_index: 6,
-        item_index: 0,
-        total_length: bytearray.length(item_cbor),
-        chunk_index: 0,
-        chunk: item_cbor,
-        frontier: chunk_frontier,
-        siblings: [],
+      inline_field_door(),
+      7,
+      0,
+      honest_carriage,
+    ),
+    // ... nor on the deployed one-step path.
+    !validation_machine_v1.verify_canonical_decode_one_step_v1(
+      pre,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition,
+        auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+          field_index: 7,
+          item_index: 0,
+          carriage: honest_carriage,
+        },
       },
+      inline_field_door(),
     ),
-    // ... and the correct item bytes still fail under the poisoned proof.
-    !validation_machine_v1.verify_canonical_decode_item_semantics_v1(
+    // And an item index the authenticated field does not have is refused for
+    // the same reason: the index is checked against the control's cursor, never
+    // taken from the evidence.
+    !validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
       pre,
       transition,
-      collection_proof,
-      item_cbor,
-    ),
-    // Substituted item bytes reject independently.
-    !validation_machine_v1.verify_canonical_decode_item_semantics_v1(
-      pre,
-      transition,
-      collection_proof,
-      #"ff",
+      inline_field_door(),
+      6,
+      1,
+      honest_carriage,
     ),
   }
 }
@@ -2421,15 +2329,20 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
 //     3  verify_canonical_decode(pre, transition, aux)      -> FAIL
 //
 //   verify_canonical_decode_chunk (reached through conjunct 3)
-//     1..13  control binding, non-empty field commitment, first/continuing
-//            chunk, positive item count, the six collection/chunk proof index
-//            and length equalities, verify_item, verify_chunk  -> all pass
-//     14     the claimed-successor exactness branch                -> FAIL
+//     1..8   control binding, non-empty field commitment, first/continuing
+//            chunk, positive authenticated item count, the evidence's
+//            field/item index equalities, the chunk-index bound  -> all pass
+//     9      the claimed-successor exactness branch                -> FAIL
+//
+// (Conjunct numbering re-measured after #592: the retired `verify_item` /
+// `verify_chunk` openings and the four proof length/commitment equalities they
+// needed are gone, so the arm is shorter. The disposition is unchanged.)
 //
 // So the structural transition IS valid here — the vector differs from the
 // passing sibling `canonical_decode_authenticates_one_bounded_script_item` in
-// nothing but the claimed successor, and conjunct 14 of the chunk arm is the
-// sole falsifier. The dispositions are now pinned individually below, with that
+// nothing but the claimed successor, and conjunct 9 of the chunk arm (the
+// claimed-successor exactness branch, as the control above measures) is the sole
+// falsifier. The dispositions are now pinned individually below, with that
 // sibling's correct successor as the differential.
 test canonical_decode_rejects_a_wrong_claimed_successor() {
   let base = empty_v1_transaction()
@@ -2451,25 +2364,6 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let item_cbor = encode_midgard_versioned_script(script)
-  let chunk_hash = bounded_item_v1.hash_chunk(6, 0, 0, item_cbor)
-  let chunk_frontier = [
-    validation_merkle_v1.FrontierPeak { height: 0, hash: chunk_hash },
-  ]
-  let item_commitment = bounded_item_v1.commitment(
-    6,
-    0,
-    bytearray.length(item_cbor),
-    chunk_frontier,
-  )
-  let item_hash = bounded_collection_v1.hash_item(
-    6,
-    0,
-    bytearray.length(item_cbor),
-    item_commitment,
-  )
-  let collection_frontier = [
-    validation_merkle_v1.FrontierPeak { height: 0, hash: item_hash },
-  ]
   let work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
@@ -2542,29 +2436,11 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
       ),
     ),
   }
-  let collection_proof = bounded_collection_v1.ItemProofV1 {
-    version: bounded_collection_v1.version,
-    field_index: 6,
-    item_count: 1,
-    item_index: 0,
-    item_length: bytearray.length(item_cbor),
-    item_commitment,
-    frontier: collection_frontier,
-    siblings: [],
-  }
-  let chunk_proof = bounded_item_v1.ChunkProofV1 {
-    version: bounded_item_v1.version,
-    field_index: 6,
-    item_index: 0,
-    total_length: bytearray.length(item_cbor),
-    chunk_index: 0,
-    chunk: item_cbor,
-    frontier: chunk_frontier,
-    siblings: [],
-  }
+  let carriage = inline_field_carriage([item_cbor])
   let auxiliary = validation_machine_v1.TransactionFieldChunkWitness {
-    collection_proof,
-    chunk_proof,
+    field_index: 6,
+    item_index: 0,
+    carriage,
   }
   let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
     work_witness_cbor,
@@ -2589,12 +2465,15 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
         transition,
         auxiliary,
       },
+      inline_field_door(),
     ),
     !validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
       pre,
       transition,
-      collection_proof,
-      chunk_proof,
+      inline_field_door(),
+      6,
+      0,
+      carriage,
     ),
     !validation_machine_v1.verify_canonical_decode_one_step_v1(
       pre,
@@ -2602,16 +2481,18 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
         transition,
         auxiliary,
       },
+      inline_field_door(),
     ),
-    // Differential: the identical pre, work witness, collection proof, and
-    // chunk proof authenticate once the claimed successor is the exact one, so
-    // the claimed successor is the only thing this vector rejects.
+    // Differential: the identical pre, work witness and §8 carriage authenticate
+    // once the claimed successor is the exact one, so the claimed successor is
+    // the only thing this vector rejects.
     validation_machine_v1.verify_canonical_decode_one_step_v1(
       pre,
       validation_machine_v1.ValidationOneStepEvidenceV1 {
         transition: correct_transition,
         auxiliary,
       },
+      inline_field_door(),
     ),
   }
 }
@@ -2678,6 +2559,7 @@ test compact_binding_is_independently_verified_on_l1() {
       work_witness_cbor: compact_witness_cbor,
       claimed_successor: input_post,
     },
+    inline_field_door(),
   )
 }
 
@@ -2814,6 +2696,7 @@ test static_rules_prove_a_network_mismatch_is_an_exact_no_op() {
       work_witness_cbor,
       claimed_successor: terminal,
     },
+    inline_field_door(),
   )
 }
 
@@ -2900,6 +2783,7 @@ test rejection_is_provable_from_a_non_empty_claimed_delta_root() {
         work_witness_cbor,
         claimed_successor: terminal,
       },
+      inline_field_door(),
     ),
   }
 }
@@ -2924,6 +2808,7 @@ test rejection_successor_that_clears_the_claimed_delta_is_rejected() {
       work_witness_cbor,
       claimed_successor: cleared_terminal,
     },
+    inline_field_door(),
   )
 }
 
@@ -2944,6 +2829,7 @@ test rejection_successor_that_rewrites_the_claimed_delta_is_rejected() {
       work_witness_cbor,
       claimed_successor: rewritten_terminal,
     },
+    inline_field_door(),
   )
 }
 
@@ -2968,6 +2854,7 @@ test a_valid_static_rules_transition_cannot_be_proven_rejected() {
         network_mismatch_rejection_code,
       ),
     },
+    inline_field_door(),
   )
 }
 
@@ -2994,6 +2881,7 @@ test an_honest_forced_invalid_trace_may_carry_an_empty_claimed_delta() {
         work_witness_cbor,
         claimed_successor: terminal,
       },
+      inline_field_door(),
     ),
   }
 }
@@ -3100,18 +2988,17 @@ test input_sets_accepts_bounded_disjoint_spend_and_reference_inputs() {
       second_witness_cbor,
     ),
   }
-  let Pair(reference_collection_proof, reference_chunk_proof) = singleton_field_item_proofs(
-    1,
-    reference_key,
-  )
+  let reference_carriage = inline_field_carriage([reference_key])
   let first_is_valid = validation_machine_v1.verify_input_sets_item_semantics_v1(
     first_pre,
     validation_machine_v1.ValidationOneStepWitnessV1 {
       work_witness_cbor: first_witness_cbor,
       claimed_successor: second_pre,
     },
-    reference_collection_proof,
-    reference_chunk_proof,
+    inline_field_door(),
+    1,
+    0,
+    reference_carriage,
   )
   let signatures_witness_cbor = initial_signatures_witness(tx)
   let signatures_post = validation_trace_v1.ValidationMachineStateV1 {
@@ -3124,10 +3011,7 @@ test input_sets_accepts_bounded_disjoint_spend_and_reference_inputs() {
       signatures_witness_cbor,
     ),
   }
-  let Pair(spend_collection_proof, spend_chunk_proof) = singleton_field_item_proofs(
-    0,
-    spend_key,
-  )
+  let spend_carriage = inline_field_carriage([spend_key])
   and {
     first_is_valid,
     validation_machine_v1.verify_input_sets_item_semantics_v1(
@@ -3136,8 +3020,10 @@ test input_sets_accepts_bounded_disjoint_spend_and_reference_inputs() {
         work_witness_cbor: second_witness_cbor,
         claimed_successor: signatures_post,
       },
-      spend_collection_proof,
-      spend_chunk_proof,
+      inline_field_door(),
+      0,
+      0,
+      spend_carriage,
     ),
     full_schedule == validation_machine_v1.transaction_resolution_schedule_hash(
       tx.body.inputs,
@@ -3192,22 +3078,18 @@ test input_sets_proves_spend_reference_overlap_unilaterally() {
       second_witness_cbor,
     ),
   }
-  let Pair(reference_collection_proof, reference_chunk_proof) = singleton_field_item_proofs(
-    1,
-    key,
-  )
-  let Pair(spend_collection_proof, spend_chunk_proof) = singleton_field_item_proofs(
-    0,
-    key,
-  )
+  let reference_carriage = inline_field_carriage([key])
+  let spend_carriage = inline_field_carriage([key])
   let first_is_valid = validation_machine_v1.verify_input_sets_item_semantics_v1(
     first_pre,
     validation_machine_v1.ValidationOneStepWitnessV1 {
       work_witness_cbor: first_witness_cbor,
       claimed_successor: second_pre,
     },
-    reference_collection_proof,
-    reference_chunk_proof,
+    inline_field_door(),
+    1,
+    0,
+    reference_carriage,
   )
   let rejection_code = #"455f4455504c49434154455f494e5055545f494e5f5458"
   and {
@@ -3218,8 +3100,10 @@ test input_sets_proves_spend_reference_overlap_unilaterally() {
         work_witness_cbor: second_witness_cbor,
         claimed_successor: exact_rejection_post(second_pre, rejection_code),
       },
-      spend_collection_proof,
-      spend_chunk_proof,
+      inline_field_door(),
+      0,
+      0,
+      spend_carriage,
     ),
   }
 }
@@ -3247,7 +3131,7 @@ test input_sets_proves_a_malformed_validity_interval_after_the_final_item() {
     validation_machine_v1.empty_resolution_schedule_hash(),
   )
   let pre = input_sets_pre(tx, 2, work_witness_cbor)
-  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(0, key)
+  let carriage = inline_field_carriage([key])
   let rejection_code = #"455f494e56414c49445f56414c49444954595f494e54455256414c5f464f524d4154"
   validation_machine_v1.verify_input_sets_item_semantics_v1(
     pre,
@@ -3255,8 +3139,10 @@ test input_sets_proves_a_malformed_validity_interval_after_the_final_item() {
       work_witness_cbor,
       claimed_successor: exact_rejection_post(pre, rejection_code),
     },
-    collection_proof,
-    chunk_proof,
+    inline_field_door(),
+    0,
+    0,
+    carriage,
   )
 }
 
@@ -3518,10 +3404,6 @@ test signatures_proves_a_missing_required_signer_is_an_exact_no_op() {
     ),
   }
   let rejection_code = #"455f4d495353494e475f52455155495245445f5749544e455353"
-  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    4,
-    h_28_a,
-  )
   and {
     validation_machine_v1.verify_signatures_advance_semantics_v1(
       pre,
@@ -3536,8 +3418,8 @@ test signatures_proves_a_missing_required_signer_is_an_exact_no_op() {
         work_witness_cbor: required_witness_cbor,
         claimed_successor: exact_rejection_post(required_pre, rejection_code),
       },
-      collection_proof,
-      chunk_proof,
+      inline_field_door(),
+      inline_field_carriage([h_28_a]),
       validation_machine_v1.EmptySignerSetProof { peaks: [] },
     ),
   }
@@ -3595,10 +3477,7 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
       required_witness_cbor,
     ),
   }
-  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    7,
-    address_witness_cbor,
-  )
+  let carriage = inline_field_carriage([address_witness_cbor])
   let rejection_code = #"455f494e56414c49445f5349474e4154555245"
   and {
     validation_machine_v1.verify_signature_address_item_semantics_v1(
@@ -3607,8 +3486,10 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
         work_witness_cbor,
         claimed_successor: required_pre,
       },
-      collection_proof,
-      chunk_proof,
+      inline_field_door(),
+      7,
+      0,
+      carriage,
     ),
     validation_machine_v1.verify_signatures_advance_semantics_v1(
       required_pre,
@@ -3646,10 +3527,8 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
       script_bytes: #"82041864",
     },
   )
-  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    6,
-    item_cbor,
-  )
+  let carriage = inline_field_carriage([item_cbor])
+  let chunk_proof = singleton_field_item_chunk_proof(6, item_cbor)
   let token_work_witness_cbor = phase_a_native_scan_witness(
     tx,
     1,
@@ -3657,7 +3536,7 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
     0,
     0,
     bytearray.length(item_cbor),
-    collection_proof.item_commitment,
+    bounded_item_v1.from_bytes(6, 0, item_cbor),
     3,
     #"",
     0,
@@ -3672,7 +3551,7 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
     0,
     0,
     bytearray.length(item_cbor),
-    collection_proof.item_commitment,
+    bounded_item_v1.from_bytes(6, 0, item_cbor),
     5,
     #"",
     0,
@@ -3690,7 +3569,7 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
     0,
     0,
     bytearray.length(item_cbor),
-    collection_proof.item_commitment,
+    bounded_item_v1.from_bytes(6, 0, item_cbor),
     bytearray.length(item_cbor),
     #"",
     0,
@@ -3739,8 +3618,10 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
         work_witness_cbor,
         claimed_successor: token_pre,
       },
-      collection_proof,
-      chunk_proof,
+      inline_field_door(),
+      6,
+      0,
+      carriage,
     ),
     validation_machine_v1.verify_phase_a_native_token_head_semantics_v1(
       token_pre,
@@ -3800,16 +3681,13 @@ test phase_a_native_scripts_resolves_a_nested_signature_one_step_at_a_time() {
     h_a,
   )
   let item_cbor = encode_midgard_versioned_script(script)
-  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    6,
-    item_cbor,
-  )
+  let chunk_proof = singleton_field_item_chunk_proof(6, item_cbor)
   let payload_offset = bytearray.length(item_cbor) - bytearray.length(
     script_bytes,
   )
   let child_offset = payload_offset + 3
   let item_length = bytearray.length(item_cbor)
-  let item_commitment = collection_proof.item_commitment
+  let item_commitment = bounded_item_v1.from_bytes(6, 0, item_cbor)
   let container_work_witness_cbor = phase_a_native_scan_witness(
     tx,
     1,
@@ -4009,10 +3887,8 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
         |> bytearray.concat(h_28_a),
     },
   )
-  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    6,
-    item_cbor,
-  )
+  let carriage = inline_field_carriage([item_cbor])
+  let chunk_proof = singleton_field_item_chunk_proof(6, item_cbor)
   let token_work_witness_cbor = phase_a_native_scan_witness(
     tx,
     1,
@@ -4020,7 +3896,7 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
     0,
     0,
     bytearray.length(item_cbor),
-    collection_proof.item_commitment,
+    bounded_item_v1.from_bytes(6, 0, item_cbor),
     4,
     #"",
     0,
@@ -4035,7 +3911,7 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
     0,
     0,
     bytearray.length(item_cbor),
-    collection_proof.item_commitment,
+    bounded_item_v1.from_bytes(6, 0, item_cbor),
     6,
     #"",
     0,
@@ -4053,7 +3929,7 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
     0,
     0,
     bytearray.length(item_cbor),
-    collection_proof.item_commitment,
+    bounded_item_v1.from_bytes(6, 0, item_cbor),
     bytearray.length(item_cbor),
     #"",
     0,
@@ -4075,8 +3951,10 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
         work_witness_cbor,
         claimed_successor: token_pre,
       },
-      collection_proof,
-      chunk_proof,
+      inline_field_door(),
+      6,
+      0,
+      carriage,
     ),
     validation_machine_v1.verify_phase_a_native_token_head_semantics_v1(
       token_pre,
@@ -4162,6 +4040,7 @@ test phase_a_script_preconditions_advances_an_empty_bundle_to_resolution() {
       },
       auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
+    inline_field_door(),
   )
 }
 
@@ -4212,20 +4091,19 @@ test phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op() {
   }
   let rejection_code = #"455f494e56414c49445f4649454c445f54595045"
   let terminal = exact_rejection_post(next, rejection_code)
-  let Pair(first_collection_proof, first_chunk_proof) = duplicate_observer_field_item_proofs(
-    0,
-  )
-  let Pair(second_collection_proof, second_chunk_proof) = duplicate_observer_field_item_proofs(
-    1,
-  )
+  // The duplicate is now the field's own §5.1 preimage rather than two
+  // openings over one frontier, and which of its two identical items a step
+  // reads is the `item_index` it names.
+  let observers_carriage = duplicate_observer_field_carriage()
   let first_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
     transition: validation_machine_v1.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: next,
     },
     auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
-      collection_proof: first_collection_proof,
-      chunk_proof: first_chunk_proof,
+      field_index: 3,
+      item_index: 0,
+      carriage: observers_carriage,
     },
   }
   let second_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
@@ -4234,13 +4112,22 @@ test phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op() {
       claimed_successor: terminal,
     },
     auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
-      collection_proof: second_collection_proof,
-      chunk_proof: second_chunk_proof,
+      field_index: 3,
+      item_index: 1,
+      carriage: observers_carriage,
     },
   }
   and {
-    validation_machine_v1.verify_one_step_evidence(pre, first_evidence),
-    validation_machine_v1.verify_one_step_evidence(next, second_evidence),
+    validation_machine_v1.verify_one_step_evidence(
+      pre,
+      first_evidence,
+      inline_field_door(),
+    ),
+    validation_machine_v1.verify_one_step_evidence(
+      next,
+      second_evidence,
+      inline_field_door(),
+    ),
   }
 }
 
@@ -4280,6 +4167,7 @@ test phase_a_script_preconditions_require_integrity_for_plutus_bytes() {
       },
       auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
+    inline_field_door(),
   )
 }
 
@@ -4340,6 +4228,7 @@ test resolve_inputs_checks_validity_before_ledger_lookups() {
       },
       auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
+    inline_field_door(),
   )
 }
 
@@ -4616,6 +4505,7 @@ test resolve_inputs_proves_non_membership_as_an_exact_no_op() {
         proof: [],
       },
     },
+    inline_field_door(),
   )
 }
 
@@ -4662,6 +4552,7 @@ test resolve_inputs_rejects_an_invalid_validity_interval_exactly() {
       },
       auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
+    inline_field_door(),
   )
 }
 
@@ -4733,6 +4624,7 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
       },
       auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
+    inline_field_door(),
   )
 }
 
@@ -4755,10 +4647,7 @@ test script_sources_commits_inline_reference_script_candidates() {
     [script_proof_v1.source_leaf_hash(0, #"00", script)],
   )
   let item_cbor = encode_midgard_versioned_script(script)
-  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    6,
-    item_cbor,
-  )
+  let carriage = inline_field_carriage([item_cbor])
   let pending = validation_machine_v1.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
@@ -4767,7 +4656,7 @@ test script_sources_commits_inline_reference_script_candidates() {
     payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
     payload_length: bytearray.length(payload),
     item_length: bytearray.length(item_cbor),
-    item_commitment: collection_proof.item_commitment,
+    item_commitment: bounded_item_v1.from_bytes(6, 0, item_cbor),
     hash_control: blake2b_224_trace_v1.initial_control_v1(
       bytearray.length(payload) + 1,
     ),
@@ -4808,8 +4697,10 @@ test script_sources_commits_inline_reference_script_candidates() {
         ),
         claimed_successor: pending_post,
       },
-      collection_proof,
-      chunk_proof,
+      inline_field_door(),
+      6,
+      0,
+      carriage,
     ),
     validation_machine_v1.verify_script_sources_stage_zero_finish_semantics_v1(
       committed_pre,
@@ -4843,10 +4734,8 @@ test script_sources_commits_unique_supported_redeemers() {
     [script_proof_v1.redeemer_leaf_hash(0, redeemer)],
   )
   let redeemer_cbor = encode_midgard_redeemer_witness(redeemer)
-  let Pair(collection_proof, redeemer_chunk_proof) = singleton_field_item_proofs(
-    8,
-    redeemer_cbor,
-  )
+  let carriage = inline_field_carriage([redeemer_cbor])
+  let redeemer_chunk_proof = singleton_field_item_chunk_proof(8, redeemer_cbor)
   let redeemer_item_commitment = bounded_item_v1.from_bytes(8, 0, redeemer_cbor)
   // Since `320ed869` the stage-1 redeemer scan no longer commits the redeemer
   // leaf in a single step. `TransactionRedeemerItemBeginWitness` only opens the
@@ -4870,7 +4759,7 @@ test script_sources_commits_unique_supported_redeemers() {
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  expect
+  expect  
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
         control: tail_control,
       })
@@ -4956,9 +4845,10 @@ test script_sources_commits_unique_supported_redeemers() {
       validation_machine_v1.ValidationOneStepEvidenceV1 {
         transition: begin_transition,
         auxiliary: validation_machine_v1.TransactionRedeemerItemBeginWitness {
-          collection_proof,
+          carriage,
         },
       },
+      inline_field_door(),
     ),
     validation_machine_v1.verify_one_step_evidence(
       begin_post,
@@ -4970,6 +4860,7 @@ test script_sources_commits_unique_supported_redeemers() {
           witness: header_witness,
         },
       },
+      inline_field_door(),
     ),
     validation_machine_v1.verify_one_step_evidence(
       item_post,
@@ -4977,6 +4868,7 @@ test script_sources_commits_unique_supported_redeemers() {
         transition: final_transition,
         auxiliary: validation_machine_v1.NoAuxiliaryWitness,
       },
+      inline_field_door(),
     ),
   }
 }
@@ -5001,10 +4893,8 @@ test script_sources_stage_one_redeemer_family_guard() {
     [script_proof_v1.redeemer_leaf_hash(0, redeemer)],
   )
   let redeemer_cbor = encode_midgard_redeemer_witness(redeemer)
-  let Pair(collection_proof, redeemer_chunk_proof) = singleton_field_item_proofs(
-    8,
-    redeemer_cbor,
-  )
+  let carriage = inline_field_carriage([redeemer_cbor])
+  let redeemer_chunk_proof = singleton_field_item_chunk_proof(8, redeemer_cbor)
   let redeemer_item_commitment = bounded_item_v1.from_bytes(8, 0, redeemer_cbor)
   let item_control = redeemer_item_proof_v1.initial_control_v1(
     redeemer_item_proof_v1.mode_data,
@@ -5020,7 +4910,7 @@ test script_sources_stage_one_redeemer_family_guard() {
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  expect
+  expect  
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
         control: tail_control,
       })
@@ -5095,7 +4985,7 @@ test script_sources_stage_one_redeemer_family_guard() {
     claimed_successor: final_post,
   }
   let begin_auxiliary = validation_machine_v1.TransactionRedeemerItemBeginWitness {
-    collection_proof,
+    carriage,
   }
   let header_auxiliary = validation_machine_v1.RedeemerItemStepWitness {
     redeemer_control: None,
@@ -5107,21 +4997,25 @@ test script_sources_stage_one_redeemer_family_guard() {
       pre,
       begin_transition,
       begin_auxiliary,
+      inline_field_door(),
     ),
     validation_machine_v1.verify_script_sources_stage_one_redeemer_semantics_v1(
       begin_post,
       header_transition,
       header_auxiliary,
+      inline_field_door(),
     ),
     validation_machine_v1.verify_script_sources_stage_one_semantics_v1(
       item_post,
       final_transition,
       validation_machine_v1.NoAuxiliaryWitness,
+      inline_field_door(),
     ),
     !validation_machine_v1.verify_script_sources_stage_one_redeemer_semantics_v1(
       item_post,
       final_transition,
       validation_machine_v1.NoAuxiliaryWitness,
+      inline_field_door(),
     ),
   }
 }
@@ -5187,6 +5081,7 @@ test script_sources_stage_one_accepts_more_than_sixteen_sources() {
         transition,
         auxiliary: validation_machine_v1.NoAuxiliaryWitness,
       },
+      inline_field_door(),
     ),
   }
 }
@@ -5241,6 +5136,7 @@ test script_sources_binds_resolved_input_replay_schedule() {
       },
       auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
+    inline_field_door(),
   )
 }
 
@@ -5478,7 +5374,7 @@ fn verify_maximum_input_schedule_terminal_vector(
     ..malformed_terminal_cursor_control,
     stage: 4,
   }
-  let
+  let  
       Pair(malformed_terminal_cursor,
       malformed_terminal_cursor_work_witness_cbor)
     = resolution_schedule_terminal_state(malformed_terminal_cursor_control, 13)
@@ -5498,7 +5394,7 @@ fn verify_maximum_input_schedule_terminal_vector(
     ..malformed_terminal_accumulator_control,
     stage: 4,
   }
-  let
+  let  
       Pair(malformed_terminal_accumulator,
       malformed_terminal_accumulator_work_witness_cbor)
     = resolution_schedule_terminal_state(
@@ -5791,6 +5687,7 @@ test script_sources_replay_appends_reference_scripts() {
         value,
       },
     },
+    inline_field_door(),
   )
 }
 
@@ -5880,15 +5777,13 @@ test script_sources_replay_appends_script_credential_spend_purposes() {
         value,
       },
     },
+    inline_field_door(),
   )
 }
 
-fn canonical_output_commitment_step_with_proof(
-  step_to_verify: Int,
-  forge_proof: fn(bounded_collection_v1.ItemProofV1) ->
-    bounded_collection_v1.ItemProofV1,
-) -> Bool {
-  let output = MidgardTxOutput {
+/// The one output every stage-4 output-commitment fixture in this module folds.
+fn canonical_output_commitment_output() -> MidgardTxOutput {
+  MidgardTxOutput {
     address: MidgardAddress {
       protected: False,
       network_id: 0,
@@ -5899,7 +5794,36 @@ fn canonical_output_commitment_step_with_proof(
     datum_cbor: None,
     script_ref: None,
   }
-  let output_cbor = encode_midgard_tx_output(output)
+}
+
+fn canonical_output_commitment_output_cbor() -> ByteArray {
+  encode_midgard_tx_output(canonical_output_commitment_output())
+}
+
+/// One stage-4 output-commitment step, with the two quantities the fold commits
+/// about the item left free so a caller can forge either.
+///
+/// **Why the forgery moved from the evidence to the claimed successor.** Under
+/// the retired counted scheme the prover asserted the item's
+/// `(item_length, item_commitment)` in an `ItemProofV1` and
+/// `bounded_collection_v1.verify_item` bound that tuple into `outputs_hash` —
+/// the predicate #592 measured as unsatisfiable under §4. Both quantities are
+/// now *derived* from bytes §8's door authenticated
+/// (`machine_field_item_commitment` / `machine_field_item_count`), so no field
+/// is left in the evidence to forge: a prover who changes either has changed
+/// the field preimage, and the door's single `blake2b_256` against
+/// `outputs_hash` refuses it by aborting (§7.3) rather than by returning
+/// `False`. What a prover can still get wrong is what it *claims the fold
+/// accumulated*, and that is what these two parameters perturb — the same
+/// `C21-STAGE4` Option A soundness claim, checked at the surface where it is
+/// still decidable.
+fn canonical_output_commitment_step_with_successor(
+  step_to_verify: Int,
+  claimed_output_leaf: ByteArray,
+  claimed_output_total_count: Int,
+) -> Bool {
+  let output = canonical_output_commitment_output()
+  let output_cbor = canonical_output_commitment_output_cbor()
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
     ..base,
@@ -5924,7 +5848,10 @@ fn canonical_output_commitment_step_with_proof(
     empty_frontier,
     14,
   )
-  let Pair(after_item, after_item_work_witness_cbor) = script_sources_output_step_fixture(
+  let claimed_output_frontier = validation_merkle_v1.build_frontier(
+    [claimed_output_leaf],
+  )
+  let Pair(after_item, after_item_work_witness_cbor) = script_sources_output_step_fixture_with_resolved_items(
     tx,
     0,
     accumulator,
@@ -5932,12 +5859,16 @@ fn canonical_output_commitment_step_with_proof(
     empty_frontier,
     empty_frontier,
     0,
+    validation_merkle_v1.build_frontier([]),
     accumulator,
     validation_machine_v1.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     0,
-    output_frontier,
+    claimed_output_frontier,
+    claimed_output_total_count,
+    validation_machine_v1.empty_receive_purpose_scan_control(),
+    validation_machine_v1.empty_observer_purpose_scan_control(),
     15,
   )
   let Pair(post, _) = script_sources_output_step_fixture(
@@ -5956,8 +5887,6 @@ fn canonical_output_commitment_step_with_proof(
     output_frontier,
     16,
   )
-  let Pair(honest_proof, _) = singleton_field_item_proofs(2, output_cbor)
-  let collection_proof = forge_proof(honest_proof)
   if step_to_verify == 0 {
     validation_machine_v1.verify_script_sources_stage_four_semantics_v1(
       pre,
@@ -5966,8 +5895,9 @@ fn canonical_output_commitment_step_with_proof(
         claimed_successor: after_item,
       },
       validation_machine_v1.TransactionRedeemerItemBeginWitness {
-        collection_proof,
+        carriage: inline_field_carriage([output_cbor]),
       },
+      inline_field_door(),
     )
   } else {
     and {
@@ -5979,15 +5909,20 @@ fn canonical_output_commitment_step_with_proof(
           claimed_successor: post,
         },
         validation_machine_v1.NoAuxiliaryWitness,
+        inline_field_door(),
       ),
     }
   }
 }
 
 fn canonical_output_commitment_step(step_to_verify: Int) -> Bool {
-  canonical_output_commitment_step_with_proof(
+  canonical_output_commitment_step_with_successor(
     step_to_verify,
-    fn(honest_proof) { honest_proof },
+    script_proof_v1.output_leaf_hash(
+      0,
+      canonical_output_commitment_output_cbor(),
+    ),
+    1,
   )
 }
 
@@ -5995,36 +5930,139 @@ test script_sources_commits_an_authenticated_output_item() {
   canonical_output_commitment_step(0)
 }
 
-/// Supersedes script_sources_rejects_a_substituted_complete_output_item:
-/// stage 4 no longer reveals item bytes, so substitution now attacks the
-/// authenticated tuple itself. A forged item_commitment must be rejected
-/// by bounded_collection_v1.verify_item against the outputs_hash alone —
-/// the claimed successor is also honest-forged here, so this pins the
-/// C21-STAGE4 Option A soundness claim.
+/// Supersedes `script_sources_rejects_a_substituted_complete_output_item`:
+/// stage 4 does not reveal item bytes, so substitution attacks what the fold
+/// accumulates.
+///
+/// The forgery is in the **claimed successor's** output leaf rather than in an
+/// `ItemProofV1.item_commitment`, because the commitment the fold appends is
+/// derived from door-authenticated bytes and is not a prover field any more
+/// (see `canonical_output_commitment_step_with_successor`). The claim refuted is
+/// unchanged and is `C21-STAGE4` Option A's: the leaf appended at stage 4 must
+/// be `output_item_leaf_hash` over the *authenticated* item's `bounded_item_v1`
+/// commitment, and nothing else.
 test script_sources_rejects_a_forged_output_item_commitment() {
-  !canonical_output_commitment_step_with_proof(
+  !canonical_output_commitment_step_with_successor(
     0,
-    fn(honest_proof) {
-      bounded_collection_v1.ItemProofV1 {
-        ..honest_proof,
-        item_commitment: #"00000000000000000000000000000000000000000000000000000000000000ff",
-      }
-    },
+    script_proof_v1.output_item_leaf_hash(
+      0,
+      #"00000000000000000000000000000000000000000000000000000000000000ff",
+    ),
+    1,
   )
 }
 
-/// The forged item_length changes only the membership leaf hash, so the
-/// sole failing conjunct is verify_item — the successor built from the
-/// honest commitment still matches. Isolates the verify_item binding.
-test script_sources_rejects_a_forged_output_item_length() {
-  !canonical_output_commitment_step_with_proof(
+/// Was `script_sources_rejects_a_forged_output_item_length`, renamed for the
+/// quantity it now forges (#592).
+///
+/// The old row forged `ItemProofV1.item_length`, whose only effect was on the
+/// `bounded_collection_v1.verify_item` membership leaf — the conjunct the flat
+/// reversion retired. The item's length is derived from authenticated bytes
+/// now, so the surviving count claim a prover controls is the fold's
+/// `output_total_count`, forged to 2 against a one-output field with the appended
+/// leaf held honest.
+///
+/// **Which conjunct refutes it, measured rather than assumed.** The forgery lands
+/// in the *claimed successor*, and this is the fold's opening step, so the pre
+/// state's `output_total_count` is still the `0` sentinel and
+/// `active_total_count` is therefore the field's own authenticated count — 1.
+/// `item_count == active_total_count` is `1 == 1` and passes; neutralizing it to
+/// `True` leaves this row green. The falsifier is
+/// `script_sources_control_successor_is_exact`, which requires the successor to
+/// carry `output_total_count: active_total_count` and so refuses the claimed 2.
+/// That is the right refutation for a forged successor, and it is the whole of
+/// this row's claim.
+///
+/// The named count binding gets its own row below, because "the step may not
+/// commit a count the field denies" is a separate claim from "the successor must
+/// be exact", and neutralizing either one leaves the other's row red.
+test script_sources_rejects_a_forged_output_total_count() {
+  !canonical_output_commitment_step_with_successor(
     0,
-    fn(honest_proof) {
-      bounded_collection_v1.ItemProofV1 {
-        ..honest_proof,
-        item_length: honest_proof.item_length + 1,
-      }
+    script_proof_v1.output_leaf_hash(
+      0,
+      canonical_output_commitment_output_cbor(),
+    ),
+    2,
+  )
+}
+
+/// `item_count == active_total_count` (validation-machine-v1.ak:9213) as the
+/// **sole** falsifier — the conjunct the row above names and does not exercise.
+///
+/// The fold is entered with a carried `output_total_count` of 2 already in the
+/// pre state's control, so `active_total_count` is that carried 2 rather than the
+/// field's count, and the honest successor for such a control is one that carries
+/// 2 forward. Successor exactness therefore **passes**: the successor built here
+/// is exactly `{..control, output_count + 1, output_peaks appended honestly,
+/// output_total_count: 2}`. What fails is the field itself disagreeing — field 2
+/// authenticates one item, so a step claiming a two-output fold is refused. This
+/// is the attack the count binding exists for: a carried count that the disputed
+/// transaction's own field-2 preimage does not support, which is how a fold's
+/// completion test would be reached without visiting every output.
+test script_sources_rejects_an_output_total_count_the_field_denies() {
+  let output = canonical_output_commitment_output()
+  let output_cbor = canonical_output_commitment_output_cbor()
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, outputs: [output] },
+  }
+  let empty_frontier = validation_merkle_v1.build_frontier([])
+  let output_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.output_leaf_hash(0, output_cbor)],
+  )
+  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture_with_resolved_items(
+    tx,
+    0,
+    accumulator,
+    4,
+    empty_frontier,
+    empty_frontier,
+    0,
+    validation_merkle_v1.build_frontier([]),
+    accumulator,
+    validation_machine_v1.empty_resolution_schedule_hash(),
+    0,
+    empty_frontier,
+    0,
+    empty_frontier,
+    2,
+    validation_machine_v1.empty_receive_purpose_scan_control(),
+    validation_machine_v1.empty_observer_purpose_scan_control(),
+    14,
+  )
+  let Pair(successor, _) = script_sources_output_step_fixture_with_resolved_items(
+    tx,
+    0,
+    accumulator,
+    4,
+    empty_frontier,
+    empty_frontier,
+    0,
+    validation_merkle_v1.build_frontier([]),
+    accumulator,
+    validation_machine_v1.empty_resolution_schedule_hash(),
+    0,
+    empty_frontier,
+    0,
+    output_frontier,
+    2,
+    validation_machine_v1.empty_receive_purpose_scan_control(),
+    validation_machine_v1.empty_observer_purpose_scan_control(),
+    15,
+  )
+  !validation_machine_v1.verify_script_sources_stage_four_semantics_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: successor,
     },
+    validation_machine_v1.TransactionRedeemerItemBeginWitness {
+      carriage: inline_field_carriage([output_cbor]),
+    },
+    inline_field_door(),
   )
 }
 
@@ -6114,6 +6152,7 @@ fn authenticated_output_proof_step(step_to_verify: Int) -> Bool {
         transition: begin_transition,
         auxiliary: begin_auxiliary,
       },
+      inline_field_door(),
     )
   } else {
     and {
@@ -6360,6 +6399,7 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
             siblings: [],
           },
         },
+        inline_field_door(),
       ),
     }
   } else if step_to_verify == 1 {
@@ -6374,6 +6414,7 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
           transition: append_transition,
           auxiliary: validation_machine_v1.NoAuxiliaryWitness,
         },
+        inline_field_door(),
       ),
     }
   } else if step_to_verify == 2 {
@@ -6399,6 +6440,7 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
             siblings: [],
           },
         },
+        inline_field_door(),
       ),
     }
   } else {
@@ -6414,6 +6456,7 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
           transition: finish_transition,
           auxiliary: validation_machine_v1.NoAuxiliaryWitness,
         },
+        inline_field_door(),
       ),
     }
   }
@@ -6480,40 +6523,30 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
   )
 }
 
-/// The mint fold's three steps, under the flat field-hash core (#567).
+/// The mint fold's three steps, under §8's field-access door (#592).
 ///
-/// **The begin step cannot verify, by construction, and this vector says so
-/// rather than asserting the opposite.** `script_sources_begin_mint_policy`
-/// authenticates its policy item with
-/// `bounded_collection_v1.verify_item(mint_hash, collection_proof)`, but
-/// `mint_hash` is now a *flat* `blake2b_256` over field 5's §5.1 enveloped
-/// preimage (`midgard_transaction_body_to_compact`). A flat hash has no leaves,
-/// so — in `bounded-collection-v1.ak`'s own words — "`verify_item` cannot be
-/// satisfied against one": the counted item-proof surface is retired, kept only
-/// so the dispute machine keeps compiling until its counted call sites are
-/// deleted. Stage six is one of those call sites. No fixture can make
-/// `begin_step` true; the cure is rebinding stage six onto the §8.8
-/// field-access door, which is Phase-5 family-rebind work and not this
-/// ticket's.
+/// **This vector's begin step was a tripwire and is now a positive assertion.**
+/// Under the counted scheme `script_sources_begin_mint_policy` authenticated its
+/// policy item with `bounded_collection_v1.verify_item(mint_hash, ...)` while
+/// `mint_hash` had already become §4's *flat* `blake2b_256` over field 5's §5.1
+/// enveloped preimage — a hash with no leaves, which
+/// `bounded-collection-v1.ak`'s own docstring says `verify_item` cannot be
+/// satisfied against. No fixture could make the begin step true, so this test
+/// asserted `!begin_step` beside the reason, with a note that the row "turns red
+/// the moment stage six is rebound onto the flat door".
 ///
-/// The asset and finish steps are *not* in that position: they authenticate
-/// against `fold.item_commitment`, which the fold control carries, so they
-/// exercise the real streaming path and are asserted positively.
+/// #592 is that rebind, so the note is honoured here: the begin step now carries
+/// a §8.1 tier-1 carriage over the field-5 preimage, the door hashes it once
+/// against `mint_hash`, and the policy item's length and `bounded_item_v1`
+/// commitment are derived from those authenticated bytes into the fold control.
+/// All three steps are asserted **positively**.
 ///
-/// `!begin_step` is a tripwire, not an excuse. It turns red the moment stage six
-/// is rebound onto the flat door — which is exactly when this vector's positive
-/// half should be restored. The rebind is tracked as #575–#578 (Phase-5 family
-/// rebind) and is deliberately outside #572's scope.
-///
-/// **The tripwire is pinned to its reason, not merely to a `False`.** `!begin_step`
-/// on its own would stay green if the begin step started failing for some
-/// unrelated reason — a fixture drifting, a successor shape changing — and would
-/// then be documenting a mismatch that had stopped being the real one. The
-/// assertion below it names the specific flat-vs-counted mismatch: field 5's
-/// commitment is now `field_commitment`, a flat `blake2b_256` over the §5.1
-/// preimage, and `bounded_collection_v1.verify_item` cannot be satisfied against
-/// a hash with no leaves. The two lines together say "the begin step is False,
-/// and this is why".
+/// The asset and finish steps are unchanged: they authenticate against
+/// `fold.item_commitment`, which the fold control carries and which is a genuine
+/// Merkle root over the item's chunks, so their openings were always
+/// satisfiable. What moved is only the provenance of that root — derived at the
+/// begin step from door-authenticated bytes instead of asserted by an
+/// `ItemProofV1`.
 test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
   // §5.6 — the enveloped list of per-policy items, not the retired raw map.
   let mint_cbor = native_tx_field_access_v1.encode_field_preimage(
@@ -6539,10 +6572,8 @@ test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
   let mint_asset_frontier = validation_merkle_v1.build_frontier(
     [validation_machine_v1.mint_asset_leaf_hash(h_28_a, #"01", -5)],
   )
-  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    5,
-    policy_item_cbor,
-  )
+  let carriage = inline_field_carriage([policy_item_cbor])
+  let chunk_proof = singleton_field_item_chunk_proof(5, policy_item_cbor)
   let initial_fold = validation_machine_v1.empty_mint_fold_control()
   let active_fold = validation_machine_v1.MintFoldControlV1 {
     policy_count: 1,
@@ -6550,7 +6581,7 @@ test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
     previous_policy: #"",
     active_policy: h_28_a,
     item_length: bytearray.length(policy_item_cbor),
-    item_commitment: collection_proof.item_commitment,
+    item_commitment: bounded_item_v1.from_bytes(5, 0, policy_item_cbor),
     item_cursor: 32,
     assets_remaining: 1,
     policy_asset_cursor: 0,
@@ -6593,9 +6624,11 @@ test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
       claimed_successor: begin_post,
     },
     validation_machine_v1.TransactionFieldChunkWitness {
-      collection_proof,
-      chunk_proof,
+      field_index: 5,
+      item_index: 0,
+      carriage,
     },
+    inline_field_door(),
   )
   let Pair(asset_pre, asset_work_witness_cbor) = script_sources_mint_fold_fixture(
     tx,
@@ -6621,6 +6654,7 @@ test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
       chunk_proof,
       next_chunk_proof: None,
     },
+    inline_field_door(),
   )
   let Pair(finish_pre, finish_work_witness_cbor) = script_sources_mint_fold_fixture(
     tx,
@@ -6643,17 +6677,19 @@ test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
       claimed_successor: finish_post,
     },
     validation_machine_v1.NoAuxiliaryWitness,
+    inline_field_door(),
   )
   and {
-    // Retired counted call site — see this test's note.
-    !begin_step,
-    // …and this is the reason it is retired: the counted item proof the begin
-    // step carries cannot be verified against field 5's flat commitment, which
-    // is what `begin_step` fails on and what #575–#578 will rebind.
-    !bounded_collection_v1.verify_item(
-      native_tx_field_access_v1.field_commitment(mint_cbor),
-      collection_proof,
-    ),
+    // The rebound call site, asserted positively — see this test's note for what
+    // it used to assert and why.
+    begin_step,
+    // …and the tripwire's own reason, kept as a live statement rather than a
+    // claim about history: field 5's commitment is the flat `blake2b_256` over
+    // its §5.1 preimage, and the door reaches the policy item by authenticating
+    // exactly those bytes. A carriage over anything else does not open.
+    native_tx_field_access_v1.field_commitment(mint_cbor) == midgard_transaction_to_compact(
+      tx,
+    ).body.mint_hash,
     asset_step,
     finish_step,
   }
@@ -6788,6 +6824,7 @@ fn crossing_mint_fold_step(withhold_next_chunk: Bool) -> Bool {
         Some(next_chunk_proof)
       },
     },
+    inline_field_door(),
   )
 }
 
@@ -6862,10 +6899,7 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
     validation_machine_v1.empty_script_discovery_control(),
     20,
   )
-  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    3,
-    h_28_a,
-  )
+  let carriage = inline_field_carriage([h_28_a])
   let observer_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: after_observer,
@@ -6879,18 +6913,22 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
       validation_machine_v1.verify_script_sources_stage_seven_observer_semantics_v1(
         pre,
         observer_transition,
-        collection_proof,
-        chunk_proof,
+        inline_field_door(),
+        3,
+        0,
+        carriage,
       ),
       validation_machine_v1.verify_one_step_evidence(
         pre,
         validation_machine_v1.ValidationOneStepEvidenceV1 {
           transition: observer_transition,
           auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
-            collection_proof,
-            chunk_proof,
+            field_index: 3,
+            item_index: 0,
+            carriage,
           },
         },
+        inline_field_door(),
       ),
     }
   } else {
@@ -6906,6 +6944,7 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
           transition: finish_transition,
           auxiliary: validation_machine_v1.NoAuxiliaryWitness,
         },
+        inline_field_door(),
       ),
     }
   }
@@ -7045,6 +7084,7 @@ test script_sources_stage_seven_finish_binds_canonical_successor_encoding() {
         transition: canonical_transition,
         auxiliary: validation_machine_v1.NoAuxiliaryWitness,
       },
+      inline_field_door(),
     ),
     // Control: the `serialiseData` successor is still rejected.
     !validation_machine_v1.verify_script_sources_stage_seven_finish_semantics_v1(
@@ -7063,6 +7103,7 @@ test script_sources_stage_seven_finish_binds_canonical_successor_encoding() {
         },
         auxiliary: validation_machine_v1.NoAuxiliaryWitness,
       },
+      inline_field_door(),
     ),
     // Control: a mutated successor stage is still rejected.
     !validation_machine_v1.verify_script_sources_stage_seven_finish_semantics_v1(
@@ -7157,10 +7198,7 @@ test script_sources_stage_seven_observer_binds_canonical_successor_encoding() {
     },
     19,
   )
-  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    3,
-    h_28_a,
-  )
+  let carriage = inline_field_carriage([h_28_a])
   and {
     validation_machine_v1.verify_script_sources_stage_seven_observer_semantics_v1(
       pre,
@@ -7168,8 +7206,10 @@ test script_sources_stage_seven_observer_binds_canonical_successor_encoding() {
         work_witness_cbor,
         claimed_successor: after_observer,
       },
-      collection_proof,
-      chunk_proof,
+      inline_field_door(),
+      3,
+      0,
+      carriage,
     ),
     !validation_machine_v1.verify_script_sources_stage_seven_observer_semantics_v1(
       pre,
@@ -7177,8 +7217,10 @@ test script_sources_stage_seven_observer_binds_canonical_successor_encoding() {
         work_witness_cbor,
         claimed_successor: reencoded_after_observer,
       },
-      collection_proof,
-      chunk_proof,
+      inline_field_door(),
+      3,
+      0,
+      carriage,
     ),
     !validation_machine_v1.verify_script_sources_stage_seven_observer_semantics_v1(
       pre,
@@ -7186,8 +7228,10 @@ test script_sources_stage_seven_observer_binds_canonical_successor_encoding() {
         work_witness_cbor,
         claimed_successor: mutated_after_observer,
       },
-      collection_proof,
-      chunk_proof,
+      inline_field_door(),
+      3,
+      0,
+      carriage,
     ),
   }
 }
@@ -7440,6 +7484,7 @@ test script_sources_prepares_more_than_sixteen_purposes_for_discovery() {
       },
       auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
+    inline_field_door(),
   )
 }
 
@@ -7503,6 +7548,7 @@ test script_sources_discovers_more_than_sixteen_purposes() {
           siblings,
         },
       },
+      inline_field_door(),
     ),
   }
 }
@@ -7563,10 +7609,7 @@ test script_sources_discovers_an_exact_non_native_execution() {
   let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
   let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
   let redeemer_cbor = encode_midgard_redeemer_witness(redeemer)
-  let Pair(_, redeemer_chunk_proof) = singleton_field_item_proofs(
-    8,
-    redeemer_cbor,
-  )
+  let redeemer_chunk_proof = singleton_field_item_chunk_proof(8, redeemer_cbor)
   let redeemer_item_commitment = bounded_item_v1.from_bytes(8, 0, redeemer_cbor)
   let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
     0,
@@ -7611,7 +7654,7 @@ test script_sources_discovers_an_exact_non_native_execution() {
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  expect
+  expect  
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
         control: tail_control,
       })
@@ -7749,6 +7792,7 @@ test script_sources_discovers_an_exact_non_native_execution() {
           siblings: [],
         },
       },
+      inline_field_door(),
     ),
     validation_machine_v1.verify_one_step_evidence(
       stage_ten_item,
@@ -7763,6 +7807,7 @@ test script_sources_discovers_an_exact_non_native_execution() {
           witness: header_witness,
         },
       },
+      inline_field_door(),
     ),
     validation_machine_v1.verify_one_step_evidence(
       stage_ten_tail,
@@ -7777,6 +7822,7 @@ test script_sources_discovers_an_exact_non_native_execution() {
           witness: tail_witness,
         },
       },
+      inline_field_door(),
     ),
   }
 }
@@ -7804,10 +7850,7 @@ test script_sources_stage_ten_redeemer_family_guards() {
   let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
   let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
   let redeemer_cbor = encode_midgard_redeemer_witness(redeemer)
-  let Pair(_, redeemer_chunk_proof) = singleton_field_item_proofs(
-    8,
-    redeemer_cbor,
-  )
+  let redeemer_chunk_proof = singleton_field_item_chunk_proof(8, redeemer_cbor)
   let redeemer_item_commitment = bounded_item_v1.from_bytes(8, 0, redeemer_cbor)
   let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
     0,
@@ -7852,7 +7895,7 @@ test script_sources_stage_ten_redeemer_family_guards() {
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  expect
+  expect  
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
         control: tail_control,
       })
@@ -8590,16 +8633,13 @@ test script_sources_stage_twelve_redeemer_family_guard() {
     -1,
     -1,
   )
-  let Pair(_, redeemer_chunk_proof) = singleton_field_item_proofs(
-    8,
-    redeemer_cbor,
-  )
+  let redeemer_chunk_proof = singleton_field_item_chunk_proof(8, redeemer_cbor)
   let header_witness = redeemer_item_proof_v1.RedeemerItemProofWitnessV1 {
     action: redeemer_item_proof_v1.RedeemerItemOpenHeader,
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  expect
+  expect  
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
         control: tail_control,
       })
@@ -8784,10 +8824,7 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
     },
   }
   let script_cbor = encode_midgard_versioned_script(script)
-  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    6,
-    script_cbor,
-  )
+  let chunk_proof = singleton_field_item_chunk_proof(6, script_cbor)
   let script_hash = script_proof_v1.versioned_script_hash(script)
   let source_leaf = script_proof_v1.source_descriptor_leaf_hash(
     0,
@@ -8795,7 +8832,7 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
     0,
     script_hash,
     bytearray.length(script_cbor),
-    collection_proof.item_commitment,
+    bounded_item_v1.from_bytes(6, 0, script_cbor),
   )
   let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
   let empty_frontier = validation_merkle_v1.build_frontier([])
@@ -8837,7 +8874,7 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
     work_witness_cbor,
     1,
     bytearray.length(script_cbor),
-    collection_proof.item_commitment,
+    bounded_item_v1.from_bytes(6, 0, script_cbor),
     payload_offset,
     0,
     -1,
@@ -8857,7 +8894,7 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
     work_witness_cbor,
     7,
     bytearray.length(script_cbor),
-    collection_proof.item_commitment,
+    bounded_item_v1.from_bytes(6, 0, script_cbor),
     payload_offset + 2,
     1,
     -1,
@@ -8871,7 +8908,7 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
     work_witness_cbor,
     2,
     bytearray.length(script_cbor),
-    collection_proof.item_commitment,
+    bounded_item_v1.from_bytes(6, 0, script_cbor),
     bytearray.length(script_cbor),
     1,
     1,
@@ -8897,7 +8934,7 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
       0,
       #"00",
       bytearray.length(script_cbor),
-      collection_proof.item_commitment,
+      bounded_item_v1.from_bytes(6, 0, script_cbor),
       [],
       #"",
       [],
@@ -9277,7 +9314,7 @@ fn maximum_program_envelope_selection_is_exact() -> Bool {
     script_bytes: maximum_program_envelope,
   }
   let script_cbor = encode_midgard_versioned_script(script)
-  let Pair(_, first_chunk_proof) = singleton_field_item_proofs(6, script_cbor)
+  let first_chunk_proof = singleton_field_item_chunk_proof(6, script_cbor)
   let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
   let script_hash = script_proof_v1.versioned_script_hash(script)
   let subject = #"00"
@@ -9427,7 +9464,11 @@ fn maximum_program_envelope_selection_is_exact() -> Bool {
     bytearray.length(maximum_program_envelope) == 50,
     maximum_program_envelope_hash == #"e4fe7f19ef343b55fef5a5c4a80383dd4bbe4bc7009db0a3214bfec086584697",
     bytearray.length(cbor.serialise(evidence)) < 16_384,
-    validation_machine_v1.verify_one_step_evidence(pre, evidence),
+    validation_machine_v1.verify_one_step_evidence(
+      pre,
+      evidence,
+      inline_field_door(),
+    ),
     !validation_machine_v1.verify_one_step_evidence(
       pre,
       validation_machine_v1.ValidationOneStepEvidenceV1 {
@@ -9437,6 +9478,7 @@ fn maximum_program_envelope_selection_is_exact() -> Bool {
         },
         auxiliary: evidence.auxiliary,
       },
+      inline_field_door(),
     ),
   }
 }
@@ -9675,7 +9717,7 @@ test plutus_v3_receive_selection_rejects_with_an_exact_noop() {
     script_bytes: v1_program_envelope(),
   }
   let script_cbor = encode_midgard_versioned_script(script)
-  let Pair(_, first_chunk_proof) = singleton_field_item_proofs(6, script_cbor)
+  let first_chunk_proof = singleton_field_item_chunk_proof(6, script_cbor)
   let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
   let script_hash = script_proof_v1.versioned_script_hash(script)
   let source_leaf = script_proof_v1.source_descriptor_leaf_hash(
@@ -9744,6 +9786,7 @@ test plutus_v3_receive_selection_rejects_with_an_exact_noop() {
         first_chunk_proof,
       },
     },
+    inline_field_door(),
   )
 }
 
@@ -9784,7 +9827,7 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
     0,
     redeemer_item_cbor,
   )
-  let Pair(_, redeemer_chunk_proof) = singleton_field_item_proofs(
+  let redeemer_chunk_proof = singleton_field_item_chunk_proof(
     8,
     redeemer_item_cbor,
   )
@@ -9805,7 +9848,7 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  expect
+  expect  
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
         control: tail_control,
       })
@@ -9887,6 +9930,7 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
           siblings: [],
         },
       },
+      inline_field_door(),
     ),
     validation_machine_v1.verify_one_step_evidence(
       opened,
@@ -9901,6 +9945,7 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
           witness: header_witness,
         },
       },
+      inline_field_door(),
     ),
     validation_machine_v1.verify_one_step_evidence(
       tail,
@@ -9915,6 +9960,7 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
           witness: tail_witness,
         },
       },
+      inline_field_door(),
     ),
   }
 }
@@ -10302,20 +10348,317 @@ test cek_context_output_item_uses_authenticated_descriptor_frontier() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// The genuine-Cardano maximum-cardinality field terminal folds.
+//
+// Every constant below is GENERATED, and #592 is why they had to become
+// constants at all.
+//
+//   producer: pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:sync
+//
+// Before the flat reversion these fixtures were struct literals inside `fn`s,
+// carrying a counted `(ItemProofV1, ChunkProofV1)` pair the name-keyed rebinder
+// (`demo/midgard-core/scripts/golden-channel.mjs`) could not reach — the hazard
+// #590 exists to close. They stayed green while this package's producers moved
+// to §4 at #585, because the transaction id they pinned was the id of the
+// *stale* compact structure they pinned beside it: a self-consistent copy of a
+// world that no longer existed. §8's carriage is the field's whole §5.1
+// preimage, which no human is going to retype, so the fields are hoisted to
+// named constants here and bound from the six boundary suites' published
+// vectors.
+// ---------------------------------------------------------------------------
+
+// Derived by the genuine Cardano boundary fixture in
+// demo/midgard-validation/tests/ordered-collection-spend-inputs-boundary-v1.test.ts
+// (accepted 434 spend inputs at 16,379 signed bytes; adjacent 435 at 16,417).
+const maximum_spend_input_terminal_transaction_id =
+  #"1a24788b66a39ec3a980f70999a30cb532f8dbdd9e86d427666f1c710c821da2"
+
+const maximum_spend_input_terminal_transaction_commitment =
+  #"438e8bf2fa1a91166d32545aa48b202bfd6db6d518021dd441add0943e6a3b64"
+
+const maximum_spend_input_terminal_compact_cbor =
+  #"84018c5820c711b14605dab88657696940a8f08edb424dbf6d655398d0634b6ae04277a6aa582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c05820861703c5de65d91b0eb30c2749b083d9bb97a20e6dd52daebce7d43b9fc5ddeb1a000d5e192020582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820b0fee96667c5707ce45fd0f9b4b06bbda781069e678ab53683e47cfa5e7299be00"
+
+const maximum_spend_input_terminal_witness_set_compact_cbor =
+  #"83582095902e309b4dab96b5f91c564b2e393cf88e259b5d0a8cd02a30acab22c02466582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
+
+const maximum_spend_input_terminal_field_preimage_lengths_cbor =
+  #"891943d301183001010101186801"
+
+const maximum_spend_input_terminal_field_preimage_cbor =
+  #"9901b2582682582000000000000000000000000000000000000000000000000000000000000000001900005826825820000000000000000000000000000000000000000000000000000000000000000019000158268258200000000000000000000000000000000000000000000000000000000000000000190002582682582000000000000000000000000000000000000000000000000000000000000000001900035826825820000000000000000000000000000000000000000000000000000000000000000019000458268258200000000000000000000000000000000000000000000000000000000000000000190005582682582000000000000000000000000000000000000000000000000000000000000000001900065826825820000000000000000000000000000000000000000000000000000000000000000019000758268258200000000000000000000000000000000000000000000000000000000000000000190008582682582000000000000000000000000000000000000000000000000000000000000000001900095826825820000000000000000000000000000000000000000000000000000000000000000019000a5826825820000000000000000000000000000000000000000000000000000000000000000019000b5826825820000000000000000000000000000000000000000000000000000000000000000019000c5826825820000000000000000000000000000000000000000000000000000000000000000019000d5826825820000000000000000000000000000000000000000000000000000000000000000019000e5826825820000000000000000000000000000000000000000000000000000000000000000019000f582682582000000000000000000000000000000000000000000000000000000000000000001900105826825820000000000000000000000000000000000000000000000000000000000000000019001158268258200000000000000000000000000000000000000000000000000000000000000000190012582682582000000000000000000000000000000000000000000000000000000000000000001900135826825820000000000000000000000000000000000000000000000000000000000000000019001458268258200000000000000000000000000000000000000000000000000000000000000000190015582682582000000000000000000000000000000000000000000000000000000000000000001900165826825820000000000000000000000000000000000000000000000000000000000000000019001758268258200000000000000000000000000000000000000000000000000000000000000000190018582682582000000000000000000000000000000000000000000000000000000000000000001900195826825820000000000000000000000000000000000000000000000000000000000000000019001a5826825820000000000000000000000000000000000000000000000000000000000000000019001b5826825820000000000000000000000000000000000000000000000000000000000000000019001c5826825820000000000000000000000000000000000000000000000000000000000000000019001d5826825820000000000000000000000000000000000000000000000000000000000000000019001e5826825820000000000000000000000000000000000000000000000000000000000000000019001f582682582000000000000000000000000000000000000000000000000000000000000000001900205826825820000000000000000000000000000000000000000000000000000000000000000019002158268258200000000000000000000000000000000000000000000000000000000000000000190022582682582000000000000000000000000000000000000000000000000000000000000000001900235826825820000000000000000000000000000000000000000000000000000000000000000019002458268258200000000000000000000000000000000000000000000000000000000000000000190025582682582000000000000000000000000000000000000000000000000000000000000000001900265826825820000000000000000000000000000000000000000000000000000000000000000019002758268258200000000000000000000000000000000000000000000000000000000000000000190028582682582000000000000000000000000000000000000000000000000000000000000000001900295826825820000000000000000000000000000000000000000000000000000000000000000019002a5826825820000000000000000000000000000000000000000000000000000000000000000019002b5826825820000000000000000000000000000000000000000000000000000000000000000019002c5826825820000000000000000000000000000000000000000000000000000000000000000019002d5826825820000000000000000000000000000000000000000000000000000000000000000019002e5826825820000000000000000000000000000000000000000000000000000000000000000019002f582682582000000000000000000000000000000000000000000000000000000000000000001900305826825820000000000000000000000000000000000000000000000000000000000000000019003158268258200000000000000000000000000000000000000000000000000000000000000000190032582682582000000000000000000000000000000000000000000000000000000000000000001900335826825820000000000000000000000000000000000000000000000000000000000000000019003458268258200000000000000000000000000000000000000000000000000000000000000000190035582682582000000000000000000000000000000000000000000000000000000000000000001900365826825820000000000000000000000000000000000000000000000000000000000000000019003758268258200000000000000000000000000000000000000000000000000000000000000000190038582682582000000000000000000000000000000000000000000000000000000000000000001900395826825820000000000000000000000000000000000000000000000000000000000000000019003a5826825820000000000000000000000000000000000000000000000000000000000000000019003b5826825820000000000000000000000000000000000000000000000000000000000000000019003c5826825820000000000000000000000000000000000000000000000000000000000000000019003d5826825820000000000000000000000000000000000000000000000000000000000000000019003e5826825820000000000000000000000000000000000000000000000000000000000000000019003f582682582000000000000000000000000000000000000000000000000000000000000000001900405826825820000000000000000000000000000000000000000000000000000000000000000019004158268258200000000000000000000000000000000000000000000000000000000000000000190042582682582000000000000000000000000000000000000000000000000000000000000000001900435826825820000000000000000000000000000000000000000000000000000000000000000019004458268258200000000000000000000000000000000000000000000000000000000000000000190045582682582000000000000000000000000000000000000000000000000000000000000000001900465826825820000000000000000000000000000000000000000000000000000000000000000019004758268258200000000000000000000000000000000000000000000000000000000000000000190048582682582000000000000000000000000000000000000000000000000000000000000000001900495826825820000000000000000000000000000000000000000000000000000000000000000019004a5826825820000000000000000000000000000000000000000000000000000000000000000019004b5826825820000000000000000000000000000000000000000000000000000000000000000019004c5826825820000000000000000000000000000000000000000000000000000000000000000019004d5826825820000000000000000000000000000000000000000000000000000000000000000019004e5826825820000000000000000000000000000000000000000000000000000000000000000019004f582682582000000000000000000000000000000000000000000000000000000000000000001900505826825820000000000000000000000000000000000000000000000000000000000000000019005158268258200000000000000000000000000000000000000000000000000000000000000000190052582682582000000000000000000000000000000000000000000000000000000000000000001900535826825820000000000000000000000000000000000000000000000000000000000000000019005458268258200000000000000000000000000000000000000000000000000000000000000000190055582682582000000000000000000000000000000000000000000000000000000000000000001900565826825820000000000000000000000000000000000000000000000000000000000000000019005758268258200000000000000000000000000000000000000000000000000000000000000000190058582682582000000000000000000000000000000000000000000000000000000000000000001900595826825820000000000000000000000000000000000000000000000000000000000000000019005a5826825820000000000000000000000000000000000000000000000000000000000000000019005b5826825820000000000000000000000000000000000000000000000000000000000000000019005c5826825820000000000000000000000000000000000000000000000000000000000000000019005d5826825820000000000000000000000000000000000000000000000000000000000000000019005e5826825820000000000000000000000000000000000000000000000000000000000000000019005f582682582000000000000000000000000000000000000000000000000000000000000000001900605826825820000000000000000000000000000000000000000000000000000000000000000019006158268258200000000000000000000000000000000000000000000000000000000000000000190062582682582000000000000000000000000000000000000000000000000000000000000000001900635826825820000000000000000000000000000000000000000000000000000000000000000019006458268258200000000000000000000000000000000000000000000000000000000000000000190065582682582000000000000000000000000000000000000000000000000000000000000000001900665826825820000000000000000000000000000000000000000000000000000000000000000019006758268258200000000000000000000000000000000000000000000000000000000000000000190068582682582000000000000000000000000000000000000000000000000000000000000000001900695826825820000000000000000000000000000000000000000000000000000000000000000019006a5826825820000000000000000000000000000000000000000000000000000000000000000019006b5826825820000000000000000000000000000000000000000000000000000000000000000019006c5826825820000000000000000000000000000000000000000000000000000000000000000019006d5826825820000000000000000000000000000000000000000000000000000000000000000019006e5826825820000000000000000000000000000000000000000000000000000000000000000019006f582682582000000000000000000000000000000000000000000000000000000000000000001900705826825820000000000000000000000000000000000000000000000000000000000000000019007158268258200000000000000000000000000000000000000000000000000000000000000000190072582682582000000000000000000000000000000000000000000000000000000000000000001900735826825820000000000000000000000000000000000000000000000000000000000000000019007458268258200000000000000000000000000000000000000000000000000000000000000000190075582682582000000000000000000000000000000000000000000000000000000000000000001900765826825820000000000000000000000000000000000000000000000000000000000000000019007758268258200000000000000000000000000000000000000000000000000000000000000000190078582682582000000000000000000000000000000000000000000000000000000000000000001900795826825820000000000000000000000000000000000000000000000000000000000000000019007a5826825820000000000000000000000000000000000000000000000000000000000000000019007b5826825820000000000000000000000000000000000000000000000000000000000000000019007c5826825820000000000000000000000000000000000000000000000000000000000000000019007d5826825820000000000000000000000000000000000000000000000000000000000000000019007e5826825820000000000000000000000000000000000000000000000000000000000000000019007f582682582000000000000000000000000000000000000000000000000000000000000000001900805826825820000000000000000000000000000000000000000000000000000000000000000019008158268258200000000000000000000000000000000000000000000000000000000000000000190082582682582000000000000000000000000000000000000000000000000000000000000000001900835826825820000000000000000000000000000000000000000000000000000000000000000019008458268258200000000000000000000000000000000000000000000000000000000000000000190085582682582000000000000000000000000000000000000000000000000000000000000000001900865826825820000000000000000000000000000000000000000000000000000000000000000019008758268258200000000000000000000000000000000000000000000000000000000000000000190088582682582000000000000000000000000000000000000000000000000000000000000000001900895826825820000000000000000000000000000000000000000000000000000000000000000019008a5826825820000000000000000000000000000000000000000000000000000000000000000019008b5826825820000000000000000000000000000000000000000000000000000000000000000019008c5826825820000000000000000000000000000000000000000000000000000000000000000019008d5826825820000000000000000000000000000000000000000000000000000000000000000019008e5826825820000000000000000000000000000000000000000000000000000000000000000019008f582682582000000000000000000000000000000000000000000000000000000000000000001900905826825820000000000000000000000000000000000000000000000000000000000000000019009158268258200000000000000000000000000000000000000000000000000000000000000000190092582682582000000000000000000000000000000000000000000000000000000000000000001900935826825820000000000000000000000000000000000000000000000000000000000000000019009458268258200000000000000000000000000000000000000000000000000000000000000000190095582682582000000000000000000000000000000000000000000000000000000000000000001900965826825820000000000000000000000000000000000000000000000000000000000000000019009758268258200000000000000000000000000000000000000000000000000000000000000000190098582682582000000000000000000000000000000000000000000000000000000000000000001900995826825820000000000000000000000000000000000000000000000000000000000000000019009a5826825820000000000000000000000000000000000000000000000000000000000000000019009b5826825820000000000000000000000000000000000000000000000000000000000000000019009c5826825820000000000000000000000000000000000000000000000000000000000000000019009d5826825820000000000000000000000000000000000000000000000000000000000000000019009e5826825820000000000000000000000000000000000000000000000000000000000000000019009f582682582000000000000000000000000000000000000000000000000000000000000000001900a0582682582000000000000000000000000000000000000000000000000000000000000000001900a1582682582000000000000000000000000000000000000000000000000000000000000000001900a2582682582000000000000000000000000000000000000000000000000000000000000000001900a3582682582000000000000000000000000000000000000000000000000000000000000000001900a4582682582000000000000000000000000000000000000000000000000000000000000000001900a5582682582000000000000000000000000000000000000000000000000000000000000000001900a6582682582000000000000000000000000000000000000000000000000000000000000000001900a7582682582000000000000000000000000000000000000000000000000000000000000000001900a8582682582000000000000000000000000000000000000000000000000000000000000000001900a9582682582000000000000000000000000000000000000000000000000000000000000000001900aa582682582000000000000000000000000000000000000000000000000000000000000000001900ab582682582000000000000000000000000000000000000000000000000000000000000000001900ac582682582000000000000000000000000000000000000000000000000000000000000000001900ad582682582000000000000000000000000000000000000000000000000000000000000000001900ae582682582000000000000000000000000000000000000000000000000000000000000000001900af582682582000000000000000000000000000000000000000000000000000000000000000001900b0582682582000000000000000000000000000000000000000000000000000000000000000001900b1582682582000000000000000000000000000000000000000000000000000000000000000001900b2582682582000000000000000000000000000000000000000000000000000000000000000001900b3582682582000000000000000000000000000000000000000000000000000000000000000001900b4582682582000000000000000000000000000000000000000000000000000000000000000001900b5582682582000000000000000000000000000000000000000000000000000000000000000001900b6582682582000000000000000000000000000000000000000000000000000000000000000001900b7582682582000000000000000000000000000000000000000000000000000000000000000001900b8582682582000000000000000000000000000000000000000000000000000000000000000001900b9582682582000000000000000000000000000000000000000000000000000000000000000001900ba582682582000000000000000000000000000000000000000000000000000000000000000001900bb582682582000000000000000000000000000000000000000000000000000000000000000001900bc582682582000000000000000000000000000000000000000000000000000000000000000001900bd582682582000000000000000000000000000000000000000000000000000000000000000001900be582682582000000000000000000000000000000000000000000000000000000000000000001900bf582682582000000000000000000000000000000000000000000000000000000000000000001900c0582682582000000000000000000000000000000000000000000000000000000000000000001900c1582682582000000000000000000000000000000000000000000000000000000000000000001900c2582682582000000000000000000000000000000000000000000000000000000000000000001900c3582682582000000000000000000000000000000000000000000000000000000000000000001900c4582682582000000000000000000000000000000000000000000000000000000000000000001900c5582682582000000000000000000000000000000000000000000000000000000000000000001900c6582682582000000000000000000000000000000000000000000000000000000000000000001900c7582682582000000000000000000000000000000000000000000000000000000000000000001900c8582682582000000000000000000000000000000000000000000000000000000000000000001900c9582682582000000000000000000000000000000000000000000000000000000000000000001900ca582682582000000000000000000000000000000000000000000000000000000000000000001900cb582682582000000000000000000000000000000000000000000000000000000000000000001900cc582682582000000000000000000000000000000000000000000000000000000000000000001900cd582682582000000000000000000000000000000000000000000000000000000000000000001900ce582682582000000000000000000000000000000000000000000000000000000000000000001900cf582682582000000000000000000000000000000000000000000000000000000000000000001900d0582682582000000000000000000000000000000000000000000000000000000000000000001900d1582682582000000000000000000000000000000000000000000000000000000000000000001900d2582682582000000000000000000000000000000000000000000000000000000000000000001900d3582682582000000000000000000000000000000000000000000000000000000000000000001900d4582682582000000000000000000000000000000000000000000000000000000000000000001900d5582682582000000000000000000000000000000000000000000000000000000000000000001900d6582682582000000000000000000000000000000000000000000000000000000000000000001900d7582682582000000000000000000000000000000000000000000000000000000000000000001900d8582682582000000000000000000000000000000000000000000000000000000000000000001900d9582682582000000000000000000000000000000000000000000000000000000000000000001900da582682582000000000000000000000000000000000000000000000000000000000000000001900db582682582000000000000000000000000000000000000000000000000000000000000000001900dc582682582000000000000000000000000000000000000000000000000000000000000000001900dd582682582000000000000000000000000000000000000000000000000000000000000000001900de582682582000000000000000000000000000000000000000000000000000000000000000001900df582682582000000000000000000000000000000000000000000000000000000000000000001900e0582682582000000000000000000000000000000000000000000000000000000000000000001900e1582682582000000000000000000000000000000000000000000000000000000000000000001900e2582682582000000000000000000000000000000000000000000000000000000000000000001900e3582682582000000000000000000000000000000000000000000000000000000000000000001900e4582682582000000000000000000000000000000000000000000000000000000000000000001900e5582682582000000000000000000000000000000000000000000000000000000000000000001900e6582682582000000000000000000000000000000000000000000000000000000000000000001900e7582682582000000000000000000000000000000000000000000000000000000000000000001900e8582682582000000000000000000000000000000000000000000000000000000000000000001900e9582682582000000000000000000000000000000000000000000000000000000000000000001900ea582682582000000000000000000000000000000000000000000000000000000000000000001900eb582682582000000000000000000000000000000000000000000000000000000000000000001900ec582682582000000000000000000000000000000000000000000000000000000000000000001900ed582682582000000000000000000000000000000000000000000000000000000000000000001900ee582682582000000000000000000000000000000000000000000000000000000000000000001900ef582682582000000000000000000000000000000000000000000000000000000000000000001900f0582682582000000000000000000000000000000000000000000000000000000000000000001900f1582682582000000000000000000000000000000000000000000000000000000000000000001900f2582682582000000000000000000000000000000000000000000000000000000000000000001900f3582682582000000000000000000000000000000000000000000000000000000000000000001900f4582682582000000000000000000000000000000000000000000000000000000000000000001900f5582682582000000000000000000000000000000000000000000000000000000000000000001900f6582682582000000000000000000000000000000000000000000000000000000000000000001900f7582682582000000000000000000000000000000000000000000000000000000000000000001900f8582682582000000000000000000000000000000000000000000000000000000000000000001900f9582682582000000000000000000000000000000000000000000000000000000000000000001900fa582682582000000000000000000000000000000000000000000000000000000000000000001900fb582682582000000000000000000000000000000000000000000000000000000000000000001900fc582682582000000000000000000000000000000000000000000000000000000000000000001900fd582682582000000000000000000000000000000000000000000000000000000000000000001900fe582682582000000000000000000000000000000000000000000000000000000000000000001900ff582682582000000000000000000000000000000000000000000000000000000000000000001901005826825820000000000000000000000000000000000000000000000000000000000000000019010158268258200000000000000000000000000000000000000000000000000000000000000000190102582682582000000000000000000000000000000000000000000000000000000000000000001901035826825820000000000000000000000000000000000000000000000000000000000000000019010458268258200000000000000000000000000000000000000000000000000000000000000000190105582682582000000000000000000000000000000000000000000000000000000000000000001901065826825820000000000000000000000000000000000000000000000000000000000000000019010758268258200000000000000000000000000000000000000000000000000000000000000000190108582682582000000000000000000000000000000000000000000000000000000000000000001901095826825820000000000000000000000000000000000000000000000000000000000000000019010a5826825820000000000000000000000000000000000000000000000000000000000000000019010b5826825820000000000000000000000000000000000000000000000000000000000000000019010c5826825820000000000000000000000000000000000000000000000000000000000000000019010d5826825820000000000000000000000000000000000000000000000000000000000000000019010e5826825820000000000000000000000000000000000000000000000000000000000000000019010f582682582000000000000000000000000000000000000000000000000000000000000000001901105826825820000000000000000000000000000000000000000000000000000000000000000019011158268258200000000000000000000000000000000000000000000000000000000000000000190112582682582000000000000000000000000000000000000000000000000000000000000000001901135826825820000000000000000000000000000000000000000000000000000000000000000019011458268258200000000000000000000000000000000000000000000000000000000000000000190115582682582000000000000000000000000000000000000000000000000000000000000000001901165826825820000000000000000000000000000000000000000000000000000000000000000019011758268258200000000000000000000000000000000000000000000000000000000000000000190118582682582000000000000000000000000000000000000000000000000000000000000000001901195826825820000000000000000000000000000000000000000000000000000000000000000019011a5826825820000000000000000000000000000000000000000000000000000000000000000019011b5826825820000000000000000000000000000000000000000000000000000000000000000019011c5826825820000000000000000000000000000000000000000000000000000000000000000019011d5826825820000000000000000000000000000000000000000000000000000000000000000019011e5826825820000000000000000000000000000000000000000000000000000000000000000019011f582682582000000000000000000000000000000000000000000000000000000000000000001901205826825820000000000000000000000000000000000000000000000000000000000000000019012158268258200000000000000000000000000000000000000000000000000000000000000000190122582682582000000000000000000000000000000000000000000000000000000000000000001901235826825820000000000000000000000000000000000000000000000000000000000000000019012458268258200000000000000000000000000000000000000000000000000000000000000000190125582682582000000000000000000000000000000000000000000000000000000000000000001901265826825820000000000000000000000000000000000000000000000000000000000000000019012758268258200000000000000000000000000000000000000000000000000000000000000000190128582682582000000000000000000000000000000000000000000000000000000000000000001901295826825820000000000000000000000000000000000000000000000000000000000000000019012a5826825820000000000000000000000000000000000000000000000000000000000000000019012b5826825820000000000000000000000000000000000000000000000000000000000000000019012c5826825820000000000000000000000000000000000000000000000000000000000000000019012d5826825820000000000000000000000000000000000000000000000000000000000000000019012e5826825820000000000000000000000000000000000000000000000000000000000000000019012f582682582000000000000000000000000000000000000000000000000000000000000000001901305826825820000000000000000000000000000000000000000000000000000000000000000019013158268258200000000000000000000000000000000000000000000000000000000000000000190132582682582000000000000000000000000000000000000000000000000000000000000000001901335826825820000000000000000000000000000000000000000000000000000000000000000019013458268258200000000000000000000000000000000000000000000000000000000000000000190135582682582000000000000000000000000000000000000000000000000000000000000000001901365826825820000000000000000000000000000000000000000000000000000000000000000019013758268258200000000000000000000000000000000000000000000000000000000000000000190138582682582000000000000000000000000000000000000000000000000000000000000000001901395826825820000000000000000000000000000000000000000000000000000000000000000019013a5826825820000000000000000000000000000000000000000000000000000000000000000019013b5826825820000000000000000000000000000000000000000000000000000000000000000019013c5826825820000000000000000000000000000000000000000000000000000000000000000019013d5826825820000000000000000000000000000000000000000000000000000000000000000019013e5826825820000000000000000000000000000000000000000000000000000000000000000019013f582682582000000000000000000000000000000000000000000000000000000000000000001901405826825820000000000000000000000000000000000000000000000000000000000000000019014158268258200000000000000000000000000000000000000000000000000000000000000000190142582682582000000000000000000000000000000000000000000000000000000000000000001901435826825820000000000000000000000000000000000000000000000000000000000000000019014458268258200000000000000000000000000000000000000000000000000000000000000000190145582682582000000000000000000000000000000000000000000000000000000000000000001901465826825820000000000000000000000000000000000000000000000000000000000000000019014758268258200000000000000000000000000000000000000000000000000000000000000000190148582682582000000000000000000000000000000000000000000000000000000000000000001901495826825820000000000000000000000000000000000000000000000000000000000000000019014a5826825820000000000000000000000000000000000000000000000000000000000000000019014b5826825820000000000000000000000000000000000000000000000000000000000000000019014c5826825820000000000000000000000000000000000000000000000000000000000000000019014d5826825820000000000000000000000000000000000000000000000000000000000000000019014e5826825820000000000000000000000000000000000000000000000000000000000000000019014f582682582000000000000000000000000000000000000000000000000000000000000000001901505826825820000000000000000000000000000000000000000000000000000000000000000019015158268258200000000000000000000000000000000000000000000000000000000000000000190152582682582000000000000000000000000000000000000000000000000000000000000000001901535826825820000000000000000000000000000000000000000000000000000000000000000019015458268258200000000000000000000000000000000000000000000000000000000000000000190155582682582000000000000000000000000000000000000000000000000000000000000000001901565826825820000000000000000000000000000000000000000000000000000000000000000019015758268258200000000000000000000000000000000000000000000000000000000000000000190158582682582000000000000000000000000000000000000000000000000000000000000000001901595826825820000000000000000000000000000000000000000000000000000000000000000019015a5826825820000000000000000000000000000000000000000000000000000000000000000019015b5826825820000000000000000000000000000000000000000000000000000000000000000019015c5826825820000000000000000000000000000000000000000000000000000000000000000019015d5826825820000000000000000000000000000000000000000000000000000000000000000019015e5826825820000000000000000000000000000000000000000000000000000000000000000019015f582682582000000000000000000000000000000000000000000000000000000000000000001901605826825820000000000000000000000000000000000000000000000000000000000000000019016158268258200000000000000000000000000000000000000000000000000000000000000000190162582682582000000000000000000000000000000000000000000000000000000000000000001901635826825820000000000000000000000000000000000000000000000000000000000000000019016458268258200000000000000000000000000000000000000000000000000000000000000000190165582682582000000000000000000000000000000000000000000000000000000000000000001901665826825820000000000000000000000000000000000000000000000000000000000000000019016758268258200000000000000000000000000000000000000000000000000000000000000000190168582682582000000000000000000000000000000000000000000000000000000000000000001901695826825820000000000000000000000000000000000000000000000000000000000000000019016a5826825820000000000000000000000000000000000000000000000000000000000000000019016b5826825820000000000000000000000000000000000000000000000000000000000000000019016c5826825820000000000000000000000000000000000000000000000000000000000000000019016d5826825820000000000000000000000000000000000000000000000000000000000000000019016e5826825820000000000000000000000000000000000000000000000000000000000000000019016f582682582000000000000000000000000000000000000000000000000000000000000000001901705826825820000000000000000000000000000000000000000000000000000000000000000019017158268258200000000000000000000000000000000000000000000000000000000000000000190172582682582000000000000000000000000000000000000000000000000000000000000000001901735826825820000000000000000000000000000000000000000000000000000000000000000019017458268258200000000000000000000000000000000000000000000000000000000000000000190175582682582000000000000000000000000000000000000000000000000000000000000000001901765826825820000000000000000000000000000000000000000000000000000000000000000019017758268258200000000000000000000000000000000000000000000000000000000000000000190178582682582000000000000000000000000000000000000000000000000000000000000000001901795826825820000000000000000000000000000000000000000000000000000000000000000019017a5826825820000000000000000000000000000000000000000000000000000000000000000019017b5826825820000000000000000000000000000000000000000000000000000000000000000019017c5826825820000000000000000000000000000000000000000000000000000000000000000019017d5826825820000000000000000000000000000000000000000000000000000000000000000019017e5826825820000000000000000000000000000000000000000000000000000000000000000019017f582682582000000000000000000000000000000000000000000000000000000000000000001901805826825820000000000000000000000000000000000000000000000000000000000000000019018158268258200000000000000000000000000000000000000000000000000000000000000000190182582682582000000000000000000000000000000000000000000000000000000000000000001901835826825820000000000000000000000000000000000000000000000000000000000000000019018458268258200000000000000000000000000000000000000000000000000000000000000000190185582682582000000000000000000000000000000000000000000000000000000000000000001901865826825820000000000000000000000000000000000000000000000000000000000000000019018758268258200000000000000000000000000000000000000000000000000000000000000000190188582682582000000000000000000000000000000000000000000000000000000000000000001901895826825820000000000000000000000000000000000000000000000000000000000000000019018a5826825820000000000000000000000000000000000000000000000000000000000000000019018b5826825820000000000000000000000000000000000000000000000000000000000000000019018c5826825820000000000000000000000000000000000000000000000000000000000000000019018d5826825820000000000000000000000000000000000000000000000000000000000000000019018e5826825820000000000000000000000000000000000000000000000000000000000000000019018f582682582000000000000000000000000000000000000000000000000000000000000000001901905826825820000000000000000000000000000000000000000000000000000000000000000019019158268258200000000000000000000000000000000000000000000000000000000000000000190192582682582000000000000000000000000000000000000000000000000000000000000000001901935826825820000000000000000000000000000000000000000000000000000000000000000019019458268258200000000000000000000000000000000000000000000000000000000000000000190195582682582000000000000000000000000000000000000000000000000000000000000000001901965826825820000000000000000000000000000000000000000000000000000000000000000019019758268258200000000000000000000000000000000000000000000000000000000000000000190198582682582000000000000000000000000000000000000000000000000000000000000000001901995826825820000000000000000000000000000000000000000000000000000000000000000019019a5826825820000000000000000000000000000000000000000000000000000000000000000019019b5826825820000000000000000000000000000000000000000000000000000000000000000019019c5826825820000000000000000000000000000000000000000000000000000000000000000019019d5826825820000000000000000000000000000000000000000000000000000000000000000019019e5826825820000000000000000000000000000000000000000000000000000000000000000019019f582682582000000000000000000000000000000000000000000000000000000000000000001901a0582682582000000000000000000000000000000000000000000000000000000000000000001901a1582682582000000000000000000000000000000000000000000000000000000000000000001901a2582682582000000000000000000000000000000000000000000000000000000000000000001901a3582682582000000000000000000000000000000000000000000000000000000000000000001901a4582682582000000000000000000000000000000000000000000000000000000000000000001901a5582682582000000000000000000000000000000000000000000000000000000000000000001901a6582682582000000000000000000000000000000000000000000000000000000000000000001901a7582682582000000000000000000000000000000000000000000000000000000000000000001901a8582682582000000000000000000000000000000000000000000000000000000000000000001901a9582682582000000000000000000000000000000000000000000000000000000000000000001901aa582682582000000000000000000000000000000000000000000000000000000000000000001901ab582682582000000000000000000000000000000000000000000000000000000000000000001901ac582682582000000000000000000000000000000000000000000000000000000000000000001901ad582682582000000000000000000000000000000000000000000000000000000000000000001901ae582682582000000000000000000000000000000000000000000000000000000000000000001901af582682582000000000000000000000000000000000000000000000000000000000000000001901b0582682582000000000000000000000000000000000000000000000000000000000000000001901b1"
+
+const maximum_spend_input_terminal_item_count = 434
+
+const maximum_spend_input_terminal_item_index = 433
+
+const maximum_spend_input_terminal_terminal_chunk_index = 0
+
+const maximum_spend_input_terminal_encoded_length_before_item = 17323
+
+const maximum_spend_input_terminal_pre_work_root =
+  #"476250f69a5619d336a674f519abc6322f35504ad1b37de6e602086d3825fd42"
+
+const maximum_spend_input_terminal_post_work_root =
+  #"09dae6637ffa736e9bad178b60ad59a1572e6817d27d92b74a66602b423be606"
+
+// Derived by the genuine Cardano boundary fixture in
+// demo/midgard-validation/tests/ordered-collection-reference-inputs-boundary-v1.test.ts
+// (accepted 433 reference inputs at 16,380 signed bytes; adjacent 434 at
+// 16,418), sharing one spend input disjoint from every reference input.
+const maximum_reference_input_terminal_transaction_id =
+  #"a6bd2cb922f5d1052a1e1efd83bcdd11dd7721160080df149682cf417306b952"
+
+const maximum_reference_input_terminal_transaction_commitment =
+  #"40574dd42f376802bade6c4f6cd872b8a42ef2604bb0369eacde6945336fd387"
+
+const maximum_reference_input_terminal_compact_cbor =
+  #"84018c58202d56d604247c43792618a75b77864f8a6c6d35b9b5a66d25b944476d6930588e5820b6f6734af4f93c51274316e8954c613c86a0ecc5402b4b828ce31325900c817c58209ea027fa938e2c590b0b0352bd6f547b2ccd29b3938947830b3576943d7c0fb71a000d5e452020582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff582073631c952fa8c19edcca913f23c451480f5be10695478f07a691ae19c7b1ccab00"
+
+const maximum_reference_input_terminal_witness_set_compact_cbor =
+  #"835820f675cfc328f48bfd88c4bc87b4a1e7ae69116c9c98d31b5d5166904637cc7c87582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
+
+const maximum_reference_input_terminal_field_preimage_lengths_cbor =
+  #"8918291943ab182c01010101186801"
+
+const maximum_reference_input_terminal_field_preimage_cbor =
+  #"9901b15826825820000000000000000000000000000000000000000000000000000000000000000019000158268258200000000000000000000000000000000000000000000000000000000000000000190002582682582000000000000000000000000000000000000000000000000000000000000000001900035826825820000000000000000000000000000000000000000000000000000000000000000019000458268258200000000000000000000000000000000000000000000000000000000000000000190005582682582000000000000000000000000000000000000000000000000000000000000000001900065826825820000000000000000000000000000000000000000000000000000000000000000019000758268258200000000000000000000000000000000000000000000000000000000000000000190008582682582000000000000000000000000000000000000000000000000000000000000000001900095826825820000000000000000000000000000000000000000000000000000000000000000019000a5826825820000000000000000000000000000000000000000000000000000000000000000019000b5826825820000000000000000000000000000000000000000000000000000000000000000019000c5826825820000000000000000000000000000000000000000000000000000000000000000019000d5826825820000000000000000000000000000000000000000000000000000000000000000019000e5826825820000000000000000000000000000000000000000000000000000000000000000019000f582682582000000000000000000000000000000000000000000000000000000000000000001900105826825820000000000000000000000000000000000000000000000000000000000000000019001158268258200000000000000000000000000000000000000000000000000000000000000000190012582682582000000000000000000000000000000000000000000000000000000000000000001900135826825820000000000000000000000000000000000000000000000000000000000000000019001458268258200000000000000000000000000000000000000000000000000000000000000000190015582682582000000000000000000000000000000000000000000000000000000000000000001900165826825820000000000000000000000000000000000000000000000000000000000000000019001758268258200000000000000000000000000000000000000000000000000000000000000000190018582682582000000000000000000000000000000000000000000000000000000000000000001900195826825820000000000000000000000000000000000000000000000000000000000000000019001a5826825820000000000000000000000000000000000000000000000000000000000000000019001b5826825820000000000000000000000000000000000000000000000000000000000000000019001c5826825820000000000000000000000000000000000000000000000000000000000000000019001d5826825820000000000000000000000000000000000000000000000000000000000000000019001e5826825820000000000000000000000000000000000000000000000000000000000000000019001f582682582000000000000000000000000000000000000000000000000000000000000000001900205826825820000000000000000000000000000000000000000000000000000000000000000019002158268258200000000000000000000000000000000000000000000000000000000000000000190022582682582000000000000000000000000000000000000000000000000000000000000000001900235826825820000000000000000000000000000000000000000000000000000000000000000019002458268258200000000000000000000000000000000000000000000000000000000000000000190025582682582000000000000000000000000000000000000000000000000000000000000000001900265826825820000000000000000000000000000000000000000000000000000000000000000019002758268258200000000000000000000000000000000000000000000000000000000000000000190028582682582000000000000000000000000000000000000000000000000000000000000000001900295826825820000000000000000000000000000000000000000000000000000000000000000019002a5826825820000000000000000000000000000000000000000000000000000000000000000019002b5826825820000000000000000000000000000000000000000000000000000000000000000019002c5826825820000000000000000000000000000000000000000000000000000000000000000019002d5826825820000000000000000000000000000000000000000000000000000000000000000019002e5826825820000000000000000000000000000000000000000000000000000000000000000019002f582682582000000000000000000000000000000000000000000000000000000000000000001900305826825820000000000000000000000000000000000000000000000000000000000000000019003158268258200000000000000000000000000000000000000000000000000000000000000000190032582682582000000000000000000000000000000000000000000000000000000000000000001900335826825820000000000000000000000000000000000000000000000000000000000000000019003458268258200000000000000000000000000000000000000000000000000000000000000000190035582682582000000000000000000000000000000000000000000000000000000000000000001900365826825820000000000000000000000000000000000000000000000000000000000000000019003758268258200000000000000000000000000000000000000000000000000000000000000000190038582682582000000000000000000000000000000000000000000000000000000000000000001900395826825820000000000000000000000000000000000000000000000000000000000000000019003a5826825820000000000000000000000000000000000000000000000000000000000000000019003b5826825820000000000000000000000000000000000000000000000000000000000000000019003c5826825820000000000000000000000000000000000000000000000000000000000000000019003d5826825820000000000000000000000000000000000000000000000000000000000000000019003e5826825820000000000000000000000000000000000000000000000000000000000000000019003f582682582000000000000000000000000000000000000000000000000000000000000000001900405826825820000000000000000000000000000000000000000000000000000000000000000019004158268258200000000000000000000000000000000000000000000000000000000000000000190042582682582000000000000000000000000000000000000000000000000000000000000000001900435826825820000000000000000000000000000000000000000000000000000000000000000019004458268258200000000000000000000000000000000000000000000000000000000000000000190045582682582000000000000000000000000000000000000000000000000000000000000000001900465826825820000000000000000000000000000000000000000000000000000000000000000019004758268258200000000000000000000000000000000000000000000000000000000000000000190048582682582000000000000000000000000000000000000000000000000000000000000000001900495826825820000000000000000000000000000000000000000000000000000000000000000019004a5826825820000000000000000000000000000000000000000000000000000000000000000019004b5826825820000000000000000000000000000000000000000000000000000000000000000019004c5826825820000000000000000000000000000000000000000000000000000000000000000019004d5826825820000000000000000000000000000000000000000000000000000000000000000019004e5826825820000000000000000000000000000000000000000000000000000000000000000019004f582682582000000000000000000000000000000000000000000000000000000000000000001900505826825820000000000000000000000000000000000000000000000000000000000000000019005158268258200000000000000000000000000000000000000000000000000000000000000000190052582682582000000000000000000000000000000000000000000000000000000000000000001900535826825820000000000000000000000000000000000000000000000000000000000000000019005458268258200000000000000000000000000000000000000000000000000000000000000000190055582682582000000000000000000000000000000000000000000000000000000000000000001900565826825820000000000000000000000000000000000000000000000000000000000000000019005758268258200000000000000000000000000000000000000000000000000000000000000000190058582682582000000000000000000000000000000000000000000000000000000000000000001900595826825820000000000000000000000000000000000000000000000000000000000000000019005a5826825820000000000000000000000000000000000000000000000000000000000000000019005b5826825820000000000000000000000000000000000000000000000000000000000000000019005c5826825820000000000000000000000000000000000000000000000000000000000000000019005d5826825820000000000000000000000000000000000000000000000000000000000000000019005e5826825820000000000000000000000000000000000000000000000000000000000000000019005f582682582000000000000000000000000000000000000000000000000000000000000000001900605826825820000000000000000000000000000000000000000000000000000000000000000019006158268258200000000000000000000000000000000000000000000000000000000000000000190062582682582000000000000000000000000000000000000000000000000000000000000000001900635826825820000000000000000000000000000000000000000000000000000000000000000019006458268258200000000000000000000000000000000000000000000000000000000000000000190065582682582000000000000000000000000000000000000000000000000000000000000000001900665826825820000000000000000000000000000000000000000000000000000000000000000019006758268258200000000000000000000000000000000000000000000000000000000000000000190068582682582000000000000000000000000000000000000000000000000000000000000000001900695826825820000000000000000000000000000000000000000000000000000000000000000019006a5826825820000000000000000000000000000000000000000000000000000000000000000019006b5826825820000000000000000000000000000000000000000000000000000000000000000019006c5826825820000000000000000000000000000000000000000000000000000000000000000019006d5826825820000000000000000000000000000000000000000000000000000000000000000019006e5826825820000000000000000000000000000000000000000000000000000000000000000019006f582682582000000000000000000000000000000000000000000000000000000000000000001900705826825820000000000000000000000000000000000000000000000000000000000000000019007158268258200000000000000000000000000000000000000000000000000000000000000000190072582682582000000000000000000000000000000000000000000000000000000000000000001900735826825820000000000000000000000000000000000000000000000000000000000000000019007458268258200000000000000000000000000000000000000000000000000000000000000000190075582682582000000000000000000000000000000000000000000000000000000000000000001900765826825820000000000000000000000000000000000000000000000000000000000000000019007758268258200000000000000000000000000000000000000000000000000000000000000000190078582682582000000000000000000000000000000000000000000000000000000000000000001900795826825820000000000000000000000000000000000000000000000000000000000000000019007a5826825820000000000000000000000000000000000000000000000000000000000000000019007b5826825820000000000000000000000000000000000000000000000000000000000000000019007c5826825820000000000000000000000000000000000000000000000000000000000000000019007d5826825820000000000000000000000000000000000000000000000000000000000000000019007e5826825820000000000000000000000000000000000000000000000000000000000000000019007f582682582000000000000000000000000000000000000000000000000000000000000000001900805826825820000000000000000000000000000000000000000000000000000000000000000019008158268258200000000000000000000000000000000000000000000000000000000000000000190082582682582000000000000000000000000000000000000000000000000000000000000000001900835826825820000000000000000000000000000000000000000000000000000000000000000019008458268258200000000000000000000000000000000000000000000000000000000000000000190085582682582000000000000000000000000000000000000000000000000000000000000000001900865826825820000000000000000000000000000000000000000000000000000000000000000019008758268258200000000000000000000000000000000000000000000000000000000000000000190088582682582000000000000000000000000000000000000000000000000000000000000000001900895826825820000000000000000000000000000000000000000000000000000000000000000019008a5826825820000000000000000000000000000000000000000000000000000000000000000019008b5826825820000000000000000000000000000000000000000000000000000000000000000019008c5826825820000000000000000000000000000000000000000000000000000000000000000019008d5826825820000000000000000000000000000000000000000000000000000000000000000019008e5826825820000000000000000000000000000000000000000000000000000000000000000019008f582682582000000000000000000000000000000000000000000000000000000000000000001900905826825820000000000000000000000000000000000000000000000000000000000000000019009158268258200000000000000000000000000000000000000000000000000000000000000000190092582682582000000000000000000000000000000000000000000000000000000000000000001900935826825820000000000000000000000000000000000000000000000000000000000000000019009458268258200000000000000000000000000000000000000000000000000000000000000000190095582682582000000000000000000000000000000000000000000000000000000000000000001900965826825820000000000000000000000000000000000000000000000000000000000000000019009758268258200000000000000000000000000000000000000000000000000000000000000000190098582682582000000000000000000000000000000000000000000000000000000000000000001900995826825820000000000000000000000000000000000000000000000000000000000000000019009a5826825820000000000000000000000000000000000000000000000000000000000000000019009b5826825820000000000000000000000000000000000000000000000000000000000000000019009c5826825820000000000000000000000000000000000000000000000000000000000000000019009d5826825820000000000000000000000000000000000000000000000000000000000000000019009e5826825820000000000000000000000000000000000000000000000000000000000000000019009f582682582000000000000000000000000000000000000000000000000000000000000000001900a0582682582000000000000000000000000000000000000000000000000000000000000000001900a1582682582000000000000000000000000000000000000000000000000000000000000000001900a2582682582000000000000000000000000000000000000000000000000000000000000000001900a3582682582000000000000000000000000000000000000000000000000000000000000000001900a4582682582000000000000000000000000000000000000000000000000000000000000000001900a5582682582000000000000000000000000000000000000000000000000000000000000000001900a6582682582000000000000000000000000000000000000000000000000000000000000000001900a7582682582000000000000000000000000000000000000000000000000000000000000000001900a8582682582000000000000000000000000000000000000000000000000000000000000000001900a9582682582000000000000000000000000000000000000000000000000000000000000000001900aa582682582000000000000000000000000000000000000000000000000000000000000000001900ab582682582000000000000000000000000000000000000000000000000000000000000000001900ac582682582000000000000000000000000000000000000000000000000000000000000000001900ad582682582000000000000000000000000000000000000000000000000000000000000000001900ae582682582000000000000000000000000000000000000000000000000000000000000000001900af582682582000000000000000000000000000000000000000000000000000000000000000001900b0582682582000000000000000000000000000000000000000000000000000000000000000001900b1582682582000000000000000000000000000000000000000000000000000000000000000001900b2582682582000000000000000000000000000000000000000000000000000000000000000001900b3582682582000000000000000000000000000000000000000000000000000000000000000001900b4582682582000000000000000000000000000000000000000000000000000000000000000001900b5582682582000000000000000000000000000000000000000000000000000000000000000001900b6582682582000000000000000000000000000000000000000000000000000000000000000001900b7582682582000000000000000000000000000000000000000000000000000000000000000001900b8582682582000000000000000000000000000000000000000000000000000000000000000001900b9582682582000000000000000000000000000000000000000000000000000000000000000001900ba582682582000000000000000000000000000000000000000000000000000000000000000001900bb582682582000000000000000000000000000000000000000000000000000000000000000001900bc582682582000000000000000000000000000000000000000000000000000000000000000001900bd582682582000000000000000000000000000000000000000000000000000000000000000001900be582682582000000000000000000000000000000000000000000000000000000000000000001900bf582682582000000000000000000000000000000000000000000000000000000000000000001900c0582682582000000000000000000000000000000000000000000000000000000000000000001900c1582682582000000000000000000000000000000000000000000000000000000000000000001900c2582682582000000000000000000000000000000000000000000000000000000000000000001900c3582682582000000000000000000000000000000000000000000000000000000000000000001900c4582682582000000000000000000000000000000000000000000000000000000000000000001900c5582682582000000000000000000000000000000000000000000000000000000000000000001900c6582682582000000000000000000000000000000000000000000000000000000000000000001900c7582682582000000000000000000000000000000000000000000000000000000000000000001900c8582682582000000000000000000000000000000000000000000000000000000000000000001900c9582682582000000000000000000000000000000000000000000000000000000000000000001900ca582682582000000000000000000000000000000000000000000000000000000000000000001900cb582682582000000000000000000000000000000000000000000000000000000000000000001900cc582682582000000000000000000000000000000000000000000000000000000000000000001900cd582682582000000000000000000000000000000000000000000000000000000000000000001900ce582682582000000000000000000000000000000000000000000000000000000000000000001900cf582682582000000000000000000000000000000000000000000000000000000000000000001900d0582682582000000000000000000000000000000000000000000000000000000000000000001900d1582682582000000000000000000000000000000000000000000000000000000000000000001900d2582682582000000000000000000000000000000000000000000000000000000000000000001900d3582682582000000000000000000000000000000000000000000000000000000000000000001900d4582682582000000000000000000000000000000000000000000000000000000000000000001900d5582682582000000000000000000000000000000000000000000000000000000000000000001900d6582682582000000000000000000000000000000000000000000000000000000000000000001900d7582682582000000000000000000000000000000000000000000000000000000000000000001900d8582682582000000000000000000000000000000000000000000000000000000000000000001900d9582682582000000000000000000000000000000000000000000000000000000000000000001900da582682582000000000000000000000000000000000000000000000000000000000000000001900db582682582000000000000000000000000000000000000000000000000000000000000000001900dc582682582000000000000000000000000000000000000000000000000000000000000000001900dd582682582000000000000000000000000000000000000000000000000000000000000000001900de582682582000000000000000000000000000000000000000000000000000000000000000001900df582682582000000000000000000000000000000000000000000000000000000000000000001900e0582682582000000000000000000000000000000000000000000000000000000000000000001900e1582682582000000000000000000000000000000000000000000000000000000000000000001900e2582682582000000000000000000000000000000000000000000000000000000000000000001900e3582682582000000000000000000000000000000000000000000000000000000000000000001900e4582682582000000000000000000000000000000000000000000000000000000000000000001900e5582682582000000000000000000000000000000000000000000000000000000000000000001900e6582682582000000000000000000000000000000000000000000000000000000000000000001900e7582682582000000000000000000000000000000000000000000000000000000000000000001900e8582682582000000000000000000000000000000000000000000000000000000000000000001900e9582682582000000000000000000000000000000000000000000000000000000000000000001900ea582682582000000000000000000000000000000000000000000000000000000000000000001900eb582682582000000000000000000000000000000000000000000000000000000000000000001900ec582682582000000000000000000000000000000000000000000000000000000000000000001900ed582682582000000000000000000000000000000000000000000000000000000000000000001900ee582682582000000000000000000000000000000000000000000000000000000000000000001900ef582682582000000000000000000000000000000000000000000000000000000000000000001900f0582682582000000000000000000000000000000000000000000000000000000000000000001900f1582682582000000000000000000000000000000000000000000000000000000000000000001900f2582682582000000000000000000000000000000000000000000000000000000000000000001900f3582682582000000000000000000000000000000000000000000000000000000000000000001900f4582682582000000000000000000000000000000000000000000000000000000000000000001900f5582682582000000000000000000000000000000000000000000000000000000000000000001900f6582682582000000000000000000000000000000000000000000000000000000000000000001900f7582682582000000000000000000000000000000000000000000000000000000000000000001900f8582682582000000000000000000000000000000000000000000000000000000000000000001900f9582682582000000000000000000000000000000000000000000000000000000000000000001900fa582682582000000000000000000000000000000000000000000000000000000000000000001900fb582682582000000000000000000000000000000000000000000000000000000000000000001900fc582682582000000000000000000000000000000000000000000000000000000000000000001900fd582682582000000000000000000000000000000000000000000000000000000000000000001900fe582682582000000000000000000000000000000000000000000000000000000000000000001900ff582682582000000000000000000000000000000000000000000000000000000000000000001901005826825820000000000000000000000000000000000000000000000000000000000000000019010158268258200000000000000000000000000000000000000000000000000000000000000000190102582682582000000000000000000000000000000000000000000000000000000000000000001901035826825820000000000000000000000000000000000000000000000000000000000000000019010458268258200000000000000000000000000000000000000000000000000000000000000000190105582682582000000000000000000000000000000000000000000000000000000000000000001901065826825820000000000000000000000000000000000000000000000000000000000000000019010758268258200000000000000000000000000000000000000000000000000000000000000000190108582682582000000000000000000000000000000000000000000000000000000000000000001901095826825820000000000000000000000000000000000000000000000000000000000000000019010a5826825820000000000000000000000000000000000000000000000000000000000000000019010b5826825820000000000000000000000000000000000000000000000000000000000000000019010c5826825820000000000000000000000000000000000000000000000000000000000000000019010d5826825820000000000000000000000000000000000000000000000000000000000000000019010e5826825820000000000000000000000000000000000000000000000000000000000000000019010f582682582000000000000000000000000000000000000000000000000000000000000000001901105826825820000000000000000000000000000000000000000000000000000000000000000019011158268258200000000000000000000000000000000000000000000000000000000000000000190112582682582000000000000000000000000000000000000000000000000000000000000000001901135826825820000000000000000000000000000000000000000000000000000000000000000019011458268258200000000000000000000000000000000000000000000000000000000000000000190115582682582000000000000000000000000000000000000000000000000000000000000000001901165826825820000000000000000000000000000000000000000000000000000000000000000019011758268258200000000000000000000000000000000000000000000000000000000000000000190118582682582000000000000000000000000000000000000000000000000000000000000000001901195826825820000000000000000000000000000000000000000000000000000000000000000019011a5826825820000000000000000000000000000000000000000000000000000000000000000019011b5826825820000000000000000000000000000000000000000000000000000000000000000019011c5826825820000000000000000000000000000000000000000000000000000000000000000019011d5826825820000000000000000000000000000000000000000000000000000000000000000019011e5826825820000000000000000000000000000000000000000000000000000000000000000019011f582682582000000000000000000000000000000000000000000000000000000000000000001901205826825820000000000000000000000000000000000000000000000000000000000000000019012158268258200000000000000000000000000000000000000000000000000000000000000000190122582682582000000000000000000000000000000000000000000000000000000000000000001901235826825820000000000000000000000000000000000000000000000000000000000000000019012458268258200000000000000000000000000000000000000000000000000000000000000000190125582682582000000000000000000000000000000000000000000000000000000000000000001901265826825820000000000000000000000000000000000000000000000000000000000000000019012758268258200000000000000000000000000000000000000000000000000000000000000000190128582682582000000000000000000000000000000000000000000000000000000000000000001901295826825820000000000000000000000000000000000000000000000000000000000000000019012a5826825820000000000000000000000000000000000000000000000000000000000000000019012b5826825820000000000000000000000000000000000000000000000000000000000000000019012c5826825820000000000000000000000000000000000000000000000000000000000000000019012d5826825820000000000000000000000000000000000000000000000000000000000000000019012e5826825820000000000000000000000000000000000000000000000000000000000000000019012f582682582000000000000000000000000000000000000000000000000000000000000000001901305826825820000000000000000000000000000000000000000000000000000000000000000019013158268258200000000000000000000000000000000000000000000000000000000000000000190132582682582000000000000000000000000000000000000000000000000000000000000000001901335826825820000000000000000000000000000000000000000000000000000000000000000019013458268258200000000000000000000000000000000000000000000000000000000000000000190135582682582000000000000000000000000000000000000000000000000000000000000000001901365826825820000000000000000000000000000000000000000000000000000000000000000019013758268258200000000000000000000000000000000000000000000000000000000000000000190138582682582000000000000000000000000000000000000000000000000000000000000000001901395826825820000000000000000000000000000000000000000000000000000000000000000019013a5826825820000000000000000000000000000000000000000000000000000000000000000019013b5826825820000000000000000000000000000000000000000000000000000000000000000019013c5826825820000000000000000000000000000000000000000000000000000000000000000019013d5826825820000000000000000000000000000000000000000000000000000000000000000019013e5826825820000000000000000000000000000000000000000000000000000000000000000019013f582682582000000000000000000000000000000000000000000000000000000000000000001901405826825820000000000000000000000000000000000000000000000000000000000000000019014158268258200000000000000000000000000000000000000000000000000000000000000000190142582682582000000000000000000000000000000000000000000000000000000000000000001901435826825820000000000000000000000000000000000000000000000000000000000000000019014458268258200000000000000000000000000000000000000000000000000000000000000000190145582682582000000000000000000000000000000000000000000000000000000000000000001901465826825820000000000000000000000000000000000000000000000000000000000000000019014758268258200000000000000000000000000000000000000000000000000000000000000000190148582682582000000000000000000000000000000000000000000000000000000000000000001901495826825820000000000000000000000000000000000000000000000000000000000000000019014a5826825820000000000000000000000000000000000000000000000000000000000000000019014b5826825820000000000000000000000000000000000000000000000000000000000000000019014c5826825820000000000000000000000000000000000000000000000000000000000000000019014d5826825820000000000000000000000000000000000000000000000000000000000000000019014e5826825820000000000000000000000000000000000000000000000000000000000000000019014f582682582000000000000000000000000000000000000000000000000000000000000000001901505826825820000000000000000000000000000000000000000000000000000000000000000019015158268258200000000000000000000000000000000000000000000000000000000000000000190152582682582000000000000000000000000000000000000000000000000000000000000000001901535826825820000000000000000000000000000000000000000000000000000000000000000019015458268258200000000000000000000000000000000000000000000000000000000000000000190155582682582000000000000000000000000000000000000000000000000000000000000000001901565826825820000000000000000000000000000000000000000000000000000000000000000019015758268258200000000000000000000000000000000000000000000000000000000000000000190158582682582000000000000000000000000000000000000000000000000000000000000000001901595826825820000000000000000000000000000000000000000000000000000000000000000019015a5826825820000000000000000000000000000000000000000000000000000000000000000019015b5826825820000000000000000000000000000000000000000000000000000000000000000019015c5826825820000000000000000000000000000000000000000000000000000000000000000019015d5826825820000000000000000000000000000000000000000000000000000000000000000019015e5826825820000000000000000000000000000000000000000000000000000000000000000019015f582682582000000000000000000000000000000000000000000000000000000000000000001901605826825820000000000000000000000000000000000000000000000000000000000000000019016158268258200000000000000000000000000000000000000000000000000000000000000000190162582682582000000000000000000000000000000000000000000000000000000000000000001901635826825820000000000000000000000000000000000000000000000000000000000000000019016458268258200000000000000000000000000000000000000000000000000000000000000000190165582682582000000000000000000000000000000000000000000000000000000000000000001901665826825820000000000000000000000000000000000000000000000000000000000000000019016758268258200000000000000000000000000000000000000000000000000000000000000000190168582682582000000000000000000000000000000000000000000000000000000000000000001901695826825820000000000000000000000000000000000000000000000000000000000000000019016a5826825820000000000000000000000000000000000000000000000000000000000000000019016b5826825820000000000000000000000000000000000000000000000000000000000000000019016c5826825820000000000000000000000000000000000000000000000000000000000000000019016d5826825820000000000000000000000000000000000000000000000000000000000000000019016e5826825820000000000000000000000000000000000000000000000000000000000000000019016f582682582000000000000000000000000000000000000000000000000000000000000000001901705826825820000000000000000000000000000000000000000000000000000000000000000019017158268258200000000000000000000000000000000000000000000000000000000000000000190172582682582000000000000000000000000000000000000000000000000000000000000000001901735826825820000000000000000000000000000000000000000000000000000000000000000019017458268258200000000000000000000000000000000000000000000000000000000000000000190175582682582000000000000000000000000000000000000000000000000000000000000000001901765826825820000000000000000000000000000000000000000000000000000000000000000019017758268258200000000000000000000000000000000000000000000000000000000000000000190178582682582000000000000000000000000000000000000000000000000000000000000000001901795826825820000000000000000000000000000000000000000000000000000000000000000019017a5826825820000000000000000000000000000000000000000000000000000000000000000019017b5826825820000000000000000000000000000000000000000000000000000000000000000019017c5826825820000000000000000000000000000000000000000000000000000000000000000019017d5826825820000000000000000000000000000000000000000000000000000000000000000019017e5826825820000000000000000000000000000000000000000000000000000000000000000019017f582682582000000000000000000000000000000000000000000000000000000000000000001901805826825820000000000000000000000000000000000000000000000000000000000000000019018158268258200000000000000000000000000000000000000000000000000000000000000000190182582682582000000000000000000000000000000000000000000000000000000000000000001901835826825820000000000000000000000000000000000000000000000000000000000000000019018458268258200000000000000000000000000000000000000000000000000000000000000000190185582682582000000000000000000000000000000000000000000000000000000000000000001901865826825820000000000000000000000000000000000000000000000000000000000000000019018758268258200000000000000000000000000000000000000000000000000000000000000000190188582682582000000000000000000000000000000000000000000000000000000000000000001901895826825820000000000000000000000000000000000000000000000000000000000000000019018a5826825820000000000000000000000000000000000000000000000000000000000000000019018b5826825820000000000000000000000000000000000000000000000000000000000000000019018c5826825820000000000000000000000000000000000000000000000000000000000000000019018d5826825820000000000000000000000000000000000000000000000000000000000000000019018e5826825820000000000000000000000000000000000000000000000000000000000000000019018f582682582000000000000000000000000000000000000000000000000000000000000000001901905826825820000000000000000000000000000000000000000000000000000000000000000019019158268258200000000000000000000000000000000000000000000000000000000000000000190192582682582000000000000000000000000000000000000000000000000000000000000000001901935826825820000000000000000000000000000000000000000000000000000000000000000019019458268258200000000000000000000000000000000000000000000000000000000000000000190195582682582000000000000000000000000000000000000000000000000000000000000000001901965826825820000000000000000000000000000000000000000000000000000000000000000019019758268258200000000000000000000000000000000000000000000000000000000000000000190198582682582000000000000000000000000000000000000000000000000000000000000000001901995826825820000000000000000000000000000000000000000000000000000000000000000019019a5826825820000000000000000000000000000000000000000000000000000000000000000019019b5826825820000000000000000000000000000000000000000000000000000000000000000019019c5826825820000000000000000000000000000000000000000000000000000000000000000019019d5826825820000000000000000000000000000000000000000000000000000000000000000019019e5826825820000000000000000000000000000000000000000000000000000000000000000019019f582682582000000000000000000000000000000000000000000000000000000000000000001901a0582682582000000000000000000000000000000000000000000000000000000000000000001901a1582682582000000000000000000000000000000000000000000000000000000000000000001901a2582682582000000000000000000000000000000000000000000000000000000000000000001901a3582682582000000000000000000000000000000000000000000000000000000000000000001901a4582682582000000000000000000000000000000000000000000000000000000000000000001901a5582682582000000000000000000000000000000000000000000000000000000000000000001901a6582682582000000000000000000000000000000000000000000000000000000000000000001901a7582682582000000000000000000000000000000000000000000000000000000000000000001901a8582682582000000000000000000000000000000000000000000000000000000000000000001901a9582682582000000000000000000000000000000000000000000000000000000000000000001901aa582682582000000000000000000000000000000000000000000000000000000000000000001901ab582682582000000000000000000000000000000000000000000000000000000000000000001901ac582682582000000000000000000000000000000000000000000000000000000000000000001901ad582682582000000000000000000000000000000000000000000000000000000000000000001901ae582682582000000000000000000000000000000000000000000000000000000000000000001901af582682582000000000000000000000000000000000000000000000000000000000000000001901b0582682582000000000000000000000000000000000000000000000000000000000000000001901b1"
+
+const maximum_reference_input_terminal_item_count = 433
+
+const maximum_reference_input_terminal_item_index = 432
+
+const maximum_reference_input_terminal_terminal_chunk_index = 0
+
+const maximum_reference_input_terminal_encoded_length_before_item = 17283
+
+const maximum_reference_input_terminal_pre_work_root =
+  #"20c14233d70ec13b8bfdf301e0eb9c670c55e71fe37a27a3a93421ce00b393eb"
+
+const maximum_reference_input_terminal_post_work_root =
+  #"bdc0a9fd3ee84b6e458a9f3c61552e89c41ae213a78893a73679a0336c476305"
+
+// Derived by the genuine Cardano boundary fixture in
+// demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary-v1.test.ts
+// (accepted 224 observers at 16,338 signed bytes; adjacent 225 at 16,410). This
+// is the same signed transaction replayed by
+// cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree, so
+// the two selectors share one exact source.
+const maximum_observer_terminal_transaction_id =
+  #"b16b2f9ffdef875e489d13c518def5771131b15832e88cd0f79d6d3956fe168b"
+
+const maximum_observer_terminal_transaction_commitment =
+  #"5b79d540d0a51bb5e2ab678c63f5b8b88646d13e337c1d33f1e1ba6ca2db4d95"
+
+const maximum_observer_terminal_compact_cbor =
+  #"84018c58202d56d604247c43792618a75b77864f8a6c6d35b9b5a66d25b944476d6930588e582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c05820b2b468552a6382aa0a02ece7767ee914a08a85a2527b117e048ca891ba560f351a000d570d2019271058206ba17d1becf6846cbc137424e22d01732cdefc5a2b14105f47babd83e6550668582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff582059778271799fb2f636923a2cb70dac0426ba8aa42ab730db4166b1968f01b29000"
+
+const maximum_observer_terminal_witness_set_compact_cbor =
+  #"83582091bef5c8f29aa474731c2ad6b30f1872403c692814a9bfd55e70687bfdc74810582039728233c559f2fdc7876f58aad839f313ea4af375a4e91d60e63e1a55adbe2e582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
+
+const maximum_observer_terminal_field_preimage_lengths_cbor =
+  #"89182901182c191a420101192842186801"
+
+const maximum_observer_terminal_field_preimage_cbor =
+  #"98e0581c008b91b576da13635f7150f248cd133c23ac0a697f1ccae85617ea85581c00e78218f4908ee6d6ca348130460e592fe826d744b7dd6a70c43ae6581c02658c662113c1448f31f0b4c35d7d523094a9d3650ecee81807d8cc581c0397f305417f1d7d891158a165a75fa0852c5166ed4f736d12f4a743581c039cff7866dce34998dc3baf5a0f2955c21e32e6b675f80b1de413bd581c058b872a842ec99a990a91381e66794938a29d9908117fb41ad684e2581c0779e8efdd918389fd6f4d19bf09e4912328b294d9f3aee37f1429c9581c078a4fdb67b1babe0d7f4a9fa0b1213921ee781e2429494e0ac3b4b6581c07dfe1e3d0bfec2013c1b6e5a562a76fc08f75d6b4a2477be2446032581c086a6f3a2246583f4d22a8f4ae1cbe8d51d8532d4375026fa0e4015c581c0938a4daca2c8519a71dc355331a81c734b313888b61fc98f028ff72581c0ad3858c89badde575ff065ba23cd25c1c42fcd987c04b607c49ae91581c0be47415893968ca1d757baaea03ecb16e1ff3c16f4abf08073cfd46581c0c388a0e34fc4a29119227f75b328a6abef44159bd2109eb5fb69433581c0c9bfb1f182630bac8c1b18c7e165bc41f82f2d8fe6b6a5c2186f595581c0de2347b2ddcf0880318c3b477c6bce5a481fe2662b1fc1caacb43a0581c0eb23262cbcd1d9d44238bf55695513427360be2832507997fff16f2581c1178658936533a03a976db1114baf8733e99ab19d9d4efe4562e5b46581c1266954073a1f9bc134200604cdbfd187defd025086fa9263c58ec23581c136720c58b54a91f99871f3d3d716862fd9dc15aa2f4d6577a96bee8581c139ab8b7e6d417bf9f283702da0eb82b91761529679c19ec87fafb13581c14362060bfaf0c331ad71ba5096c9f77e7123082dc16e055e23bbb91581c164bc8e36dd1cf749ad72174d339b6400e8044d9aba3c4fe13d5efa9581c169b6cc7be2690ce852347e77fc5187b9b2c247cb8a6e05c70fcc43b581c18c9ce8acba0fff5229acfdd1da43b9c49ff9a42a33fa8032f2b6d7e581c1dac4d767751a69e36c78a49744ca87f6d3158dd61f1c96342a54819581c1dde6411cbae71fc74121b40a485bc661432778c4909a269fca40b3a581c204c205f2407eff15294e38438e86a65a6acfa52502af513d1eabab5581c2069c5b685c2f16a30f413c320c48ad26a528150d99e6f51e5246aa2581c20f922ae2ac025432f87549debddb1b32cbc7e04317126e1aaeb8beb581c22f3713c89876eb7aa245e750a045cc012ee6c6934131137cd2b4357581c243796fa7fba7e02b23f5deb590889187c56bcf5c1625f36bef9b3d1581c244b4b778d0c9f01a119d7e823f6c67aac5a6faf9912be513efbf72a581c24aeb5a8614fc12df8d2f9174282c3683e588c5c6cfed3d267312e59581c26dcc43667b3d8309ce60894e35d460573588013b6727a60eff0de8c581c26f11d96f781916eceea351ff99c032904913f2b07b874ac0e542f11581c2ddf14044610560943fb6f233ec858ebdc82ed796b92adead4a18a42581c2ec83016b0f5cbdb300469ca2911ab35cc6e588b30689d45a058094f581c3131bc72cf45feb70995478337e001391a1aa64eafe215e00d758328581c314e9285b70b587051306f42302ef290f0a0511d77354df72dd00321581c315ba9090599711f7992186ea0c6a1166cb2a72606999eeb28e50ebb581c32379b36c2f84aa31829bcc8af3349932ebf668e1ed02f26d7cecba3581c32410feeae62047765d74024ee7e264c821c0a74895cab6fc4bafbc0581c326308a7ac90d8cf3aa56efae587914bd89628c2065512c47bcc63b2581c32a491048b68e1556df8c45b14be183a74f32968d54375c2740c0708581c33cee96d6e8da3cc0fabeb330a18819e2531a66acf48cebd5fd11c4c581c34b228b298904e5e36eb9ca00086cddab97f6b277394b680f0f677e5581c354f18e7c5ba118c9bfd750059720bac50064b9766e6b67407d4d569581c3777b6b6e97e771a2fc7b9ed1517488bc689564ccd283ad9ab317991581c377b478e6cc66ac4b89ee09ccf76184d95a2725763dde45741e5cb1b581c37f25e30eff19a0066881e022265e34a5c0018bb1451c1939d9202aa581c389f14839a37196f40fc115243f4efd983d40462773cbf9b1402bce9581c39d199e8b5be1c4de5d08934b4403a6e06798e222a52b8e888a454d6581c39f3b33948d77a6ee27b569b110227c385b39b9637dc024c593c5ca3581c3eb62accba770c2fea777b6e4fea6b3b5c8385e7ca1939055f777f17581c3fc5c54af3bd603ebe5c8a2700148f91a030d60c7505d2c17386c8bf581c4081a3f41e2c049d6566b9f9bc6467f03040162834c1a5e405511958581c43b85d7ee92c62ff5a7efb352cac03f5d66b153d7480f12de2e8f60a581c486baf7f7b63bffb98931a4c8f988b743d61609b07b8e881cccc20bb581c4ad128a30dcf2740e8e9c6c1e947ade61eb7384b0a4954c38915bc6f581c4c190383289d45d78a326e6b95933465dca10e43c0d5f298d39e4063581c4d1e1430a759b22b7aa8b50bca42aff18c448b3dfd4ac0a877bb9368581c4f952ef189fbbd5b7417a21b9c51a36e41ec7abbf18eea394dfa5637581c528b6102fbce47517daf8cf1fe50939aa50003532295a483c06f070a581c53adab38929bc7ced479c2ef40a04cc1710ffd4505613290abd6b749581c54183468df3c55e6557166b46910310216a40f971ccd86c9d6259be1581c54734b243175b2f323568e093b66126b4db133df7a3b98049cc4562e581c54b6fff46393da5f09ffb05c1ed937b0ca809322b513c478abef3aa1581c550e35621b7c9ee6cc1cba49b10918bf74bb4f53bd4c36092ac7448d581c5513c9c2cc436c86e8c1799d9f20e57cbfe1f62a35487bdb28d65de7581c5a8a5a81232619ae44f2afbc2587e57b445c645c7156f016114d6b11581c5b09c156f6a30879784b34119442223ab43f69d79275b6245b6a6fd3581c5e4d6947436248c75fc87132730c6b887f2e51fd8a66dba0e58068df581c5ec62b07dd460e246deddd9e0cc4856677ed1165dcc63b884dcb060e581c5f2ee4245ef16bfb65e419813ea972f8affd057580943c482f575af4581c5f5ec37c577200549d3c59dc5f3dd220d37aa65e7cb1f3d8774273b4581c60d0cab74c395abf0f4165ca6de6fbafd14789c5b0148c7fdbceda5c581c6142e9d9747d3b84901acd999528fbed99fc5ced1f3309b38cf70955581c6209af4ce1a79bb3bb6688d5d0bfa23f692236e843949a451ff44286581c6256d55614235100cc361006c7ee839a4e953396ba0e7a4e80b912ef581c629d740ccf8f7afb941dbd661578e699d827ca0b9b1d1ba2d701f8b2581c6409e42ece35379e1d18e682af9f6f68179f8c8fedff55cd6357ab7f581c64cd2ab23ea2a2210387d2f72abc5334090c3b87fb3e4c4311e90bd9581c65a1ff7d09c86b1cf2f19b8763454dd8b60b4f12da38baf56336eb54581c65c67ddc8a986abc5f9f44da1f3eb30033a0ec280b387dff30c2023e581c65c94c30d7c727db5a43f2ed02dd899288eb48305e228abd5fb1b67c581c660c23b4003b6dec623ee84fb5534622c91cd9233c3907f92e4c6e16581c6839715b591e76ca5558ea3b1173abe69e8a67772dba091c6d9b34ff581c68676952ff13772ebc3ecd4e1b841c149762ee9f79ceb2461d3dea33581c6893703e7912fc484b72ddcb79dc99384362a4f5c8e85e017119e880581c68c9a5212d950901e25e96c1511e47fa5da2698109551f01c82e79f7581c69f4663546754e3be3c8ea0cbb007a1d9dc722d7eec04cd3376be76d581c6a2547b23ad72199bfab589f489916b6103ce06cc7259f335f4af51a581c6a8973b4a7a92c9746225561facf4168f49f8dc4ed544913104651f7581c6cd0555025cff40d32aa8ecdc62045eb9377220fed0bff9f4c600404581c70ad604db3dc06dee4cab1226b8a08ce2b166907650acd76fb4d2b88581c72dba6d41ac78ecc2aaf3c89a26c9125d26d8cfda5393365155aeb7e581c73a318da0ad26351684745708de461e5bc373b0689010be0f244442b581c76a4032c66a16fd7c9f2776ff6a24e73f8271dbcc4f6bd9fc4ee45d2581c76ad1e45ad3177ddfc8fec9b004f3316ffaec5c98e005b5a236e859c581c76e37afa8155fe9dadf23ab2f708ac6862c5d59ebd022fe7b45176f5581c77f0213559ef4ab9bf318b812c66ad2e702fdd9baced9288eaaffb29581c792db96de13969809169ee374ca1536c601173135f9bb2f0d5bff920581c7975bd0d1ded66fa5825c823d94863b47dff7b4fbc077c10a8b2599a581c7a4926bb2619e5fc9b5bf3e5d4b8826efb8ef1acb5e637477c8c612c581c7b8316b2855abdbc3a30c97e041d2a9efd47897541b3faecf4438d52581c828fbf634181dbe19538bcd90d910915e6c25f801f633281e39ef053581c8387b8b28489b138a997ef6ea2d78528c21bfa554f977c7272a606c1581c83b5d59d35a1b4d2461d7e89fb45f56036234a46584edc2c99f33805581c83c9a87d7e9d950c4befdc3ba0df7295ffc71e6a406287516337f11e581c8460adb2114d204ea7e29524753fb16929b46ae88398613585919577581c85945a16fb7b15838031a5ff6bb6270b4128bcf93b9d75e64dddeecd581c8598db79cd6a8131f56e4abbc2d52c86ba7822cb8a25cb3442533bb3581c85d94364e775f16aee99b2a636d605cd2971a5985f00407391b19dbd581c86f958a624457c246261b5a58fbdfdc087ab2d4e2a76974b595e59f9581c876386e795f67132dafad946b6fe451ce15cc8e5a827419269eb47f4581c8793be784a5aa971e84ce08827fcbeb8f4b5df197e567aac5791f245581c87ce1d91022881c6af8adfe8d81754f01cfa08e2489393490dfb23c8581c882bf622ffd6208740788ec77e6ccedede0dfc407f2775a52eb357ea581c8a12ca25173e9c5b64558702ed953a80246ba124290b7812335ff6e7581c8ac43c6d88cd0a9dbc95724ff8f4b245daf6f257aef0daa41f8616b8581c8b903dc03ca9342f7fd748d31b66ffae87683c2501beca9b56cb7c66581c8cffaaf3a033d4f3478b544ff51ccad6f055d0765dd4fdb1ae16a009581c8d7add245a53f9dc4af82166ac801ff67bf42626c98da7c1036c6c98581c8e041fba7418a4f32969f9fb3a02f90db07bd46cc33519deee334a12581c8f4835e727e585b793f57b4aee0be79e1dad5ffba10c0fb14c974911581c8fd9394c7acb1309a50ac3a92d0b6945124d4abb3cd8eb2a7ca09d78581c91b95659396da242a5271816a0043585b7bdde9c2766b9653aa16bef581c92e0d88ccd2e5a211e2ebb746626aef78879f5317093a6c4217d4dcf581c935b2bc2682ca59a351a6e159b001161377f4f4b99ba509bfb1a2d04581c93bd9c9b0fd474cb90f011a38f417c9a0ecd2b4abd50d7592bbe9b28581c955a68d5022659cd509fc8c860e52c7a20cc1d9b9299eb0e41ee46ab581c96c1b791a79b74a6e10eb371ed452554c905b46ad14b167014b258ae581c96c3a369e9d3b9e7190cb994b524c4f5dab0a9ebd8c5afe0b44c7a29581c96c76fabefc1d790bc3285549017fe010f1861a8afc361721fbfc400581c96c914765cafc31a1381254fd64d59a3514fbc51e9cbe1be7dcd7d3b581c970574140f863f782711ec899dac4ebbe7dcf0e5ba1493fc3775461a581c9810aab19cb5b494af6940f6e6502175503fd722875c97335a762fb2581c98e6237591faa57f150d6d870dd910424bfbdeea033620df4c2c799d581c9947cc6e4299462e146bca358f4a630696e3ce001c7a2392487b33be581c99b32ce846695e74ace7454e53f06e5b153fae9ce1dd78850487f609581c9b5e4e7f12472336ef706ba4a34878f1a14feeee02cfd369196225dc581c9bcf9d63c6331323c60695b411ef4c8a862c6601ddba9b49e00181aa581c9d9acc84aeec67922a95efe84749e1403f5d2247832cbb52a382890f581c9fd919c6648f2c515a0615662c0fda46ddb2a9cdef313cc1a5589e4c581ca1a4be4b3e9ac95de819d2e167dfab5c5e9af1f86d24d2e37c730bff581ca1ba45d0c02e27400c6d427551de264c56d559e04f99ebb74052c53e581ca32ee44e7d066e4c09972b13babfb13d196984d7c4a34acfed7c5acd581ca3955d2a6dcc6ec27fe231955748a9d3b03398959fbe43b8d54f43b1581ca5109c241d5b9000fcf2f61f29aa9484cea5e4c3367aae20b7655d49581ca618dbce8336fa55fdc45d902e34fa86d531e2a156d26614fc5a978e581ca9e8c10b033a9c47ab47282eb50fea8013b9e76f1be8503a19f15697581caac7e637dd41420ffa6b23b0a40dce1ab5edae647e6163d95f888ce8581cae1575096ac76ba5d51198da0acdc08a336f54977b9f98c3d96500f7581cae6af5a56c3bad55c581d212954a79fa6611bb559eca2c6c636763eb581caf493d7581d1303485f6d6cf89a7c84f51821a2f9194960d05fa259a581cafdc760dc626434e958bfc9e0ec255bf75af738fbf0b35741a902a1f581cb10d19bf8769a636c72133227d3ea2f3a8c55da66c59807f80c83c7b581cb2701ff1fb114fad081d7cfb8a360b8c3b440222e3c1b012594a42ce581cb368fb9f48e4f1239378779ef91c16ba074c1e467250c81a541ab4a6581cb602484e2ee03651ecea1f7b3347562222be9e612d01539eabdfdfeb581cb9244c1dd27685e29129e1c257237f8d137abc0b25136e5813b94582581cb9b21866ff44e4fb17c3d6356074bb47661e8bbb50b0a30d9eddc0e5581cb9e31abd7cc30ab0450c6ed234d9acfe2c60eff17078aaef094070cc581cba17adde7d550871fc79f81c1eb122bb558fdf9e65bcd9092f27412c581cba306a6ccdfd15cd7d8935d09353f044212802a2516a4b5c38e2891f581cbb5e3a5fce2d1af029a2d912b82d91940290a1238fd28d629d2abdf9581cbb715800161b3d400fc5ffd94d5bfde8964fbd5f6e97923703ce7e26581cbdca9f6bcea09b91d5710000523813dc2e57304f117225e8ebcc84bb581cbf662d5e5030258406474df7944f2c3eb6c873e2dfd03efb7ddb329e581cbfa7d1172d7fbeedd3a20fe1bd84d0b3ad3824456380614b6c8e0a39581cbfecf8c192d75054b928290f606c813b0cad164d66f6b620883e3ed8581cc31f4a10a7b2424b9683d62dc8512fa1ccd456c5d5ecee37f026de40581cc3d8f9daf90ed98cf1daec0150e5b9d128d2061c0563239c9d8ee929581cc5733b5aa0339090225a03f2a14a10765607edcaefe016bf6f4c74fc581cc60a9768c649b192c3b6e883a51938c494a2f62b918176d13d2253c4581cc6a170d71a2af6d3ab7c3d8c9b4b57d9302951bbbf9313d06fb2aa94581cc99269152ab7d529bcc1938371d7a946c8eaf3dad3b4d93fd8f3f2fd581cca1039b7d5179e88e20b04df33911d845b5ad4dddcfa24dbdefbd02d581cca8ab5520de6578a213da045a82f4ea48102076427ff3cf255c74762581ccb1415b707ee02cf078e21682cf58451cc7d710b595843be4f33be4c581ccd4157817326c3e05e1480922d9b17776dfd0c6d879db51f10bed2a0581ccd45304c6030525bbbdf66d6beda8c16d7c7b03f81fd1fb53b8a1c96581cceb9f968ed01cb0a0bd6fc997bb815f0bd2e0899b319c9bc6126d52e581ccfdf56c28e92315b2def8302c081d1573525e29ec5b60a96e234c79a581cd019e835634b7225931b925a0329361c3fb52d910130b4ff7ec65c88581cd0c96e8ec6b5cf9c6599a28080634a83efd7915a30bfcaaefa4a406e581cd143dfdaf37552cd6f71d059a3f01adf8c561a9372ae0d15fe44c571581cd79b3518265df4c937af13e80375397a3c77963502f51dd5ca15e39e581cd93999721d9ed58c14253dd63f6808cf2eca9c65324db38eaea34b6b581cd9fc2834cb7511037d2f8a01994ca0e7f91a7369b0387caf420969d8581cdb02a8c0de91911575937eb559751e21391bfc1cffa85b3c256e980e581cdce139767d36bcedde2c02ba79e144276025ec2aba0be8164b35caa6581cdd0d734ee5951d3a49737b5de19764658a4f610b4fcc820e68149b23581cddfea2ac68f06e11467d7b97b36920a0761ad67ff26c0238e2f9da70581cde6f6a660299d680cf921b6d7ba51ed43b5ac7718d0174f15df0ddb7581ce00cfb82166efc8ec5878ff45abdf27255b523f4e00c7811e1f07463581ce0fafce906f822cd7ba0c835c9bdd48bc11450bb8a3daafdf0457796581ce219774a4456dc69def11d4210111d3c413bbf3ce68fa04b4d21f7c0581ce228a8430523c67943a1e7385e98346c5561802674c788d952aea091581ce4d4eac754c891ecac695f4024402ead64b3ce37eb3f84b627cb0598581ce527193aa6ae8a2f46f779e4017f29f86b30f44c920ac0b34c443f37581ceabf408a4f486bbd83cdc311af28c807cd38b10514210f05c29c304e581cec0e6a432de18cfb69446f97322a0486feee0a221cb8387cb97bb7f9581cec8014c1538497051e5b4054f83073973e61907df21042f7b5ca7c47581cecdc9f7b61021b3f39892fe83349c9145ad8389be7bcde94923fdf65581cedaa0e4a94eb2d607cde51e861c2ee31ca7410349e3520fbc5241364581cee11a5731eb29e7f82bd894510c93ecbecea15930ae7204ef2ef7c9e581cef9dbe211c6c43e2690e0644e1d52bb052123301876bcb5c07a3bf95581cf0955c058758b25357e0269024227071030aa5beddef59f690607355581cf196fa3edf039b47a38e273fab6f11f32ebf46090bf2fa4fbb46fc01581cf25fed298b1a0c50c17440da2cb3b09225e75a261eb0962b9ad43d0f581cf274518701175e2772bc50395ce9b0c37b8cce1d4e7607037e786e74581cf39e069fa5d3833f6893c4c908cd288ba5ebaf79e79993ecfbc30f6d581cf4335c4caf5a83d59c5137b0bd6645905956e11b7c9802af73bd6b13581cf479489276b01d8ce8d59224447b2076e13f1bb24b6bc5efa4845af2581cf4e452d116866918479c358f3df7d6589d5d75f592a386e09dc36b5d581cf65d1a9a1396775c3958b768a060245352dfb4eb21812dfed51091f9581cf8bdf8af1119b897285fe82286c53d9863b95acefb02cd4341eae719581cf941fcf7517151bf26db69122ad3d7e13a3c19a05629745e74a2dc8c581cfd3452414d0f1a97c2224438290268bf6c263151dc73e7c2fa0a573f581cfde025f9a3fd2cae96a31014efef5062c688fdc3fc7d4ecf638198fb581cfe6f33afe1208bf44feeb2a55cdab50873e904588266518c687a2fbb581cffab1dd64f82b6991818c1ecc5047d52ce5d00f6fdbc5023e2980167"
+
+const maximum_observer_terminal_item_count = 224
+
+const maximum_observer_terminal_item_index = 223
+
+const maximum_observer_terminal_terminal_chunk_index = 0
+
+const maximum_observer_terminal_encoded_length_before_item = 6692
+
+const maximum_observer_terminal_pre_work_root =
+  #"1078262a33daff30359c3e2b00ebc601b2058fd77e7587bdae0d67baf5478e19"
+
+const maximum_observer_terminal_post_work_root =
+  #"5e98b6a8a98432b486d068899b3dad627f8c41dd6ae8afef51976b88fa0d84d4"
+
+// Derived by the genuine Cardano boundary fixture in
+// demo/midgard-validation/tests/ordered-collection-boundary-v1.test.ts
+// (accepted 438 outputs; the field-2 maximum without a Midgard count cap).
+const maximum_output_terminal_transaction_id =
+  #"1faba3bc592fac6c30165c2789e08a18357deb9b449f5d0ceea1b3e6aa40ee1e"
+
+const maximum_output_terminal_transaction_commitment =
+  #"89de7a79482046596d7a217e20889350a26e5cb168c9cb69fdca382b4a402c7a"
+
+const maximum_output_terminal_compact_cbor =
+  #"84018c58202d56d604247c43792618a75b77864f8a6c6d35b9b5a66d25b944476d6930588e582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582029aa9d887ffc6c715298aca446ef28580bdefe11f0187542a1af885f4bc37d891a000d5ce52020582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820eccbee583d6f236c74876ca59375b638367b0e69bf0e865cb61a78de2e09806d00"
+
+const maximum_output_terminal_witness_set_compact_cbor =
+  #"8358201eebef5772f4e0efc21590eb23d67c94de0f675e91ab78c78b89c4ab4b1e2be7582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
+
+const maximum_output_terminal_field_preimage_lengths_cbor =
+  #"8918290119499901010101186801"
+
+const maximum_output_terminal_field_preimage_cbor =
+  #"9901b65829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a05829a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821a001e8480a0582da200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821b000000091c0a049ba0"
+
+const maximum_output_terminal_item_count = 438
+
+const maximum_output_terminal_item_index = 437
+
+const maximum_output_terminal_terminal_chunk_index = 0
+
+const maximum_output_terminal_encoded_length_before_item = 18794
+
+const maximum_output_terminal_pre_work_root =
+  #"c355c350925b94503664350b6b6d7f44c0776ef44caef0e40ebdf5d6936b29c2"
+
+const maximum_output_terminal_post_work_root =
+  #"b39febf97e07ab5bd85330521e7205f074b12e8e20e0dd2e39a40e5868fdfce1"
+
+// Derived by the genuine Cardano boundary fixture in
+// demo/midgard-validation/tests/ordered-collection-signer-witness-boundary-v1.test.ts
+// (field 4 of the coupled signer/vkey-witness maximum, 124 witnesses).
+const maximum_required_signer_terminal_transaction_id =
+  #"7b4e4657e0083544359f4398fb092c482766220cd53ad99b598239297d1e9813"
+
+const maximum_required_signer_terminal_transaction_commitment =
+  #"56ba4f868c6e37a2eb67542110b3cf1b87007e6f88493b97faa1e276cd1943ea"
+
+const maximum_required_signer_terminal_compact_cbor =
+  #"84018c58202d56d604247c43792618a75b77864f8a6c6d35b9b5a66d25b944476d6930588e582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c05820095c12f5790acc50dbbf52c0b47fe4ebd1dfd9ab308b14701543d6d4d78a06ae1a000d59492020582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c05820e2d5bb3b4c4475d516516e5396ec041b553ada06379a53f665b47e1485e0451f582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820ad12ff89400f2f7975c77231241032e6a7bf49d0f2ab388425b3de0cefef003000"
+
+const maximum_required_signer_terminal_witness_set_compact_cbor =
+  #"835820689afcab7a4406fa8da9a4f97b325f34458bd2114d6b2ae9eb357e681acc0e97582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
+
+const maximum_required_signer_terminal_field_preimage_lengths_cbor =
+  #"89182901183001190e8a01011931e601"
+
+const maximum_required_signer_terminal_field_preimage_cbor =
+  #"987c581cfcd3d823b8e5a45e68b4780be80ab233fe78ee6b73e8edf49872173d581c99e2b94e1cd5c95c4c689797890d0d7cbb93c2137db2964b12a67dde581c745627a7fd9497525daaa102d19ec0fb5450810b792a21945f7e84ca581cb0157b4610a6a346ce628a2ca9c193563aeb506b4121ea084149f5a8581cbcf50cd3961e94dbdebcb556b280f2e6a7c4e9f0f00de05c71f3ad6b581c90a8e29e3b945beed1e63b54be4c4522375aaedea305ff714540550a581c485d024e2416185df4d0f194a1cc104032a2a6834fe23bf8887dd88c581ca2ce381556c98d547e1dead2940407f7f6c29ab8c4114a95a7fd4dfb581c013d89be7811865fd1dfa2c793d6274b403819dbb51c5249e4389147581ceaf6e220273c8ead5340cd18e3e846b0ea4dc59414a4802217ac8ead581cb36d074c6f96627fc85f1677965af4a8557401f0ca5456033a5ca312581cfde6e48a319ae9da76f3a640aab1b035b8e244cdd34143140642babf581caf15f2e5bd66f3b63f5b7b5f1aa7f9d04d199bfe83fe8d238e8a5f7b581c94b9ce6e951d6a63140b6889a985f84989426bb5e4cc84bbd9d2d296581caed55f6815ede8ca1653d48ee1aac7e44290ebed3b442e309c457369581c60ca8118b295721e58cd7052f6d357fea4a2f7f143738d591b6d0c18581c95b3ed784949ee55fd7fb2d3c523a765121654f43f8d06b5e32c25ca581c1a450d9b5d083fe4094205a7c238e1504c9fd1f7a71b95f0410e06f0581cd8adebabf5ce10be772b25b931bb9110fdfac67ef7588363d1b3e0b5581ce96f7a912733c5295945223a34ffa309a1796d0e316fbd6950ffda3c581cfca1e77e91fb60ea5a61c382f5783b43e0fbded0b7d60df81da7cd55581c0e67fbf3e49b6f59f507d2a2a7045c2fbdd5d95dfc4d42f32dd0f20d581ced91d4e69f83e8196247e2fef74f8e361fdad86d7bf5ea599a9e46e5581ce1e61bedb343510f945e044c80e7df0fd5e4cd5a42e9a353f7b798d0581c29f205f302af401f05149a140795bdf17069876b5f7a72cab991ea21581c6a5ebdda6ad6254531aa94f210f9ca2a6aea71fa83a0c6f85fc01829581c3e66c0b6ea79ca78258adc66fc128ad3b023486eb61c197ce983a42e581cc40adb9e682709d8f0603328a430b2428147c83ad962fdb9f25bfe7a581c678b0d628e692a7d5118e978b6bf75ad28be7b3065bf5a634792de4e581c7166a605e8915779c024ca341f5fa61f55c4f76d3c5ad8157f923c1f581c89b0f66d743a0002221ed2aa7add7e3d71c7ce14d93528afa3526dc5581c690cae0f7506557781f88dfee0e8f3acafb4d2867c8951700b4da309581c5267be7e20c54b87db434f7303c55f5e37dc1caea8ee9d4b54be675e581c37e5fe33eb86df4635bf087ad79f3c8408c9336d01ecda5fe3df22dc581c2129505dcd591b92e56415f51374ddf9c73fcbe6d0c1e272ca18007b581c59c7f01133e43710ff666845a395797729144255a9656b47d7ea3e42581cb500c8ae40ea1c55360d0f1fb9bf29d6704f18d0dca13f7005b2d710581c58f144987fe294b9021a3b4ed84e6cc7aef0ea2290c5bc22896fb9fd581c17ea7db65acb3747513f4aa557c5a7d8f281d6b782ced2f124a63df7581c83a10a91190be2f6ce77aec5247987304d7af3160c3c503f57cede94581cc8e03ba51a8789fcbdcd524bd07140bcb0e18a5afdec5295e9a54a21581c31cf9e93f399e11c42c6c38c915aca1e71954651d412c5685a5b908d581ccbb3883292f93d3d0cbe898edbee84a59bcd2d1cff3100ab6321fdc4581c45686df72883acd36ac5870e6a6f3363a86cfff6e1d2bd583bded2dd581c44c436db37c88110231ea1826735c78dae3c9545a56b2bf08b716100581c0152b4152a6a2c695128420086d2c4db87720d777f8c9c2592a25ca0581cdcd46d9b4d54793b8b1a5fcc497f95f530cf00c164b1f4abaf82de1e581cc2acb87c8240b07272dcf7afdd584cc18b6b29e66868684fd5f84634581ccfbc19df7a131535fa48e6617afca6d99ee8d1624cadf3dda101f3cb581c017ca3fd208c69433cd1ffe49ad6b1e3a3cb0087f24adc98885ec567581cf05b37e8fe339f3c872c789fe2f3e1a0b27a5e16d4878446b56d0a1e581c07640a700232d515e0ac789f033cd794c54e9a2f6bdea98adef2790a581cffe8a81c50c12dce96c3abb60a066690b245aaa63cd09e4ccee7a22c581c2bc1bb283dcfc9505d7246654deeca05f2be247e1057d11e7529fbe3581cfe5a450082b9cdec4db6fbbb09765131e4c9ef27171cfedc656c1c74581ce34d354e07cd0ac9574f04ed1842a40466ec8a3a57c58d9d7f072fe8581c83d1bd8872e2fb9c2465ed1ecdcc7e2cd1b42a3c28da763efd1ee098581cd001dc3623a8e52d0dcafd5244eb7abf9a25af8bb730ba912a9a84f1581c4164deddf803c8f1db1af43f364916c7e7284de97331d0322b72ebd4581c27d464f6b8f0c87d01bad1f8f528eadfe0941683e7a9a507623efb16581c9b0adf5a408b433351bd0f91483197a81513597ca99320d2f6ba297a581cf755de6cc952fa38fdb6e36d66c0267dc97b1194ab2f16973c1b1a92581c8bcf50cf83f3f432b34b8d4350631e5256b42ba6bee7ff8fb4aee898581c08335c6dba9969e2ba21ff068ede3afa96691f3bed8bb64764df1a6c581c6ab175efcc272ba8a70c28011fe62b1b6d6fe0ccbeae7ab93c7105b5581c76afb6d83ebdc618e406171b1aee674897863f76954ed75336c03f40581c4c82b242536b88431f81feb61cf5fa2e04c84f84760c1a5be0676149581c2f0ed105eee27afed011cbcf267bd5704ac1f8e50d50f8c20d7573b7581c63dfd1e19195152adec9a7f321408b7328bc786476d708e3b74c634b581c9a9ca6852ff9397679ca0dcc3021f66d0c1b35c09e97785b65451937581cc599968cf9aa7cc6a0b4e071cb224d14c4ca0c62b178c9a807bd0b05581cce1a462d42897483db55838fbeffae4cce629429f5fc2e6c248e41fb581c0f7ba014b8fa86e8a6e1c4d52f39f6400ab4289e609f2dc2fe16b7bb581cd5aee89caf14e29aea6b16397cf881f6a332f8396f9f241df5c787a0581c66db7803b959bb9b8d1baa3969f06f727b80357f7815677c8acf3fe9581c2522cfdf2b4f379a09d88c2e40edc5243de8bd494f32ff808063b9cc581c0a11ca6f7e07e1292f6bbab506c72250676e73e07c031befbea397f5581c1dca6db06ce3d33a9eaffee76fe8cf54278ea37b5627e0ad407af734581c9f87eed39cbfe00fad8d92ebb15f0f93ab16f1c4a2bd5d7f6a541dab581c9b6a3bdc830cfb0fd8068d050d28d248f6e2f6335f140140a460ed6a581ca1a31563dba2c4baba2fbbfb349fd47be5960b79b912b55c776ba9c3581c2c81a68d7d16529d7c38c063a889f04fc9988cca74b681eae577c5bc581cd3ed4588bc3f68b135113c0108ffc772fb7aebea985e80b931f6dccf581ca569e2ff8e2fb9ac896b0512ce588a7484f665b2399c9b658000d710581c2d7e3d725527f5a5b6609a73548848e3795f846c4e2762217265c64b581c64e1f7245ac1aa7f87b2855f720acc72d5fb8cbf5a163fc9e2b74459581cebfb2fb1d3b11a96bcaa683e302110896a1465e9c8d9c2431a322a8e581cfb83de521c32159849f917d8ab71fa50e444ee7a3a6c67468fdea73f581c708ba8011e315ea4d44ffa5e65bb6585248c4943b18e57bdaa4b4f76581ca60c290d6d9abe2b3e11d3d8586c3eb0e0f0db6e4d06bfb1b839131b581cb25990c4e46727d1c1e03b56c4d2e55a3cbc4b4d7d7288db5cd80d62581c015e5a48f66b2127901f247ca5adab9c0c0bd15df977d495b7cd0620581c7f95042a9d8aa74f51a21ab809a4876cd06a5de4c38a7cc3a205ad50581c014ecb3049ba3ca697dda24ad4bf9da8e4eacf0f8c4821c66e9df7af581c8a3e07d3849d5124b06c9fcee2d42f837d5259f6ee6a593fcb7b98a2581ca196802f4753d17247911f511e5e87e1be199b47a4b039648404442f581c40a54991356b05486791cbcd0055dfb6a0a1d537bdf487a7569526f3581c21b3af12565e2940b4d9ec016d3e87e7828c0337f03363d242d291f2581c0df457cbcc7c9344d478c80622cadf012e1b95057894a7d362636001581c4394ba0078ae96c412acd99a8b1ec5ce12acbd69d344d08785bc300d581c382f370262b469227551e723f305ca4be6d3b4b1eb5031d2c3f0df0e581c1e4291357e4704c9dd010e8e83311ab4359d3551761d585d77a5b7f6581ca5328a3ea032dd5261649b3500cc56615c7a335345c5ff33caf77383581ca96d1588135ad8733a7d95b7dfd00dc2fda413f0a06c04ec40a4e567581c0ec806a4e920cc5565fdbd4ef1c4862ae968c055552bec01d8d42c25581cd6508318ec0d5e2b5543937be3a6c5ad4b09355d3368eae6971e95ef581c3f7c0ceee05471404ae18e750b7e1a5bea2d2bc178e849f2e27d79e2581c1d879bb439d05390d73a9a45dfa7e599d35cb1640e4db18f5d2e4837581cfab38f493b44a3ac63df71c8d4bbe6b4966e26a8666762c5f55e4d85581c6dd8d10a606d83338a85236b87c30c167fd0c4509d197ea5ee77930e581cf2a1b5ee43d66e200bf1ca89c93e6d1749bf37de5d624304d3e4a273581c80798c60471603fd60b6bab953f5aca46907615e1d3376ea83337e51581c025dc46bef542719a048f9313ee3da316598ecff7ee0a3947f45177d581cb8b38e14e971490e8a549acf3dd07867c1c3b7ba1fe0659e7f164381581ccdf5a6563380cec5a0170a23647d5fc4d653de8021f7805dc4689882581cd4f53bf6a93c9f5fc51d12822d069a89d6f454e285473e3230229f9d581c36987e3b783597edc8a9e016ac99cede4e32ce0e86242c3096137988581cba345932c22ec96b13cfee45bf05550e4703e6127f053efa91cc7269581c99ca37991024058a6bd7b970c4926baafac1b0d6ad9478b7f4863b6c581c04c2c1d13f474c63592411c09fa814d9770af99532bb5ac953c06aa5581c2e963aa107eff00392c09a26020029c2c5b4dc98b408cc48a50af5a2581cd124484e34894a0c4617291ce512cc9f18615a17673911ec03715e00581c6645be8a3d3e838553d34de816c2bde2488bce745469db7cd984ad78581c38abf94805d076d7253d8386794096ec3d48fe233bc45d5edf97ab19"
+
+const maximum_required_signer_terminal_item_count = 124
+
+const maximum_required_signer_terminal_item_index = 123
+
+const maximum_required_signer_terminal_terminal_chunk_index = 0
+
+const maximum_required_signer_terminal_encoded_length_before_item = 3692
+
+const maximum_required_signer_terminal_pre_work_root =
+  #"c39fcbe1b9077c6a2242f2cec28b84ad23fadb5b4065248f6cd6ecaab49a2c03"
+
+const maximum_required_signer_terminal_post_work_root =
+  #"f34d2c3452c0168fc935a7a0c9de927311c8bfd372a53d83d7df8e0c5effec37"
+
+// Derived by the genuine Cardano boundary fixture in
+// demo/midgard-validation/tests/ordered-collection-mint-boundary-v1.test.ts
+// (130 mint policies packed under maxValueSize, every policy authorized by a
+// field-6 native script).
+const maximum_mint_terminal_transaction_id =
+  #"7d05811c269235d01486fb1b9f5d9f08ee27dfd67f5b2f5553e98f5f63d2904c"
+
+const maximum_mint_terminal_transaction_commitment =
+  #"53fab1e7ca307ed09192048fc8c4fe82b33e4cd9de40bd2e723207039d85b281"
+
+const maximum_mint_terminal_compact_cbor =
+  #"84018c58202d56d604247c43792618a75b77864f8a6c6d35b9b5a66d25b944476d6930588e582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c05820743cefaed4ac50d862140f9018bd5a6723a941ac660315426da4e0912d60ed141a000d5d9520192710582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c058207ba153c420ecc2fc34570ff76ea54d8b892b9b2f21baff8ae9bbaf95b7e1eab7582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820878c89b8969e798009d6fae019bdec7f6e14b989b41d2ee7ae2d02bfa4df08c100"
+
+const maximum_mint_terminal_witness_set_compact_cbor =
+  #"8358204a7039dd2bf25a2eedc820e9786a94f14f36017f375092fa327fbe7a3d5796205820f5f20200888316fc6bd33ec7fc4d5d91ce372d0e68d954b491f5b225b1fab688582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
+
+const maximum_mint_terminal_field_preimage_lengths_cbor =
+  #"891829011915b201011916dc19175e186801"
+
+const maximum_mint_terminal_field_preimage_cbor =
+  #"9882582b82581c02658c662113c1448f31f0b4c35d7d523094a9d3650ecee81807d8cca1494d696467617264563101582b82581c0397f305417f1d7d891158a165a75fa0852c5166ed4f736d12f4a743a1494d696467617264563101582b82581c039cff7866dce34998dc3baf5a0f2955c21e32e6b675f80b1de413bda1494d696467617264563101582b82581c058b872a842ec99a990a91381e66794938a29d9908117fb41ad684e2a1494d696467617264563101582b82581c0779e8efdd918389fd6f4d19bf09e4912328b294d9f3aee37f1429c9a1494d696467617264563101582b82581c078a4fdb67b1babe0d7f4a9fa0b1213921ee781e2429494e0ac3b4b6a1494d696467617264563101582b82581c07dfe1e3d0bfec2013c1b6e5a562a76fc08f75d6b4a2477be2446032a1494d696467617264563101582b82581c0938a4daca2c8519a71dc355331a81c734b313888b61fc98f028ff72a1494d696467617264563101582b82581c0ad3858c89badde575ff065ba23cd25c1c42fcd987c04b607c49ae91a1494d696467617264563101582b82581c0be47415893968ca1d757baaea03ecb16e1ff3c16f4abf08073cfd46a1494d696467617264563101582b82581c0c388a0e34fc4a29119227f75b328a6abef44159bd2109eb5fb69433a1494d696467617264563101582b82581c0c9bfb1f182630bac8c1b18c7e165bc41f82f2d8fe6b6a5c2186f595a1494d696467617264563101582b82581c0de2347b2ddcf0880318c3b477c6bce5a481fe2662b1fc1caacb43a0a1494d696467617264563101582b82581c0eb23262cbcd1d9d44238bf55695513427360be2832507997fff16f2a1494d696467617264563101582b82581c1266954073a1f9bc134200604cdbfd187defd025086fa9263c58ec23a1494d696467617264563101582b82581c139ab8b7e6d417bf9f283702da0eb82b91761529679c19ec87fafb13a1494d696467617264563101582b82581c14362060bfaf0c331ad71ba5096c9f77e7123082dc16e055e23bbb91a1494d696467617264563101582b82581c169b6cc7be2690ce852347e77fc5187b9b2c247cb8a6e05c70fcc43ba1494d696467617264563101582b82581c1dac4d767751a69e36c78a49744ca87f6d3158dd61f1c96342a54819a1494d696467617264563101582b82581c204c205f2407eff15294e38438e86a65a6acfa52502af513d1eabab5a1494d696467617264563101582b82581c2069c5b685c2f16a30f413c320c48ad26a528150d99e6f51e5246aa2a1494d696467617264563101582b82581c22f3713c89876eb7aa245e750a045cc012ee6c6934131137cd2b4357a1494d696467617264563101582b82581c243796fa7fba7e02b23f5deb590889187c56bcf5c1625f36bef9b3d1a1494d696467617264563101582b82581c244b4b778d0c9f01a119d7e823f6c67aac5a6faf9912be513efbf72aa1494d696467617264563101582b82581c26dcc43667b3d8309ce60894e35d460573588013b6727a60eff0de8ca1494d696467617264563101582b82581c2ddf14044610560943fb6f233ec858ebdc82ed796b92adead4a18a42a1494d696467617264563101582b82581c2ec83016b0f5cbdb300469ca2911ab35cc6e588b30689d45a058094fa1494d696467617264563101582b82581c3131bc72cf45feb70995478337e001391a1aa64eafe215e00d758328a1494d696467617264563101582b82581c314e9285b70b587051306f42302ef290f0a0511d77354df72dd00321a1494d696467617264563101582b82581c32410feeae62047765d74024ee7e264c821c0a74895cab6fc4bafbc0a1494d696467617264563101582b82581c32a491048b68e1556df8c45b14be183a74f32968d54375c2740c0708a1494d696467617264563101582b82581c34b228b298904e5e36eb9ca00086cddab97f6b277394b680f0f677e5a1494d696467617264563101582b82581c3777b6b6e97e771a2fc7b9ed1517488bc689564ccd283ad9ab317991a1494d696467617264563101582b82581c37f25e30eff19a0066881e022265e34a5c0018bb1451c1939d9202aaa1494d696467617264563101582b82581c389f14839a37196f40fc115243f4efd983d40462773cbf9b1402bce9a1494d696467617264563101582b82581c39d199e8b5be1c4de5d08934b4403a6e06798e222a52b8e888a454d6a1494d696467617264563101582b82581c3eb62accba770c2fea777b6e4fea6b3b5c8385e7ca1939055f777f17a1494d696467617264563101582b82581c3fc5c54af3bd603ebe5c8a2700148f91a030d60c7505d2c17386c8bfa1494d696467617264563101582b82581c4081a3f41e2c049d6566b9f9bc6467f03040162834c1a5e405511958a1494d696467617264563101582b82581c43b85d7ee92c62ff5a7efb352cac03f5d66b153d7480f12de2e8f60aa1494d696467617264563101582b82581c486baf7f7b63bffb98931a4c8f988b743d61609b07b8e881cccc20bba1494d696467617264563101582b82581c4ad128a30dcf2740e8e9c6c1e947ade61eb7384b0a4954c38915bc6fa1494d696467617264563101582b82581c4d1e1430a759b22b7aa8b50bca42aff18c448b3dfd4ac0a877bb9368a1494d696467617264563101582b82581c4f952ef189fbbd5b7417a21b9c51a36e41ec7abbf18eea394dfa5637a1494d696467617264563101582b82581c53adab38929bc7ced479c2ef40a04cc1710ffd4505613290abd6b749a1494d696467617264563101582b82581c54183468df3c55e6557166b46910310216a40f971ccd86c9d6259be1a1494d696467617264563101582b82581c54734b243175b2f323568e093b66126b4db133df7a3b98049cc4562ea1494d696467617264563101582b82581c5a8a5a81232619ae44f2afbc2587e57b445c645c7156f016114d6b11a1494d696467617264563101582b82581c5e4d6947436248c75fc87132730c6b887f2e51fd8a66dba0e58068dfa1494d696467617264563101582b82581c60d0cab74c395abf0f4165ca6de6fbafd14789c5b0148c7fdbceda5ca1494d696467617264563101582b82581c6409e42ece35379e1d18e682af9f6f68179f8c8fedff55cd6357ab7fa1494d696467617264563101582b82581c64cd2ab23ea2a2210387d2f72abc5334090c3b87fb3e4c4311e90bd9a1494d696467617264563101582b82581c65a1ff7d09c86b1cf2f19b8763454dd8b60b4f12da38baf56336eb54a1494d696467617264563101582b82581c65c67ddc8a986abc5f9f44da1f3eb30033a0ec280b387dff30c2023ea1494d696467617264563101582b82581c65c94c30d7c727db5a43f2ed02dd899288eb48305e228abd5fb1b67ca1494d696467617264563101582b82581c660c23b4003b6dec623ee84fb5534622c91cd9233c3907f92e4c6e16a1494d696467617264563101582b82581c68c9a5212d950901e25e96c1511e47fa5da2698109551f01c82e79f7a1494d696467617264563101582b82581c69f4663546754e3be3c8ea0cbb007a1d9dc722d7eec04cd3376be76da1494d696467617264563101582b82581c6a2547b23ad72199bfab589f489916b6103ce06cc7259f335f4af51aa1494d696467617264563101582b82581c6a8973b4a7a92c9746225561facf4168f49f8dc4ed544913104651f7a1494d696467617264563101582b82581c6cd0555025cff40d32aa8ecdc62045eb9377220fed0bff9f4c600404a1494d696467617264563101582b82581c70ad604db3dc06dee4cab1226b8a08ce2b166907650acd76fb4d2b88a1494d696467617264563101582b82581c72dba6d41ac78ecc2aaf3c89a26c9125d26d8cfda5393365155aeb7ea1494d696467617264563101582b82581c73a318da0ad26351684745708de461e5bc373b0689010be0f244442ba1494d696467617264563101582b82581c76a4032c66a16fd7c9f2776ff6a24e73f8271dbcc4f6bd9fc4ee45d2a1494d696467617264563101582b82581c76ad1e45ad3177ddfc8fec9b004f3316ffaec5c98e005b5a236e859ca1494d696467617264563101582b82581c76e37afa8155fe9dadf23ab2f708ac6862c5d59ebd022fe7b45176f5a1494d696467617264563101582b82581c792db96de13969809169ee374ca1536c601173135f9bb2f0d5bff920a1494d696467617264563101582b82581c7975bd0d1ded66fa5825c823d94863b47dff7b4fbc077c10a8b2599aa1494d696467617264563101582b82581c828fbf634181dbe19538bcd90d910915e6c25f801f633281e39ef053a1494d696467617264563101582b82581c83b5d59d35a1b4d2461d7e89fb45f56036234a46584edc2c99f33805a1494d696467617264563101582b82581c85945a16fb7b15838031a5ff6bb6270b4128bcf93b9d75e64dddeecda1494d696467617264563101582b82581c8598db79cd6a8131f56e4abbc2d52c86ba7822cb8a25cb3442533bb3a1494d696467617264563101582b82581c85d94364e775f16aee99b2a636d605cd2971a5985f00407391b19dbda1494d696467617264563101582b82581c8793be784a5aa971e84ce08827fcbeb8f4b5df197e567aac5791f245a1494d696467617264563101582b82581c87ce1d91022881c6af8adfe8d81754f01cfa08e2489393490dfb23c8a1494d696467617264563101582b82581c882bf622ffd6208740788ec77e6ccedede0dfc407f2775a52eb357eaa1494d696467617264563101582b82581c8a12ca25173e9c5b64558702ed953a80246ba124290b7812335ff6e7a1494d696467617264563101582b82581c8ac43c6d88cd0a9dbc95724ff8f4b245daf6f257aef0daa41f8616b8a1494d696467617264563101582b82581c8b903dc03ca9342f7fd748d31b66ffae87683c2501beca9b56cb7c66a1494d696467617264563101582b82581c8cffaaf3a033d4f3478b544ff51ccad6f055d0765dd4fdb1ae16a009a1494d696467617264563101582b82581c8d7add245a53f9dc4af82166ac801ff67bf42626c98da7c1036c6c98a1494d696467617264563101582b82581c8fd9394c7acb1309a50ac3a92d0b6945124d4abb3cd8eb2a7ca09d78a1494d696467617264563101582b82581c91b95659396da242a5271816a0043585b7bdde9c2766b9653aa16befa1494d696467617264563101582b82581c93bd9c9b0fd474cb90f011a38f417c9a0ecd2b4abd50d7592bbe9b28a1494d696467617264563101582b82581c96c3a369e9d3b9e7190cb994b524c4f5dab0a9ebd8c5afe0b44c7a29a1494d696467617264563101582b82581c98e6237591faa57f150d6d870dd910424bfbdeea033620df4c2c799da1494d696467617264563101582b82581c9bcf9d63c6331323c60695b411ef4c8a862c6601ddba9b49e00181aaa1494d696467617264563101582b82581c9d9acc84aeec67922a95efe84749e1403f5d2247832cbb52a382890fa1494d696467617264563101582b82581ca1a4be4b3e9ac95de819d2e167dfab5c5e9af1f86d24d2e37c730bffa1494d696467617264563101582b82581ca1ba45d0c02e27400c6d427551de264c56d559e04f99ebb74052c53ea1494d696467617264563101582b82581ca32ee44e7d066e4c09972b13babfb13d196984d7c4a34acfed7c5acda1494d696467617264563101582b82581ca5109c241d5b9000fcf2f61f29aa9484cea5e4c3367aae20b7655d49a1494d696467617264563101582b82581ca618dbce8336fa55fdc45d902e34fa86d531e2a156d26614fc5a978ea1494d696467617264563101582b82581caac7e637dd41420ffa6b23b0a40dce1ab5edae647e6163d95f888ce8a1494d696467617264563101582b82581cafdc760dc626434e958bfc9e0ec255bf75af738fbf0b35741a902a1fa1494d696467617264563101582b82581cb368fb9f48e4f1239378779ef91c16ba074c1e467250c81a541ab4a6a1494d696467617264563101582b82581cb602484e2ee03651ecea1f7b3347562222be9e612d01539eabdfdfeba1494d696467617264563101582b82581cb9b21866ff44e4fb17c3d6356074bb47661e8bbb50b0a30d9eddc0e5a1494d696467617264563101582b82581cba17adde7d550871fc79f81c1eb122bb558fdf9e65bcd9092f27412ca1494d696467617264563101582b82581cbb715800161b3d400fc5ffd94d5bfde8964fbd5f6e97923703ce7e26a1494d696467617264563101582b82581cbf662d5e5030258406474df7944f2c3eb6c873e2dfd03efb7ddb329ea1494d696467617264563101582b82581cbfecf8c192d75054b928290f606c813b0cad164d66f6b620883e3ed8a1494d696467617264563101582b82581cc5733b5aa0339090225a03f2a14a10765607edcaefe016bf6f4c74fca1494d696467617264563101582b82581cc60a9768c649b192c3b6e883a51938c494a2f62b918176d13d2253c4a1494d696467617264563101582b82581ccb1415b707ee02cf078e21682cf58451cc7d710b595843be4f33be4ca1494d696467617264563101582b82581ccd4157817326c3e05e1480922d9b17776dfd0c6d879db51f10bed2a0a1494d696467617264563101582b82581cceb9f968ed01cb0a0bd6fc997bb815f0bd2e0899b319c9bc6126d52ea1494d696467617264563101582b82581ccfdf56c28e92315b2def8302c081d1573525e29ec5b60a96e234c79aa1494d696467617264563101582b82581cd79b3518265df4c937af13e80375397a3c77963502f51dd5ca15e39ea1494d696467617264563101582b82581cdce139767d36bcedde2c02ba79e144276025ec2aba0be8164b35caa6a1494d696467617264563101582b82581cddfea2ac68f06e11467d7b97b36920a0761ad67ff26c0238e2f9da70a1494d696467617264563101582b82581ce00cfb82166efc8ec5878ff45abdf27255b523f4e00c7811e1f07463a1494d696467617264563101582b82581ce219774a4456dc69def11d4210111d3c413bbf3ce68fa04b4d21f7c0a1494d696467617264563101582b82581ce228a8430523c67943a1e7385e98346c5561802674c788d952aea091a1494d696467617264563101582b82581ce4d4eac754c891ecac695f4024402ead64b3ce37eb3f84b627cb0598a1494d696467617264563101582b82581ce527193aa6ae8a2f46f779e4017f29f86b30f44c920ac0b34c443f37a1494d696467617264563101582b82581cec0e6a432de18cfb69446f97322a0486feee0a221cb8387cb97bb7f9a1494d696467617264563101582b82581cec8014c1538497051e5b4054f83073973e61907df21042f7b5ca7c47a1494d696467617264563101582b82581cecdc9f7b61021b3f39892fe83349c9145ad8389be7bcde94923fdf65a1494d696467617264563101582b82581cee11a5731eb29e7f82bd894510c93ecbecea15930ae7204ef2ef7c9ea1494d696467617264563101582b82581cef9dbe211c6c43e2690e0644e1d52bb052123301876bcb5c07a3bf95a1494d696467617264563101582b82581cf0955c058758b25357e0269024227071030aa5beddef59f690607355a1494d696467617264563101582b82581cf196fa3edf039b47a38e273fab6f11f32ebf46090bf2fa4fbb46fc01a1494d696467617264563101582b82581cf274518701175e2772bc50395ce9b0c37b8cce1d4e7607037e786e74a1494d696467617264563101582b82581cf479489276b01d8ce8d59224447b2076e13f1bb24b6bc5efa4845af2a1494d696467617264563101582b82581cf4e452d116866918479c358f3df7d6589d5d75f592a386e09dc36b5da1494d696467617264563101582b82581cf65d1a9a1396775c3958b768a060245352dfb4eb21812dfed51091f9a1494d696467617264563101582b82581cfd3452414d0f1a97c2224438290268bf6c263151dc73e7c2fa0a573fa1494d696467617264563101582b82581cffab1dd64f82b6991818c1ecc5047d52ce5d00f6fdbc5023e2980167a1494d696467617264563101"
+
+const maximum_mint_terminal_item_count = 130
+
+const maximum_mint_terminal_item_index = 129
+
+const maximum_mint_terminal_terminal_chunk_index = 0
+
+const maximum_mint_terminal_encoded_length_before_item = 5807
+
+const maximum_mint_terminal_pre_work_root =
+  #"4a04c1b0d3ab0307fcbad5cda4985636ac30cbd52d11f229967bb21d6e027868"
+
+const maximum_mint_terminal_post_work_root =
+  #"6b18ca10e35cdec5bf29736c0a43aa76b4fa32600949fce9208dde1c9fdbd798"
+
+/// One genuine-Cardano maximum-cardinality field, at the terminal step of its
+/// `CanonicalDecode` fold, as §8's door reaches it.
+///
+/// **What left this record, and why it is not a weaker fixture.** It used to
+/// carry a `bounded_collection_v1.ItemProofV1` and a
+/// `bounded_item_v1.ChunkProofV1` — a per-item Merkle frontier with siblings,
+/// and the item's chunk with its own frontier — and the step checked the first
+/// against the field's §4 commitment. That is the unsatisfiable predicate #592
+/// is about, and both proofs are gone: the fixture now carries the field's whole
+/// §5.1 **preimage**, the door hashes it once against the flat commitment the
+/// compact structure declares, and the item's length, chunk and
+/// `bounded_item_v1` commitment are all derived from those authenticated bytes.
+/// Nothing per-item is asserted by the fixture, so nothing per-item can drift.
 type MaximumFieldTerminalFixtureV1 {
   transaction_id: ByteArray,
   transaction_commitment: ByteArray,
   compact_cbor: ByteArray,
   witness_set_compact_cbor: ByteArray,
   field_preimage_lengths_cbor: ByteArray,
+  field_preimage_cbor: ByteArray,
   field_index: Int,
   item_count: Int,
   item_index: Int,
+  terminal_chunk_index: Int,
   encoded_length_before_item: Int,
   expected_pre_work_root: ByteArray,
   expected_post_work_root: ByteArray,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
+}
+
+/// The §4 slot a field index names, read out of the compact structures the
+/// fixture pins.
+///
+/// §4 removed field-index domain separation, so which of the nine 32-byte hashes
+/// a preimage is *supposed* to match is positional and nothing else. Spelling
+/// the map here — rather than reaching for the machine's private reader — is what
+/// lets these fixtures state "this preimage commits to *this* slot" as a
+/// checkable fact.
+fn terminal_fixture_field_slot_commitment(
+  fixture: MaximumFieldTerminalFixtureV1,
+) -> ByteArray {
+  let compact = decode_native_tx_compact_v1(fixture.compact_cbor)
+  let witness_set = decode_native_tx_witness_set_compact(
+    fixture.witness_set_compact_cbor,
+  )
+  when fixture.field_index is {
+    0 -> compact.body.spend_inputs_hash
+    1 -> compact.body.reference_inputs_hash
+    2 -> compact.body.outputs_hash
+    3 -> compact.body.required_observers_hash
+    4 -> compact.body.required_signers_hash
+    5 -> compact.body.mint_hash
+    6 -> witness_set.script_tx_wits_hash
+    7 -> witness_set.addr_tx_wits_hash
+    _ -> witness_set.redeemer_tx_wits_hash
+  }
+}
+
+/// §5.1's items of the fixture's field preimage, through the one uniform reader
+/// all nine fields share since #567.
+fn terminal_fixture_items(
+  fixture: MaximumFieldTerminalFixtureV1,
+) -> List<ByteArray> {
+  decode_midgard_tx_byte_list_preimage_cbor(fixture.field_preimage_cbor)
+}
+
+/// The terminal item's payload bytes — what the retired
+/// `ChunkProofV1.chunk` carried at this boundary, now read out of the preimage.
+fn terminal_fixture_item(fixture: MaximumFieldTerminalFixtureV1) -> ByteArray {
+  expect Some(item) = list.last(terminal_fixture_items(fixture))
+  item
+}
+
+fn terminal_fixture_carriage(
+  fixture: MaximumFieldTerminalFixtureV1,
+) -> native_tx_field_access_v1.FieldCarriageV1 {
+  native_tx_field_access_v1.Inline { preimage: fixture.field_preimage_cbor }
 }
 
 fn verify_maximum_field_terminal_fixture_v1(
@@ -10326,6 +10669,7 @@ fn verify_maximum_field_terminal_fixture_v1(
     fixture.witness_set_compact_cbor,
     fixture.field_preimage_lengths_cbor,
   )
+  let terminal_item = terminal_fixture_item(fixture)
   let work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
     fixture.compact_cbor,
     fixture.witness_set_compact_cbor,
@@ -10333,11 +10677,11 @@ fn verify_maximum_field_terminal_fixture_v1(
     validation_context_cbor,
     fixture.field_index,
     fixture.item_index,
-    fixture.chunk_proof.chunk_index,
+    fixture.terminal_chunk_index,
     fixture.item_count,
     fixture.encoded_length_before_item,
   )
-  let successor_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
+  let successor_work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
     fixture.compact_cbor,
     fixture.witness_set_compact_cbor,
     fixture.field_preimage_lengths_cbor,
@@ -10348,7 +10692,100 @@ fn verify_maximum_field_terminal_fixture_v1(
     -1,
     0,
   )
-  let pre = validation_trace_v1.ValidationMachineStateV1 {
+  let pre = terminal_fixture_pre_state(fixture, work_witness_cbor)
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: 41,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.CanonicalDecode,
+      41,
+      successor_work_witness_cbor,
+    ),
+  }
+  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: post,
+  }
+  // A *different* transaction body: the compact structure with one field's
+  // declared preimage length bumped. Under the counted scheme this fed
+  // `verify_midgard_transaction_field_chunk_v1`'s substitution controls; under §4
+  // it is the door's own binding that refuses it, and the two statements below
+  // say so without needing that retired reader.
+  let alternate_length_pre = terminal_fixture_alternate_length_pre_state(
+    fixture,
+  )
+  and {
+    derived_source_commitment == fixture.transaction_commitment,
+    // The published preimage is the committed one, for the slot this fixture
+    // names. This is the whole authentication the door performs, stated once.
+    native_tx_field_access_v1.field_commitment(fixture.field_preimage_cbor) == terminal_fixture_field_slot_commitment(
+      fixture,
+    ),
+    pre.work_root == fixture.expected_pre_work_root,
+    post.work_root == fixture.expected_post_work_root,
+    fixture.item_index + 1 == fixture.item_count,
+    list.length(terminal_fixture_items(fixture)) == fixture.item_count,
+    fixture.terminal_chunk_index + 1 == bounded_item_v1.chunk_count(
+      bytearray.length(terminal_item),
+    ),
+    // The terminal fold authenticates.
+    validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
+      pre,
+      transition,
+      inline_field_door(),
+      fixture.field_index,
+      fixture.item_index,
+      terminal_fixture_carriage(fixture),
+    ),
+    // Evidence naming a neighbouring slot does not authenticate this one: §4
+    // removed domain separation and the machine re-establishes it by checking the
+    // index against the control's.
+    !validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
+      pre,
+      transition,
+      inline_field_door(),
+      fixture.field_index + 1,
+      fixture.item_index,
+      terminal_fixture_carriage(fixture),
+    ),
+    // Nor does evidence naming a different item of the same field.
+    !validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
+      pre,
+      transition,
+      inline_field_door(),
+      fixture.field_index,
+      fixture.item_index - 1,
+      terminal_fixture_carriage(fixture),
+    ),
+    // A declared §5.1 length that disagrees with the authenticated preimage's own
+    // length renders `reject_field_preimage_size` rather than authenticating —
+    // one of the two `CanonicalDecode` verdicts the door leaves reachable (the
+    // other being `reject_invalid_field_type`; committed bytes that are not a
+    // §5.1 envelope at all are #596's).
+    validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
+      alternate_length_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: terminal_fixture_alternate_length_work_witness(
+          fixture,
+        ),
+        claimed_successor: exact_rejection_post(
+          alternate_length_pre,
+          #"455f4649454c445f505245494d4147455f53495a45",
+        ),
+      },
+      inline_field_door(),
+      fixture.field_index,
+      fixture.item_index,
+      terminal_fixture_carriage(fixture),
+    ),
+  }
+}
+
+fn terminal_fixture_pre_state(
+  fixture: MaximumFieldTerminalFixtureV1,
+  work_witness_cbor: ByteArray,
+) -> validation_trace_v1.ValidationMachineStateV1 {
+  validation_trace_v1.ValidationMachineStateV1 {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: fixture.transaction_id,
     transaction_id: fixture.transaction_id,
@@ -10371,273 +10808,192 @@ fn verify_maximum_field_terminal_fixture_v1(
     rejection_code_hash: zero,
     ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
   }
-  let post = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    program_counter: 41,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.CanonicalDecode,
-      41,
-      successor_witness_cbor,
-    ),
-  }
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
-    work_witness_cbor,
-    claimed_successor: post,
-  }
-  let compact = decode_native_tx_compact_v1(fixture.compact_cbor)
-  let compact_body = compact.body
-  let alternate_id_body = NativeTxBodyCompact {
-    ..compact_body,
-    fee: compact_body.fee + 1,
-  }
-  let alternate_id_compact = NativeTxCompact {
-    ..compact,
-    body: alternate_id_body,
-  }
-  let alternate_id_compact_cbor = encode_native_tx_compact_v1(
-    alternate_id_compact,
-  )
-  let alternate_transaction_id = native_tx_id_for_version(
-    native_tx_version_v1,
-    encode_native_tx_body_compact(alternate_id_body),
-  )
-  let alternate_id_commitment = native_tx_proof_commitment_v1(
-    alternate_id_compact_cbor,
-    fixture.witness_set_compact_cbor,
+}
+
+/// The same transaction with the *declared* §5.1 length of this fixture's field
+/// bumped by one, and the compact structures re-derived around it.
+///
+/// The two committed structures disagree, which §4's flat hash cannot collapse:
+/// `NativeTxFieldPreimageLengthsV1` is its own commitment, so a declared length
+/// that the authenticated preimage's own length contradicts is exactly the case
+/// `reject_field_preimage_size` exists for.
+fn terminal_fixture_alternate_length_cbor(
+  fixture: MaximumFieldTerminalFixtureV1,
+) -> ByteArray {
+  let lengths = decode_native_tx_field_preimage_lengths_v1(
     fixture.field_preimage_lengths_cbor,
   )
-  let witness_set = decode_native_tx_witness_set_compact(
-    fixture.witness_set_compact_cbor,
+  encode_native_tx_field_preimage_lengths_v1(
+    when fixture.field_index is {
+      0 ->
+        NativeTxFieldPreimageLengthsV1 {
+          ..lengths,
+          spend_inputs: lengths.spend_inputs + 1,
+        }
+      1 ->
+        NativeTxFieldPreimageLengthsV1 {
+          ..lengths,
+          reference_inputs: lengths.reference_inputs + 1,
+        }
+      2 ->
+        NativeTxFieldPreimageLengthsV1 {
+          ..lengths,
+          outputs: lengths.outputs + 1,
+        }
+      3 ->
+        NativeTxFieldPreimageLengthsV1 {
+          ..lengths,
+          required_observers: lengths.required_observers + 1,
+        }
+      4 ->
+        NativeTxFieldPreimageLengthsV1 {
+          ..lengths,
+          required_signers: lengths.required_signers + 1,
+        }
+      _ -> NativeTxFieldPreimageLengthsV1 { ..lengths, mint: lengths.mint + 1 }
+    },
   )
-  let alternate_witness_set = NativeTxWitnessSetCompact {
-    ..witness_set,
-    addr_tx_wits_hash: h_b,
-  }
-  let alternate_witness_set_cbor = encode_native_tx_witness_set_compact(
-    alternate_witness_set,
-  )
-  let alternate_witness_compact = NativeTxCompact {
-    ..compact,
-    witness_set_hash: blake2b_256(alternate_witness_set_cbor),
-  }
-  let alternate_witness_compact_cbor = encode_native_tx_compact_v1(
-    alternate_witness_compact,
-  )
-  let alternate_witness_commitment = native_tx_proof_commitment_v1(
-    alternate_witness_compact_cbor,
-    alternate_witness_set_cbor,
-    fixture.field_preimage_lengths_cbor,
-  )
-  let field_lengths = decode_native_tx_field_preimage_lengths_v1(
-    fixture.field_preimage_lengths_cbor,
-  )
-  let alternate_field_lengths = when fixture.field_index is {
-    0 ->
-      NativeTxFieldPreimageLengthsV1 {
-        ..field_lengths,
-        spend_inputs: field_lengths.spend_inputs + 1,
-      }
-    1 ->
-      NativeTxFieldPreimageLengthsV1 {
-        ..field_lengths,
-        reference_inputs: field_lengths.reference_inputs + 1,
-      }
-    2 ->
-      NativeTxFieldPreimageLengthsV1 {
-        ..field_lengths,
-        outputs: field_lengths.outputs + 1,
-      }
-    3 ->
-      NativeTxFieldPreimageLengthsV1 {
-        ..field_lengths,
-        required_observers: field_lengths.required_observers + 1,
-      }
-    4 ->
-      NativeTxFieldPreimageLengthsV1 {
-        ..field_lengths,
-        required_signers: field_lengths.required_signers + 1,
-      }
-    5 ->
-      NativeTxFieldPreimageLengthsV1 {
-        ..field_lengths,
-        mint: field_lengths.mint + 1,
-      }
-    _ -> field_lengths
-  }
-  let alternate_field_lengths_cbor = encode_native_tx_field_preimage_lengths_v1(
-    alternate_field_lengths,
-  )
-  let alternate_length_commitment = native_tx_proof_commitment_v1(
+}
+
+fn terminal_fixture_alternate_length_work_witness(
+  fixture: MaximumFieldTerminalFixtureV1,
+) -> ByteArray {
+  validation_machine_v1.encode_transaction_field_scan_witness(
     fixture.compact_cbor,
     fixture.witness_set_compact_cbor,
-    alternate_field_lengths_cbor,
-  )
-  let alternate_length_work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
-    fixture.compact_cbor,
-    fixture.witness_set_compact_cbor,
-    alternate_field_lengths_cbor,
+    terminal_fixture_alternate_length_cbor(fixture),
     validation_context_cbor,
     fixture.field_index,
     fixture.item_index,
-    fixture.chunk_proof.chunk_index,
+    fixture.terminal_chunk_index,
     fixture.item_count,
     fixture.encoded_length_before_item,
   )
-  let alternate_length_pre = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    transaction_commitment: alternate_length_commitment,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.CanonicalDecode,
-      pre.program_counter,
-      alternate_length_work_witness_cbor,
-    ),
-  }
-  let field_size_rejection = #"455f4649454c445f505245494d4147455f53495a45"
-  let alternate_length_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
-    work_witness_cbor: alternate_length_work_witness_cbor,
-    claimed_successor: exact_rejection_post(
-      alternate_length_pre,
-      field_size_rejection,
-    ),
-  }
+}
 
-  and {
-    derived_source_commitment == fixture.transaction_commitment,
-    pre.work_root == fixture.expected_pre_work_root,
-    post.work_root == fixture.expected_post_work_root,
-    fixture.collection_proof.item_index + 1 == fixture.item_count,
-    fixture.chunk_proof.chunk_index + 1 == bounded_item_v1.chunk_count(
-      fixture.chunk_proof.total_length,
-    ),
-    validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
-      pre,
-      transition,
-      fixture.collection_proof,
-      fixture.chunk_proof,
-    ),
-    verify_midgard_transaction_field_chunk_v1(
-      fixture.transaction_id,
-      fixture.transaction_commitment,
+fn terminal_fixture_alternate_length_pre_state(
+  fixture: MaximumFieldTerminalFixtureV1,
+) -> validation_trace_v1.ValidationMachineStateV1 {
+  let alternate_length_cbor = terminal_fixture_alternate_length_cbor(fixture)
+  let work_witness_cbor = terminal_fixture_alternate_length_work_witness(
+    fixture,
+  )
+  validation_trace_v1.ValidationMachineStateV1 {
+    ..terminal_fixture_pre_state(fixture, work_witness_cbor),
+    transaction_commitment: native_tx_proof_commitment_v1(
       fixture.compact_cbor,
       fixture.witness_set_compact_cbor,
-      fixture.field_preimage_lengths_cbor,
-      fixture.collection_proof,
-      fixture.chunk_proof,
+      alternate_length_cbor,
     ),
-    alternate_transaction_id != fixture.transaction_id,
-    verify_midgard_transaction_field_chunk_v1(
-      alternate_transaction_id,
-      alternate_id_commitment,
-      alternate_id_compact_cbor,
-      fixture.witness_set_compact_cbor,
-      fixture.field_preimage_lengths_cbor,
-      fixture.collection_proof,
-      fixture.chunk_proof,
-    ),
-    !verify_midgard_transaction_field_chunk_v1(
-      alternate_transaction_id,
-      fixture.transaction_commitment,
-      alternate_id_compact_cbor,
-      fixture.witness_set_compact_cbor,
-      fixture.field_preimage_lengths_cbor,
-      fixture.collection_proof,
-      fixture.chunk_proof,
-    ),
-    alternate_witness_set_cbor != fixture.witness_set_compact_cbor,
-    verify_midgard_transaction_field_chunk_v1(
-      fixture.transaction_id,
-      alternate_witness_commitment,
-      alternate_witness_compact_cbor,
-      alternate_witness_set_cbor,
-      fixture.field_preimage_lengths_cbor,
-      fixture.collection_proof,
-      fixture.chunk_proof,
-    ),
-    !verify_midgard_transaction_field_chunk_v1(
-      fixture.transaction_id,
-      fixture.transaction_commitment,
-      alternate_witness_compact_cbor,
-      alternate_witness_set_cbor,
-      fixture.field_preimage_lengths_cbor,
-      fixture.collection_proof,
-      fixture.chunk_proof,
-    ),
-    validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
-      alternate_length_pre,
-      alternate_length_transition,
-      fixture.collection_proof,
-      fixture.chunk_proof,
-    ),
+    prior_ledger_root: fixture.transaction_commitment,
   }
 }
 
-// Derived by the genuine Cardano boundary fixture in
-// demo/midgard-validation/tests/ordered-collection-spend-inputs-boundary-v1.test.ts
-// (accepted 434 spend inputs at 16,379 signed bytes; adjacent 435 at 16,417).
 fn maximum_spend_input_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
-  let collection_proof = bounded_collection_v1.ItemProofV1 {
-    version: bounded_collection_v1.version,
-    field_index: 0,
-    item_count: 434,
-    item_index: 433,
-    item_length: 38,
-    item_commitment: #"dba9086489131c8444128fddbf2a864d16f628c13cac5b157d35b2bffeb8f12c",
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 1,
-        hash: #"dd12647adc66bb3ef04f3e994637f7057ca5c4b96b7a58cde6e4f925a34c4d83",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 4,
-        hash: #"8539f11555b31aa517cb051cdf1c6849258e396576dc70474c16bd92b53efa01",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 5,
-        hash: #"e0c3b95882dc7bdf380e0aa80c42b4a02cb52e77e4627db5e9a0399102039c25",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 7,
-        hash: #"548fabcfbe39b4adee5ef017869a04015edfbc9fe2a2c8489a86a8059e956515",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 8,
-        hash: #"e9af1286950598c5c2fc6ce275c39ce11a5dada1c59051ea51d6a417f4b2cf82",
-      },
-    ],
-    siblings: [
-      #"7857404d8ac012dc3b41cc157772693f62616b0fecb0714d7526254f4850a8f0",
-    ],
-  }
-  let chunk_proof = bounded_item_v1.ChunkProofV1 {
-    version: bounded_item_v1.version,
-    field_index: 0,
-    item_index: 433,
-    total_length: 38,
-    chunk_index: 0,
-    chunk: #"82582000000000000000000000000000000000000000000000000000000000000000001901b1",
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: #"cb3168562b9c7affbe10efaa7474882ba25cc037186ac9075b2106d9f68f8d2e",
-      },
-    ],
-    siblings: [],
-  }
-
   MaximumFieldTerminalFixtureV1 {
-    transaction_id: #"92636c095141a35709f9a20f12144429c82eda509b1149322ac0a491a5ded569",
-    transaction_commitment: #"86d5978e0fe722a3ef10491636173ba8cbae538bc1066b54f5c7d45fa607daa5",
-    compact_cbor: #"84018c5820140e551a84f0656f98995ea12cb85e5b18ee9a07b240e61d248657dd249e27aa5820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f58204b9a64944d619f32cd8c14e88f53c67857b717dd0686b1a20838c8e815308dce1a000d5e1920205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820ecaa2a4ca3d5110e0d124e3b3da2012a20c326fd6bdc25c1b71e67e9b9a04a9e00",
-    witness_set_compact_cbor: #"835820bdb04d390efaca1a689981865803b28a488f2c518ce905626962c7a7cebb7be25820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-    field_preimage_lengths_cbor: #"891943d301183001010101186801",
+    transaction_id: maximum_spend_input_terminal_transaction_id,
+    transaction_commitment: maximum_spend_input_terminal_transaction_commitment,
+    compact_cbor: maximum_spend_input_terminal_compact_cbor,
+    witness_set_compact_cbor: maximum_spend_input_terminal_witness_set_compact_cbor,
+    field_preimage_lengths_cbor: maximum_spend_input_terminal_field_preimage_lengths_cbor,
+    field_preimage_cbor: maximum_spend_input_terminal_field_preimage_cbor,
     field_index: 0,
-    item_count: 434,
-    item_index: 433,
-    encoded_length_before_item: 17323,
-    expected_pre_work_root: #"79c210c57a64d1c25b4bc072c0e10a93e2a2c9c32c644adc6bdf0660d0db469b",
-    expected_post_work_root: #"f037bbea23f5b7d4704cad888c8cd2f6b31b6536a553917868ff15e74163519e",
-    collection_proof,
-    chunk_proof,
+    item_count: maximum_spend_input_terminal_item_count,
+    item_index: maximum_spend_input_terminal_item_index,
+    terminal_chunk_index: maximum_spend_input_terminal_terminal_chunk_index,
+    encoded_length_before_item: maximum_spend_input_terminal_encoded_length_before_item,
+    expected_pre_work_root: maximum_spend_input_terminal_pre_work_root,
+    expected_post_work_root: maximum_spend_input_terminal_post_work_root,
+  }
+}
+
+fn maximum_reference_input_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
+  MaximumFieldTerminalFixtureV1 {
+    transaction_id: maximum_reference_input_terminal_transaction_id,
+    transaction_commitment: maximum_reference_input_terminal_transaction_commitment,
+    compact_cbor: maximum_reference_input_terminal_compact_cbor,
+    witness_set_compact_cbor: maximum_reference_input_terminal_witness_set_compact_cbor,
+    field_preimage_lengths_cbor: maximum_reference_input_terminal_field_preimage_lengths_cbor,
+    field_preimage_cbor: maximum_reference_input_terminal_field_preimage_cbor,
+    field_index: 1,
+    item_count: maximum_reference_input_terminal_item_count,
+    item_index: maximum_reference_input_terminal_item_index,
+    terminal_chunk_index: maximum_reference_input_terminal_terminal_chunk_index,
+    encoded_length_before_item: maximum_reference_input_terminal_encoded_length_before_item,
+    expected_pre_work_root: maximum_reference_input_terminal_pre_work_root,
+    expected_post_work_root: maximum_reference_input_terminal_post_work_root,
+  }
+}
+
+fn maximum_observer_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
+  MaximumFieldTerminalFixtureV1 {
+    transaction_id: maximum_observer_terminal_transaction_id,
+    transaction_commitment: maximum_observer_terminal_transaction_commitment,
+    compact_cbor: maximum_observer_terminal_compact_cbor,
+    witness_set_compact_cbor: maximum_observer_terminal_witness_set_compact_cbor,
+    field_preimage_lengths_cbor: maximum_observer_terminal_field_preimage_lengths_cbor,
+    field_preimage_cbor: maximum_observer_terminal_field_preimage_cbor,
+    field_index: 3,
+    item_count: maximum_observer_terminal_item_count,
+    item_index: maximum_observer_terminal_item_index,
+    terminal_chunk_index: maximum_observer_terminal_terminal_chunk_index,
+    encoded_length_before_item: maximum_observer_terminal_encoded_length_before_item,
+    expected_pre_work_root: maximum_observer_terminal_pre_work_root,
+    expected_post_work_root: maximum_observer_terminal_post_work_root,
+  }
+}
+
+fn maximum_output_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
+  MaximumFieldTerminalFixtureV1 {
+    transaction_id: maximum_output_terminal_transaction_id,
+    transaction_commitment: maximum_output_terminal_transaction_commitment,
+    compact_cbor: maximum_output_terminal_compact_cbor,
+    witness_set_compact_cbor: maximum_output_terminal_witness_set_compact_cbor,
+    field_preimage_lengths_cbor: maximum_output_terminal_field_preimage_lengths_cbor,
+    field_preimage_cbor: maximum_output_terminal_field_preimage_cbor,
+    field_index: 2,
+    item_count: maximum_output_terminal_item_count,
+    item_index: maximum_output_terminal_item_index,
+    terminal_chunk_index: maximum_output_terminal_terminal_chunk_index,
+    encoded_length_before_item: maximum_output_terminal_encoded_length_before_item,
+    expected_pre_work_root: maximum_output_terminal_pre_work_root,
+    expected_post_work_root: maximum_output_terminal_post_work_root,
+  }
+}
+
+fn maximum_required_signer_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
+  MaximumFieldTerminalFixtureV1 {
+    transaction_id: maximum_required_signer_terminal_transaction_id,
+    transaction_commitment: maximum_required_signer_terminal_transaction_commitment,
+    compact_cbor: maximum_required_signer_terminal_compact_cbor,
+    witness_set_compact_cbor: maximum_required_signer_terminal_witness_set_compact_cbor,
+    field_preimage_lengths_cbor: maximum_required_signer_terminal_field_preimage_lengths_cbor,
+    field_preimage_cbor: maximum_required_signer_terminal_field_preimage_cbor,
+    field_index: 4,
+    item_count: maximum_required_signer_terminal_item_count,
+    item_index: maximum_required_signer_terminal_item_index,
+    terminal_chunk_index: maximum_required_signer_terminal_terminal_chunk_index,
+    encoded_length_before_item: maximum_required_signer_terminal_encoded_length_before_item,
+    expected_pre_work_root: maximum_required_signer_terminal_pre_work_root,
+    expected_post_work_root: maximum_required_signer_terminal_post_work_root,
+  }
+}
+
+fn maximum_mint_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
+  MaximumFieldTerminalFixtureV1 {
+    transaction_id: maximum_mint_terminal_transaction_id,
+    transaction_commitment: maximum_mint_terminal_transaction_commitment,
+    compact_cbor: maximum_mint_terminal_compact_cbor,
+    witness_set_compact_cbor: maximum_mint_terminal_witness_set_compact_cbor,
+    field_preimage_lengths_cbor: maximum_mint_terminal_field_preimage_lengths_cbor,
+    field_preimage_cbor: maximum_mint_terminal_field_preimage_cbor,
+    field_index: 5,
+    item_count: maximum_mint_terminal_item_count,
+    item_index: maximum_mint_terminal_item_index,
+    terminal_chunk_index: maximum_mint_terminal_terminal_chunk_index,
+    encoded_length_before_item: maximum_mint_terminal_encoded_length_before_item,
+    expected_pre_work_root: maximum_mint_terminal_pre_work_root,
+    expected_post_work_root: maximum_mint_terminal_post_work_root,
   }
 }
 
@@ -10647,148 +11003,10 @@ test maximum_spend_input_field_terminal_matches_typescript(
   verify_maximum_field_terminal_fixture_v1(fixture)
 }
 
-// Derived by the genuine Cardano boundary fixture in
-// demo/midgard-validation/tests/ordered-collection-reference-inputs-boundary-v1.test.ts
-// (accepted 433 reference inputs at 16,380 signed bytes; adjacent 434 at
-// 16,418), sharing one spend input disjoint from every reference input.
-fn maximum_reference_input_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
-  let collection_proof = bounded_collection_v1.ItemProofV1 {
-    version: bounded_collection_v1.version,
-    field_index: 1,
-    item_count: 433,
-    item_index: 432,
-    item_length: 38,
-    item_commitment: #"36b4dd3bf311b81d7f82428358cefdd48f2a8a896b105454ac98d24120580a51",
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: #"f25dce7b75dc95fac3a66ae5014c50b4e3aa3ae235aa70f5cf03d59888aa490d",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 4,
-        hash: #"b9dfbe97f48da08a03316da8df54bc031cbbc6acfaf038ee04cf0e33d8ec12f6",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 5,
-        hash: #"9328ea0ba44c359f4a243f6573f819a44ed4d70b086a61d0f5aebdf7261bd857",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 7,
-        hash: #"266cda5f3304f6975845924b5ceb99aeb2f7379d619bac20f87ea4dd5049d6a5",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 8,
-        hash: #"bd691df9f8528fc55076ff58c1bd281b20d046dd77d43887c1d53d4d87bd9319",
-      },
-    ],
-    siblings: [],
-  }
-  let chunk_proof = bounded_item_v1.ChunkProofV1 {
-    version: bounded_item_v1.version,
-    field_index: 1,
-    item_index: 432,
-    total_length: 38,
-    chunk_index: 0,
-    chunk: #"82582000000000000000000000000000000000000000000000000000000000000000001901b1",
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: #"4a6e597090be615a74af8ce771e0d4db02d004da070c991b1dfea5f355a87d78",
-      },
-    ],
-    siblings: [],
-  }
-
-  MaximumFieldTerminalFixtureV1 {
-    transaction_id: #"866ba088f72c1d4723b0973c3858ff78b47d2c3f9980837787220cf8d2fd4ea0",
-    transaction_commitment: #"b95870f2da2aa6b42bdd05b7f2ff9050a742385d88e5cb7abfe1729a91da9fb5",
-    compact_cbor: #"84018c58204dc5462fa75f970091526b50e11ff2161e020020f791756d77ed6cd8c45d111c58202465b8b61bc8a2181406dfb86f69715ede93352d8473ce4f277ea70a80268f4958204ddc79a7ae5ce6f67c3282833863d15ffe34a3dcad707bb6b921a31bf9c77b3b1a000d5e4520205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820d79bc2560eef235bd2a538c7f6110513f9bca34ff66948b14aab16b2c21f5ec600",
-    witness_set_compact_cbor: #"83582058a2b8a985737738bebe056e227d4b84b4a97c9534a63afd2b10925d2e28b8935820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-    field_preimage_lengths_cbor: #"8918291943ab182c01010101186801",
-    field_index: 1,
-    item_count: 433,
-    item_index: 432,
-    encoded_length_before_item: 17283,
-    expected_pre_work_root: #"12d99d756a8653183937c917a2339a8ed084d5c09eba8d9b7aac88ccc98336a6",
-    expected_post_work_root: #"d14f9ac3915ff3c9b2c91c4f2aeb87ac40e0aa6afce834b52150b4768be978e5",
-    collection_proof,
-    chunk_proof,
-  }
-}
-
 test maximum_reference_input_field_terminal_matches_typescript(
   fixture via fuzz.constant(maximum_reference_input_field_terminal_fixture_v1()),
 ) {
   verify_maximum_field_terminal_fixture_v1(fixture)
-}
-
-// Derived by the genuine Cardano boundary fixture in
-// demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary-v1.test.ts
-// (accepted 224 observers at 16,338 signed bytes; adjacent 225 at 16,410). This
-// is the same signed transaction replayed by
-// cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree, so
-// the two selectors share one exact source.
-fn maximum_observer_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
-  let collection_proof = bounded_collection_v1.ItemProofV1 {
-    version: bounded_collection_v1.version,
-    field_index: 3,
-    item_count: 224,
-    item_index: 223,
-    item_length: 28,
-    item_commitment: #"eea077178a4c1efc0237062dd79d0e88e25f226a75c50e2941386c551c8dbdf1",
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 5,
-        hash: #"b3d0869ae6f779e2a3bd2657550bad972479f7bd2bf30525d7d6ea1f6e273219",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 6,
-        hash: #"8b8872929417945fc60a184c86b36e6cb8b3f79f063a2b1bd74276e3e6dd4561",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 7,
-        hash: #"4f23682ce5aac57bdd356897e085c19da0956f3c43a4d0a590e06931693ec7aa",
-      },
-    ],
-    siblings: [
-      #"37a247add2ab2bb8dd1ca90bc7340ccbd288795241423781485f83f1d2404441",
-      #"12cbd11747b0ee2b75df2dbf849eb190bfa2ad508af765c0ef769438b6b697e4",
-      #"761dcb1c5ea56450765f089f956ac800528d0d03b602a5f2ebdbcfdc391aeb92",
-      #"38c8a30b4b417afa1434d182e99e1c5f595d57dfd0643c0e49e8c1975d60884c",
-      #"637359bdbf37e81101c411bd6f8f72efd3bf2983764dfe73da65ebc09e999582",
-    ],
-  }
-  let chunk_proof = bounded_item_v1.ChunkProofV1 {
-    version: bounded_item_v1.version,
-    field_index: 3,
-    item_index: 223,
-    total_length: 28,
-    chunk_index: 0,
-    chunk: #"ffab1dd64f82b6991818c1ecc5047d52ce5d00f6fdbc5023e2980167",
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: #"770f825142ee9790250392a5b0310c8e2a8e833eaa6c62ca6f7223b5ed9e2288",
-      },
-    ],
-    siblings: [],
-  }
-
-  MaximumFieldTerminalFixtureV1 {
-    transaction_id: #"dea55d4e6a14e025bdce718e1c21ebeeea77723058cabd65d9bbfed76af516af",
-    transaction_commitment: #"8da6f4d07d4cc3728c53bfe50977d38163a24b7f9e03738ec36bc1375bb21a1f",
-    compact_cbor: #"84018c58204dc5462fa75f970091526b50e11ff2161e020020f791756d77ed6cd8c45d111c5820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820598bbaa08e9cc6dc4d9634b23089ead14091f45c5e1165dcf8a6288be95a1b001a000d570d201927105820e127f848e4bda8c1e9b42ddf4c89dfbd1479301dd90551baeff900fdfcec2e975820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff58205c66a9cb2310e13ca74d861c7d29f5b996030ad755920f1dfc2c325ec3cb015d00",
-    witness_set_compact_cbor: #"8358209c3c9f949b41759fc4d9ea024e36e2aa7659f3d5dbe41611256f4dfc80a9a62d5820ad4dcd868783831d5bd321d25528c3295f55b1ea6c8d61d85c3216be9a73ea3d5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-    field_preimage_lengths_cbor: #"89182901182c191a420101192682186801",
-    field_index: 3,
-    item_count: 224,
-    item_index: 223,
-    encoded_length_before_item: 6692,
-    expected_pre_work_root: #"fe92e3fb9e857d492cdf9a5540313e388c71a0b17af5190bf988ed5bcefb0b02",
-    expected_post_work_root: #"2f4cd74cdbb1cf7c719f50fd4f2be0c49c82fcf05757651e09b9134f4ad9cd0a",
-    collection_proof,
-    chunk_proof,
-  }
 }
 
 test maximum_observer_field_terminal_matches_typescript(
@@ -10797,149 +11015,10 @@ test maximum_observer_field_terminal_matches_typescript(
   verify_maximum_field_terminal_fixture_v1(fixture)
 }
 
-fn maximum_output_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
-  let collection_proof = bounded_collection_v1.ItemProofV1 {
-    version: bounded_collection_v1.version,
-    field_index: 2,
-    item_count: 438,
-    item_index: 437,
-    item_length: 45,
-    item_commitment: #"0597306fb7c06665c796780ac8c2c3dff11acb9d8081451b0b6841225b66502e",
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 1,
-        hash: #"603f5cf5dfedbc32a9328b2dfe2229daebd97e00b6756614b6899268d5747194",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 2,
-        hash: #"e95bebbf7cce121543e7466c88586ea885fe8c0c99de76cc6cc48bae690c9d43",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 4,
-        hash: #"e753575ac7a8c06a27eef2344a3285467598b0c729a765ffd3e32611c0716c96",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 5,
-        hash: #"4d9b3fd0b424101091fc3ab48971affc2e4175bb453e1689eafee7536c927e8b",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 7,
-        hash: #"584997780ccd6abd1945725ef648852655a35c32ceb034331a238c9553e7b33e",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 8,
-        hash: #"a44f00d0abbdb4e8898c53b61abcd9843747bd08a27b6cb7eb83997649b5e109",
-      },
-    ],
-    siblings: [
-      #"471ddd2fe200fcacca47dfcab169d7a4a18309ba64e17771302b51785dc68b78",
-    ],
-  }
-  let chunk_proof = bounded_item_v1.ChunkProofV1 {
-    version: bounded_item_v1.version,
-    field_index: 2,
-    item_index: 437,
-    total_length: 45,
-    chunk_index: 0,
-    chunk: #"a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821b000000091c0a049ba0",
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: #"877b968e1a24a48a08d35b9abed8cd49537127d4dd1fc1adb183d3ba2ceddedf",
-      },
-    ],
-    siblings: [],
-  }
-
-  MaximumFieldTerminalFixtureV1 {
-    transaction_id: #"1f0633f496289b3e041e18e7da64db345e4ae20d8754d14c7e3ec189ff561353",
-    transaction_commitment: #"7b63351fbf58b7e19205a04f2e4796dac6d2dd66019729ac3e6314a7e4de761b",
-    compact_cbor: #"84018c58204dc5462fa75f970091526b50e11ff2161e020020f791756d77ed6cd8c45d111c5820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820171d600ea53700101a59de7d6eb4b7c321fcc68f0e73c7952b0b18a266128e501a000d5ce520205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff582017cc85b1ee02772972e50a3306e76f232174a2ad9c1e108f257a1f0204b4455800",
-    witness_set_compact_cbor: #"835820f2556fc5ee4526e1b69dd8bcf77c5dbc7cab7187bbaec526c0d69004ecc8c0d95820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-    field_preimage_lengths_cbor: #"8918290119499901010101186801",
-    field_index: 2,
-    item_count: 438,
-    item_index: 437,
-    encoded_length_before_item: 18794,
-    expected_pre_work_root: #"91fa16b286979293e843a3666f9546400bce0d92a4f474fe5704d9711e9c7cb4",
-    expected_post_work_root: #"465a228f0fb939b33bb7b488921aab9d6acbade749fc6c6587597302e98917cc",
-    collection_proof,
-    chunk_proof,
-  }
-}
-
 test maximum_output_field_terminal_matches_typescript(
   fixture via fuzz.constant(maximum_output_field_terminal_fixture_v1()),
 ) {
   verify_maximum_field_terminal_fixture_v1(fixture)
-}
-
-fn maximum_required_signer_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
-  let collection_proof = bounded_collection_v1.ItemProofV1 {
-    version: bounded_collection_v1.version,
-    field_index: 4,
-    item_count: 124,
-    item_index: 123,
-    item_length: 28,
-    item_commitment: #"feb8f7de321dc04604f1f371dbb874ae0937cb89cbc9b3725f65b394f66ba84c",
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 2,
-        hash: #"e5016ee8c62694b78e233d759c1f54ecde200985d94499af5f2500a3f101b57f",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 3,
-        hash: #"1bca74d8d5ff0a6459d8244e030e1b389887d60bc07bfad14910aa7a785cb39b",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 4,
-        hash: #"fe5959d59591a8e3e3f8b26a17fd836db4581e8f12cd3e35cce3f7dd1e9dfe49",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 5,
-        hash: #"6962c3759551b9b2ddad0e534754ac08b55ccfd284d8655fa6883138a8fcf418",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 6,
-        hash: #"680d5c5c242fc8a1d04d9ab55fa448e1bb43fecb5216067c636794c56c32dd65",
-      },
-    ],
-    siblings: [
-      #"599aac19a5434816ee7892b6f6e6874b812b77f395d7a4c5bc26faa0f4ed3c45",
-      #"e0fb7274ace519849848f853a11596545a2f0fa28045a6e79daca66443e1d91a",
-    ],
-  }
-  let chunk_proof = bounded_item_v1.ChunkProofV1 {
-    version: bounded_item_v1.version,
-    field_index: 4,
-    item_index: 123,
-    total_length: 28,
-    chunk_index: 0,
-    chunk: #"38abf94805d076d7253d8386794096ec3d48fe233bc45d5edf97ab19",
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: #"a413f53279be814fc18bb395723dbf929bddfb04c628af191ff9adebc0fa282a",
-      },
-    ],
-    siblings: [],
-  }
-
-  MaximumFieldTerminalFixtureV1 {
-    transaction_id: #"9ffc4b4d44c94361301f605b85ddf0ecd917e10aaeda17181b99d89c780c54ad",
-    transaction_commitment: #"3c0f49ab486f675cfca3869e7e4f356c90c9de775e202ad874e90465d77bde68",
-    compact_cbor: #"84018c58204dc5462fa75f970091526b50e11ff2161e020020f791756d77ed6cd8c45d111c5820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f582010b1e0f0eedf2fd59f6e885d21a7291fbeeaa435b794343c0d44c6222886d53f1a000d594920205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820df206ad9e3c76e42f59400a5bf8ffb6d74ef4d4c82dad8b11b36df6de3db39325820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820a41a40b9671b9e0bf7705ea9fe39e4ff4162d25391a7837f17ee3c48aaf446b700",
-    witness_set_compact_cbor: #"8358206368be82071b67667a46025edba8a97b1311d8f561553682bd05d001c1d4492f5820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-    field_preimage_lengths_cbor: #"89182901183001190e8a01011931e601",
-    field_index: 4,
-    item_count: 124,
-    item_index: 123,
-    encoded_length_before_item: 3692,
-    expected_pre_work_root: #"caa12740b3c15ded3bccb9ef49a9377a78a14e27894d5c1cb59cc673bf6bb0b8",
-    expected_post_work_root: #"92a3a4986cd45bf186afc789ecb81f0c1f6f1469e060edcd730f716a5d713307",
-    collection_proof,
-    chunk_proof,
-  }
 }
 
 test maximum_required_signer_field_terminal_matches_typescript(
@@ -11004,65 +11083,35 @@ test cek_context_signer_item_uses_authenticated_signer_frontier() {
         siblings: [],
       },
     },
+    inline_field_door(),
   )
 }
 
 test cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree() {
   let base = empty_v1_transaction()
-  let transaction_id = #"dea55d4e6a14e025bdce718e1c21ebeeea77723058cabd65d9bbfed76af516af"
-  let transaction_commitment = #"8da6f4d07d4cc3728c53bfe50977d38163a24b7f9e03738ec36bc1375bb21a1f"
+  // The same signed transaction the field-3 terminal fixture pins, through the
+  // same generated constants — one exact source for both selectors, rather than
+  // two hand-mirrored copies that could drift apart (#590).
+  let transaction_id = maximum_observer_terminal_transaction_id
+  let transaction_commitment = maximum_observer_terminal_transaction_commitment
   let native_control = validation_machine_v1.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(base),
-    compact_cbor: #"84018c58204dc5462fa75f970091526b50e11ff2161e020020f791756d77ed6cd8c45d111c5820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820598bbaa08e9cc6dc4d9634b23089ead14091f45c5e1165dcf8a6288be95a1b001a000d570d201927105820e127f848e4bda8c1e9b42ddf4c89dfbd1479301dd90551baeff900fdfcec2e975820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff58205c66a9cb2310e13ca74d861c7d29f5b996030ad755920f1dfc2c325ec3cb015d00",
-    witness_set_compact_cbor: #"8358209c3c9f949b41759fc4d9ea024e36e2aa7659f3d5dbe41611256f4dfc80a9a62d5820ad4dcd868783831d5bd321d25528c3295f55b1ea6c8d61d85c3216be9a73ea3d5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-    field_preimage_lengths_cbor: #"89182901182c191a420101192682186801",
+    compact_cbor: maximum_observer_terminal_compact_cbor,
+    witness_set_compact_cbor: maximum_observer_terminal_witness_set_compact_cbor,
+    field_preimage_lengths_cbor: maximum_observer_terminal_field_preimage_lengths_cbor,
   }
   let context_control = empty_cek_context_control_fixture(5)
-  let observer_hash = #"ffab1dd64f82b6991818c1ecc5047d52ce5d00f6fdbc5023e2980167"
-  let collection_proof = bounded_collection_v1.ItemProofV1 {
-    version: bounded_collection_v1.version,
-    field_index: 3,
-    item_count: 224,
-    item_index: 223,
-    item_length: 28,
-    item_commitment: #"eea077178a4c1efc0237062dd79d0e88e25f226a75c50e2941386c551c8dbdf1",
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 5,
-        hash: #"b3d0869ae6f779e2a3bd2657550bad972479f7bd2bf30525d7d6ea1f6e273219",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 6,
-        hash: #"8b8872929417945fc60a184c86b36e6cb8b3f79f063a2b1bd74276e3e6dd4561",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 7,
-        hash: #"4f23682ce5aac57bdd356897e085c19da0956f3c43a4d0a590e06931693ec7aa",
-      },
-    ],
-    siblings: [
-      #"37a247add2ab2bb8dd1ca90bc7340ccbd288795241423781485f83f1d2404441",
-      #"12cbd11747b0ee2b75df2dbf849eb190bfa2ad508af765c0ef769438b6b697e4",
-      #"761dcb1c5ea56450765f089f956ac800528d0d03b602a5f2ebdbcfdc391aeb92",
-      #"38c8a30b4b417afa1434d182e99e1c5f595d57dfd0643c0e49e8c1975d60884c",
-      #"637359bdbf37e81101c411bd6f8f72efd3bf2983764dfe73da65ebc09e999582",
-    ],
+  let observers_carriage = native_tx_field_access_v1.Inline {
+    preimage: maximum_observer_terminal_field_preimage_cbor,
   }
-  let chunk_proof = bounded_item_v1.ChunkProofV1 {
-    version: bounded_item_v1.version,
-    field_index: 3,
-    item_index: 223,
-    total_length: 28,
-    chunk_index: 0,
-    chunk: observer_hash,
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: #"770f825142ee9790250392a5b0310c8e2a8e833eaa6c62ca6f7223b5ed9e2288",
-      },
-    ],
-    siblings: [],
-  }
+  // The CEK observer list is built back to front, so the first item step reads
+  // the *last* observer. Derived from the authenticated preimage rather than
+  // pinned: under §8 the item's bytes are not a prover claim any more.
+  expect Some(observer_hash) = list.last(
+    decode_midgard_tx_byte_list_preimage_cbor(
+      maximum_observer_terminal_field_preimage_cbor,
+    ),
+  )
   let first_items = validation_machine_v1.prepend_cek_observer_item_v1(
     observer_hash,
     False,
@@ -11112,8 +11161,9 @@ test cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree() {
       context_control,
       first_control,
       validation_machine_v1.TransactionFieldChunkWitness {
-        collection_proof,
-        chunk_proof,
+        field_index: 3,
+        item_index: 223,
+        carriage: observers_carriage,
       },
       45,
     ),
@@ -11132,12 +11182,15 @@ test cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree() {
       native_control,
       context_control,
       mismatched_count_control,
+      // The count is no longer a prover field: it is §5.2's authenticated header
+      // of the very bytes the door hashed. What a prover can still claim wrongly
+      // is the successor's `observer_count`, and `mismatched_count_control` does
+      // exactly that against the honest carriage — the same 225-against-224
+      // overstatement the retired `ItemProofV1.item_count: 225` expressed.
       validation_machine_v1.TransactionFieldChunkWitness {
-        collection_proof: bounded_collection_v1.ItemProofV1 {
-          ..collection_proof,
-          item_count: 225,
-        },
-        chunk_proof,
+        field_index: 3,
+        item_index: 223,
+        carriage: observers_carriage,
       },
       47,
     ),
@@ -11157,10 +11210,7 @@ test cek_context_observer_empty_field_has_exact_no_auxiliary_path() {
     stage: 6,
     observer_summary,
   }
-  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    3,
-    h_28_a,
-  )
+  let carriage = inline_field_carriage([h_28_a])
   and {
     verify_cek_context_transition_fixture(
       tx,
@@ -11175,15 +11225,37 @@ test cek_context_observer_empty_field_has_exact_no_auxiliary_path() {
       native_control,
       context_control,
       successor_control,
+      // An empty field-3 slot admits no item step at all: the auxiliary must be
+      // `NoAuxiliaryWitness`, so any carriage — even one that is a well-formed
+      // §5.1 preimage — is refused before the door is consulted.
       validation_machine_v1.TransactionFieldChunkWitness {
-        collection_proof,
-        chunk_proof,
+        field_index: 3,
+        item_index: 0,
+        carriage,
       },
       49,
     ),
   }
 }
 
+/// The `CekContext` observer step's negative space, after §8's door left it
+/// with only three prover-controlled inputs.
+///
+/// **What retired here, and what it became.** Eight rows used to perturb a
+/// counted `ItemProofV1`: its `item_index`, its `field_index`, its `item_count`,
+/// its `item_length`, and the paired `ChunkProofV1.total_length`. Under §8 the
+/// item's bytes, its length and the field's §5.2 count are all *derived* from a
+/// preimage the door hashed once against `required_observers_hash`, so five of
+/// those five fields no longer exist to forge — a prover that changes any of them
+/// has changed the preimage, and the door refuses it by aborting (§7.3), which is
+/// fail-closed rather than a `False` a `!verify` row could observe.
+///
+/// The two that survive as evidence are the pair the machine still checks
+/// against its own cursor (`field_index == 3`, `item_index == expected_index`),
+/// and the count/length claims move to where they are now decidable: the
+/// **claimed successor**. `observer_count` is claimed there, and understating it
+/// is exactly the attack the retired `item_count` perturbation stood for. Each
+/// row below is one falsifier, measured.
 test cek_context_observer_rejects_malformed_proofs_order_and_successors() {
   let base = empty_v1_transaction()
   let observers = observer_hashes_from(0, 2)
@@ -11193,13 +11265,7 @@ test cek_context_observer_rejects_malformed_proofs_order_and_successors() {
   }
   let native_control = cek_context_native_control_fixture(tx)
   let context_control = empty_cek_context_control_fixture(5)
-  let first_leaf = observer_collection_subtree_root(0, 1)
-  let second_leaf = observer_collection_subtree_root(1, 1)
-  let Pair(collection_proof, chunk_proof) = observer_field_item_proofs(
-    2,
-    1,
-    [first_leaf],
-  )
+  let observers_carriage = observer_field_carriage(2)
   let first_items = validation_machine_v1.prepend_cek_observer_item_v1(
     observer_hash_at(1),
     False,
@@ -11215,11 +11281,13 @@ test cek_context_observer_rejects_malformed_proofs_order_and_successors() {
     ..first_control,
     previous_observer: observer_hash_at(0),
   }
-  let Pair(next_collection_proof, next_chunk_proof) = observer_field_item_proofs(
-    2,
-    0,
-    [second_leaf],
-  )
+  // Replaces the retired `ItemProofV1.item_count: 1` perturbation: the field's
+  // authenticated §5.2 count is 2, and a successor claiming 1 is the same
+  // understatement, now made where a prover can actually make it.
+  let understated_count_successor = validation_machine_v1.CekContextControlV1 {
+    ..first_control,
+    observer_count: 1,
+  }
   let next_items = validation_machine_v1.prepend_cek_observer_item_v1(
     observer_hash_at(0),
     False,
@@ -11243,113 +11311,82 @@ test cek_context_observer_rejects_malformed_proofs_order_and_successors() {
     stage: 6,
     observer_summary: wrong_summary,
   }
+  // The list is built back to front, so the first item step must read index 1.
+  let honest_auxiliary = validation_machine_v1.TransactionFieldChunkWitness {
+    field_index: 3,
+    item_index: 1,
+    carriage: observers_carriage,
+  }
   and {
+    // The honest first step.
     verify_cek_context_transition_fixture(
       tx,
       native_control,
       context_control,
       first_control,
-      validation_machine_v1.TransactionFieldChunkWitness {
-        collection_proof,
-        chunk_proof,
-      },
+      honest_auxiliary,
       50,
     ),
+    // Descending-order violation in the claimed successor.
     !verify_cek_context_transition_fixture(
       tx,
       native_control,
       context_control,
       malformed_successor,
-      validation_machine_v1.TransactionFieldChunkWitness {
-        collection_proof,
-        chunk_proof,
-      },
+      honest_auxiliary,
       51,
     ),
+    // An `item_index` that is not the one the accumulated list derives.
     !verify_cek_context_transition_fixture(
       tx,
       native_control,
       context_control,
       first_control,
       validation_machine_v1.TransactionFieldChunkWitness {
-        collection_proof: bounded_collection_v1.ItemProofV1 {
-          ..collection_proof,
-          item_index: 0,
-        },
-        chunk_proof,
+        field_index: 3,
+        item_index: 0,
+        carriage: observers_carriage,
       },
       52,
     ),
+    // A successor understating the field's authenticated item count.
     !verify_cek_context_transition_fixture(
       tx,
       native_control,
       context_control,
-      first_control,
-      validation_machine_v1.TransactionFieldChunkWitness {
-        collection_proof: bounded_collection_v1.ItemProofV1 {
-          ..collection_proof,
-          item_count: 1,
-        },
-        chunk_proof,
-      },
+      understated_count_successor,
+      honest_auxiliary,
       53,
     ),
+    // Evidence naming a different field slot. §4 removed domain separation, so
+    // this is refused by the step's own `field_index == 3` and by nothing else.
     !verify_cek_context_transition_fixture(
       tx,
       native_control,
       context_control,
       first_control,
       validation_machine_v1.TransactionFieldChunkWitness {
-        collection_proof: bounded_collection_v1.ItemProofV1 {
-          ..collection_proof,
-          field_index: 2,
-        },
-        chunk_proof: bounded_item_v1.ChunkProofV1 {
-          ..chunk_proof,
-          field_index: 2,
-        },
+        field_index: 2,
+        item_index: 1,
+        carriage: observers_carriage,
       },
       54,
     ),
-    !verify_cek_context_transition_fixture(
-      tx,
-      native_control,
-      context_control,
-      first_control,
-      validation_machine_v1.TransactionFieldChunkWitness {
-        collection_proof: bounded_collection_v1.ItemProofV1 {
-          ..collection_proof,
-          item_length: 27,
-        },
-        chunk_proof,
-      },
-      55,
-    ),
-    !verify_cek_context_transition_fixture(
-      tx,
-      native_control,
-      context_control,
-      first_control,
-      validation_machine_v1.TransactionFieldChunkWitness {
-        collection_proof,
-        chunk_proof: bounded_item_v1.ChunkProofV1 {
-          ..chunk_proof,
-          total_length: 27,
-        },
-      },
-      56,
-    ),
+    // The second step taken out of order: `previous_observer` is already the
+    // lesser hash, so nothing remains that can precede it.
     !verify_cek_context_transition_fixture(
       tx,
       native_control,
       wrong_order_control,
       complete_control,
       validation_machine_v1.TransactionFieldChunkWitness {
-        collection_proof: next_collection_proof,
-        chunk_proof: next_chunk_proof,
+        field_index: 3,
+        item_index: 0,
+        carriage: observers_carriage,
       },
       57,
     ),
+    // And the finalization summary must be the exact fold of what was read.
     !verify_cek_context_transition_fixture(
       tx,
       native_control,
@@ -11403,6 +11440,7 @@ test cek_context_observer_complete_summary_relation_is_exact() {
       },
       auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
+    inline_field_door(),
   )
 }
 
@@ -11463,6 +11501,7 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
       },
       auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
+    inline_field_door(),
   )
   let asset_items = cek_data_v1.prepend_data_pair_summary_v1(
     builtin.b_data(#"01") |> cek_data_v1.semantic_data_summary_v1,
@@ -11504,6 +11543,7 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
         siblings: [],
       },
     },
+    inline_field_door(),
   )
   let policy_items = cek_data_v1.prepend_data_pair_summary_v1(
     builtin.b_data(h_28_a) |> cek_data_v1.semantic_data_summary_v1,
@@ -11541,6 +11581,7 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
       },
       auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
+    inline_field_door(),
   )
   and {
     init_step,
@@ -11789,6 +11830,7 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
         purpose_siblings: [],
       },
     },
+    inline_field_door(),
   )
 }
 
@@ -11918,6 +11960,7 @@ test cek_context_finalize_seeds_the_exact_semantic_context_application() {
           redeemer_control,
         },
       },
+      inline_field_door(),
     ),
   }
 }
@@ -12162,6 +12205,7 @@ test cek_context_seed_fits_one_step() {
         control: final_context,
       },
     },
+    inline_field_door(),
   )
 }
 
@@ -12240,6 +12284,7 @@ test cek_context_assemble_fits_one_step() {
         control: parts,
       },
     },
+    inline_field_door(),
   )
 }
 
@@ -12334,67 +12379,30 @@ test cek_context_tx_info_finalize_fits_one_step() {
         control: assembly,
       },
     },
+    inline_field_door(),
   )
 }
 
-fn maximum_mint_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
-  let collection_proof = bounded_collection_v1.ItemProofV1 {
-    version: bounded_collection_v1.version,
-    field_index: 5,
-    item_count: 130,
-    item_index: 129,
-    item_length: 43,
-    item_commitment: #"534ff6685dd10a576be7dec4ecb1cf2f239a5fdcb751db98ccc1b93ebd4e5c04",
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 1,
-        hash: #"ce7d37cda58da9e9e61128e546de8b86657a6ba8b3412ff6b0ac9768220facc1",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 7,
-        hash: #"a4e70fd3e6e67a34ff688b3ee548e87d066c538c85340620668e3b53e09d7110",
-      },
-    ],
-    siblings: [
-      #"7dee9561c439c28a1058042f1cccd273783fe91f56440e1b9c44e306d0aee12b",
-    ],
-  }
-  let chunk_proof = bounded_item_v1.ChunkProofV1 {
-    version: bounded_item_v1.version,
-    field_index: 5,
-    item_index: 129,
-    total_length: 43,
-    chunk_index: 0,
-    chunk: #"82581cffab1dd64f82b6991818c1ecc5047d52ce5d00f6fdbc5023e2980167a1494d696467617264563101",
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: #"ae892cdb843a795de543205f99a43ea2d0f946bcab042d2c405bd786dbad75da",
-      },
-    ],
-    siblings: [],
-  }
-  MaximumFieldTerminalFixtureV1 {
-    transaction_id: #"8a2947f98b0c56a59b8c7eb2d33ab74b759f45f7c10c86ae35060383bce149f2",
-    transaction_commitment: #"6cf2bfa302c7980b51114944079713aacc1b95fefbdb9d47a1c27aef40eeea74",
-    compact_cbor: #"84018c58204dc5462fa75f970091526b50e11ff2161e020020f791756d77ed6cd8c45d111c5820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f582077da2ade1bedecb84bafe4fabaefeccaf5da90cd82634773f3626f2ad5e92e291a000d5d95201927105820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea7458207dc0480f6a10748bc18aed966ef23ca7dd70cd929f5a88b056d427e2f9453c32582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820cfe3cf8c48a624b593eb8f53bdf83543b3db912f088fbc07b40d2b800cbf6efd00",
-    witness_set_compact_cbor: #"8358205a38624e9c4dd250767e307ff82f25d727953cbe76e83ed2361505d1bfde4e2658201ae334ef559fb72274ae60b8a4b57232ad0bc17b9fcbb6c4cc51aef26774c6e65820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-    field_preimage_lengths_cbor: #"891829011915b2010119155619165a186801",
-    field_index: 5,
-    item_count: 130,
-    item_index: 129,
-    encoded_length_before_item: 5420,
-    expected_pre_work_root: #"e841b45df4501bc51ac727186bc83c99405008ffed6b9acd10b6a560f1ba70a8",
-    expected_post_work_root: #"6392d6588e7c2bcdf78961d270a0254f1f0bed0052fcace9f2bb1de59ad400e1",
-    collection_proof,
-    chunk_proof,
-  }
-}
-
+/// The mint boundary's terminal fold, plus the four Merkle attack classes the
+/// counted scheme needed per-item openings to refute.
+///
+/// **How the four controls changed shape, and why they are stronger.** Under the
+/// counted scheme each control forged an `ItemProofV1` — a substituted item
+/// commitment, a reordered pair of leaves, an omitted leaf, a duplicated one —
+/// and asserted that `bounded_collection_v1.verify_item` refused it against the
+/// field root. §4 replaced that root with a flat `blake2b_256` over the field's
+/// whole §5.1 preimage, so each attack is now a claim about *bytes*: it produces
+/// a different preimage, whose commitment is not the committed one, and §8's
+/// door refuses it before any rule runs. The controls therefore construct the
+/// perturbed preimage — from the authenticated one, through §5.1's own reader
+/// and encoder, so no attack is hand-spelled — and measure that its commitment
+/// differs from the field's. That is a statement about every one of the field's
+/// 130 items at once, where the counted controls only ever bound the two leaves
+/// their siblings reached.
 fn verify_maximum_mint_field_terminal_fixture_v1(
   fixture: MaximumFieldTerminalFixtureV1,
 ) -> Bool {
-  let terminal = fixture.chunk_proof.chunk
+  let terminal = terminal_fixture_item(fixture)
   let chunk_length = bytearray.length(terminal)
   let policy_mutation = replace_byte_v1(terminal, 3, #"fe")
   let asset_name_mutation = replace_byte_v1(terminal, 33, #"4e")
@@ -12434,365 +12442,90 @@ fn replace_byte_v1(
       )
 }
 
+/// `items` with its last element replaced by `replacement`.
+fn with_last_item_replaced(
+  items: List<ByteArray>,
+  replacement: ByteArray,
+) -> List<ByteArray> {
+  let count = list.length(items)
+  list.concat(list.take(items, count - 1), [replacement])
+}
+
+/// The commitment of a perturbed field preimage, re-encoded through §5.1 so the
+/// header count and every wrapper follow from the item list rather than from a
+/// hand-spelled byte string.
+fn perturbed_field_commitment(items: List<ByteArray>) -> ByteArray {
+  native_tx_field_access_v1.field_commitment(
+    native_tx_field_access_v1.encode_field_preimage(items),
+  )
+}
+
+/// Substitution: one item's bytes replaced. The committed preimage is not the
+/// substituted one, so the door never opens it.
 fn verify_terminal_substitution_control_v1(
   fixture: MaximumFieldTerminalFixtureV1,
   alternate_item: ByteArray,
 ) -> Bool {
-  expect [_, history_peak] = fixture.collection_proof.frontier
-  expect [left_leaf] = fixture.collection_proof.siblings
-  let alternate_item_commitment = bounded_item_v1.from_bytes(
-    fixture.field_index,
-    fixture.item_index,
-    alternate_item,
-  )
-  let alternate_leaf = bounded_collection_v1.hash_item(
-    fixture.field_index,
-    fixture.item_index,
-    bytearray.length(alternate_item),
-    alternate_item_commitment,
-  )
-  let alternate_frontier = [
-    validation_merkle_v1.FrontierPeak {
-      height: 1,
-      hash: validation_merkle_v1.hash_branch(left_leaf, alternate_leaf),
-    },
-    history_peak,
-  ]
-  let alternate_field_commitment = bounded_collection_v1.commitment(
-    fixture.field_index,
-    fixture.item_count,
-    alternate_frontier,
-  )
-  let alternate_collection_proof = bounded_collection_v1.ItemProofV1 {
-    ..fixture.collection_proof,
-    item_commitment: alternate_item_commitment,
-    frontier: alternate_frontier,
-  }
-  let alternate_chunk_proof = bounded_item_v1.ChunkProofV1 {
-    ..fixture.chunk_proof,
-    chunk: alternate_item,
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: bounded_item_v1.hash_chunk(
-          fixture.field_index,
-          fixture.item_index,
-          0,
-          alternate_item,
-        ),
-      },
-    ],
-  }
+  let items = terminal_fixture_items(fixture)
   and {
-    alternate_item != fixture.chunk_proof.chunk,
-    alternate_item_commitment != fixture.collection_proof.item_commitment,
-    alternate_field_commitment != bounded_collection_v1.commitment(
-      fixture.field_index,
-      fixture.item_count,
-      fixture.collection_proof.frontier,
-    ),
-    bounded_collection_v1.verify_item(
-      alternate_field_commitment,
-      alternate_collection_proof,
-    ),
-    bounded_item_v1.verify_chunk(
-      alternate_item_commitment,
-      alternate_chunk_proof,
-    ),
-    !verify_midgard_transaction_field_chunk_v1(
-      fixture.transaction_id,
-      fixture.transaction_commitment,
-      fixture.compact_cbor,
-      fixture.witness_set_compact_cbor,
-      fixture.field_preimage_lengths_cbor,
-      alternate_collection_proof,
-      alternate_chunk_proof,
+    alternate_item != terminal_fixture_item(fixture),
+    perturbed_field_commitment(with_last_item_replaced(items, alternate_item)) != terminal_fixture_field_slot_commitment(
+      fixture,
     ),
   }
 }
 
+/// Reorder: the last two items swapped. The counted scheme needed this because a
+/// per-item opening says nothing about position beyond the leaf it hashes; a
+/// flat preimage hash is order-sensitive by construction, and this measures it
+/// on the field the fixture actually pins.
 fn verify_terminal_reorder_control_v1(
   fixture: MaximumFieldTerminalFixtureV1,
 ) -> Bool {
-  expect [original_pair_peak, history_peak] = fixture.collection_proof.frontier
-  expect [original_penultimate_leaf] = fixture.collection_proof.siblings
-  let penultimate_item = #"82581cfd3452414d0f1a97c2224438290268bf6c263151dc73e7c2fa0a573fa1494d696467617264563101"
-  let terminal_at_128_commitment = bounded_item_v1.from_bytes(
-    fixture.field_index,
-    128,
-    fixture.chunk_proof.chunk,
+  let items = terminal_fixture_items(fixture)
+  let count = list.length(items)
+  expect Some(terminal) = list.last(items)
+  expect Some(penultimate) = list.at(items, count - 2)
+  let reordered = list.concat(
+    list.take(items, count - 2),
+    [terminal, penultimate],
   )
-  let terminal_at_128_leaf = bounded_collection_v1.hash_item(
-    fixture.field_index,
-    128,
-    bytearray.length(fixture.chunk_proof.chunk),
-    terminal_at_128_commitment,
-  )
-  let penultimate_at_129_commitment = bounded_item_v1.from_bytes(
-    fixture.field_index,
-    129,
-    penultimate_item,
-  )
-  let penultimate_at_129_leaf = bounded_collection_v1.hash_item(
-    fixture.field_index,
-    129,
-    bytearray.length(penultimate_item),
-    penultimate_at_129_commitment,
-  )
-  let reordered_frontier = [
-    validation_merkle_v1.FrontierPeak {
-      height: 1,
-      hash: validation_merkle_v1.hash_branch(
-        terminal_at_128_leaf,
-        penultimate_at_129_leaf,
-      ),
-    },
-    history_peak,
-  ]
-  let reordered_commitment = bounded_collection_v1.commitment(
-    fixture.field_index,
-    fixture.item_count,
-    reordered_frontier,
-  )
-  let reordered_collection_proof = bounded_collection_v1.ItemProofV1 {
-    ..fixture.collection_proof,
-    item_commitment: penultimate_at_129_commitment,
-    frontier: reordered_frontier,
-    siblings: [terminal_at_128_leaf],
-  }
-  let reordered_chunk_proof = bounded_item_v1.ChunkProofV1 {
-    ..fixture.chunk_proof,
-    chunk: penultimate_item,
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: bounded_item_v1.hash_chunk(
-          fixture.field_index,
-          fixture.item_index,
-          0,
-          penultimate_item,
-        ),
-      },
-    ],
-  }
   and {
-    penultimate_item != fixture.chunk_proof.chunk,
-    original_pair_peak.height == 1,
-    history_peak.height == 7,
-    original_penultimate_leaf == bounded_collection_v1.hash_item(
-      fixture.field_index,
-      128,
-      bytearray.length(penultimate_item),
-      bounded_item_v1.from_bytes(fixture.field_index, 128, penultimate_item),
-    ),
-    original_pair_peak.hash == validation_merkle_v1.hash_branch(
-      original_penultimate_leaf,
-      bounded_collection_v1.hash_item(
-        fixture.field_index,
-        fixture.item_index,
-        bytearray.length(fixture.chunk_proof.chunk),
-        fixture.collection_proof.item_commitment,
-      ),
-    ),
-    reordered_commitment != bounded_collection_v1.commitment(
-      fixture.field_index,
-      fixture.item_count,
-      fixture.collection_proof.frontier,
-    ),
-    bounded_collection_v1.verify_item(
-      reordered_commitment,
-      reordered_collection_proof,
-    ),
-    bounded_item_v1.verify_chunk(
-      penultimate_at_129_commitment,
-      reordered_chunk_proof,
-    ),
-    !verify_midgard_transaction_field_chunk_v1(
-      fixture.transaction_id,
-      fixture.transaction_commitment,
-      fixture.compact_cbor,
-      fixture.witness_set_compact_cbor,
-      fixture.field_preimage_lengths_cbor,
-      reordered_collection_proof,
-      reordered_chunk_proof,
+    terminal != penultimate,
+    perturbed_field_commitment(reordered) != terminal_fixture_field_slot_commitment(
+      fixture,
     ),
   }
 }
 
+/// Omission: the terminal item dropped, with §5.1's header count following it
+/// down. Both halves of the envelope move, which is why the encoder rather than
+/// a byte edit builds it.
 fn verify_terminal_omission_control_v1(
   fixture: MaximumFieldTerminalFixtureV1,
 ) -> Bool {
-  expect [original_pair_peak, history_peak] = fixture.collection_proof.frontier
-  expect [original_penultimate_leaf] = fixture.collection_proof.siblings
-  let penultimate_item = #"82581cfd3452414d0f1a97c2224438290268bf6c263151dc73e7c2fa0a573fa1494d696467617264563101"
-  let penultimate_commitment = bounded_item_v1.from_bytes(
-    fixture.field_index,
-    128,
-    penultimate_item,
-  )
-  let penultimate_leaf = bounded_collection_v1.hash_item(
-    fixture.field_index,
-    128,
-    bytearray.length(penultimate_item),
-    penultimate_commitment,
-  )
-  let omission_frontier = [
-    validation_merkle_v1.FrontierPeak { height: 0, hash: penultimate_leaf },
-    history_peak,
-  ]
-  let omission_commitment = bounded_collection_v1.commitment(
-    fixture.field_index,
-    129,
-    omission_frontier,
-  )
-  let omission_collection_proof = bounded_collection_v1.ItemProofV1 {
-    ..fixture.collection_proof,
-    item_count: 129,
-    item_index: 128,
-    item_commitment: penultimate_commitment,
-    frontier: omission_frontier,
-    siblings: [],
-  }
-  let omission_chunk_proof = bounded_item_v1.ChunkProofV1 {
-    ..fixture.chunk_proof,
-    item_index: 128,
-    chunk: penultimate_item,
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: bounded_item_v1.hash_chunk(
-          fixture.field_index,
-          128,
-          0,
-          penultimate_item,
-        ),
-      },
-    ],
-  }
-  let compact = decode_native_tx_compact_v1(fixture.compact_cbor)
-  let compact_body = compact.body
-  let omission_body = NativeTxBodyCompact {
-    ..compact_body,
-    mint_hash: omission_commitment,
-  }
-  let omission_compact = NativeTxCompact { ..compact, body: omission_body }
-  let omission_compact_cbor = encode_native_tx_compact_v1(omission_compact)
-  let omission_transaction_id = native_tx_id_for_version(
-    native_tx_version_v1,
-    encode_native_tx_body_compact(omission_body),
-  )
-  let omission_source_commitment = native_tx_proof_commitment_v1(
-    omission_compact_cbor,
-    fixture.witness_set_compact_cbor,
-    fixture.field_preimage_lengths_cbor,
-  )
+  let items = terminal_fixture_items(fixture)
+  let count = list.length(items)
+  let omitted = list.take(items, count - 1)
   and {
-    omission_commitment != compact.body.mint_hash,
-    original_pair_peak.height == 1,
-    history_peak.height == 7,
-    penultimate_leaf == original_penultimate_leaf,
-    original_pair_peak.hash == validation_merkle_v1.hash_branch(
-      penultimate_leaf,
-      bounded_collection_v1.hash_item(
-        fixture.field_index,
-        fixture.item_index,
-        bytearray.length(fixture.chunk_proof.chunk),
-        fixture.collection_proof.item_commitment,
-      ),
-    ),
-    bounded_collection_v1.verify_item(
-      omission_commitment,
-      omission_collection_proof,
-    ),
-    bounded_item_v1.verify_chunk(penultimate_commitment, omission_chunk_proof),
-    verify_midgard_transaction_field_chunk_v1(
-      omission_transaction_id,
-      omission_source_commitment,
-      omission_compact_cbor,
-      fixture.witness_set_compact_cbor,
-      fixture.field_preimage_lengths_cbor,
-      omission_collection_proof,
-      omission_chunk_proof,
-    ),
-    !verify_midgard_transaction_field_chunk_v1(
-      omission_transaction_id,
-      omission_source_commitment,
-      omission_compact_cbor,
-      fixture.witness_set_compact_cbor,
-      fixture.field_preimage_lengths_cbor,
-      fixture.collection_proof,
-      fixture.chunk_proof,
+    list.length(omitted) + 1 == fixture.item_count,
+    perturbed_field_commitment(omitted) != terminal_fixture_field_slot_commitment(
+      fixture,
     ),
   }
 }
 
+/// Duplication: the terminal item appended a second time. The retired control
+/// forged a leaf at `item_count`; the flat commitment refuses the whole preimage.
 fn verify_terminal_duplicate_control_v1(
   fixture: MaximumFieldTerminalFixtureV1,
 ) -> Bool {
-  let duplicate_index = fixture.item_count
-  let duplicate_commitment = bounded_item_v1.from_bytes(
-    fixture.field_index,
-    duplicate_index,
-    fixture.chunk_proof.chunk,
-  )
-  let duplicate_leaf = bounded_collection_v1.hash_item(
-    fixture.field_index,
-    duplicate_index,
-    bytearray.length(fixture.chunk_proof.chunk),
-    duplicate_commitment,
-  )
-  let duplicate_frontier = validation_merkle_v1.append_leaf(
-    fixture.item_count,
-    fixture.collection_proof.frontier,
-    duplicate_leaf,
-  )
-  let duplicate_field_commitment = bounded_collection_v1.commitment(
-    fixture.field_index,
-    fixture.item_count + 1,
-    duplicate_frontier,
-  )
-  let duplicate_collection_proof = bounded_collection_v1.ItemProofV1 {
-    ..fixture.collection_proof,
-    item_count: fixture.item_count + 1,
-    item_index: duplicate_index,
-    item_commitment: duplicate_commitment,
-    frontier: duplicate_frontier,
-    siblings: [],
-  }
-  let duplicate_chunk_proof = bounded_item_v1.ChunkProofV1 {
-    ..fixture.chunk_proof,
-    item_index: duplicate_index,
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: bounded_item_v1.hash_chunk(
-          fixture.field_index,
-          duplicate_index,
-          0,
-          fixture.chunk_proof.chunk,
-        ),
-      },
-    ],
-  }
+  let items = terminal_fixture_items(fixture)
+  let duplicated = list.concat(items, [terminal_fixture_item(fixture)])
   and {
-    duplicate_field_commitment != bounded_collection_v1.commitment(
-      fixture.field_index,
-      fixture.item_count,
-      fixture.collection_proof.frontier,
-    ),
-    bounded_collection_v1.verify_item(
-      duplicate_field_commitment,
-      duplicate_collection_proof,
-    ),
-    bounded_item_v1.verify_chunk(duplicate_commitment, duplicate_chunk_proof),
-    !verify_midgard_transaction_field_chunk_v1(
-      fixture.transaction_id,
-      fixture.transaction_commitment,
-      fixture.compact_cbor,
-      fixture.witness_set_compact_cbor,
-      fixture.field_preimage_lengths_cbor,
-      duplicate_collection_proof,
-      duplicate_chunk_proof,
+    list.length(duplicated) == fixture.item_count + 1,
+    perturbed_field_commitment(duplicated) != terminal_fixture_field_slot_commitment(
+      fixture,
     ),
   }
 }
@@ -12853,6 +12586,7 @@ test cek_context_maximum_mint_initializes_from_authenticated_frontier() {
       },
       auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
+    inline_field_door(),
   )
 }
 
@@ -12920,6 +12654,7 @@ test cek_context_maximum_mint_authenticates_last_asset_membership() {
         siblings: maximum_mint_last_asset_siblings(0),
       },
     },
+    inline_field_door(),
   )
 }
 
@@ -13056,7 +12791,11 @@ test cek_active_core_step_replays_exact_machine_transition() {
     },
   }
   and {
-    validation_machine_v1.verify_one_step_evidence(pre, evidence),
+    validation_machine_v1.verify_one_step_evidence(
+      pre,
+      evidence,
+      inline_field_door(),
+    ),
     !validation_machine_v1.verify_one_step_evidence(
       pre,
       validation_machine_v1.ValidationOneStepEvidenceV1 {
@@ -13069,6 +12808,7 @@ test cek_active_core_step_replays_exact_machine_transition() {
           },
         },
       },
+      inline_field_door(),
     ),
   }
 }
@@ -14247,6 +13987,7 @@ test value_and_mint_authenticates_output_descriptor_on_l1() {
         siblings: [],
       },
     },
+    inline_field_door(),
   )
 }
 
@@ -14275,6 +14016,7 @@ test value_and_mint_replays_output_descriptor_asset_on_l1() {
         },
       },
     },
+    inline_field_door(),
   )
 }
 
@@ -14394,6 +14136,7 @@ fn target_snapshot_min_fee_step_is_provable(
       work_witness_cbor,
       claimed_successor,
     },
+    inline_field_door(),
   )
 }
 
@@ -15068,62 +14811,68 @@ test value_asset_output_instruction_evidence_is_bounded() {
   evidence_size < 12_288
 }
 
+/// `length` zero bytes.
+///
+/// `bytearray.from_int_big_endian` caps at 8,192 bytes, which is below §8.3's
+/// tier-1 planning bound, so the filler is built in 4,096-byte blocks.
+fn zero_filler_bytes(length: Int) -> ByteArray {
+  if length <= 4096 {
+    bytearray.from_int_big_endian(0, length)
+  } else {
+    bytearray.from_int_big_endian(0, 4096)
+      |> bytearray.concat(zero_filler_bytes(length - 4096))
+  }
+}
+
+/// The on-wire size of one `CanonicalDecode` chunk instruction, at both ends of
+/// §8's carriage ladder.
+///
+/// The retired counted evidence was bounded by *proof* size — a 14-peak
+/// collection frontier, 14 siblings, a chunk frontier and one
+/// `bounded_item_v1.chunk_bytes` window — and this row pinned that worst case.
+/// §8 replaced all of it with a `FieldCarriageV1`, so the bound now has two
+/// shapes and both are pinned:
+///
+///   * **tier 1** is the only tier whose evidence grows with the field, and
+///     §8.3 caps a tier-1 plan at `max_tier1_redeemer_preimage_bytes`;
+///   * **tier 3** names one certificate reference input and at most
+///     `max_tier3_chunk_count` chunk reference inputs, so it is O(1) in the
+///     field's size — which is what makes the measured 16,225-byte field-2
+///     maximum reachable by a machine step at all (#593 Ruling 1, option c).
 test maximum_general_field_bounded_chunk_instruction_evidence_is_bounded() {
   let Pair(_pre, base_evidence) = canonical_step_fixture()
-  let maximum_collection_frontier = [
-    validation_merkle_v1.FrontierPeak { height: 0, hash: zero },
-    validation_merkle_v1.FrontierPeak { height: 1, hash: h_a },
-    validation_merkle_v1.FrontierPeak { height: 2, hash: h_b },
-    validation_merkle_v1.FrontierPeak { height: 3, hash: h_c },
-    validation_merkle_v1.FrontierPeak { height: 4, hash: zero },
-    validation_merkle_v1.FrontierPeak { height: 5, hash: h_a },
-    validation_merkle_v1.FrontierPeak { height: 6, hash: h_b },
-    validation_merkle_v1.FrontierPeak { height: 7, hash: h_c },
-    validation_merkle_v1.FrontierPeak { height: 8, hash: zero },
-    validation_merkle_v1.FrontierPeak { height: 9, hash: h_a },
-    validation_merkle_v1.FrontierPeak { height: 10, hash: h_b },
-    validation_merkle_v1.FrontierPeak { height: 11, hash: h_c },
-    validation_merkle_v1.FrontierPeak { height: 12, hash: zero },
-    validation_merkle_v1.FrontierPeak { height: 13, hash: h_a },
-  ]
-  let maximum_chunk_frontier = [
-    validation_merkle_v1.FrontierPeak { height: 0, hash: h_b },
-    validation_merkle_v1.FrontierPeak { height: 2, hash: h_c },
-  ]
-  let maximum_chunk = bytearray.from_int_big_endian(
-    0,
-    bounded_item_v1.chunk_bytes,
+  let maximum_tier1_preimage = zero_filler_bytes(
+    native_tx_field_access_v1.max_tier1_redeemer_preimage_bytes,
   )
-  let evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+  let maximum_tier3_chunk_indices = [1, 2, 3]
+  let tier1_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
     transition: base_evidence.transition,
     auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
-      collection_proof: bounded_collection_v1.ItemProofV1 {
-        version: bounded_collection_v1.version,
-        field_index: 8,
-        item_count: 16_383,
-        item_index: 16_382,
-        item_length: 16_384,
-        item_commitment: h_a,
-        frontier: maximum_collection_frontier,
-        siblings: list.repeat(zero, 14),
+      field_index: 8,
+      item_index: 16_382,
+      carriage: native_tx_field_access_v1.Inline {
+        preimage: maximum_tier1_preimage,
       },
-      chunk_proof: bounded_item_v1.ChunkProofV1 {
-        version: bounded_item_v1.version,
-        field_index: 8,
-        item_index: 16_382,
-        total_length: 16_384,
-        chunk_index: 3,
-        chunk: maximum_chunk,
-        frontier: maximum_chunk_frontier,
-        siblings: list.repeat(zero, 3),
+    },
+  }
+  let tier3_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+    transition: base_evidence.transition,
+    auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+      field_index: 8,
+      item_index: 16_382,
+      carriage: native_tx_field_access_v1.Certified {
+        cert_ref_input_index: 0,
+        chunk_ref_input_indices: maximum_tier3_chunk_indices,
       },
     },
   }
   and {
-    bytearray.length(maximum_chunk) == bounded_item_v1.chunk_bytes,
-    list.length(maximum_collection_frontier) == 14,
-    list.length(maximum_chunk_frontier) == 2,
-    bytearray.length(cbor.serialise(evidence)) < 16_384,
+    bytearray.length(maximum_tier1_preimage) == native_tx_field_access_v1.max_tier1_redeemer_preimage_bytes,
+    list.length(maximum_tier3_chunk_indices) == native_tx_field_access_v1.max_tier3_chunk_count,
+    bytearray.length(cbor.serialise(tier1_evidence)) < 16_384,
+    // The whole point of the ladder: tier-3 evidence does not grow with the
+    // field, so it is smaller than the tier-1 form by three orders of magnitude.
+    bytearray.length(cbor.serialise(tier3_evidence)) < 1_024,
   }
 }
 
@@ -15387,10 +15136,7 @@ test script_sources_stage_zero_begin_initializes_an_authenticated_identity_trace
     },
   }
   let item_cbor = encode_midgard_versioned_script(script)
-  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    6,
-    item_cbor,
-  )
+  let carriage = inline_field_carriage([item_cbor])
   let pending = validation_machine_v1.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
@@ -15399,7 +15145,7 @@ test script_sources_stage_zero_begin_initializes_an_authenticated_identity_trace
     payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
     payload_length: bytearray.length(payload),
     item_length: bytearray.length(item_cbor),
-    item_commitment: collection_proof.item_commitment,
+    item_commitment: bounded_item_v1.from_bytes(6, 0, item_cbor),
     hash_control: blake2b_224_trace_v1.initial_control_v1(
       bytearray.length(payload) + 1,
     ),
@@ -15425,8 +15171,10 @@ test script_sources_stage_zero_begin_initializes_an_authenticated_identity_trace
       work_witness_cbor: stage_zero_script_sources_work_witness(control),
       claimed_successor: post,
     },
-    collection_proof,
-    chunk_proof,
+    inline_field_door(),
+    6,
+    0,
+    carriage,
   )
 }
 
@@ -15488,10 +15236,7 @@ test script_sources_stage_zero_accepts_an_authenticated_hash_block() {
     },
   }
   let item_cbor = encode_midgard_versioned_script(script)
-  let Pair(_collection_proof, chunk_proof) = singleton_field_item_proofs(
-    6,
-    item_cbor,
-  )
+  let chunk_proof = singleton_field_item_chunk_proof(6, item_cbor)
   let hash_control = blake2b_224_trace_v1.initial_control_v1(
     bytearray.length(payload) + 1,
   )
@@ -15544,6 +15289,7 @@ test script_sources_stage_zero_accepts_an_authenticated_hash_block() {
         chunk_proof,
         next_chunk_proof: None,
       },
+      inline_field_door(),
     ),
     validation_machine_v1.verify_script_sources_stage_zero_hash_block_semantics_v1(
       pre,
@@ -15700,6 +15446,7 @@ test script_sources_stage_zero_commits_the_terminal_script_identity() {
       pre,
       transition,
       validation_machine_v1.NoAuxiliaryWitness,
+      inline_field_door(),
     ),
     validation_machine_v1.verify_script_sources_stage_zero_hash_terminal_semantics_v1(
       pre,
@@ -15867,10 +15614,7 @@ test stage_differential_zero_begin_routes_agree() {
     },
   }
   let item_cbor = encode_midgard_versioned_script(script)
-  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    6,
-    item_cbor,
-  )
+  let carriage = inline_field_carriage([item_cbor])
   let pending = validation_machine_v1.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
@@ -15879,7 +15623,7 @@ test stage_differential_zero_begin_routes_agree() {
     payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
     payload_length: bytearray.length(payload),
     item_length: bytearray.length(item_cbor),
-    item_commitment: collection_proof.item_commitment,
+    item_commitment: bounded_item_v1.from_bytes(6, 0, item_cbor),
     hash_control: blake2b_224_trace_v1.initial_control_v1(
       bytearray.length(payload) + 1,
     ),
@@ -15903,7 +15647,7 @@ test stage_differential_zero_begin_routes_agree() {
     60,
   )
   // Mutated successor: the opened scan claims two sources where the
-  // authenticated collection proof carries one.
+  // door-authenticated field-6 preimage carries one.
   let mutated_post = stage_zero_script_sources_state(
     tx,
     validation_machine_v1.ScriptSourcesControlV1 {
@@ -15928,21 +15672,25 @@ test stage_differential_zero_begin_routes_agree() {
     claimed_successor: mutated_post,
   }
   let auxiliary = validation_machine_v1.TransactionFieldChunkWitness {
-    collection_proof,
-    chunk_proof,
+    field_index: 6,
+    item_index: 0,
+    carriage,
   }
   and {
     stage_routes_agree(
       validation_machine_v1.verify_script_sources_stage_zero_begin_semantics_v1(
         pre,
         accepting,
-        collection_proof,
-        chunk_proof,
+        inline_field_door(),
+        6,
+        0,
+        carriage,
       ),
       validation_machine_v1.verify_script_sources_stage_zero_semantics_v1(
         pre,
         accepting,
         auxiliary,
+        inline_field_door(),
       ),
       True,
     ),
@@ -15950,13 +15698,16 @@ test stage_differential_zero_begin_routes_agree() {
       validation_machine_v1.verify_script_sources_stage_zero_begin_semantics_v1(
         pre,
         rejecting,
-        collection_proof,
-        chunk_proof,
+        inline_field_door(),
+        6,
+        0,
+        carriage,
       ),
       validation_machine_v1.verify_script_sources_stage_zero_semantics_v1(
         pre,
         rejecting,
         auxiliary,
+        inline_field_door(),
       ),
       False,
     ),
@@ -16022,6 +15773,7 @@ test stage_differential_zero_finish_routes_agree() {
         pre,
         accepting,
         validation_machine_v1.NoAuxiliaryWitness,
+        inline_field_door(),
       ),
       True,
     ),
@@ -16034,6 +15786,7 @@ test stage_differential_zero_finish_routes_agree() {
         pre,
         rejecting,
         validation_machine_v1.NoAuxiliaryWitness,
+        inline_field_door(),
       ),
       False,
     ),
@@ -16116,10 +15869,7 @@ test stage_differential_seven_observer_routes_agree() {
     observer_scan,
     19,
   )
-  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    3,
-    h_28_a,
-  )
+  let carriage = inline_field_carriage([h_28_a])
   let accepting = validation_machine_v1.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
@@ -16129,21 +15879,25 @@ test stage_differential_seven_observer_routes_agree() {
     claimed_successor: mutated_post,
   }
   let auxiliary = validation_machine_v1.TransactionFieldChunkWitness {
-    collection_proof,
-    chunk_proof,
+    field_index: 3,
+    item_index: 0,
+    carriage,
   }
   and {
     stage_routes_agree(
       validation_machine_v1.verify_script_sources_stage_seven_observer_semantics_v1(
         pre,
         accepting,
-        collection_proof,
-        chunk_proof,
+        inline_field_door(),
+        3,
+        0,
+        carriage,
       ),
       validation_machine_v1.verify_script_sources_stage_seven_semantics_v1(
         pre,
         accepting,
         auxiliary,
+        inline_field_door(),
       ),
       True,
     ),
@@ -16151,13 +15905,16 @@ test stage_differential_seven_observer_routes_agree() {
       validation_machine_v1.verify_script_sources_stage_seven_observer_semantics_v1(
         pre,
         rejecting,
-        collection_proof,
-        chunk_proof,
+        inline_field_door(),
+        3,
+        0,
+        carriage,
       ),
       validation_machine_v1.verify_script_sources_stage_seven_semantics_v1(
         pre,
         rejecting,
         auxiliary,
+        inline_field_door(),
       ),
       False,
     ),
@@ -16260,6 +16017,7 @@ test stage_differential_seven_receive_routes_agree() {
         pre,
         accepting,
         auxiliary,
+        inline_field_door(),
       ),
       True,
     ),
@@ -16277,6 +16035,7 @@ test stage_differential_seven_receive_routes_agree() {
         pre,
         rejecting,
         auxiliary,
+        inline_field_door(),
       ),
       False,
     ),

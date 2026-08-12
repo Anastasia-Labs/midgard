@@ -1,10 +1,10 @@
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/bounded_collection_v1.{ItemProofV1}
-use midgard/bounded_item_v1.{ChunkProofV1}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
+use midgard/native_tx_field_access_v1.{FieldCarriageV1}
+use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
 use midgard/validation_machine_v1.{
   TransactionFieldChunkWitness, ValidationOneStepWitnessV1,
   verify_input_sets_item_semantics_v1,
@@ -17,8 +17,9 @@ pub type ActionV1 {
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
-    collection_proof: ItemProofV1,
-    chunk_proof: ChunkProofV1,
+    field_index: Int,
+    item_index: Int,
+    carriage: FieldCarriageV1,
   }
 }
 
@@ -28,6 +29,7 @@ pub type SpendRedeemer =
 validator main(
   award_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
+  field_preimage_certificate_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -49,14 +51,20 @@ validator main(
         input_index,
         output_index,
         transition,
-        collection_proof,
-        chunk_proof,
+        field_index,
+        item_index,
+        carriage,
       }) -> {
         let auxiliary = TransactionFieldChunkWitness {
-          collection_proof,
-          chunk_proof,
+          field_index,
+          item_index,
+          carriage,
         }
         let auxiliary_data: Data = auxiliary
+        let door = MachineFieldDoorV1 {
+          reference_inputs: tx.reference_inputs,
+          certificate_policy_id: field_preimage_certificate_policy_id,
+        }
         continue_winning(
           InputSets,
           award_script_hash,
@@ -69,8 +77,10 @@ validator main(
           verify_input_sets_item_semantics_v1(
             datum |> semantic_pre_state,
             transition,
-            collection_proof,
-            chunk_proof,
+            door,
+            field_index,
+            item_index,
+            carriage,
           ),
           own_out_ref,
           tx,

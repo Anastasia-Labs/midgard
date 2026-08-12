@@ -403,8 +403,9 @@ describe("§8.3 erratum E1 — the publishable frontier", () => {
     expect(nonPayloadFraming(15_123)).toBe(723);
     expect(nonPayloadFraming(14_336)).toBe(698);
 
-    // The worked tier-2 example E1 uses to show that the (15,148, 15,900]
-    // window is unpublishable: 363 over the reserve, 149 under `maxTxSize`.
+    // The worked tier-2 example E1 used to show that the (15,148, 15,900]
+    // window was unpublishable: 363 over the reserve, 149 under `maxTxSize`. It
+    // is now simply above `K`, so tier 2 does not admit it at all.
     expect(midgardCarriagePublicationBytesV1(15_500)).toBe(16_235);
     expect(
       midgardCarriagePublicationBytesV1(15_500) -
@@ -412,12 +413,21 @@ describe("§8.3 erratum E1 — the publishable frontier", () => {
     ).toBe(363);
     expect(16_384 - midgardCarriagePublicationBytesV1(15_500)).toBe(149);
 
-    // And the tier-3 half of the outage: every tier-3 plan's first chunk is a
-    // full K, which is 264 bytes over `maxTxSize`. This is the figure that
-    // makes the window (15,148, 32,768] rather than (15,148, 15,900].
+    // And the tier-3 half of the outage, which E1's repair closed: at the
+    // superseded K = 15,900 every tier-3 plan's first chunk was a full K, 264
+    // bytes over `maxTxSize`, and that is the figure that made the window the
+    // whole of (15,148, 32,768] rather than the (15,148, 15,900] sliver. Kept as
+    // a measurement of the superseded value rather than as prose.
+    expect(midgardCarriagePublicationBytesV1(15_900) - 16_384).toBe(264);
+    // The repaired K, and the property that closes the window: a full chunk
+    // publishes exactly on the reserve-clearing budget, so it is 512 bytes
+    // *under* `maxTxSize` rather than 264 over.
     expect(
       midgardCarriagePublicationBytesV1(MIDGARD_CHUNK_BYTES_K_V1) - 16_384,
-    ).toBe(264);
+    ).toBe(-512);
+    expect(MIDGARD_CHUNK_BYTES_K_V1).toBe(
+      MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
+    );
   });
 
   it("derives both frontiers as the largest payload inside each budget", () => {
@@ -448,22 +458,35 @@ describe("§8.3 erratum E1 — the publishable frontier", () => {
     ).toBeGreaterThan(16_384 - MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES_V1);
   });
 
-  it("reports a tier-3 plan as unpublishable and names the chunks", () => {
+  it("reports the largest tier-3 plan as publishable, and still names a chunk over a tightened budget", () => {
     const corner = plan(
       preimageUnder(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1),
     );
     const report = midgardFieldCarriagePublishabilityV1({ plan: corner });
-    // The live defect §8.3 E1 records: at the currently-pinned `K`, every
-    // tier-3 plan has full-`K` chunks that cannot be published at all.
-    expect(report.publishable).toBe(false);
-    expect(report.unpublishableChunks.map((chunk) => chunk.chunkIndex)).toEqual([
-      0, 1,
-    ]);
-    expect(report.unpublishableChunks[0]).toEqual({
+    // E1's repair, at the largest plan the format admits. Until the re-pin this
+    // row asserted the opposite — chunks 0 and 1 unpublishable at 16,648 signed
+    // bytes each — because the chunker cut at a `K` no publication could carry.
+    expect(report.publishable).toBe(true);
+    expect(report.unpublishableChunks).toEqual([]);
+    // And the guard is still a guard: one byte under the full-`K` publication it
+    // names the two full chunks and the overrun exactly. Without this the row
+    // would have become a gate that cannot fail.
+    const tightened = midgardFieldCarriagePublishabilityV1({
+      plan: corner,
+      budgetBytes:
+        midgardCarriagePublicationBytesV1(MIDGARD_CHUNK_BYTES_K_V1) - 1,
+    });
+    expect(tightened.publishable).toBe(false);
+    expect(
+      tightened.unpublishableChunks.map((chunk) => chunk.chunkIndex),
+    ).toEqual([0, 1]);
+    expect(tightened.unpublishableChunks[0]).toEqual({
       chunkIndex: 0,
       byteLength: MIDGARD_CHUNK_BYTES_K_V1,
-      publicationBytes: 16_648,
-      overrunBytes: 16_648 - report.budgetBytes,
+      publicationBytes: midgardCarriagePublicationBytesV1(
+        MIDGARD_CHUNK_BYTES_K_V1,
+      ),
+      overrunBytes: 1,
     });
   });
 

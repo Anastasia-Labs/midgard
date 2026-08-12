@@ -69,24 +69,29 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
  *      UTxO spent out from under the dispute — and re-published by a second
  *      identity with no relationship to the first. The original certificate
  *      still describes the healed bytes, and the read that broke succeeds again.
- *   3. **The tier-2 byte frontier is measured**, because §8.3's `K` is
- *      *provisional pending Phase-4 measurement* and this is that measurement:
+ *   3. **The tier-2 byte frontier is measured**, because §8.3's `K` was
+ *      *provisional pending Phase-4 measurement* and this is that measurement —
+ *      the one that falsified 15,900 and re-pinned `K` to what it now is:
  *      the largest preimage whose real signed key-address publication clears
  *      `maxTxSize`, and the largest that clears it with the 512-byte
  *      reliability reserve the counted era used.
  *
- * **Two emulators, and which one a block gets is the point.** `setupEmulator`
- * runs at the **real** `maxTxSize` (16,384) by default, so anything that
- * submits a publication is judged by the ledger itself and not by an assertion
- * that could be written to pass. Only the frontier sweep and the tier-3 blocks
- * ask for an inflated limit, and each says why at the call site: a frontier is
- * found by building transactions *past* the limit and measuring them, and — per
- * §8.3 erratum E1 — a tier-3 chunk at the currently-pinned `K` cannot be
- * submitted at all. Every verdict is taken against
- * `MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes`, never against
- * whatever the emulator was willing to accept, and the blocks that run inflated
- * assert their over-limit-ness explicitly so that the day `K` is re-pinned they
- * turn red rather than quietly becoming vacuous.
+ * **One emulator now, at the real limit — and that is E1's repair, visible.**
+ * `setupEmulator` runs at the **real** `maxTxSize` (16,384) by default, so
+ * anything that submits a publication is judged by the ledger itself and not by
+ * an assertion written to pass. **Exactly one block still raises it**: the
+ * frontier sweep, which has to build transactions *past* the limit in order to
+ * find where the limit is. Every other block — the tier ladder, the tier-3
+ * corner healing, the min-Ada measurements, the certification round trip — used
+ * to raise it too, because at the superseded `K` = 15,900 a tier-3 chunk could
+ * not be submitted at any size (§8.3 erratum E1). E1's repair re-pinned `K` to
+ * the reliable frontier, so those blocks now publish full-`K` chunks through the
+ * real ledger and the raise is gone with the defect. The mechanism that made
+ * that happen is worth keeping in view: the inflated blocks asserted their
+ * over-limit-ness explicitly, so the re-pin turned them red and had to come back
+ * here and say so, rather than leaving them quietly vacuous. Every verdict is
+ * still taken against `MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes`,
+ * never against whatever the emulator was willing to accept.
  *
  * **The certificate is minted, under a stand-in policy.** The compiled
  * certificate validator landed in #573 but the blueprint carrying its code is
@@ -503,7 +508,7 @@ describe("§8 carriage ladder — one consumer path, three tiers", () => {
     // full-`K` chunks, and at the currently-pinned `K` those measure 16,648
     // bytes and the real ledger refuses them. The block asserts that overrun
     // explicitly below rather than letting the inflated limit hide it.
-    harness = await setupEmulator({ maxTxSize: MEASUREMENT_MAX_TX_BYTES });
+    harness = await setupEmulator();
   });
 
   it("carries a preimage of every tier to a dispute read with no tier branch", async () => {
@@ -535,7 +540,6 @@ describe("§8 carriage ladder — one consumer path, three tiers", () => {
           publication,
           signerKey: PUBLISHER_KEY,
           address: PUBLISHER_ADDRESS,
-          maxPublicationBytes: MEASUREMENT_PUBLICATION_BUDGET_BYTES,
         });
         // The E1 gate, stated per publication rather than assumed for the
         // block: a chunk at or under the frontier really does fit the real
@@ -600,7 +604,7 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
     // Inflated for the same reason as the ladder block, and for no other: a
     // tier-3 corner cannot be published at the currently-pinned `K` (§8.3 E1).
     // The tier-2 heal at the end of this file runs at the real limit.
-    harness = await setupEmulator({ maxTxSize: MEASUREMENT_MAX_TX_BYTES });
+    harness = await setupEmulator();
   });
 
   const publishCorner = async (): Promise<{
@@ -628,7 +632,6 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
         publication,
         signerKey: PUBLISHER_KEY,
         address: PUBLISHER_ADDRESS,
-        maxPublicationBytes: MEASUREMENT_PUBLICATION_BUDGET_BYTES,
       });
       published.push(result.utxo);
     }
@@ -649,8 +652,8 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
   // leaves a UTxO carrying the wrong bytes — so they are exercised separately.
   //
   // The full-`K` chunk 0 is deliberately first. It is the largest publication
-  // the ladder produces and the only one at the frontier that erratum E1 is
-  // about; healing only the 963-byte ragged tail, as an earlier revision of
+  // the ladder produces and the one that sits exactly on erratum E1's reliable
+  // frontier; healing only the 2,467-byte ragged tail, as an earlier revision of
   // this file did, exercised the one chunk whose publication was never in
   // question.
   for (const chunkIndex of [0, 2]) {
@@ -658,8 +661,10 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
       const { preimage, plan, published } = await publishCorner();
       const readIndex = itemIndexInsideChunk(chunkIndex);
       const chunkBytes = plan.publications[chunkIndex]?.bytes.length;
+      // The corner's ragged tail: 32,763 − 2·15,148 = 2,467 bytes at E1's
+      // repaired `K`. It was 963 at the superseded 15,900.
       expect(chunkBytes).toBe(
-        chunkIndex === 2 ? 963 : MIDGARD_CHUNK_BYTES_K_V1,
+        chunkIndex === 2 ? 2_467 : MIDGARD_CHUNK_BYTES_K_V1,
       );
 
       const beforeYank = readItemThroughTheDoor({
@@ -756,7 +761,6 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
         publication: healedPublication,
         signerKey: HEALER_KEY,
         address: HEALER_ADDRESS,
-        maxPublicationBytes: MEASUREMENT_PUBLICATION_BUDGET_BYTES,
       });
 
       // The dispute proceeds. Note the carriage now spans two addresses under
@@ -819,7 +823,6 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
       },
       signerKey: HEALER_KEY,
       address: HEALER_ADDRESS,
-      maxPublicationBytes: MEASUREMENT_PUBLICATION_BUDGET_BYTES,
     });
 
     // With both on the ledger, resolution by content picks the genuine one and
@@ -1050,22 +1053,33 @@ describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
         .maxReliableCompleteItemPublicationTransactionBytes,
     );
 
-    // §8.3's provisional `K = 15,900` is **falsified**: a full-K publication
-    // overruns `maxTxSize` outright, reserve or no reserve. Recorded as
-    // erratum E1 in `docs/spec/midgard-tx.md` §8.3 rather than silently
-    // absorbed.
-    expect(atKSigned).toBe(16_648);
-    expect(atKSigned - MAX_L1_TX_BYTES).toBe(264);
+    // §8.3's provisional `K = 15,900` was **falsified** by this measurement: a
+    // 15,900-byte publication measured 16,648 signed bytes, 264 over
+    // `maxTxSize`, reserve or no reserve. Erratum E1 recorded that and re-pinned
+    // `K` to the reliable frontier, and the re-pin has now landed — so what this
+    // block measures today is the repaired ladder rather than the outage.
+    //
+    // A full-`K` publication is exactly the reliable frontier's transaction: it
+    // clears `maxTxSize` with the 512-byte reserve intact, which is the property
+    // that makes every chunk of every tier-3 plan publishable.
+    expect(atKSigned).toBe(MAX_L1_TX_BYTES - RELIABILITY_RESERVE_BYTES);
+    expect(atKSigned).toBe(15_872);
+    expect(MAX_L1_TX_BYTES - atKSigned).toBe(RELIABILITY_RESERVE_BYTES);
 
-    // The size of the erratum, pinned as an exact gap rather than as an
-    // inequality. `K` is declared in a shared surface that #565's serialized
-    // Phase-1 patch owns, so this lane cannot close it; when that patch re-pins
-    // `K` to the reliable frontier the gap becomes 0 and this line turns red,
-    // which is the intent — the re-pin should have to come back here and say so
-    // deliberately. An inequality would have kept passing at any wrong value.
+    // E1's repair, as an exact equality rather than an inequality: `K` **is**
+    // the reliable frontier. This is the one line that says the erratum is
+    // closed, and it is written as `=== 0` on purpose — any future re-pin of
+    // either half that does not move the other turns it red instead of leaving a
+    // silent gap, which is what the superseded 752-byte gap was.
     expect(
       MIDGARD_CHUNK_BYTES_K_V1 - MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
-    ).toBe(752);
+    ).toBe(0);
+    // And the superseded value, kept as a measurement rather than as prose: it
+    // is still over the limit, which is why it is no longer `K`.
+    expect(midgardCarriagePublicationBytesV1(15_900)).toBe(16_648);
+    expect(midgardCarriagePublicationBytesV1(15_900) - MAX_L1_TX_BYTES).toBe(
+      264,
+    );
 
     // §8.3 E1's tier-1 note: the same Plutus Data chunking cost applies to
     // redeemer carriage, and it is 450 bytes of the 2,048-byte allowance before
@@ -1118,7 +1132,7 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
     ).rejects.toThrow("§8.3 erratum E1");
   }, 120_000);
 
-  it("refuses every tier-3 plan's full-K chunks, and says which and by how much", () => {
+  it("passes every chunk of the largest tier-3 plan, and still names one over a lowered budget", () => {
     const plan = planMidgardFieldCarriageV1({
       owner: keyHash(PUBLISHER_KEY),
       txId: TX_ID,
@@ -1127,21 +1141,37 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
         itemCountForPreimageBytes(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1),
       ),
     });
+    // This is E1's repair as an end-to-end property, at the largest plan the
+    // format admits: three chunks, two of them full-`K`, and *every* one of them
+    // publishable inside the reserve. Before the repair this row asserted the
+    // opposite — chunks 0 and 1 unpublishable at 16,648 signed bytes apiece —
+    // and that was the whole shape of the outage: every tier-3 plan there was
+    // had a chunk the ledger would refuse.
+    expect(plan.tier).toBe("Certified");
+    expect(plan.publications.map((publication) => publication.bytes.length)).toEqual(
+      [MIDGARD_CHUNK_BYTES_K_V1, MIDGARD_CHUNK_BYTES_K_V1, 2_467],
+    );
     const report = midgardFieldCarriagePublishabilityV1({ plan });
-    expect(report.publishable).toBe(false);
-    // Chunks 0 and 1 are full-`K` and unpublishable; the 963-byte ragged tail
-    // is fine. That is the whole shape of the live defect: *every* tier-3 plan
-    // has at least one chunk that cannot be published, and the one an earlier
-    // revision of this file exercised for healing was the one that could.
-    expect(report.unpublishableChunks.map((chunk) => chunk.chunkIndex)).toEqual([
-      0, 1,
-    ]);
-    for (const chunk of report.unpublishableChunks) {
+    expect(report.publishable).toBe(true);
+    expect(report.unpublishableChunks).toEqual([]);
+    // The guard is not vacuous now that honest plans pass it: judged against a
+    // budget one byte under the full-`K` publication it names exactly the two
+    // full chunks and the overrun to the byte. Without this half the row would
+    // be a gate that cannot fail.
+    const tightened = midgardFieldCarriagePublishabilityV1({
+      plan,
+      budgetBytes: MAX_L1_TX_BYTES - RELIABILITY_RESERVE_BYTES - 1,
+    });
+    expect(tightened.publishable).toBe(false);
+    expect(tightened.unpublishableChunks.map((chunk) => chunk.chunkIndex)).toEqual(
+      [0, 1],
+    );
+    for (const chunk of tightened.unpublishableChunks) {
       expect(chunk.byteLength).toBe(MIDGARD_CHUNK_BYTES_K_V1);
-      expect(chunk.publicationBytes).toBe(16_648);
-      expect(chunk.overrunBytes).toBe(
-        16_648 - (MAX_L1_TX_BYTES - RELIABILITY_RESERVE_BYTES),
+      expect(chunk.publicationBytes).toBe(
+        MAX_L1_TX_BYTES - RELIABILITY_RESERVE_BYTES,
       );
+      expect(chunk.overrunBytes).toBe(1);
     }
   });
 
@@ -1249,9 +1279,7 @@ const CERTIFY_REDEEMER_BYTES =
 
 describe("§8.6 Phase-4 exit measurement — certificate min-Ada and the one-transaction question", () => {
   it("reports min-Ada at the sizes the ladder really uses", async () => {
-    const harness = await setupEmulator({
-      maxTxSize: MEASUREMENT_MAX_TX_BYTES,
-    });
+    const harness = await setupEmulator();
     const protocolParameters = harness.lucid.config().protocolParameters;
     if (protocolParameters === undefined) {
       throw new Error("emulator protocol parameters are unavailable");
@@ -1321,19 +1349,22 @@ describe("§8.6 Phase-4 exit measurement — certificate min-Ada and the one-tra
     expect(certification.chunkCount).toBe(3);
     expect(certification.datumCbor.length / 2).toBe(176);
     expect(certificateMinAda).toBe(1_939_500n);
-    expect(chunkMinAda).toBe(71_576_170n);
-    expect(raggedMinAda).toBe(5_184_930n);
+    expect(chunkMinAda).toBe(68_231_610n);
+    expect(raggedMinAda).toBe(11_869_740n);
 
-    // The datum a full chunk carries is 16,400 bytes, not the 15,900 of
+    // The datum a full chunk carries is 15,624 bytes, not the 15,148 of
     // payload: min-Ada is charged on the serialised output, so the ≈3.125 %
     // Plutus Data chunking cost is deposit as well as transaction size. §8.10's
     // table labelled the datum column with the payload figure until this line
-    // existed to contradict it.
+    // existed to contradict it. (The three deposit figures moved with §8.3
+    // erratum E1's repair of `K`: the full chunk was 15,900 B of payload in a
+    // 16,400-byte datum at 71.5762 ADA, and the ragged tail 963 B in 996 at
+    // 5.1849 ADA. The manifest is unmoved — three digests either way.)
     expect(
       midgardCarriageDataByteStringBytesV1(MIDGARD_CHUNK_BYTES_K_V1),
-    ).toBe(16_400);
-    expect(publicationOutputFor(cornerPlan, 0).datumCbor.length / 2).toBe(16_400);
-    expect(publicationOutputFor(cornerPlan, 2).datumCbor.length / 2).toBe(996);
+    ).toBe(15_624);
+    expect(publicationOutputFor(cornerPlan, 0).datumCbor.length / 2).toBe(15_624);
+    expect(publicationOutputFor(cornerPlan, 2).datumCbor.length / 2).toBe(2_547);
 
     // A manifest is small: three digests, a length and an owner. The whole
     // point of tier 3 is that the *certified* object is tiny even though the
@@ -1343,9 +1374,7 @@ describe("§8.6 Phase-4 exit measurement — certificate min-Ada and the one-tra
   });
 
   it("shows last-chunk publication and certification cannot share a transaction", async () => {
-    const harness = await setupEmulator({
-      maxTxSize: MEASUREMENT_MAX_TX_BYTES,
-    });
+    const harness = await setupEmulator();
     const cornerPlan = planMidgardFieldCarriageV1({
       owner: keyHash(PUBLISHER_KEY),
       txId: TX_ID,
@@ -1383,7 +1412,6 @@ describe("§8.6 Phase-4 exit measurement — certificate min-Ada and the one-tra
       signerKey: PUBLISHER_KEY,
       address: PUBLISHER_ADDRESS,
       submit: false,
-      maxPublicationBytes: MEASUREMENT_PUBLICATION_BUDGET_BYTES,
     });
     const redeemerBytes = CERTIFY_REDEEMER_BYTES;
     const certification = deriveFieldPreimageCertificationV1(cornerPlan);
@@ -1499,7 +1527,7 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
     // Inflated for the chunk publications only (§8.3 E1); the certification
     // transaction itself is small and its size is asserted against the real
     // limit below.
-    harness = await setupEmulator({ maxTxSize: MEASUREMENT_MAX_TX_BYTES });
+    harness = await setupEmulator();
   });
 
   it("publishes, certifies, and resolves the manifest back out of the UTxO set", async () => {
@@ -1520,7 +1548,6 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
         publication,
         signerKey: PUBLISHER_KEY,
         address: PUBLISHER_ADDRESS,
-        maxPublicationBytes: MEASUREMENT_PUBLICATION_BUDGET_BYTES,
       });
       chunkUtxos.push(result.utxo);
     }

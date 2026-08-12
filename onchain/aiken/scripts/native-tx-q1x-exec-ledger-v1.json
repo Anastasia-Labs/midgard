@@ -2,7 +2,7 @@
   "measurement": "q1x-family-rebind-exec-ledger",
   "issue": "#575 — Flat reversion P5, Q1x family rebind (first wave), on spec #565",
   "spec": "docs/spec/midgard-tx.md §5.3, §7.1, §8.3, §10.5 — arithmetic item access under authenticate-once",
-  "note": "The Q1x lane's rolling re-measurement, attached as a lane exit criterion per #565's measurement-slotting rule. Regenerate with `MIDGARD_AIKEN_BIN=<fork> node scripts/verify-q1x-exec-ledger-v1.mjs --update`, and move any reported number in the same commit. Provisional: formal closure of #551 is Phase 7's, against the Phase-6 blueprint. `--update` rewrites raw rows, derived figures and the Q1X-F6 growth readings; it does NOT rewrite `basisFit`, `infeasibility`, `errata` or the Q1X-F6 bands, because those are judgements and a re-take must not be able to launder one. `--update` is also not a bypass: structural failures (a selector that did not run, a missing block, a judgement the fresh measurement contradicts, a Q1X-F6 band the fresh reading falls outside) fail in update mode too and the ledger is not rewritten.\n\n**#584 re-take.** Every measured row here rose by a fixed **per-opening** amount when #584 gave `field_opening_v1` a multi-field opening: the single-field `opened_field_view`/`opened_field_walk` are now `anchored_native_tx` followed by `anchored_field_view`/`anchored_field_walk`, so a one-field step pays one extra opaque-record construction, the field reads that go with it, plus the two separate `expect`s `field_pairs_with` now spends so that a refusal names which guard fired rather than only that the field did not pair. The amount is not one number but two, because the two §2.5 halves construct different handles: **+7,117 mem / +2,529,845 cpu** on the Q10/Q11 body-field rows (field 0, opened as a `BodyTxOpening`, whose handle carries this module's unread placeholder witness set) and **+7,580 mem / +2,673,308 cpu** on the Q16/Q17 witness-field rows (fields 6 and 7, opened as a `WitnessTxOpening`, which additionally carries the transaction's real `NativeTxWitnessSetCompact` and pays the anchored `witness_set_hash` equality). Each amount reappears unchanged in the derived subtraction under it, and the four control rows — which never reach the door — did not move at all. What carries the per-opening conclusion is that within each half the shift is identical on the low- and high-cardinality rows: it is per-opening, not per-item. It therefore moves no growth figure (`memoryGrowth`/`cpuGrowth` are unchanged; only the headroom readings shift) and no `basisFit`, and the larger of the two is under 0.06% of the §3.3 memory basis and under 0.04% of the cpu basis. The alternative was a second spelling of `carriage_reaches_the_anchor` and the §2.5 body/witness pairing for the single-field path, which the AGENTS.md tradeoff order (correctness, safety, liveness, performance) does not buy at that price.\n\n**#586 re-take.** The four door rows — Q11 step-02 and Q10 step-04, each at 1 and at 296 spend inputs — rose by **+1,312 mem / +358,482 cpu** apiece, and nothing else in the ledger moved: the four control rows did not, and neither did the Q16/Q17 witness-field rows. The cause is #586's §5.3 ledger-key width guard: `decode_midgard_tx_input_cbor` in `lib/midgard/fraud-proofs/native-tx/components.ak` now asserts an input item is **exactly** 38 bytes (`midgard_tx_input_item_bytes`) before reading anything, so the non-minimal 39-byte spelling `82 ‖ 59 0020 ‖ tx_id(32) ‖ 19 index_be16` — which `decode_definite_bytes_at` on its own accepts as the same `(tx_id, output_index)` — is refused, and one out-ref has one trie key. The cost is that one length equality, so it is **per execution that decodes an out-ref, not per item**: the shift is identical on the low- and high-cardinality rows, and the Q16/Q17 rows walk fields 6 and 7 and decode no input item. Being the same on both rows of a subtraction pair, it cancels out of the growth figures — `memoryGrowth`/`cpuGrowth` are unchanged at -112,081 and -4,947,358 — and it reappears unchanged in each derived row; only the headroom readings move (12,827,679 → 12,826,367 mem, 7,851,416,297 → 7,851,057,815 cpu, both still above 97% of the §3.3 basis). It moves no `basisFit`, no `infeasibility` figure and no Q1X-F6 band, and +1,312 is under 0.01% of the §3.3 memory basis.",
+  "note": "The Q1x lane's rolling re-measurement, attached as a lane exit criterion per #565's measurement-slotting rule. Regenerate with `MIDGARD_AIKEN_BIN=<fork> node scripts/verify-q1x-exec-ledger-v1.mjs --update`, and move any reported number in the same commit. Provisional: formal closure of #551 is Phase 7's, against the Phase-6 blueprint. `--update` rewrites raw rows, derived figures and the Q1X-F6 growth readings; it does NOT rewrite `basisFit`, `infeasibility`, `errata` or the Q1X-F6 bands, because those are judgements and a re-take must not be able to launder one. `--update` is also not a bypass: structural failures (a selector that did not run, a missing block, a judgement the fresh measurement contradicts, a Q1X-F6 band the fresh reading falls outside) fail in update mode too and the ledger is not rewritten.\n\n**#584 re-take.** Every measured row here rose by a fixed **per-opening** amount when #584 gave `field_opening_v1` a multi-field opening: the single-field `opened_field_view`/`opened_field_walk` are now `anchored_native_tx` followed by `anchored_field_view`/`anchored_field_walk`, so a one-field step pays one extra opaque-record construction, the field reads that go with it, plus the two separate `expect`s `field_pairs_with` now spends so that a refusal names which guard fired rather than only that the field did not pair. The amount is not one number but two, because the two §2.5 halves construct different handles: **+7,117 mem / +2,529,845 cpu** on the Q10/Q11 body-field rows (field 0, opened as a `BodyTxOpening`, whose handle carries this module's unread placeholder witness set) and **+7,580 mem / +2,673,308 cpu** on the Q16/Q17 witness-field rows (fields 6 and 7, opened as a `WitnessTxOpening`, which additionally carries the transaction's real `NativeTxWitnessSetCompact` and pays the anchored `witness_set_hash` equality). Each amount reappears unchanged in the derived subtraction under it, and the four control rows — which never reach the door — did not move at all. What carries the per-opening conclusion is that within each half the shift is identical on the low- and high-cardinality rows: it is per-opening, not per-item. It therefore moves no growth figure (`memoryGrowth`/`cpuGrowth` are unchanged; only the headroom readings shift) and no `basisFit`, and the larger of the two is under 0.06% of the §3.3 memory basis and under 0.04% of the cpu basis. The alternative was a second spelling of `carriage_reaches_the_anchor` and the §2.5 body/witness pairing for the single-field path, which the AGENTS.md tradeoff order (correctness, safety, liveness, performance) does not buy at that price.\n\n**#586 re-take.** The four door rows — Q11 step-02 and Q10 step-04, each at 1 and at 296 spend inputs — rose by **+1,312 mem / +358,482 cpu** apiece, and nothing else in the ledger moved: the four control rows did not, and neither did the Q16/Q17 witness-field rows. The cause is #586's §5.3 ledger-key width guard: `decode_midgard_tx_input_cbor` in `lib/midgard/fraud-proofs/native-tx/components.ak` now asserts an input item is **exactly** 38 bytes (`midgard_tx_input_item_bytes`) before reading anything, so the non-minimal 39-byte spelling `82 ‖ 59 0020 ‖ tx_id(32) ‖ 19 index_be16` — which `decode_definite_bytes_at` on its own accepts as the same `(tx_id, output_index)` — is refused, and one out-ref has one trie key. The cost is that one length equality, so it is **per execution that decodes an out-ref, not per item**: the shift is identical on the low- and high-cardinality rows, and the Q16/Q17 rows walk fields 6 and 7 and decode no input item. Being the same on both rows of a subtraction pair, it cancels out of the growth figures — `memoryGrowth`/`cpuGrowth` are unchanged at -112,081 and -4,947,358 — and it reappears unchanged in each derived row; only the headroom readings move (12,827,679 → 12,826,367 mem, 7,851,416,297 → 7,851,057,815 cpu, both still above 97% of the §3.3 basis). It moves no `basisFit`, no `infeasibility` figure and no Q1X-F6 band, and +1,312 is under 0.01% of the §3.3 memory basis.\n\n**#592 round-4 re-take, §8.3 erratum E1's repair of `K` (15,900 → 15,148).** `chunk_bytes_k` is compiled into `native_tx_field_access_v1`, which every step here reaches through the §8.8 door, so every row that opens a field rose by one fixed **per-door-opening** amount — and, as in the #584 and #586 re-takes above, the amount is not one number but two, split the same way the two §2.5 halves are: **+2,224 mem / +682,801 cpu** on the Q10/Q11 body-field rows (field 0, opened as a `BodyTxOpening`) and **+2,124 mem / +666,801 cpu** on the Q16/Q17 witness-field rows (fields 6 and 7, opened as a `WitnessTxOpening`). Within each half the shift is identical at one item and at the admissible maximum, which is what makes it per-opening rather than per-item, and none of the control rows — which never reach the door — moved at all. The derived rows below are not readings of a second opening: each is the control-subtraction of one single-opening row, so with the controls unmoved each derived figure shifts by exactly its own row's amount (+2,224 / +682,801 under the Q10/Q11 rows, +2,124 / +666,801 under the Q16/Q17 rows). Nothing about these steps changed — the movement is the door's own `expected_chunk_count` / chunk-offset arithmetic running against the repaired divisor. No `basisFit`, no `infeasibility` string and no Q1X-F6 band moved, and the fresh readings all fall inside their recorded bands, which is what `--update` refuses to launder.",
   "basis": {
     "memoryUnits": 13200000,
     "cpuUnits": 8000000000,
@@ -25,64 +25,64 @@
           "cpu": 343861267
         },
         "q1x_f6_no_input_step_02_at_one_spend_input": {
-          "mem": 1254334,
-          "cpu": 492563883
+          "mem": 1256558,
+          "cpu": 493246684
         },
         "q1x_f6_no_input_step_02_control_at_the_admissible_maximum": {
           "mem": 16815183,
           "cpu": 6914531939
         },
         "q1x_f6_no_input_step_02_at_the_admissible_maximum": {
-          "mem": 17177850,
-          "cpu": 7058287197
+          "mem": 17180074,
+          "cpu": 7058969998
         },
         "q1x_f6_double_spend_step_04_control_at_one_spend_input": {
           "mem": 782194,
           "cpu": 344034414
         },
         "q1x_f6_double_spend_step_04_at_one_spend_input": {
-          "mem": 1267908,
-          "cpu": 497923957
+          "mem": 1270132,
+          "cpu": 498606758
         },
         "q1x_f6_double_spend_step_04_control_at_the_admissible_maximum": {
           "mem": 16817791,
           "cpu": 6914705086
         },
         "q1x_f6_double_spend_step_04_at_the_admissible_maximum": {
-          "mem": 17191424,
-          "cpu": 7063647271
+          "mem": 17193648,
+          "cpu": 7064330072
         },
         "q1x_f6_missing_native_script_tx_step_06_control_at_one_script_witness": {
           "mem": 787321,
           "cpu": 347041284
         },
         "q1x_f6_missing_native_script_tx_step_06_at_one_script_witness": {
-          "mem": 1410007,
-          "cpu": 549881113
+          "mem": 1412131,
+          "cpu": 550547914
         },
         "q1x_f6_missing_native_script_tx_step_06_control_at_the_admissible_maximum": {
           "mem": 17916149,
           "cpu": 8337646886
         },
         "q1x_f6_missing_native_script_tx_step_06_at_the_admissible_maximum": {
-          "mem": 53495509,
-          "cpu": 20229032319
+          "mem": 53497633,
+          "cpu": 20229699120
         },
         "q1x_f6_missing_signature_step_04_control_at_one_address_witness": {
           "mem": 789276,
           "cpu": 345456371
         },
         "q1x_f6_missing_signature_step_04_at_one_address_witness": {
-          "mem": 1374857,
-          "cpu": 534753130
+          "mem": 1376981,
+          "cpu": 535419931
         },
         "q1x_f6_missing_signature_step_04_control_at_the_admissible_maximum": {
           "mem": 32112833,
           "cpu": 12746769250
         },
         "q1x_f6_missing_signature_step_04_at_the_admissible_maximum": {
-          "mem": 72350889,
-          "cpu": 25588678083
+          "mem": 72353013,
+          "cpu": 25589344884
         }
       }
     }
@@ -92,40 +92,40 @@
       "claim": "Q11 no-input step-02 at 1 spend input",
       "minus": "q1x_f6_no_input_step_02_control_at_one_spend_input",
       "from": "q1x_f6_no_input_step_02_at_one_spend_input",
-      "mem": 474748,
-      "cpu": 148702616,
+      "mem": 476972,
+      "cpu": 149385417,
       "basisFit": "fits"
     },
     {
       "claim": "Q11 no-input step-02 at 296 spend inputs",
       "minus": "q1x_f6_no_input_step_02_control_at_the_admissible_maximum",
       "from": "q1x_f6_no_input_step_02_at_the_admissible_maximum",
-      "mem": 362667,
-      "cpu": 143755258,
+      "mem": 364891,
+      "cpu": 144438059,
       "basisFit": "fits"
     },
     {
       "claim": "Q10 double-spend step-04 at 1 spend input",
       "minus": "q1x_f6_double_spend_step_04_control_at_one_spend_input",
       "from": "q1x_f6_double_spend_step_04_at_one_spend_input",
-      "mem": 485714,
-      "cpu": 153889543,
+      "mem": 487938,
+      "cpu": 154572344,
       "basisFit": "fits"
     },
     {
       "claim": "Q10 double-spend step-04 at 296 spend inputs",
       "minus": "q1x_f6_double_spend_step_04_control_at_the_admissible_maximum",
       "from": "q1x_f6_double_spend_step_04_at_the_admissible_maximum",
-      "mem": 373633,
-      "cpu": 148942185,
+      "mem": 375857,
+      "cpu": 149624986,
       "basisFit": "fits"
     },
     {
       "claim": "Q17 missing-native-script-tx step-06 at 1 script witness",
       "minus": "q1x_f6_missing_native_script_tx_step_06_control_at_one_script_witness",
       "from": "q1x_f6_missing_native_script_tx_step_06_at_one_script_witness",
-      "mem": 622686,
-      "cpu": 202839829,
+      "mem": 624810,
+      "cpu": 203506630,
       "basisFit": "fits",
       "infeasibility": "Field 6 is variable-width and the rule is an absence claim, so step-06's `fold_opened_field` walks every script witness: the cost is O(N) by construction, not flat like the Q10/Q11 reads above. At C20.6's 224-witness Cardano envelope the walk is ~2.7x the GOAL_SPEC 3.3 memory basis and ~1.5x the cpu basis, so a missing-native-script fault over a transaction with that many native script witnesses cannot be finalized on L1 in one transaction. Memory is the binding axis: from the two readings the marginal cost is ~156,800 mem and ~52,400,000 cpu per witness, so the walk fits 13,200,000 mem at roughly 81 witnesses and 8,000,000,000 cpu at roughly 150. UNMEASURED COMPARISON, STATED AS SUCH: the retired counted idiom reproduced and re-hashed the whole collection inside the step and needed the same item count, so there is no reason to think it was cheaper - but no counted-era step-06 row exists, this ledger contains no measurement of it, and nothing here should be read as one. What IS measured is this row. The limit is not remediable by carriage, because the cost is execution, and doubly not by tier 3, which docs/spec/midgard-tx.md 8.3 erratum E2 limit 3 refuses outright for witness-set fields. Resolution is #565's resumable-walk work with a checkpoint in thread state (docs/spec/midgard-tx.md 10) and #579's; this ledger's job is to stop it being unmeasured. Separately measured at the pre-round-3 code state, the 6.1 canonicality re-encode restored in step-06 accounts for ~7% of the figure: 33,192,807 mem without it against 35,566,087 with, so removing the check would not bring the walk near the basis."
     },
@@ -133,8 +133,8 @@
       "claim": "Q17 missing-native-script-tx step-06 at 224 script witnesses",
       "minus": "q1x_f6_missing_native_script_tx_step_06_control_at_the_admissible_maximum",
       "from": "q1x_f6_missing_native_script_tx_step_06_at_the_admissible_maximum",
-      "mem": 35579360,
-      "cpu": 11891385433,
+      "mem": 35581484,
+      "cpu": 11892052234,
       "basisFit": "exceeds",
       "infeasibility": "Field 6 is variable-width and the rule is an absence claim, so step-06's `fold_opened_field` walks every script witness: the cost is O(N) by construction, not flat like the Q10/Q11 reads above. At C20.6's 224-witness Cardano envelope the walk is ~2.7x the GOAL_SPEC 3.3 memory basis and ~1.5x the cpu basis, so a missing-native-script fault over a transaction with that many native script witnesses cannot be finalized on L1 in one transaction. Memory is the binding axis: from the two readings the marginal cost is ~156,800 mem and ~52,400,000 cpu per witness, so the walk fits 13,200,000 mem at roughly 81 witnesses and 8,000,000,000 cpu at roughly 150. UNMEASURED COMPARISON, STATED AS SUCH: the retired counted idiom reproduced and re-hashed the whole collection inside the step and needed the same item count, so there is no reason to think it was cheaper - but no counted-era step-06 row exists, this ledger contains no measurement of it, and nothing here should be read as one. What IS measured is this row. The limit is not remediable by carriage, because the cost is execution, and doubly not by tier 3, which docs/spec/midgard-tx.md 8.3 erratum E2 limit 3 refuses outright for witness-set fields. Resolution is #565's resumable-walk work with a checkpoint in thread state (docs/spec/midgard-tx.md 10) and #579's; this ledger's job is to stop it being unmeasured. Separately measured at the pre-round-3 code state, the 6.1 canonicality re-encode restored in step-06 accounts for ~7% of the figure: 33,192,807 mem without it against 35,566,087 with, so removing the check would not bring the walk near the basis.",
       "errata": "docs/spec/midgard-tx.md §8.3 erratum E2 — limit 1 (execution), the field-6 half"
@@ -143,16 +143,16 @@
       "claim": "Q16 missing-signature step-04 at 1 address witness",
       "minus": "q1x_f6_missing_signature_step_04_control_at_one_address_witness",
       "from": "q1x_f6_missing_signature_step_04_at_one_address_witness",
-      "mem": 585581,
-      "cpu": 189296759,
+      "mem": 587705,
+      "cpu": 189963560,
       "basisFit": "fits"
     },
     {
       "claim": "Q16 missing-signature step-04 at 318 address witnesses",
       "minus": "q1x_f6_missing_signature_step_04_control_at_the_admissible_maximum",
       "from": "q1x_f6_missing_signature_step_04_at_the_admissible_maximum",
-      "mem": 40238056,
-      "cpu": 12841908833,
+      "mem": 40240180,
+      "cpu": 12842575634,
       "basisFit": "exceeds",
       "infeasibility": "The wave's second unbounded walk, added at the #575 round-2 review's request. Field 7 is fixed-stride, so unlike field 6 the walk pays no per-item envelope decode - and it is still O(N), because the rule is an absence claim and `fold_opened_field` must visit every item to assert it. That isolates the cost to the walk itself rather than to variable-width decoding. At 318 address witnesses (the widest field 7 the 5.4 aggregate cap admits at the 5.3 stride of 103) the step is ~3.0x the GOAL_SPEC 3.3 memory basis and ~1.6x the cpu basis. From the two readings the marginal cost is ~125,100 mem and ~39,900,000 cpu per witness, so the walk fits 13,200,000 mem at roughly 101 witnesses and 8,000,000,000 cpu at roughly 196; memory is the binding axis. Above ~101 address witnesses a missing-signature fault cannot be finalized in one L1 transaction. Not remediable by carriage - the cost is execution - and doubly not by tier 3, which 8.3 erratum E2 limit 3 refuses outright for witness-set fields. Resolution is #565's resumable walk with a checkpoint in thread state (docs/spec/midgard-tx.md 10), with the deployed-identity half in #579. Carriage interaction, stated rather than glossed: 318 witnesses is a 32,757-byte field 7, over the 8.3 tier-1 redeemer bound and over K, so on L1 those bytes would have to travel under tier 3 - which 8.3 erratum E2 limit 3 now refuses for a witness-set field. This row is therefore taken under tier-1 carriage in the harness at a width tier 1 could not carry, and it is published as a walk-cost reading rather than as a reachable configuration; the neutralisation selector `q1x_f6_address_witness_fixture_sits_at_the_admissible_cardinality` asserts that the preimage exceeds the tier-1 bound so the fact cannot go unnoticed. Execution binds first regardless: the widest field 7 tier-2 carriage delivers is ~154 witnesses and the walk leaves the memory basis at ~101.",
       "errata": "docs/spec/midgard-tx.md §8.3 erratum E2 — limit 1 (execution), the field-7 half"
@@ -168,8 +168,8 @@
     "maxCpuGrowth": 100000000,
     "memoryGrowth": -112081,
     "cpuGrowth": -4947358,
-    "memoryHeadroom": 12826367,
-    "cpuHeadroom": 7851057815,
+    "memoryHeadroom": 12824143,
+    "cpuHeadroom": 7850375014,
     "toleranceRationale": "The door pays one blake2b_256 over a preimage that does grow with cardinality - 43 bytes at one input, 11,843 at 296 - so the honest growth is the hash of ~11.8 KB more and nothing else, measured at ~4,600 mem. The band has to hold that plus the control-subtraction artifact described in `deltaAttribution` (|112,081| mem, |4,947,358| cpu), and has to sit far below any per-item regression. Both were measured rather than assumed: a step regressed to walk the whole 296-item collection costs +25,127,050 mem / +8,363,297,421 cpu against the same control, and one regressed to walk only half of it +12,129,016 mem / +4,062,287,469 cpu. The bands below are therefore ~2.2x the observed artifact and ~48x (mem) and ~40x (cpu) below the cheapest regression measured, so neither a half-collection walk nor anything dearer can hide inside them. cpu is carried as its own two-sided band because it is the axis a walk regression moves proportionally hardest against its own tolerance.",
     "minMemoryGrowth": -250000,
     "minCpuGrowth": -100000000,

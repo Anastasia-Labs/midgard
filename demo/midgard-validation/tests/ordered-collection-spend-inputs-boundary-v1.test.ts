@@ -1,6 +1,7 @@
 import { CML, Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { publishAikenVectorV1 } from "./helpers/aiken-vector-channel.js";
 import {
   buildSignedCardanoSpendInputsCandidateV1,
   CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
@@ -241,6 +242,44 @@ describe("canonical V1 spend-inputs Cardano boundary", () => {
       collectionProof: inputField.terminalFoldVector.collectionProof,
       chunkProof: inputField.terminalFoldVector.chunkProof,
     }).toEqual(maximumSpendInputTerminalFoldVectorV1);
+    // #590 scope item 0: the write channel this suite did not have.
+    //
+    // The `spend-inputs-boundary-v1` fixture in
+    // `onchain/aiken/lib/midgard/validation-machine-v1.test.ak` mirrors this
+    // boundary's terminal fold, and until now nothing carried the bytes across —
+    // so that fixture still pinned the *counted* field roots this package stopped
+    // emitting at #585, and stayed green only because the id it pinned was the id
+    // of the compact it pinned beside it. #592's rebind puts §8's carriage where
+    // the counted `(ItemProofV1, ChunkProofV1)` pair used to be, and a carriage is
+    // the field's whole §5.1 preimage, which no human is going to retype.
+    //
+    // Published after the assertions above, so the generator can only ever see a
+    // vector this suite has already accepted.
+    publishAikenVectorV1("spend-inputs-boundary-v1", {
+      fieldIndex: inputField.terminalFoldVector.collectionProof.fieldIndex,
+      itemCount: inputField.terminalFoldVector.collectionProof.itemCount,
+      itemIndex: inputField.terminalFoldVector.collectionProof.itemIndex,
+      terminalChunkIndex: inputField.terminalFoldVector.chunkProof.chunkIndex,
+      encodedLengthBeforeItem:
+        inputField.terminalFoldVector.encodedLengthBeforeItem,
+      // §8.1's tier-1 carriage: the field's whole §5.1 preimage, which the door
+      // hashes once against the flat commitment below.
+      fieldPreimageCborHex: inputField.fieldPreimageCborHex,
+      fieldCommitmentHex: inputField.fieldCommitmentHex,
+      transactionIdHex: inputField.terminalFoldVector.transactionIdHex,
+      transactionCommitmentHex:
+        inputField.terminalFoldVector.transactionCommitmentHex,
+      compactCborHex: inputField.terminalFoldVector.compactCborHex,
+      witnessSetCompactCborHex:
+        inputField.terminalFoldVector.witnessSetCompactCborHex,
+      fieldPreimageLengthsCborHex:
+        inputField.terminalFoldVector.fieldPreimageLengthsCborHex,
+      validationContextCborHex:
+        inputField.terminalFoldVector.validationContextCborHex,
+      preWorkRootHex: inputField.terminalFoldVector.preWorkRootHex,
+      postWorkRootHex: inputField.terminalFoldVector.postWorkRootHex,
+    });
+
 
     const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);

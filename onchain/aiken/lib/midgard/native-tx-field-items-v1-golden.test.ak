@@ -1986,8 +1986,8 @@ fn golden_straddle_chunks(preimage: ByteArray) -> List<ByteArray> {
   )
 }
 
-/// Item 397 crosses the K boundary: its payload spans
-/// [15885, 15923) while chunk 0 ends at 15900, so reading it stitches
+/// Item 378 crosses the K boundary: its payload spans
+/// [15125, 15163) while chunk 0 ends at 15148, so reading it stitches
 /// bytes out of both chunks. Its neighbours are read too — they carry different
 /// bytes, so an off-by-one that silently returned an adjacent item would fail.
 test golden_straddle_read_matches_typescript() {
@@ -2002,16 +2002,16 @@ test golden_straddle_read_matches_typescript() {
   and {
     bytearray.length(preimage) == 16003,
     field_commitment(preimage) == golden_straddle_commitment,
-    list.map(chunks, bytearray.length) == [15900, 103],
+    list.map(chunks, bytearray.length) == [15148, 855],
     list.map(chunks, blake2b_256) == [
-      #"3d472a8b6608fd6572a3de26a9f95a37c86c9ba739c39b5b8314f860bc908806",
-      #"7243f0ea84ad415d83212fc24569d54be7e81f50198a257f93de50cfcb3d7cb2",
+      #"aca116dea52dcd7df1d81db0f89b6538c62f12a9a058bb2a9746aafe80ca4282",
+      #"2a5f24003a2f2ea29bd7bb3e2a8d305772011e94ccc2f862c2f19d2cb93fd8a4",
     ],
-    field_item_extent(view, 396) == Pair(15845, 38),
-    field_item_at(view, 396) == #"825820d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2190006",
-    field_item_extent(view, 397) == Pair(15885, 38),
-    field_item_at(view, 397) == #"825820f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1190007",
-    field_item_extent(view, 398) == Pair(15925, 38),
-    field_item_at(view, 398) == #"825820171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0190008",
+    field_item_extent(view, 377) == Pair(15085, 38),
+    field_item_at(view, 377) == #"825820f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1190007",
+    field_item_extent(view, 378) == Pair(15125, 38),
+    field_item_at(view, 378) == #"825820171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0190008",
+    field_item_extent(view, 379) == Pair(15165, 38),
+    field_item_at(view, 379) == #"825820363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f190009",
   }
 }

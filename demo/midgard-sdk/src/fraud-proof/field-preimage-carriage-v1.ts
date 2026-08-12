@@ -46,13 +46,15 @@ import {
  * and there is no tier-shaped argument anywhere on that path.
  *
  * **Publication is guarded (§8.3 erratum E1).** `chunk_bytes_k` is pinned at
- * 15,900 and a signed publication of that many bytes measures 16,648 — 264
- * bytes over `maxTxSize`. Until #565's serialized patch re-cuts `K`, the
- * §8.4 split produces chunks that cannot be published, and the honest thing for
- * a builder to do about that is refuse rather than hand back a transaction the
- * ledger will reject. {@link buildUnsignedFieldPreimagePublicationV1Program}
- * therefore checks every publication against the measured frontier before
- * building it.
+ * 15,148 — E1's repaired value, the reserve-clearing publication frontier — so
+ * an honest §8.4 split now produces chunks that all publish, a 15,148-byte chunk
+ * measuring 15,872 signed bytes against a 16,384-byte `maxTxSize`. The guard
+ * stays because the frontier is a *measurement*, not an invariant of the split:
+ * {@link buildUnsignedFieldPreimagePublicationV1Program} checks every publication
+ * against it before building, so a hand-assembled chunk list, a plan produced by
+ * an older chunker, or a deliberately raised limit is refused rather than handed
+ * back as a transaction the ledger will reject. Before the repair the guard
+ * refused every tier-3 plan there was, which is the outage E1 records.
  *
  * **Nothing here is privileged (§8.7).** Publication and certification are
  * permissionless: no operator role, no allowlist, no signature required at
@@ -240,8 +242,8 @@ export const assertFieldPreimagePublicationFitsV1 = ({
     `chunk ${publication.chunkIndex.toString()} is ${publication.byteLength.toString()} bytes, ` +
       `which publishes as a ${transactionBytes.toString()}-byte signed transaction and exceeds the ` +
       `${maxPublicationBytes.toString()}-byte publishable frontier (§8.3 erratum E1). ` +
-      "`chunk_bytes_k` is still pinned at 15,900 and the §8.4 split therefore produces chunks " +
-      "that cannot be published; re-pinning K is #565's serialized Phase-1 patch.",
+      "`chunk_bytes_k` is pinned at 15,148, the publishable frontier (§8.3 E1's repair), so an " +
+      "honest §8.4 split does not produce a chunk this large; check the chunk list's provenance.",
   );
 };
 
@@ -252,21 +254,22 @@ export const assertFieldPreimagePublicationFitsV1 = ({
  *
  * **One publication per transaction, not one per plan.** A chunk is sized to
  * fill a transaction: against a 16,384-byte `maxTxSize`, a full chunk's signed
- * publication measures 16,648 bytes at the currently-declared `K` and 15,872 at
- * the re-pinned one (§8.3 erratum E1). Two chunks cannot share a transaction at
- * either value, and a builder that tried would fail at exactly the sizes tier 3
- * exists for. A caller publishes a tier-3 plan by
+ * publication measures 15,872 bytes at the repaired `K` (§8.3 erratum E1), which
+ * leaves exactly the 512-byte reliability reserve and no room for a second chunk.
+ * A builder that tried to share a transaction would fail at exactly the sizes
+ * tier 3 exists for. A caller publishes a tier-3 plan by
  * iterating {@link fieldPreimagePublicationOutputsV1}; the publications are
  * independent, so a run interrupted half-way is resumed by publishing whatever
  * is missing, and §8.7's content addressing means it does not matter who
  * publishes which.
  *
- * **It refuses what it cannot publish.** At the currently-declared `K` the
- * first chunk of every tier-3 plan is one of those, which is precisely the
- * live defect erratum E1 records: the guard is what turns "the ledger will
- * reject this" from something a caller discovers at submission into something
- * the builder says up front. `maxPublicationBytes` exists for the frontier
- * measurement and for nothing else.
+ * **It refuses what it cannot publish.** At the repaired `K` an honest §8.4 plan
+ * has no such chunk, so the guard is quiet on every real publication; what it
+ * still catches is a chunk list that did not come from this chunker. Before E1's
+ * repair the first chunk of *every* tier-3 plan tripped it, which is how the
+ * outage that erratum records became visible at build time rather than at
+ * submission. `maxPublicationBytes` exists for the frontier measurement and for
+ * nothing else.
  */
 export const buildUnsignedFieldPreimagePublicationV1Program = (
   lucid: LucidEvolution,
@@ -467,7 +470,8 @@ export const resolveChunkReferenceIndicesV1 = ({
   const ordered = [...referenceInputs].sort(compareOutRefs);
   // Matched positions are consumed. Two chunks of one preimage can be
   // byte-identical — the §8.4 split is positional, not content-deduplicated, so
-  // a preimage with a repeating 15,900-byte period produces repeating chunks —
+  // a preimage with a repeating `chunk_bytes_k`-byte period produces repeating
+  // chunks —
   // and a plain `findIndex` would return the same position for both, naming one
   // UTxO twice in the redeemer and never naming the other. The certification
   // would then be checked against the wrong chunk for one of the two positions.

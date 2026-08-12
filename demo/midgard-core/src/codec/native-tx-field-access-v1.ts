@@ -75,34 +75,29 @@ export const MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT_V1 = 296;
 export const MIDGARD_MAX_FIELD_ITEM_COUNT_V1 = 65_535;
 
 /**
- * §8.3 tier-2 bound and tier-3 chunk size.
+ * §8.3 tier-2 bound and tier-3 chunk size — the value the spec's §8.3 erratum
+ * E1 re-pinned it to, applied.
  *
- * **FALSIFIED — this literal is not the value of `K`.** The Phase-4
- * measurement it was declared provisional pending has been taken and refuted
- * 15,900: a real signed key-address publication of a 15,900-byte chunk
- * measures 16,648 bytes against a 16,384-byte `maxTxSize`. `K` is re-pinned to
- * **15,148** by the spec's §8.3 erratum E1, which is normative for this
- * constant.
+ * **E1 falsified the provisional 15,900 and this constant now carries the
+ * repair.** A real signed key-address publication of a 15,900-byte chunk
+ * measures 16,648 bytes against a 16,384-byte `maxTxSize`, so at 15,900 *every*
+ * tier-3 plan's first chunk was unpublishable and the whole window
+ * `(15,148, 32,768]` had no admissible carriage. 15,148 is the reserve-clearing
+ * publication frontier: a 15,148-byte chunk publishes as exactly 15,872 bytes,
+ * which is `maxTxSize` minus the 512-byte reliability reserve. It is therefore
+ * the same number as {@link MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1} in
+ * `./native-tx-carriage-v1.js`, which derives it from the cost model rather than
+ * writing it down; the two are asserted equal there rather than trusted to
+ * agree, and that assertion is what keeps `K` a measured bound instead of a
+ * literal.
  *
- * The literal still reads 15,900 because its Aiken twin is compiled into an
- * acceptance predicate (`total_length > chunk_bytes_k`) and into every chunk
- * boundary in the system, so re-cutting it is #565's serialized
- * Phase-1-surface patch.
- *
- * **This is a live spec/code divergence, and E1 states it as the accepted price
- * of the #573 freeze** rather than as a discrepancy to be discovered here. Read
- * E1 for the cost. Two consequences while the two values disagree: preimages in
- * (15,148, 15,900] have no admissible carriage, since the validator refuses
- * them as tier 3 and they cannot be published as tier 2; and, because the
- * chunker cuts at this literal, **no tier-3 preimage of any length can be
- * published at all** — every tier-3 plan's first chunk is a full 15,900 bytes,
- * 264 over `maxTxSize`. The unpublishable window is the whole of
- * (15,148, 32,768], not the tier-2 sliver. See
- * `midgardFieldCarriagePublishabilityV1` in `./native-tx-carriage-v1.js`,
- * which is the guard that makes E1's mitigation enforceable rather than
- * advisory — a refusal, not a repair.
+ * `ceil(32,768 / 15,148) = 3`, so {@link MIDGARD_MAX_TIER3_CHUNK_COUNT_V1} is
+ * unmoved by the re-pin. The Aiken twin `chunk_bytes_k` in
+ * `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak` moves in the same
+ * commit, because it is the *split*, not merely a bound: every fixture, golden,
+ * corner and cost row taken at a 15,900-byte boundary re-derives with it.
  */
-export const MIDGARD_CHUNK_BYTES_K_V1 = 15_900;
+export const MIDGARD_CHUNK_BYTES_K_V1 = 15_148;
 
 /**
  * §8.3 tier-1 bound. **PROVISIONAL**, and still unmeasured: `maxTxSize`

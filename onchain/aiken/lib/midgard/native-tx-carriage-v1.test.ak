@@ -249,7 +249,7 @@ test split_at_the_aggregate_cap_uses_three_chunks() {
   let preimage = marked_bytes(#"02", max_transaction_aggregate_field_bytes)
   let chunks = split_field_preimage(preimage)
   and {
-    list.map(chunks, bytearray.length) == [chunk_bytes_k, chunk_bytes_k, 968],
+    list.map(chunks, bytearray.length) == [chunk_bytes_k, chunk_bytes_k, 2472],
     list.length(chunks) == max_tier3_chunk_count,
     joined(chunks) == preimage,
   }
@@ -329,10 +329,10 @@ test split_matches_the_cross_language_straddle_vector() {
   and {
     bytearray.length(preimage) == 16003,
     field_commitment(preimage) == straddle_commitment,
-    list.map(split_field_preimage(preimage), bytearray.length) == [15900, 103],
+    list.map(split_field_preimage(preimage), bytearray.length) == [15148, 855],
     field_preimage_chunk_digests(preimage) == [
-      #"3d472a8b6608fd6572a3de26a9f95a37c86c9ba739c39b5b8314f860bc908806",
-      #"7243f0ea84ad415d83212fc24569d54be7e81f50198a257f93de50cfcb3d7cb2",
+      #"aca116dea52dcd7df1d81db0f89b6538c62f12a9a058bb2a9746aafe80ca4282",
+      #"2a5f24003a2f2ea29bd7bb3e2a8d305772011e94ccc2f862c2f19d2cb93fd8a4",
     ],
   }
 }
@@ -769,7 +769,7 @@ fn input_of(index: Int, output: Output) -> Input {
 /// The end of the ladder: carriage produced here, consumed through the door in
 /// `native_tx_field_access_v1`, with nothing in between. This is the assertion
 /// that the split rule and the consumer's chunk arithmetic are the same rule —
-/// item 397 crosses the `K` boundary, so reading it stitches bytes out of both
+/// item 378 crosses the `K` boundary, so reading it stitches bytes out of both
 /// chunks and would return the wrong 38 bytes if the boundary were off by one.
 test certified_carriage_opens_through_the_access_door() {
   let preimage = straddle_preimage()
@@ -838,8 +838,8 @@ test certified_carriage_opens_through_the_access_door() {
   )
   and {
     field_item_count(view) == 400,
-    field_item_extent(view, 397) == Pair(15885, 38),
-    field_item_at(view, 397) == #"825820f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1190007",
+    field_item_extent(view, 378) == Pair(15125, 38),
+    field_item_at(view, 378) == #"825820171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0190008",
   }
 }
 
@@ -870,7 +870,7 @@ fn nine_item_block() -> ByteArray {
 ///
 /// It is the three-chunk corner because 819 items is the first item count whose
 /// preimage exceeds `2 · K` and the last that does not exceed the cap: the
-/// split is `[15,900, 15,900, 963]`, both chunk boundaries fall inside items,
+/// split is `[15,148, 15,148, 2,467]`, both chunk boundaries fall inside items,
 /// and the ragged tail is the smallest of the three. A fixed-stride field is
 /// used on purpose — §8.6 refuses a variable-width field's tier-3 count, so a
 /// variable-width corner could not be opened and read at all.
@@ -1023,17 +1023,17 @@ test tier3_corner_fixture_sits_at_the_three_chunk_corner() {
     total_length + 5 == max_transaction_aggregate_field_bytes,
     total_length + spend_input_stride > max_transaction_aggregate_field_bytes,
     list.map(split_field_preimage(preimage), bytearray.length) == [
-      chunk_bytes_k, chunk_bytes_k, 963,
+      chunk_bytes_k, chunk_bytes_k, 2467,
     ],
     expected_chunk_count(total_length) == max_tier3_chunk_count,
     field_item_count(corner_view()) == 819,
     // Both boundaries fall *inside* an item, which is what makes rows 4 and 5
-    // straddling reads rather than aligned ones: item 397's payload spans
-    // 15,885..15,923 across chunk 0's end at 15,900, and item 794's spans
-    // 31,765..31,803 across chunk 1's end at 31,800. Item 818 is the last, and
-    // it lies wholly inside the 963-byte ragged tail.
-    field_item_extent(corner_view(), 397) == Pair(15885, 38),
-    field_item_extent(corner_view(), 794) == Pair(31765, 38),
+    // straddling reads rather than aligned ones: item 378's payload spans
+    // 15,125..15,163 across chunk 0's end at 15,148, and item 757's spans
+    // 30,285..30,323 across chunk 1's end at 30,296. Item 818 is the last, and
+    // it lies wholly inside the 2,467-byte ragged tail.
+    field_item_extent(corner_view(), 378) == Pair(15125, 38),
+    field_item_extent(corner_view(), 757) == Pair(30285, 38),
     field_item_extent(corner_view(), 818) == Pair(32725, 38),
   }
 }
@@ -1068,28 +1068,28 @@ test tier3_corner_two_reads() {
   }
 }
 
-/// Row 4 — the first boundary. Item 397's payload begins at 15,885 and ends at
-/// 15,923, so it is stitched out of chunk 0 and chunk 1.
+/// Row 4 — the first boundary. Item 378's payload begins at 15,125 and ends at
+/// 15,163, so it is stitched out of chunk 0 and chunk 1.
 test tier3_corner_straddling_read() {
   let view = corner_view()
   and {
     field_item_count(view) == 819,
-    field_item_at(view, 397) == corner_item(397),
+    field_item_at(view, 378) == corner_item(378),
   }
 }
 
 /// Row 5 — the second boundary, the one a two-chunk fixture cannot reach. Item
-/// 794's payload begins at 31,765 and crosses 31,800 into the ragged tail.
+/// 757's payload begins at 30,285 and crosses 30,296 into the ragged tail.
 test tier3_corner_second_straddling_read() {
   let view = corner_view()
   and {
     field_item_count(view) == 819,
-    field_item_at(view, 794) == corner_item(794),
+    field_item_at(view, 757) == corner_item(757),
   }
 }
 
-/// Row 6 — the last item, wholly inside the 963-byte ragged tail. Against row 2
-/// this is the same read against a chunk sixteen times smaller, which is what
+/// Row 6 — the last item, wholly inside the 2,467-byte ragged tail. Against row
+/// 2 this is the same read against a chunk six times smaller, which is what
 /// shows the per-read cost is the chunk's size and not the preimage's.
 test tier3_corner_last_chunk_read() {
   let view = corner_view()

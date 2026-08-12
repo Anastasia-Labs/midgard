@@ -11,8 +11,6 @@
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
-use midgard/bounded_collection_v1
-use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_redeemer_witness}
 use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_redeemer_witnesses_preimage_cbor,
@@ -22,8 +20,8 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardExecutionUnits, MidgardRedeemerWitness, SpendRedeemer,
 }
 use midgard/native_tx_field_access_v1
+use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_machine_v1
-use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
 // Derived by the genuine Cardano boundary fixture in
@@ -196,49 +194,6 @@ test maximum_cardano_spend_redeemer_terminal_fold_matches_typescript() {
       compact_binding_witness_cbor,
     ),
   }
-  let collection_proof = bounded_collection_v1.ItemProofV1 {
-    version: bounded_collection_v1.version,
-    field_index: 8,
-    item_count: maximum_cardano_spend_redeemer_count,
-    item_index: 295,
-    item_length: 18,
-    item_commitment: #"0b7517c996b4be98c145b61a84789c337d9a394529322f0e4ff2b00825a13fe5",
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 3,
-        hash: #"599fb8883e9753ebff787e9ba693c9d266a94e2e4c2412f5cc8def17a37efc4b",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 5,
-        hash: #"d3ee1a26b14495f4b4e5196a4035453be00e5947a29d7a106e78df0ffb840942",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 8,
-        hash: #"baff8cd322326841f8dbf9a8fa0464a67cdf9c4161e429fbb569e0346adffde1",
-      },
-    ],
-    siblings: [
-      #"b2a18a9249e13b7f2c75032bf73d6d447b196d970097d8276f450ddcbd45ff21",
-      #"8277569ed239c02bb472113a2804537ce7e9977f6fc3e8e01104f1c38c696c18",
-      #"07c8bf5bbf9c9e2b477a1c8ccfe1a7d4ce62846164c5fbebc6481c4da4fc6f22",
-    ],
-  }
-  let chunk_proof = bounded_item_v1.ChunkProofV1 {
-    version: bounded_item_v1.version,
-    field_index: 8,
-    item_index: 295,
-    total_length: 18,
-    chunk_index: 0,
-    chunk: #"840019012843d87980821906411a0004d2f5",
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: #"bd5765879c3e766f6cbc89ea728e263b73af278ed4091e26cabaf5b7fb04d91e",
-      },
-    ],
-    siblings: [],
-  }
-
   and {
     pre.work_root == maximum_cardano_terminal_pre_work_root,
     post.work_root == maximum_cardano_terminal_post_work_root,
@@ -249,10 +204,25 @@ test maximum_cardano_spend_redeemer_terminal_fold_matches_typescript() {
           work_witness_cbor,
           claimed_successor: post,
         },
+        // §8.1 tier-1 carriage: the field-8 preimage itself, rebuilt from the
+        // generated `maximum_cardano_*` constants by this module's own §5.1
+        // encoder. Nothing per-item is supplied — the door hashes the preimage
+        // once against the compact structure's `redeemer_tx_wits_hash` (which
+        // `maximum_cardano_spend_redeemer_preimage_hash` pins) and item 295 is
+        // then a slice.
         auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
-          collection_proof,
-          chunk_proof,
+          field_index: 8,
+          item_index: 295,
+          carriage: native_tx_field_access_v1.Inline {
+            preimage: encode_redeemer_witness_preimage(
+              maximum_cardano_spend_redeemers_from(1),
+            ),
+          },
         },
+      },
+      field_door.MachineFieldDoorV1 {
+        reference_inputs: [],
+        certificate_policy_id: #"",
       },
     ),
   }

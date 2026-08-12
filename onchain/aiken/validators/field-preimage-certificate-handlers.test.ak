@@ -682,8 +682,8 @@ test field_preimage_certificate_handler_retire_rejects_a_mint() fail {
 /// The three-chunk corner, as certification sees it. Certification checks chunk
 /// *shape*, digests and the reconstruction hash and never looks inside an item,
 /// so the corner only has to be the right length here — 32,763 bytes, the
-/// largest §5.3 stride-40 preimage under the §5.4 cap, splitting `[15,900,
-/// 15,900, 963]`. The door-side corner is `door_corner_preimage` in
+/// largest §5.3 stride-40 preimage under the §5.4 cap, splitting `[15,148,
+/// 15,148, 2,467]`. The door-side corner is `door_corner_preimage` in
 /// `lib/midgard/native-tx-carriage-v1.test.ak`: the same length, but built out
 /// of real items, because that is the side that reads them. The two are named
 /// apart on purpose — they are different bytes serving different claims, and a
@@ -787,7 +787,7 @@ test certificate_corner_fixture_sits_at_the_three_chunk_corner() {
     total_length == 32763,
     total_length + 5 == 32768,
     list.map(split_field_preimage(preimage), bytearray.length) == [
-      chunk_bytes_k, chunk_bytes_k, 963,
+      chunk_bytes_k, chunk_bytes_k, 2467,
     ],
     list.length(corner_certificate().chunk_digests) == 3,
     list.length(corner_chunk_inputs()) == 3,

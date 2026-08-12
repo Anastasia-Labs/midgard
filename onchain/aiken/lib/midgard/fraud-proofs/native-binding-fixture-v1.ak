@@ -1,8 +1,11 @@
 //// Test-fixture support for the native-V1 counted-root binding selectors of
 //// the fault-proof step validators (GOAL_SPEC.md Q00).
 ////
-//// This module is referenced exclusively by tests embedded in the
-//// `validators/fraud-proofs/**` step modules. It builds a real single-tx
+//// This module is referenced by tests embedded in the
+//// `validators/fraud-proofs/**` step modules, and — for its §8 tier-3 carriage
+//// helpers alone (`certified_carriage_v1` /
+//// `certified_reference_inputs_v1`) — by `native-tx.max-inline-datum.test.ak`,
+//// whose 16,225-byte field-2 boundary has no admissible carriage below tier 3. It builds a real single-tx
 //// native-V1 block fixture (canonical compact CBOR, genuine MPF transactions
 //// root, counted-root committed header) plus the L1 transactions that drive a
 //// computation-thread `Continue` or finalize step against it. It is not

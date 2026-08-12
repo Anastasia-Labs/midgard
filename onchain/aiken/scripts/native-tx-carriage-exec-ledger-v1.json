@@ -1,7 +1,7 @@
 {
   "measurement": "native-tx-carriage-v1-exec-ledger",
   "spec": "docs/spec/midgard-tx.md §8.10 — Cost claims: the carriage exit measurements",
-  "note": "Every execution figure §8.10 publishes is a row or a derivation here. Regenerate with `node scripts/verify-carriage-exec-ledger-v1.mjs --update`, and move the spec in the same commit.",
+  "note": "Every execution figure §8.10 publishes is a row or a derivation here. Regenerate with `node scripts/verify-carriage-exec-ledger-v1.mjs --update`, and move the spec in the same commit.\n\n**#592 re-take, one fixed per-view amount.** The six `tier3_corner_*` rows that open the door rose by exactly +5,944 mem / +1,838,206 cpu; `tier3_corner_fixture_only`, which opens none, did not move, and neither did any certificate-handler row. #592 needs tier 3 read two ways — lazily, which is `certified_view` and is what these rows measure, and materialised whole, which is `authenticated_whole_field_view`, because the validation machine's phases consume §5.2's item count and the lazy view refuses to answer it for a variable-width field. Both ways need the identical §8.4/§8.6 manifest checks, so those moved into one `certified_chunks` returning a `CertifiedChunksV1` record, and a tier-3 view construction pays one record construction and destructure more.\n\n**#592 round-4 re-take, §8.3 erratum E1's repair of `K` (15,900 → 15,148).** `K` is the split, so this moves the fixture's chunk shape and therefore every row that hashes a chunk: the corner now splits `[15,148, 15,148, 2,467]` instead of `[15,900, 15,900, 963]`, and the two straddling reads are items 378 and 757 instead of 397 and 794. Two baselines are in play, because the re-take above is uncommitted as well, and every figure below names which one it is on: **cumulative** is against the last committed rows and so carries both re-takes; **round-4-only** is this re-take alone, i.e. the cumulative figure less the +5,944 mem / +1,838,206 cpu the paragraph above records for a door row. Direction and cause, row by row. `tier3_corner_fixture_only` is unmoved on either basis — it never opens the door and the fixture bytes are the same 32,763. Every door row gains a small fixed memory amount, because `expected_chunk_count` and the per-read `offset / chunk_bytes_k` arithmetic run against a smaller divisor over a three-chunk manifest: cumulatively **+8,268 on the open and +8,168 on each of the five read rows**, which is **round-4-only +2,324 on the open and +2,224 on each read row**. The open pays 100 mem more than a read does, which is why the derived per-read memory falls by 100 (155,242 → 155,142) while the derived open cost rises by the whole +8,268. CPU moves the other way on the reads — a full chunk is 752 bytes shorter, so each `blake2b_256` over the chunk a read lands in is cheaper: round-4-only −1,673,873 on the first read, −4,030,547 on the two-read row, and −2,459,431 and −102,757 on the two straddling reads (the cumulative figures for those four rows are +164,333, −2,192,341, −621,225 and +1,735,449, which read as increases or as shallower falls only because the earlier re-take's +1,838,206 is still inside them). The open is dearer on CPU on both bases: cumulative +2,537,007, round-4-only +698,801. The ragged-tail read gets **dearer** on CPU too — round-4-only **+5,396,149**, cumulative +7,234,355 — because that chunk grew from 963 to 2,467 bytes. The certificate-handler rows were not moved by the earlier re-take, so for them the two bases coincide: all six fall on CPU (−1,570,928 to −5,531,336) for the same chunk-length reason, and two of them fall on memory as well — `certificate_mint_cost_at_the_smallest_tier3` by −188 and `certificate_mint_cost_at_the_corner` by −282 — so the two mint derived deltas fall on both axes rather than on CPU alone.\n\n**One conclusion moved with it, and it is not a rounding change: the read budget's binding axis is now memory, not CPU.** At the superseded `K` the corner admitted 83.5 reads by memory and 82.2 by CPU; at the repaired `K` it admits 83.5 by memory and 84.3 by CPU, because the per-read CPU fell and the per-read memory did not. The budget itself is essentially unchanged (≈82 → ≈83 items) — what changed is which axis is quoted as binding, and §8.10 says so rather than letting the number drift under an unchanged sentence.",
   "basis": {
     "memoryUnits": 13200000,
     "cpuUnits": 8000000000
@@ -14,13 +14,34 @@
         "tier3_corner_refuses_a_tampered_tail_chunk"
       ],
       "rows": {
-        "tier3_corner_fixture_only": { "mem": 406217, "cpu": 195100192 },
-        "tier3_corner_open_only": { "mem": 637162, "cpu": 264352699 },
-        "tier3_corner_one_read": { "mem": 792404, "cpu": 360784354 },
-        "tier3_corner_two_reads": { "mem": 949150, "cpu": 457631357 },
-        "tier3_corner_straddling_read": { "mem": 830057, "cpu": 388512657 },
-        "tier3_corner_second_straddling_read": { "mem": 853002, "cpu": 380048287 },
-        "tier3_corner_last_chunk_read": { "mem": 825111, "cpu": 323895098 }
+        "tier3_corner_fixture_only": {
+          "mem": 406217,
+          "cpu": 195100192
+        },
+        "tier3_corner_open_only": {
+          "mem": 645430,
+          "cpu": 266889706
+        },
+        "tier3_corner_one_read": {
+          "mem": 800572,
+          "cpu": 360948687
+        },
+        "tier3_corner_two_reads": {
+          "mem": 957318,
+          "cpu": 455439016
+        },
+        "tier3_corner_straddling_read": {
+          "mem": 838225,
+          "cpu": 387891432
+        },
+        "tier3_corner_second_straddling_read": {
+          "mem": 861170,
+          "cpu": 381783736
+        },
+        "tier3_corner_last_chunk_read": {
+          "mem": 833279,
+          "cpu": 331129453
+        }
       }
     },
     {
@@ -30,12 +51,30 @@
         "certificate_mint_rejects_a_tampered_corner_chunk"
       ],
       "rows": {
-        "certificate_mint_fixture_only_smallest_tier3": { "mem": 688584, "cpu": 297698461 },
-        "certificate_mint_cost_at_the_smallest_tier3": { "mem": 1331699, "cpu": 562080595 },
-        "certificate_mint_fixture_only_at_the_corner": { "mem": 642305, "cpu": 333486628 },
-        "certificate_mint_cost_at_the_corner": { "mem": 1381528, "cpu": 692292303 },
-        "certificate_spend_fixture_only": { "mem": 519960, "cpu": 257372750 },
-        "certificate_spend_cost": { "mem": 756635, "cpu": 371882883 }
+        "certificate_mint_fixture_only_smallest_tier3": {
+          "mem": 688584,
+          "cpu": 294556041
+        },
+        "certificate_mint_cost_at_the_smallest_tier3": {
+          "mem": 1331511,
+          "cpu": 556549259
+        },
+        "certificate_mint_fixture_only_at_the_corner": {
+          "mem": 642305,
+          "cpu": 331915700
+        },
+        "certificate_mint_cost_at_the_corner": {
+          "mem": 1381246,
+          "cpu": 689887125
+        },
+        "certificate_spend_fixture_only": {
+          "mem": 519960,
+          "cpu": 254230706
+        },
+        "certificate_spend_cost": {
+          "mem": 756635,
+          "cpu": 367169723
+        }
       }
     }
   ],
@@ -44,64 +83,64 @@
       "claim": "opening the three-chunk corner",
       "minus": "tier3_corner_fixture_only",
       "from": "tier3_corner_open_only",
-      "mem": 230945,
-      "cpu": 69252507
+      "mem": 239213,
+      "cpu": 71789514
     },
     {
       "claim": "one item read at the corner",
       "minus": "tier3_corner_open_only",
       "from": "tier3_corner_one_read",
-      "mem": 155242,
-      "cpu": 96431655
+      "mem": 155142,
+      "cpu": 94058981
     },
     {
       "claim": "a second item read in the same chunk",
       "minus": "tier3_corner_one_read",
       "from": "tier3_corner_two_reads",
       "mem": 156746,
-      "cpu": 96847003
+      "cpu": 94490329
     },
     {
       "claim": "straddling read at chunk boundary 0/1",
       "minus": "tier3_corner_one_read",
       "from": "tier3_corner_straddling_read",
       "mem": 37653,
-      "cpu": 27728303
+      "cpu": 26942745
     },
     {
       "claim": "straddling read at chunk boundary 1/2",
       "minus": "tier3_corner_one_read",
       "from": "tier3_corner_second_straddling_read",
       "mem": 60598,
-      "cpu": 19263933
+      "cpu": 20835049
     },
     {
-      "claim": "read wholly inside the 963-byte ragged tail",
+      "claim": "read wholly inside the 2,467-byte ragged tail",
       "minus": "tier3_corner_one_read",
       "from": "tier3_corner_last_chunk_read",
       "mem": 32707,
-      "cpu": -36889256
+      "cpu": -29819234
     },
     {
       "claim": "mint (Certify) handler at K+1, two chunks",
       "minus": "certificate_mint_fixture_only_smallest_tier3",
       "from": "certificate_mint_cost_at_the_smallest_tier3",
-      "mem": 643115,
-      "cpu": 264382134
+      "mem": 642927,
+      "cpu": 261993218
     },
     {
       "claim": "mint (Certify) handler at the 32,763-byte corner, three chunks",
       "minus": "certificate_mint_fixture_only_at_the_corner",
       "from": "certificate_mint_cost_at_the_corner",
-      "mem": 739223,
-      "cpu": 358805675
+      "mem": 738941,
+      "cpu": 357971425
     },
     {
       "claim": "spend (Retire) handler",
       "minus": "certificate_spend_fixture_only",
       "from": "certificate_spend_cost",
       "mem": 236675,
-      "cpu": 114510133
+      "cpu": 112939017
     }
   ],
   "readBudget": {
@@ -109,7 +148,7 @@
     "openCost": "opening the three-chunk corner",
     "perRead": "one item read at the corner",
     "byMemory": 83.54,
-    "byCpu": 82.24,
-    "bindingAxis": "cpu"
+    "byCpu": 84.29,
+    "bindingAxis": "memory"
   }
 }

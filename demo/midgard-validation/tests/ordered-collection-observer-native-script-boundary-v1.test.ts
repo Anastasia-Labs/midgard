@@ -355,6 +355,11 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
       fieldPreimageLengthsCborHex:
         scriptField.terminalFoldVector.fieldPreimageLengthsCborHex,
       observerFieldTerminalFoldVector: observerField.terminalFoldVector,
+      // #592: the field-3 carriage for both the observer terminal fixture and
+      // `cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree`,
+      // which replay the same signed transaction.
+      observerFieldPreimageCborHex: observerField.fieldPreimageCborHex,
+      observerFieldCommitmentHex: observerField.fieldCommitmentHex,
     });
 
     for (const rewardAddress of acceptedCardano.rewardAddressBech32s) {

@@ -5,10 +5,11 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
-use midgard/bounded_collection_v1
 use midgard/canonical_decode_item_staging_v1 as staging
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/native_tx_field_access_v1.{FieldCarriageV1, Inline}
+use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
 use midgard/validation_machine_v1.{
   TransactionFieldItemWitness, ValidationAuxiliaryWitnessV1,
   ValidationProofItemDatumV1, observe_canonical_decode_item_v1,
@@ -20,12 +21,7 @@ pub type Datum =
   ct.StepDatum<staging.PreparedCanonicalDecodeItemV1>
 
 pub type ActionV1 {
-  Observe {
-    input_index: Int,
-    output_index: Int,
-    collection_proof: bounded_collection_v1.ItemProofV1,
-    item_cbor: ByteArray,
-  }
+  Observe { input_index: Int, output_index: Int, carriage: FieldCarriageV1 }
   ObserveReference {
     input_index: Int,
     output_index: Int,
@@ -40,6 +36,7 @@ validator main(
   proof_verifier_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
   proof_item_script_hash: ScriptHash,
+  field_preimage_certificate_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -57,19 +54,15 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Observe {
-        input_index,
-        output_index,
-        collection_proof,
-        item_cbor,
-      }) ->
+      ct.Continue(Observe { input_index, output_index, carriage }) ->
         observe_item(
           proof_verifier_script_hash,
           computation_thread_policy_id,
+          field_preimage_certificate_policy_id,
           datum,
           input_index,
           output_index,
-          TransactionFieldItemWitness { collection_proof, item_cbor },
+          TransactionFieldItemWitness { carriage },
           own_out_ref,
           tx,
         )
@@ -85,14 +78,15 @@ validator main(
           reference_input_index,
           tx.reference_inputs,
         )
-        expect TransactionFieldItemWitness { collection_proof, item_cbor } = auxiliary
+        expect TransactionFieldItemWitness { carriage } = auxiliary
         observe_item(
           proof_verifier_script_hash,
           computation_thread_policy_id,
+          field_preimage_certificate_policy_id,
           datum,
           input_index,
           output_index,
-          TransactionFieldItemWitness { collection_proof, item_cbor },
+          TransactionFieldItemWitness { carriage },
           own_out_ref,
           tx,
         )
@@ -108,6 +102,7 @@ validator main(
 fn observe_item(
   proof_verifier_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
+  field_preimage_certificate_policy_id: PolicyId,
   datum: Option<Datum>,
   input_index: Int,
   output_index: Int,
@@ -135,14 +130,22 @@ fn observe_item(
       output_state,
     ) {
       expect Some(prepared) = input_state
-      expect TransactionFieldItemWitness { collection_proof, item_cbor } = auxiliary
+      expect TransactionFieldItemWitness { carriage } = auxiliary
       let transition_data: Data = prepared.authenticated.transition
+      // The one place the §8.8 door runs for the complete-item path. Everything
+      // downstream of this stage consumes the numbers it recorded; see
+      // `CanonicalDecodeItemObservationV1` on why a later stage cannot re-check
+      // them from a datum alone.
       let expected_output_state: Data = staging.observe(
         prepared,
         observe_canonical_decode_item_v1(
+          prepared.authenticated.base.resolution.pre_state,
           prepared.authenticated.transition,
-          collection_proof,
-          item_cbor,
+          MachineFieldDoorV1 {
+            reference_inputs: tx.reference_inputs,
+            certificate_policy_id: field_preimage_certificate_policy_id,
+          },
+          carriage,
         ),
       )
       and {
@@ -161,7 +164,7 @@ fn proof_item_from_reference(
   reference_input_index: Int,
   reference_inputs: List<Input>,
 ) -> ValidationAuxiliaryWitnessV1 {
-  expect
+  expect  
       Some(Input {
         output: Output {
           address,
@@ -178,9 +181,11 @@ fn proof_item_from_reference(
   expect proof_item.version == 1
   expect proof_item.transaction_id == pre.transaction_id
   expect proof_item.transaction_commitment == pre.transaction_commitment
+  // §8.1 `Inline` is constructed here, from bytes read off the publication's
+  // own datum: the consuming step names a reference input, not a tier, so no
+  // prover can name a carriage the door was not going to hash itself.
   TransactionFieldItemWitness {
-    collection_proof: proof_item.collection_proof,
-    item_cbor: proof_item.item_cbor,
+    carriage: Inline { preimage: proof_item.field_preimage },
   }
 }
 

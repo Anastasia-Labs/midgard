@@ -46,6 +46,7 @@ use midgard/redeemer_item_proof_v1
 use midgard/script_context_v1
 use midgard/script_language_views_v1
 use midgard/script_proof_v1
+use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
@@ -91,13 +92,40 @@ pub type LedgerDeltaOperationProofV1 {
 
 pub type ValidationAuxiliaryWitnessV1 {
   NoAuxiliaryWitness
+  /// One item of one committed field, reached through §8's door
+  /// (`midgard/validation_machine_field_door_v1`). Nine of the machine's
+  /// fifteen per-item sites match this constructor, across all eight phases
+  /// that read a field.
+  ///
+  /// It used to carry a counted `(ItemProofV1, ChunkProofV1)` pair checked
+  /// against the §4 flat field commitment — a predicate no honest prover could
+  /// satisfy (#592). What replaces the pair is not a smaller proof but *no*
+  /// proof: the carriage names where the field's preimage is, the door
+  /// authenticates the whole preimage once against the flat commitment, and the
+  /// item is then a slice. Nothing per-item is asserted by the prover, so there
+  /// is nothing per-item left to check.
+  ///
+  /// `field_index` is here rather than a call-site literal because §4 removed
+  /// field-index domain separation and two phases read more than one slot:
+  /// `CanonicalDecode`, which walks all nine and takes the slot from its own
+  /// control (`control.field_index`), and `InputSets`, which alternates fields 0
+  /// and 1. Every site checks it against the slot it means — against the control
+  /// for those two, against a literal for the other six phases — so a wrong
+  /// index fails closed. `item_index` is likewise
+  /// checked against the phase's own cursor everywhere except the two sites
+  /// where the item order is the prover's to choose and the successor pins it —
+  /// `InputSets` (descending out-ref key order) and the field-7 address-witness
+  /// scan (order key includes the index).
   TransactionFieldChunkWitness {
-    collection_proof: bounded_collection_v1.ItemProofV1,
-    chunk_proof: bounded_item_v1.ChunkProofV1,
+    field_index: Int,
+    item_index: Int,
+    carriage: native_tx_field_access_v1.FieldCarriageV1,
   }
+  /// A field-4 required-signer item, plus the signer-set membership evidence the
+  /// step decides on. No `field_index`/`item_index`: the field is 4 by
+  /// construction and the item index is `control.required_seen`.
   RequiredSignerItemWitness {
-    collection_proof: bounded_collection_v1.ItemProofV1,
-    chunk_proof: bounded_item_v1.ChunkProofV1,
+    carriage: native_tx_field_access_v1.FieldCarriageV1,
     signer_proof: SignerSetProofV1,
   }
   NativeScriptTokenWitness {
@@ -267,12 +295,23 @@ pub type ValidationAuxiliaryWitnessV1 {
     descriptor_cbor: ByteArray,
     siblings: List<ByteArray>,
   }
+  /// `ScriptSources` stage 1 (field 8, one redeemer item) and stage 4 (field 2,
+  /// one output item). Both stages need the item's *length* and its
+  /// `bounded_item_v1` commitment and never look at its bytes, so the door's
+  /// derived commitment is all the carriage has to yield. Field index and item
+  /// index are both fixed by the stage and its cursor.
   TransactionRedeemerItemBeginWitness {
-    collection_proof: bounded_collection_v1.ItemProofV1,
+    carriage: native_tx_field_access_v1.FieldCarriageV1,
   }
+  /// `CanonicalDecode`'s complete-item step: one item read whole rather than
+  /// chunk by chunk. Field index and item index come from the phase's control,
+  /// so the carriage is the entire wire surface. The item bytes that used to
+  /// ride here as `item_cbor` are now read out of the authenticated preimage,
+  /// which is what made the old pairing checkable at all: `item_cbor` was
+  /// checked against a `bounded_item_v1` commitment that was itself opened
+  /// against the §4 flat field hash, and that outer step could not hold.
   TransactionFieldItemWitness {
-    collection_proof: bounded_collection_v1.ItemProofV1,
-    item_cbor: ByteArray,
+    carriage: native_tx_field_access_v1.FieldCarriageV1,
   }
   LedgerOutputProofBeginWitness {
     output_index: Int,
@@ -364,12 +403,26 @@ pub type ValidationOneStepEvidenceV1 {
   auxiliary: ValidationAuxiliaryWitnessV1,
 }
 
+/// A field preimage published once, at a script address, for the
+/// `CanonicalDecode` complete-item steps of one disputed transaction to reach by
+/// reference input instead of re-carrying it in every step's redeemer.
+///
+/// **It publishes the field's whole §5.1 preimage, not one item, and that is the
+/// rebind.** Under the retired counted scheme it published one item's bytes
+/// beside an `ItemProofV1` opening them against the field commitment — an
+/// opening §4 made unsatisfiable (#592). Under §8 the unit that authenticates is
+/// the whole preimage, so the whole preimage is what a publication has to carry;
+/// a consuming step wraps it as `Inline` carriage and the door hashes it once
+/// against the committed field hash. That makes this datum the script-address
+/// twin of §8.2's tier-2 `RawUtxo` publication, with the two bindings the
+/// counted version also carried — `transaction_id` and
+/// `transaction_commitment` — so a look-alike UTxO cannot pass a preimage off as
+/// belonging to a different dispute.
 pub type ValidationProofItemDatumV1 {
   version: Int,
   transaction_id: ByteArray,
   transaction_commitment: ByteArray,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  item_cbor: ByteArray,
+  field_preimage: ByteArray,
 }
 
 fn immutable_context_matches(
@@ -857,7 +910,7 @@ fn resolve_input_output_proof_from_cbor(
   pending_cbor: ByteArray,
 ) -> ResolveInputOutputProofV1 {
   expect Some(data) = cbor.deserialise(pending_cbor)
-  expect
+  expect  
       [
         source_kind_data, key_data, next_schedule_hash_data,
         descriptor_cbor_data, output_proof_cbor_data,
@@ -1193,34 +1246,61 @@ fn transaction_field_commitment(
   }
 }
 
+/// How many §5.1 preimage bytes item `i` of field `field_index` occupies —
+/// its definite byte-string wrapper plus its payload — or `None` when that
+/// width is not a legal encoding for the field, which is what
+/// `reject_invalid_field_type` renders.
+///
+/// **This function was stale, and #592 is where it showed.** §5.1 gave all nine
+/// fields one envelope at #567: every item is a definite byte string, so its
+/// encoded width is uniformly `header(len) + len`. This function still carried
+/// the *retired counted grammar's* three-way split — fields 6 and 8 concatenated
+/// raw item CBOR with no wrapper (`Some(item_length)`), and a field-5 policy item
+/// was the map entry with its one-byte array wrapper removed
+/// (`Some(item_length - 1)`). Under the counted scheme nothing measured it
+/// against real bytes, because the item's extent came from a prover's
+/// `ItemProofV1` rather than from the preimage. §8's door derives the extent from
+/// the authenticated preimage instead, so the walk position this function
+/// advances is now compared with §5.1's own arithmetic on every step, and the
+/// disagreement is immediate: a field-6, field-8 or field-5 scan computed a
+/// `next_encoded_length` short by the wrapper and therefore rendered
+/// `reject_field_preimage_size` for an honest transaction. Three of #592's
+/// twenty-two rows failed on exactly that
+/// (`canonical_decode_authenticates_one_bounded_script_item`,
+/// `maximum_cardano_spend_redeemer_terminal_fold_matches_typescript`,
+/// `maximum_mint_field_terminal_matches_typescript`), and a fourth
+/// (`canonical_decode_rejects_a_wrong_claimed_successor`) *passed the wrong
+/// successor* because the rejection it claimed was the one the stale arithmetic
+/// produced.
+///
+/// The one width that is not a legal encoding is kept, and one is added:
+///
+///   * field 5 with a zero-length item — a mint-policy item is
+///     `[policy_id, asset_map]` and cannot be empty;
+///   * field 2 above `max_serialized_output_preimage_bytes` — the §5.3 output
+///     cap, and the case the field-access door's header names as the surviving
+///     `reject_invalid_field_type` path. It is reachable only for the
+///     variable-width fields: the six fixed-stride ones refuse a wrong width at
+///     the read itself (`field_item_extent`), before any rule sees it.
 fn transaction_field_item_encoded_length(
   field_index: Int,
   item_length: Int,
 ) -> Option<Int> {
   expect item_length >= 0
-  if or {
-    field_index == 0,
-    field_index == 1,
+  expect field_index >= 0
+  expect field_index <= 8
+  if and {
+    field_index == 5,
+    item_length == 0,
+  } {
+    None
+  } else if and {
     field_index == 2,
-    field_index == 3,
-    field_index == 4,
-    field_index == 7,
+    item_length > max_serialized_output_preimage_bytes,
   } {
-    Some(canonical_argument_header_size(item_length) + item_length)
-  } else if or {
-    field_index == 6,
-    field_index == 8,
-  } {
-    Some(item_length)
+    None
   } else {
-    expect field_index == 5
-    if item_length == 0 {
-      None
-    } else {
-      // A mint-policy item is [policy-id, asset-map]. The canonical field is
-      // the corresponding map entry, so its one-byte array wrapper is absent.
-      Some(item_length - 1)
-    }
+    Some(canonical_argument_header_size(item_length) + item_length)
   }
 }
 
@@ -1316,7 +1396,7 @@ fn canonical_decode_control_from_witness(
   witness_cbor: ByteArray,
 ) -> CanonicalDecodeControlV1 {
   expect Some(data) = cbor.deserialise(witness_cbor)
-  expect
+  expect  
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data, field_index_data,
@@ -1423,12 +1503,22 @@ fn verify_canonical_decode_empty(
   }
 }
 
+/// One chunk of one item of the field the `CanonicalDecode` phase is scanning.
+///
+/// **The item is reached through §8's door and the machine's own walk position,
+/// not by a per-item opening.** `control.encoded_length` is the number of
+/// preimage bytes before the item this step reads, which is exactly the offset
+/// of that item's §5.1 wrapper (§10.2), so a continuing step costs one header
+/// decode instead of a re-walk. The first step of a field has no position yet
+/// and opens item 0, whose offset is the array header the view already knows.
 fn verify_canonical_decode_chunk(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: CanonicalDecodeControlV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
+  door: field_door.MachineFieldDoorV1,
+  field_index: Int,
+  item_index: Int,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
@@ -1457,19 +1547,38 @@ fn verify_canonical_decode_chunk(
   let continuing_chunk = and {
     control.item_count > 0,
     control.item_index < control.item_count,
-    collection_proof.item_count == control.item_count,
   }
-  let active_item_count = if first_chunk {
-    collection_proof.item_count
+  let Pair(item, active_item_count) = if first_chunk {
+    let opened = field_door.open_machine_field_item(
+      door,
+      verified,
+      witness_set,
+      control.field_index,
+      0,
+      carriage,
+    )
+    Pair(opened, field_door.machine_field_item_count(opened))
   } else {
-    control.item_count
+    Pair(
+      field_door.open_machine_field_item_at(
+        door,
+        verified,
+        witness_set,
+        control.field_index,
+        control.item_index,
+        control.encoded_length,
+        carriage,
+      ),
+      control.item_count,
+    )
   }
+  let item_length = field_door.machine_field_item_length(item)
   let length_before_item = if first_chunk {
     canonical_argument_header_size(active_item_count)
   } else {
     control.encoded_length
   }
-  let chunk_count = bounded_item_v1.chunk_count(chunk_proof.total_length)
+  let chunk_count = field_door.machine_field_item_chunk_count(item)
   let item_finished = control.chunk_index + 1 == chunk_count
   and {
     canonical_decode_control_is_bound(pre, witness, control, verified),
@@ -1479,18 +1588,9 @@ fn verify_canonical_decode_chunk(
       continuing_chunk,
     },
     active_item_count > 0,
-    collection_proof.field_index == control.field_index,
-    collection_proof.item_count == active_item_count,
-    collection_proof.item_index == control.item_index,
-    collection_proof.item_length == chunk_proof.total_length,
-    chunk_proof.field_index == control.field_index,
-    chunk_proof.item_index == control.item_index,
-    chunk_proof.chunk_index == control.chunk_index,
-    bounded_collection_v1.verify_item(
-      expected_field_commitment,
-      collection_proof,
-    ),
-    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
+    field_index == control.field_index,
+    item_index == control.item_index,
+    control.chunk_index < chunk_count,
     if !item_finished {
       canonical_scan_successor_is_exact(
         pre,
@@ -1507,10 +1607,7 @@ fn verify_canonical_decode_chunk(
       )
     } else {
       when
-        transaction_field_item_encoded_length(
-          control.field_index,
-          chunk_proof.total_length,
-        )
+        transaction_field_item_encoded_length(control.field_index, item_length)
       is {
         None ->
           rejected_successor_is_exact(
@@ -1568,25 +1665,39 @@ pub type CanonicalDecodeItemProofV1 {
   next_encoded_length: Int,
 }
 
+/// What opening the item through §8's door established about it: the field's
+/// authenticated §5.2 item count and this item's §5.1 payload length.
+///
+/// **It carries no proof, and it cannot.** Under the retired counted scheme this
+/// record held the prover's `ItemProofV1` and the item's `bounded_item_v1`
+/// commitment, so a *later* stage of the staging chain could re-check the
+/// observation against the field commitment from the datum alone. The door is a
+/// computation over the consuming transaction's reference inputs, not a datum,
+/// so what a later stage can re-check is the observation's *consistency* with
+/// the control state — see `canonical_decode_item_observation_is_consistent` —
+/// and the door work itself happens exactly once, in the stage that has the
+/// transaction in hand (`canonical-decode-item-observe-v1`). The staging chain's
+/// own typed hand-off is what makes that provenance sound: an
+/// `ObservedCanonicalDecodeItemV1` can only be built by the observe validator,
+/// and the thread carries it forward under that validator's script hash.
 pub type CanonicalDecodeItemObservationV1 {
-  collection_proof: bounded_collection_v1.ItemProofV1,
+  item_count: Int,
   item_length: Int,
-  item_commitment: ByteArray,
 }
 
 fn verify_canonical_decode_item(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   _control: CanonicalDecodeControlV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  item_cbor: ByteArray,
+  door: field_door.MachineFieldDoorV1,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   verify_canonical_decode_item_from_source_v1(
     pre,
     witness,
     bind_canonical_decode_item_source_v1(pre, witness),
-    collection_proof,
-    item_cbor,
+    door,
+    carriage,
   )
 }
 
@@ -1638,16 +1749,21 @@ pub fn verify_canonical_decode_item_from_source_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   source: CanonicalDecodeItemSourceV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  item_cbor: ByteArray,
+  door: field_door.MachineFieldDoorV1,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   let observation = observe_canonical_decode_item_v1(
+    pre,
     witness,
-    collection_proof,
-    item_cbor,
+    door,
+    carriage,
   )
   and {
-    canonical_decode_item_observation_is_authentic(witness, source, observation),
+    canonical_decode_item_observation_is_consistent(
+      witness,
+      source,
+      observation,
+    ),
     verify_canonical_decode_item_successor_v1(
       pre,
       witness,
@@ -1658,41 +1774,70 @@ pub fn verify_canonical_decode_item_from_source_v1(
 }
 
 pub fn verify_canonical_decode_item_proof_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   source: CanonicalDecodeItemSourceV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  item_cbor: ByteArray,
+  door: field_door.MachineFieldDoorV1,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> CanonicalDecodeItemProofV1 {
   verify_canonical_decode_item_observation_v1(
     witness,
     source,
-    observe_canonical_decode_item_v1(witness, collection_proof, item_cbor),
+    observe_canonical_decode_item_v1(pre, witness, door, carriage),
   )
 }
 
+/// Open the item through §8's door and record what the door established.
+///
+/// This is the one place the door runs for the complete-item path, and it is
+/// therefore the one place that needs the consuming transaction. `pre` is here
+/// for the transaction id the door authenticates against; under the counted
+/// scheme it was not needed, because the prover's opening carried its own
+/// (unsatisfiable) claim instead.
 pub fn observe_canonical_decode_item_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  item_cbor: ByteArray,
+  door: field_door.MachineFieldDoorV1,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> CanonicalDecodeItemObservationV1 {
   let control = canonical_decode_control_from_witness(witness.work_witness_cbor)
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  let item = field_door.open_machine_field_item(
+    door,
+    verified,
+    witness_set,
+    control.field_index,
+    control.item_index,
+    carriage,
+  )
   CanonicalDecodeItemObservationV1 {
-    collection_proof,
-    item_length: bytearray.length(item_cbor),
-    item_commitment: bounded_item_v1.from_bytes(
-      control.field_index,
-      control.item_index,
-      item_cbor,
-    ),
+    item_count: field_door.machine_field_item_count(item),
+    item_length: field_door.machine_field_item_length(item),
   }
 }
 
-fn canonical_decode_item_observation_is_authentic(
+/// Whether the observation agrees with the control state the step claims to be
+/// in.
+///
+/// **Named for exactly what it does.** It used to be
+/// `..._is_authentic` and it used to earn that name: it folded the prover's
+/// `ItemProofV1` against the §4 field commitment. Under §4 that fold is
+/// unsatisfiable, and what replaces it — the §8.8 door — has already run by the
+/// time an observation exists. So this checks the remaining, non-cryptographic
+/// half: that the phase is at a legal item position, and that the field's
+/// authenticated item count is the one the control carries. Calling it
+/// "authentic" after the fold left would have been a false docstring on a
+/// predicate that no longer proves anything about bytes.
+fn canonical_decode_item_observation_is_consistent(
   witness: ValidationOneStepWitnessV1,
   source: CanonicalDecodeItemSourceV1,
   observation: CanonicalDecodeItemObservationV1,
 ) -> Bool {
-  let collection_proof = observation.collection_proof
   let control = canonical_decode_control_from_witness(witness.work_witness_cbor)
   let first_item = and {
     control.item_index == 0,
@@ -1704,10 +1849,10 @@ fn canonical_decode_item_observation_is_authentic(
     control.chunk_index == 0,
     control.item_count > 0,
     control.item_index < control.item_count,
-    collection_proof.item_count == control.item_count,
+    observation.item_count == control.item_count,
   }
   let active_item_count = if first_item {
-    collection_proof.item_count
+    observation.item_count
   } else {
     control.item_count
   }
@@ -1718,15 +1863,7 @@ fn canonical_decode_item_observation_is_authentic(
       continuing_item,
     },
     active_item_count > 0,
-    collection_proof.field_index == control.field_index,
-    collection_proof.item_count == active_item_count,
-    collection_proof.item_index == control.item_index,
-    collection_proof.item_length == observation.item_length,
-    bounded_collection_v1.verify_item(
-      source.expected_field_commitment,
-      collection_proof,
-    ),
-    observation.item_commitment == collection_proof.item_commitment,
+    observation.item_count == active_item_count,
   }
 }
 
@@ -1735,7 +1872,6 @@ pub fn verify_canonical_decode_item_observation_v1(
   source: CanonicalDecodeItemSourceV1,
   observation: CanonicalDecodeItemObservationV1,
 ) -> CanonicalDecodeItemProofV1 {
-  let collection_proof = observation.collection_proof
   let control = canonical_decode_control_from_witness(witness.work_witness_cbor)
   let first_item = and {
     control.item_index == 0,
@@ -1744,7 +1880,7 @@ pub fn verify_canonical_decode_item_observation_v1(
     control.encoded_length == 0,
   }
   let active_item_count = if first_item {
-    collection_proof.item_count
+    observation.item_count
   } else {
     control.item_count
   }
@@ -1754,7 +1890,11 @@ pub fn verify_canonical_decode_item_observation_v1(
     control.encoded_length
   }
   expect
-    canonical_decode_item_observation_is_authentic(witness, source, observation)
+    canonical_decode_item_observation_is_consistent(
+      witness,
+      source,
+      observation,
+    )
   when
     transaction_field_item_encoded_length(
       control.field_index,
@@ -1858,30 +1998,34 @@ pub fn verify_canonical_decode_empty_semantics_v1(
 pub fn verify_canonical_decode_chunk_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
+  door: field_door.MachineFieldDoorV1,
+  field_index: Int,
+  item_index: Int,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   verify_canonical_decode_chunk(
     pre,
     witness,
     canonical_decode_control_from_witness(witness.work_witness_cbor),
-    collection_proof,
-    chunk_proof,
+    door,
+    field_index,
+    item_index,
+    carriage,
   )
 }
 
 pub fn verify_canonical_decode_item_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  item_cbor: ByteArray,
+  door: field_door.MachineFieldDoorV1,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   verify_canonical_decode_item(
     pre,
     witness,
     canonical_decode_control_from_witness(witness.work_witness_cbor),
-    collection_proof,
-    item_cbor,
+    door,
+    carriage,
   )
 }
 
@@ -1889,26 +2033,23 @@ fn verify_canonical_decode(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   let control = canonical_decode_control_from_witness(witness.work_witness_cbor)
   when auxiliary is {
     NoAuxiliaryWitness -> verify_canonical_decode_empty(pre, witness, control)
-    TransactionFieldChunkWitness { collection_proof, chunk_proof } ->
+    TransactionFieldChunkWitness { field_index, item_index, carriage } ->
       verify_canonical_decode_chunk(
         pre,
         witness,
         control,
-        collection_proof,
-        chunk_proof,
+        door,
+        field_index,
+        item_index,
+        carriage,
       )
-    TransactionFieldItemWitness { collection_proof, item_cbor } ->
-      verify_canonical_decode_item(
-        pre,
-        witness,
-        control,
-        collection_proof,
-        item_cbor,
-      )
+    TransactionFieldItemWitness { carriage } ->
+      verify_canonical_decode_item(pre, witness, control, door, carriage)
     _ -> False
   }
 }
@@ -1918,7 +2059,7 @@ fn verify_compact_binding(
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect
+  expect  
       [
         transaction_id_data, commitment_data, compact_cbor_data,
         witness_set_compact_cbor_data, field_preimage_lengths_cbor_data,
@@ -1993,7 +2134,7 @@ pub type ValidationContextV1 {
 
 fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1 {
   expect Some(data) = cbor.deserialise(context_cbor)
-  expect
+  expect  
       [
         version_data, profile_id_data, block_end_time_data,
         expected_network_id_data, min_fee_a_data, min_fee_b_data,
@@ -2121,7 +2262,7 @@ fn input_sets_control_from_witness(
   witness_cbor: ByteArray,
 ) -> InputSetsControlV1 {
   expect Some(data) = cbor.deserialise(witness_cbor)
-  expect
+  expect  
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data, spend_count_data,
@@ -2337,12 +2478,22 @@ fn input_sets_item_successor_is_exact(
   }
 }
 
+/// One §5.3 out-ref item of field 0 or field 1.
+///
+/// The two fields are fixed-stride, so the door reaches the item by arithmetic
+/// and `field_index` is the only thing that says which of the two slots the step
+/// means — §4 gives the two commitments no domain separation, so this is checked
+/// against `{0, 1}` here and pinned to the successor's `source_kind` below.
+/// `item_index` is the prover's to choose: this phase scans in **descending
+/// out-ref key order**, not index order, which is what `previous_key` enforces.
 fn verify_input_sets_item(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: InputSetsControlV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
+  door: field_door.MachineFieldDoorV1,
+  field_index: Int,
+  item_index: Int,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
@@ -2350,7 +2501,6 @@ fn verify_input_sets_item(
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
   )
-  let field_index = collection_proof.field_index
   let source_kind = field_index
   let expected_field_commitment = transaction_field_commitment(
     verified.tx_compact,
@@ -2362,8 +2512,17 @@ fn verify_input_sets_item(
   } else {
     control.reference_count
   }
+  let item = field_door.open_machine_field_item(
+    door,
+    verified,
+    witness_set,
+    field_index,
+    item_index,
+    carriage,
+  )
+  let item_count = field_door.machine_field_item_count(item)
   let active_count = if prior_count == -1 {
-    collection_proof.item_count
+    item_count
   } else {
     prior_count
   }
@@ -2372,7 +2531,7 @@ fn verify_input_sets_item(
   } else {
     control.reference_seen
   }
-  let key = chunk_proof.chunk
+  let key = field_door.machine_field_item_bytes(item)
   let input = decode_midgard_tx_input_cbor(key)
   let next_schedule_hash = resolution_schedule_node_hash(
     source_kind,
@@ -2414,24 +2573,15 @@ fn verify_input_sets_item(
       field_index == 0,
       field_index == 1,
     },
-    prior_count == -1 || prior_count == collection_proof.item_count,
+    expected_field_commitment != native_tx_field_access_v1.empty_field_commitment,
+    prior_count == -1 || prior_count == item_count,
     active_count > 0,
     active_count <= max_tx_size_derived_collection_item_count,
     prior_seen < active_count,
-    collection_proof.item_count == active_count,
-    collection_proof.item_index >= 0,
-    collection_proof.item_index < active_count,
-    collection_proof.item_length == chunk_proof.total_length,
-    chunk_proof.field_index == field_index,
-    chunk_proof.item_index == collection_proof.item_index,
-    chunk_proof.chunk_index == 0,
-    bounded_item_v1.chunk_count(chunk_proof.total_length) == 1,
+    item_count == active_count,
+    item_index >= 0,
+    item_index < active_count,
     encode_midgard_tx_input(input) == key,
-    bounded_collection_v1.verify_item(
-      expected_field_commitment,
-      collection_proof,
-    ),
-    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
     if duplicate {
       rejected_successor_is_exact(
         pre,
@@ -2473,15 +2623,19 @@ pub fn verify_input_sets_empty_semantics_v1(
 pub fn verify_input_sets_item_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
+  door: field_door.MachineFieldDoorV1,
+  field_index: Int,
+  item_index: Int,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   verify_input_sets_item(
     pre,
     witness,
     input_sets_control_from_witness(witness.work_witness_cbor),
-    collection_proof,
-    chunk_proof,
+    door,
+    field_index,
+    item_index,
+    carriage,
   )
 }
 
@@ -2489,17 +2643,20 @@ fn verify_input_sets(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   let control = input_sets_control_from_witness(witness.work_witness_cbor)
   when auxiliary is {
     NoAuxiliaryWitness -> verify_input_sets_empty(pre, witness, control)
-    TransactionFieldChunkWitness { collection_proof, chunk_proof } ->
+    TransactionFieldChunkWitness { field_index, item_index, carriage } ->
       verify_input_sets_item(
         pre,
         witness,
         control,
-        collection_proof,
-        chunk_proof,
+        door,
+        field_index,
+        item_index,
+        carriage,
       )
     _ -> False
   }
@@ -2527,7 +2684,7 @@ fn verify_static_rules(
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect
+  expect  
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -2640,7 +2797,7 @@ fn signatures_control_from_witness(
   witness_cbor: ByteArray,
 ) -> SignaturesControlV1 {
   expect Some(data) = cbor.deserialise(witness_cbor)
-  expect
+  expect  
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -2833,12 +2990,18 @@ fn signature_address_order_key(
     |> bytearray.concat(cbor.serialise(item_index))
 }
 
+/// One §5.3 field-7 address-witness item.
+///
+/// `item_index` is the prover's to choose — the order this phase enforces is on
+/// the derived `order_key`, which includes the index, not on the index itself.
 fn verify_signature_address_item(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: SignaturesControlV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
+  door: field_door.MachineFieldDoorV1,
+  field_index: Int,
+  item_index: Int,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
@@ -2846,17 +3009,27 @@ fn verify_signature_address_item(
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
   )
+  let item = field_door.open_machine_field_item(
+    door,
+    verified,
+    witness_set,
+    7,
+    item_index,
+    carriage,
+  )
+  let item_count = field_door.machine_field_item_count(item)
+  let item_bytes = field_door.machine_field_item_bytes(item)
   let active_count = if control.address_count == -1 {
-    collection_proof.item_count
+    item_count
   } else {
     control.address_count
   }
-  let address_witness = decode_midgard_address_witness_cbor(chunk_proof.chunk)
+  let address_witness = decode_midgard_address_witness_cbor(item_bytes)
   let signer_hash = blake2b_224(address_witness.verification_key)
   let order_key = signature_address_order_key(
     signer_hash,
-    chunk_proof.chunk,
-    collection_proof.item_index,
+    item_bytes,
+    item_index,
   )
   let new_signer = control.previous_signer_hash != signer_hash
   let next_signer_count = if new_signer {
@@ -2914,22 +3087,14 @@ fn verify_signature_address_item(
     signatures_control_is_bound(pre, witness, control, verified, witness_set),
     control.stage == 0,
     control.address_count != 0,
-    collection_proof.field_index == 7,
-    chunk_proof.field_index == 7,
-    control.address_count == -1 || control.address_count == collection_proof.item_count,
+    field_index == 7,
+    control.address_count == -1 || control.address_count == item_count,
     active_count > 0,
     active_count <= max_tx_size_derived_collection_item_count,
     control.address_seen < active_count,
-    collection_proof.item_count == active_count,
-    collection_proof.item_length == chunk_proof.total_length,
-    chunk_proof.item_index == collection_proof.item_index,
-    chunk_proof.chunk_index == 0,
-    bounded_item_v1.chunk_count(chunk_proof.total_length) == 1,
-    bounded_collection_v1.verify_item(
-      witness_set.addr_tx_wits_hash,
-      collection_proof,
-    ),
-    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
+    item_count == active_count,
+    item_index >= 0,
+    item_index < active_count,
     or {
       control.previous_order_key == #"",
       bytearray.compare(control.previous_order_key, order_key) == Less,
@@ -3019,8 +3184,8 @@ fn verify_required_signer_item(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: SignaturesControlV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
+  door: field_door.MachineFieldDoorV1,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
   signer_proof: SignerSetProofV1,
 ) -> Bool {
   let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
@@ -3029,12 +3194,21 @@ fn verify_required_signer_item(
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
   )
+  let item = field_door.open_machine_field_item(
+    door,
+    verified,
+    witness_set,
+    4,
+    control.required_seen,
+    carriage,
+  )
+  let item_count = field_door.machine_field_item_count(item)
   let active_count = if control.required_count == -1 {
-    collection_proof.item_count
+    item_count
   } else {
     control.required_count
   }
-  let signer_hash = chunk_proof.chunk
+  let signer_hash = field_door.machine_field_item_bytes(item)
   let next_required_seen = control.required_seen + 1
   let next_control = SignaturesControlV1 {
     ..control,
@@ -3055,24 +3229,13 @@ fn verify_required_signer_item(
     signatures_control_is_bound(pre, witness, control, verified, witness_set),
     control.stage == 1,
     control.required_count != 0,
-    collection_proof.field_index == 4,
-    chunk_proof.field_index == 4,
-    control.required_count == -1 || control.required_count == collection_proof.item_count,
+    verified.tx_compact.body.required_signers_hash != native_tx_field_access_v1.empty_field_commitment,
+    control.required_count == -1 || control.required_count == item_count,
     active_count > 0,
     active_count <= max_tx_size_derived_collection_item_count,
     control.required_seen < active_count,
-    collection_proof.item_count == active_count,
-    collection_proof.item_index == control.required_seen,
-    collection_proof.item_length == 28,
-    chunk_proof.total_length == 28,
-    chunk_proof.item_index == collection_proof.item_index,
-    chunk_proof.chunk_index == 0,
+    item_count == active_count,
     bytearray.length(signer_hash) == 28,
-    bounded_collection_v1.verify_item(
-      verified.tx_compact.body.required_signers_hash,
-      collection_proof,
-    ),
-    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
     if absent {
       rejected_successor_is_exact(
         pre,
@@ -3161,6 +3324,7 @@ fn verify_signatures(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   let control = signatures_control_from_witness(witness.work_witness_cbor)
   when auxiliary is {
@@ -3170,21 +3334,23 @@ fn verify_signatures(
       } else {
         verify_signatures_advance(pre, witness, control)
       }
-    TransactionFieldChunkWitness { collection_proof, chunk_proof } ->
+    TransactionFieldChunkWitness { field_index, item_index, carriage } ->
       verify_signature_address_item(
         pre,
         witness,
         control,
-        collection_proof,
-        chunk_proof,
+        door,
+        field_index,
+        item_index,
+        carriage,
       )
-    RequiredSignerItemWitness { collection_proof, chunk_proof, signer_proof } ->
+    RequiredSignerItemWitness { carriage, signer_proof } ->
       verify_required_signer_item(
         pre,
         witness,
         control,
-        collection_proof,
-        chunk_proof,
+        door,
+        carriage,
         signer_proof,
       )
     _ -> False
@@ -3205,31 +3371,35 @@ pub fn verify_signatures_advance_semantics_v1(
 pub fn verify_signature_address_item_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
+  door: field_door.MachineFieldDoorV1,
+  field_index: Int,
+  item_index: Int,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   verify_signature_address_item(
     pre,
     witness,
     signatures_control_from_witness(witness.work_witness_cbor),
-    collection_proof,
-    chunk_proof,
+    door,
+    field_index,
+    item_index,
+    carriage,
   )
 }
 
 pub fn verify_required_signer_item_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
+  door: field_door.MachineFieldDoorV1,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
   signer_proof: SignerSetProofV1,
 ) -> Bool {
   verify_required_signer_item(
     pre,
     witness,
     signatures_control_from_witness(witness.work_witness_cbor),
-    collection_proof,
-    chunk_proof,
+    door,
+    carriage,
     signer_proof,
   )
 }
@@ -3284,7 +3454,7 @@ fn phase_a_native_control_from_witness(
   witness_cbor: ByteArray,
 ) -> PhaseANativeScriptsControlV1 {
   expect Some(data) = cbor.deserialise(witness_cbor)
-  expect
+  expect  
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -3612,12 +3782,22 @@ fn verify_phase_a_native_advance_scan(
   }
 }
 
+/// One §5.3 field-6 script item's head, and the decision whether to walk it.
+///
+/// This is one of the four sites that hand a *partially read* item to a later
+/// step: `item_commitment` goes into the successor control and the token-head
+/// scan opens chunk proofs against it. The commitment is now **derived** here
+/// from bytes the door authenticated (`machine_field_item_commitment`) rather
+/// than asserted by a prover's opening — see the door module's header on why
+/// that continuation is not part of #592's defect.
 fn verify_phase_a_native_item_scan(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: PhaseANativeScriptsControlV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
+  door: field_door.MachineFieldDoorV1,
+  field_index: Int,
+  item_index: Int,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
@@ -3625,14 +3805,24 @@ fn verify_phase_a_native_item_scan(
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
   )
+  let item = field_door.open_machine_field_item(
+    door,
+    verified,
+    witness_set,
+    6,
+    control.script_seen,
+    carriage,
+  )
+  let item_count = field_door.machine_field_item_count(item)
+  let item_length = field_door.machine_field_item_length(item)
   let active_count = if control.script_count == -1 {
-    collection_proof.item_count
+    item_count
   } else {
     control.script_count
   }
   let header = native_script_scan_v1.versioned_script_header_v1(
-    chunk_proof.chunk,
-    collection_proof.item_length,
+    field_door.machine_field_item_chunk(item, 0),
+    item_length,
   )
   and {
     phase_a_native_control_is_bound(
@@ -3644,23 +3834,14 @@ fn verify_phase_a_native_item_scan(
     ),
     control.stage == 0,
     control.script_count != 0,
-    control.script_count == -1 || control.script_count == collection_proof.item_count,
+    control.script_count == -1 || control.script_count == item_count,
     active_count > 0,
     active_count <= max_tx_size_derived_collection_item_count,
-    collection_proof.field_index == 6,
-    collection_proof.item_count == active_count,
-    collection_proof.item_index == control.script_seen,
-    collection_proof.item_length > 0,
-    collection_proof.item_length <= max_aggregate_field_preimage_bytes,
-    chunk_proof.field_index == 6,
-    chunk_proof.item_index == collection_proof.item_index,
-    chunk_proof.total_length == collection_proof.item_length,
-    chunk_proof.chunk_index == 0,
-    bounded_collection_v1.verify_item(
-      witness_set.script_tx_wits_hash,
-      collection_proof,
-    ),
-    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
+    field_index == 6,
+    item_index == control.script_seen,
+    item_count == active_count,
+    item_length > 0,
+    item_length <= max_aggregate_field_preimage_bytes,
     when header is {
       None ->
         rejected_successor_is_exact(
@@ -3677,8 +3858,8 @@ fn verify_phase_a_native_item_scan(
               ..control,
               stage: 1,
               script_count: active_count,
-              item_length: collection_proof.item_length,
-              item_commitment: collection_proof.item_commitment,
+              item_length,
+              item_commitment: field_door.machine_field_item_commitment(item),
               cursor: item_header.payload_offset,
             },
           )
@@ -4053,6 +4234,7 @@ fn verify_phase_a_native_scripts_scan(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   let control = phase_a_native_control_from_witness(witness.work_witness_cbor)
   when auxiliary is {
@@ -4062,13 +4244,15 @@ fn verify_phase_a_native_scripts_scan(
       } else {
         verify_phase_a_native_advance_scan(pre, witness, control)
       }
-    TransactionFieldChunkWitness { collection_proof, chunk_proof } ->
+    TransactionFieldChunkWitness { field_index, item_index, carriage } ->
       verify_phase_a_native_item_scan(
         pre,
         witness,
         control,
-        collection_proof,
-        chunk_proof,
+        door,
+        field_index,
+        item_index,
+        carriage,
       )
     NativeScriptTokenWitness { chunk_proof, next_chunk_proof, signer_proof } ->
       if control.stage == 1 {
@@ -4172,15 +4356,19 @@ pub fn verify_phase_a_native_advance_semantics_v1(
 pub fn verify_phase_a_native_item_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
+  door: field_door.MachineFieldDoorV1,
+  field_index: Int,
+  item_index: Int,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   verify_phase_a_native_item_scan(
     pre,
     witness,
     phase_a_native_control_from_witness(witness.work_witness_cbor),
-    collection_proof,
-    chunk_proof,
+    door,
+    field_index,
+    item_index,
+    carriage,
   )
 }
 
@@ -5624,7 +5812,7 @@ fn phase_a_script_preconditions_control_from_witness(
   witness_cbor: ByteArray,
 ) -> PhaseAScriptPreconditionsControlV1 {
   expect Some(data) = cbor.deserialise(witness_cbor)
-  expect
+  expect  
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -5790,6 +5978,7 @@ fn verify_phase_a_script_preconditions(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   let control = phase_a_script_preconditions_control_from_witness(
     witness.work_witness_cbor,
@@ -5836,30 +6025,30 @@ fn verify_phase_a_script_preconditions(
         ),
       }
     } else {
-      expect TransactionFieldChunkWitness { collection_proof, chunk_proof } = auxiliary
+      expect TransactionFieldChunkWitness { field_index, item_index, carriage }
+        = auxiliary
+      let item = field_door.open_machine_field_item(
+        door,
+        verified_source,
+        witness_set,
+        3,
+        control.observer_seen,
+        carriage,
+      )
+      let item_count = field_door.machine_field_item_count(item)
       let active_count = if control.observer_count == 0 {
-        collection_proof.item_count
+        item_count
       } else {
         control.observer_count
       }
-      let observer_hash = chunk_proof.chunk
+      let observer_hash = field_door.machine_field_item_bytes(item)
       and {
         active_count > 0,
         active_count <= max_tx_size_derived_collection_item_count,
-        collection_proof.field_index == 3,
-        collection_proof.item_count == active_count,
-        collection_proof.item_index == control.observer_seen,
-        collection_proof.item_length == 28,
-        chunk_proof.field_index == 3,
-        chunk_proof.item_index == collection_proof.item_index,
-        chunk_proof.total_length == 28,
-        chunk_proof.chunk_index == 0,
-        bounded_item_v1.chunk_count(chunk_proof.total_length) == 1,
-        bounded_collection_v1.verify_item(observer_commitment, collection_proof),
-        bounded_item_v1.verify_chunk(
-          collection_proof.item_commitment,
-          chunk_proof,
-        ),
+        field_index == 3,
+        item_index == control.observer_seen,
+        item_count == active_count,
+        field_door.machine_field_item_length(item) == 28,
         if and {
           control.observer_seen > 0,
           bytearray.compare(control.previous_observer, observer_hash) != Less,
@@ -5904,7 +6093,7 @@ fn resolve_inputs_control_from_witness(
   witness_cbor: ByteArray,
 ) -> ResolveInputsControlV1 {
   expect Some(data) = cbor.deserialise(witness_cbor)
-  expect
+  expect  
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data, cursor_data,
@@ -6929,7 +7118,7 @@ fn script_discovery_control_from_cbor(
   discovery_cbor: ByteArray,
 ) -> ScriptDiscoveryControlV1 {
   expect Some(data) = cbor.deserialise(discovery_cbor)
-  expect
+  expect  
       [
         purpose_cursor_data, source_cursor_data, redeemer_cursor_data,
         current_purpose_kind_data, current_purpose_index_data,
@@ -6995,7 +7184,7 @@ fn split_last_data(items: List<Data>) -> Pair<List<Data>, Data> {
 }
 
 fn mint_fold_control_from_data(data: Data) -> MintFoldControlV1 {
-  expect
+  expect  
       [
         policy_count_data, policy_cursor_data, previous_policy_data,
         active_policy_data, item_length_data, item_commitment_data,
@@ -7024,7 +7213,7 @@ fn script_sources_control_from_data_items(
   discovery: ScriptDiscoveryControlV1,
   output_proof: Option<ledger_output_proof_v1.LedgerOutputProofControlV1>,
 ) -> ScriptSourcesControlV1 {
-  expect
+  expect  
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -7040,13 +7229,13 @@ fn script_sources_control_from_data_items(
         observer_scan_data, mint_fold_data, resolution_schedule_hash_data,
       ]
     = items
-  expect
+  expect  
       [
         observer_total_count_data, observer_previous_hash_data,
         observer_seen_data,
       ]
     = builtin.un_list_data(observer_scan_data)
-  expect
+  expect  
       [
         receive_source_count_data, receive_source_peaks_data, receive_count_data,
         receive_previous_hash_data, receive_candidate_hash_data,
@@ -7211,7 +7400,7 @@ fn inline_source_hash_control_from_cbor(
   control_cbor: ByteArray,
 ) -> InlineSourceHashControlV1 {
   expect Some(data) = cbor.deserialise(control_cbor)
-  expect
+  expect  
       [
         version_data, source_index_data, source_total_count_data,
         language_tag_data, payload_offset_data, payload_length_data,
@@ -7995,43 +8184,54 @@ pub fn verify_script_sources_stage_zero_finish_semantics_v1(
 pub fn verify_script_sources_stage_zero_begin_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
+  door: field_door.MachineFieldDoorV1,
+  field_index: Int,
+  item_index: Int,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   let control = script_sources_stage_zero_control_from_witness(
     witness.work_witness_cbor,
   )
-  let witness_set = decode_native_tx_witness_set_compact(
+  // The door takes tx-id-verified compact structures, never a free-standing
+  // field hash, so this entry point re-derives them from the control's own
+  // bytes. `script_sources_stage_zero_control_is_bound` has already pinned those
+  // bytes to `pre.transaction_commitment`; what the re-derivation adds is §3's
+  // id, which is what the door authenticates a tier-3 certificate against.
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
     control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
   )
+  let item = field_door.open_machine_field_item(
+    door,
+    verified,
+    witness_set,
+    6,
+    control.source_count,
+    carriage,
+  )
+  let item_count = field_door.machine_field_item_count(item)
+  let item_length = field_door.machine_field_item_length(item)
   let active_total_count = if control.source_total_count == 0 {
-    collection_proof.item_count
+    item_count
   } else {
     control.source_total_count
   }
   let header = native_script_scan_v1.versioned_script_header_v1(
-    chunk_proof.chunk,
-    collection_proof.item_length,
+    field_door.machine_field_item_chunk(item, 0),
+    item_length,
   )
   and {
     script_sources_stage_zero_control_is_bound(pre, witness, control),
     control.pending_source_cbor == #"",
     active_total_count > 0,
     active_total_count <= max_tx_size_derived_collection_item_count,
-    collection_proof.item_length > 0,
-    collection_proof.item_length <= max_aggregate_field_preimage_bytes,
-    collection_proof.field_index == 6,
-    collection_proof.item_count == active_total_count,
-    collection_proof.item_index == control.source_count,
-    chunk_proof.field_index == 6,
-    chunk_proof.item_index == collection_proof.item_index,
-    chunk_proof.total_length == collection_proof.item_length,
-    chunk_proof.chunk_index == 0,
-    bounded_collection_v1.verify_item(
-      witness_set.script_tx_wits_hash,
-      collection_proof,
-    ),
-    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
+    item_length > 0,
+    item_length <= max_aggregate_field_preimage_bytes,
+    field_index == 6,
+    item_index == control.source_count,
+    item_count == active_total_count,
     when header is {
       None ->
         rejected_successor_is_exact(
@@ -8048,8 +8248,8 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
             language_tag: item_header.language_tag,
             payload_offset: item_header.payload_offset,
             payload_length: item_header.payload_length,
-            item_length: collection_proof.item_length,
-            item_commitment: collection_proof.item_commitment,
+            item_length,
+            item_commitment: field_door.machine_field_item_commitment(item),
             hash_control: blake2b_224_trace_v1.initial_control_v1(
               item_header.payload_length + 1,
             ),
@@ -8178,8 +8378,9 @@ fn script_sources_stage_zero(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  let Pair(_, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -8309,34 +8510,35 @@ fn script_sources_stage_zero(
       ),
     }
   } else {
-    expect TransactionFieldChunkWitness { collection_proof, chunk_proof } = auxiliary
+    expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
+    let item = field_door.open_machine_field_item(
+      door,
+      verified,
+      witness_set,
+      6,
+      control.source_count,
+      carriage,
+    )
+    let item_count = field_door.machine_field_item_count(item)
+    let item_length = field_door.machine_field_item_length(item)
     let active_total_count = if control.source_total_count == 0 {
-      collection_proof.item_count
+      item_count
     } else {
       control.source_total_count
     }
     let header = native_script_scan_v1.versioned_script_header_v1(
-      chunk_proof.chunk,
-      collection_proof.item_length,
+      field_door.machine_field_item_chunk(item, 0),
+      item_length,
     )
     and {
       common_control_is_initial,
       active_total_count > 0,
       active_total_count <= max_tx_size_derived_collection_item_count,
-      collection_proof.item_length > 0,
-      collection_proof.item_length <= max_aggregate_field_preimage_bytes,
-      collection_proof.field_index == 6,
-      collection_proof.item_count == active_total_count,
-      collection_proof.item_index == control.source_count,
-      chunk_proof.field_index == 6,
-      chunk_proof.item_index == collection_proof.item_index,
-      chunk_proof.total_length == collection_proof.item_length,
-      chunk_proof.chunk_index == 0,
-      bounded_collection_v1.verify_item(script_commitment, collection_proof),
-      bounded_item_v1.verify_chunk(
-        collection_proof.item_commitment,
-        chunk_proof,
-      ),
+      item_length > 0,
+      item_length <= max_aggregate_field_preimage_bytes,
+      field_index == 6,
+      item_index == control.source_count,
+      item_count == active_total_count,
       when header is {
         None ->
           rejected_successor_is_exact(
@@ -8359,8 +8561,10 @@ fn script_sources_stage_zero(
                   language_tag: item_header.language_tag,
                   payload_offset: item_header.payload_offset,
                   payload_length: item_header.payload_length,
-                  item_length: collection_proof.item_length,
-                  item_commitment: collection_proof.item_commitment,
+                  item_length,
+                  item_commitment: field_door.machine_field_item_commitment(
+                    item,
+                  ),
                   hash_control: blake2b_224_trace_v1.initial_control_v1(
                     item_header.payload_length + 1,
                   ),
@@ -8384,7 +8588,7 @@ fn script_sources_stage_one_raw_common_control_is_initial(
   receive_scan_data: Data,
   source_total_count_data: Data,
 ) -> Bool {
-  expect
+  expect  
       [
         receive_source_count_data, receive_source_peaks_data, receive_count_data,
         receive_previous_hash_data, receive_candidate_hash_data,
@@ -8415,7 +8619,7 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
   expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
-  expect
+  expect  
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, _, _, _, _, _,
@@ -8514,8 +8718,9 @@ fn script_sources_stage_one(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  let Pair(_, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -8562,18 +8767,27 @@ fn script_sources_stage_one(
       ),
     }
   } else if control.pending_source_cbor == #"" {
-    expect TransactionRedeemerItemBeginWitness { collection_proof } = auxiliary
+    expect TransactionRedeemerItemBeginWitness { carriage } = auxiliary
+    let item = field_door.open_machine_field_item(
+      door,
+      verified,
+      witness_set,
+      8,
+      control.redeemer_count,
+      carriage,
+    )
+    let item_count = field_door.machine_field_item_count(item)
     let active_total_count = if control.redeemer_total_count == 0 {
-      collection_proof.item_count
+      item_count
     } else {
       control.redeemer_total_count
     }
     let item_control = redeemer_item_proof_v1.initial_control_v1(
       redeemer_item_proof_v1.mode_data,
-      collection_proof.item_index,
+      control.redeemer_count,
       active_total_count,
-      collection_proof.item_length,
-      collection_proof.item_commitment,
+      field_door.machine_field_item_length(item),
+      field_door.machine_field_item_commitment(item),
       -1,
       -1,
     )
@@ -8581,10 +8795,7 @@ fn script_sources_stage_one(
       common_control_is_initial,
       active_total_count > 0,
       active_total_count <= max_tx_size_derived_collection_item_count,
-      collection_proof.field_index == 8,
-      collection_proof.item_count == active_total_count,
-      collection_proof.item_index == control.redeemer_count,
-      bounded_collection_v1.verify_item(redeemer_commitment, collection_proof),
+      item_count == active_total_count,
       script_sources_control_successor_is_exact(
         pre,
         witness,
@@ -8598,7 +8809,7 @@ fn script_sources_stage_one(
       ),
     }
   } else {
-    expect
+    expect  
         RedeemerItemStepWitness {
           redeemer_control: None,
           control: item_control,
@@ -8924,8 +9135,9 @@ fn script_sources_stage_four(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, stage_four_witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -8963,20 +9175,33 @@ fn script_sources_stage_four(
     }
   } else {
     // The fold consumes only the authenticated
-    // (field_index, item_index, item_length, item_commitment) tuple:
-    // verify_item binds that exact tuple (plus version) into the
-    // outputs_hash established by verify_native_tx_proof_source_v1, and the
-    // three pins below leave exactly one admissible tuple. Revealing the
-    // item bytes here re-proved only that an authenticated commitment has a
-    // preimage — which canonicalDecode (chunk and complete carriage) and
-    // the stage-5 LedgerOutputProof traversal already establish for every
-    // output — while making stage-4 evidence grow with output size and
-    // unbuildable above the L1 envelope for legal 16,384-byte outputs
-    // (C21-STAGE4-GAP). The proof-only tag-29 witness keeps stage-4
-    // evidence O(1) in output size.
-    expect TransactionRedeemerItemBeginWitness { collection_proof } = auxiliary
+    // (field_index, item_index, item_length, item_commitment) tuple. Under the
+    // retired counted scheme `verify_item` bound that tuple into `outputs_hash`
+    // — which §4 made unsatisfiable — and it is now bound the other way round:
+    // the door authenticates the whole field-2 preimage against `outputs_hash`
+    // and the item's length and `bounded_item_v1` commitment are *derived* from
+    // it, so the tuple is authenticated by construction rather than by an
+    // opening. What has not changed is why the item's bytes are not revealed
+    // here: doing so re-proved only that an authenticated commitment has a
+    // preimage — which canonicalDecode and the stage-5 LedgerOutputProof
+    // traversal already establish for every output — while making stage-4
+    // evidence grow with output size and unbuildable above the L1 envelope for
+    // legal 16,384-byte outputs (C21-STAGE4-GAP). The carriage keeps stage-4
+    // *redeemer* evidence O(1) in output size only under tiers 2–3, where the
+    // preimage rides reference inputs; a tier-1 plan for a large field-2
+    // preimage is refused by the L1 transaction size, not by this rule.
+    expect TransactionRedeemerItemBeginWitness { carriage } = auxiliary
+    let item = field_door.open_machine_field_item(
+      door,
+      verified_source,
+      stage_four_witness_set,
+      2,
+      control.output_count,
+      carriage,
+    )
+    let item_count = field_door.machine_field_item_count(item)
     let active_total_count = if control.output_total_count == 0 {
-      collection_proof.item_count
+      item_count
     } else {
       control.output_total_count
     }
@@ -8985,11 +9210,8 @@ fn script_sources_stage_four(
       control.receive_scan == empty_receive_purpose_scan_control(),
       active_total_count > 0,
       active_total_count <= max_tx_size_derived_collection_item_count,
-      collection_proof.field_index == 2,
-      collection_proof.item_count == active_total_count,
-      collection_proof.item_index == control.output_count,
-      collection_proof.item_length <= max_serialized_output_preimage_bytes,
-      bounded_collection_v1.verify_item(output_commitment, collection_proof),
+      item_count == active_total_count,
+      field_door.machine_field_item_length(item) <= max_serialized_output_preimage_bytes,
       script_sources_control_successor_is_exact(
         pre,
         witness,
@@ -9001,7 +9223,7 @@ fn script_sources_stage_four(
             control.output_peaks,
             script_proof_v1.output_item_leaf_hash(
               control.output_count,
-              collection_proof.item_commitment,
+              field_door.machine_field_item_commitment(item),
             ),
           ),
           output_total_count: active_total_count,
@@ -9334,44 +9556,52 @@ fn script_sources_begin_mint_policy(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: ScriptSourcesControlV1,
-  expected_commitment: ByteArray,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
+  door: field_door.MachineFieldDoorV1,
+  field_index: Int,
+  item_index: Int,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   let fold = control.mint_fold
+  let item = field_door.open_machine_field_item(
+    door,
+    verified,
+    witness_set,
+    5,
+    fold.policy_cursor,
+    carriage,
+  )
+  let first_chunk = field_door.machine_field_item_chunk(item, 0)
+  let item_length = field_door.machine_field_item_length(item)
   let Pair(policy_offset, item_count) = decode_definite_array_header_at(
-    chunk_proof.chunk,
+    first_chunk,
     0,
   )
   expect item_count == 2
   let Pair(assets_header_offset, policy_id) = decode_canonical_bytes_at(
-    chunk_proof.chunk,
+    first_chunk,
     policy_offset,
   )
   let Pair(assets_offset, asset_count) = decode_canonical_map_header_at(
-    chunk_proof.chunk,
+    first_chunk,
     assets_header_offset,
   )
+  let policy_item_count = field_door.machine_field_item_count(item)
   let active_policy_count = if fold.policy_count == -1 {
-    collection_proof.item_count
+    policy_item_count
   } else {
     fold.policy_count
   }
   let common_is_valid = and {
     fold.active_policy == #"",
     fold.policy_cursor < active_policy_count,
-    collection_proof.field_index == 5,
-    collection_proof.item_count == active_policy_count,
-    collection_proof.item_count <= max_tx_size_derived_collection_item_count,
-    collection_proof.item_index == fold.policy_cursor,
-    collection_proof.item_length > assets_offset,
-    collection_proof.item_length <= max_aggregate_field_preimage_bytes,
-    chunk_proof.field_index == 5,
-    chunk_proof.item_index == fold.policy_cursor,
-    chunk_proof.total_length == collection_proof.item_length,
-    chunk_proof.chunk_index == 0,
-    bounded_collection_v1.verify_item(expected_commitment, collection_proof),
-    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
+    field_index == 5,
+    item_index == fold.policy_cursor,
+    policy_item_count == active_policy_count,
+    policy_item_count <= max_tx_size_derived_collection_item_count,
+    item_length > assets_offset,
+    item_length <= max_aggregate_field_preimage_bytes,
     bytearray.length(policy_id) == 28,
     asset_count > 0,
     or {
@@ -9411,8 +9641,8 @@ fn script_sources_begin_mint_policy(
             ..fold,
             policy_count: active_policy_count,
             active_policy: policy_id,
-            item_length: collection_proof.item_length,
-            item_commitment: collection_proof.item_commitment,
+            item_length,
+            item_commitment: field_door.machine_field_item_commitment(item),
             item_cursor: assets_offset,
             assets_remaining: asset_count,
             policy_asset_cursor: 0,
@@ -9513,8 +9743,9 @@ fn script_sources_stage_six(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  let Pair(verified, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified, stage_six_witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -9550,14 +9781,17 @@ fn script_sources_stage_six(
       ),
     }
   } else if fold.active_policy == #"" {
-    expect TransactionFieldChunkWitness { collection_proof, chunk_proof } = auxiliary
+    expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
     script_sources_begin_mint_policy(
       pre,
       witness,
       control,
-      expected_commitment,
-      collection_proof,
-      chunk_proof,
+      verified,
+      stage_six_witness_set,
+      door,
+      field_index,
+      item_index,
+      carriage,
     )
   } else {
     expect MintFoldAssetWitness { chunk_proof, next_chunk_proof } = auxiliary
@@ -9685,7 +9919,7 @@ fn script_sources_receive_scan_item(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  expect
+  expect  
       ScriptPurposeScanWitness {
         purpose_kind,
         purpose_index,
@@ -9792,6 +10026,9 @@ fn script_sources_stage_seven_with_observer_commitment(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
   observer_commitment: ByteArray,
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   let empty_observer_commitment = native_tx_field_access_v1.empty_field_commitment
   let observer_scan_is_complete = if observer_commitment == empty_observer_commitment {
@@ -9809,13 +10046,22 @@ fn script_sources_stage_seven_with_observer_commitment(
       script_sources_receive_scan_item(pre, witness, auxiliary, control)
     }
   } else {
-    expect TransactionFieldChunkWitness { collection_proof, chunk_proof } = auxiliary
+    expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
+    let item = field_door.open_machine_field_item(
+      door,
+      verified,
+      witness_set,
+      3,
+      control.observer_scan.seen,
+      carriage,
+    )
+    let item_count = field_door.machine_field_item_count(item)
     let active_count = if control.observer_scan.total_count == 0 {
-      collection_proof.item_count
+      item_count
     } else {
       control.observer_scan.total_count
     }
-    let observer_hash = chunk_proof.chunk
+    let observer_hash = field_door.machine_field_item_bytes(item)
     and {
       control.output_cursor == 0,
       control.receive_scan.receive_count == 0,
@@ -9823,20 +10069,10 @@ fn script_sources_stage_seven_with_observer_commitment(
       control.receive_scan.candidate_hash == #"",
       active_count > 0,
       active_count <= max_tx_size_derived_collection_item_count,
-      collection_proof.field_index == 3,
-      collection_proof.item_count == active_count,
-      collection_proof.item_index == control.observer_scan.seen,
-      collection_proof.item_length == 28,
-      chunk_proof.field_index == 3,
-      chunk_proof.item_index == collection_proof.item_index,
-      chunk_proof.total_length == 28,
-      chunk_proof.chunk_index == 0,
-      bounded_item_v1.chunk_count(chunk_proof.total_length) == 1,
-      bounded_collection_v1.verify_item(observer_commitment, collection_proof),
-      bounded_item_v1.verify_chunk(
-        collection_proof.item_commitment,
-        chunk_proof,
-      ),
+      field_index == 3,
+      item_index == control.observer_scan.seen,
+      item_count == active_count,
+      field_door.machine_field_item_length(item) == 28,
       if and {
         control.observer_scan.seen > 0,
         bytearray.compare(control.observer_scan.previous_hash, observer_hash) != Less,
@@ -9880,8 +10116,9 @@ fn script_sources_stage_seven(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -9893,6 +10130,9 @@ fn script_sources_stage_seven(
     auxiliary,
     control,
     verified_source.tx_compact.body.required_observers_hash,
+    verified_source,
+    witness_set,
+    door,
   )
 }
 
@@ -10142,20 +10382,37 @@ fn script_sources_stage_seven_finish_successor_is_exact(
 pub fn verify_script_sources_stage_seven_observer_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
+  door: field_door.MachineFieldDoorV1,
+  field_index: Int,
+  item_index: Int,
+  carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   let control = script_sources_stage_seven_control_from_witness(
     witness.work_witness_cbor,
   )
-  let observer_commitment = decode_native_tx_compact_v1(control.compact_cbor).body.required_observers_hash
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  let observer_commitment = verified.tx_compact.body.required_observers_hash
   let observer_scan = control.observer_scan
+  let item = field_door.open_machine_field_item(
+    door,
+    verified,
+    witness_set,
+    3,
+    observer_scan.seen,
+    carriage,
+  )
+  let item_count = field_door.machine_field_item_count(item)
   let active_count = if observer_scan.total_count == 0 {
-    collection_proof.item_count
+    item_count
   } else {
     observer_scan.total_count
   }
-  let observer_hash = chunk_proof.chunk
+  let observer_hash = field_door.machine_field_item_bytes(item)
   let common_is_valid = and {
     script_sources_stage_seven_control_is_bound(pre, witness, control),
     observer_commitment != native_tx_field_access_v1.empty_field_commitment,
@@ -10169,18 +10426,11 @@ pub fn verify_script_sources_stage_seven_observer_semantics_v1(
     control.receive_scan.candidate_hash == #"",
     active_count > 0,
     active_count <= max_tx_size_derived_collection_item_count,
-    collection_proof.field_index == 3,
-    collection_proof.item_count == active_count,
-    collection_proof.item_index == observer_scan.seen,
-    collection_proof.item_length == 28,
-    chunk_proof.field_index == 3,
-    chunk_proof.item_index == collection_proof.item_index,
-    chunk_proof.total_length == 28,
-    chunk_proof.chunk_index == 0,
+    field_index == 3,
+    item_index == observer_scan.seen,
+    item_count == active_count,
+    field_door.machine_field_item_length(item) == 28,
     bytearray.length(observer_hash) == 28,
-    bounded_item_v1.chunk_count(chunk_proof.total_length) == 1,
-    bounded_collection_v1.verify_item(observer_commitment, collection_proof),
-    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
   }
   if and {
     common_is_valid,
@@ -10379,7 +10629,7 @@ fn script_sources_stage_eight(
       ),
     }
   } else {
-    expect
+    expect  
         ScriptPurposeScanWitness {
           purpose_kind,
           purpose_index,
@@ -10624,7 +10874,7 @@ fn script_sources_stage_nine(
       ),
     }
   } else {
-    expect
+    expect  
         ScriptSourceScanWitness {
           source_index,
           origin_kind,
@@ -11092,7 +11342,7 @@ fn script_sources_stage_ten(
       ),
     }
   } else if discovery.redeemer_item_control_hash == #"" {
-    expect
+    expect  
         RedeemerScanBeginWitness {
           item_index,
           item_count,
@@ -11138,7 +11388,7 @@ fn script_sources_stage_ten(
       ),
     }
   } else {
-    expect
+    expect  
         RedeemerItemStepWitness {
           redeemer_control: None,
           control: item_control,
@@ -11415,7 +11665,7 @@ fn script_sources_stage_eleven(
       ),
     }
   } else {
-    expect
+    expect  
         ScriptSourceScanWitness {
           source_index,
           origin_kind,
@@ -11643,7 +11893,7 @@ fn script_sources_stage_twelve(
       ),
     }
   } else if discovery.redeemer_item_control_hash == #"" {
-    expect
+    expect  
         RedeemerScanBeginWitness {
           item_index,
           item_count,
@@ -11689,7 +11939,7 @@ fn script_sources_stage_twelve(
       ),
     }
   } else {
-    expect
+    expect  
         RedeemerItemStepWitness {
           redeemer_control: None,
           control: item_control,
@@ -12345,6 +12595,7 @@ pub fn verify_script_sources_output_proof_finalize_semantics_v1(
 pub fn verify_script_sources_non_output_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   let witness = evidence.transition
   let auxiliary = evidence.auxiliary
@@ -12360,19 +12611,19 @@ pub fn verify_script_sources_non_output_semantics_v1(
     script_sources_control_is_bound(pre, witness, control),
     control.stage != 5,
     if control.stage == 0 {
-      script_sources_stage_zero(pre, witness, auxiliary, control)
+      script_sources_stage_zero(pre, witness, auxiliary, control, door)
     } else if control.stage == 1 {
-      script_sources_stage_one(pre, witness, auxiliary, control)
+      script_sources_stage_one(pre, witness, auxiliary, control, door)
     } else if control.stage == 2 {
       script_sources_stage_two(pre, witness, auxiliary, control)
     } else if control.stage == 3 {
       script_sources_stage_three(pre, witness, auxiliary, control)
     } else if control.stage == 4 {
-      script_sources_stage_four(pre, witness, auxiliary, control)
+      script_sources_stage_four(pre, witness, auxiliary, control, door)
     } else if control.stage == 6 {
-      script_sources_stage_six(pre, witness, auxiliary, control)
+      script_sources_stage_six(pre, witness, auxiliary, control, door)
     } else if control.stage == 7 {
-      script_sources_stage_seven(pre, witness, auxiliary, control)
+      script_sources_stage_seven(pre, witness, auxiliary, control, door)
     } else if control.stage == 8 {
       script_sources_stage_eight(pre, witness, auxiliary, control)
     } else if control.stage == 9 {
@@ -12410,15 +12661,44 @@ fn verify_script_sources_semantic_stage(
   }
 }
 
+/// The same dispatch for the five stages that reach a committed field through
+/// §8's door and therefore take one — stages 0, 1, 4, 6 and 7. Kept separate
+/// rather than widening the arity of every stage function, so a stage that reads
+/// no field cannot be handed a door to ignore.
+fn verify_script_sources_semantic_stage_with_door(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
+  expected_stage: Int,
+  verify_stage: fn(
+    validation_trace_v1.ValidationMachineStateV1,
+    ValidationOneStepWitnessV1,
+    ValidationAuxiliaryWitnessV1,
+    ScriptSourcesControlV1,
+    field_door.MachineFieldDoorV1,
+  ) ->
+    Bool,
+) -> Bool {
+  let control = script_sources_control_from_witness(witness.work_witness_cbor)
+  and {
+    script_sources_control_is_bound(pre, witness, control),
+    control.stage == expected_stage,
+    verify_stage(pre, witness, auxiliary, control, door),
+  }
+}
+
 pub fn verify_script_sources_stage_zero_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  verify_script_sources_semantic_stage(
+  verify_script_sources_semantic_stage_with_door(
     pre,
     witness,
     auxiliary,
+    door,
     0,
     script_sources_stage_zero,
   )
@@ -12428,11 +12708,13 @@ pub fn verify_script_sources_stage_one_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  verify_script_sources_semantic_stage(
+  verify_script_sources_semantic_stage_with_door(
     pre,
     witness,
     auxiliary,
+    door,
     1,
     script_sources_stage_one,
   )
@@ -12470,11 +12752,13 @@ pub fn verify_script_sources_stage_four_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  verify_script_sources_semantic_stage(
+  verify_script_sources_semantic_stage_with_door(
     pre,
     witness,
     auxiliary,
+    door,
     4,
     script_sources_stage_four,
   )
@@ -12498,11 +12782,13 @@ pub fn verify_script_sources_stage_six_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  verify_script_sources_semantic_stage(
+  verify_script_sources_semantic_stage_with_door(
     pre,
     witness,
     auxiliary,
+    door,
     6,
     script_sources_stage_six,
   )
@@ -12512,11 +12798,13 @@ pub fn verify_script_sources_stage_seven_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  verify_script_sources_semantic_stage(
+  verify_script_sources_semantic_stage_with_door(
     pre,
     witness,
     auxiliary,
+    door,
     7,
     script_sources_stage_seven,
   )
@@ -12610,9 +12898,10 @@ pub fn verify_script_sources_stage_one_redeemer_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   if script_sources_stage_one_redeemer_auxiliary_is_family(auxiliary) {
-    verify_script_sources_stage_one_semantics_v1(pre, witness, auxiliary)
+    verify_script_sources_stage_one_semantics_v1(pre, witness, auxiliary, door)
   } else {
     False
   }
@@ -12745,9 +13034,10 @@ fn verify_script_sources(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   let control = script_sources_control_from_witness(witness.work_witness_cbor)
-  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, dispatch_witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -12757,19 +13047,19 @@ fn verify_script_sources(
     verified_source.version == 1,
     script_sources_control_is_bound(pre, witness, control),
     if control.stage == 0 {
-      script_sources_stage_zero(pre, witness, auxiliary, control)
+      script_sources_stage_zero(pre, witness, auxiliary, control, door)
     } else if control.stage == 1 {
-      script_sources_stage_one(pre, witness, auxiliary, control)
+      script_sources_stage_one(pre, witness, auxiliary, control, door)
     } else if control.stage == 2 {
       script_sources_stage_two(pre, witness, auxiliary, control)
     } else if control.stage == 3 {
       script_sources_stage_three(pre, witness, auxiliary, control)
     } else if control.stage == 4 {
-      script_sources_stage_four(pre, witness, auxiliary, control)
+      script_sources_stage_four(pre, witness, auxiliary, control, door)
     } else if control.stage == 5 {
       script_sources_stage_five(pre, witness, auxiliary, control)
     } else if control.stage == 6 {
-      script_sources_stage_six(pre, witness, auxiliary, control)
+      script_sources_stage_six(pre, witness, auxiliary, control, door)
     } else if control.stage == 7 {
       script_sources_stage_seven_with_observer_commitment(
         pre,
@@ -12777,6 +13067,9 @@ fn verify_script_sources(
         auxiliary,
         control,
         verified_source.tx_compact.body.required_observers_hash,
+        verified_source,
+        dispatch_witness_set,
+        door,
       )
     } else if control.stage == 8 {
       script_sources_stage_eight(pre, witness, auxiliary, control)
@@ -12827,7 +13120,7 @@ fn native_scripts_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> NativeScriptsControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
-  expect
+  expect  
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -13086,7 +13379,7 @@ fn verify_native_execution_descriptor_step(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: NativeScriptsControlV1,
 ) -> Bool {
-  expect
+  expect  
       NativeExecutionDescriptorWitness {
         execution_index,
         language_tag,
@@ -13482,7 +13775,7 @@ pub fn encode_cek_context_control_v1(control: CekContextControlV1) -> ByteArray 
 
 fn cek_context_control_from_cbor(control_cbor: ByteArray) -> CekContextControlV1 {
   expect Some(data) = cbor.deserialise(control_cbor)
-  expect
+  expect  
       [
         stage_data, language_tag_data, program_term_root_data,
         program_envelope_hash_data, purpose_kind_data, purpose_index_data,
@@ -14029,7 +14322,7 @@ fn value_accumulator_from_cbor(
   accumulator_cbor: ByteArray,
 ) -> ValueAccumulatorV1 {
   expect Some(data) = cbor.deserialise(accumulator_cbor)
-  expect
+  expect  
       [
         lovelace_data, asset_root_data, seen_asset_count_data,
         nonzero_asset_count_data,
@@ -14201,7 +14494,7 @@ fn value_and_mint_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> ValueAndMintControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
-  expect
+  expect  
       [
         native_control_cbor_data, stage_data, replay_schedule_hash_data,
         replay_cursor_data, replay_asset_cursor_data, replay_value_hash_data,
@@ -14319,7 +14612,7 @@ fn ledger_delta_proof_descriptor_from_cbor(
   descriptor_cbor: ByteArray,
 ) -> mpf_proof_fold_v1.ProofDescriptorV1 {
   expect Some(data) = cbor.deserialise(descriptor_cbor)
-  expect
+  expect  
       [
         version_data, frame_count_data, terminal_cursor_data,
         operation_peaks_data,
@@ -14366,7 +14659,7 @@ fn ledger_delta_pending_mutation_from_cbor(
   pending_cbor: ByteArray,
 ) -> LedgerDeltaPendingMutationV1 {
   expect Some(data) = cbor.deserialise(pending_cbor)
-  expect
+  expect  
       [
         version_data, authorization_stage_data, operation_kind_data, key_data,
         value_data, descriptor_cbor_data, next_frame_index_data,
@@ -14437,7 +14730,7 @@ fn ledger_delta_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> LedgerDeltaControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
-  expect
+  expect  
       [
         resolved_input_count_data, resolved_inputs_accumulator_data,
         output_count_data, output_descriptor_peaks_data, stage_data,
@@ -14583,7 +14876,7 @@ fn verify_script_integrity_witness_set(
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect
+  expect  
       [
         native_control_cbor_data, stage_data, script_integrity_hash_data,
         witness_set_hash_data,
@@ -14628,7 +14921,7 @@ fn verify_script_integrity_finalize(
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect
+  expect  
       [
         native_control_cbor_data, stage_data, script_integrity_hash_data,
         redeemer_tx_wits_hash_data,
@@ -14986,7 +15279,7 @@ pub fn verify_cek_execution_selection(
   completed_cpu: Int,
   completed_memory: Int,
 ) -> Bool {
-  expect
+  expect  
       NativeExecutionScanWitness {
         execution_index,
         language_tag,
@@ -15150,7 +15443,7 @@ fn verify_cek_redeemer_selection(
   completed_memory: Int,
 ) -> Bool {
   if context_control.redeemer_context_control_hash == #"" {
-    expect
+    expect  
         RedeemerScanBeginWitness {
           item_index,
           item_count,
@@ -15199,7 +15492,7 @@ fn verify_cek_redeemer_selection(
       ),
     }
   } else {
-    expect
+    expect  
         RedeemerItemStepWitness {
           redeemer_control: None,
           control: item_control,
@@ -15295,7 +15588,7 @@ pub fn verify_cek_reference_context_step(
       ),
     }
   } else {
-    expect
+    expect  
         CekResolvedContextItemWitness {
           source_kind,
           item_index,
@@ -15355,7 +15648,7 @@ pub fn verify_cek_spend_context_step(
       ),
     }
   } else {
-    expect
+    expect  
         CekResolvedContextItemWitness {
           source_kind,
           item_index,
@@ -15415,7 +15708,7 @@ pub fn verify_cek_output_context_step(
       ),
     }
   } else {
-    expect
+    expect  
         CekOutputContextItemWitness { output_index, descriptor_cbor, siblings }
       = auxiliary
     expect Some(next_items) = script_context_v1.prepend_output_descriptor_v1(
@@ -15463,7 +15756,7 @@ fn verify_cek_signer_context_step(
       ),
     }
   } else {
-    expect
+    expect  
         CekSignerContextItemWitness {
           peaks,
           signer_index,
@@ -15535,8 +15828,9 @@ pub fn verify_cek_observer_context_step(
   execution_cursor: Int,
   completed_cpu: Int,
   completed_memory: Int,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, cek_observer_witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
     native_control.compact_cbor,
     native_control.witness_set_compact_cbor,
@@ -15592,14 +15886,34 @@ pub fn verify_cek_observer_context_step(
         ),
       }
     } else {
-      expect TransactionFieldChunkWitness { collection_proof, chunk_proof } = auxiliary
-      let active_count = if context_control.observer_count == 0 {
-        collection_proof.item_count
+      expect TransactionFieldChunkWitness { field_index, item_index, carriage }
+        = auxiliary
+      // The CEK observer list is built back to front, so the index this step is
+      // allowed to read is derived from how many items it has already
+      // accumulated. The door is opened at that derived index; `item_index` from
+      // the evidence is checked against it rather than used.
+      let provisional_count = if context_control.observer_count == 0 {
+        field_door.machine_field_count(
+          door,
+          verified_source,
+          cek_observer_witness_set,
+          3,
+          carriage,
+        )
       } else {
         context_control.observer_count
       }
-      let expected_index = active_count - context_control.observer_items.length - 1
-      let observer_hash = chunk_proof.chunk
+      let expected_index = provisional_count - context_control.observer_items.length - 1
+      let item = field_door.open_machine_field_item(
+        door,
+        verified_source,
+        cek_observer_witness_set,
+        3,
+        expected_index,
+        carriage,
+      )
+      let active_count = field_door.machine_field_item_count(item)
+      let observer_hash = field_door.machine_field_item_bytes(item)
       let next_items = prepend_cek_observer_item_v1(
         observer_hash,
         midgard_encoding,
@@ -15607,22 +15921,12 @@ pub fn verify_cek_observer_context_step(
       )
       and {
         active_count > 0,
+        active_count == provisional_count,
         active_count <= max_tx_size_derived_collection_item_count,
         expected_index >= 0,
-        collection_proof.field_index == 3,
-        collection_proof.item_count == active_count,
-        collection_proof.item_index == expected_index,
-        collection_proof.item_length == 28,
-        chunk_proof.field_index == 3,
-        chunk_proof.item_index == expected_index,
-        chunk_proof.total_length == 28,
-        chunk_proof.chunk_index == 0,
-        bounded_item_v1.chunk_count(chunk_proof.total_length) == 1,
-        bounded_collection_v1.verify_item(observer_commitment, collection_proof),
-        bounded_item_v1.verify_chunk(
-          collection_proof.item_commitment,
-          chunk_proof,
-        ),
+        field_index == 3,
+        item_index == expected_index,
+        field_door.machine_field_item_length(item) == 28,
         if context_control.observer_items.length == 0 {
           context_control.previous_observer == #""
         } else {
@@ -15745,7 +16049,7 @@ fn verify_cek_mint_context_item(
       ),
     }
   } else {
-    expect
+    expect  
         CekMintContextItemWitness {
           mint_index,
           policy_id,
@@ -16193,7 +16497,7 @@ pub fn verify_cek_context_finalize(
     !midgard_encoding,
     context_control.purpose_kind == 0,
   } {
-    expect
+    expect  
         CekContextFinalizeSpendWitness {
           redeemer_control,
           item_index,
@@ -16400,6 +16704,7 @@ fn verify_cek_context_step(
   execution_cursor: Int,
   completed_cpu: Int,
   completed_memory: Int,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   if context_control.stage == 0 {
     verify_cek_redeemer_selection(
@@ -16466,6 +16771,7 @@ fn verify_cek_context_step(
       execution_cursor,
       completed_cpu,
       completed_memory,
+      door,
     )
   } else if context_control.stage == 6 {
     verify_cek_mint_context_init(
@@ -16557,9 +16863,10 @@ fn verify_cek(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect
+  expect  
       [
         native_control_cbor_data, context_control_cbor_data,
         execution_cursor_data, completed_cpu_data, completed_memory_data,
@@ -16661,6 +16968,7 @@ fn verify_cek(
             execution_cursor,
             completed_cpu,
             completed_memory,
+            door,
           ),
         }
       }
@@ -16790,7 +17098,7 @@ fn value_and_mint_stage_two(
       ),
     }
   } else if control.replay_asset_cursor == 0 {
-    expect
+    expect  
         ResolvedInputReplayWitness {
           source_kind,
           key,
@@ -16837,7 +17145,7 @@ fn value_and_mint_stage_two(
       False
     }
   } else {
-    expect
+    expect  
         ValueInputAssetWitness {
           source_kind,
           key,
@@ -16931,7 +17239,7 @@ fn value_and_mint_stage_three(
       ),
     }
   } else if control.output_asset_cursor == 0 {
-    expect
+    expect  
         ValueOutputDescriptorWitness { output_index, descriptor_cbor, siblings }
       = auxiliary
     if and {
@@ -16971,7 +17279,7 @@ fn value_and_mint_stage_three(
       False
     }
   } else {
-    expect
+    expect  
         ValueOutputAssetWitness {
           output_index,
           descriptor_cbor,
@@ -17059,7 +17367,7 @@ fn value_and_mint_stage_four(
       ),
     }
   } else {
-    expect
+    expect  
         ValueMintAssetWitness {
           mint_index,
           policy_id,
@@ -17289,7 +17597,7 @@ fn ledger_delta_operation_step(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: LedgerDeltaControlV1,
 ) -> Bool {
-  expect
+  expect  
       LedgerDeltaOperationWitness {
         operation_kind,
         key,
@@ -17438,7 +17746,7 @@ fn ledger_delta_replay_step(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: LedgerDeltaControlV1,
 ) -> Bool {
-  expect
+  expect  
       LedgerDeltaReplayWitness { source_kind, key, next_schedule_hash, value }
     = auxiliary
   let descriptor = ledger_output_commitment_v1.decode(value)
@@ -17973,18 +18281,19 @@ fn verify_one_step_with_auxiliary(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   and {
     structural_transition_is_valid(pre, witness),
     when pre.phase is {
       validation_trace_v1.CanonicalDecode ->
-        verify_canonical_decode(pre, witness, auxiliary)
+        verify_canonical_decode(pre, witness, auxiliary, door)
       validation_trace_v1.CompactBinding -> and {
           auxiliary == NoAuxiliaryWitness,
           verify_compact_binding(pre, witness),
         }
       validation_trace_v1.InputSets ->
-        verify_input_sets(pre, witness, auxiliary)
+        verify_input_sets(pre, witness, auxiliary, door)
       validation_trace_v1.StaticLedgerRules -> and {
           auxiliary == NoAuxiliaryWitness,
           verify_static_rules(pre, witness),
@@ -17992,20 +18301,20 @@ fn verify_one_step_with_auxiliary(
       validation_trace_v1.ResolveInputs ->
         verify_resolve_inputs(pre, witness, auxiliary)
       validation_trace_v1.Signatures ->
-        verify_signatures(pre, witness, auxiliary)
+        verify_signatures(pre, witness, auxiliary, door)
       validation_trace_v1.ValueAndMint ->
         verify_value_and_mint(pre, witness, auxiliary)
       validation_trace_v1.ScriptSources ->
-        verify_script_sources(pre, witness, auxiliary)
+        verify_script_sources(pre, witness, auxiliary, door)
       validation_trace_v1.NativeScripts ->
         verify_native_scripts(pre, witness, auxiliary)
       validation_trace_v1.PhaseANativeScripts ->
-        verify_phase_a_native_scripts_scan(pre, witness, auxiliary)
+        verify_phase_a_native_scripts_scan(pre, witness, auxiliary, door)
       validation_trace_v1.PhaseAScriptPreconditions ->
-        verify_phase_a_script_preconditions(pre, witness, auxiliary)
+        verify_phase_a_script_preconditions(pre, witness, auxiliary, door)
       validation_trace_v1.ScriptIntegrity ->
         verify_script_integrity(pre, witness, auxiliary)
-      validation_trace_v1.Cek -> verify_cek(pre, witness, auxiliary)
+      validation_trace_v1.Cek -> verify_cek(pre, witness, auxiliary, door)
       validation_trace_v1.LedgerDelta ->
         verify_ledger_delta(pre, witness, auxiliary)
       validation_trace_v1.Terminal -> False
@@ -18016,33 +18325,42 @@ fn verify_one_step_with_auxiliary(
 pub fn verify_one_step(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  verify_one_step_with_auxiliary(pre, witness, NoAuxiliaryWitness)
+  verify_one_step_with_auxiliary(pre, witness, NoAuxiliaryWitness, door)
 }
 
 pub fn verify_one_step_evidence(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  verify_one_step_with_auxiliary(pre, evidence.transition, evidence.auxiliary)
+  verify_one_step_with_auxiliary(
+    pre,
+    evidence.transition,
+    evidence.auxiliary,
+    door,
+  )
 }
 
 pub fn verify_canonical_decode_one_step_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   and {
     pre.phase == validation_trace_v1.CanonicalDecode,
     structural_transition_is_valid(pre, evidence.transition),
-    verify_canonical_decode(pre, evidence.transition, evidence.auxiliary),
+    verify_canonical_decode(pre, evidence.transition, evidence.auxiliary, door),
   }
 }
 
 pub fn verify_canonical_decode_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  verify_canonical_decode(pre, evidence.transition, evidence.auxiliary)
+  verify_canonical_decode(pre, evidence.transition, evidence.auxiliary, door)
 }
 
 pub fn verify_compact_binding_one_step_v1(
@@ -18094,35 +18412,39 @@ pub fn verify_static_ledger_rules_semantics_v1(
 pub fn verify_input_sets_one_step_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   and {
     pre.phase == validation_trace_v1.InputSets,
     structural_transition_is_valid(pre, evidence.transition),
-    verify_input_sets(pre, evidence.transition, evidence.auxiliary),
+    verify_input_sets(pre, evidence.transition, evidence.auxiliary, door),
   }
 }
 
 pub fn verify_input_sets_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  verify_input_sets(pre, evidence.transition, evidence.auxiliary)
+  verify_input_sets(pre, evidence.transition, evidence.auxiliary, door)
 }
 
 pub fn verify_signatures_one_step_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   and {
     pre.phase == validation_trace_v1.Signatures,
     structural_transition_is_valid(pre, evidence.transition),
-    verify_signatures(pre, evidence.transition, evidence.auxiliary),
+    verify_signatures(pre, evidence.transition, evidence.auxiliary, door),
   }
 }
 
 pub fn verify_phase_a_native_scripts_one_step_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   and {
     pre.phase == validation_trace_v1.PhaseANativeScripts,
@@ -18131,6 +18453,7 @@ pub fn verify_phase_a_native_scripts_one_step_v1(
       pre,
       evidence.transition,
       evidence.auxiliary,
+      door,
     ),
   }
 }
@@ -18138,17 +18461,20 @@ pub fn verify_phase_a_native_scripts_one_step_v1(
 pub fn verify_phase_a_native_scripts_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   verify_phase_a_native_scripts_scan(
     pre,
     evidence.transition,
     evidence.auxiliary,
+    door,
   )
 }
 
 pub fn verify_phase_a_script_preconditions_one_step_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   and {
     pre.phase == validation_trace_v1.PhaseAScriptPreconditions,
@@ -18157,6 +18483,7 @@ pub fn verify_phase_a_script_preconditions_one_step_v1(
       pre,
       evidence.transition,
       evidence.auxiliary,
+      door,
     ),
   }
 }
@@ -18164,11 +18491,13 @@ pub fn verify_phase_a_script_preconditions_one_step_v1(
 pub fn verify_phase_a_script_preconditions_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   verify_phase_a_script_preconditions(
     pre,
     evidence.transition,
     evidence.auxiliary,
+    door,
   )
 }
 
@@ -18186,11 +18515,12 @@ pub fn verify_resolve_inputs_one_step_v1(
 pub fn verify_script_sources_one_step_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   and {
     pre.phase == validation_trace_v1.ScriptSources,
     structural_transition_is_valid(pre, evidence.transition),
-    verify_script_sources(pre, evidence.transition, evidence.auxiliary),
+    verify_script_sources(pre, evidence.transition, evidence.auxiliary, door),
   }
 }
 
@@ -18263,11 +18593,12 @@ pub fn verify_script_integrity_finalize_semantics_v1(
 pub fn verify_cek_one_step_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
+  door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   and {
     pre.phase == validation_trace_v1.Cek,
     structural_transition_is_valid(pre, evidence.transition),
-    verify_cek(pre, evidence.transition, evidence.auxiliary),
+    verify_cek(pre, evidence.transition, evidence.auxiliary, door),
   }
 }
 

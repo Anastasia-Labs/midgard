@@ -925,14 +925,20 @@ fn straddle_view() -> FieldViewV1 {
 /// two chunks together and still return the exact item.
 test tier_three_certified_carriage_reads_a_straddling_item() {
   let view = straddle_view()
-  let Pair(offset, length) = field_item_extent(view, 529)
+  // Item 504 is the one whose 28-byte payload crosses chunk 0's end at
+  // `chunk_bytes_k`: at stride 30 behind a 3-byte header its payload begins at
+  // 5 + 30·504 = 15,125 and ends at 15,153. The index is a function of `K` and
+  // moved with §8.3 erratum E1's repair (it was item 529 at 15,900); the two
+  // inequalities below are what make that a checked property rather than a
+  // comment.
+  let Pair(offset, length) = field_item_extent(view, 504)
   and {
     field_item_count(view) == straddle_item_count,
-    offset == 15875,
+    offset == 15125,
     length == 28,
     offset < chunk_bytes_k,
     offset + length > chunk_bytes_k,
-    field_item_at(view, 529) == h28(5),
+    field_item_at(view, 504) == h28(5),
     field_item_at(view, 0) == h28(5),
     field_item_at(view, straddle_item_count - 1) == h28(5),
   }
@@ -1047,7 +1053,7 @@ test watcher_recomputes_every_commitment_from_bytes_alone() {
   let recomputes = fn(field_index: Int) -> Bool {
     let preimage = field_preimage(field_index)
     let Pair(verified, witness_set) = source(field_index, preimage)
-    let
+    let  
         NativeTxBodyCompact {
           spend_inputs_hash,
           reference_inputs_hash,
@@ -1127,7 +1133,7 @@ test identical_content_aliases_across_field_pairs() {
 
 /// A single-chunk tier-3 carriage: exactly the shape §8.4's `preimage_len > K`
 /// boundary excludes, and the shape that made the round-2 field-6
-/// counterexample reachable without a 15,900-byte field.
+/// counterexample reachable without a full-`chunk_bytes_k` field.
 fn one_chunk_certified_view(
   field_index: Int,
   preimage: ByteArray,

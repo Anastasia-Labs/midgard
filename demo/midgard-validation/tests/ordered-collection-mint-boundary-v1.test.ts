@@ -5,6 +5,7 @@ import {
 import { CML, Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { publishAikenVectorV1 } from "./helpers/aiken-vector-channel.js";
 import {
   buildSignedCardanoMintNativePoliciesCandidateV1,
   CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
@@ -330,23 +331,44 @@ describe("canonical V1 mint Cardano boundary", () => {
       collectionProof: mintField.terminalFoldVector.collectionProof,
       chunkProof: mintField.terminalFoldVector.chunkProof,
     }).toEqual(maximumMintTerminalFoldVectorV1);
-    // The producing channel for this boundary's Aiken twin. The compact
-    // transaction, its witness-set compact form and the nine field-preimage
-    // lengths are mirrored by the fixture in
-    // `onchain/aiken/lib/midgard/validation-machine-v1.test.ak` but are not
-    // covered by the pinned object above, so print them on demand rather than
-    // re-deriving them by hand. Same contract as the sibling boundary suites.
-    if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
-      console.info(
-        JSON.stringify({
-          compactCborHex: mintField.terminalFoldVector.compactCborHex,
-          witnessSetCompactCborHex:
-            mintField.terminalFoldVector.witnessSetCompactCborHex,
-          fieldPreimageLengthsCborHex:
-            mintField.terminalFoldVector.fieldPreimageLengthsCborHex,
-        }),
-      );
-    }
+    // #590 scope item 0: the write channel this suite did not have.
+    //
+    // The `mint-boundary-v1` fixture in
+    // `onchain/aiken/lib/midgard/validation-machine-v1.test.ak` mirrors this
+    // boundary's terminal fold, and until now nothing carried the bytes across —
+    // so that fixture still pinned the *counted* field roots this package stopped
+    // emitting at #585, and stayed green only because the id it pinned was the id
+    // of the compact it pinned beside it. #592's rebind puts §8's carriage where
+    // the counted `(ItemProofV1, ChunkProofV1)` pair used to be, and a carriage is
+    // the field's whole §5.1 preimage, which no human is going to retype.
+    //
+    // Published after the assertions above, so the generator can only ever see a
+    // vector this suite has already accepted.
+    publishAikenVectorV1("mint-boundary-v1", {
+      fieldIndex: mintField.terminalFoldVector.collectionProof.fieldIndex,
+      itemCount: mintField.terminalFoldVector.collectionProof.itemCount,
+      itemIndex: mintField.terminalFoldVector.collectionProof.itemIndex,
+      terminalChunkIndex: mintField.terminalFoldVector.chunkProof.chunkIndex,
+      encodedLengthBeforeItem:
+        mintField.terminalFoldVector.encodedLengthBeforeItem,
+      // §8.1's tier-1 carriage: the field's whole §5.1 preimage, which the door
+      // hashes once against the flat commitment below.
+      fieldPreimageCborHex: mintField.fieldPreimageCborHex,
+      fieldCommitmentHex: mintField.fieldCommitmentHex,
+      transactionIdHex: mintField.terminalFoldVector.transactionIdHex,
+      transactionCommitmentHex:
+        mintField.terminalFoldVector.transactionCommitmentHex,
+      compactCborHex: mintField.terminalFoldVector.compactCborHex,
+      witnessSetCompactCborHex:
+        mintField.terminalFoldVector.witnessSetCompactCborHex,
+      fieldPreimageLengthsCborHex:
+        mintField.terminalFoldVector.fieldPreimageLengthsCborHex,
+      validationContextCborHex:
+        mintField.terminalFoldVector.validationContextCborHex,
+      preWorkRootHex: mintField.terminalFoldVector.preWorkRootHex,
+      postWorkRootHex: mintField.terminalFoldVector.postWorkRootHex,
+    });
+
 
     const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);

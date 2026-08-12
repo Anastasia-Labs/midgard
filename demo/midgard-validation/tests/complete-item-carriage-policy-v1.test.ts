@@ -111,8 +111,21 @@ describe("C21 complete-item carriage production searches", () => {
     for (const forbidden of ["chunk", "Chunk", "offset", "cursor", "fold"]) {
       expect(sdkProofItemSource).not.toContain(forbidden);
     }
-    // The wire ABI keeps the complete-item witness and datum shapes.
+    // The complete-item witness constructor is still named on the wire.
     expect(sdkWitnessSource).toContain("TransactionFieldItemWitness");
+    // The datum rows below pin the SDK's **recorded** shape, which #592
+    // deliberately leaves where it is: the Aiken
+    // `ValidationProofItemDatumV1` is now
+    // `{ version, transaction_id, transaction_commitment, field_preimage }`
+    // (validation-machine-v1.ak:421), and moving the TypeScript half is #597's
+    // — the whole of that issue is this wire change's TypeScript twin, four
+    // `ValidationAuxiliaryWitnessV1` constructor schemas plus this datum schema.
+    // So the two halves disagree here, and that disagreement is the recorded
+    // state rather than a drift; it is invisible to `sdk-aiken-schema-parity`
+    // because that gate compares the SDK against the *committed* `plutus.json`,
+    // which #592 also freezes. When #597 lands, this list becomes
+    // `["version: Data.Integer()", the two 32-byte hashes,
+    // "field_preimage: Data.Bytes()"]` — and this row failing is what says so.
     const datumBlock = sdkWitnessSource.slice(
       sdkWitnessSource.indexOf(
         "ValidationProofItemDatumV1Schema = Data.Object",
@@ -142,7 +155,15 @@ describe("C21 complete-item carriage production searches", () => {
 
   it("keeps both deployed complete-item routes and the append-only publication lock", () => {
     expect(itemSemanticAiken).toContain("Verify {");
-    expect(itemSemanticAiken).toContain("item_cbor: ByteArray");
+    // #592: the direct route names a §8 `FieldCarriageV1` where it used to name
+    // an item and a per-item opening. Under §4 the unit that authenticates is
+    // the field's whole §5.1 preimage — the door hashes it once against the flat
+    // commitment — so a redeemer naming an item alone had nothing to be checked
+    // against. The route is unchanged in kind: the prover still says where the
+    // bytes are and the validator still resolves them here, which is what this
+    // row exists to keep; what moved is that tier 1 hands over the preimage and
+    // tiers 2–3 hand over reference-input indices.
+    expect(itemSemanticAiken).toContain("carriage: FieldCarriageV1");
     expect(itemSemanticAiken).toContain("VerifyReference {");
     expect(itemSemanticAiken).toContain("reference_input_index: Int");
     expect(itemSemanticAiken).toContain("proof_item_from_reference");
@@ -159,6 +180,14 @@ describe("C21 complete-item carriage production searches", () => {
       "Verify",
       "VerifyReference",
     ]);
+    // The blueprint rows below read the **committed** `plutus.json`, which #592
+    // deliberately leaves byte-identical: compiled on-chain code moves in this
+    // lane, blueprints move once, in #579's single regeneration pass (#587's
+    // precedent). So `Verify` still reads `collection_proof`/`item_cbor` here
+    // while the source above already reads `carriage`, and that disagreement is
+    // the recorded state rather than a drift. When #579 regenerates, this list
+    // becomes `["input_index", "output_index", "transition", "carriage"]` and
+    // the source assertion above is what says so.
     expect(action?.anyOf?.[0]?.fields?.map((field) => field.title)).toEqual([
       "input_index",
       "output_index",

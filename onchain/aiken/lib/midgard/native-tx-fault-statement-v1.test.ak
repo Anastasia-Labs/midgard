@@ -1424,19 +1424,24 @@ test conservation_refuses_a_malformed_statement() fail {
 // its own §7.1 hash check and nothing of the items already walked.
 // ---------------------------------------------------------------------------
 
-/// 397 field-1 items at §5.3's stride 40: 15,883 bytes, the largest fixed-stride
+/// 378 field-1 items at §5.3's stride 40: 15,123 bytes, the largest fixed-stride
 /// field that still fits `chunk_bytes_k` and therefore still carries under
 /// tier 2 (§8.3).
+///
+/// The cardinality is a function of `K` and moved with §8.3 erratum E1's repair
+/// (15,900 → 15,148): 397 items are 15,883 bytes, which is above the repaired
+/// bound and no longer a tier-2 carriage at all.
 fn tier2_fixed_stride_preimage() -> ByteArray {
-  encode_field_preimage(input_items(item_tx_id_a, 0, 397))
+  encode_field_preimage(input_items(item_tx_id_a, 0, 378))
 }
 
 /// A field-6 preimage at the same bound whose items are variable-width, so its
 /// view construction pays §7.4's full-content walk where the fixed-stride one
-/// pays an arithmetic identity. 1,442 items — a whole number of `script_item`'s
-/// seven-wide cycle, so the total is exact rather than approximately right.
+/// pays an arithmetic identity. 1,372 items — a whole number of `script_item`'s
+/// seven-wide cycle, so the total is exact rather than approximately right, and
+/// the largest such multiple that still fits the repaired `chunk_bytes_k`.
 fn tier2_variable_width_preimage() -> ByteArray {
-  encode_field_preimage(script_items(0, 1442))
+  encode_field_preimage(script_items(0, 1372))
 }
 
 /// Both fixtures sit at the tier-2 bound rather than merely being large, and
@@ -1446,10 +1451,13 @@ test tier2_fixtures_sit_at_the_tier_two_bound() {
   let fixed = bytearray.length(tier2_fixed_stride_preimage())
   let variable = bytearray.length(tier2_variable_width_preimage())
   and {
-    fixed == 15883,
-    variable == 15865,
+    fixed == 15123,
+    variable == 15095,
     fixed <= chunk_bytes_k,
     variable <= chunk_bytes_k,
+    // One stride / one cycle more would leave the bound, which is what makes
+    // these the *largest* fixtures at it rather than merely large ones.
+    fixed + 40 > chunk_bytes_k,
   }
 }
 
@@ -1458,7 +1466,7 @@ test tier2_fixed_stride_one_open() {
   let preimage = tier2_fixed_stride_preimage()
   let committed = source(sample_tx_id, 1, preimage)
   let Pair(view, _start) = open_raw_utxo_from(committed, 1, preimage)
-  field_total_length(view) == 15883
+  field_total_length(view) == 15123
 }
 
 /// §12.5 row 2 — the same field, the same fixture, two openings. The difference
@@ -1469,8 +1477,8 @@ test tier2_fixed_stride_two_opens() {
   let Pair(first, _a) = open_raw_utxo_from(committed, 1, preimage)
   let Pair(second, _b) = open_raw_utxo_from(committed, 1, preimage)
   and {
-    field_total_length(first) == 15883,
-    field_total_length(second) == 15883,
+    field_total_length(first) == 15123,
+    field_total_length(second) == 15123,
   }
 }
 

@@ -11,6 +11,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue, finalize}
 use midgard/ledger_state.{CekProgramMaterialDatumV1}
 use midgard/native_script_scan_v1
+use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_machine_v1
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
@@ -165,7 +166,7 @@ fn verify_single_publication_route_v1(
     )
   is {
     Some(datum_data) -> {
-      expect
+      expect  
           CekSinglePublicationDatumV1 {
             version,
             program_envelope_hash,
@@ -567,11 +568,20 @@ pub fn validate(
 /// CEK finalization keeps the ordinary computation-thread cancellation and
 /// award economics, while admitting complete program material only at the
 /// authenticated CEK selection boundary.
+///
+/// `field_preimage_certificate_policy_id` (#592, §8.6) is **appended after the
+/// existing deployment parameters and before the script-context tail**, matching
+/// the thirteen validators that gained it as their last `validator main`
+/// parameter. It is deliberately not slotted in among the other two `PolicyId`s:
+/// three adjacent arguments of the same type at a call site is a mis-order that
+/// type-checks, and this door's policy id is the one whose mis-binding would let
+/// a look-alike certificate authenticate a manifest.
 pub fn validate_cek(
   cek_program_material_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
   fraud_proof_token_policy_id: PolicyId,
   fraud_proof_token_address: Address,
+  field_preimage_certificate_policy_id: PolicyId,
   datum: Option<Datum>,
   redeemer: CekSpendRedeemer,
   own_out_ref: OutputReference,
@@ -629,6 +639,10 @@ pub fn validate_cek(
               validation_machine_v1.verify_cek_one_step_v1(
                 state.pre_state,
                 challenger_evidence,
+                field_door.MachineFieldDoorV1 {
+                  reference_inputs,
+                  certificate_policy_id: field_preimage_certificate_policy_id,
+                },
               ),
             ),
           }

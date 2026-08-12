@@ -114,7 +114,11 @@ export const DATUM_CANONICITY_BOUNDARIES = [
  * carriage — is a cross-language fact rather than a convention.
  */
 export const CARRIAGE_BOUNDARY_LENGTHS = [
-  1, 14_336, 14_337, 15_900, 15_901, 32_768,
+  // 15,148 / 15,149 are `K` and `K + 1` at §8.3 erratum E1's repaired `K`. This
+  // module imports nothing from the package (see the header), so they are
+  // literals; the generator asserts them against `MIDGARD_CHUNK_BYTES_K_V1` so a
+  // future re-pin cannot leave them behind.
+  1, 14_336, 14_337, 15_148, 15_149, 32_768,
 ];
 
 /**
@@ -163,7 +167,14 @@ export const FIELD_PREIMAGE_LENGTH_SOURCE = {
 };
 
 /**
- * §8.4 straddle: a real tier-3 carriage at stride 40, with item 397 crossing K.
+ * §8.4 straddle: a real tier-3 carriage at stride 40, with item 378 crossing K.
+ *
+ * The straddling index is a function of `K`, and `K` moved: §8.3 erratum E1's
+ * repair re-pinned it from 15,900 to 15,148, so the item whose payload crosses
+ * chunk 0's end moved from 397 (payload `[15,885, 15,923)`) to 378 (payload
+ * `[15,125, 15,163)`). The generator refuses to emit a vector whose named index
+ * is not the sole straddling read, so this constant cannot silently fall behind
+ * another re-pin.
  *
  * **Field 1, not field 0, and the choice is normative rather than cosmetic.**
  * Both fields carry inputs under the same item encoder and the same stride, so
@@ -183,7 +194,7 @@ export const STRADDLE_FIELD_INDEX = 1;
 export const STRADDLE_BLOCK_ITEMS = 10;
 export const STRADDLE_REPEATS = 40;
 export const STRADDLE_ITEM_COUNT = STRADDLE_BLOCK_ITEMS * STRADDLE_REPEATS;
-export const STRADDLE_ITEM_INDEX = 397;
+export const STRADDLE_ITEM_INDEX = 378;
 export const STRADDLE_OWNER = filler(28, 71);
 export const STRADDLE_TX_ID = filler(32, 72);
 
