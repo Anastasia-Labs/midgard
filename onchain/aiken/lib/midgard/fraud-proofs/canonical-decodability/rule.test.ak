@@ -28,6 +28,11 @@ use midgard/fraud_proofs/canonical_decodability/rule.{
   verdict_trailing_bytes, verdict_truncated_array_header,
   verdict_truncated_item_header, verdict_truncated_item_payload,
 }
+use midgard/fraud_proofs/committed_field_shape/rule.{
+  committed_field_shape_verdict_v1, shape_verdict_field_byte_bound,
+  shape_verdict_not_an_envelope, shape_verdict_wrong_stride,
+  sized_field_envelope_v1,
+} as committed_field_shape_rule
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
 use midgard/native_tx_field_access_v1.{
@@ -273,16 +278,22 @@ test canonical_decodability_door_refuses_a_trailing_byte() fail {
 }
 
 // ---------------------------------------------------------------------------
-// The residue §12.7 names, measured rather than described
+// The residue §12.7 named, measured — and, since #601, closed elsewhere
 // ---------------------------------------------------------------------------
 //
 // §5.1's grammar is not the whole of what `whole_view` refuses, and this fault
-// kind is §5.1's grammar. The pair below is the exact shape §12.7's residue
-// paragraph names: a committed preimage the verdict calls grammatical and the
-// door still aborts on, because the refusal is §7.4's fixed-stride arithmetic
-// rather than the envelope. It is pinned here so that the residue moves in this
-// file when it is closed, rather than being rediscovered by whoever next reads
-// the door.
+// kind is §5.1's grammar. The two shapes below are the ones §12.7's residue
+// paragraph names: committed preimages this verdict calls grammatical and the
+// door still aborts on, because the refusal is §7.4's fixed-stride arithmetic or
+// §5.4's per-field byte bound rather than the envelope.
+//
+// **The boundary is what these selectors pin now.** The owner ruling of
+// 2026-08-13 closed both shapes with the sibling fault kind of §12.8
+// (`committed_field_shape`), and this section is where the two fault kinds are
+// held apart from §12.7's side: this verdict stays 0 for both shapes — that is
+// the boundary, and it must not move — and each shape is shown convictable by
+// the sibling, so "verdict 0" is a statement about *this* fault kind rather than
+// about the block.
 
 /// §2.5 slot 0 (spend inputs) — fixed-stride, so the door settles §5.1's count
 /// by arithmetic against `spend_input_stride` instead of walking.
@@ -294,8 +305,14 @@ fn wrong_stride_envelope() -> ByteArray {
   encode_field_preimage([#"deadbeef"])
 }
 
+/// A perfectly well-formed §5.1 envelope one byte above §5.4's per-field bound.
+fn oversize_envelope() -> ByteArray {
+  sized_field_envelope_v1(max_transaction_aggregate_field_bytes + 1, #"00")
+}
+
 /// The verdict is blind to the stride, and must be: it is a function of the
-/// bytes alone, and a stride is a function of the slot.
+/// bytes alone, and a stride is a function of the slot. §12.8 is the section
+/// that may read the slot; this one may not.
 test canonical_decodability_verdict_is_blind_to_the_fixed_stride_check() {
   envelope_verdict_v1(wrong_stride_envelope()) == verdict_grammatical
 }
@@ -311,6 +328,39 @@ test canonical_decodability_door_still_refuses_a_wrong_stride_field() fail {
 /// the selector above a measurement of the stride check and not of the fixture.
 test canonical_decodability_door_opens_the_same_bytes_at_a_walked_field() {
   door_item_count_at(outputs_field_index, wrong_stride_envelope()) == 1
+}
+
+/// The verdict is blind to §5.4's byte bound too, and for the reason §12.7
+/// states normatively: the verdict is the whole decision and MUST NOT bound the
+/// preimage's length, so that a field committed above the bound which is *also*
+/// not an envelope stays convictable here.
+test canonical_decodability_verdict_is_blind_to_the_field_byte_bound() {
+  envelope_verdict_v1(oversize_envelope()) == verdict_grammatical
+}
+
+/// And the door still aborts on it — the second stall §12.7's residue paragraph
+/// names, pinned rather than described.
+test canonical_decodability_door_still_refuses_an_oversize_field() fail {
+  door_item_count_at(outputs_field_index, oversize_envelope()) >= 0
+}
+
+/// **The residue is closed, and closed elsewhere.** Both shapes convict under
+/// §12.8's sibling fault kind, which is stated over `(field_index, preimage)`
+/// and may therefore read the slot this section may not. Together with the four
+/// selectors above, this is the whole disposition: verdict 0 here, door aborts,
+/// sibling convicts — no stall, and no field faultable under both kinds.
+test canonical_decodability_residue_is_convicted_by_the_sibling_family() {
+  and {
+    committed_field_shape_verdict_v1(
+      spend_inputs_field_index,
+      wrong_stride_envelope(),
+    ) == shape_verdict_wrong_stride,
+    committed_field_shape_verdict_v1(outputs_field_index, oversize_envelope()) == shape_verdict_field_byte_bound,
+    // …and the sibling defers everything this section convicts, which is the
+    // other half of the partition.
+    committed_field_shape_verdict_v1(outputs_field_index, trailing_byte) == shape_verdict_not_an_envelope,
+    envelope_verdict_v1(trailing_byte) == verdict_trailing_bytes,
+  }
 }
 
 // ---------------------------------------------------------------------------

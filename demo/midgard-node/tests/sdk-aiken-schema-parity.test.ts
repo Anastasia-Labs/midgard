@@ -93,18 +93,25 @@ const repoRoot = path.resolve(testDir, "../../..");
  * `onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak` is what
  * covers it.
  *
- * Measured on 2026-08-12 after #596, and re-measured unchanged after #597:
- * `10 failed | 22 passed (32)`; the same
- * command measured `8 failed | 22 passed (30)` after #594 and
+ * #601 then added the §12.8 committed-field-shape sibling fault family, whose
+ * step-02 thread state is likewise a new type the frozen blueprint never
+ * declared. That adds an **eleventh** red row, again of the missing-definition
+ * kind. It adds only one: the family's claim redeemer is §12.7's
+ * `CommittedFieldClaimV1` reused unchanged, so row 15 already covers it.
+ *
+ * Measured on 2026-08-13 after #601: `11 failed | 22 passed (33)`; the same
+ * command measured `10 failed | 22 passed (32)` on 2026-08-12 after #596 and
+ * unchanged after #597, `8 failed | 22 passed (30)` after #594 and
  * `7 failed | 22 passed (29)` on 2026-08-10 after #587. Regenerating the
  * blueprint is [#579](https://github.com/Anastasia-Labs/midgard/issues/579)'s; all
- * ten are rows 7-16 of the sixteen-test handoff set enumerated in
+ * eleven are rows 7-17 of the seventeen-test handoff set enumerated in
  * `demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts` (#584's
  * four as rows 7-10, #587's three as 11-13, #594's one as 14, #596's two as
- * 15-16), which also owns the six emulator scenarios red for the same cause.
+ * 15-16, #601's one as 17), which also owns the six emulator scenarios red for
+ * the same cause.
  * Point `MIDGARD_REAL_BLUEPRINT_PATH` at a regenerated blueprint to check the fix
- * — #596 did, against a scratch stock build of its own working tree, and this
- * file gives `32 passed (32)` there.
+ * — #596 did, against a scratch stock build of its own working tree, and #601 did
+ * the same; this file gives `33 passed (33)` there.
  */
 const blueprintPath =
   process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
@@ -248,6 +255,19 @@ const ABI_MAPPINGS = [
   [
     "CanonicalDecodabilityStep02StateSchema",
     "midgard/fraud_proofs/canonical_decodability/step_02/State",
+  ],
+  // #601's §12.8 committed-field-shape family adds **one** row, not two. Its
+  // claim redeemer is §12.7's `CommittedFieldClaimV1` reused unchanged — one
+  // accusation, one wire spelling (§6.1) — so the row above already covers it,
+  // and only the step-02 thread state is a new type. That state is structurally
+  // identical to §12.7's and is deliberately a separate Aiken type: the two
+  // verdict code spaces differ (0..10 there, 0..3 here), so one type would let a
+  // §12.7 code satisfy this family's bounds check. Red for #594's reason —
+  // missing definition, not field count — and verified green against a scratch
+  // build of the working tree.
+  [
+    "CommittedFieldShapeStep02StateSchema",
+    "midgard/fraud_proofs/committed_field_shape/step_02/State",
   ],
   // **#597 adds no row, and that is a measured conclusion rather than an
   // omission.** #592 moved two wire surfaces this file would naturally cover —

@@ -16,6 +16,8 @@
     "fixtures:native-tx-carriage-wire-v1:check": "pnpm run build && node scripts/generate-native-tx-carriage-wire-v1-goldens.mjs --check",
     "fixtures:canonical-decodability-v1:sync": "pnpm run build && node scripts/generate-canonical-decodability-v1-goldens.mjs",
     "fixtures:canonical-decodability-v1:check": "pnpm run build && node scripts/generate-canonical-decodability-v1-goldens.mjs --check",
+    "fixtures:committed-field-shape-v1:sync": "pnpm run build && node scripts/generate-committed-field-shape-v1-goldens.mjs",
+    "fixtures:committed-field-shape-v1:check": "pnpm run build && node scripts/generate-committed-field-shape-v1-goldens.mjs --check",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",

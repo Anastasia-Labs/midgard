@@ -150,6 +150,23 @@ jobs:
       # appearance reveals which of its constants are generated.
       - name: Check native V1 n01-n09 transaction vectors
         run: pnpm --dir demo/midgard-core run fixtures:native-tx-vector-v1:check
+      # The §12.7 canonical-decodability channel (#596). It emits both artifacts
+      # from one generator run on exactly the footing of the four above, and it
+      # was left unwired when it landed — so an edited producer plus a `:sync`
+      # re-greened the vitest suite and the Aiken suite in the same stroke with
+      # nothing to notice. Wired here by #601 rather than left for #579, because
+      # a golden channel no step runs is a gate that cannot fail (#519/#523).
+      - name: Check canonical-decodability golden vectors
+        run: pnpm --dir demo/midgard-sdk run fixtures:canonical-decodability-v1:check
+      # The §12.8 committed-field-shape channel (#601). Same footing as the five
+      # above, with the difference that makes it matter more: its verdict takes
+      # **two** arguments, so a twin that transposed the slot or read §5.3's
+      # stride table one row differently would agree with its partner on most
+      # inputs and disagree on exactly the ones the fault kind exists for. The
+      # generator also enforces the partition against §12.7 — no vector may be
+      # convicted by both fault kinds — and that check only runs here.
+      - name: Check committed-field-shape golden vectors
+        run: pnpm --dir demo/midgard-sdk run fixtures:committed-field-shape-v1:check
       - name: Build, typecheck, and test Midgard SDK
         run: pnpm --dir demo/midgard-sdk run build && pnpm --dir demo/midgard-sdk run typecheck && pnpm --dir demo/midgard-sdk test
       - name: Build, typecheck, and test Midgard validation

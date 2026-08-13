@@ -198,6 +198,19 @@ jobs:
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
         run: node scripts/verify-canonical-decodability-exec-ledger-v1.mjs
+      # Issue #601, the §12.8 committed-field-shape sibling fault family. It is
+      # the only adjudication of a committed preimage that IS a §5.1 envelope
+      # and that its own slot still refuses — §7.4's stride arithmetic or §5.4's
+      # byte bound — which are the two stalls §12.7's residue paragraph named
+      # and could not close. Its dominant cost term is §12.7's §5.1 walk, reused
+      # as the envelope guard, so its budget can move without anything in the
+      # §12.7 lane noticing. The ledger pins the byte term at §5.4's per-field
+      # bound on §8.4's chunked route and, at two cardinalities with a
+      # fixture-only control beside each, the per-item cost of that walk.
+      - name: Pin the committed-field-shape slot-verdict execution ledger
+        env:
+          MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
+        run: node scripts/verify-committed-field-shape-exec-ledger-v1.mjs
       # Issue #521. The released compiler keys generated expect-decoders by
       # local type name only, so two same-named types in different modules
       # share one decoder and the shipped blueprint silently gets a decoder

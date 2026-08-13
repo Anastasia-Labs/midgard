@@ -3103,10 +3103,22 @@ not effort: the verdict above is a function of the bytes alone, while both of
 these are functions of the bytes **and the slot**, so admitting them would make
 the fault kind field-index-dependent and would put a claim about §5.3's stride
 table inside a section whose whole boundary against §12.3 is that it applies no
-per-field rule. What closes them is a decision this document does not take:
-either a sibling fault kind stated over `(field_index, preimage)`, or the
-machine rendering `reject_invalid_field_type` from a non-aborting reader for
-the fixed-stride fields. The residue is recorded on #596 for the owner.
+per-field rule.
+
+**Both are closed by §12.8, and closed as a sibling rather than here.** The
+owner ruling of 2026-08-13 took the first of the two mechanisms this section
+had named — a sibling fault kind stated over `(field_index, preimage)` — and
+§12.8 is it; the second, the machine rendering `reject_invalid_field_type`
+from a non-aborting reader, was not taken. Executed as #601. Nothing in this
+section moves: its verdict stays a function of the bytes alone and stays
+`grammatical` for both shapes above, which is exactly what §12.8 requires of
+it, because §12.8 convicts only bytes this section calls grammatical and
+renders a non-convicting `not_an_envelope` for everything else. The two fault
+kinds therefore **partition** the committed byte strings a door refuses, and
+no committed field is faultable under both. §12.8's own residue — the §8
+carriage ladder cannot deliver a preimage above §5.4's bound to any step, so
+the byte-bound shape is a rule with no carriage above the bound — is named
+there.
 
 #### The §5.1 well-formedness predicate
 
@@ -3332,3 +3344,339 @@ single regeneration event (rider 6 of its owner-authorized scope amendment).
 Until then the compiled artifacts do not exist and the code is source-only,
 per #587's precedent. The identity moves this section's implementation records
 for that batch are on #596.
+
+### 12.8 Committed field shape at a slot
+
+**Normative.** Owner ruling, 2026-08-13, taking the first — option (a) — of
+the two closure mechanisms §12.7's residue paragraph named: a sibling fault
+kind stated over `(field_index, preimage)`. Executed as
+[#601](https://github.com/Anastasia-Labs/midgard/issues/601). It adds a fault
+kind and changes
+nothing else — in particular it does not change §8.8's doors, §12.1's
+statement type, §12.7's verdict or its family, or any verdict the validation
+machine renders.
+
+#### The fault
+
+> **`committed-field-shape`.** The committed preimage of field `i` of a
+> committed transaction is a §5.1 envelope that field `i`'s own §7.4/§5.4
+> rules refuse.
+
+§12.7 closed the stall for a committed preimage that is not a §5.1 envelope,
+and said in terms that §5.1's grammar is not the whole of what `whole_view`
+refuses. Two of that function's other `expect`s abort on bytes an operator
+committed while §12.7's verdict is `grammatical`:
+
+- **§7.4's fixed-stride arithmetic.** For fields 0, 1, 3, 4 and 7 the door
+  settles count consistency as `header_len + stride·N == total_length`. An
+  envelope whose items are not the field's stride passes §5.1 and fails this.
+- **§5.4's per-field byte bound.** `whole_view` refuses a `total_length` above
+  `max_transaction_aggregate_field_bytes`. An oversize envelope passes §5.1
+  and fails this.
+
+Each leaves the identical outcome §12.7 exists to end, on a narrower set of
+committed bytes: the door aborts, no step of §12.7's family is producible
+(its verdict is 0, and its step 02 refuses), no step of any other family can
+reach a view, so **no step is producible by anyone** and the dispute stalls
+instead of rejecting. The block is never faulted, nothing is slashed, and the
+operator has bought the outcome by committing an envelope of the wrong shape.
+
+It is closed by a **sibling** fault kind rather than by widening §12.7, and
+the reason is §12.7's own boundary. That section's verdict is a function of
+the committed bytes **alone**, and that is precisely what makes it disjoint
+from §12.3: a section that applies no per-field rule cannot be accused of
+adjudicating an item. Both shapes above are functions of the bytes **and the
+slot**. Folding them in would have made §12.7 field-index-dependent and put a
+claim about §5.3's stride table inside it. One more fault kind is the cheaper
+price, and it keeps both boundaries exact.
+
+The doors' abort semantics stay **exactly** as they are, for §12.7's reason:
+aborting is still the correct answer to a *prover* supplying the wrong bytes
+(§7.3), and softening the doors machine-wide to serve one adjudication would
+put a clampable absence on every consumer's hot path.
+
+#### The boundary against §12.7, stated precisely
+
+§12.7 adjudicates a byte string that is **not** a §5.1 envelope. This section
+adjudicates a byte string that **is** one and that slot `i` still refuses.
+They are disjoint claims about disjoint sets of committed fields:
+
+| | §12.7 `canonical-decodability` | §12.8 `committed-field-shape` |
+| --- | --- | --- |
+| what is accused | one field, at `field_index` | one field, at `field_index` |
+| the envelope | must **not** be well-formed; that is the whole accusation | must be well-formed; the accusation is about its length |
+| the verdict's arguments | `preimage` | `(field_index, preimage)` |
+| what decides | §5.1's grammar, and nothing per-field | §7.4's stride arithmetic and §5.4's byte bound, both per-field |
+| what is read | the whole preimage, as bytes, through no view at all | the same bytes, plus §5.1's array header — no item content |
+
+Three consequences follow, and they are normative:
+
+1. **A field cannot be faulted under both.** This section's verdict is
+   `not_an_envelope` — a code that does **not** convict — for every byte
+   string §12.7's verdict does not call `grammatical`, and its adjudication
+   MUST refuse that code. An implementation MUST NOT provide a path that
+   convicts under this section a field §12.7 would convict.
+2. **This section renders no judgement about items.** §5.3's item encodings,
+   §5.5's output rules, §5.6's mint ordering and the §2.4 declared lengths
+   are all outside it, exactly as they are outside §12.7. It reads §5.1's
+   array header and the preimage's length, and nothing else. A field whose
+   envelope is the right shape and whose items are nonsense is §12.3's, or
+   the machine's.
+3. **The §12.3 boundary is inherited unchanged.** §12.3's
+   `fault_item_predicate` adjudicates a bad item inside an envelope **the
+   door opens**. This section convicts only envelopes the door *refuses*, so
+   the two are disjoint for the same reason §12.7 and §12.3 are: the walk
+   that would reach an item aborts first.
+
+**One family of shapes is outside all three, and is named rather than
+claimed.** At a fixed-stride field, `whole_view` decides §5.1 by arithmetic
+and never walks the items, so it **opens** a preimage whose stride arithmetic
+holds whatever the item bytes are — whether they are well-formed items of the
+wrong widths, or not §5.1 item heads at all. Neither is this section's: the
+door opens the field, so there is no construction-time stall to remove, and
+§7.4 item 2 puts the refusal at the accessor (`field_item_extent`) instead.
+This section renders `code = 0` for the first and `code = 1` for the second,
+and convicts neither. Whether the accessor's refusal is itself adjudicable is
+the machine's question — `reject_invalid_field_type` is the verdict in view —
+and this section does not decide it.
+
+#### The shape verdict
+
+Normative, and stated as a **total function of the bytes** so that the Aiken
+and TypeScript implementations can be written against it independently and
+agree. `field_shape_verdict(field_index, preimage) → code` is defined for
+every byte string at every `field_index` in `0..8`. It never clamps and reads
+no byte it has not first shown to be in range.
+
+The codes:
+
+| code | name | meaning |
+| --- | --- | --- |
+| 0 | `admissible` | field `i`'s door opens these bytes |
+| 1 | `not_an_envelope` | not a §5.1 envelope — §12.7's fault; does **not** convict here |
+| 2 | `field_byte_bound` | §5.4: `total_length > max_transaction_aggregate_field_bytes` |
+| 3 | `wrong_stride` | §7.4: `header_len + stride·N ≠ total_length` at a fixed-stride field |
+
+The procedure, over `preimage` of length `T` at slot `i`:
+
+```
+stride ← field_stride(i)                    -- §5.3; refuses i outside 0..8
+h ← minimal_array_header(preimage)          -- (header_len, N), or absent
+if h is absent                              → 1
+if envelope_verdict(preimage) ≠ 0           → 1        -- §12.7's, deferred
+if T > maxTransactionAggregateFieldBytes    → 2
+if stride = 0                               → 0        -- variable-width field
+if header_len + stride·N = T                → 0
+otherwise                                   → 3
+```
+
+Five properties of this definition are normative rather than incidental:
+
+- **The two arguments have different owners, and the asymmetry is
+  deliberate.** The preimage is the *operator's*: an abort on it would be the
+  stall under adjudication, so the verdict is total over bytes. The
+  `field_index` is the *prover's*: `field_stride` refuses one outside §2.5's
+  nine, and that refusal is §7.3's correct answer to a prover supplying
+  something outside the format. Every caller reaches the verdict through the
+  door entry point below, which bounds the index before a byte is read.
+- **§5.1's grammar is consulted, not restated.** `envelope_verdict` is
+  §12.7's function, used unchanged as the guard. Two spellings of §5.1 would
+  be exactly the drift §6.1 forbids, and the disjointness of the two fault
+  kinds is only as good as their agreement on what an envelope is. This
+  section adds no grammar; it adds the two questions the grammar cannot ask.
+  `minimal_array_header` is the narrow half of the door's header decoder —
+  three widths and no items — returned as an option rather than as an abort.
+- **The order of the questions is the door's order.** §5.4's bound is checked
+  before §7.4's arithmetic because that is the `expect` `whole_view` reaches
+  first. An oversize envelope at a fixed-stride field whose stride also fails
+  is code 2 and not code 3: one committed field earns one accusation (§12.1).
+- **The verdict MUST agree with the doors in the two directions that decide
+  outcomes, and the third is deliberately not claimed.** `code ∈ {2, 3}` MUST
+  imply that `whole_view` aborts on the same bytes at the same field index —
+  no field this section convicts is one the machine could have opened — and
+  `code = 0` MUST imply that `whole_view` accepts them. The converse of the
+  second does **not** hold and must not be asserted: at a fixed-stride field
+  `whole_view` settles §5.1 by arithmetic and never walks the items (§7.4
+  item 2 puts per-item wrapper canonicality at the accessor instead), so
+  bytes whose stride arithmetic holds while their item heads are not §5.1's
+  open the door and earn `code = 1` here. That is fail-safe by construction
+  rather than by luck: code 1 does not convict, the field is §12.7's to
+  fault, and the accessor refuses the read. The two implementations are
+  separate on purpose, so what agreement there is remains a conformance
+  obligation (§9) discharged by vectors, not an artefact of shared code.
+- **Codes 0 and 1 are both non-convicting, and are not interchangeable.**
+  Code 1 is this section's boundary against §12.7 and code 0 is the honest
+  block. An implementation MUST distinguish them: collapsing them would leave
+  a §12.7 fault indistinguishable from a well-shaped field in the computation
+  thread, which §12.1's one-spelling rule forbids for a value that crosses a
+  transaction boundary.
+
+#### Adjudication
+
+Two steps, on §12.7's pattern and for its reason: the first binds committed
+evidence and derives, the second holds the derivation against the rule.
+
+**Step 01 — bind, authenticate, decide.**
+
+1. The disputed transaction MUST be bound to the challenged block's committed
+   `transactions_root` by the shared native inclusion path, including the
+   codec precondition every native family runs.
+2. The prover supplies **which** of §2.5's nine slots is accused and a §8.8
+   `FieldCarriageV1` for it, as §12.7's `CommittedFieldClaimV1` — the same
+   wire type, reused rather than re-declared, because the accusation the two
+   sibling fault kinds make is the same accusation and §6.1's one-spelling
+   rule applies to a wire type as much as to a scalar. The accused slot's
+   expected commitment is obtained by positional extraction from the
+   committed compact structures (§4) and the carried bytes are hashed against
+   it. A prover supplying anything else **aborts** (§7.3).
+3. `field_shape_verdict` is taken over those bytes **at that slot**, and
+   `(tx_id, field_index, verdict)` is pinned into the computation thread.
+   Every member is derived, so a fabricated verdict or a re-addressed field
+   index is not forwardable. The re-addressing refusal carries more weight
+   here than in §12.7, because the verdict *depends* on the index: a
+   re-addressed accusation would be a verdict about one slot's rules filed
+   against another slot's bytes.
+
+**Step 02 — convict.** The proof finalizes when, and only when, the pinned
+state satisfies `0 ≤ field_index < 9`, `0 ≤ verdict < 4` and
+`verdict ∈ {2, 3}`. The membership test MUST name the convicting codes rather
+than test `verdict ≠ 0`: code 1 is §12.7's fault and admitting it here would
+let one committed field finalize under two fault kinds.
+
+Five further conditions are normative:
+
+- **No preimage bytes travel between the steps**, for §12.7's reason.
+- **The step-02 state is a distinct type from §12.7's**, notwithstanding that
+  its three members read identically. The verdict code spaces differ — 0..10
+  there, 0..3 here — so one type would let a §12.7 code satisfy this
+  section's bounds check and mean something else while doing it. The two
+  families are held apart by the script hashes their step-01s pin and by
+  these two types, not by convention.
+- **The reading path MUST NOT be a view door.** Both §8.8 doors materialise a
+  `FieldViewV1` and therefore run the very `expect`s under accusation.
+  §12.7's `authenticated_committed_preimage` — the non-aborting entry point
+  that returns the hash-checked bytes and runs no §5.1, §7.4 or §5.4 check —
+  is reused unchanged and is the only door entry point this family uses.
+- **The field index is a redeemer argument here**, for §12.7's reason: it
+  *is* the accusation's address (§12.1). It is safe because the expected
+  commitment is extracted for the slot the index names, so a verdict rendered
+  under index `i` is a verdict about the bytes slot `i` committed. §4's
+  aliasing — fields 0/1 and 3/4 commit identically for identical content —
+  does not weaken it here either, and for a stronger reason than in §12.7:
+  the aliased pairs share a stride (0 and 1 at 40, 3 and 4 at 30), so a
+  wrong-stride conviction under either index is a wrong-stride conviction
+  under both.
+- **An honest block is bound but never convicted.** Step 01 accepts a
+  challenge against a well-shaped field and forwards `verdict = 0`; step 02
+  refuses it. That asymmetry is the family's whole safety property against a
+  malicious challenger, and it is where a conformance suite must have a
+  vector — as is the same asymmetry at code 1.
+
+#### Carriage, and this section's own residue
+
+**All three §8 tiers are admissible, at all nine fields**, on §12.7's
+argument: this path materialises the carriage and hashes it once against the
+committed commitment, so a §8.6 manifest authenticates nothing about content
+and a substituted chunk changes the hash. That argument is inherited rather
+than re-derived — this family reuses §12.7's door entry point unchanged, and
+its own tier-3 vector is taken at a body field, so the witness-set half of the
+claim rests on §12.7's reasoning and on §8.3 erratum E2's carve-out for it.
+
+**The §5.4 shape has a rule and, above the bound, no carriage.** This is
+recorded rather than mitigated, exactly as §12.7 recorded the residue this
+section closes:
+
+- The verdict above convicts an oversize envelope at any length, and the
+  §12.8 family's steps adjudicate it wherever the bytes can be carried.
+- The §8 ladder cannot carry a preimage above §5.4's bound to a step.
+  `certified_chunks` refuses `total_length > max_transaction_aggregate_field_bytes`
+  before it materialises tier 3, and the §8.6 certificate is refused at the
+  same bound at minting, so no such certificate can exist. Tiers 1 and 2 are
+  bounded far below it by L1's `maxTxSize`.
+- Therefore a committed preimage above §5.4's bound is convictable *in the
+  rule* and unreachable *in the carriage*: the stall §12.7 named for that
+  shape is closed for every length the ladder can deliver, and open above it.
+  The §7.4 shape has no such gap — it lives entirely at lengths at or below
+  the bound and is convictable at all three tiers.
+
+Closing the remainder is an amendment to §8, not to this section: the ladder
+would have to admit a preimage above §5.4's bound for this adjudication and
+for no other consumer, which is a change to the certificate policy and to
+`certified_chunks` and is therefore an owner-class decision about the
+carriage. It is recorded on #601 and is not taken here.
+
+#### Cost claims
+
+Measured, at GOAL_SPEC §3.3's 13,200,000-memory basis, and pinned by
+`onchain/aiken/scripts/committed-field-shape-exec-ledger-v1.json` with
+`verify-committed-field-shape-exec-ledger-v1.mjs` as its gate.
+
+The dominant term is §12.7's §5.1 walk, reused here as the envelope guard;
+this section's own two questions are `O(1)` over a header read in three bytes.
+
+- **The byte term.** At §5.4's per-field bound of 32,768 committed bytes
+  carried as a single item on §8.4's chunked route at §8.3's
+  `max_tier3_chunk_count` of three, the rule's own share against a
+  fixture-only control is about **721,613 memory units**, 5.5% of the basis,
+  three-chunk materialisation and the whole-preimage `blake2b_256` included.
+- **The item term binds.** Measured against fixture-only controls at 250 and
+  500 minimum-width items, the walk-plus-verdict costs **12,040.88 memory
+  units and 3,046,474.22 cpu units per item** over an intercept of 261,998 /
+  76,779,615. **This family's memory basis is reached at roughly 1,074
+  items**, and the memory axis binds — cpu at that cardinality is about 3.35G
+  against the 8G basis.
+- **The residual, named rather than mitigated.** The worst shape this family
+  admits is §5.4's byte bound spent on §5.1's narrowest item, `40`: a
+  three-byte array header and 32,765 one-byte items is 32,768 bytes carrying
+  32,765 items, which the fit above puts at roughly 394,780,000 memory units,
+  **29.9× the basis**. That reading is an extrapolation from the measured
+  pair, not a measurement, and is recorded as such. Its consequence is exact:
+  a committed field carrying more than about a thousand items cannot be
+  adjudicated by this family in one transaction, and the repair is §10's
+  resumable walk applied to the verdict. The figure is this lane's own
+  arithmetic over this lane's own rows and is deliberately not reconciled
+  with the one §12.7 publishes for its fixtures; replacing both extrapolations
+  with readings is #580's re-measurement lane.
+
+#### Guard coverage
+
+§9's conformance items 5 and 6 require every refusal on an operational path to
+be isolated by a vector or listed as a backstop. **Sixteen refusals: fourteen
+isolated, two backstops.**
+
+| # | refusal | isolated by / backstop because |
+| --- | --- | --- |
+| 1 | the carried bytes hash to the accused slot's commitment (§4) | `committed_field_shape_step_01_rejects_uncommitted_bytes`, `…_rejects_a_substituted_raw_utxo_carriage` at tier 2, and `committed_field_shape_verdict_refuses_substituted_certified_chunks` at tier 3 |
+| 2 | the forwarded verdict is the one the bytes earned at that slot | `committed_field_shape_step_01_rejects_a_fabricated_verdict` |
+| 3 | the forwarded field index is the one that was opened | `committed_field_shape_step_01_rejects_a_fabricated_field_index` |
+| 4 | a body claim names a body slot | `committed_field_shape_step_01_rejects_a_body_claim_at_a_witness_field` |
+| 5 | a witness claim names a witness-set slot | `committed_field_shape_step_01_rejects_a_witness_claim_at_a_body_field` |
+| 6 | the disputed transaction is one the challenged block committed | `committed_field_shape_step_01_rejects_a_forged_transactions_root` |
+| 7 | a well-shaped field does not finalize | `committed_field_shape_step_02_rejects_an_admissible_field`, with `…_step_01_binds_a_right_stride_field_without_convicting` proving the refusal is step 02's rather than an accident of step 01 |
+| 8 | **a field §12.7 owns does not finalize here** | `committed_field_shape_step_02_rejects_a_non_envelope`, with `…_step_01_binds_a_non_envelope_without_convicting` proving the same |
+| 9 | `field_index` is in 0..8, upper bound | `committed_field_shape_step_02_rejects_an_out_of_range_field_index` |
+| 10 | `field_index` is in 0..8, lower bound | `committed_field_shape_step_02_rejects_a_negative_field_index` |
+| 11 | `verdict` is a code some verdict produces | `committed_field_shape_step_02_rejects_an_unknown_verdict_code` |
+| 12 | the verdict agrees with the doors, refusing direction | the six `committed_field_shape_door_refuses_*` selectors, one per convicting shape, because an abort ends a test and a fold over the table would prove only that some vector aborts |
+| 13 | the verdict agrees with the doors, opening direction | `committed_field_shape_door_opens_every_admissible_vector` and `…_door_opens_the_field_at_the_byte_bound`; the direction that is *not* claimed is pinned as such by `…_defers_a_fixed_stride_field_the_door_opens`, so a later reader cannot mistake it for a defect |
+| 14 | the derived accusation is produced at step 02's script | `committed_field_shape_step_01_rejects_a_foreign_next_step_hash` |
+| 15 | the witness set re-derives to the committed `witness_set_hash` | backstop: `field_door_prologue` asserts it for every door entry point and §8.8's own guard coverage isolates it; guards 4 and 5 fix which half a claim may name |
+| 16 | §8.4's tier-3 partition (`total_length > K`, derived chunk count, chunk shape) | backstop: `certified_chunks` is shared with both view doors and §8.10's rows isolate it there; this family re-uses it unchanged |
+
+The verdict's own decision table is pinned separately and exhaustively:
+`committed_field_shape_verdict_table_is_exact` asserts one vector per code,
+`…_covers_every_code` asserts the table reaches all four and no more,
+`…_verdict_depends_on_the_slot` asks one envelope of all nine slots and
+requires the five fixed-stride ones to convict and the four walked ones not
+to, `…_pins_the_stride_boundary` and `…_pins_the_byte_bound_boundary` pin both
+rules in both directions, `…_byte_bound_precedes_the_stride` pins the order,
+and `…_is_disjoint_from_canonical_decodability` pins the partition against
+§12.7 over the whole table in both directions.
+
+#### Registration
+
+The family's two validators and their catalogue arms are registered by #579's
+single regeneration event (rider 6 of its owner-authorized scope amendment).
+Until then the compiled artifacts do not exist and the code is source-only,
+per #587's precedent. The identity moves this section's implementation records
+for that batch are on #601.

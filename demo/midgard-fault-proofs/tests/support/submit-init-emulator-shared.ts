@@ -190,9 +190,12 @@ export const repoRoot = resolve(moduleDir, "../../../..");
  * frozen blueprint never declared at all — one more row, and the first one red for
  * a *missing* definition rather than a stale one. #596 then added the §12.7
  * canonical-decodability fault family, whose two new wire types the frozen
- * blueprint likewise never declared — two more rows of that same kind.
- * Regenerating the blueprint is #579's, and these are the SIXTEEN tests it has to
- * turn green again.
+ * blueprint likewise never declared — two more rows of that same kind. #601 then
+ * added the §12.8 committed-field-shape sibling family, which contributes exactly
+ * one more of that kind: its step-02 thread state is a new type, while its claim
+ * redeemer is §12.7's reused unchanged and is already row 15.
+ * Regenerating the blueprint is #579's, and these are the SEVENTEEN tests it has
+ * to turn green again.
  *
  * Six of them are emulator scenarios in this directory. All six die at the same
  * `Spend[0] unexpected empty list`:
@@ -229,18 +232,23 @@ export const repoRoot = resolve(moduleDir, "../../../..");
  * — rather than as an evaluator error, while being this same stale script
  * underneath. Row 1 surfaces the `EvaluatorError` directly.
  *
- * The remaining ten are schema-parity rows, not emulator scenarios, and they
+ * The remaining eleven are schema-parity rows, not emulator scenarios, and they
  * live in `demo/midgard-node/tests/sdk-aiken-schema-parity.test.ts`. They compare
  * each SDK `Data` schema against the blueprint definition of the same name, so
  * the stale arity shows up directly as a field-count mismatch rather than as an
  * evaluator error. Rows 7-10 are #584's; rows 11-13 are #587's, and the last two
- * of those are red only because they embed the payload. Rows 14-16 differ in kind
+ * of those are red only because they embed the payload. Rows 14-17 differ in kind
  * from those seven: their Aiken types are **absent** from the frozen blueprint
  * rather than stale, so each fails on a missing definition rather than on a
  * field-count mismatch. Row 14 is #594's — the tx-order minting policy's wrapped
  * mint-redeemer type, `user_events.MintRedeemer` carried beside the §8 carriage
  * vector. Rows 15 and 16 are #596's §12.7 canonical-decodability family, whose
- * claim redeemer and step-02 thread state are new types in that round:
+ * claim redeemer and step-02 thread state are new types in that round. Row 17 is
+ * #601's §12.8 committed-field-shape family, and it is one row rather than two
+ * for a reason worth keeping: that family reuses §12.7's claim redeemer unchanged
+ * (one accusation, one wire spelling) and declares only its own step-02 state,
+ * which is structurally identical to §12.7's and deliberately a separate type
+ * because the two verdict code spaces differ:
  *
  *   7. "matches ForcedInclusionTxV1Schema to
  *      midgard/ledger_state/ForcedInclusionTxV1 recursively"
@@ -263,19 +271,24 @@ export const repoRoot = resolve(moduleDir, "../../../..");
  *      recursively"
  *  16. "matches CanonicalDecodabilityStep02StateSchema to
  *      midgard/fraud_proofs/canonical_decodability/step_02/State recursively"
+ *  17. "matches CommittedFieldShapeStep02StateSchema to
+ *      midgard/fraud_proofs/committed_field_shape/step_02/State recursively"
  *
- * That file gives `10 failed | 22 passed (32)`. Its total moved with the set three
+ * That file gives `11 failed | 22 passed (33)`. Its total moved with the set four
  * times: #587 deleted the two mappings for the retired receipt datums and the one
  * for the retired receipt mint redeemer, because a mapping to a type that no
  * longer exists on the SDK side would assert a retired surface rather than measure
  * a stale blueprint; #594 then added row 14 for the tx-order minting policy's own
  * redeemer, which wraps `user_events.MintRedeemer` beside the §8 carriage vector;
  * #596 then added rows 15 and 16 for the §12.7 family's claim redeemer and thread
- * state. #596 also measured what the whole set does against a *regenerated*
- * blueprint rather than only predicting it: pointed at a scratch stock build of
- * its own working tree, that file gives `32 passed (32)` — every row of the
- * handoff set, old and new, clears with the regeneration and none of them is a
- * shape disagreement hiding behind a stale definition.
+ * state; #601 then added row 17 for the §12.8 family's thread state. #596 also
+ * measured what the whole set does against a *regenerated* blueprint rather than
+ * only predicting it: pointed at a scratch stock build of its own working tree,
+ * that file gave `32 passed (32)` — every row of the handoff set, old and new,
+ * clears with the regeneration and none of them is a shape disagreement hiding
+ * behind a stale definition. #601 re-took that measurement on its own working
+ * tree, with the same method and the same result at the new size:
+ * `33 passed (33)`.
  *
  * **#597 leaves both figures exactly where they are, and that is the point of
  * recording it here.** It moved the TypeScript twins of #592's machine wire
@@ -294,7 +307,7 @@ export const repoRoot = resolve(moduleDir, "../../../..");
  * `onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak`.
  *
  * #597 does add one suite to the frozen-blueprint family, and it is **not** part
- * of the sixteen because it is not a handoff row of this set — it is a whole
+ * of the seventeen because it is not a handoff row of this set — it is a whole
  * suite that applies the committed validators:
  * `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`
  * moved from `1 failed | 5 passed (6)` to `5 failed | 1 passed (6)`. Its
@@ -303,13 +316,16 @@ export const repoRoot = resolve(moduleDir, "../../../..");
  * `failed script execution Spend[1] unexpected empty list`. It clears with the
  * same regeneration and is recorded in that file's own header.
  *
- * SIXTEEN with those names is the handoff figure, and it is written down here
+ * SEVENTEEN with those names is the handoff figure, and it is written down here
  * rather than left in a review thread so a later reviewer diffing #579 against it
- * is diffing against the real set. Nothing outside these sixteen is expected red
+ * is diffing against the real set. Nothing outside these seventeen is expected red
  * for this reason. Both figures were re-measured on 2026-08-12 after #596 — the
  * parity figure moved to ten red rows, the emulator figure held at the six it
- * has shown since #587, and both were re-measured again on 2026-08-12 after
- * #597 with neither moving:
+ * has shown since #587 — re-measured again on 2026-08-12 after #597 with neither
+ * moving, and re-measured again on 2026-08-13 after #601, where the parity figure
+ * moved to eleven red rows of thirty-three and the emulator figure again held at
+ * six of eight (#601 adds no emulator load site, which is why only one of the two
+ * figures moved):
  * `vitest run tests/submit-init-emulator-soundness.test.ts
  * tests/submit-init-emulator-transition-trace.test.ts
  * tests/submit-init-emulator-validation-dispute.test.ts --pool=forks
