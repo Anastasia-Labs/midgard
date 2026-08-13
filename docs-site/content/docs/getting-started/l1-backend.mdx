@@ -19,7 +19,7 @@ Most edges wait for readiness; only Kupo starts as soon as Ogmios has started.
 | `mithril-bootstrap` | `${MITHRIL_CLIENT_IMAGE}` | One-shot: uses the Mithril client to download a Cardano DB snapshot (`cardano-db download --include-ancillary`) so the node does not have to sync from genesis. Skips if a DB is already present. |
 | `cardano-node` | `${CARDANO_NODE_IMAGE}` | Runs the Cardano node. Exposes its Unix socket on a shared IPC volume; a healthcheck waits for `/ipc/node.socket` to exist. |
 | `ogmios` | `cardanosolutions/ogmios:v6.11.0` | WebSocket/HTTP bridge to the node. Listens on port `1337`; starts once the node is healthy. |
-| `kupo` | `cardanosolutions/kupo:v2.9.0` | Chain indexer. Connects to Ogmios, matches all patterns (`--match "*"`) from `origin`, and listens on port `1442`. |
+| `kupo` | `cardanosolutions/kupo:v2.11.0` | Chain indexer. Connects to Ogmios, matches all patterns (`--match "*"`) from `origin`, and listens on port `1442`. The node's carriage reader requires v2.10.0+ (`?resolve_hashes`). |
 
 <Callout type="info" title="node-ipc is a shared volume, not a service">
 The node's Unix domain socket is shared between `cardano-node` and `ogmios` via a

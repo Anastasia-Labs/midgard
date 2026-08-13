@@ -369,19 +369,47 @@ const submitForcedOrder = async ({
   return { plan, orderUtxo };
 };
 
-const readCarriage = (harness: Harness, orderUtxo: SDK.TxOrderUTxOV1) =>
-  Effect.runPromise(
-    observeVisibleTxOrderCarriageV1(
-      orderUtxo,
-      harness.contracts.txOrder.policyId,
-      { timeoutMs: 10_000 },
-    ).pipe(
-      Effect.provideService(NodeConfig, {
-        L1_OGMIOS_KEY: harness.l1.ogmiosUrl,
-        L1_KUPO_KEY: harness.l1.kupoUrl,
-      } as never),
-    ),
+const carriageEffect = (harness: Harness, orderUtxo: SDK.TxOrderUTxOV1) =>
+  observeVisibleTxOrderCarriageV1(
+    orderUtxo,
+    harness.contracts.txOrder.policyId,
+    { timeoutMs: 10_000 },
+  ).pipe(
+    Effect.provideService(NodeConfig, {
+      L1_OGMIOS_KEY: harness.l1.ogmiosUrl,
+      L1_KUPO_KEY: harness.l1.kupoUrl,
+    } as never),
   );
+
+const readCarriage = (harness: Harness, orderUtxo: SDK.TxOrderUTxOV1) =>
+  Effect.runPromise(carriageEffect(harness, orderUtxo));
+
+/**
+ * The `LucidError` a read failed with, kept whole.
+ *
+ * `Effect.runPromise` rejects with a fiber failure that copies the error's
+ * message and drops its `cause`, so a negative that wants to pin *which* refusal
+ * fired — rather than only that the walk refused — flips the failure into the
+ * success channel instead of catching the rejection. A read that unexpectedly
+ * succeeds still fails the test: the flip puts its value in the error channel.
+ */
+const readCarriageFailure = (
+  harness: Harness,
+  orderUtxo: SDK.TxOrderUTxOV1,
+): Promise<SDK.LucidError> =>
+  Effect.runPromise(Effect.flip(carriageEffect(harness, orderUtxo)));
+
+/** Kupo's answer for one output reference, asked for directly. */
+const kupoMatchesOf = async (
+  harness: Harness,
+  outRef: { readonly txHash: string; readonly outputIndex: number },
+  query = "",
+): Promise<readonly Record<string, unknown>[]> => {
+  const response = await fetch(
+    `${harness.l1.kupoUrl}/matches/${outRef.outputIndex.toString()}@${outRef.txHash}${query}`,
+  );
+  return (await response.json()) as readonly Record<string, unknown>[];
+};
 
 let openHarness: Harness | null = null;
 
@@ -620,7 +648,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
     });
   }, 120_000);
 
-  it("refuses a tier-2 order whose carriage datum Kupo cannot produce", async () => {
+  it("refuses a tier-2 order whose carriage datum Kupo does not resolve", async () => {
     const harness = await withHarness();
     const nativeTxCbor = nativeTransactionCbor([0x11, 0x22]);
     const { orderUtxo } = await submitForcedOrder({
@@ -628,21 +656,59 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
       nativeTxCbor,
       inlineReserveBytes: 0,
     });
-    // The order reads correctly first, so what the two negatives below change is
-    // only the datum leg and not the order.
+    // The order reads correctly first, so what the negatives below change is only
+    // the datum leg and not the order.
     await expect(readCarriage(harness, orderUtxo)).resolves.toBeDefined();
 
-    // A match names its datum by hash; the bytes ride a second request. Kupo
-    // answers a hash it does not hold with HTTP 200 and a bare `null`, and the
-    // one thing that must never do is resolve the carriage index to *nothing* —
-    // an emptied index reads as "this input carries no carriage", which is a
-    // silent downgrade of a readable order to an unreadable one. It is a read
-    // failure, and the next reconciliation tick tries again.
+    // What the wire actually holds, before anything is sabotaged: the datum is on
+    // the match **because the flag asked for it**, and the same match without
+    // `?resolve_hashes` carries no `datum` key at all. That asymmetry is the
+    // v2.10.0 contract, and pinning it here is what stops a later "simplification"
+    // of the harness from inlining the bytes unconditionally — which would green a
+    // reader that had quietly stopped asking the deployment for them.
+    const [flagless] = await kupoMatchesOf(harness, orderUtxo.utxo);
+    const [resolved] = await kupoMatchesOf(
+      harness,
+      orderUtxo.utxo,
+      "?resolve_hashes",
+    );
+    expect(flagless).toBeDefined();
+    expect(Object.hasOwn(flagless ?? {}, "datum")).toBe(false);
+    expect(typeof resolved?.datum).toBe("string");
+
+    // A match carries its datum inline, because the read asks for it with
+    // `?resolve_hashes`; a datum Kupo does not hold comes back as that field
+    // present and `null`. The one thing that must never do is resolve the
+    // carriage index to *nothing* — an emptied index reads as "this input carries
+    // no carriage", which is a silent downgrade of a readable order to an
+    // unreadable one. It is a read failure, and the next reconciliation tick
+    // tries again.
     harness.l1.rewriteDatums(() => null);
-    await expect(readCarriage(harness, orderUtxo)).rejects.toMatchObject({
-      message:
-        "Failed to read a forced order's §8 carriage from L1 (Ogmios chain-sync + Kupo)",
-    });
+    const unresolved = await readCarriageFailure(harness, orderUtxo);
+    expect(unresolved.message).toBe(
+      "Failed to read a forced order's §8 carriage from L1 (Ogmios chain-sync + Kupo)",
+    );
+    expect(String(unresolved.cause)).toContain(
+      "Kupo resolved no datum for hash",
+    );
+
+    // The deployment-mismatch shape, which is what the ≥2.10.0 floor buys and the
+    // reason the floor is checked on the wire. A Kupo older than v2.10.0 does not
+    // reject `?resolve_hashes` — it ignores it — so its match comes back with no
+    // `datum` field at all. A missing field is not an output without a datum, and
+    // reading it as one would empty every tier-2/3 carriage index in silence. It
+    // refuses instead, naming the version rather than the order.
+    harness.l1.rewriteDatums(null);
+    harness.l1.ignoreResolveHashes(true);
+    const misdeployed = await readCarriageFailure(harness, orderUtxo);
+    expect(misdeployed.message).toBe(
+      "Failed to read a forced order's §8 carriage from L1 (Ogmios chain-sync + Kupo)",
+    );
+    expect(String(misdeployed.cause)).toContain(
+      "the match carries no `datum` field",
+    );
+    expect(String(misdeployed.cause)).toContain("Run Kupo v2.10.0 or newer");
+    harness.l1.ignoreResolveHashes(false);
 
     // And bytes that arrive but are not the committed ones get no further: they
     // are still structurally raw carriage, so the read itself succeeds, and it is
@@ -747,8 +813,8 @@ describe.skipIf(!dbEnabled)(
       const harness = await withHarness();
       await runWithDatabase(ForcedTransactionsDB.clear);
 
-      // Tier 2, so the row can only exist if the Kupo `/datums/{hash}` leg ran:
-      // the preimage is in a published UTxO, not in the redeemer.
+      // Tier 2, so the row can only exist if the Kupo reference-input resolution
+      // ran: the preimage is in a published UTxO, not in the redeemer.
       const nativeTxCbor = nativeTransactionCbor([0x11, 0x22]);
       const { plan, orderUtxo } = await submitForcedOrder({
         harness,

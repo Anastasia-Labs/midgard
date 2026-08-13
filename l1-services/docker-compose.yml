@@ -87,7 +87,7 @@ services:
     restart: on-failure
 
   kupo:
-    image: cardanosolutions/kupo:v2.9.0
+    image: cardanosolutions/kupo:v2.11.0
     command:
       - --ogmios-host
       - ogmios

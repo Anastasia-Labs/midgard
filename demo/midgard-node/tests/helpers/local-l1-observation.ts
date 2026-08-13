@@ -23,9 +23,8 @@ import { CML } from "@lucid-evolution/lucid";
  * The two protocols are implemented rather than mocked, because the thing under
  * test is a read: the node opens a real WebSocket, speaks Ogmios's JSON-RPC
  * chain-sync (`findIntersection`, then `nextBlock` forward), and fetches Kupo's
- * `/matches/{index}@{id}`, `/datums/{hash}` and `/checkpoints/{slot}` over HTTP.
- * A stub at the function boundary would leave exactly the layer this ticket adds
- * untested.
+ * `/matches/{index}@{id}` and `/checkpoints/{slot}` over HTTP. A stub at the
+ * function boundary would leave exactly the layer this ticket adds untested.
  *
  * **Fidelity notes, so a reader knows what this does and does not prove.**
  * - Transaction JSON follows Ogmios v6's schema (`redeemers` as an array of
@@ -33,22 +32,27 @@ import { CML } from "@lucid-evolution/lucid";
  *   `{transaction: {id}, index}`), which is what `l1-services/docker-compose.yml`
  *   pins at v6.11.0. `cbor` is deliberately absent: a default Ogmios omits it
  *   unless started with `--include-transaction-cbor`.
- * - Kupo match records are the **v2.9.0** `Match` shape, which is what
- *   `l1-services/docker-compose.yml` pins: `additionalProperties: false` over
+ * - Kupo match records are the **v2.11.0** `Match` shape, which is what
+ *   `l1-services/docker-compose.yml` now pins: `additionalProperties: false` over
  *   `transaction_index, transaction_id, output_index, address, value, datum_hash,
- *   datum_type, script_hash, created_at, spent_at`. There is **no `datum`
- *   property** — a match names a datum by hash and by kind only, and the bytes
- *   come from the separate `GET /datums/{datum-hash}`, which this harness serves
- *   too. That is deliberate: serving the inline `datum` that only Kupo ≥2.10.0's
- *   `?resolve_hashes` produces would test a contract the deployment does not
- *   offer. `datum_type` is *omitted* rather than nulled for an output with no
- *   datum, as the v2.9.0 encoder omits it.
- * - `/datums/{hash}` answers `{"datum": "<base16>"}` for a hash it holds and a
- *   bare `null` — under HTTP **200**, not a 404 — for one it does not, which is
- *   what the real handler does and what the reader has to survive. The hash is
- *   content-derived here rather than Blake2b-256: nothing authenticates it, it is
- *   only the key joining a match to its bytes, and every byte it leads to still
- *   terminates in the §4 hash door.
+ *   datum, datum_type, script_hash, script, created_at, spent_at`. `datum_type` is
+ *   *omitted* rather than nulled for an output with no datum, because the schema
+ *   says it "is only present when `datum_hash` is not `null`".
+ * - **`datum` and `script` are served if and only if the request carries the bare
+ *   `?resolve_hashes` flag**, which is the v2.10.0 contract the deployment floor
+ *   now buys: those two fields are "only and always present (yet may be `null`) if
+ *   `?resolve_hashes` was set". *Only* — a flagless request gets a match with
+ *   neither key, so a reader that forgot the flag cannot be greened by a harness
+ *   that volunteers the bytes anyway. *Always* — with the flag, `datum` is present
+ *   on every match including outputs that never had one, where it is `null`. A
+ *   `null` under the flag is also Kupo's answer for a datum whose bytes it does
+ *   not hold, and the reader has to survive both.
+ *   {@link LocalL1V1.ignoreResolveHashes} serves the flag-ignoring shape a Kupo
+ *   below the floor answers with, so the deployment-mismatch refusal is testable.
+ * - The datum hash is content-derived here rather than Blake2b-256: nothing
+ *   authenticates it, it is only the key joining a match to the datum store the
+ *   `?resolve_hashes` join reads, and every byte it leads to still terminates in
+ *   the §4 hash door.
  * - `/checkpoints/{slot}` answers with the most recent checkpoint **before or at**
  *   the requested slot, which is Kupo's documented flexible lookup and the whole
  *   reason the point-fetch can find an ancestor to intersect at. Blocks are
@@ -82,18 +86,31 @@ export type LocalL1V1 = {
   /** Appends one block carrying the given signed transactions. */
   readonly appendBlock: (transactionCbors: readonly string[]) => LocalL1BlockV1;
   /**
-   * Rewrites what `/datums/{hash}` answers, for the negatives that prove the
-   * read stays fail-closed once the datum bytes ride a second request. The
-   * rewrite is handed the real datum and returns either replacement base16 or
-   * `null`, which serves Kupo's actual answer for a hash it does not hold: HTTP
-   * 200 with a bare `null` body. Passing `null` restores honest answers.
+   * Rewrites the datum the `?resolve_hashes` join returns on a match, for the
+   * negatives that prove the read stays fail-closed. The rewrite is handed the
+   * real datum and returns either replacement base16 or `null`, which serves
+   * Kupo's answer for a datum it does not hold: the `datum` field present, as the
+   * flag always makes it, and `null`. Passing `null` restores honest answers.
    */
   readonly rewriteDatums: (
     rewrite: ((datum: string) => string | null) | null,
   ) => void;
+  /**
+   * Serves matches the way a Kupo **below the v2.10.0 deployment floor** does:
+   * `?resolve_hashes` is an unknown query flag, so it is silently ignored rather
+   * than rejected and the match comes back with no `datum` field at all. This is
+   * the deployment-mismatch shape, and the read must refuse it loudly instead of
+   * reading a missing field as an output that carries no carriage.
+   */
+  readonly ignoreResolveHashes: (ignore: boolean) => void;
   readonly close: () => Promise<void>;
 };
 
+/**
+ * A match as Kupo serves it **without** `?resolve_hashes` — the schema's required
+ * properties and nothing else. `datum` and `script` are not optional members of
+ * this type on purpose: they exist only on the resolved shape below.
+ */
 type KupoMatchV1 = {
   readonly transaction_index: number;
   readonly transaction_id: string;
@@ -101,7 +118,7 @@ type KupoMatchV1 = {
   readonly address: string;
   readonly value: { readonly coins: string; readonly assets: object };
   readonly datum_hash: string | null;
-  /** Omitted entirely when `datum_hash` is `null`, as v2.9.0's encoder omits it. */
+  /** Only present when `datum_hash` is not `null`, as the schema states. */
   readonly datum_type?: "hash" | "inline";
   readonly script_hash: string | null;
   readonly created_at: {
@@ -109,6 +126,12 @@ type KupoMatchV1 = {
     readonly header_hash: string;
   };
   readonly spent_at: null;
+};
+
+/** The same match under `?resolve_hashes`: both joins present, either may be null. */
+type KupoResolvedMatchV1 = KupoMatchV1 & {
+  readonly datum: string | null;
+  readonly script: null;
 };
 
 /** The key joining a match to its bytes. Not Blake2b-256; nothing checks it. */
@@ -386,6 +409,7 @@ export const startLocalL1ObservationV1 = async (): Promise<LocalL1V1> => {
   const matches = new Map<string, KupoMatchV1>();
   const datums = new Map<string, string>();
   let datumRewrite: ((datum: string) => string | null) | null = null;
+  let ignoringResolveHashes = false;
   // A genesis checkpoint, so the first real block always has an ancestor to
   // intersect at — exactly as a synced Kupo always does.
   blocks.push({
@@ -435,6 +459,24 @@ export const startLocalL1ObservationV1 = async (): Promise<LocalL1V1> => {
     return block;
   };
 
+  /**
+   * The `?resolve_hashes` join, as Kupo performs it: `datum` and `script` both
+   * become present on the match, each carrying the stored value or `null`. A datum
+   * the store cannot produce — which is what {@link LocalL1V1.rewriteDatums} can
+   * turn any datum into — is `null` under a **present** key, never an absent one.
+   */
+  const resolveHashesOn = (match: KupoMatchV1): KupoResolvedMatchV1 => {
+    const stored =
+      match.datum_hash === null ? undefined : datums.get(match.datum_hash);
+    const datum =
+      stored === undefined
+        ? null
+        : datumRewrite === null
+          ? stored
+          : datumRewrite(stored);
+    return { ...match, datum, script: null };
+  };
+
   const kupoServer = createServer(
     (request: IncomingMessage, response: ServerResponse) => {
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -448,21 +490,20 @@ export const startLocalL1ObservationV1 = async (): Promise<LocalL1V1> => {
       if (matchPath !== null) {
         const key = `${matchPath[2]!}#${Number(matchPath[1]!).toString()}`;
         const match = matches.get(key);
-        send(match === undefined ? [] : [match]);
-        return;
-      }
-      const datumPath = /^\/datums\/([0-9a-f]{64})$/u.exec(url.pathname);
-      if (datumPath !== null) {
-        const stored = datums.get(datumPath[1]!);
-        const answer =
-          stored === undefined
-            ? null
-            : datumRewrite === null
-              ? stored
-              : datumRewrite(stored);
-        // A hash Kupo does not hold is `200` with a bare `null` body — not a
-        // 404, and not `{"datum": null}`.
-        send(answer === null ? null : { datum: answer });
+        if (match === undefined) {
+          send([]);
+          return;
+        }
+        // `?resolve_hashes` is a bare flag (`allowEmptyValue: true`), so its mere
+        // presence is the request. Without it — and under the pre-v2.10.0 shape,
+        // which ignores it — the match is served with neither join, which is what
+        // makes a reader that does not ask, or an index that cannot answer,
+        // visibly different from one that got its bytes.
+        send([
+          url.searchParams.has("resolve_hashes") && !ignoringResolveHashes
+            ? resolveHashesOn(match)
+            : match,
+        ]);
         return;
       }
       const checkpointPath = /^\/checkpoints\/(\d+)$/u.exec(url.pathname);
@@ -627,6 +668,9 @@ export const startLocalL1ObservationV1 = async (): Promise<LocalL1V1> => {
     appendBlock,
     rewriteDatums: (rewrite) => {
       datumRewrite = rewrite;
+    },
+    ignoreResolveHashes: (ignore) => {
+      ignoringResolveHashes = ignore;
     },
     close: async () => {
       for (const socket of sockets) {

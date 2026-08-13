@@ -73,13 +73,15 @@ import { normalizeOgmiosHttpUrl } from "@/local-ledger-slot.js";
  * that UTxO's bytes normative L1 history regardless — so under pruning, every
  * tier-2/3 order whose carriage has been reclaimed silently stops being readable,
  * which is why the queries below are never filtered to `unspent`. *(iii)* Kupo
- * must be a **v2.x** release: this reader speaks only the contract every v2 serves
- * — `GET /matches/{index}@{id}` for the match and its `datum_hash`/`datum_type`,
- * then `GET /datums/{datum-hash}` for the bytes. The `?resolve_hashes` flag that
- * would inline those bytes in the match exists only from v2.10.0 (2025-01-03) and
- * is deliberately **not** used: the pinned deployment is v2.9.0, which does not
- * reject the flag but silently ignores it, so a reader that depended on it would
- * see every material-bearing order refuse with nothing to point at.
+ * must be **v2.10.0 or newer** (2025-01-03), which is the release that added the
+ * `?resolve_hashes` query flag: this reader asks for its matches with that flag
+ * and takes the datum bytes off the match itself, in one request per output. The
+ * floor is a hard one *because* an older Kupo does not reject an unknown query
+ * flag — it silently ignores it and answers with a match that has no `datum`
+ * field at all. {@link fetchKupoMatchV1} refuses that answer by name rather than
+ * reading it as "this output carries no datum", so a mis-deployed index fails the
+ * read loudly on its first request instead of quietly emptying carriage indices.
+ * `l1-services/docker-compose.yml` pins v2.11.0.
  */
 
 /** A point on the chain, spelled the way both Ogmios and Kupo spell it. */
@@ -271,13 +273,19 @@ export const fetchKupoCreationPointV1 = async ({
 /**
  * Kupo's `Match`, narrowed to what a carriage read needs.
  *
- * **A match never carries datum bytes, only a hash, and that is the whole v2
- * contract.** `Match` is `additionalProperties: false` with no `datum` property;
- * `datum_type` distinguishes an output that inlined its datum from one that only
- * referenced it, but as the schema puts it, "in both cases however, Kupo returns
- * only a `datum_hash`, and full datums can be retrieved via the `GET
- * /datums/{datum-hash}` endpoint". So the bytes come from a second request, which
- * is what {@link fetchKupoDatumV1} makes.
+ * **The datum bytes ride the match itself, under `?resolve_hashes`.** From v2.10.0
+ * that flag instruments the server "to perform joins on datums and scripts to
+ * retrieve any known values associated to hashes", and the schema is exact about
+ * what it does to the shape: `datum` — like `script` — "is only and always present
+ * (yet may be `null`) if `?resolve_hashes` was set". The reader stands on both
+ * halves of that sentence. *Absent* means the flag was not honoured at all, which
+ * only a Kupo below the deployment floor does. *Present and `null`* means Kupo has
+ * no bytes for a hash it does hold a reference to. Neither is an output without a
+ * datum, and neither may be read as one.
+ *
+ * `datum_type` still says which kind of datum an output carried — `inline` for one
+ * the ledger put in the output, `hash` for one it only referenced — and is "only
+ * present when `datum_hash` is not `null`".
  */
 type KupoMatchV1 = {
   readonly transaction_id?: unknown;
@@ -285,6 +293,7 @@ type KupoMatchV1 = {
   readonly created_at?: unknown;
   readonly datum_hash?: unknown;
   readonly datum_type?: unknown;
+  readonly datum?: unknown;
 };
 
 const fetchKupoMatchV1 = async ({
@@ -300,7 +309,7 @@ const fetchKupoMatchV1 = async ({
 }): Promise<KupoMatchV1> => {
   const url = joinUrl(
     normalizeKupoHttpUrl(kupoUrl),
-    `/matches/${outRef.outputIndex.toString()}@${outRef.txHash}`,
+    `/matches/${outRef.outputIndex.toString()}@${outRef.txHash}?resolve_hashes`,
   );
   const body = await fetchJsonWithTimeout(fetchImpl, url, timeoutMs);
   if (!Array.isArray(body)) {
@@ -317,40 +326,21 @@ const fetchKupoMatchV1 = async ({
       `Kupo has no match for ${outRef.txHash}#${outRef.outputIndex.toString()}`,
     );
   }
-  return match;
-};
-
-/**
- * The datum bytes behind a hash a match named.
- *
- * **An unknown hash is `200 null`, not a 404**, which is why the whole body is
- * checked rather than a property read off it. Either way it is a *failure* here
- * and never an empty resolution: this function is only reached for an output that
- * told us it has a datum, so a Kupo that cannot produce it has not shown us the
- * carriage — and a carriage index that silently resolved to nothing would turn a
- * readable order into an unreadable one instead of a retryable read.
- */
-const fetchKupoDatumV1 = async ({
-  kupoUrl,
-  datumHash,
-  fetchImpl,
-  timeoutMs,
-}: {
-  readonly kupoUrl: string;
-  readonly datumHash: string;
-  readonly fetchImpl: FetchLike;
-  readonly timeoutMs: number;
-}): Promise<string> => {
-  const url = joinUrl(normalizeKupoHttpUrl(kupoUrl), `/datums/${datumHash}`);
-  const body = await fetchJsonWithTimeout(fetchImpl, url, timeoutMs);
-  const datum =
-    body === null || typeof body !== "object"
-      ? undefined
-      : (body as { datum?: unknown }).datum;
-  if (typeof datum !== "string") {
-    throw new Error(`Kupo has no datum for hash ${datumHash}`);
+  // The deployment floor, checked on the wire rather than assumed. `datum` is
+  // "only and always present" under `?resolve_hashes`, so a match without the key
+  // is an index that ignored the flag — a Kupo older than v2.10.0. This is
+  // asserted on *every* match, not only on the ones that turn out to carry
+  // carriage, so a mis-deployed index is named on the first request of the first
+  // read rather than by whichever later order is the first to reference a datum.
+  if (!("datum" in match)) {
+    throw new Error(
+      `Kupo did not resolve hashes for ${url}: the match carries no \`datum\` ` +
+        "field, which is what an index older than v2.10.0 answers — it ignores " +
+        "the `?resolve_hashes` flag instead of rejecting it. Run Kupo v2.10.0 " +
+        "or newer (l1-services/docker-compose.yml pins v2.11.0).",
+    );
   }
-  return datum;
+  return match;
 };
 
 /**
@@ -907,22 +897,23 @@ export const resolveCarriageReferenceInputsV1 = async ({
     // carriage even when Kupo happens to hold the preimage, so it resolves to
     // nothing rather than to bytes the ledger never put in the output. An output
     // with no datum at all omits the field entirely, which lands here too.
-    const datumHash =
-      match.datum_type === "inline" && typeof match.datum_hash === "string"
-        ? match.datum_hash
-        : null;
-    // Only *then* are the bytes fetched. The failure of that second request is
-    // deliberately not caught: see {@link fetchKupoDatumV1}.
-    const datum =
-      datumHash === null
-        ? null
-        : await fetchKupoDatumV1({
-            kupoUrl,
-            datumHash,
-            fetchImpl,
-            timeoutMs,
-          });
-    resolved.push(resolveCarriageReferenceInputV1(datum));
+    if (match.datum_type !== "inline" || typeof match.datum_hash !== "string") {
+      resolved.push(resolveCarriageReferenceInputV1(null));
+      continue;
+    }
+    // The output has told us it carries an inline datum, so anything other than
+    // bytes here is a Kupo that could not produce them — `null` is its documented
+    // answer for a datum it does not hold. That is a *failure*, never an empty
+    // resolution: an emptied carriage index reads as "this input carries no
+    // carriage", which silently turns a readable order into an unreadable one
+    // instead of into a read the next reconciliation tick retries.
+    if (typeof match.datum !== "string") {
+      throw new Error(
+        `Kupo resolved no datum for hash ${match.datum_hash} on ` +
+          `${outRef.txHash}#${outRef.outputIndex.toString()}`,
+      );
+    }
+    resolved.push(resolveCarriageReferenceInputV1(match.datum));
   }
   return Object.freeze(resolved);
 };
