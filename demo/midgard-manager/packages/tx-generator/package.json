@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@al-ft/lucid-midgard": "file:../../../lucid-midgard",
-    "@lucid-evolution/lucid": "0.6.1",
+    "@lucid-evolution/lucid": "0.6.2",
     "chalk": "^4.1.2",
     "commander": "^11.1.0",
     "effect": "^3.11.10",

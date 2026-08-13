@@ -141,7 +141,7 @@
     "@libp2p/interface": "3.2.4",
     "@libp2p/peer-id": "6.0.11",
     "@libp2p/tcp": "11.0.22",
-    "@lucid-evolution/lucid": "0.6.1",
+    "@lucid-evolution/lucid": "0.6.2",
     "@lucid-evolution/uplc": "0.2.22",
     "@multiformats/multiaddr": "13.0.3",
     "@noble/hashes": "^2.0.1",
