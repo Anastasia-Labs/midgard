@@ -13,10 +13,8 @@ import {
   authenticatedMidgardFieldViewV1,
   encodeMidgardFieldArrayHeaderV1,
   MIDGARD_EMPTY_FIELD_COMMITMENT_V1,
-  type MidgardFieldCarriageV1,
   midgardFieldReadRangeV1,
   midgardFieldTotalLengthV1,
-  type ResolvedCarriageReferenceInputV1,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
   isMidgardConsensusProfileV1,
@@ -44,6 +42,11 @@ import {
   type UserEventFetchBounds,
   type UserEventReconcileResult,
 } from "@/fibers/user-event-ingestion.js";
+import {
+  observeTxOrderMaterialCarriageProgram,
+  type TxOrderCarriageReadOptionsV1,
+  type TxOrderMaterialCarriageV1,
+} from "@/l1-tx-order-carriage-v1.js";
 import {
   ContractDeploymentIdentity,
   Database,
@@ -135,18 +138,34 @@ export const publishedProgramMaterialSnapshotError = (
     : undefined;
 
 /**
- * The §8 carriage an order's material rides, as this walk receives it.
+ * How many of §2.5's nine slots a forced order's payload commits material to.
  *
- * `carriage` is positional over the order's **non-empty** fields in ascending
- * field index — byte-for-byte the same vector the order's mint redeemer carried,
- * because it is the same claim read back. `referenceInputs` are the resolved
- * carriage UTxOs the `RawUtxo`/`Certified` entries index into, in the order the
- * ledger presented them to the mint.
+ * This is what decides whether the walk reads L1 at all: a slot whose committed
+ * hash is `field_commitment(#"80")` consumes no carriage entry (§8.11), so an
+ * order with none of them commits nothing and is reconstructible from its own
+ * payload. The count comes out of the payload's compact structures positionally,
+ * which is the same extraction {@link reconstructTxOrderMaterialV1} makes and the
+ * same one the mint's walk makes.
+ *
+ * `midgard-watcher`'s `forcedOrderMaterialFieldCount` computes this number for
+ * the same reason — it is the input §8.11's exhaustion rule needs beside the
+ * vector — and the duplication is deliberate under #599's ruling that the node
+ * may not depend on the watcher package.
  */
-export type TxOrderMaterialCarriageV1 = {
-  readonly carriage: readonly MidgardFieldCarriageV1[];
-  readonly referenceInputs?: readonly ResolvedCarriageReferenceInputV1[];
-};
+const forcedOrderMaterialFieldCountV1 = (payload: TxOrderPayloadV1): number =>
+  midgardV1TxFieldCommitmentsFromSourceV1({
+    compactCbor: Buffer.from(payload.source.compact_cbor, "hex"),
+    witnessSetCompactCbor: Buffer.from(
+      payload.source.witness_set_compact_cbor,
+      "hex",
+    ),
+    fieldPreimageLengthsCbor: Buffer.from(
+      payload.source.field_preimage_lengths_cbor,
+      "hex",
+    ),
+  }).filter(
+    (commitment) => !commitment.equals(MIDGARD_EMPTY_FIELD_COMMITMENT_V1),
+  ).length;
 
 /**
  * Reconstructs the canonical native-V1 transaction an L1 forced order committed
@@ -192,31 +211,21 @@ export type TxOrderMaterialCarriageV1 = {
  * kept: it is what refuses a payload whose lengths, hashes and id do not agree,
  * and it costs one hash per field.
  *
- * **Where the bytes come from, and who can supply them.** L1 history, which is
- * what #594's ruling means by durable availability — but *this fiber cannot read
- * that history*, and `material` is optional for exactly that reason.
+ * **Where the bytes come from.** L1 history, which is what #594's ruling means by
+ * durable availability and what §8.11 names as the ingestion walk's source: once
+ * the order mint has authenticated a field's preimage against its committed hash,
+ * those bytes are permanent history and nothing afterwards depends on the carriage
+ * UTxO surviving. `l1-tx-order-carriage-v1.ts` reads that history for the caller
+ * below — Kupo for the order's creating chain point and for the carriage datums,
+ * Ogmios chain-sync for the creating transaction's mint redeemer, and no other
+ * dependency (#599's owner ruling makes the Ogmios + Kupo boundary binding).
  *
- * The fiber's only L1 data source is the `Lucid` service, whose provider is
- * `LE.Kupmios(L1_KUPO_KEY, L1_OGMIOS_KEY)` (`src/services/lucid.ts`). `Kupmios`'s
- * whole public surface is `getProtocolParameters`, `getTreasury`, `getUtxos`,
- * `getUtxosWithUnit`, `getUtxosWithPolicy`, `getUtxoByUnit`, `getUtxosByOutRef`,
- * `getRewardAccount`, `getDelegation`, `getDatum`, `getTransactionStatus`,
- * `awaitTx`, `submitTx` and `evaluateTx`. **None of them returns a transaction's
- * body or witness set.** So the order-creation transaction's mint redeemer — where
- * an `Inline` field's preimage rides, and where a `RawUtxo`/`Certified` field's
- * reference-input indices are — is not fetchable here, and neither are the
- * out-refs that would let `getUtxosByOutRef` resolve the carriage UTxOs. The
- * node's only Ogmios calls are `queryNetwork/tip` and
- * `queryNetwork/genesisConfiguration`; it has no chain-sync consumer, so there is
- * no block-level view of witness sets anywhere in this package.
- *
- * That makes `material` a parameter and not a fetch: this function authenticates
- * carriage, and an observer that *does* see witness sets supplies it. The watcher
- * is that observer — its normalized L1 block carries per-transaction redeemers —
- * and building the equivalent follower inside the node is a component, not a
- * wiring change. Recorded as a Deviation on #594 with its blocker; until it lands,
- * the production caller below reaches this function with no `material` and a
- * material-bearing order is refused by name.
+ * `material` stays a parameter rather than a fetch this function makes, and the
+ * separation is the point: **the source is never trusted.** Whatever the read
+ * returns is opened here against the *payload's own* §4 commitments, so a hostile
+ * or merely stale observation can cost an order its ingestion and can never buy it
+ * one. It is also why the parameter is optional — an order committing no material
+ * needs no read, and its nine empty-field commitments reconstruct it alone.
  */
 export const reconstructTxOrderMaterialV1 = ({
   payload,
@@ -249,22 +258,17 @@ export const reconstructTxOrderMaterialV1 = ({
         }
         const carriage = unconsumed.shift();
         if (carriage === undefined) {
-          // Two distinguishable causes share this refusal, and the message says
-          // both rather than guessing: either the supplied vector is genuinely
-          // short of what the nine commitments name (§8.11's exhaustion rule,
-          // failing in the missing direction), or no vector was supplied at all
-          // because the caller has no witness-set view to take one from. The
-          // second is this fiber's own production path — see the note above on
-          // `Kupmios`'s surface — and it is a missing capability, not a bad order.
+          // §8.11's exhaustion rule, failing in the missing direction: the vector
+          // is short of what the nine commitments name, so a field with material
+          // in it has no carriage. The mint refuses the same order for the same
+          // reason, which is what makes this a re-derivation of its verdict.
           throw new Error(
             `forced order carries material in field ${fieldIndex.toString()} ` +
               `with no §8 carriage supplied for it (${(
                 material?.carriage ?? []
               ).length.toString()} entr${
                 (material?.carriage ?? []).length === 1 ? "y" : "ies"
-              } supplied): either the vector is short of the ` +
-              "commitments, or this caller has no view of the order-creation " +
-              "transaction's mint redeemer to take one from",
+              } supplied)`,
           );
         }
         const view = authenticatedMidgardFieldViewV1({
@@ -306,10 +310,71 @@ export const reconstructTxOrderMaterialV1 = ({
       }),
   });
 
+/**
+ * Reads the §8 carriage a visible forced order's mint authenticated, or
+ * `undefined` when the order commits no material and there is nothing to read.
+ *
+ * **The skip is deliberate and is stated rather than implied.** An order with
+ * nine empty-field commitments consumes no carriage entry, so the read would only
+ * establish one further thing: that the mint redeemer's vector really was empty,
+ * §8.11's exhaustion rule in the spare direction. Paying an Ogmios round trip per
+ * such order to re-derive a clause the mint enforced — and making an endpoint
+ * outage stop ingesting orders that ingest today without it — buys less than it
+ * costs. The clause is not unobserved: `midgard-watcher` re-derives it, from the
+ * same redeemer, for every order and every burn.
+ *
+ * **Cost, stated rather than hidden.** Reconciliation walks the whole *visible*
+ * order set every tick, so a material-bearing order that stays visible is read
+ * off L1 once per tick for as long as it does. Nothing here caches: an order's
+ * carriage is immutable once its creating transaction is on chain, so a read
+ * keyed by the order's out-ref would be sound, and it is left out of this change
+ * deliberately rather than by oversight — it is a throughput question, it belongs
+ * with the reconciler's own "already persisted" handling (which deposits and
+ * withdrawals share), and adding process-lifetime state to an authentication path
+ * is not something to do as a side effect of giving it a source.
+ */
+export const observeVisibleTxOrderCarriageV1 = (
+  txOrderUTxO: SDK.TxOrderUTxOV1,
+  txOrderPolicyId: string,
+  read: TxOrderCarriageReadOptionsV1 | undefined,
+): Effect.Effect<
+  TxOrderMaterialCarriageV1 | undefined,
+  SDK.LucidError,
+  NodeConfig
+> =>
+  Effect.gen(function* () {
+    const payload = txOrderUTxO.datum.event.tx;
+    const materialFieldCount = yield* Effect.try({
+      try: () => forcedOrderMaterialFieldCountV1(payload),
+      catch: (cause) =>
+        new SDK.LucidError({
+          message:
+            "Failed to read a forced order's nine committed field hashes",
+          cause,
+        }),
+    });
+    if (materialFieldCount === 0) {
+      return undefined;
+    }
+    const nodeConfig = yield* NodeConfig;
+    return yield* observeTxOrderMaterialCarriageProgram({
+      ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+      kupoUrl: nodeConfig.L1_KUPO_KEY,
+      txOrderOutRef: {
+        txHash: txOrderUTxO.utxo.txHash,
+        outputIndex: txOrderUTxO.utxo.outputIndex,
+      },
+      txOrderPolicyId,
+      ...read,
+    });
+  });
+
 const txOrderUTxOToEntry = (
   txOrderUTxO: SDK.TxOrderUTxOV1,
   consensusProfile: ContractDeploymentIdentity["consensusProfile"],
   publishedProgramMaterial: PublishedProgramMaterialSnapshot,
+  txOrderPolicyId: string,
+  read: TxOrderCarriageReadOptionsV1 | undefined,
 ): Effect.Effect<
   ForcedTransactionsDB.Entry,
   SDK.LucidError | DatabaseError,
@@ -328,14 +393,15 @@ const txOrderUTxOToEntry = (
     }
     const txOrderUTxOV1 = txOrderUTxO;
     const payload = txOrderUTxOV1.datum.event.tx;
-    // No `material`, and the omission is a measured capability gap rather than an
-    // oversight: `fetchTxOrderUTxOs` reads the tx-order UTxO set through
-    // `lucid.utxosAt`, and the `Kupmios` provider behind it exposes no method that
-    // returns the order-creation transaction's witness set. See
-    // `reconstructTxOrderMaterialV1`'s note for the enumerated surface and the
-    // Deviation on #594. A canonically-empty order needs no carriage and ingests;
-    // a material-bearing one is refused by name here, with the cause stated.
-    const nativeTxCbor = yield* reconstructTxOrderMaterialV1({ payload });
+    const material = yield* observeVisibleTxOrderCarriageV1(
+      txOrderUTxOV1,
+      txOrderPolicyId,
+      read,
+    );
+    const nativeTxCbor = yield* reconstructTxOrderMaterialV1({
+      payload,
+      material,
+    });
     const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeTxCbor);
     const attachedProgramEnvelopes = yield* Effect.try({
       try: () => collectMidgardV1AttachedProgramEnvelopes(decoded),
@@ -485,6 +551,13 @@ export const publishedProgramMaterialEntries = (
 
 export const reconcileVisibleTxOrderUTxOs = (
   config?: UserEventFetchBounds,
+  /**
+   * Transport overrides for the §8 carriage read. Production passes nothing and
+   * gets the configured Ogmios and Kupo endpoints over the platform's own
+   * `fetch` and `WebSocket`; the seam exists so a test can point the same read at
+   * a local L1 rather than stub out the read itself.
+   */
+  read?: TxOrderCarriageReadOptionsV1,
 ): Effect.Effect<
   UserEventReconcileResult,
   SDK.LucidError | DatabaseError,
@@ -504,7 +577,7 @@ export const reconcileVisibleTxOrderUTxOs = (
     const txOrderUTxOs: SDK.TxOrderUTxOV1[] = [
       ...(yield* fetchTxOrderUTxOs(lucid, consensusProfile, config)),
     ];
-    const { cekProgramMaterial } = yield* MidgardContracts;
+    const { cekProgramMaterial, txOrder } = yield* MidgardContracts;
     const materialEntries = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(cekProgramMaterial.spendingScriptAddress),
       catch: (cause) =>
@@ -543,7 +616,14 @@ export const reconcileVisibleTxOrderUTxOs = (
     }
     return yield* persistVisibleUserEventUTxOs({
       visibleUtxos: txOrderUTxOs,
-      toEntry: (utxo) => txOrderUTxOToEntry(utxo, consensusProfile, material),
+      toEntry: (utxo) =>
+        txOrderUTxOToEntry(
+          utxo,
+          consensusProfile,
+          material,
+          txOrder.policyId,
+          read,
+        ),
       insertEntries: ForcedTransactionsDB.insertEntries,
       emptyLogMessage: "No tx-order UTxOs found.",
       foundLogMessage: (count) => `${count} tx-order UTxO(s) found.`,
