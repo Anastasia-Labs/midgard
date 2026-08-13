@@ -2,7 +2,6 @@ import {
   advanceMidgardRedeemerItemProofV1,
   asArray,
   asBytes,
-  buildMidgardBoundedItemV1,
   canOpenMidgardValidationDisputeBeforeMaturity,
   computeHash32,
   decodeMidgardCekProgramMaterialSidecarV1,
@@ -31,9 +30,11 @@ import {
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { midgardV1TxFieldCommitmentsFromSourceV1 } from "@al-ft/midgard-core/consensus-validation-v1";
 import {
+  decodeMidgardFieldPreimageV1,
+  midgardFieldCommitmentV1,
+} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import {
   AuthenticatedCanonicalDecodeItemDatumV1,
-  BoundedCollectionItemProofV1,
-  type BoundedCollectionItemProofV1 as BoundedCollectionItemProofV1Data,
   buildUnsignedValidationProofItemPublicationV1Program,
   deriveCekProgramMaterialPublicationsV1,
   deriveCekSinglePublicationV1,
@@ -791,9 +792,15 @@ const VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1 = [
 
 const VALIDATION_AUXILIARY_SHAPES_V1 = {
   none: [0, 0],
-  transactionFieldChunk: [1, 2],
-  transactionFieldItem: [30, 2],
-  requiredSignerItem: [2, 3],
+  // #597: the four §8-door constructors carry a `FieldCarriageV1` where they
+  // used to carry counted openings. `TransactionFieldChunkWitness` is
+  // `(field_index, item_index, carriage)`, `RequiredSignerItemWitness` is
+  // `(carriage, signer_proof)`, and the two begin/item constructors are
+  // `(carriage)` alone. Constructor *indices* are unchanged — only the shapes
+  // moved (`onchain/aiken/lib/midgard/validation-machine-v1.ak:119`).
+  transactionFieldChunk: [1, 3],
+  transactionFieldItem: [30, 1],
+  requiredSignerItem: [2, 2],
   nativeScriptToken: [3, 3],
   nativeScriptFrame: [4, 1],
   scheduledLedgerMembership: [5, 6],
@@ -4896,18 +4903,23 @@ const canonicalFieldItemEncodedLength = ({
   return itemLength === 0 ? null : itemLength - 1;
 };
 
+/**
+ * #597. The staged datums observe what the §8 door established, not what a
+ * prover claimed: `fieldPreimage` is the whole §5.1 preimage the carriage
+ * delivers, the item count is §5.2's own decode of it, and the item's bytes are
+ * a slice. The retired `collectionProof`/`itemCbor` pair claimed both, and §4
+ * left the claim nothing to be checked against.
+ */
 const deriveCanonicalDecodeItemStageDataV1 = ({
   preparedResolution,
   transition,
-  collectionProof,
-  itemCbor,
+  fieldPreimage,
 }: {
   readonly preparedResolution: NonNullable<
     PreparedValidationResolutionDatumV1Data["data"]
   >;
   readonly transition: ValidationOneStepWitnessV1;
-  readonly collectionProof: BoundedCollectionItemProofV1Data;
-  readonly itemCbor: string;
+  readonly fieldPreimage: string;
 }) => {
   const control = asArray(
     decodeSingleCbor(Buffer.from(transition.work_witness_cbor, "hex")),
@@ -4975,13 +4987,27 @@ const deriveCanonicalDecodeItemStageDataV1 = ({
   ) {
     throw new Error("Canonical decode item field index is out of range");
   }
-  const itemBytes = Buffer.from(itemCbor, "hex");
-  const item = buildMidgardBoundedItemV1({
-    fieldIndex,
-    itemIndex,
-    bytes: itemBytes,
-  });
-  const proofItemCount = Number(collectionProof.item_count);
+  // §8: the door authenticates the whole preimage against the flat §4
+  // commitment, so the item count and the item's bytes are *derived* here rather
+  // than claimed. Authenticating first is what makes the derivation meaningful.
+  const fieldPreimageBytes = Buffer.from(fieldPreimage, "hex");
+  const actualFieldCommitment = midgardFieldCommitmentV1(fieldPreimageBytes);
+  if (!actualFieldCommitment.equals(Buffer.from(expectedFieldCommitment))) {
+    throw new Error(
+      "Canonical decode item carriage preimage does not hash to the committed field",
+    );
+  }
+  if (fieldPreimageBytes.length !== expectedFieldLength) {
+    throw new Error(
+      "Canonical decode item carriage preimage contradicts its declared field length",
+    );
+  }
+  const fieldItems = decodeMidgardFieldPreimageV1(fieldPreimageBytes);
+  const itemBytes = fieldItems[itemIndex];
+  if (itemBytes === undefined) {
+    throw new Error("Canonical decode item index is outside the field");
+  }
+  const proofItemCount = fieldItems.length;
   const firstItem =
     itemIndex === 0 &&
     chunkIndex === 0 &&
@@ -5025,9 +5051,8 @@ const deriveCanonicalDecodeItemStageDataV1 = ({
     version: 1n,
     prepared,
     observation: {
-      collection_proof: collectionProof,
+      item_count: BigInt(proofItemCount),
       item_length: BigInt(itemBytes.length),
-      item_commitment: Buffer.from(item.commitment).toString("hex"),
     },
   };
   const verified = {
@@ -5125,23 +5150,37 @@ export const submitValidationDisputeSemanticResolution = async ({
       staged.auxiliary,
       VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
     );
-  const completeItemCbor = isCompleteCanonicalItem
-    ? staged.auxiliary.fields[1]
-    : undefined;
-  if (
-    isCompleteCanonicalItem &&
-    (typeof completeItemCbor !== "string" || completeItemCbor.length % 2 !== 0)
-  ) {
-    throw new Error(
-      "Validation complete proof-item auxiliary bytes are malformed",
-    );
-  }
-  const completeCollectionProof = isCompleteCanonicalItem
-    ? Data.from(
-        Data.to(staged.auxiliary.fields[0]!),
-        BoundedCollectionItemProofV1,
-      )
-    : undefined;
+  // #597. `TransactionFieldItemWitness` carries one field now — a
+  // `FieldCarriageV1` — and the bytes a publication has to hold are the field's
+  // whole §5.1 preimage rather than one item with an opening into it. The
+  // producer emits tier-1 `Inline` (Constr 0, one byte-string field), which is
+  // the only tier the trace producer can name; tiers 2-3 already name reference
+  // inputs of their own and would never reach this publication route. Reading
+  // the preimage off the carriage rather than off a second auxiliary field is
+  // what makes the direct-versus-reference decision below measure the right
+  // number of bytes.
+  const completeFieldPreimage = ((): string | undefined => {
+    if (!isCompleteCanonicalItem) {
+      return undefined;
+    }
+    const carriage = staged.auxiliary.fields[0];
+    if (
+      !(carriage instanceof Constr) ||
+      carriage.index !== 0 ||
+      carriage.fields.length !== 1
+    ) {
+      throw new Error(
+        "Validation complete proof-item auxiliary must carry tier-1 Inline §8 carriage",
+      );
+    }
+    const preimage = carriage.fields[0];
+    if (typeof preimage !== "string" || preimage.length % 2 !== 0) {
+      throw new Error(
+        "Validation complete proof-item auxiliary bytes are malformed",
+      );
+    }
+    return preimage;
+  })();
   // The complete-item proof transaction must source the semantic validator
   // from the published reference script: embedding the validator body would
   // consume the 16,384-byte envelope the measured complete-item redeemer
@@ -5173,15 +5212,14 @@ export const submitValidationDisputeSemanticResolution = async ({
     proofItemReferenceUtxo === undefined &&
     isCompleteCanonicalItem &&
     selectValidationCompleteItemCarriageV1(
-      Buffer.from(completeItemCbor as string, "hex").length,
+      Buffer.from(completeFieldPreimage as string, "hex").length,
     ) === "reference"
   ) {
     const publication = deriveValidationProofItemPublicationV1({
       transactionId: inputDatum.data.resolution.pre_state.transaction_id,
       transactionCommitment:
         inputDatum.data.resolution.pre_state.transaction_commitment,
-      collectionProof: completeCollectionProof!,
-      itemCbor: completeItemCbor as string,
+      fieldPreimage: completeFieldPreimage as string,
     });
     signer.selectWallet(lucid);
     const publicationUnsigned = await Effect.runPromise(
@@ -5248,8 +5286,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       transaction_id: inputDatum.data.resolution.pre_state.transaction_id,
       transaction_commitment:
         inputDatum.data.resolution.pre_state.transaction_commitment,
-      collection_proof: completeCollectionProof!,
-      item_cbor: completeItemCbor as string,
+      field_preimage: completeFieldPreimage as string,
     };
     if (
       Data.to(expectedDatum, ValidationProofItemDatumV1) !==
@@ -5539,8 +5576,7 @@ export const submitValidationDisputeSemanticResolution = async ({
     const stageData = deriveCanonicalDecodeItemStageDataV1({
       preparedResolution: inputDatum.data,
       transition: staged.transition,
-      collectionProof: completeCollectionProof!,
-      itemCbor: completeItemCbor as string,
+      fieldPreimage: completeFieldPreimage as string,
     });
     const authenticatedDatum = Data.to(
       {

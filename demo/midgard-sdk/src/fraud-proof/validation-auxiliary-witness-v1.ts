@@ -1,10 +1,8 @@
 import { Data } from "@lucid-evolution/lucid";
 
 import { ProofSchema, ProofStepSchema } from "@/common.js";
-import {
-  BoundedCollectionItemProofV1Schema,
-  BoundedItemChunkProofV1Schema,
-} from "@/ledger-state.js";
+import { BoundedItemChunkProofV1Schema } from "@/ledger-state.js";
+import { FieldCarriageV1Schema } from "@/native-tx-field-access-v1.js";
 
 type PlutusDataSchema = Parameters<typeof Data.Nullable>[0];
 
@@ -888,15 +886,29 @@ const CekTxInfoAssemblyControlV1Schema = Data.Object({
 export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
   Data.Literal("NoAuxiliaryWitness"),
   Data.Object({
+    /**
+     * One item of one committed field, reached through §8's door. `field_index`
+     * rides the wire because §4 removed field-index domain separation and two
+     * phases read more than one slot (`CanonicalDecode`, all nine from its own
+     * control, and `InputSets`, fields 0 and 1); `item_index` rides it because
+     * two sites let the prover choose the item order and pin it in the claimed
+     * successor. Neither is a proof — the door authenticates the whole preimage
+     * once against the flat §4 commitment and the item is then a slice.
+     */
     TransactionFieldChunkWitness: Data.Object({
-      collection_proof: BoundedCollectionItemProofV1Schema,
-      chunk_proof: BoundedItemChunkProofV1Schema,
+      field_index: Data.Integer(),
+      item_index: Data.Integer(),
+      carriage: FieldCarriageV1Schema,
     }),
   }),
   Data.Object({
+    /**
+     * A field-4 required-signer item plus the signer-set membership evidence
+     * the step decides on. No `field_index`/`item_index`: the field is 4 by
+     * construction and the item index is `control.required_seen`.
+     */
     RequiredSignerItemWitness: Data.Object({
-      collection_proof: BoundedCollectionItemProofV1Schema,
-      chunk_proof: BoundedItemChunkProofV1Schema,
+      carriage: FieldCarriageV1Schema,
       signer_proof: SignerSetProofV1Schema,
     }),
   }),
@@ -1132,14 +1144,26 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
     }),
   }),
   Data.Object({
+    /**
+     * `ScriptSources` stage 1 (field 8, one redeemer item) and stage 4 (field 2,
+     * one output item). Both stages need the item's length and its
+     * `bounded_item_v1` commitment and never look at its bytes, so the door's
+     * derived commitment is all the carriage has to yield; field index and item
+     * index are fixed by the stage and its cursor.
+     */
     TransactionRedeemerItemBeginWitness: Data.Object({
-      collection_proof: BoundedCollectionItemProofV1Schema,
+      carriage: FieldCarriageV1Schema,
     }),
   }),
   Data.Object({
+    /**
+     * `CanonicalDecode`'s complete-item step: one item read whole rather than
+     * chunk by chunk. Field index and item index come from the phase's control,
+     * so the carriage is the entire wire surface. The item bytes that used to
+     * ride here as `item_cbor` are read out of the authenticated preimage now.
+     */
     TransactionFieldItemWitness: Data.Object({
-      collection_proof: BoundedCollectionItemProofV1Schema,
-      item_cbor: Data.Bytes(),
+      carriage: FieldCarriageV1Schema,
     }),
   }),
   Data.Object({
@@ -1223,12 +1247,29 @@ export type ValidationAuxiliaryWitnessV1 = Data.Static<
 export const ValidationAuxiliaryWitnessV1 =
   ValidationAuxiliaryWitnessV1Schema as unknown as ValidationAuxiliaryWitnessV1;
 
+/**
+ * A field preimage published once, at the proof-item script address, for the
+ * `CanonicalDecode` complete-item steps of one disputed transaction to reach by
+ * reference input instead of re-carrying it in every step's redeemer.
+ *
+ * **It publishes the field's whole §5.1 preimage, not one item.** Under the
+ * retired counted scheme it published one item's bytes beside an `ItemProofV1`
+ * opening them against the field commitment — an opening §4 made unsatisfiable
+ * (#592). Under §8 the unit that authenticates is the whole preimage, so the
+ * whole preimage is what a publication carries;
+ * `canonical_decode_item_semantic_v1`'s `VerifyReference` route wraps it as
+ * `Inline` carriage and the door hashes it once against the committed field
+ * hash. `transaction_id` and `transaction_commitment` are what stop a look-alike
+ * UTxO passing a preimage off as belonging to a different dispute.
+ *
+ * Aiken source of truth:
+ * `onchain/aiken/lib/midgard/validation-machine-v1.ak:421`.
+ */
 export const ValidationProofItemDatumV1Schema = Data.Object({
   version: Data.Integer(),
   transaction_id: Data.Bytes({ minLength: 32, maxLength: 32 }),
   transaction_commitment: Data.Bytes({ minLength: 32, maxLength: 32 }),
-  collection_proof: BoundedCollectionItemProofV1Schema,
-  item_cbor: Data.Bytes(),
+  field_preimage: Data.Bytes(),
 });
 export type ValidationProofItemDatumV1 = Data.Static<
   typeof ValidationProofItemDatumV1Schema

@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
-  buildMidgardBoundedItemV1,
   hashMidgardValidationMachineStateV1,
   MIDGARD_CONSENSUS_PROFILE_V1,
 } from "@al-ft/midgard-core";
@@ -11,9 +10,9 @@ import {
   MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_V1_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { encodeMidgardFieldPreimageV1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
   AuthenticatedCanonicalDecodeItemDatumV1,
-  BoundedCollectionItemProofV1,
   buildUnsignedValidationProofItemPublicationV1Program,
   buildValidationTraceDisputeFaultProofContracts,
   deriveValidationProofItemPublicationV1,
@@ -187,8 +186,15 @@ type CanonicalDecodeItemCase = {
   readonly itemBytes: number;
   readonly argument: ValidationOneStepArgumentV1;
   readonly transitionData: Data;
-  readonly collectionProofData: Data;
-  readonly itemCborHex: string;
+  /**
+   * #597. `TransactionFieldItemWitness` carries a `FieldCarriageV1` now, and the
+   * producer emits tier-1 `Inline`, so the whole wire surface is the field's
+   * §5.1 preimage. `carriageData` is that carriage as the redeemer names it;
+   * `fieldPreimageHex` is the bytes inside it, which is what a publication
+   * holds.
+   */
+  readonly carriageData: Data;
+  readonly fieldPreimageHex: string;
   readonly evidenceHash: string;
   readonly preState: ReturnType<typeof validationMachineStateDataFromCore>;
   readonly claimedSuccessorHash: string;
@@ -205,7 +211,7 @@ const buildCanonicalDecodeItemCase = async (
     if (
       witness.phase === "canonicalDecode" &&
       witness.auxiliary?.kind === "transactionFieldItem" &&
-      witness.auxiliary.itemCbor.length === itemBytes
+      witness.auxiliary.carriage.carriage === "Inline"
     ) {
       stateIndex = index;
       break;
@@ -224,10 +230,18 @@ const buildCanonicalDecodeItemCase = async (
   if (
     !(auxiliary instanceof Constr) ||
     auxiliary.index !== 30 ||
-    auxiliary.fields.length !== 2 ||
-    typeof auxiliary.fields[1] !== "string"
+    auxiliary.fields.length !== 1
   ) {
     throw new Error("complete-item auxiliary witness has an unexpected shape");
+  }
+  const carriageData = auxiliary.fields[0]!;
+  if (
+    !(carriageData instanceof Constr) ||
+    carriageData.index !== 0 ||
+    carriageData.fields.length !== 1 ||
+    typeof carriageData.fields[0] !== "string"
+  ) {
+    throw new Error("complete-item carriage is not tier-1 Inline");
   }
   return {
     trace,
@@ -235,8 +249,8 @@ const buildCanonicalDecodeItemCase = async (
     itemBytes,
     argument,
     transitionData: Data.from(argument.transitionCbor.toString("hex")),
-    collectionProofData: auxiliary.fields[0]!,
-    itemCborHex: auxiliary.fields[1],
+    carriageData,
+    fieldPreimageHex: carriageData.fields[0],
     evidenceHash: validationOneStepEvidenceHashV1({
       transitionCbor: argument.transitionCbor,
       auxiliaryCbor: argument.auxiliaryCbor,
@@ -511,8 +525,7 @@ const submitSemanticProof = async ({
           inputIndex,
           outputIndex,
           itemCase.transitionData,
-          itemCase.collectionProofData,
-          itemCase.itemCborHex,
+          itemCase.carriageData,
         ]),
       ]),
     );
@@ -609,53 +622,33 @@ const publishProofItemPublication = async ({
 const publishProofItem = async ({
   harness,
   itemCase,
-  itemCborHexOverride,
+  fieldPreimageHexOverride,
 }: {
   readonly harness: EmulatorHarness;
   readonly itemCase: CanonicalDecodeItemCase;
-  readonly itemCborHexOverride?: string;
+  readonly fieldPreimageHexOverride?: string;
 }): Promise<PublishedProofItem> => {
-  const collectionProof = Data.from(
-    Data.to(itemCase.collectionProofData),
-    BoundedCollectionItemProofV1,
-  );
   const preState = itemCase.preState;
-  const itemCbor = itemCborHexOverride ?? itemCase.itemCborHex;
-  const item = buildMidgardBoundedItemV1({
-    fieldIndex: Number(collectionProof.field_index),
-    itemIndex: Number(collectionProof.item_index),
-    bytes: Buffer.from(itemCbor, "hex"),
-  });
   const publication = deriveValidationProofItemPublicationV1({
     transactionId: preState.transaction_id,
     transactionCommitment: preState.transaction_commitment,
-    collectionProof: {
-      ...collectionProof,
-      item_length: BigInt(item.bytes.length),
-      item_commitment: item.commitment.toString("hex"),
-    },
-    itemCbor,
+    fieldPreimage: fieldPreimageHexOverride ?? itemCase.fieldPreimageHex,
   });
   return await publishProofItemPublication({ harness, publication });
 };
 
 const buildRawProofItemPublicationForNegativeControl = ({
   itemCase,
-  itemCbor,
+  fieldPreimage,
 }: {
   readonly itemCase: CanonicalDecodeItemCase;
-  readonly itemCbor: string;
+  readonly fieldPreimage: string;
 }): ValidationProofItemPublicationV1 => {
-  const collectionProof = Data.from(
-    Data.to(itemCase.collectionProofData),
-    BoundedCollectionItemProofV1,
-  );
   const datum: ValidationProofItemPublicationV1["datum"] = {
     version: 1n,
     transaction_id: itemCase.preState.transaction_id,
     transaction_commitment: itemCase.preState.transaction_commitment,
-    collection_proof: collectionProof,
-    item_cbor: itemCbor,
+    field_preimage: fieldPreimage,
   };
   return {
     datum,
@@ -666,17 +659,17 @@ const buildRawProofItemPublicationForNegativeControl = ({
 const publishRawProofItemForNegativeControl = async ({
   harness,
   itemCase,
-  itemCbor,
+  fieldPreimage,
 }: {
   readonly harness: EmulatorHarness;
   readonly itemCase: CanonicalDecodeItemCase;
-  readonly itemCbor: string;
+  readonly fieldPreimage: string;
 }): Promise<PublishedProofItem> =>
   await publishProofItemPublication({
     harness,
     publication: buildRawProofItemPublicationForNegativeControl({
       itemCase,
-      itemCbor,
+      fieldPreimage,
     }),
   });
 
@@ -745,13 +738,40 @@ const measurePublicationFrontierAt = async (
       publication: await publishProofItem({
         harness,
         itemCase,
-        itemCborHexOverride: makeExactSizeOutputItem(itemBytes).toString("hex"),
+        fieldPreimageHexOverride: encodeMidgardFieldPreimageV1([
+          makeExactSizeOutputItem(itemBytes),
+        ]).toString("hex"),
       }),
     });
   }
   return measurements;
 };
 
+/**
+ * **HANDOFF TO #579, measured 2026-08-12: `5 failed | 1 passed (6)`.**
+ *
+ * This suite applies the validators compiled into the **committed**
+ * `onchain/aiken/plutus.json`, which #592 deliberately leaves byte-identical
+ * (md5 `c52589df225145ad74c8f444d500dfe5`) — blueprints move once, in #579's
+ * single regeneration pass (#587's precedent). #592 reshaped
+ * `canonical_decode_item_semantic_v1`'s `Verify` from
+ * `(input_index, output_index, transition, collection_proof, item_cbor)` to
+ * `(input_index, output_index, transition, carriage)` in the Aiken source, and
+ * #597 moved the TypeScript half to match. So the redeemers this suite builds
+ * are the four-field form while the frozen compiled validator still expects
+ * five, and every row that submits one fails inside the script with
+ * `failed script execution Spend[1] unexpected empty list` — the frozen
+ * validator destructuring a field that is no longer there.
+ *
+ * It is the same blueprint-freeze blind spot already recorded for
+ * `sdk-aiken-schema-parity` and `validation-resolver-applied-hashes`, and it
+ * clears with the regeneration rather than with any change here: nothing in this
+ * file can make a stale compiled validator accept the current wire format. The
+ * sixth row (`pins the applied §3.2 necessity identities`) was already red
+ * before #597 for the same freeze, on applied hashes rather than on shape.
+ *
+ * Before #597 this suite measured `1 failed | 5 passed (6)`.
+ */
 describe("complete-item proof fit V1 (emulator, applied validators)", () => {
   // #546: the six shared §3.2 necessity artifacts
   // (transaction-field-chunk, ledger-output-incremental-proof,
@@ -976,13 +996,15 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     const threadDatum = preparedThreadDatumCbor(itemCase, SIGNER_HASH);
     const harness = await setupEmulator([threadDatum, threadDatum]);
 
-    // Substitution: same length, one flipped byte deep inside the item.
-    const substituted = Buffer.from(itemCase.itemCborHex, "hex");
+    // Substitution: same length, one flipped byte deep inside the published
+    // field preimage. The door hashes the whole preimage against the committed
+    // field hash, so a single flipped byte anywhere inside it fails closed.
+    const substituted = Buffer.from(itemCase.fieldPreimageHex, "hex");
     substituted[itemBytes - 100] = substituted[itemBytes - 100]! ^ 0x01;
     const substitutedPublication = await publishRawProofItemForNegativeControl({
       harness,
       itemCase,
-      itemCbor: substituted.toString("hex"),
+      fieldPreimage: substituted.toString("hex"),
     });
     await expect(
       submitSemanticProof({
@@ -997,7 +1019,7 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     const trailingPublication = await publishRawProofItemForNegativeControl({
       harness,
       itemCase,
-      itemCbor: `${itemCase.itemCborHex}00`,
+      fieldPreimage: `${itemCase.fieldPreimageHex}00`,
     });
     await expect(
       submitSemanticProof({

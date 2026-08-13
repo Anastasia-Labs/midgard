@@ -8,16 +8,6 @@ const emptyFrontier = {
   count: 0,
   peaks: [],
 } as const;
-const collectionProof = {
-  version: 1,
-  fieldIndex: 0,
-  itemCount: 1,
-  itemIndex: 0,
-  itemLength: 1,
-  itemCommitment: hash(0x11),
-  frontier: emptyFrontier,
-  siblings: [],
-} as const;
 const chunkProof = {
   version: 1,
   fieldIndex: 0,
@@ -29,6 +19,16 @@ const chunkProof = {
   siblings: [],
 } as const;
 const signerProof = { kind: "none" } as const;
+/**
+ * #597. The four §8-door constructors name a `FieldCarriageV1` now. Tier-1
+ * `Inline` is what the trace producer emits, so it is what this fixture pins;
+ * the tier byte is the frozen part (Inline 0 / RawUtxo 1 / Certified 2) and the
+ * preimage is the §5.1 envelope of one one-byte item.
+ */
+const carriage = {
+  carriage: "Inline",
+  preimage: bytes("81411a"),
+} as const;
 const emptySummary = {
   root: Buffer.alloc(0),
   cborLength: 0n,
@@ -165,16 +165,16 @@ export const canonicalValidationAuxiliaryWitnesses = [
     1,
     auxiliary({
       kind: "transactionFieldChunk",
-      collectionProof,
-      chunkProof,
+      fieldIndex: 0,
+      itemIndex: 0,
+      carriage,
     }),
   ],
   [
     2,
     auxiliary({
       kind: "requiredSignerItem",
-      collectionProof,
-      chunkProof,
+      carriage,
       signerProof,
     }),
   ],
@@ -480,15 +480,14 @@ export const canonicalValidationAuxiliaryWitnesses = [
     29,
     auxiliary({
       kind: "transactionRedeemerItemBegin",
-      collectionProof,
+      carriage,
     }),
   ],
   [
     30,
     auxiliary({
       kind: "transactionFieldItem",
-      collectionProof,
-      itemCbor: bytes("22"),
+      carriage,
     }),
   ],
   [

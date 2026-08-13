@@ -75,7 +75,6 @@ import {
   type MidgardValidationPhaseName,
   type MidgardValidationTraceTree,
   parseMidgardMpfProofJsonV1,
-  verifyMidgardBoundedCollectionItemProofV1,
 } from "@al-ft/midgard-core";
 import {
   decodeMidgardAddressBytes,
@@ -104,6 +103,11 @@ import {
   readCborMapHeader,
   readCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
+import {
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  type MidgardFieldCarriageV1,
+  selectMidgardFieldCarriageTierV1,
+} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
@@ -173,25 +177,18 @@ import type { QueuedTx, RejectCode, RejectedTx } from "./types.js";
  * no caller treats it as such. What it feeds is the machine's proof-step trace,
  * whose on-chain twin is `lib/midgard/validation-machine-v1.ak`.
  *
- * It therefore survives the flat reversion's consumer swap (#585) deliberately:
- * re-pointing the machine's witness idiom onto §8 carriage and
- * `authenticated_field_view` is the Phase-3 machine rework, and the
- * `validation_machine_v1.test` rows that are red under the fork runner today are
- * that rework's on-chain half. Both halves move together, owned by **#592** —
- * moving this half alone would be the same half-swap #585 exists to avoid. (#579
- * owns only the single blueprint regeneration #592 has to land before, not this
- * rework.)
- *
- * **How large "both halves" is, measured rather than estimated (#593).** The
- * on-chain half is not the two `verify_canonical_decode_*` predicates #592's body
- * names: the counted opening occurs at fifteen sites across eight machine phases,
- * and nine of them reach their evidence through the single
- * `TransactionFieldChunkWitness` constructor. So this trace cannot be retired for
- * one phase at a time either — the constructor's fields change once, for every
- * phase at once, and this producer moves with them. #593 carries the site list and
- * the two rulings (which §8 carriage tiers a machine step may name, and how an
- * ungrammatical *committed* preimage is rejected rather than aborted) that have to
- * land before either half can be written.
+ * **It survived the rebind, and the correction is worth stating (#592 → #597).**
+ * The docstrings here used to promise that this trace "retires with the
+ * openings". That is true only of the per-item *collection* opening, which is
+ * gone: `bounded_collection_v1.verify_item` no longer runs in the machine and
+ * `verifyMachineFieldItemV1` retired with it. What did not go is the walk — the
+ * machine still steps item-major then chunk-major, four phases still hand a
+ * partially-read item forward under a genuine `bounded_item_v1` root, and five
+ * suites use these functions for step counting and size measurement. What changed
+ * is the *provenance* of that root: it is derived from bytes the §8 door
+ * authenticated against the flat §4 field commitment, rather than asserted by a
+ * prover's `ItemProofV1`. So the structure stays and the claim it used to make
+ * about the committed field is gone.
  *
  * What *did* change with the reversion is the input: the items come from §5.1's
  * one uniform enveloped byte-list decode, replacing the retired counted-era
@@ -303,62 +300,106 @@ export const countedMachineFieldChunkStepsV1 = (
   return steps;
 };
 
-/**
- * Checks one `transactionFieldItem` opening against the machine's own trace for
- * that field, and returns the item bytes.
+/*
+ * `verifyMachineFieldItemV1` used to live here and is retired (#597, the
+ * TypeScript twin of #592's wire change). It checked one `transactionFieldItem`
+ * opening against the machine's own trace for that field — and the machine
+ * verifies no openings any more. Under §8 the door authenticates the whole §5.1
+ * preimage once against the flat §4 commitment and an item is a slice of it, so
+ * there is no per-item opening for a caller to hand over and nothing left for
+ * this function to check. Its seven mutation rows retire with it: count,
+ * ordering, swap, substitution, trailing-byte and field-substitution mutations
+ * are all mutations of a preimage the door refuses by aborting (§7.3), which is
+ * fail-closed but not a `False` an off-chain predicate can observe.
  *
- * **This is not a §4 field-commitment check, and it must not be read as one.**
- * The retired `verifyMidgardV1TxFieldItem` in `midgard-core` took its expected
- * root from the compact structure in view, which is what made it a claim about
- * the *committed* field; under §4 a field commits to a flat hash of its whole
- * preimage and a per-item Merkle opening has nothing to be checked against. What
- * this verifies is internal consistency of the machine's trace: that a claimed
- * opening belongs to the collection the machine actually built from the field's
- * §5.1 items, at the index and count it claims.
- *
- * A caller that wants the field itself authenticated calls
+ * A caller that wants a field authenticated calls
  * `verifyMidgardV1TxFieldPreimage`, once, over the whole preimage.
  */
-export const verifyMachineFieldItemV1 = ({
-  fieldIndex,
-  preimageCbor,
-  collectionProof,
-  itemCbor,
-}: {
+
+/**
+ * Raised when §8.4's partition selects a carriage tier this producer cannot
+ * build, which today is anything above tier 1.
+ *
+ * **It is a refusal, not a failure.** Tiers 2–3 name their preimage by
+ * *positional reference-input index*, and §8.7 requires those indices to be
+ * resolved by **content** against a concrete transaction's canonically-sorted
+ * reference-input set (`resolveChunkReferenceIndicesV1` in
+ * `@al-ft/midgard-sdk`). A trace has no transaction, so the indices do not exist
+ * yet — and `buildValidationOneStepArgumentV1` hashes this auxiliary straight
+ * into the committed one-step evidence, so there is no later seam at which a
+ * submitter could substitute them. The two honest answers are therefore to
+ * refuse or to open that seam; opening it is {@link
+ * https://github.com/Anastasia-Labs/midgard/issues/600 #600}.
+ *
+ * The dishonest answers are both refused here rather than left available. A
+ * tier-1 `Inline` carriage above the cap is not merely large: §8.4 is a
+ * *partition*, not a preference, so it names a tier the partition does not admit
+ * for that length — and it is refused by the L1 transaction size in any case
+ * (`onchain/aiken/lib/midgard/validation-machine-v1.ak:9189-9192` says so in
+ * terms). Fabricated reference-input indices would produce evidence whose
+ * `evidence_hash` no transaction can satisfy. Either would be a producer that
+ * emits proofs nobody can submit, which is the class this program retires.
+ */
+export class ValidationMachineCarriageTierUnsupportedErrorV1 extends Error {
+  override readonly name = "ValidationMachineCarriageTierUnsupportedErrorV1";
   readonly fieldIndex: number;
-  readonly preimageCbor: Uint8Array;
-  readonly collectionProof: MidgardBoundedCollectionItemProofV1;
-  readonly itemCbor: Uint8Array;
-}): Buffer => {
-  const bytes = Buffer.from(itemCbor);
-  if (collectionProof.itemLength !== bytes.length) {
-    throw new Error(
-      "machine field item length does not match its collection proof",
+  readonly preimageLength: number;
+  readonly selectedTier: "RawUtxo" | "Certified";
+  readonly maxTier1PreimageBytes: number;
+  readonly followUpIssue = 600;
+
+  constructor({
+    fieldIndex,
+    preimageLength,
+    selectedTier,
+  }: {
+    readonly fieldIndex: number;
+    readonly preimageLength: number;
+    readonly selectedTier: "RawUtxo" | "Certified";
+  }) {
+    super(
+      `V1 field ${fieldIndex.toString()} has a ${preimageLength.toString()}-byte §5.1 preimage, ` +
+        `which §8.4's partition carries as tier-${selectedTier === "RawUtxo" ? "2" : "3"} ` +
+        `\`${selectedTier}\` rather than tier-1 \`Inline\` (cap ` +
+        `${MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1.toString()} bytes). The validation ` +
+        "trace producer cannot name reference inputs: tiers 2-3 index them positionally and " +
+        "§8.7 resolves those indices by content against a concrete transaction, which a trace " +
+        "does not have. Emitting tier-1 anyway would name a carriage the partition does not " +
+        "admit, and fabricating indices would commit an evidence hash no transaction can " +
+        "satisfy — so this refuses instead. The carriage-resolution seam is " +
+        "https://github.com/Anastasia-Labs/midgard/issues/600.",
     );
+    this.fieldIndex = fieldIndex;
+    this.preimageLength = preimageLength;
+    this.selectedTier = selectedTier;
+    this.maxTier1PreimageBytes = MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1;
   }
-  const trace = countedMachineFieldTraceV1(fieldIndex, preimageCbor);
-  if (
-    !verifyMidgardBoundedCollectionItemProofV1({
-      expectedCommitment: trace.commitment,
-      proof: collectionProof,
-    })
-  ) {
-    throw new Error(
-      "machine field item opening does not belong to the field's trace",
-    );
-  }
-  if (
-    !buildMidgardBoundedItemV1({
+}
+
+/**
+ * The §8 carriage one machine step names for one committed field.
+ *
+ * The tier comes from `selectMidgardFieldCarriageTierV1` — §8.4's own partition —
+ * rather than from a choice made here, because a preimage has exactly one
+ * admissible carriage for its length. Within tier 1 that is `Inline`: the step's
+ * redeemer carries the preimage and the door hashes it once against the flat §4
+ * commitment. Above tier 1 this refuses; see {@link
+ * ValidationMachineCarriageTierUnsupportedErrorV1} for why refusing is the
+ * correct answer rather than a gap left open.
+ */
+export const machineFieldCarriageV1 = (
+  fieldIndex: number,
+  preimageCbor: Uint8Array,
+): MidgardFieldCarriageV1 => {
+  const tier = selectMidgardFieldCarriageTierV1(preimageCbor.length);
+  if (tier !== "Inline") {
+    throw new ValidationMachineCarriageTierUnsupportedErrorV1({
       fieldIndex,
-      itemIndex: collectionProof.itemIndex,
-      bytes,
-    }).commitment.equals(collectionProof.itemCommitment)
-  ) {
-    throw new Error(
-      "machine field item does not match its authenticated commitment",
-    );
+      preimageLength: preimageCbor.length,
+      selectedTier: tier,
+    });
   }
-  return bytes;
+  return { carriage: "Inline", preimage: Buffer.from(preimageCbor) };
 };
 
 /** Every field's chunk steps, field-major — the whole-transaction walk order. */
@@ -652,14 +693,38 @@ export type ValidationMachineWorkWitness = {
   readonly cbor: Buffer;
   readonly auxiliary:
     | {
+        /**
+         * One item of one committed field, reached through §8's door. Nine of
+         * the machine's fifteen per-item sites match this arm, across all eight
+         * phases that read a field.
+         *
+         * It used to carry a counted `(collectionProof, chunkProof)` pair
+         * checked against the §4 flat field commitment — a predicate no honest
+         * prover could satisfy (#592). What replaces the pair is not a smaller
+         * proof but *no* proof: the carriage names where the field's preimage
+         * is, the door authenticates the whole preimage once against the flat
+         * commitment, and the item is then a slice.
+         *
+         * `fieldIndex` is on the wire because §4 removed field-index domain
+         * separation and two phases read more than one slot — `canonicalDecode`,
+         * which walks all nine from its own control, and `inputSets`, which
+         * alternates fields 0 and 1. `itemIndex` is on the wire because two
+         * sites let the prover choose the item order and the claimed successor
+         * pins it.
+         */
         readonly kind: "transactionFieldChunk";
-        readonly collectionProof: MidgardBoundedCollectionItemProofV1;
-        readonly chunkProof: MidgardBoundedItemChunkProofV1;
+        readonly fieldIndex: number;
+        readonly itemIndex: number;
+        readonly carriage: MidgardFieldCarriageV1;
       }
     | {
+        /**
+         * `canonicalDecode`'s complete-item step: one item read whole rather
+         * than chunk by chunk. Field index and item index come from the phase's
+         * control, so the carriage is the entire wire surface.
+         */
         readonly kind: "transactionFieldItem";
-        readonly collectionProof: MidgardBoundedCollectionItemProofV1;
-        readonly itemCbor: Buffer;
+        readonly carriage: MidgardFieldCarriageV1;
       }
     | {
         readonly kind: "ledgerOutputProofBegin";
@@ -678,9 +743,13 @@ export type ValidationMachineWorkWitness = {
         readonly signerProof: ValidationMachineSignerSetProof;
       }
     | {
+        /**
+         * A field-4 required-signer item plus the signer-set membership
+         * evidence the step decides on. No field or item index: the field is 4
+         * by construction and the item index is `control.required_seen`.
+         */
         readonly kind: "requiredSignerItem";
-        readonly collectionProof: MidgardBoundedCollectionItemProofV1;
-        readonly chunkProof: MidgardBoundedItemChunkProofV1;
+        readonly carriage: MidgardFieldCarriageV1;
         readonly signerProof: ValidationMachineSignerSetProof;
       }
     | {
@@ -747,8 +816,15 @@ export type ValidationMachineWorkWitness = {
         readonly siblings: readonly Buffer[];
       }
     | {
+        /**
+         * `scriptSources` stage 1 (field 8, one redeemer item) and stage 4
+         * (field 2, one output item). Both stages need the item's length and its
+         * `bounded_item_v1` commitment and never look at its bytes, so the
+         * door's derived commitment is all the carriage has to yield; field
+         * index and item index are fixed by the stage and its cursor.
+         */
         readonly kind: "transactionRedeemerItemBegin";
-        readonly collectionProof: MidgardBoundedCollectionItemProofV1;
+        readonly carriage: MidgardFieldCarriageV1;
       }
     | {
         readonly kind: "nativeExecutionScan";
@@ -1734,6 +1810,17 @@ export const buildDeterministicValidationMachineTrace = (
         fieldIndex,
         fieldPreimages[fieldIndex]!.preimageCbor,
       );
+    /**
+     * The §8 carriage every field-reading step names. One helper rather than
+     * thirteen call-site expressions, because the tier policy is one decision:
+     * §8.4's partition picks it, and the refusal above tier 1 (#600) has to be
+     * identical at every site or a caller would meet it at some and not others.
+     */
+    const fieldCarriage = (fieldIndex: number): MidgardFieldCarriageV1 =>
+      machineFieldCarriageV1(
+        fieldIndex,
+        fieldPreimages[fieldIndex]!.preimageCbor,
+      );
     const spendInputsCollection = machineFieldTrace(0);
     const referenceInputsCollection = machineFieldTrace(1);
     const outputsCollection = machineFieldTrace(2);
@@ -2547,10 +2634,6 @@ export const buildDeterministicValidationMachineTrace = (
       let itemCount = -1;
       let encodedLength = 0;
       for (const item of collection.items) {
-        const collectionProof = buildMidgardBoundedCollectionItemProofV1(
-          collection,
-          item.itemIndex,
-        );
         if (
           item.bytes.length <=
           MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes
@@ -2570,8 +2653,7 @@ export const buildDeterministicValidationMachineTrace = (
             ]),
             {
               kind: "transactionFieldItem",
-              collectionProof,
-              itemCbor: Buffer.from(item.bytes),
+              carriage: fieldCarriage(field.fieldIndex),
             },
           );
           if (itemCount === -1) {
@@ -2601,8 +2683,9 @@ export const buildDeterministicValidationMachineTrace = (
             ]),
             {
               kind: "transactionFieldChunk",
-              collectionProof,
-              chunkProof: buildMidgardBoundedItemChunkProofV1(item, chunkIndex),
+              fieldIndex: field.fieldIndex,
+              itemIndex: item.itemIndex,
+              carriage: fieldCarriage(field.fieldIndex),
             },
           );
           if (itemCount === -1) {
@@ -2671,11 +2754,12 @@ export const buildDeterministicValidationMachineTrace = (
           const key = scan.item.bytes;
           pushWitness("inputSets", currentInputSetsWitness(), {
             kind: "transactionFieldChunk",
-            collectionProof: buildMidgardBoundedCollectionItemProofV1(
-              scan.collection,
-              scan.item.itemIndex,
-            ),
-            chunkProof: buildMidgardBoundedItemChunkProofV1(scan.item, 0),
+            // `inputSets` is one of the two phases that read more than one slot
+            // — fields 0 and 1, alternating — so the index comes off the scan's
+            // own collection rather than a literal.
+            fieldIndex: scan.collection.fieldIndex,
+            itemIndex: scan.item.itemIndex,
+            carriage: fieldCarriage(scan.collection.fieldIndex),
           });
           if (previousKey.length > 0 && key.equals(previousKey)) {
             if (
@@ -2769,11 +2853,9 @@ export const buildDeterministicValidationMachineTrace = (
           const scan = addressWitnessScanItems[index]!;
           pushSignatureWitness({
             kind: "transactionFieldChunk",
-            collectionProof: buildMidgardBoundedCollectionItemProofV1(
-              addressWitnessesCollection,
-              scan.item.itemIndex,
-            ),
-            chunkProof: buildMidgardBoundedItemChunkProofV1(scan.item, 0),
+            fieldIndex: MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX,
+            itemIndex: scan.item.itemIndex,
+            carriage: fieldCarriage(MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX),
           });
           if (
             signatureControl.previousOrderKey.length > 0 &&
@@ -2881,11 +2963,9 @@ export const buildDeterministicValidationMachineTrace = (
           const signerProof = signerProofForHash(item.bytes);
           pushSignatureWitness({
             kind: "requiredSignerItem",
-            collectionProof: buildMidgardBoundedCollectionItemProofV1(
-              requiredSignersCollection,
-              item.itemIndex,
-            ),
-            chunkProof: buildMidgardBoundedItemChunkProofV1(item, 0),
+            // No field or item index on the wire: the field is 4 by
+            // construction and the item index is `control.required_seen`.
+            carriage: fieldCarriage(4),
             signerProof,
           });
           if (signerProof.kind !== "membership") {
@@ -2986,11 +3066,9 @@ export const buildDeterministicValidationMachineTrace = (
               : phaseANativeControl.scriptCount;
           pushPhaseANativeWitness({
             kind: "transactionFieldChunk",
-            collectionProof: buildMidgardBoundedCollectionItemProofV1(
-              scriptWitnessesCollection,
-              item.itemIndex,
-            ),
-            chunkProof: buildMidgardBoundedItemChunkProofV1(item, 0),
+            fieldIndex: MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX,
+            itemIndex: item.itemIndex,
+            carriage: fieldCarriage(MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX),
           });
 
           let header: ValidationMachineVersionedScriptHeaderV1;
@@ -3314,11 +3392,9 @@ export const buildDeterministicValidationMachineTrace = (
           currentPreconditionsWitness(),
           {
             kind: "transactionFieldChunk",
-            collectionProof: buildMidgardBoundedCollectionItemProofV1(
-              requiredObserversCollection,
-              observer.itemIndex,
-            ),
-            chunkProof: buildMidgardBoundedItemChunkProofV1(observer, 0),
+            fieldIndex: 3,
+            itemIndex: observer.itemIndex,
+            carriage: fieldCarriage(3),
           },
         );
         if (
@@ -3550,11 +3626,9 @@ export const buildDeterministicValidationMachineTrace = (
           for (const item of scriptWitnessesCollection.items) {
             pushWitness("scriptSources", currentInlineSourceWitness(), {
               kind: "transactionFieldChunk",
-              collectionProof: buildMidgardBoundedCollectionItemProofV1(
-                scriptWitnessesCollection,
-                item.itemIndex,
-              ),
-              chunkProof: buildMidgardBoundedItemChunkProofV1(item, 0),
+              fieldIndex: MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX,
+              itemIndex: item.itemIndex,
+              carriage: fieldCarriage(MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX),
             });
             if (inlineSourceTotalCount === 0) {
               inlineSourceTotalCount = scriptWitnessesCollection.items.length;
@@ -3747,10 +3821,10 @@ export const buildDeterministicValidationMachineTrace = (
             }
             pushWitness("scriptSources", currentRedeemerWitness(), {
               kind: "transactionRedeemerItemBegin",
-              collectionProof: buildMidgardBoundedCollectionItemProofV1(
-                redeemerWitnessesCollection,
-                item.itemIndex,
-              ),
+              // Stage 1: field 8, item index `control.redeemer_count`. Both are
+              // fixed by the stage and its cursor, so the carriage is the whole
+              // wire surface.
+              carriage: fieldCarriage(8),
             });
             if (redeemerTotalCount === 0) {
               redeemerTotalCount = redeemerWitnessesCollection.items.length;
@@ -4015,18 +4089,29 @@ export const buildDeterministicValidationMachineTrace = (
                   ),
                 );
               }
-              // Stage 4 folds only the authenticated collection-proof tuple;
-              // the item bytes are established by canonicalDecode and the
-              // stage-5 output traversal, so revealing them here would make
-              // the one-step evidence grow with output size and exceed the
-              // L1 envelope for legal 16,384-byte outputs (C21-STAGE4-GAP,
+              // Stage 4 folds only the authenticated
+              // (field_index, item_index, item_length, item_commitment) tuple,
+              // all four of which the door *derives* from the authenticated
+              // preimage. The item bytes are still not revealed here, and the
+              // reason is unchanged: revealing them re-proves only that an
+              // authenticated commitment has a preimage — which canonicalDecode
+              // and the stage-5 output traversal already establish — while
+              // making the one-step evidence grow with output size and exceed
+              // the L1 envelope for legal 16,384-byte outputs (C21-STAGE4-GAP,
               // Option A).
+              //
+              // What *has* changed is where the size now comes from. The
+              // carriage keeps this redeemer O(1) in output size only under
+              // tiers 2-3, where the preimage rides reference inputs
+              // (`onchain/aiken/lib/midgard/validation-machine-v1.ak:9189`).
+              // This producer can only emit tier 1, so above the 14,336-byte
+              // tier-1 cap `fieldCarriage` refuses by name rather than emitting
+              // a step no prover could submit — #600 opens the seam that lets
+              // it emit tiers 2-3 and restores the closure to every admissible
+              // output size.
               pushWitness("scriptSources", currentOutputCommitmentWitness(), {
                 kind: "transactionRedeemerItemBegin",
-                collectionProof: buildMidgardBoundedCollectionItemProofV1(
-                  outputsCollection,
-                  item.itemIndex,
-                ),
+                carriage: fieldCarriage(2),
               });
               if (outputTotalCount === 0) {
                 outputTotalCount = outputsCollection.items.length;
@@ -4257,14 +4342,9 @@ export const buildDeterministicValidationMachineTrace = (
                   }),
                   {
                     kind: "transactionFieldChunk",
-                    collectionProof: buildMidgardBoundedCollectionItemProofV1(
-                      mintCollection,
-                      policyItem.itemIndex,
-                    ),
-                    chunkProof: buildMidgardBoundedItemChunkProofV1(
-                      policyItem,
-                      0,
-                    ),
+                    fieldIndex: 5,
+                    itemIndex: policyItem.itemIndex,
+                    carriage: fieldCarriage(5),
                   },
                 );
                 const itemHeader = readCborArrayHeader(
@@ -4459,11 +4539,9 @@ export const buildDeterministicValidationMachineTrace = (
               for (const observer of requiredObserversCollection.items) {
                 pushWitness("scriptSources", currentObserverPurposeWitness(), {
                   kind: "transactionFieldChunk",
-                  collectionProof: buildMidgardBoundedCollectionItemProofV1(
-                    requiredObserversCollection,
-                    observer.itemIndex,
-                  ),
-                  chunkProof: buildMidgardBoundedItemChunkProofV1(observer, 0),
+                  fieldIndex: 3,
+                  itemIndex: observer.itemIndex,
+                  carriage: fieldCarriage(3),
                 });
                 if (observerTotalCount === 0) {
                   observerTotalCount = requiredObserversCollection.items.length;
@@ -6222,11 +6300,9 @@ export const buildDeterministicValidationMachineTrace = (
                 }),
                 {
                   kind: "transactionFieldChunk",
-                  collectionProof: buildMidgardBoundedCollectionItemProofV1(
-                    requiredObserversCollection,
-                    observer.itemIndex,
-                  ),
-                  chunkProof: buildMidgardBoundedItemChunkProofV1(observer, 0),
+                  fieldIndex: 3,
+                  itemIndex: observer.itemIndex,
+                  carriage: fieldCarriage(3),
                 },
               );
               contextControl = {

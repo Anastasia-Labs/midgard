@@ -1,4 +1,5 @@
-import { buildMidgardBoundedItemV1 } from "@al-ft/midgard-core";
+import { encodeMidgardFieldPreimageV1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -9,34 +10,34 @@ import {
   type ValidationTraceDisputeFaultProofContracts,
 } from "../src/fraud-proof/index.js";
 
-const makeCollectionProof = (itemCbor: string) => {
-  const item = buildMidgardBoundedItemV1({
-    fieldIndex: 2,
-    itemIndex: 0,
-    bytes: Buffer.from(itemCbor, "hex"),
-  });
-  return {
-    version: 1n,
-    field_index: 2n,
-    item_count: 1n,
-    item_index: 0n,
-    item_length: BigInt(item.bytes.length),
-    item_commitment: item.commitment.toString("hex"),
-    frontier: [{ height: 0n, hash: "22".repeat(32) }],
-    siblings: [],
-  };
-};
+/**
+ * #597. The publication's unit is the field's whole §5.1 preimage, not one item
+ * with an opening into it: under §4 a field commits to a flat `blake2b_256` over
+ * its preimage bytes, so a per-item opening has nothing to be checked against.
+ * The Aiken twin is `ValidationProofItemDatumV1` in
+ * `onchain/aiken/lib/midgard/validation-machine-v1.ak:421`, and
+ * `canonical_decode_item_semantic_v1.proof_item_from_reference` is what reads it
+ * back — as `Inline { preimage }`, constructed by the validator rather than
+ * named by the prover.
+ *
+ * Every preimage below comes from `encodeMidgardFieldPreimageV1`, the §5.1
+ * envelope encoder, rather than being spelled by hand here.
+ */
+const preimageOf = (...items: readonly string[]): string =>
+  encodeMidgardFieldPreimageV1(
+    items.map((item) => Buffer.from(item, "hex")),
+  ).toString("hex");
 
-const collectionProof = makeCollectionProof("8200");
+const fieldPreimage = preimageOf("8200");
 
 describe("validation proof-item publication V1", () => {
-  it("encodes the complete canonical item and its authenticated descriptor", () => {
+  it("encodes the committed field preimage and its dispute binding", () => {
     const publication = deriveValidationProofItemPublicationV1({
       transactionId: "33".repeat(32),
       transactionCommitment: "44".repeat(32),
-      collectionProof,
-      itemCbor: "8200",
+      fieldPreimage,
     });
+    expect(publication.datum.field_preimage).toBe(fieldPreimage);
     expect(
       Data.from(publication.datumCbor, ValidationProofItemDatumV1),
     ).toEqual(publication.datum);
@@ -45,74 +46,45 @@ describe("validation proof-item publication V1", () => {
     );
   });
 
-  it("rejects malformed identities and item bytes before transaction construction", () => {
+  it("rejects malformed identities and preimage bytes before transaction construction", () => {
     expect(() =>
       deriveValidationProofItemPublicationV1({
         transactionId: "33".repeat(31),
         transactionCommitment: "44".repeat(32),
-        collectionProof,
-        itemCbor: "8200",
+        fieldPreimage,
       }),
     ).toThrow(/transaction id/u);
     expect(() =>
       deriveValidationProofItemPublicationV1({
         transactionId: "33".repeat(32),
+        transactionCommitment: "44".repeat(31),
+        fieldPreimage,
+      }),
+    ).toThrow(/transaction commitment/u);
+    expect(() =>
+      deriveValidationProofItemPublicationV1({
+        transactionId: "33".repeat(32),
         transactionCommitment: "44".repeat(32),
-        collectionProof,
-        itemCbor: "xyz",
+        fieldPreimage: "xyz",
       }),
     ).toThrow(/hexadecimal CBOR/u);
-  });
-
-  it("rejects compact length, commitment, and index mismatches", () => {
+    // §5.1's empty field is the one-byte header `80`, so a genuinely empty byte
+    // string is a caller's mistake in every case and never a publishable field.
     expect(() =>
       deriveValidationProofItemPublicationV1({
         transactionId: "33".repeat(32),
         transactionCommitment: "44".repeat(32),
-        collectionProof: { ...collectionProof, item_length: 3n },
-        itemCbor: "8200",
+        fieldPreimage: "",
       }),
-    ).toThrow(/length/u);
-    expect(() =>
-      deriveValidationProofItemPublicationV1({
-        transactionId: "33".repeat(32),
-        transactionCommitment: "44".repeat(32),
-        collectionProof: {
-          ...collectionProof,
-          item_commitment: "ff".repeat(32),
-        },
-        itemCbor: "8200",
-      }),
-    ).toThrow(/commitment/u);
-    expect(() =>
-      deriveValidationProofItemPublicationV1({
-        transactionId: "33".repeat(32),
-        transactionCommitment: "44".repeat(32),
-        collectionProof: { ...collectionProof, item_index: -1n },
-        itemCbor: "8200",
-      }),
-    ).toThrow(/item index/u);
-    expect(() =>
-      deriveValidationProofItemPublicationV1({
-        transactionId: "33".repeat(32),
-        transactionCommitment: "44".repeat(32),
-        collectionProof: {
-          ...collectionProof,
-          field_index: BigInt(Number.MAX_SAFE_INTEGER) + 1n,
-        },
-        itemCbor: "8200",
-      }),
-    ).toThrow(/field index/u);
+    ).toThrow(/must not be empty/u);
   });
 
   it("round-trips the publication datum exactly and rejects mutated wire forms", () => {
-    const roundTripItem = "820182018201820082008200";
-    const roundTripProof = makeCollectionProof(roundTripItem);
+    const roundTripPreimage = preimageOf("820182018201820082008200", "8201");
     const publication = deriveValidationProofItemPublicationV1({
       transactionId: "33".repeat(32),
       transactionCommitment: "44".repeat(32),
-      collectionProof: roundTripProof,
-      itemCbor: roundTripItem,
+      fieldPreimage: roundTripPreimage,
     });
     const exactDecode = (cbor: string): ValidationProofItemDatumV1 => {
       const decoded = Data.from(cbor, ValidationProofItemDatumV1);
@@ -121,7 +93,9 @@ describe("validation proof-item publication V1", () => {
       }
       return decoded;
     };
-    expect(exactDecode(publication.datumCbor).item_cbor).toBe(roundTripItem);
+    expect(exactDecode(publication.datumCbor).field_preimage).toBe(
+      roundTripPreimage,
+    );
 
     // Trailing data after the exact datum rejects.
     expect(() => exactDecode(`${publication.datumCbor}00`)).toThrow();
@@ -140,51 +114,45 @@ describe("validation proof-item publication V1", () => {
       substitutionRejected = true;
     }
     expect(substitutionRejected).toBe(true);
-    // Omission of the item bytes fails before a datum is constructed.
-    expect(() =>
-      deriveValidationProofItemPublicationV1({
-        transactionId: "33".repeat(32),
-        transactionCommitment: "44".repeat(32),
-        collectionProof: roundTripProof,
-        itemCbor: "",
-      }),
-    ).toThrow(/length/u);
-    // Duplicated item bytes fail the exact-length guard as well.
-    expect(() =>
-      deriveValidationProofItemPublicationV1({
-        transactionId: "33".repeat(32),
-        transactionCommitment: "44".repeat(32),
-        collectionProof: roundTripProof,
-        itemCbor: roundTripItem.repeat(2),
-      }),
-    ).toThrow(/length/u);
+    // A preimage that differs only by item order is a different publication:
+    // §5.1's envelope is positional, so the datum cannot be reproduced.
+    const reorderedItems = deriveValidationProofItemPublicationV1({
+      transactionId: "33".repeat(32),
+      transactionCommitment: "44".repeat(32),
+      fieldPreimage: preimageOf("8201", "820182018201820082008200"),
+    });
+    expect(reorderedItems.datumCbor).not.toBe(publication.datumCbor);
     // Reordered identities bind differently: swapping the transaction id and
     // commitment cannot reproduce the same publication datum.
     const reordered = deriveValidationProofItemPublicationV1({
       transactionId: "44".repeat(32),
       transactionCommitment: "33".repeat(32),
-      collectionProof: roundTripProof,
-      itemCbor: roundTripItem,
+      fieldPreimage: roundTripPreimage,
     });
     expect(reordered.datumCbor).not.toBe(publication.datumCbor);
   });
 
-  it("accepts the complete canonical item up to the publication maximum without chunk inputs", () => {
-    const maxItemHex = "a5".repeat(14_396);
-    const maxCollectionProof = makeCollectionProof(maxItemHex);
+  it("accepts a field preimage up to the single-publication maximum", () => {
+    // The publication cap is measured on the complete signed transaction, and
+    // under §8 the bytes it carries are the field's preimage rather than one
+    // item — so the cap applies to the whole envelope this builds.
+    const maxPreimage = preimageOf(
+      "a5".repeat(
+        MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes - 8,
+      ),
+    );
     const publication = deriveValidationProofItemPublicationV1({
       transactionId: "33".repeat(32),
       transactionCommitment: "44".repeat(32),
-      collectionProof: maxCollectionProof,
-      itemCbor: maxItemHex,
+      fieldPreimage: maxPreimage,
     });
     const decoded = Data.from(
       publication.datumCbor,
       ValidationProofItemDatumV1,
     );
-    expect(decoded.item_cbor).toBe(maxItemHex);
-    expect(decoded.collection_proof.item_commitment).toBe(
-      maxCollectionProof.item_commitment,
+    expect(decoded.field_preimage).toBe(maxPreimage);
+    expect(Buffer.from(maxPreimage, "hex").length).toBeLessThanOrEqual(
+      MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
     );
   });
 
@@ -192,8 +160,7 @@ describe("validation proof-item publication V1", () => {
     const publication = deriveValidationProofItemPublicationV1({
       transactionId: "33".repeat(32),
       transactionCommitment: "44".repeat(32),
-      collectionProof,
-      itemCbor: "8200",
+      fieldPreimage,
     });
     const address = CML.Address.from_raw_bytes(
       Buffer.concat([Buffer.from([0x70]), Buffer.alloc(28, 0x55)]),

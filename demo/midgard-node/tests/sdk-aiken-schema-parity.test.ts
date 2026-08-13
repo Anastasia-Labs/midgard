@@ -80,7 +80,21 @@ const repoRoot = path.resolve(testDir, "../../..");
  * types the frozen blueprint never declared. That adds a **ninth** and **tenth**
  * red row, both of the missing-definition kind rather than the field-count kind.
  *
- * Measured on 2026-08-12 after #596: `10 failed | 22 passed (32)`; the same
+ * #597 moved the TypeScript twins of #592's machine wire change — four
+ * `ValidationAuxiliaryWitnessV1` constructors and `ValidationProofItemDatumV1` —
+ * and **adds no row and moves no figure**. That is a measured conclusion, not an
+ * oversight: both mappings were added, run, and removed again, because neither
+ * type can be compared here even against a regenerated blueprint. The reasoning
+ * is at the foot of `ABI_MAPPINGS`. The consequence worth carrying into #579 is
+ * that regenerating the blueprint will **not** surface that wire change here, so
+ * this file's clean bill after regeneration says nothing about it; the
+ * cross-language producer vector
+ * `typescript_generated_field_chunk_auxiliary_is_exact` in
+ * `onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak` is what
+ * covers it.
+ *
+ * Measured on 2026-08-12 after #596, and re-measured unchanged after #597:
+ * `10 failed | 22 passed (32)`; the same
  * command measured `8 failed | 22 passed (30)` after #594 and
  * `7 failed | 22 passed (29)` on 2026-08-10 after #587. Regenerating the
  * blueprint is [#579](https://github.com/Anastasia-Labs/midgard/issues/579)'s; all
@@ -235,6 +249,42 @@ const ABI_MAPPINGS = [
     "CanonicalDecodabilityStep02StateSchema",
     "midgard/fraud_proofs/canonical_decodability/step_02/State",
   ],
+  // **#597 adds no row, and that is a measured conclusion rather than an
+  // omission.** #592 moved two wire surfaces this file would naturally cover —
+  // four `ValidationAuxiliaryWitnessV1` constructors onto §8's `FieldCarriageV1`
+  // (1 `TransactionFieldChunkWitness`, 2 `RequiredSignerItemWitness`, 29
+  // `TransactionRedeemerItemBeginWitness`, 30 `TransactionFieldItemWitness`) and
+  // the whole of `ValidationProofItemDatumV1` — and #597 moved both TypeScript
+  // twins to match. Neither can be measured here, for two different reasons, and
+  // both were checked by adding the mapping and running it rather than reasoned
+  // about:
+  //
+  //   * `midgard/validation_machine_v1/ValidationAuxiliaryWitnessV1` **is** in
+  //     the blueprint, but `normalizeSchema` fully inlines `$ref`s and refuses a
+  //     definition that reappears while resolving. This sum reaches
+  //     `midgard/cek_builtin_v1/BlsExpressionWitnessV1` — genuinely recursive in
+  //     Aiken — through its `CekCoreStepWitness` arm, so the row fails on
+  //     `recursive ABI schema …` before it compares a single field, and would go
+  //     on failing after #579 regenerates.
+  //   * `midgard/validation_machine_v1/ValidationProofItemDatumV1` is in **no**
+  //     blueprint, frozen or regenerated. Measured against a scratch stock build
+  //     of this working tree (`MIDGARD_REAL_BLUEPRINT_PATH`), the definition is
+  //     still absent: the datum is read as `Data` off an `InlineDatum` inside
+  //     `canonical_decode_item_semantic_v1.proof_item_from_reference`, so it
+  //     never reaches a validator's declared ABI surface and Aiken emits no
+  //     definition for it. That row also cannot pass after regeneration.
+  //
+  // Both would therefore be gates that cannot pass, which is the mirror of the
+  // gate that cannot fail and no more use as a handoff signal. **So #592's wire
+  // change is invisible to this file by construction, not by staleness** — which
+  // is worth knowing for #579, because regenerating the blueprint will not
+  // surface it either. What pins those two surfaces instead is the cross-language
+  // producer vector `typescript_generated_field_chunk_auxiliary_is_exact` in
+  // `onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak`,
+  // emitted by `demo/midgard-validation/scripts/generate-validation-one-step-aiken-fixture.mjs`:
+  // it checks the bytes this TypeScript half emits against the Aiken decoder and
+  // the Aiken constructor's own field names, which is agreement between the two
+  // languages rather than agreement of each with a blueprint.
 ] as const;
 
 const VALIDITY_VECTORS = [

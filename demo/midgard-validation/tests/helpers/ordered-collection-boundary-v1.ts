@@ -18,6 +18,12 @@ import {
   MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_V1_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
+import {
+  encodeMidgardFieldPreimageV1,
+  type MidgardFieldCarriageV1,
+  selectMidgardFieldCarriageTierV1,
+  splitMidgardFieldPreimageIntoChunksV1,
+} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { deriveValidationProofItemPublicationV1 } from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -1903,13 +1909,27 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
     itemCount: fieldChunks[0]!.collectionProof.itemCount,
     revealStepCount: fieldChunks.length,
     completeFoldStepCount: completeChunks.length,
+    // #597: a step's reveal is its §8 carriage, and which carriage is not a
+    // choice — `selectMidgardFieldCarriageTierV1` is §8.4's partition, so a
+    // preimage of this length has exactly one admissible tier. Measuring the
+    // admitted tier is what makes this figure the reveal a prover actually
+    // submits: tier 1 carries the preimage in the redeemer, tiers 2–3 carry
+    // reference-input indices and are O(1) in field size, which is why every
+    // field fits the envelope.
+    //
+    // The indices below are representative, because this is a *size*
+    // measurement and a positional index is a small integer whichever UTxO it
+    // names. Resolving real ones needs a concrete transaction (§8.7 addresses
+    // carriage by content), which is exactly what the trace producer lacks and
+    // what https://github.com/Anastasia-Labs/midgard/issues/600 opens.
     maxRevealBytes: Math.max(
       ...fieldChunks.map(
         (chunk) =>
           encodeValidationAuxiliaryWitnessCborV1({
             kind: "transactionFieldChunk",
-            collectionProof: chunk.collectionProof,
-            chunkProof: chunk.chunkProof,
+            fieldIndex: chunk.collectionProof.fieldIndex,
+            itemIndex: chunk.collectionProof.itemIndex,
+            carriage: admissibleFieldCarriageV1(field.preimageCbor),
           }).length,
       ),
     ),
@@ -2415,17 +2435,46 @@ export type MidgardCompleteItemCarriageFitV1 = {
 };
 
 /**
+ * The §8 carriage §8.4's partition admits for a preimage of this length, shaped
+ * for measurement.
+ *
+ * Tier 1 is exact — the redeemer really does carry these bytes. Tiers 2–3 are
+ * shaped with representative positional indices: their wire size depends on the
+ * chunk *count*, which is fixed by the preimage length, and not on which UTxOs
+ * the indices name.
+ */
+const admissibleFieldCarriageV1 = (
+  preimageCbor: Buffer,
+): MidgardFieldCarriageV1 => {
+  const tier = selectMidgardFieldCarriageTierV1(preimageCbor.length);
+  if (tier === "Inline") {
+    return { carriage: "Inline", preimage: Buffer.from(preimageCbor) };
+  }
+  if (tier === "RawUtxo") {
+    return { carriage: "RawUtxo", refInputIndex: 0 };
+  }
+  return {
+    carriage: "Certified",
+    certRefInputIndex: 0,
+    chunkRefInputIndices: splitMidgardFieldPreimageIntoChunksV1(
+      preimageCbor,
+    ).map((_chunk, index) => index + 1),
+  };
+};
+
+/**
  * Measures whether a complete canonical proof item fits direct carriage and
  * single-publication reference carriage, before any bounded fallback is
  * considered. This is the §3.2 complete-item-first ordering: a fallback is
  * necessary only when both complete routes are measured to overflow.
  *
  * The publication side builds a real signed Conway transaction carrying the
- * complete item as the published inline datum, using the same framing as
- * `complete-item-proof-fit-v1.test.ts`. The collection proof is sized at the
- * deepest admissible shape (14 frontier peaks and 14 siblings under the
- * 16,384-item guardrail), so a reported fit is conservative: real shallower
- * collections can only produce a smaller transaction.
+ * published inline datum, using the same framing as
+ * `complete-item-proof-fit-v1.test.ts`. Since #597 that datum holds the field's
+ * whole §5.1 preimage rather than one item beside an opening into it, so what is
+ * published here is the single-item envelope of `itemCbor` — the smallest
+ * genuine field a complete-item step can name, which keeps the measurement a
+ * lower bound on the publication transaction rather than an invented shape.
  *
  * Direct carriage is decided by the production selector
  * `selectValidationCompleteItemCarriageV1`, whose bound is the applied
@@ -2469,20 +2518,7 @@ export const measureMidgardCompleteItemCarriageFitV1 = ({
   const publication = deriveValidationProofItemPublicationV1({
     transactionId: "44".repeat(32),
     transactionCommitment: "55".repeat(32),
-    collectionProof: {
-      version: 1n,
-      field_index: BigInt(fieldIndex),
-      item_count: 16_384n,
-      item_index: BigInt(itemIndex),
-      item_length: BigInt(itemCbor.length),
-      item_commitment: commitment.toString("hex"),
-      frontier: Array.from({ length: 14 }, (_, height) => ({
-        height: BigInt(height),
-        hash: "22".repeat(32),
-      })),
-      siblings: Array.from({ length: 14 }, () => "33".repeat(32)),
-    },
-    itemCbor: itemCbor.toString("hex"),
+    fieldPreimage: encodeMidgardFieldPreimageV1([itemCbor]).toString("hex"),
   });
   const signingKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 4));
   const address = CML.Address.from_raw_bytes(

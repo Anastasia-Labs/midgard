@@ -277,12 +277,39 @@ export const repoRoot = resolve(moduleDir, "../../../..");
  * handoff set, old and new, clears with the regeneration and none of them is a
  * shape disagreement hiding behind a stale definition.
  *
+ * **#597 leaves both figures exactly where they are, and that is the point of
+ * recording it here.** It moved the TypeScript twins of #592's machine wire
+ * change (four `ValidationAuxiliaryWitnessV1` constructors onto §8's
+ * `FieldCarriageV1`, plus `ValidationProofItemDatumV1`). Both mappings were added
+ * to the parity file, run, and removed again: `ValidationAuxiliaryWitnessV1`
+ * cannot be normalized there because it reaches a genuinely recursive Aiken
+ * definition through its CEK arm, and `ValidationProofItemDatumV1` has no
+ * blueprint definition at all — verified against a scratch stock build of the
+ * working tree, not only against the frozen file, because it is read as `Data`
+ * off an `InlineDatum` and never reaches a declared ABI surface. Both rows would
+ * be gates that cannot pass. **So the largest wire change in this lane is
+ * invisible to the parity gate by construction, and regeneration will not reveal
+ * it.** What covers it is the cross-language producer vector
+ * `typescript_generated_field_chunk_auxiliary_is_exact` in
+ * `onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak`.
+ *
+ * #597 does add one suite to the frozen-blueprint family, and it is **not** part
+ * of the sixteen because it is not a handoff row of this set — it is a whole
+ * suite that applies the committed validators:
+ * `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`
+ * moved from `1 failed | 5 passed (6)` to `5 failed | 1 passed (6)`. Its
+ * redeemers are #592's four-field `Verify` while the frozen compiled validator
+ * still expects five, so each row fails inside the script with
+ * `failed script execution Spend[1] unexpected empty list`. It clears with the
+ * same regeneration and is recorded in that file's own header.
+ *
  * SIXTEEN with those names is the handoff figure, and it is written down here
  * rather than left in a review thread so a later reviewer diffing #579 against it
  * is diffing against the real set. Nothing outside these sixteen is expected red
  * for this reason. Both figures were re-measured on 2026-08-12 after #596 — the
  * parity figure moved to ten red rows, the emulator figure held at the six it
- * has shown since #587:
+ * has shown since #587, and both were re-measured again on 2026-08-12 after
+ * #597 with neither moving:
  * `vitest run tests/submit-init-emulator-soundness.test.ts
  * tests/submit-init-emulator-transition-trace.test.ts
  * tests/submit-init-emulator-validation-dispute.test.ts --pool=forks

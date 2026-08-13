@@ -82,6 +82,9 @@ describe("C21 complete-item carriage production searches", () => {
     // canonicalDecode plus the stage-5 output traversal.
     expect(machineSource).toContain('kind: "transactionRedeemerItemBegin"');
     expect(machineSource).not.toContain("itemCbor: Buffer.from(outputCbor)");
+    // #597: the stage-4 witness carries a §8 carriage and nothing else, so the
+    // byte reveal cannot creep back in as an item field either.
+    expect(machineSource).not.toContain("itemCbor:");
   });
 
   it("pins the exact bounded-witness emitter inventory so new chunked producers reopen this row", () => {
@@ -105,7 +108,11 @@ describe("C21 complete-item carriage production searches", () => {
     expect(sdkProofItemSource).toContain(
       "deriveValidationProofItemPublicationV1",
     );
-    expect(sdkProofItemSource).toContain("itemCbor: string");
+    // #597: the publication's unit is the field's whole §5.1 preimage. §4
+    // commits a field by one flat hash over those bytes, so a per-item opening
+    // has nothing to be checked against and the API no longer names an item.
+    expect(sdkProofItemSource).toContain("fieldPreimage: string");
+    expect(sdkProofItemSource).not.toContain("itemCbor");
     // The publication surface accepts the complete canonical item only; no
     // chunk proofs, offsets, folds, or cursors appear in its API.
     for (const forbidden of ["chunk", "Chunk", "offset", "cursor", "fold"]) {
@@ -113,19 +120,14 @@ describe("C21 complete-item carriage production searches", () => {
     }
     // The complete-item witness constructor is still named on the wire.
     expect(sdkWitnessSource).toContain("TransactionFieldItemWitness");
-    // The datum rows below pin the SDK's **recorded** shape, which #592
-    // deliberately leaves where it is: the Aiken
-    // `ValidationProofItemDatumV1` is now
-    // `{ version, transaction_id, transaction_commitment, field_preimage }`
-    // (validation-machine-v1.ak:421), and moving the TypeScript half is #597's
-    // — the whole of that issue is this wire change's TypeScript twin, four
-    // `ValidationAuxiliaryWitnessV1` constructor schemas plus this datum schema.
-    // So the two halves disagree here, and that disagreement is the recorded
-    // state rather than a drift; it is invisible to `sdk-aiken-schema-parity`
-    // because that gate compares the SDK against the *committed* `plutus.json`,
-    // which #592 also freezes. When #597 lands, this list becomes
-    // `["version: Data.Integer()", the two 32-byte hashes,
-    // "field_preimage: Data.Bytes()"]` — and this row failing is what says so.
+    // #597 landed: the SDK datum now agrees with the Aiken
+    // `ValidationProofItemDatumV1`
+    // (`onchain/aiken/lib/midgard/validation-machine-v1.ak:421`) field for field.
+    // This row used to pin the *retired* shape deliberately, with a note saying
+    // what it would become; it is now the agreement itself. The blueprint rows
+    // further down still read the frozen `plutus.json`, so the disagreement that
+    // remains is the SDK against the stale blueprint — which is #579's single
+    // regeneration, not a language-half divergence.
     const datumBlock = sdkWitnessSource.slice(
       sdkWitnessSource.indexOf(
         "ValidationProofItemDatumV1Schema = Data.Object",
@@ -135,10 +137,28 @@ describe("C21 complete-item carriage production searches", () => {
       "version: Data.Integer()",
       "transaction_id: Data.Bytes({ minLength: 32, maxLength: 32 })",
       "transaction_commitment: Data.Bytes({ minLength: 32, maxLength: 32 })",
-      "collection_proof: BoundedCollectionItemProofV1Schema",
-      "item_cbor: Data.Bytes()",
+      "field_preimage: Data.Bytes()",
     ]) {
       expect(datumBlock).toContain(field);
+    }
+    // The retired pair must not reappear anywhere in the datum.
+    for (const retired of ["collection_proof", "item_cbor"]) {
+      expect(datumBlock).not.toContain(retired);
+    }
+    // And the four moved constructors name the §8 carriage, which is the half of
+    // #592's wire change that no blueprint gate can see (the sum reaches a
+    // recursive Aiken definition, so `sdk-aiken-schema-parity` cannot normalize
+    // it — see the note at its `ABI_MAPPINGS`).
+    for (const constructor of [
+      "TransactionFieldChunkWitness",
+      "RequiredSignerItemWitness",
+      "TransactionRedeemerItemBeginWitness",
+      "TransactionFieldItemWitness",
+    ]) {
+      const block = sdkWitnessSource.slice(
+        sdkWitnessSource.indexOf(`${constructor}: Data.Object({`),
+      );
+      expect(block.slice(0, 260)).toContain("carriage: FieldCarriageV1Schema");
     }
   });
 

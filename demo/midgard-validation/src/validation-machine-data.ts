@@ -1,6 +1,7 @@
+import type { MidgardFieldCarriageV1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+
 import type {
   MidgardBlake2b256TraceControlV1,
-  MidgardBoundedCollectionItemProofV1,
   MidgardBoundedItemChunkProofV1,
   MidgardCekDataBytesControlV1,
   MidgardCekDataFrameV1,
@@ -131,19 +132,25 @@ const ledgerDeltaOperationProofData = (
     byteList(membership.siblings),
   ]);
 
-const collectionProofData = (
-  proof: MidgardBoundedCollectionItemProofV1,
-): ConstructorData =>
-  record([
-    int(proof.version),
-    int(proof.fieldIndex),
-    int(proof.itemCount),
-    int(proof.itemIndex),
-    int(proof.itemLength),
-    bytes(proof.itemCommitment),
-    frontierPeaksData(proof.frontier),
-    byteList(proof.siblings),
-  ]);
+/**
+ * §8.8 `FieldCarriageV1` — how a field's preimage bytes reach the consuming
+ * transaction. Constructor order is frozen consensus wire format and mirrors
+ * `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak:168`: `Inline` 0,
+ * `RawUtxo` 1, `Certified` 2.
+ */
+const fieldCarriageData = (carriage: MidgardFieldCarriageV1): PlutusData => {
+  switch (carriage.carriage) {
+    case "Inline":
+      return new Constr(0, [bytes(carriage.preimage)]);
+    case "RawUtxo":
+      return new Constr(1, [int(carriage.refInputIndex)]);
+    case "Certified":
+      return new Constr(2, [
+        int(carriage.certRefInputIndex),
+        carriage.chunkRefInputIndices.map((index) => int(index)),
+      ]);
+  }
+};
 
 const chunkProofData = (
   proof: MidgardBoundedItemChunkProofV1,
@@ -1296,13 +1303,13 @@ export const validationAuxiliaryWitnessDataV1 = (
   switch (auxiliary.kind) {
     case "transactionFieldChunk":
       return new Constr(1, [
-        collectionProofData(auxiliary.collectionProof),
-        chunkProofData(auxiliary.chunkProof),
+        int(auxiliary.fieldIndex),
+        int(auxiliary.itemIndex),
+        fieldCarriageData(auxiliary.carriage),
       ]);
     case "requiredSignerItem":
       return new Constr(2, [
-        collectionProofData(auxiliary.collectionProof),
-        chunkProofData(auxiliary.chunkProof),
+        fieldCarriageData(auxiliary.carriage),
         signerProofData(auxiliary.signerProof),
       ]);
     case "nativeScriptToken":
@@ -1528,12 +1535,9 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.siblings),
       ]);
     case "transactionRedeemerItemBegin":
-      return new Constr(29, [collectionProofData(auxiliary.collectionProof)]);
+      return new Constr(29, [fieldCarriageData(auxiliary.carriage)]);
     case "transactionFieldItem":
-      return new Constr(30, [
-        collectionProofData(auxiliary.collectionProof),
-        bytes(auxiliary.itemCbor),
-      ]);
+      return new Constr(30, [fieldCarriageData(auxiliary.carriage)]);
     case "ledgerOutputProofBegin":
       return new Constr(31, [
         int(auxiliary.outputIndex),

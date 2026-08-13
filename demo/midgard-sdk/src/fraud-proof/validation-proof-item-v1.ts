@@ -1,4 +1,3 @@
-import { buildMidgardBoundedItemV1 } from "@al-ft/midgard-core";
 import {
   CML,
   Data,
@@ -7,8 +6,6 @@ import {
   type TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-
-import type { BoundedCollectionItemProofV1 } from "@/ledger-state.js";
 
 import type { ValidationTraceDisputeFaultProofContracts } from "./contracts.js";
 import {
@@ -21,17 +18,6 @@ const hash32 = (value: string, label: string): string => {
     throw new Error(`${label} must be 32-byte lowercase hex`);
   }
   return value;
-};
-
-const exactNonNegativeSafeInteger = (value: bigint, label: string): number => {
-  if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error(`${label} must be a non-negative safe integer`);
-  }
-  const exact = Number(value);
-  if (!Number.isSafeInteger(exact)) {
-    throw new Error(`${label} must be a non-negative safe integer`);
-  }
-  return exact;
 };
 
 export type ValidationProofItemPublicationV1 = {
@@ -90,43 +76,40 @@ export const minimumLovelaceForValidationProofItemPublicationV1 = ({
   );
 };
 
+/**
+ * Builds the publication a `CanonicalDecode` complete-item step reaches by
+ * reference input.
+ *
+ * **What it publishes is the field's whole §5.1 preimage, not one item** (#597,
+ * the TypeScript twin of #592's wire change). Under §4 a field commits to a flat
+ * `blake2b_256` over its preimage bytes, so a per-item opening has nothing to be
+ * checked against and the unit that authenticates is the preimage. The consuming
+ * step names this UTxO by reference-input index and never a tier;
+ * `canonical_decode_item_semantic_v1`'s `proof_item_from_reference` constructs
+ * `Inline { preimage }` from these bytes itself, so no prover can name a carriage
+ * the door was not going to hash.
+ *
+ * The two bindings are what make the publication non-fungible: a look-alike UTxO
+ * at the same address cannot pass a preimage off as belonging to a different
+ * dispute, because the door checks both against the step's pre-state.
+ */
 export const deriveValidationProofItemPublicationV1 = ({
   transactionId,
   transactionCommitment,
-  collectionProof,
-  itemCbor,
+  fieldPreimage,
 }: {
   readonly transactionId: string;
   readonly transactionCommitment: string;
-  readonly collectionProof: BoundedCollectionItemProofV1;
-  readonly itemCbor: string;
+  /** The §5.1 enveloped field preimage, lowercase hexadecimal. */
+  readonly fieldPreimage: string;
 }): ValidationProofItemPublicationV1 => {
-  if (!/^(?:[0-9a-f]{2})*$/u.test(itemCbor)) {
-    throw new Error("validation proof item must be lowercase hexadecimal CBOR");
-  }
-  const itemBytes = Buffer.from(itemCbor, "hex");
-  const fieldIndex = exactNonNegativeSafeInteger(
-    collectionProof.field_index,
-    "validation proof field index",
-  );
-  const itemIndex = exactNonNegativeSafeInteger(
-    collectionProof.item_index,
-    "validation proof item index",
-  );
-  if (collectionProof.item_length !== BigInt(itemBytes.length)) {
+  if (!/^(?:[0-9a-f]{2})*$/u.test(fieldPreimage)) {
     throw new Error(
-      "validation proof item length does not match collection proof",
+      "validation proof field preimage must be lowercase hexadecimal CBOR",
     );
   }
-  const item = buildMidgardBoundedItemV1({
-    fieldIndex,
-    itemIndex,
-    bytes: itemBytes,
-  });
-  if (item.commitment.toString("hex") !== collectionProof.item_commitment) {
-    throw new Error(
-      "validation proof item commitment does not match collection proof",
-    );
+  if (fieldPreimage.length === 0) {
+    throw new Error("validation proof field preimage must not be empty");
   }
   const datum: ValidationProofItemDatumV1Type = {
     version: 1n,
@@ -135,8 +118,7 @@ export const deriveValidationProofItemPublicationV1 = ({
       transactionCommitment,
       "validation proof transaction commitment",
     ),
-    collection_proof: collectionProof,
-    item_cbor: itemCbor,
+    field_preimage: fieldPreimage,
   };
   return {
     datum,

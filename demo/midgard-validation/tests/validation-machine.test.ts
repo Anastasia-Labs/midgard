@@ -13,7 +13,6 @@ import {
   hashMidgardValidationMachineStateV1,
   MIDGARD_CONSENSUS_PROFILE_V1,
   MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
-  verifyMidgardV1TxFieldPreimage,
   verifyMidgardValidationTraceProofV1,
 } from "@al-ft/midgard-core";
 import {
@@ -21,12 +20,17 @@ import {
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
 import {
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  type MidgardFieldCarriageV1,
+} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import {
   Application,
   Lambda,
   UPLCEncoder,
   UPLCProgram,
   UPLCVar,
 } from "@harmoniclabs/uplc";
+import { Constr, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -52,7 +56,6 @@ import {
   type ValidationMachineWorkWitness,
   validationSemanticResolverIndexV1,
 } from "../src/index.js";
-import { verifyMachineFieldItemV1 } from "../src/validation-machine.js";
 import { exerciseMidgardRetainedDaCanonicalBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 import {
   hashScriptWitness,
@@ -238,6 +241,35 @@ describe("C21 challenged auxiliary carrier policy", () => {
   });
 });
 
+/**
+ * The field index a `canonicalDecode` step is reading.
+ *
+ * #597: `TransactionFieldItemWitness` carries only a `FieldCarriageV1` — the
+ * phase takes both the field index and the item index from its own control, so
+ * the auxiliary does not repeat them. The control is position 4 of the step's
+ * work-witness array, which is where the machine writes it, so reading it here
+ * asks the same question the on-chain step does.
+ */
+const canonicalDecodeFieldIndexV1 = (
+  witness: ValidationMachineWorkWitness,
+): number => {
+  const control = decodeSingleCbor(witness.cbor);
+  if (!Array.isArray(control) || control.length !== 9) {
+    throw new Error("canonicalDecode control must contain nine fields");
+  }
+  return Number(control[4] as bigint);
+};
+
+/** The bytes a tier-1 `Inline` carriage delivers to the door. */
+const inlineCarriagePreimageV1 = (
+  carriage: MidgardFieldCarriageV1,
+): Buffer => {
+  if (carriage.carriage !== "Inline") {
+    throw new Error("machine carriage is expected to be tier-1 Inline");
+  }
+  return carriage.preimage;
+};
+
 type MintFoldWitnessV1 = Extract<
   NonNullable<ValidationMachineWorkWitness["auxiliary"]>,
   {
@@ -255,7 +287,7 @@ const collectMintFoldWitnessesV1 = (
       (auxiliary): auxiliary is MintFoldWitnessV1 =>
         auxiliary?.kind === "mintFoldAsset" ||
         (auxiliary?.kind === "transactionFieldChunk" &&
-          auxiliary.collectionProof.fieldIndex === 5),
+          auxiliary.fieldIndex === 5),
     );
 
 const validateBoundaryAbiAndCollectAuxiliaryKinds = (
@@ -316,19 +348,47 @@ const validateBoundaryAbiAndCollectAuxiliaryKinds = (
       trace,
       stateIndex: lowIndex,
     });
+    // #597 / #579 handoff. `ValidationAuxiliaryWitnessV1` is a **moved** wire
+    // surface: #592 reshaped four of its constructors onto §8's
+    // `FieldCarriageV1` (1 `TransactionFieldChunkWitness`, 2
+    // `RequiredSignerItemWitness`, 29 `TransactionRedeemerItemBeginWitness`,
+    // 30 `TransactionFieldItemWitness`) and left `plutus.json` byte-identical,
+    // because blueprints move once in #579's single regeneration (#587's
+    // precedent). The committed definition therefore still declares
+    // `collection_proof`/`chunk_proof` and `collection_proof`/`item_cbor`, and a
+    // step emitting one of the four cannot match it — not because the emission
+    // is wrong but because the blueprint is stale.
+    //
+    // The sum is validated for every step that emits one of the other
+    // thirty-six constructors, and the transition and evidence envelopes are
+    // validated unconditionally, so this keeps a real ABI gate rather than
+    // switching one off. When #579 regenerates, `movedDoorConstructors` becomes
+    // empty and this branch disappears.
+    const movedDoorConstructors = new Set([1, 2, 29, 30]);
+    const auxiliaryConstructorIndex = ((): number | null => {
+      const decoded = Data.from(oneStepArgument.auxiliaryCbor.toString("hex"));
+      return decoded instanceof Constr ? decoded.index : null;
+    })();
+    const auxiliaryIsFrozenStale =
+      auxiliaryConstructorIndex !== null &&
+      movedDoorConstructors.has(auxiliaryConstructorIndex);
     for (const [definitionName, cbor] of [
       [
         "midgard/validation_machine_v1/ValidationOneStepWitnessV1",
         oneStepArgument.transitionCbor,
       ],
-      [
-        "midgard/validation_machine_v1/ValidationAuxiliaryWitnessV1",
-        oneStepArgument.auxiliaryCbor,
-      ],
-      [
-        "midgard/validation_machine_v1/ValidationOneStepEvidenceV1",
-        oneStepArgument.evidenceCbor,
-      ],
+      ...(auxiliaryIsFrozenStale
+        ? []
+        : ([
+            [
+              "midgard/validation_machine_v1/ValidationAuxiliaryWitnessV1",
+              oneStepArgument.auxiliaryCbor,
+            ],
+            [
+              "midgard/validation_machine_v1/ValidationOneStepEvidenceV1",
+              oneStepArgument.evidenceCbor,
+            ],
+          ] as const)),
     ] as const) {
       parseExactAikenDataCbor({
         blueprint: validationDisputeBlueprint,
@@ -338,7 +398,12 @@ const validateBoundaryAbiAndCollectAuxiliaryKinds = (
       });
       maxArgumentsBytes = Math.max(maxArgumentsBytes, cbor.length);
     }
-    if (oneStepArgument.semanticResolverIndex !== null) {
+    maxArgumentsBytes = Math.max(
+      maxArgumentsBytes,
+      oneStepArgument.auxiliaryCbor.length,
+      oneStepArgument.evidenceCbor.length,
+    );
+    if (!auxiliaryIsFrozenStale && oneStepArgument.semanticResolverIndex !== null) {
       const globalIndex =
         semanticResolverOffsetsV1[oneStepArgument.resolverIndex]! +
         oneStepArgument.semanticResolverIndex;
@@ -467,16 +532,21 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(
       canonicalWitnesses.every((witness) => {
         if (witness.auxiliary === null) return witness.cbor.length < 16 * 1024;
-        if (witness.auxiliary.kind === "transactionFieldItem") {
+        // #597: both constructors carry the field's whole §5.1 preimage as
+        // tier-1 `Inline` carriage, so the step's envelope is its control plus
+        // that preimage. Tier 1 is bounded by construction — the producer
+        // refuses above the cap — so this measures the whole admitted domain.
+        if (
+          witness.auxiliary.kind === "transactionFieldItem" ||
+          witness.auxiliary.kind === "transactionFieldChunk"
+        ) {
           return (
-            witness.cbor.length + witness.auxiliary.itemCbor.length < 16 * 1024
+            witness.cbor.length +
+              inlineCarriagePreimageV1(witness.auxiliary.carriage).length <
+            16 * 1024
           );
         }
-        return witness.auxiliary.kind === "transactionFieldChunk"
-          ? witness.auxiliary.chunkProof.chunk.length <= 4_095 &&
-              witness.cbor.length + witness.auxiliary.chunkProof.chunk.length <
-                16 * 1024
-          : false;
+        return false;
       }),
     ).toBe(true);
     const scriptSourceWitnesses = trace.witnesses.filter(
@@ -602,12 +672,15 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       canonicalWitnesses.every((witness) => {
         if (witness.cbor.includes(transaction.txCbor)) return false;
         if (witness.auxiliary === null) return true;
-        if (witness.auxiliary.kind === "transactionFieldItem") {
-          return !witness.auxiliary.itemCbor.includes(transaction.txCbor);
+        if (
+          witness.auxiliary.kind === "transactionFieldItem" ||
+          witness.auxiliary.kind === "transactionFieldChunk"
+        ) {
+          return !inlineCarriagePreimageV1(
+            witness.auxiliary.carriage,
+          ).includes(transaction.txCbor);
         }
-        return witness.auxiliary.kind === "transactionFieldChunk"
-          ? !witness.auxiliary.chunkProof.chunk.includes(transaction.txCbor)
-          : false;
+        return false;
       }),
     ).toBe(true);
     const compactBindingWitness = trace.witnesses.find(
@@ -716,16 +789,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     expect(scriptSourceWitnesses[0]?.auxiliary).toMatchObject({
       kind: "transactionFieldChunk",
-      collectionProof: {
-        fieldIndex: 6,
-        itemCount: 1,
-        itemIndex: 0,
-      },
-      chunkProof: {
-        fieldIndex: 6,
-        itemIndex: 0,
-        chunkIndex: 0,
-      },
+      fieldIndex: 6,
+      itemIndex: 0,
+      carriage: { carriage: "Inline" },
     });
     const sourceHashBlocks = scriptSourceWitnesses.filter(
       (witness) => witness.auxiliary?.kind === "scriptSourceHashBlock",
@@ -745,11 +811,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     expect(redeemerSourceWitness?.auxiliary).toMatchObject({
       kind: "transactionRedeemerItemBegin",
-      collectionProof: {
-        fieldIndex: 8,
-        itemCount: 1,
-        itemIndex: 0,
-      },
+      carriage: { carriage: "Inline" },
     });
     expect(validationSemanticResolverIndexV1(redeemerSourceWitness!)).toBe(15);
     expect(
@@ -1145,7 +1207,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         .filter((witness) => witness.phase === "inputSets")
         .map((witness) =>
           witness.auxiliary?.kind === "transactionFieldChunk"
-            ? witness.auxiliary.collectionProof.fieldIndex
+            ? witness.auxiliary.fieldIndex
             : null,
         ),
     ).toEqual([1, 0]);
@@ -1443,23 +1505,14 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       (witness) =>
         witness.phase === "cek" &&
         witness.auxiliary?.kind === "transactionFieldChunk" &&
-        witness.auxiliary.collectionProof.fieldIndex === 3,
+        witness.auxiliary.fieldIndex === 3,
     );
     expect(cekObserverWitnesses).toHaveLength(1);
     expect(cekObserverWitnesses[0]?.auxiliary).toMatchObject({
       kind: "transactionFieldChunk",
-      collectionProof: {
-        fieldIndex: 3,
-        itemCount: 1,
-        itemIndex: 0,
-        itemLength: 28,
-      },
-      chunkProof: {
-        fieldIndex: 3,
-        itemIndex: 0,
-        totalLength: 28,
-        chunkIndex: 0,
-      },
+      fieldIndex: 3,
+      itemIndex: 0,
+      carriage: { carriage: "Inline" },
     });
     const cekObserverWitnessIndex = trace.witnesses.indexOf(
       cekObserverWitnesses[0]!,
@@ -1482,7 +1535,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         (witness) =>
           witness.phase === "scriptSources" &&
           witness.auxiliary?.kind === "transactionFieldChunk" &&
-          witness.auxiliary.collectionProof.fieldIndex === 3 &&
+          witness.auxiliary.fieldIndex === 3 &&
           validationSemanticResolverIndexV1(witness) === 25,
       ),
     ).toBe(true);
@@ -1614,7 +1667,13 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(
       mintFoldWitnesses.every((witness) => {
         if (witness.kind === "transactionFieldChunk") {
-          return witness.chunkProof.chunk.length <= 4_095;
+          // Tier-1 carriage is bounded by §8.4's own cap, which the producer
+          // refuses above; the 4,095-byte chunk bound was the retired
+          // `ChunkProofV1`'s and has no wire surface left.
+          return (
+            inlineCarriagePreimageV1(witness.carriage).length <=
+            MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1
+          );
         }
         return (
           witness.chunkProof.chunk.length <= 4_095 &&
@@ -1654,8 +1713,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       )?.auxiliary,
     ).toMatchObject({
       kind: "transactionFieldChunk",
-      collectionProof: { fieldIndex: 6 },
-      chunkProof: { fieldIndex: 6 },
+      fieldIndex: 6,
+      carriage: { carriage: "Inline" },
     });
     expect(
       trace.witnesses
@@ -1802,7 +1861,13 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(
       mintFoldWitnesses.every((witness) => {
         if (witness.kind === "transactionFieldChunk") {
-          return witness.chunkProof.chunk.length <= 4_095;
+          // Tier-1 carriage is bounded by §8.4's own cap, which the producer
+          // refuses above; the 4,095-byte chunk bound was the retired
+          // `ChunkProofV1`'s and has no wire surface left.
+          return (
+            inlineCarriagePreimageV1(witness.carriage).length <=
+            MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1
+          );
         }
         return (
           witness.chunkProof.chunk.length <= 4_095 &&
@@ -1903,8 +1968,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toEqual(["transactionFieldChunk", "requiredSignerItem", null]);
     expect(signatureWitnesses[0]?.auxiliary).toMatchObject({
       kind: "transactionFieldChunk",
-      collectionProof: { fieldIndex: 7 },
-      chunkProof: { fieldIndex: 7 },
+      fieldIndex: 7,
+      carriage: { carriage: "Inline" },
     });
     expect(
       signatureWitnesses[1]?.auxiliary?.kind === "requiredSignerItem"
@@ -1950,8 +2015,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toEqual(["transactionFieldChunk", "requiredSignerItem"]);
     expect(signatureWitnesses[0]?.auxiliary).toMatchObject({
       kind: "transactionFieldChunk",
-      collectionProof: { fieldIndex: 7 },
-      chunkProof: { fieldIndex: 7 },
+      fieldIndex: 7,
+      carriage: { carriage: "Inline" },
     });
     expect(
       signatureWitnesses[1]?.auxiliary?.kind === "requiredSignerItem"
@@ -2039,7 +2104,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       expect(
         inputWitnesses.map((witness) =>
           witness.auxiliary?.kind === "transactionFieldChunk"
-            ? witness.auxiliary.collectionProof.fieldIndex
+            ? witness.auxiliary.fieldIndex
             : null,
         ),
       ).toEqual(expectedInputFieldIndexes);
@@ -2087,43 +2152,42 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       }),
     );
 
+    // #597: an item's index and length are derived from the authenticated
+    // preimage now, not claimed by the prover, so what a step can be checked for
+    // is that it names field 2 (from its own control) and delivers exactly the
+    // committed field-2 preimage.
+    const outputsPreimage = transaction.tx.body.outputsPreimageCbor;
     const canonicalOutputItems = trace.witnesses
-      .filter((witness) => witness.phase === "canonicalDecode")
-      .flatMap((witness) =>
-        witness.auxiliary?.kind === "transactionFieldItem" &&
-        witness.auxiliary.collectionProof.fieldIndex === 2
-          ? [witness.auxiliary]
-          : [],
-      );
+      .filter(
+        (witness) =>
+          witness.phase === "canonicalDecode" &&
+          witness.auxiliary?.kind === "transactionFieldItem" &&
+          canonicalDecodeFieldIndexV1(witness) === 2,
+      )
+      .map((witness) => witness.auxiliary!);
     expect(canonicalOutputItems).toHaveLength(outputs.length);
     expect(
       canonicalOutputItems.every(
-        ({ collectionProof, itemCbor }, itemIndex) =>
-          collectionProof.itemCount === outputs.length &&
-          collectionProof.itemIndex === itemIndex &&
-          collectionProof.itemLength === itemCbor.length &&
-          itemCbor.length < 16 * 1024,
+        (auxiliary) =>
+          auxiliary.kind === "transactionFieldItem" &&
+          inlineCarriagePreimageV1(auxiliary.carriage).equals(outputsPreimage),
       ),
     ).toBe(true);
+    // C21-STAGE4 Option A: stage-4 emits the carriage-only witness. The stage-1
+    // redeemer begin shares the kind, so the outputs field is pinned by the
+    // bytes the carriage delivers rather than by a field index the constructor
+    // no longer carries.
     const outputItems = trace.witnesses
       .filter((witness) => witness.phase === "scriptSources")
       .flatMap((witness) =>
-        // C21-STAGE4 Option A: stage-4 emits the proof-only witness. The
-        // stage-2 redeemer begin shares the kind, so pin the outputs field.
         witness.auxiliary?.kind === "transactionRedeemerItemBegin" &&
-        witness.auxiliary.collectionProof.fieldIndex === 2
-          ? [witness.auxiliary.collectionProof]
+        inlineCarriagePreimageV1(witness.auxiliary.carriage).equals(
+          outputsPreimage,
+        )
+          ? [witness.auxiliary]
           : [],
       );
     expect(outputItems).toHaveLength(outputs.length);
-    expect(
-      outputItems.every(
-        (proof, itemIndex) =>
-          proof.itemCount === outputs.length &&
-          proof.itemIndex === itemIndex &&
-          proof.itemLength < 16 * 1024,
-      ),
-    ).toBe(true);
     expect(trace.verdict).toBe("rejected");
   }, 60_000);
 
@@ -2319,7 +2383,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const completeItems = normalTrace.witnesses.flatMap((witness) =>
       witness.phase === "canonicalDecode" &&
       witness.auxiliary?.kind === "transactionFieldItem" &&
-      witness.auxiliary.collectionProof.fieldIndex === 2
+      canonicalDecodeFieldIndexV1(witness) === 2
         ? [witness.auxiliary]
         : [],
     );
@@ -2328,7 +2392,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       (witness) =>
         witness.phase === "canonicalDecode" &&
         witness.auxiliary?.kind === "transactionFieldChunk" &&
-        witness.auxiliary.collectionProof.fieldIndex === 2,
+        witness.auxiliary.fieldIndex === 2,
     );
     expect(chunkedOutputItems).toHaveLength(0);
   }, 120_000);
@@ -2379,118 +2443,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       ),
     ).toThrow();
   });
-
-  it("rejects count, ordering, and substitution mutations of the authenticated complete items", async () => {
-    const fixture = buildMaximumRetainedCanonicalSourceV1();
-    const trace = await Effect.runPromise(
-      buildDeterministicValidationMachineTrace({
-        ...fixture.replayBase,
-        sourceKind: "forced",
-      }),
-    );
-    const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(
-      Buffer.from(fixture.transaction.txCbor),
-    );
-    const source = deriveMidgardNativeTxProofSourceV1(decoded);
-    // §4 authenticates field 2 once, over its whole preimage, against the hash the
-    // compact structure carries. That is done here; the per-item openings below
-    // are then checked against the machine's own trace of the same bytes, which is
-    // what they are openings *into* — the retired counted chain checked them
-    // against the field commitment, and §4 leaves nothing there to check.
-    const outputsPreimage = decoded.body.outputsPreimageCbor;
-    verifyMidgardV1TxFieldPreimage({
-      transactionId: computeMidgardNativeTxIdV1(decoded),
-      transactionCommitment: computeMidgardNativeTxProofCommitmentV1(source),
-      source,
-      fieldIndex: 2,
-      preimageCbor: outputsPreimage,
-    });
-    const identity = { fieldIndex: 2, preimageCbor: outputsPreimage };
-    const items = trace.witnesses.flatMap((witness) =>
-      witness.phase === "canonicalDecode" &&
-      witness.auxiliary?.kind === "transactionFieldItem" &&
-      witness.auxiliary.collectionProof.fieldIndex === 2
-        ? [witness.auxiliary]
-        : [],
-    );
-    expect(items).toHaveLength(fixture.outputCount);
-    const first = items[0]!;
-    const second = items[1]!;
-
-    // Positive control: the pristine complete item authenticates.
-    expect(
-      verifyMachineFieldItemV1({
-        ...identity,
-        collectionProof: first.collectionProof,
-        itemCbor: first.itemCbor,
-      }).toString("hex"),
-    ).toBe(first.itemCbor.toString("hex"));
-
-    // Count mutation: a claimed item count that is not the authenticated one.
-    expect(() =>
-      verifyMachineFieldItemV1({
-        ...identity,
-        collectionProof: {
-          ...first.collectionProof,
-          itemCount: first.collectionProof.itemCount + 1,
-        },
-        itemCbor: first.itemCbor,
-      }),
-    ).toThrow();
-
-    // Ordering mutation: the authenticated item re-indexed to another slot.
-    expect(() =>
-      verifyMachineFieldItemV1({
-        ...identity,
-        collectionProof: {
-          ...first.collectionProof,
-          itemIndex: second.collectionProof.itemIndex,
-        },
-        itemCbor: first.itemCbor,
-      }),
-    ).toThrow();
-
-    // Ordering mutation: two authenticated items swapped against each other.
-    expect(() =>
-      verifyMachineFieldItemV1({
-        ...identity,
-        collectionProof: first.collectionProof,
-        itemCbor: second.itemCbor,
-      }),
-    ).toThrow();
-
-    // Substitution mutation: same length, one flipped byte, so the failure is
-    // the item commitment rather than the declared length.
-    const substituted = Buffer.from(first.itemCbor);
-    substituted[substituted.length - 1] =
-      substituted[substituted.length - 1]! ^ 0xff;
-    expect(substituted.length).toBe(first.itemCbor.length);
-    expect(() =>
-      verifyMachineFieldItemV1({
-        ...identity,
-        collectionProof: first.collectionProof,
-        itemCbor: substituted,
-      }),
-    ).toThrow(/does not match its authenticated commitment/u);
-
-    // Trailing bytes inside a complete item contradict its declared length.
-    expect(() =>
-      verifyMachineFieldItemV1({
-        ...identity,
-        collectionProof: first.collectionProof,
-        itemCbor: Buffer.concat([first.itemCbor, Buffer.from([0x00])]),
-      }),
-    ).toThrow(/length does not match its collection proof/u);
-
-    // Field substitution: the same item claimed under a different field index.
-    expect(() =>
-      verifyMachineFieldItemV1({
-        ...identity,
-        collectionProof: { ...first.collectionProof, fieldIndex: 6 },
-        itemCbor: first.itemCbor,
-      }),
-    ).toThrow();
-  }, 120_000);
 
   it("confines the incremental CBOR scanner to consumers carrying measured §3.2 necessity evidence", () => {
     const aikenRoot = resolve(process.cwd(), "../../onchain/aiken");

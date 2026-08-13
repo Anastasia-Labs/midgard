@@ -12,7 +12,6 @@ import {
   PubKeyHashSchema,
 } from "@/common.js";
 import {
-  BoundedCollectionItemProofV1Schema,
   EventKeySchema,
   EventToStepValueSchema,
   ForcedInclusionTxV1Schema,
@@ -192,10 +191,20 @@ export type CanonicalDecodeItemSourceV1 = Data.Static<
 export const CanonicalDecodeItemSourceV1 =
   CanonicalDecodeItemSourceV1Schema as unknown as CanonicalDecodeItemSourceV1;
 
+/**
+ * What opening the item through §8's door established about it: the field's
+ * authenticated §5.2 item count and this item's §5.1 payload length.
+ *
+ * #597, the TypeScript twin of #592's wire change. It used to carry the prover's
+ * `collection_proof` beside a re-derived `item_commitment` — both artifacts of
+ * the counted opening §4 made unsatisfiable. The door derives the count and the
+ * length from the preimage it authenticated, so there is nothing for a prover to
+ * claim and nothing to open. Aiken source of truth:
+ * `onchain/aiken/lib/midgard/validation-machine-v1.ak:1683`.
+ */
 export const CanonicalDecodeItemObservationV1Schema = Data.Object({
-  collection_proof: BoundedCollectionItemProofV1Schema,
+  item_count: Data.Integer(),
   item_length: Data.Integer(),
-  item_commitment: H32Schema,
 });
 export type CanonicalDecodeItemObservationV1 = Data.Static<
   typeof CanonicalDecodeItemObservationV1Schema

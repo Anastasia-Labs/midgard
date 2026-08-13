@@ -3,8 +3,11 @@
 
 use aiken/cbor
 use aiken/primitive/bytearray
+use midgard/native_tx_field_access_v1.{Inline}
 use midgard/validation_dispute_v1
-use midgard/validation_machine_v1
+use midgard/validation_machine_v1.{
+  TransactionFieldChunkWitness, ValidationAuxiliaryWitnessV1,
+}
 use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1
 
@@ -18,6 +21,12 @@ const transition_cbor =
   #"d8799f5f58408959013b84018c5820214c88efa8d641e100907432a62d5a6090c840f5c845f4d97785e72842df9795582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e88584015729ce75f9c0ab0e4c1c05820cc5576fe94af4965c5381e48f726943d642afe055bd3db465573a6003163cd53002020582045b0cfc220ceec5b7c1c62c4d41958403d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c584062c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d58404f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820daeadb05645a2bf527b169f43571243fa2cc7620abba44ebec35c81fda945380005858406783582055cfb0eb3857f12818971b40e2f725c5822245f882e3bf37c7a31ef9ea80e14d582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f58409c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c04d8918290118280101010118680158269f01546d69646761582372642d636f6e73656e7375732d76311b000001977420dc000000001864ff0100002000ffd8799f015820b121ec457f8ca78cbfca9d506b34ad3bee23f3cc92de6cef531e5279441fdbde582039e3821321bf1d5aa2e52ba31eda6eac65ec0076885bb382919bca1e90224290582060d996e332b89615b2166f665be1e4bef5d9fda3bf8374d2647be4f670bae2eb5820efbf53e6fdf61931d07d45ffdfe6b848d44f992f3ee0296b4f1415cc1c890c9dd87a805820d25c0c8574dbc2a6e7507f6dfd51642292284071b0b19ab067ce3f50b039e7ced879800258207f8656417208bd2e8b8858b9849fee9b4129a4f67402d0ab426979c3b1bbef630000d87980582000000000000000000000000000000000000000000000000000000000000000005820920039785e189e6eed4a05987f175e0855c33cafb7885a16c1cd344c3993abf8ffff"
 
 const auxiliary_cbor = #"d87980"
+
+const field_chunk_auxiliary_cbor =
+  #"d87a9f0000d8799f58298158268258201111111111111111111111111111111111111111111111111111111111111111190000ffff"
+
+const field_chunk_preimage =
+  #"8158268258201111111111111111111111111111111111111111111111111111111111111111190000"
 
 const evidence_hash =
   #"dcb7713a8cde102bf249fba3f62aaac6f7871fbf7101040ee4c1e2920f4dbd7f"
@@ -67,6 +76,36 @@ test typescript_generated_canonical_decode_step_is_exact() {
       transition_data,
       auxiliary_data,
     ) == evidence_hash,
+  }
+}
+
+/// #597. One `transactionFieldChunk` auxiliary as the TypeScript machine emits
+/// it, decoded here by the Aiken type it has to satisfy.
+///
+/// This is the cross-language pin for #592's four moved door constructors. It
+/// checks three things a blueprint comparison cannot: that the emitted bytes
+/// deserialise as `ValidationAuxiliaryWitnessV1` at all, that they land on
+/// `TransactionFieldChunkWitness` — Constr 1, whose *index* is unchanged while
+/// its shape moved, so a mis-tagged emission decodes as the wrong constructor
+/// rather than failing — and that the three fields carry exactly the values the
+/// producer put in them, in the order Aiken names them.
+///
+/// The carriage is tier-1 `Inline`: §8.4's partition admits only that tier for a
+/// preimage this size, and it is the only tier the TypeScript trace producer can
+/// emit (https://github.com/Anastasia-Labs/midgard/issues/600).
+test typescript_generated_field_chunk_auxiliary_is_exact() {
+  expect Some(auxiliary_data) = cbor.deserialise(field_chunk_auxiliary_cbor)
+  expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
+  expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
+  and {
+    bytearray.length(field_chunk_auxiliary_cbor) == 53,
+    bytearray.length(field_chunk_auxiliary_cbor) < 16_384,
+    field_index == 0,
+    item_index == 0,
+    carriage == Inline { preimage: field_chunk_preimage },
+    // The carriage delivers the field's whole §5.1 preimage — what the door
+    // hashes against the flat §4 commitment — not one item and an opening.
+    bytearray.length(field_chunk_preimage) == 41,
   }
 }
 

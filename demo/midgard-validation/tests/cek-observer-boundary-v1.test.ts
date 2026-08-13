@@ -148,7 +148,18 @@ describe("bounded CEK observer context", () => {
     expect(boundary.acceptedField.itemCount).toBe(224);
     expect(boundary.acceptedField.revealStepCount).toBe(224);
     expect(boundary.acceptedField.maxChunkBytes).toBe(28);
-    expect(boundary.acceptedField.maxRevealBytes).toBe(492);
+    // #597: 492 → 6,946, re-measured. A step's reveal is its §8 carriage now,
+    // not a per-item chunk proof: field 3's 224 observers make a 6,9xx-byte §5.1
+    // preimage that §8.4 carries as tier 1, so the redeemer holds the whole
+    // preimage once and the door hashes it against the flat §4 commitment. The
+    // old 492 was one 28-byte item beside the opening that authenticated it —
+    // an opening §4 left nothing to check against (#592). The figure is still
+    // well inside the L1 envelope, and it is O(1) rather than O(field) the
+    // moment tiers 2–3 are emittable (#600).
+    expect(boundary.acceptedField.maxRevealBytes).toBe(6_946);
+    expect(boundary.acceptedField.maxRevealBytes).toBeLessThan(
+      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+    );
 
     for (const { languageTag, midgardEncoding } of [
       { languageTag: 3 as const, midgardEncoding: false },
