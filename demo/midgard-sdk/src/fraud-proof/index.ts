@@ -1,3 +1,4 @@
+export * from "./canonical-decodability-v1.js";
 export * from "./catalogue.js";
 export * from "./computation-threads.js";
 export * from "./contracts.js";

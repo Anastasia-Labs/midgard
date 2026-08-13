@@ -451,7 +451,10 @@ families, watcher, builders — observes:
    for exactly `stride − 2` payload bytes — inferring those two bytes from
    the stride would admit several byte forms for one logical field, in
    violation of §5.1 and §6.1, and would leave a non-canonically committed
-   preimage unfaultable.
+   preimage unfaultable. The stronger case that clause gestures at — a
+   committed preimage that is not a §5.1 envelope at all, which every door
+   below aborts on rather than rejects — is faulted by §12.7 and is not left
+   to any accessor to notice.
 3. **Abort, never clamp.** An item accessor MUST fail unless
    `0 ≤ i < N` and the item's full byte range lies within the preimage
    length. Slice-primitive clamping must never reach a caller — two
@@ -3002,3 +3005,330 @@ fixture can attribute a refusal to one site rather than the other: the range
 assertions inside `fault_statement_shape_is_exact` that guards 1–3 and 7/11
 already run, and the offset and length bounds in the shared interior reader
 (§11.5's second family), which run on every read this section makes.
+
+### 12.7 Canonical decodability of a committed field preimage
+
+**Normative.** Owner ruling, 2026-08-11 ([#593 Ruling
+2](https://github.com/Anastasia-Labs/midgard/issues/593#issuecomment-5261103820));
+executed as #596. It adds a fault kind and changes nothing else — in
+particular it does not change §8.8's doors, §12.1's statement type, or any
+verdict the validation machine renders.
+
+#### The fault
+
+> **`canonical-decodability`.** The committed preimage of field `i` of a
+> committed transaction is not a §5.1 envelope.
+
+Under §4 an operator commits `blake2b_256(preimage_i)` over **arbitrary
+bytes**. §5.1 says what those bytes may be; nothing in §4 makes them be it.
+So a block can commit a field whose preimage is a truncated envelope, a
+mis-declared count, a non-minimal header, or no envelope at all — and every
+consumer of that field aborts, because every §8.8 view door ends in the §7.4
+count-consistency check and that check is an `expect`.
+
+Aborting is the **correct** answer to a prover supplying the wrong bytes
+(§7.3): wrong bytes are not evidence and a step built on them must not
+succeed. It is the wrong outcome for bytes the operator itself committed,
+and the difference is who chose them. Where a prover's mistake costs the
+prover a transaction, an operator's commitment costs the protocol a fault it
+cannot state: the `CanonicalDecode` phase exists to render a verdict about
+exactly this field and cannot be reached, so **no step is producible by
+anyone** and the dispute stalls instead of rejecting. A stall is not a
+rejection — the block is never faulted, nothing is slashed, and the operator
+has bought the outcome by committing garbage. That is the escape hatch this
+section closes.
+
+It is closed by direct fault rather than by making the doors non-aborting.
+Softening them machine-wide would put a `None`-returning reader on the hot
+path of every family and every machine phase, to serve one adjudication;
+worse, it would make "this field did not decode" a value that could be
+clamped, defaulted or ignored at any of the dozens of sites that consume a
+view. The doors' abort semantics stay **exactly** as they are.
+
+#### The boundary against §12.3, stated precisely
+
+§12.3's `fault_item_predicate` adjudicates a **bad item inside a well-formed
+envelope**. This section adjudicates a **byte string that is not an
+envelope**. They are disjoint claims about disjoint sets of committed fields,
+and neither is a special case of the other:
+
+| | §12.3 `fault_item_predicate` | §12.7 `canonical-decodability` |
+| --- | --- | --- |
+| what is accused | one item, at `(field_index, item_index)` | one field, at `field_index` |
+| the envelope | must be well-formed — the walk that reaches the item is the door's, and it aborts otherwise | must **not** be well-formed; that is the whole accusation |
+| what is read | exactly one item's bytes (§12.3), through a `FieldViewV1` | the whole preimage, as bytes, through no view at all |
+| who decides | the caller's per-item predicate, which this document does not define | §5.1's grammar, defined below and defined nowhere else |
+| item index | carried, and load-bearing | **absent** — an ungrammatical envelope has no item indices, so there is nothing for one to name |
+
+The three consequences that follow are normative:
+
+1. **A field cannot be faulted under both.** If the envelope is well-formed,
+   §12.7's verdict is `grammatical` and its adjudication refuses; if it is
+   not, no §12.3 walk can reach an item, because the door that would open the
+   view aborts first. An implementation MUST NOT provide a path that reaches
+   §12.3's adjudication over bytes §12.7 would convict — which is what
+   keeping the doors aborting guarantees, and is a second reason not to
+   soften them.
+2. **§12.7 renders no per-field judgement.** §5.3's item encodings, §5.5's
+   output rules, §5.6's mint ordering and the §2.4 declared lengths are all
+   outside it. A field whose envelope is well-formed and whose items are
+   nonsense is §12.3's, or its family's.
+3. **The two `CanonicalDecode` verdicts that survive the flat reversion are
+   also outside it.** `reject_field_preimage_size` is a disagreement between
+   the authenticated preimage's own length and the §2.4
+   `NativeTxFieldPreimageLengthsV1` entry for it — two independently
+   committed structures, both well-formed. `reject_invalid_field_type` is an
+   item whose §5.1-authenticated width is not a legal encoding for its field.
+   Both presuppose a decodable envelope and are rendered by the machine, not
+   here.
+
+**Name the residue rather than a mitigation for it.** This fault kind is
+§5.1's grammar and nothing else, and §5.1's grammar is not the whole of what
+`whole_view` refuses. Two of that function's other `expect`s can also abort on
+bytes an operator committed, and neither is convictable here:
+
+- **§7.4's fixed-stride arithmetic.** For fields 0, 1, 3, 4 and 7 the door
+  settles count consistency as `header_len + stride·N == total_length` rather
+  than by walking. A committed preimage that *is* a §5.1 envelope but whose
+  items are not the field's stride satisfies this section's verdict — code 0 —
+  and still aborts the door.
+- **§5.4's per-field byte bound.** `whole_view` refuses a `total_length` above
+  `max_transaction_aggregate_field_bytes`, and a committed preimage above it
+  that is otherwise a well-formed envelope is likewise verdict 0 and still
+  aborts.
+
+Both leave the same stall this section removes for the ungrammatical case, on
+a narrower set of committed bytes. Neither is folded in here, and the reason is
+not effort: the verdict above is a function of the bytes alone, while both of
+these are functions of the bytes **and the slot**, so admitting them would make
+the fault kind field-index-dependent and would put a claim about §5.3's stride
+table inside a section whose whole boundary against §12.3 is that it applies no
+per-field rule. What closes them is a decision this document does not take:
+either a sibling fault kind stated over `(field_index, preimage)`, or the
+machine rendering `reject_invalid_field_type` from a non-aborting reader for
+the fixed-stride fields. The residue is recorded on #596 for the owner.
+
+#### The §5.1 well-formedness predicate
+
+Normative, and stated as a **total function** so that the Aiken and
+TypeScript implementations can be written against it independently and agree.
+`envelope_verdict(preimage) → code` is defined for every byte string. It
+never fails, never clamps, and reads no byte it has not first shown to be in
+range.
+
+The codes:
+
+| code | name | meaning |
+| --- | --- | --- |
+| 0 | `grammatical` | the bytes are a §5.1 envelope |
+| 1 | `missing_array_header` | zero bytes; §5.1's shortest form is the one-byte `80` |
+| 2 | `not_an_array_header` | leading byte outside `80..97`, `98`, `99` |
+| 3 | `non_minimal_array_header` | a `98`/`99` head whose count a narrower form spells |
+| 4 | `truncated_array_header` | a `98`/`99` head whose own width leaves the preimage |
+| 5 | `missing_item_header` | items remain to be read and no byte remains to start one |
+| 6 | `not_an_item_header` | an item's leading byte outside `40..57`, `58`, `59` |
+| 7 | `non_minimal_item_header` | a `58`/`59` head whose length a narrower form spells |
+| 8 | `truncated_item_header` | a `58`/`59` head whose own width leaves the preimage |
+| 9 | `truncated_item_payload` | an item's declared payload leaves the preimage |
+| 10 | `trailing_bytes` | all declared items were read and bytes remain |
+
+The procedure, over `preimage` of length `T`:
+
+```
+if T = 0                            → 1
+b ← preimage[0]
+if 0x80 ≤ b ≤ 0x97                  → walk(1, b − 0x80)
+if b = 0x98:
+    if T < 2                        → 4
+    n ← preimage[1];  if n < 24     → 3   else walk(2, n)
+if b = 0x99:
+    if T < 3                        → 4
+    n ← preimage[1]·256 + preimage[2]
+    if n ≤ 255                      → 3   else walk(3, n)
+otherwise                           → 2
+
+walk(off, rem):
+    if rem ≤ 0                      → 0 if off = T else 10
+    if off ≥ T                      → 5
+    h ← preimage[off]
+    if 0x40 ≤ h ≤ 0x57              → step(off + 1, h − 0x40, rem)
+    if h = 0x58:
+        if off + 2 > T              → 8
+        L ← preimage[off + 1];  if L < 24 → 7 else step(off + 2, L, rem)
+    if h = 0x59:
+        if off + 3 > T              → 8
+        L ← preimage[off + 1]·256 + preimage[off + 2]
+        if L ≤ 255                  → 7 else step(off + 3, L, rem)
+    otherwise                       → 6
+
+step(payload_off, L, rem):
+    if payload_off + L > T          → 9
+    else                            → walk(payload_off + L, rem − 1)
+```
+
+Four properties of this definition are normative rather than incidental:
+
+- **The acceptance set is §5.1's, not CBOR's.** The four-byte `9a` array head
+  and the `5a` byte-string head are well-formed CBOR and are code 2 and code
+  6 respectively. §5.1 caps at `99 NNNN` / `59 LLLL` and this is where that
+  cap is enforced for the verdict, exactly as `decode_field_array_header_at`
+  enforces it for the doors.
+- **The codes are diagnostic, not load-bearing.** The adjudication asks only
+  whether the code is 0 (below). A mis-assigned non-zero code convicts the
+  same set of blocks. They are distinguished so that a conformance vector can
+  say *which* rule of §5.1 a fixture leaves, which is the difference between
+  a suite that pins the grammar and one that pins "something was wrong".
+- **The verdict MUST agree with the doors on every input.** `code = 0` if and
+  only if `whole_view` would accept the same bytes for a variable-width field
+  within §5.4's byte bound.
+  The two are separate implementations on purpose — one decides by returning,
+  the other by aborting, and a shared `Option`-returning reader would put a
+  clampable absence on the doors' hot path — so the agreement is a conformance
+  obligation (§9) discharged by vectors in both directions, not an artefact of
+  sharing code.
+- **The verdict is the whole decision.** An implementation MUST NOT add
+  conditions to it. In particular it MUST NOT bound the preimage's length:
+  §5.4's byte bound is a property of a valid transaction, and a field
+  committed above it that is *also* not an envelope must stay convictable.
+
+#### Adjudication
+
+Two steps, on the `da-hash-preimage` pattern (GOAL_SPEC.md Q44) and for its
+reason: the first binds committed evidence and derives, the second holds the
+derivation against the rule.
+
+**Step 01 — bind, authenticate, decide.**
+
+1. The disputed transaction MUST be bound to the challenged block's committed
+   `transactions_root` by the shared native inclusion path, including the
+   codec precondition every native family runs. A leaf whose key is not its
+   own transaction id is `da-hash-preimage`'s fault, not this one's, and the
+   compact structure this step extracts a commitment from means nothing until
+   the id derived from it is the committed key.
+2. The prover supplies **which** of §2.5's nine slots is accused and a §8.8
+   `FieldCarriageV1` for it. The accused slot's expected commitment is
+   obtained by positional extraction from the committed compact structures
+   (§4) — never as a free-standing argument — and the carried bytes are
+   hashed against it. A prover supplying anything else **aborts** (§7.3),
+   which is what makes the bytes that reach the verdict undeniably the
+   committed preimage.
+3. `envelope_verdict` is taken over those bytes and `(tx_id, field_index,
+   verdict)` is pinned into the computation thread. Every member is derived,
+   so a fabricated verdict or a re-addressed field index is not forwardable.
+
+**Step 02 — convict.** The proof finalizes when, and only when, the pinned
+state satisfies `0 ≤ field_index < 9`, `0 ≤ verdict < 11` and `verdict ≠ 0`.
+The two bounds are §12.1's one-spelling rule applied to a state that crosses
+a transaction boundary: a state naming a tenth field or a twelfth code is one
+step 01 could not have written, and admitting it would let one fault finalize
+under many spellings.
+
+Five further conditions are normative:
+
+- **No preimage bytes travel between the steps.** §12.1's witness minimality
+  holds for the same reason it holds for a fault statement: the bytes were
+  authenticated in the transaction that read them, and re-supplying them
+  would be re-supplying a field the first transaction already paid for.
+- **The reading path MUST NOT be a view door.** Both §8.8 doors materialise a
+  `FieldViewV1` and therefore run §5.1's walk under `expect`; reaching the
+  verdict through either would reproduce inside this family the stall it
+  exists to end. The door entry point this family uses returns the
+  hash-checked **bytes** and runs no §5.1 check at all. It MUST NOT be used
+  to read items: nothing it returns carries an authenticated item count or
+  item boundary, which is precisely what §7's items 2 and 4 buy and what it
+  does not.
+- **The field index is a redeemer argument here**, unlike at every read site,
+  where §4's loss of field-index domain separation makes a call-site literal
+  mandatory. It has to be free because it *is* the accusation's address
+  (§12.1). It is safe because the expected commitment is extracted for the
+  slot the index names: a verdict rendered under index `i` is a verdict about
+  the bytes slot `i` committed, whichever `i` was chosen. §4's aliasing —
+  fields 0/1 and 3/4 commit identically for identical content — does not
+  weaken this, because aliased slots commit the *same bytes* and a
+  non-envelope convicted under either index is a non-envelope under both.
+- **All three §8 tiers are admissible, at all nine fields.** Tier 3 is
+  admissible for the witness-set fields here even though
+  `carriage_reaches_the_anchor` refuses it for them at the lazy door, and the
+  distinction is the same one §8.11 draws for the tx-order mint: this path
+  materialises the chunks and hashes the concatenation once against the
+  committed commitment, so the §8.6 manifest authenticates nothing about
+  content and a substituted chunk changes the hash. The manifest still buys
+  §8.4's partition and the `(tx_id, field_index)` token binding. Restricting
+  the family to tier 1 would cap the fault kind at what fits one redeemer,
+  leaving a smaller escape hatch open rather than none.
+- **An honest block is bound but never convicted.** Step 01 accepts a
+  challenge against a well-formed field and forwards `verdict = 0`; step 02
+  refuses it. That asymmetry is the family's whole safety property against a
+  malicious challenger, and it is where a conformance suite must have a
+  vector.
+
+#### Cost claims
+
+Measured, at GOAL_SPEC §3.3's 13,200,000-memory basis, and pinned by
+`onchain/aiken/scripts/canonical-decodability-exec-ledger-v1.json` with
+`verify-canonical-decodability-exec-ledger-v1.mjs` as its gate. The claim
+splits the way the work does.
+
+- **The byte term is cheap and is not the binding axis.** At §5.4's per-field
+  bound of 32,768 committed bytes carried as a single item on §8.4's chunked
+  route at §8.3's `max_tier3_chunk_count` of three — the largest committed
+  preimage any admissible carriage reaches — the rule's own share is about
+  **703,198 memory units**, 5.3% of the basis, three-chunk materialisation and
+  the whole-preimage `blake2b_256` included.
+- **The item term binds.** Measured against fixture-only controls at 250 and
+  500 minimum-width items, the §5.1 walk costs **12,032.44 memory units and
+  3,044,870.75 cpu units per item** over an intercept of 242,085 / 71,119,751.
+  The memory basis is reached at roughly **1,077 items**.
+- **The residual, named rather than mitigated.** The worst shape this family
+  admits is §5.4's byte bound spent on minimum-width items. §5.1's narrowest
+  item is the empty one, `40`, so that is a three-byte array header, 32,764
+  one-byte items and one trailing byte — 32,768 bytes carrying 32,764 items —
+  which the fit above puts at roughly 394,430,000 memory units, **29.9× the
+  basis**. That reading is an extrapolation from the measured pair,
+  not a measurement, and it is recorded as such. Its consequence is exact: a
+  committed field carrying more than about a thousand items cannot be
+  adjudicated by this family in one transaction. The hatch that leaves is
+  narrower than the one this section closes — an operator would have to commit
+  bytes that are *also* a many-item envelope prefix — but it is a hatch, and
+  the repair is §10's resumable walk applied to the verdict rather than
+  anything in this section. It is recorded on #596 for #580's re-measurement
+  pass.
+
+#### Guard coverage
+
+§9's conformance items 5 and 6 require every refusal on an operational path to
+be isolated by a vector or listed as a backstop. **Fifteen refusals: thirteen
+isolated, two backstops.**
+
+| # | refusal | isolated by / backstop because |
+| --- | --- | --- |
+| 1 | the carried bytes hash to the accused slot's commitment (§4) | `canonical_decodability_step_01_rejects_uncommitted_bytes`, and `canonical_decodability_verdict_refuses_substituted_certified_chunks` at tier 3 |
+| 2 | the forwarded verdict is the one the bytes earned | `canonical_decodability_step_01_rejects_a_fabricated_verdict` |
+| 3 | the forwarded field index is the one that was opened | `canonical_decodability_step_01_rejects_a_fabricated_field_index` |
+| 4 | a body claim names a body slot | `canonical_decodability_step_01_rejects_a_body_claim_at_a_witness_field` |
+| 5 | a witness claim names a witness-set slot | `canonical_decodability_step_01_rejects_a_witness_claim_at_a_body_field` |
+| 6 | the disputed transaction is one the challenged block committed | `canonical_decodability_step_01_rejects_a_forged_transactions_root` |
+| 7 | a grammatical field does not finalize | `canonical_decodability_step_02_rejects_a_grammatical_field`, with `…_step_01_binds_a_grammatical_field_without_convicting` proving the refusal is step 02's rather than an accident of step 01 |
+| 8 | `field_index` is in 0..8, upper bound | `canonical_decodability_step_02_rejects_an_out_of_range_field_index` |
+| 9 | `field_index` is in 0..8, lower bound | `canonical_decodability_step_02_rejects_a_negative_field_index` |
+| 10 | `verdict` is a code some walk produces | `canonical_decodability_step_02_rejects_an_unknown_verdict_code` |
+| 11 | the verdict agrees with the doors, ungrammatical direction | the ten `canonical_decodability_door_refuses_*` selectors, one per code, because an abort ends a test and a fold over the table would prove only that some vector aborts |
+| 12 | the verdict agrees with the doors, grammatical direction | `canonical_decodability_door_opens_every_grammatical_vector` |
+| 13 | the witness set re-derives to the committed `witness_set_hash` | backstop: `field_door_prologue` asserts it for every door entry point and §8.8's own guard coverage isolates it; guards 4 and 5 fix which half a claim may name |
+| 14 | §8.4's tier-3 partition (`total_length > K`, derived chunk count, chunk shape) | backstop: `certified_chunks` is shared with both view doors and §8.10's rows isolate it there; this family re-uses it unchanged |
+| 15 | the derived accusation is produced at step 02's script | `canonical_decodability_step_01_rejects_a_foreign_next_step_hash` |
+
+The verdict's own decision table is pinned separately and exhaustively:
+`canonical_decodability_verdict_table_is_exact` asserts one vector per code,
+`…_covers_every_code` asserts the table reaches all eleven and no more, and
+`…_pins_the_minimal_width_boundaries` and `…_pins_declared_count_mismatches`
+pin §5.1's width boundaries at 23/24 and 255/256 on both the array head and the
+item head, and the declared-versus-actual mismatch in both directions.
+
+#### Registration
+
+The family's two validators and their catalogue arms are registered by #579's
+single regeneration event (rider 6 of its owner-authorized scope amendment).
+Until then the compiled artifacts do not exist and the code is source-only,
+per #587's precedent. The identity moves this section's implementation records
+for that batch are on #596.

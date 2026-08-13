@@ -185,6 +185,19 @@ jobs:
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
         run: node scripts/verify-tx-order-mint-exec-ledger-v1.mjs
+      # Issue #596, the §12.7 canonical-decodability fault family. Its step 01
+      # is the only adjudication of a field the operator committed to bytes that
+      # are not a §5.1 envelope — the escape hatch every §8.8 view door aborts
+      # on rather than rejects — so a cost claim nobody can falsify decides
+      # whether that fault is provable on L1 at all, and nothing else in the
+      # suite would notice if it stopped being. The ledger pins the byte term at
+      # §5.4's per-field bound on §8.4's chunked route and, at two cardinalities
+      # with a fixture-only control beside each, the per-item cost of the §5.1
+      # walk the verdict runs.
+      - name: Pin the canonical-decodability committed-preimage execution ledger
+        env:
+          MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
+        run: node scripts/verify-canonical-decodability-exec-ledger-v1.mjs
       # Issue #521. The released compiler keys generated expect-decoders by
       # local type name only, so two same-named types in different modules
       # share one decoder and the shipped blueprint silently gets a decoder

@@ -75,14 +75,22 @@ const repoRoot = path.resolve(testDir, "../../..");
  * type exists, and the only thing missing is the regeneration that publishes it —
  * which is exactly what a red row here is for.
  *
- * Measured on 2026-08-12 after #594: `8 failed | 22 passed (30)`; the same command
- * measured `7 failed | 22 passed (29)` on 2026-08-10 after #587. Regenerating the
+ * #596 then added the §12.7 canonical-decodability fault family, whose claim
+ * redeemer (`CommittedFieldClaimV1`) and step-02 thread state are likewise new
+ * types the frozen blueprint never declared. That adds a **ninth** and **tenth**
+ * red row, both of the missing-definition kind rather than the field-count kind.
+ *
+ * Measured on 2026-08-12 after #596: `10 failed | 22 passed (32)`; the same
+ * command measured `8 failed | 22 passed (30)` after #594 and
+ * `7 failed | 22 passed (29)` on 2026-08-10 after #587. Regenerating the
  * blueprint is [#579](https://github.com/Anastasia-Labs/midgard/issues/579)'s; all
- * eight are rows 7-14 of the fourteen-test handoff set enumerated in
+ * ten are rows 7-16 of the sixteen-test handoff set enumerated in
  * `demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts` (#584's
- * four as rows 7-10, #587's three as 11-13, #594's one as 14), which also owns the
- * six emulator scenarios red for the same cause. Point
- * `MIDGARD_REAL_BLUEPRINT_PATH` at a regenerated blueprint to check the fix.
+ * four as rows 7-10, #587's three as 11-13, #594's one as 14, #596's two as
+ * 15-16), which also owns the six emulator scenarios red for the same cause.
+ * Point `MIDGARD_REAL_BLUEPRINT_PATH` at a regenerated blueprint to check the fix
+ * — #596 did, against a scratch stock build of its own working tree, and this
+ * file gives `32 passed (32)` there.
  */
 const blueprintPath =
   process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
@@ -213,6 +221,20 @@ const ABI_MAPPINGS = [
     "midgard/validation_claim_v1/ValidationClaimWitnessV1",
   ],
   ["MidgardTxValiditySchema", "midgard/ledger_state/MidgardTxValidity"],
+  // #596's §12.7 canonical-decodability family. Both types are **new**, so both
+  // rows are red for #594's reason rather than #584/#587's: the SDK type exists,
+  // the Aiken type exists, and only the regeneration that publishes them is
+  // missing. Verified green against a scratch build of the working tree
+  // (`MIDGARD_REAL_BLUEPRINT_PATH`), so what these rows measure at #579 is the
+  // publication and not a shape disagreement.
+  [
+    "CommittedFieldClaimV1Schema",
+    "midgard/fraud_proofs/canonical_decodability/rule/CommittedFieldClaimV1",
+  ],
+  [
+    "CanonicalDecodabilityStep02StateSchema",
+    "midgard/fraud_proofs/canonical_decodability/step_02/State",
+  ],
 ] as const;
 
 const VALIDITY_VECTORS = [

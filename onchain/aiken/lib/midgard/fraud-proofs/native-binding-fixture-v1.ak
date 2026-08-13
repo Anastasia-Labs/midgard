@@ -376,6 +376,140 @@ pub fn witness_set_compact_of_items(
   }
 }
 
+/// A single-transaction block whose committed transaction commits **exactly
+/// `preimage`** at §2.5 slot `field_index` — bytes the caller chooses, a §5.1
+/// envelope or not.
+///
+/// This is the committed shape the `canonical-decodability` family adjudicates
+/// (`docs/spec/midgard-tx.md` §12.7), and no honest producer can build it:
+/// `encode_field_preimage` writes the count it measures and
+/// `midgard_transaction_to_compact` only ever commits what it encoded, so a
+/// fixture for a non-envelope commitment has to be assembled below the typed
+/// layer. `witness_set_compact_of_items` is the same bypass one level in — it
+/// commits non-canonical *items* inside a well-formed envelope — and the two
+/// together are the only places in the tree that commit bytes the encoders
+/// would not produce.
+///
+/// Everything else about the block stays honest. The compact structure is
+/// re-encoded, the transaction id is re-derived from the tampered body, the
+/// witness-set hash is re-derived from the tampered witness set, and the leaf is
+/// re-committed under its own id — so the block passes every native family's
+/// codec precondition and is faulted for the field alone. The returned fixture's
+/// `tx`/`compact`/`witness_set_compact` are updated in step, so a caller reading
+/// them to build a claim reads the committed values.
+pub fn committed_field_preimage_block_fixture_v1(
+  base: NativeBlockFixtureV1,
+  field_index: Int,
+  preimage: ByteArray,
+) -> NativeBlockFixtureV1 {
+  let Pair(body, witness_set) = committed_field_structures(
+    base.compact.body,
+    base.witness_set_compact,
+    field_index,
+    field_access.field_commitment(preimage),
+  )
+  let compact = native_types.NativeTxCompact {
+    ..base.compact,
+    body,
+    witness_set_hash: blake2b_256(
+      native_compact.encode_native_tx_witness_set_compact(witness_set),
+    ),
+  }
+  let compact_cbor = native_compact.encode_native_tx_compact_v1(compact)
+  let tx_id = native_compact.native_tx_id_for_version(
+    native_types.native_tx_version_v1,
+    native_compact.encode_native_tx_body_compact(body),
+  )
+  let recommitted = committed_leaf_block_fixture_v1(base, tx_id, compact_cbor)
+  NativeBlockFixtureV1 {
+    ..recommitted,
+    compact,
+    witness_set_compact: witness_set,
+  }
+}
+
+/// §2.5's positional table on the producer side: replace slot `field_index`'s
+/// commitment in whichever of the two structures owns it, and leave the other
+/// untouched.
+fn committed_field_structures(
+  body: native_types.NativeTxBodyCompact,
+  witness_set: native_types.NativeTxWitnessSetCompact,
+  field_index: Int,
+  commitment: ByteArray,
+) -> Pair<native_types.NativeTxBodyCompact,
+native_types.NativeTxWitnessSetCompact> {
+  when field_index is {
+    0 ->
+      Pair(
+        native_types.NativeTxBodyCompact {
+          ..body,
+          spend_inputs_hash: commitment,
+        },
+        witness_set,
+      )
+    1 ->
+      Pair(
+        native_types.NativeTxBodyCompact {
+          ..body,
+          reference_inputs_hash: commitment,
+        },
+        witness_set,
+      )
+    2 ->
+      Pair(
+        native_types.NativeTxBodyCompact { ..body, outputs_hash: commitment },
+        witness_set,
+      )
+    3 ->
+      Pair(
+        native_types.NativeTxBodyCompact {
+          ..body,
+          required_observers_hash: commitment,
+        },
+        witness_set,
+      )
+    4 ->
+      Pair(
+        native_types.NativeTxBodyCompact {
+          ..body,
+          required_signers_hash: commitment,
+        },
+        witness_set,
+      )
+    5 ->
+      Pair(
+        native_types.NativeTxBodyCompact { ..body, mint_hash: commitment },
+        witness_set,
+      )
+    6 ->
+      Pair(
+        body,
+        native_types.NativeTxWitnessSetCompact {
+          ..witness_set,
+          script_tx_wits_hash: commitment,
+        },
+      )
+    7 ->
+      Pair(
+        body,
+        native_types.NativeTxWitnessSetCompact {
+          ..witness_set,
+          addr_tx_wits_hash: commitment,
+        },
+      )
+    _ -> {
+      expect field_index == 8
+      Pair(
+        body,
+        native_types.NativeTxWitnessSetCompact {
+          ..witness_set,
+          redeemer_tx_wits_hash: commitment,
+        },
+      )
+    }
+  }
+}
+
 /// The canonical compact witness set of a transaction that witnesses nothing:
 /// all three §2.5 collections empty. Every `field_item_count` over it is 0, so
 /// every absence claim over fields 6–8 holds vacuously — which is what makes it
@@ -517,13 +651,75 @@ pub fn certified_reference_inputs_v1(
 pub fn certified_carriage_v1(
   preimage: ByteArray,
 ) -> field_access.FieldCarriageV1 {
+  certified_carriage_from_v1(0, preimage)
+}
+
+/// The same layout, shifted so the certificate sits at `first_index` and the
+/// chunks follow it.
+///
+/// A **finalize** step's L1 transaction has no block reference inputs, so the
+/// carriage starts at slot 0 and `certified_carriage_v1` is the whole story. A
+/// `Continue` step's does: `continue_step_l1_tx_v1` puts the hub oracle at 0 and
+/// the state-queue node at 1, exactly where the inclusion args say they are, so
+/// carriage appended to it starts at 2. Naming the offset rather than hard-coding
+/// either layout is what stops a selector from silently pointing its chunk
+/// indices at the block evidence.
+pub fn certified_carriage_from_v1(
+  first_index: Int,
+  preimage: ByteArray,
+) -> field_access.FieldCarriageV1 {
+  let chunk_count = list.length(native_carriage.split_field_preimage(preimage))
   field_access.Certified {
-    cert_ref_input_index: 0,
+    cert_ref_input_index: first_index,
     chunk_ref_input_indices: list.range(
-      1,
-      list.length(native_carriage.split_field_preimage(preimage)),
+      first_index + 1,
+      first_index + chunk_count,
     ),
   }
+}
+
+/// `block` repeated `times` over, built by doubling.
+///
+/// A left fold of `concat` is quadratic in the result's length and does not fit
+/// the test budget at the widths §5.4 admits; doubling is O(log times) concats
+/// over geometrically growing arguments.
+pub fn repeated_bytes_v1(block: ByteArray, times: Int) -> ByteArray {
+  if times <= 0 {
+    #""
+  } else if times == 1 {
+    block
+  } else {
+    let half = repeated_bytes_v1(block, times / 2)
+    let doubled = builtin.append_bytearray(half, half)
+    if times % 2 == 0 {
+      doubled
+    } else {
+      builtin.append_bytearray(doubled, block)
+    }
+  }
+}
+
+/// A committed preimage of exactly `total_length` bytes that is **not** a §5.1
+/// envelope, and is ungrammatical for the reason only the end of a walk can
+/// see: one well-formed item followed by one byte §5.1 admits nowhere.
+///
+/// The shape is deliberate. Of the ways to leave §5.1, trailing content is the
+/// only one that costs the *whole* walk before the verdict is known — every
+/// other refusal stops at the byte that causes it — so this is the worst
+/// admissible shape for a fixed-item-count field and the one a cost claim about
+/// this family has to be taken at. Holding the item count at one keeps the
+/// per-item term out of the measurement; the per-item term is priced separately.
+pub fn ungrammatical_trailing_preimage_v1(total_length: Int) -> ByteArray {
+  // `81` + `59 LLLL` + L payload + one trailing byte. The 3-byte item header is
+  // §5.1's minimal form only for L > 255, which is what the bound enforces.
+  let payload_length = total_length - 5
+  expect payload_length > 0xff
+  builtin.append_bytearray(
+    field_access.encode_field_preimage(
+      [repeated_bytes_v1(#"00", payload_length)],
+    ),
+    #"41",
+  )
 }
 
 /// Tier-3 carriage of a **witness-set** field (§2.5 fields 6–8), paired with
@@ -1033,6 +1229,37 @@ pub fn continue_step_l1_tx_v1(
         membership_root,
         membership_key,
         membership_value,
+      ),
+    ],
+  }
+}
+
+/// `continue_step_l1_tx_v1` with §8 carriage reference inputs **appended** after
+/// the two the inclusion args name.
+///
+/// Appended rather than prepended because `native_inclusion_args_v1` pins the
+/// hub oracle at slot 0 and the state-queue node at slot 1; a carriage layout
+/// that took those slots would point the door at the block evidence. The
+/// matching redeemer-side offset is `certified_carriage_from_v1(2, …)`.
+pub fn continue_step_l1_tx_with_carriage_v1(
+  fixture: NativeBlockFixtureV1,
+  output_state_data: Data,
+  carriage_reference_inputs: List<Input>,
+) -> Transaction {
+  let asset_name = ct_token_asset_name(fixture)
+  Transaction {
+    ..placeholder,
+    inputs: [ct_thread_input(asset_name)],
+    outputs: [next_step_output(asset_name, output_state_data)],
+    reference_inputs: list.concat(
+      [hub_reference_input(), state_queue_reference_input(fixture)],
+      carriage_reference_inputs,
+    ),
+    redeemers: [
+      phas_withdraw_redeemer_entry(
+        fixture.transactions_phas_root,
+        fixture.tx_id,
+        fixture.compact_cbor,
       ),
     ],
   }

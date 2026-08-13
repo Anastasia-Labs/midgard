@@ -1,0 +1,54 @@
+{
+  "measurement": "canonical-decodability-committed-preimage-verdict-exec-ledger",
+  "issue": "#596 — the §12.7 canonical-decodability fault family (#593 owner Ruling 2). Rows first pinned here, because the family's step 01 is the only adjudication of a committed non-§5.1 preimage and a step that does not fit an L1 transaction leaves the operator escape hatch open with nothing else to notice.",
+  "spec": "docs/spec/midgard-tx.md §12.7 (the fault kind, its adjudication and its boundary against §12.3's fault_item_predicate), with §5.1 for the envelope grammar, §5.4 for the per-field byte bound, §4/§7.1 for the authenticate-once hash check, §8.3/§8.4 for `K` and the tier-3 partition, and §8.8 for the carriage wire types",
+  "note": "§12.7 publishes a cost for the family's step 01 and these rows are that measurement, taken through `run-focused-check.mjs` against `lib/midgard/fraud-proofs/canonical-decodability/rule.test.ak`. They split the claim the way the work splits, into a byte term and an item term, and each has a fixture-only control beside it.\n\n**What the claim says.** Authenticate then decide: `authenticated_committed_preimage` materialises whichever §8 tier the prover named and hashes it once against §4's positionally-extracted commitment, and `envelope_verdict_v1` then walks §5.1 to a verdict, one item head per declared item. Nothing else runs — no item content is read, no §5.3/§5.5/§5.6 encoder rule is applied, no declared §2.4 length is consulted.\n\n**The byte term.** `canonical_decodability_verdict_at_the_field_byte_bound` carries 32,768 bytes — §5.4's per-field bound, which is also `certified_chunks`' cap on a tier-3 `total_length`, so it is the largest committed preimage any carriage this family accepts can reach — as a single item on §8.4's chunked route at §8.3's `max_tier3_chunk_count` of three. It measures 1,737,095 mem / 803,933,814 cpu against a fixture-only control of 1,033,897 / 524,558,029, so the rule's own share at the byte bound is about **703,198 memory units, 5.3% of the §3.3 memory basis**, and that figure already contains the three-chunk materialisation and the one `blake2b_256` over the whole preimage. The byte axis is not where this family runs out of budget.\n\n**The item term, and why it has controls.** `canonical_decodability_verdict_at_{two_hundred_fifty,five_hundred}_items` read the same shape at 250 and 500 minimum-width items, ungrammatical by one trailing byte — the only §5.1 refusal that costs the **whole** walk before it fires, since every other one stops at the byte that causes it. Their nets against the matching controls are 3,250,195 and 6,258,305 mem (832,337,438 and 1,593,555,125 cpu), which prices the walk at **12,032.44 mem and 3,044,870.75 cpu per item** with an intercept of 242,085 mem / 71,119,751 cpu. The §3.3 memory basis is therefore reached at about **1,077 items**; the memory axis binds, cpu at that cardinality being around 3.35G against the 8G basis.\n\nThe controls are this ledger's one addition to §8.11's precedent, and they are not decoration. A row is a whole-test reading, and this lane's fixture is `encode_field_preimage` over a list whose length is the quantity being priced — a fold of `concat` whose own cost grows with it. Differencing the two rows alone gives 21,378 mem per item, which is within 2% of the figure §8.11's ledger publishes for the door's `walk_to_end` and would read as a coincidence rather than a measurement; nearly half of it is the producer. The controls remove it.\n\n**The over-basis reading, and why it is not a row here.** The worst shape this family admits is §5.4's byte bound spent on minimum-width items, and §5.1's narrowest item is the *empty* one, `40`: `3 + 32,764 + 1 = 32,768` bytes carrying 32,764 items with a trailing byte, which the fit above puts at roughly **394,430,000 mem / 99,833,000,000 cpu** — 29.9x the §3.3 memory basis and 12.5x its cpu basis. It is not a row because a within-basis ledger records only `within` rows (see `exec-ledger-within-basis-v1.mjs`), and the q1x-style `basisFit:\"exceeds\"` vocabulary requires an `errata` cross-reference into a normative erratum §12.7 does not yet carry. It is an **extrapolation from the pair above, not a reading** — that is stated rather than glossed, and it is the one number in this ledger that is not measured. §12.7 records the residual in terms, and #596 records it for #580's re-measurement pass.\n\n**What the residual means for the fault kind.** A committed field with more than roughly a thousand items cannot be adjudicated by this family in one transaction today. That is a narrower hatch than the one §12.7 closes — an operator would have to commit garbage that is *also* a many-item envelope prefix — but it is a hatch, and the repair is §10's resumable walk applied to the verdict, which is #565/#579 work rather than this lane's.\n\n**What these rows do NOT claim.** (1) That the shapes measured are valid L2 transactions. They are the worst shapes *this family* admits, which is what bounds its cost: the step authenticates bytes against the operator's own committed hash and reads no item's content. (2) A machine-checked decomposition. The within-basis shape judges absolute rows and publishes no `derived` subtraction, so every net above is arithmetic a reader does over rows this file pins, not a number the gate checks. (3) That the step-01 *validator's* thread and inclusion machinery is priced. The rows measure `committed_field_verdict_v1`, which is the family's own claim; the computation-thread and MPF membership costs it shares with every other native family are measured with those families.\n\nRegenerate with `MIDGARD_AIKEN_BIN=<fork> node scripts/verify-canonical-decodability-exec-ledger-v1.mjs --update`, and move any reported number in the same commit. `--update` rewrites the raw mem/cpu rows; it does NOT rewrite `basisFit`, and it is not a bypass — a row or selector that did not run, or a fresh reading that contradicts a `within` judgement, fails in update mode too and the ledger is not rewritten. Provisional on the same footing as every other ledger in this directory: formal closure is Phase 7's, against the Phase-6 blueprint.",
+  "compiler": "Readings taken with the patched fork `aiken v1.1.23+2a78108` (stock v1.1.22 is compile/blueprint only and never a reading source), the same rev the other five ledgers in this directory were taken under. The measured test module is byte-identical under stock v1.1.22 `fmt` and the fork's, checked both ways, so the source these rows read is not fork-shaped.",
+  "basis": {
+    "memoryUnits": 13200000,
+    "cpuUnits": 8000000000,
+    "source": "GOAL_SPEC §3.3 — 20% margin off the supported L1 floor MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits of 16,500,000 mem. Provenance, exactly as §3.3 states it: the captured in-repo artifact is the mainnet parameter snapshot in docs/midgard/decisions/0001-cardano-l1-transaction-capability-floor.md, Conway epoch 645, observed 2026-07-24."
+  },
+  "modules": [
+    {
+      "module": "midgard/fraud_proofs/canonical_decodability/rule.test",
+      "neutralisationNote": "Both selectors are mutation-verified rather than assumed. (1) `canonical_decodability_ledger_fixture_sits_at_the_field_byte_bound` is the shape guard, and it is why a re-take cannot quietly re-pin a cheaper row: it asserts the bound fixture is exactly `max_transaction_aggregate_field_bytes` bytes, above §8.3's `K`, at `expected_chunk_count == max_tier3_chunk_count`, ungrammatical for the trailing-byte reason the whole-walk claim depends on, and a single item; and that both cardinality fixtures fit tier 1 and differ in item count alone. Shrink any of them and this selector goes red before the row is re-pinned. (2) `canonical_decodability_verdict_refuses_substituted_certified_chunks` is the discrimination guard: neutralising `expect field_commitment(preimage) == expected_hash` in `authenticated_committed_preimage` (`lib/midgard/native-tx-field-access-v1.ak`) turns it red, and the check report names that exact line as the failure it traps. The vector is honest about isolating that one guard — the certificate is one a real certification produced, its digest vector is over the real chunks, every named chunk is the right length and the count is the derived one — so every §8.4/§8.6 check `certified_chunks` runs still passes and only §4's hash separates the substituted bytes from the committed ones. It is also what makes the bound row's tier-3 carriage falsifiable: without that check the manifest would be authenticating the preimage, and a manifest is minted against a `witness_set_hash` its own redeemer supplied. The family's other guards — the §2.5 body/witness pairing, the fabricated verdict and field index, the forged transactions root, the honest-block negative — are covered by the small-shape selectors in the two validator modules, because a 32,768-byte fixture isolates none of them better than a six-byte one does.",
+      "neutralisation": [
+        "canonical_decodability_ledger_fixture_sits_at_the_field_byte_bound",
+        "canonical_decodability_verdict_refuses_substituted_certified_chunks"
+      ],
+      "rows": {
+        "canonical_decodability_verdict_at_the_field_byte_bound": {
+          "mem": 1737095,
+          "cpu": 803933814,
+          "basisFit": "within"
+        },
+        "canonical_decodability_verdict_fixture_only_at_the_field_byte_bound": {
+          "mem": 1033897,
+          "cpu": 524558029,
+          "basisFit": "within"
+        },
+        "canonical_decodability_verdict_at_two_hundred_fifty_items": {
+          "mem": 6481792,
+          "cpu": 1965292956,
+          "basisFit": "within"
+        },
+        "canonical_decodability_verdict_fixture_only_at_two_hundred_fifty_items": {
+          "mem": 3231597,
+          "cpu": 1132955518,
+          "basisFit": "within"
+        },
+        "canonical_decodability_verdict_at_five_hundred_items": {
+          "mem": 11826379,
+          "cpu": 3402376332,
+          "basisFit": "within"
+        },
+        "canonical_decodability_verdict_fixture_only_at_five_hundred_items": {
+          "mem": 5568074,
+          "cpu": 1808821207,
+          "basisFit": "within"
+        }
+      }
+    }
+  ]
+}

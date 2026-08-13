@@ -6,6 +6,16 @@
 //// `authenticated_field_view` door and then reads items through the slice-only
 //// accessors below; nothing else at this layer opens a field.
 ////
+//// There is one door and three ways in, differing only in what they will hand
+//// back. `authenticated_field_view` returns the lazy view §8.8 defines;
+//// `authenticated_whole_field_view` returns a `Whole` view whatever tier the
+//// carriage names, for rules that consume the item count; and
+//// `authenticated_committed_preimage` returns the hash-checked **bytes** and
+//// runs no §5.1 check at all, for the one consumer whose whole question is
+//// whether those bytes are a §5.1 envelope (§12.7). All three share
+//// `field_door_prologue`, so §4's positional identity is established the same
+//// way in each.
+////
 //// Three properties the door owns, so that no caller has to:
 ////
 ////   * **Positional hash extraction is internal** (§2.5/§4). Callers hand over
@@ -709,6 +719,90 @@ pub fn authenticated_whole_field_view(
       )
     }
   }
+}
+
+/// The door, opened for the one consumer that must render a **verdict** about
+/// the committed bytes instead of reading items out of them — §12.7's
+/// canonical-decodability fault family.
+///
+/// It returns the **bytes**, not a view, and that is the whole difference. Both
+/// view doors above end in `whole_view` (directly, or after materialising a
+/// tier-3 field), and `whole_view` settles §5.1 count consistency with `expect`:
+/// a preimage that is not a §5.1 envelope **aborts** there. That is the correct
+/// fail-closed answer to a *prover* supplying the wrong bytes (§7.3), and §12.7
+/// leaves it exactly as it is. But it is also why an **operator**-committed
+/// non-envelope cannot be adjudicated through either view door: the step that
+/// would convict it is the step that cannot be built. This entry point is the
+/// answer to that, and only to that — it stops at the §4 hash check, which is
+/// what makes the bytes it returns undeniably the committed preimage, and says
+/// nothing whatever about their shape.
+///
+/// **Every guard the view doors run before the hash is run here too**, because
+/// they are `field_door_prologue`'s and `certified_chunks`', not `whole_view`'s:
+/// the field index is bounded, positional identity is established for the
+/// witness-set fields (§4), and a tier-3 carriage still has to name a §8.6
+/// token for this `(tx_id, field_index)` whose manifest satisfies §8.4's
+/// partition. What is *not* run is `whole_view` — no §5.1 header decode, no
+/// stride arithmetic, no `walk_to_end`, no `max_transaction_aggregate_field_bytes`
+/// bound on tiers 1–2 (tier 3 keeps it, from the certificate). Those are the
+/// checks whose refusal is the fault under adjudication, so running them here
+/// would be the stall this family exists to remove.
+///
+/// **Tier 3 is admissible at every field, including 6–8**, and for the reason
+/// `authenticated_whole_field_view` gives: the chunks are materialised and
+/// hashed once against the positionally-extracted commitment, so the manifest
+/// authenticates nothing about content and a substituted chunk changes the
+/// concatenation and therefore the hash. `field_opening_v1`'s
+/// `carriage_reaches_the_anchor` refuses tier 3 at fields 6–8 because the
+/// *lazy* door never re-hashes the whole preimage and the certificate is the
+/// only binding there; that argument does not reach this path.
+///
+/// **A caller that goes on to read an item out of these bytes is using the
+/// wrong door.** Nothing here establishes an item count, an item boundary, or
+/// that the bytes end where the header says they do — §7's items 2 and 4 are
+/// exactly what `whole_view` buys and this function does not. Read items
+/// through `authenticated_field_view` or `authenticated_whole_field_view`; use
+/// this one to *decide about* the bytes and nothing else.
+pub fn authenticated_committed_preimage(
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
+  field_index: Int,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> ByteArray {
+  let Pair(expected_hash, _stride) = field_door_prologue(
+    verified,
+    witness_set,
+    field_index,
+  )
+  let preimage = when carriage is {
+    Inline { preimage } -> preimage
+    RawUtxo { ref_input_index } ->
+      raw_carriage_bytes(reference_inputs, ref_input_index)
+    Certified { cert_ref_input_index, chunk_ref_input_indices } -> {
+      let CertifiedChunksV1 { chunks, .. } = certified_chunks(
+        verified.tx_id,
+        field_index,
+        reference_inputs,
+        cert_ref_input_index,
+        chunk_ref_input_indices,
+        certificate_policy_id,
+      )
+      list.foldl(
+        chunks,
+        #"",
+        fn(chunk, joined) { bytearray.concat(joined, chunk) },
+      )
+    }
+  }
+  // §4. The one check this door does run, and the one that makes the returned
+  // bytes evidence rather than a claim: a prover supplying anything other than
+  // the committed preimage fails here (§7.3), so what comes back is the
+  // operator's own committed bytes and a verdict about them is a verdict about
+  // the block.
+  expect field_commitment(preimage) == expected_hash
+  preimage
 }
 
 /// §8.4's deterministic split rule: chunk `j` is bytes `[j·K, (j+1)·K)` with a
