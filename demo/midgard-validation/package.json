@@ -149,7 +149,7 @@
     "@harmoniclabs/plutus-data": "1.2.6",
     "@harmoniclabs/plutus-machine": "2.1.3",
     "@harmoniclabs/uplc": "1.4.1",
-    "@lucid-evolution/lucid": "0.6.0",
+    "@lucid-evolution/lucid": "0.6.1",
     "@noble/hashes": "^2.0.1",
     "effect": "^3.14.22"
   },
