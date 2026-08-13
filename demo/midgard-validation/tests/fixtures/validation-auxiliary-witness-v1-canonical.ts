@@ -20,14 +20,22 @@ const chunkProof = {
 } as const;
 const signerProof = { kind: "none" } as const;
 /**
- * #597. The four §8-door constructors name a `FieldCarriageV1` now. Tier-1
- * `Inline` is what the trace producer emits, so it is what this fixture pins;
- * the tier byte is the frozen part (Inline 0 / RawUtxo 1 / Certified 2) and the
- * preimage is the §5.1 envelope of one one-byte item.
+ * #597/#600. The four §8-door constructors name a `FieldCarriageV1` on the wire,
+ * and the machine's witness now carries the *plan input* those constructors are
+ * resolved from — which field, and its §5.1 preimage.
+ *
+ * The preimage is the §5.1 envelope of one one-byte item, three bytes, so §8.4's
+ * partition admits tier 1 and the default resolver emits `Inline`. That is
+ * deliberate: this corpus pins the frozen constructor **arities and tags**, and
+ * keeping every entry inside the tier-1 domain is what keeps the corpus bytes —
+ * and the `auxiliary_corpus_blake2b_256` the Aiken side pins — unmoved by #600.
+ * The tier-2 and tier-3 wire forms are pinned by their own cross-language
+ * vectors in `generate-validation-one-step-aiken-fixture.mjs`, against carriage
+ * resolved by content from a real reference-input set.
  */
-const carriage = {
-  carriage: "Inline",
-  preimage: bytes("81411a"),
+const carriagePlan = {
+  fieldIndex: 0,
+  fieldPreimage: bytes("81411a"),
 } as const;
 const emptySummary = {
   root: Buffer.alloc(0),
@@ -167,14 +175,14 @@ export const canonicalValidationAuxiliaryWitnesses = [
       kind: "transactionFieldChunk",
       fieldIndex: 0,
       itemIndex: 0,
-      carriage,
+      fieldPreimage: carriagePlan.fieldPreimage,
     }),
   ],
   [
     2,
     auxiliary({
       kind: "requiredSignerItem",
-      carriage,
+      ...carriagePlan,
       signerProof,
     }),
   ],
@@ -480,14 +488,14 @@ export const canonicalValidationAuxiliaryWitnesses = [
     29,
     auxiliary({
       kind: "transactionRedeemerItemBegin",
-      carriage,
+      ...carriagePlan,
     }),
   ],
   [
     30,
     auxiliary({
       kind: "transactionFieldItem",
-      carriage,
+      ...carriagePlan,
     }),
   ],
   [

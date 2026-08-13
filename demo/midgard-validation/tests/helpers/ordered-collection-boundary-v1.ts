@@ -15,15 +15,15 @@ import {
   reconstructMidgardTransactionV1,
 } from "@al-ft/midgard-core";
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
-} from "@al-ft/midgard-core/consensus-profile-v1";
-import {
   encodeMidgardFieldPreimageV1,
   type MidgardFieldCarriageV1,
   selectMidgardFieldCarriageTierV1,
   splitMidgardFieldPreimageIntoChunksV1,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import {
+  MIDGARD_CONSENSUS_LIMITS_V1,
+  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
+} from "@al-ft/midgard-core/consensus-profile-v1";
 import { deriveValidationProofItemPublicationV1 } from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -1919,18 +1919,23 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
     //
     // The indices below are representative, because this is a *size*
     // measurement and a positional index is a small integer whichever UTxO it
-    // names. Resolving real ones needs a concrete transaction (§8.7 addresses
-    // carriage by content), which is exactly what the trace producer lacks and
-    // what https://github.com/Anastasia-Labs/midgard/issues/600 opens.
+    // names. Since #600 that shape is supplied the same way production supplies
+    // a real one — as the carriage resolver `encodeValidationAuxiliaryWitnessCborV1`
+    // takes — so this measurement sits on the production seam rather than beside
+    // it. Resolving *real* indices needs a concrete transaction (§8.7 addresses
+    // carriage by content), which a size measurement has no reason to build.
     maxRevealBytes: Math.max(
       ...fieldChunks.map(
         (chunk) =>
-          encodeValidationAuxiliaryWitnessCborV1({
-            kind: "transactionFieldChunk",
-            fieldIndex: chunk.collectionProof.fieldIndex,
-            itemIndex: chunk.collectionProof.itemIndex,
-            carriage: admissibleFieldCarriageV1(field.preimageCbor),
-          }).length,
+          encodeValidationAuxiliaryWitnessCborV1(
+            {
+              kind: "transactionFieldChunk",
+              fieldIndex: chunk.collectionProof.fieldIndex,
+              itemIndex: chunk.collectionProof.itemIndex,
+              fieldPreimage: field.preimageCbor,
+            },
+            ({ fieldPreimage }) => admissibleFieldCarriageV1(fieldPreimage),
+          ).length,
       ),
     ),
     maxChunkBytes: Math.max(

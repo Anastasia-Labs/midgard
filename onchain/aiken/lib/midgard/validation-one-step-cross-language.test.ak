@@ -3,7 +3,7 @@
 
 use aiken/cbor
 use aiken/primitive/bytearray
-use midgard/native_tx_field_access_v1.{Inline}
+use midgard/native_tx_field_access_v1.{Certified, Inline, RawUtxo}
 use midgard/validation_dispute_v1
 use midgard/validation_machine_v1.{
   TransactionFieldChunkWitness, ValidationAuxiliaryWitnessV1,
@@ -27,6 +27,10 @@ const field_chunk_auxiliary_cbor =
 
 const field_chunk_preimage =
   #"8158268258201111111111111111111111111111111111111111111111111111111111111111190000"
+
+const raw_utxo_auxiliary_cbor = #"d87a9f0200d87a9f01ffff"
+
+const certified_auxiliary_cbor = #"d87a9f0200d87b9f039f0102ffffff"
 
 const evidence_hash =
   #"dcb7713a8cde102bf249fba3f62aaac6f7871fbf7101040ee4c1e2920f4dbd7f"
@@ -91,8 +95,8 @@ test typescript_generated_canonical_decode_step_is_exact() {
 /// producer put in them, in the order Aiken names them.
 ///
 /// The carriage is tier-1 `Inline`: §8.4's partition admits only that tier for a
-/// preimage this size, and it is the only tier the TypeScript trace producer can
-/// emit (https://github.com/Anastasia-Labs/midgard/issues/600).
+/// preimage this size. The two tiers above it are pinned by the two vectors
+/// below (#600).
 test typescript_generated_field_chunk_auxiliary_is_exact() {
   expect Some(auxiliary_data) = cbor.deserialise(field_chunk_auxiliary_cbor)
   expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
@@ -106,6 +110,62 @@ test typescript_generated_field_chunk_auxiliary_is_exact() {
     // The carriage delivers the field's whole §5.1 preimage — what the door
     // hashes against the flat §4 commitment — not one item and an opening.
     bytearray.length(field_chunk_preimage) == 41,
+  }
+}
+
+/// #600. The same emitted constructor at tier 2, where §8.4's partition puts a
+/// 14778-byte field-2 preimage.
+///
+/// This is the vector the trace producer could not build before: the tier is
+/// resolved at evidence commitment against a concrete transaction's
+/// canonically-sorted reference-input set, so the auxiliary names a **positional
+/// reference-input index** and carries no preimage at all. That is what makes
+/// stage-4 evidence O(1) in output size — the property
+/// `validation_machine_v1.ak:9189-9192` states and C21-STAGE4 protects — and it
+/// is checked here as a byte length rather than asserted: 11 bytes for a
+/// field of 14778.
+///
+/// The index is not `0`. The TypeScript side resolved it by content (§8.7)
+/// against a set whose first entry is the published spending validator a real
+/// step reads through `readFrom`, so this pins that a resolver counts the
+/// transaction's *whole* reference-input list and not just its carriage.
+test typescript_generated_raw_utxo_carriage_auxiliary_is_exact() {
+  expect Some(auxiliary_data) = cbor.deserialise(raw_utxo_auxiliary_cbor)
+  expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
+  expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
+  and {
+    // O(1) in field size: a tier-2 carriage is one integer.
+    bytearray.length(raw_utxo_auxiliary_cbor) == 11,
+    field_index == 2,
+    item_index == 0,
+    carriage == RawUtxo { ref_input_index: 1 },
+  }
+}
+
+/// #600. The same emitted constructor at tier 3, where §8.4's partition puts a
+/// 16388-byte field-2 preimage — above `chunk_bytes_k`, so the preimage is
+/// split into 2 deterministic chunks with one §8.6 digest manifest.
+///
+/// `chunk_ref_input_indices` is all-chunks-positional and its **order** is the
+/// §8.4 chunk order, which is also the order the certificate's digest vector is
+/// written in. Both the manifest index and the chunk indices were located by
+/// content — the manifest by its `(tx_id, field_index)` token, the chunks by
+/// their datum bytes — so this vector pins the resolution discipline and not
+/// just the shape.
+test typescript_generated_certified_carriage_auxiliary_is_exact() {
+  expect Some(auxiliary_data) = cbor.deserialise(certified_auxiliary_cbor)
+  expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
+  expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
+  and {
+    // O(1) in field size at the top of the ladder too: at most three indices
+    // plus the manifest's, whatever the preimage weighs.
+    bytearray.length(certified_auxiliary_cbor) == 15,
+    field_index == 2,
+    item_index == 0,
+    carriage == Certified {
+      cert_ref_input_index: 3,
+      chunk_ref_input_indices: [1, 2],
+    },
   }
 }
 

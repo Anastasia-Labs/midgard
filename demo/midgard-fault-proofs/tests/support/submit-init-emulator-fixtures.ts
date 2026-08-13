@@ -1289,16 +1289,16 @@ export const buildInvalidForcedValidationDisputeFixture = async ({
       expectedRejectionCode: RejectCodes.EmptyInputs,
     }),
   );
-  // #597: the complete-item witness carries a §8 `FieldCarriageV1` rather than
-  // the item's bytes, and at tier 1 the carriage is the field's whole §5.1
-  // preimage — so the size this fixture selects on is the preimage the step
-  // reveals, which is what the L1 envelope actually has to hold.
+  // #600: the complete-item witness carries the carriage **plan input** — which
+  // field, and its whole §5.1 preimage — and the tier is resolved later, at
+  // evidence commitment. So the size this fixture selects on is the preimage the
+  // step reads, which is what the L1 envelope actually has to hold, and it is
+  // read straight off the plan input rather than out of a tier-1 carriage.
   const disputedWitnessIndex = challengerTrace.witnesses.findIndex(
     (witness) =>
       witness.phase === "canonicalDecode" &&
       witness.auxiliary?.kind === "transactionFieldItem" &&
-      witness.auxiliary.carriage.carriage === "Inline" &&
-      witness.auxiliary.carriage.preimage.length > minimumCompleteItemBytes,
+      witness.auxiliary.fieldPreimage.length > minimumCompleteItemBytes,
   );
   if (disputedWitnessIndex < 0) {
     throw new Error(
@@ -1311,13 +1311,7 @@ export const buildInvalidForcedValidationDisputeFixture = async ({
       "validation-dispute fixture selected a non-item canonical witness",
     );
   }
-  if (completeItemWitness.auxiliary.carriage.carriage !== "Inline") {
-    throw new Error(
-      "validation-dispute fixture selected a non-tier-1 complete item carriage",
-    );
-  }
-  const completeItemBytes =
-    completeItemWitness.auxiliary.carriage.preimage.length;
+  const completeItemBytes = completeItemWitness.auxiliary.fieldPreimage.length;
   const operatorRejectionCodeHash = Buffer.alloc(32);
   const operatorStates = challengerTrace.states.map((state, index) =>
     index >= disputedWitnessIndex + 1

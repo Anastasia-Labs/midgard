@@ -8,16 +8,25 @@ import {
 } from "@al-ft/midgard-core";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+  type MidgardFieldCarriagePlanV1,
+  planMidgardFieldCarriageV1,
+} from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
 import {
   encodeMidgardFieldPreimageV1,
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
   selectMidgardFieldCarriageTierV1,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
-import { deriveValidationProofItemPublicationV1 } from "@al-ft/midgard-sdk";
-import { CML, Constr, Data } from "@lucid-evolution/lucid";
+import {
+  MIDGARD_CONSENSUS_LIMITS_V1,
+  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
+} from "@al-ft/midgard-core/consensus-profile-v1";
+import {
+  deriveFieldPreimageCertificationV1,
+  deriveValidationProofItemPublicationV1,
+  fieldPreimagePublicationDatumCborV1,
+  resolveMidgardFieldCarriageAgainstReferenceInputsV1,
+} from "@al-ft/midgard-sdk";
+import { CML, Constr, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -33,7 +42,9 @@ import {
   buildValidationMachineLedgerMutationSteps,
   buildValidationOneStepArgumentV1,
   type DeterministicValidationMachineTrace,
-  ValidationMachineCarriageTierUnsupportedErrorV1,
+  ValidationMachineCarriageResolutionRequiredErrorV1,
+  type ValidationMachineFieldCarriagePlanInputV1,
+  type ValidationMachineFieldCarriageResolverV1,
   type ValidationMachineWorkWitness,
 } from "../src/index.js";
 import {
@@ -167,19 +178,19 @@ const findFieldItemStep = (
 ): {
   readonly stateIndex: number;
   readonly witness: ValidationMachineWorkWitness;
+  readonly planInput: ValidationMachineFieldCarriagePlanInputV1;
 } => {
   const expectedPreimageBytes = encodeMidgardFieldPreimageV1([
     Buffer.alloc(itemBytes),
   ]).length;
   for (let index = 0; index < trace.witnesses.length; index += 1) {
     const witness = trace.witnesses[index]!;
-    // #597: both constructors carry a §8 `FieldCarriageV1` now and neither
-    // carries an item length or a field index, so a step is located by phase,
-    // kind, and the *bytes the carriage delivers* — which for these traces is
-    // field 2's single-item §5.1 envelope. Matching on content rather than on a
-    // claimed number is the same discipline the door itself keeps, and it is
-    // what keeps this from selecting field 0's step, whose complete-item witness
-    // comes first in the canonicalDecode walk.
+    // #600: both constructors carry the carriage *plan input* now — which field
+    // and its §5.1 preimage — so a step is located by phase, kind, and the bytes
+    // it read, which for these traces is field 2's single-item envelope.
+    // Matching on content rather than on a claimed number is the same discipline
+    // the door itself keeps, and it is what keeps this from selecting field 0's
+    // step, whose complete-item witness comes first in the canonicalDecode walk.
     if (
       witness.phase !== phase ||
       !(
@@ -190,12 +201,9 @@ const findFieldItemStep = (
     ) {
       continue;
     }
-    const { carriage } = witness.auxiliary;
-    if (
-      carriage.carriage === "Inline" &&
-      carriage.preimage.length === expectedPreimageBytes
-    ) {
-      return { stateIndex: index, witness };
+    const planInput = witness.auxiliary;
+    if (planInput.fieldPreimage.length === expectedPreimageBytes) {
+      return { stateIndex: index, witness, planInput };
     }
   }
   throw new Error(
@@ -248,69 +256,135 @@ const encodeDirectCompleteItemVerifyRedeemer = ({
   );
 };
 
+/** A prover key hash — §8.6's `owner`, the min-Ada reclaim authority. */
+const CARRIAGE_OWNER = Buffer.alloc(28, 0x7c);
+/** The §8.6 certificate minting policy, a validator parameter (#579 rider 2). */
+const CERTIFICATE_POLICY_ID = "ab".repeat(28);
+const CERTIFICATE_ADDRESS = "addr_test1_field_preimage_certificate";
+const PROVER_KEY_ADDRESS = "addr_test1_prover_key_address";
+
+const carriageUtxo = ({
+  txHash,
+  outputIndex,
+  address,
+  datum,
+  assets,
+}: {
+  readonly txHash: string;
+  readonly outputIndex: number;
+  readonly address: string;
+  readonly datum: string;
+  readonly assets?: Record<string, bigint>;
+}): UTxO => ({
+  txHash,
+  outputIndex,
+  address,
+  assets: { lovelace: 5_000_000n, ...(assets ?? {}) },
+  datum,
+});
+
 /**
- * Digs the carriage refusal out of whatever wrapper it arrived in.
+ * The §8 carriage a dispute submitter would resolve for one field, together with
+ * the reference-input set it resolved against (#600).
  *
- * The trace producer runs inside an Effect, so a thrown
- * {@link ValidationMachineCarriageTierUnsupportedErrorV1} reaches a caller
- * wrapped in a `FiberFailure` whose cause hangs off a symbol key. Asserting
- * `toBeInstanceOf` on the wrapper would pass only by accident; walking to the
- * real error is what lets the rows below read its measured fields.
+ * Everything here comes from producers: `planMidgardFieldCarriageV1` decides the
+ * tier by §8.4's partition over the preimage's length, the chunk datums are
+ * `fieldPreimagePublicationDatumCborV1`'s bytes, the manifest is
+ * `deriveFieldPreimageCertificationV1`'s, and the indices come back from
+ * `resolveMidgardFieldCarriageAgainstReferenceInputsV1`, which locates each one
+ * **by content** against the canonically-sorted list (§8.7). No index is written
+ * down anywhere in this file.
+ *
+ * The reference-input set deliberately contains a **decoy** — the published
+ * spending validator a real step reads through `readFrom`, which sorts into the
+ * same list and shifts every carriage index that follows it. A resolver that
+ * counted only carriage UTxOs would produce indices that are right here and
+ * wrong on L1; including it is what makes these vectors measure the real thing
+ * (ruling D3-A).
  */
-const carriageRefusalOf = (
-  thrown: unknown,
-): ValidationMachineCarriageTierUnsupportedErrorV1 => {
-  const seen = new Set<unknown>();
-  const walk = (
-    value: unknown,
-  ): ValidationMachineCarriageTierUnsupportedErrorV1 | null => {
-    if (typeof value !== "object" || value === null || seen.has(value)) {
-      return null;
-    }
-    seen.add(value);
-    if (value instanceof ValidationMachineCarriageTierUnsupportedErrorV1) {
-      return value;
-    }
-    const container = value as Record<string | symbol, unknown>;
-    for (const key of [
-      ...Object.getOwnPropertyNames(container),
-      ...Object.getOwnPropertySymbols(container),
-    ]) {
-      const found = walk(container[key]);
-      if (found !== null) {
-        return found;
-      }
-    }
-    return null;
+const resolveCarriageForPlan = (
+  plan: MidgardFieldCarriagePlanV1,
+): {
+  readonly carriage: ReturnType<
+    typeof resolveMidgardFieldCarriageAgainstReferenceInputsV1
+  >;
+  readonly referenceInputs: readonly UTxO[];
+} => {
+  const scriptReference = carriageUtxo({
+    txHash: "00".repeat(32),
+    outputIndex: 0,
+    address: "addr_test1_published_validator",
+    datum: "d87980",
+  });
+  const publications = plan.publications.map((publication, offset) =>
+    carriageUtxo({
+      txHash: `${(offset + 3).toString(16).padStart(2, "0")}`.repeat(32),
+      outputIndex: offset,
+      address: PROVER_KEY_ADDRESS,
+      datum: fieldPreimagePublicationDatumCborV1(publication.bytes),
+    }),
+  );
+  const certificate =
+    plan.tier === "Certified"
+      ? [
+          ((): UTxO => {
+            const certification = deriveFieldPreimageCertificationV1(plan);
+            return carriageUtxo({
+              txHash: "f1".repeat(32),
+              outputIndex: 0,
+              address: CERTIFICATE_ADDRESS,
+              datum: certification.datumCbor,
+              assets: {
+                [`${CERTIFICATE_POLICY_ID}${certification.assetNameHex}`]: 1n,
+              },
+            });
+          })(),
+        ]
+      : [];
+  const referenceInputs = [scriptReference, ...publications, ...certificate];
+  return {
+    carriage: resolveMidgardFieldCarriageAgainstReferenceInputsV1({
+      plan,
+      referenceInputs,
+      certificatePolicyId: CERTIFICATE_POLICY_ID,
+    }),
+    referenceInputs,
   };
-  const found = walk(thrown);
-  if (found === null) {
-    throw new Error(
-      `expected a ValidationMachineCarriageTierUnsupportedErrorV1, got ${String(thrown)}`,
-    );
-  }
-  return found;
+};
+
+/**
+ * The resolver a submitter hands `buildValidationOneStepArgumentV1` — #600's
+ * seam, as the dispute path uses it.
+ */
+const carriageResolverForTrace = (
+  trace: DeterministicValidationMachineTrace,
+): ValidationMachineFieldCarriageResolverV1 => {
+  const txId = Buffer.from(trace.states[0]!.transactionId);
+  return ({ fieldIndex, fieldPreimage }) =>
+    resolveCarriageForPlan(
+      planMidgardFieldCarriageV1({
+        owner: CARRIAGE_OWNER,
+        txId,
+        fieldIndex,
+        preimage: fieldPreimage,
+      }),
+    ).carriage;
 };
 
 describe("complete-item proof fit V1", () => {
-  it("keeps the complete-item witness across the tier-1 carriage domain, and refuses above it", async () => {
+  it("keeps the complete-item witness across the tier-1 carriage domain and past it, and reaches the chunked fallback", async () => {
     // The producer's complete-versus-chunk threshold is
-    // `maxSinglePublicationCompleteItemBytes` (14,396). **That threshold now
-    // sits outside the carriage domain this producer can emit**, and the
-    // arithmetic is worth stating because it is not obvious: a single-output
+    // `maxSinglePublicationCompleteItemBytes` (14,396), and the arithmetic
+    // around it is worth stating because it is not obvious: a single-output
     // field-2 preimage is `81 ‖ 59 <len:2> ‖ item`, four bytes wider than its
-    // item, so the largest item tier 1 admits is 14,332 — 64 bytes below the
-    // threshold. Both of this row's original probes (14,396 and 14,397) are
-    // therefore above the cap.
+    // item, so the largest item §8.3's tier-1 cap admits is 14,332 — 64 bytes
+    // below the threshold.
     //
-    // **DEVIATION — #597, confirmed by orchestrator RULING 2 (2026-08-12).**
-    // The consequence is that the canonicalDecode *chunked*
-    // fallback is unreachable: it needs an item above 14,396, which forces a
-    // preimage above 14,400, which §8.4 carries as tier 2 or 3. The fallback is
-    // still there and still guarded — `complete-item-carriage-policy-v1.test.ts`
-    // pins that by source scan — but no tier-1 trace exercises it, so what this
-    // row can assert is the complete-item route across the admitted domain and
-    // the named refusal above it. #600 restores the rest.
+    // **#600 restores what #597's narrowing removed.** The trace producer no
+    // longer names a tier at all: it records the field and its §5.1 preimage and
+    // the tier is resolved at evidence commitment, so the producer builds across
+    // the whole admissible range and the threshold above the tier-1 cap is
+    // reachable again.
     const largestTier1Item = MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 - 4;
     const atCap = makeExactSizeOutputItem(largestTier1Item);
     expect(atCap.length).toBe(largestTier1Item);
@@ -318,8 +392,8 @@ describe("complete-item proof fit V1", () => {
     const fittingTrace = await buildTraceWithOutputs([atCap]);
     const fitting = findFieldItemStep(fittingTrace, largestTier1Item);
     expect(fitting.witness.auxiliary?.kind).toBe("transactionFieldItem");
-    // The complete item is carried whole, so canonicalDecode emits no chunked
-    // step for field 2 anywhere in the admitted domain.
+    // The complete item is carried whole below the threshold, so canonicalDecode
+    // emits no chunked step for field 2 here.
     expect(
       fittingTrace.witnesses.some(
         (witness) =>
@@ -329,66 +403,141 @@ describe("complete-item proof fit V1", () => {
       ),
     ).toBe(false);
 
-    // One byte more and §8.4 stops admitting tier 1, so the producer refuses by
-    // name instead of emitting a step no prover could submit.
+    // One byte past the tier-1 cap the producer keeps going — §8.4 selects tier
+    // 2 for those bytes and that is a fact about the carriage, not about whether
+    // the step exists. This is the row that would have caught #597's narrowing.
     const aboveCap = makeExactSizeOutputItem(largestTier1Item + 1);
-    const refusal = await buildTraceWithOutputs([aboveCap]).then(
-      () => null,
-      (cause: unknown) => cause,
-    );
-    const typed = carriageRefusalOf(refusal);
-    expect(typed.fieldIndex).toBe(2);
-    expect(typed.preimageLength).toBe(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 + 1,
-    );
-    expect(typed.selectedTier).toBe("RawUtxo");
-    expect(typed.followUpIssue).toBe(600);
-    // The threshold the producer's complete-versus-chunk guard uses is above the
-    // cap, which is exactly why the chunked branch is unreachable today.
+    const aboveCapTrace = await buildTraceWithOutputs([aboveCap]);
+    const above = findFieldItemStep(aboveCapTrace, largestTier1Item + 1);
+    expect(above.witness.auxiliary?.kind).toBe("transactionFieldItem");
     expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
-    ).toBeGreaterThan(largestTier1Item);
-  }, 120_000);
+      selectMidgardFieldCarriageTierV1(above.planInput.fieldPreimage.length),
+    ).toBe("RawUtxo");
 
-  it("keeps stage-4 one-step evidence free of per-item proof material across the tier-1 carriage domain", async () => {
-    // C21-STAGE4-GAP closure (Option A). Before the fix, the stage-4 fold
-    // revealed the complete output bytes *in addition to* a per-item opening,
-    // its evidence crossed the 16,384-byte L1 envelope at a measured
-    // 14,774-byte single-output best case, and the deployed direct-only carriage
-    // bounded it near 8,769 bytes — so a dishonest operator could finalize an
-    // invalid block by forging exactly that fold step for a legal large output.
+    // The chunked fallback, reachable again (#597's Deviation retired). An item
+    // above `maxSinglePublicationCompleteItemBytes` forces canonicalDecode's
+    // chunked route, which needs a preimage §8.4 carries above tier 1 — exactly
+    // the domain the named refusal used to remove. Exercised, not scanned for.
+    const chunkedItem =
+      MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes + 1;
+    expect(chunkedItem).toBeGreaterThan(largestTier1Item);
+    const chunkedTrace = await buildTraceWithOutputs([
+      makeExactSizeOutputItem(chunkedItem),
+    ]);
+    const chunkedSteps = chunkedTrace.witnesses.filter(
+      (witness) =>
+        witness.phase === "canonicalDecode" &&
+        witness.auxiliary?.kind === "transactionFieldChunk" &&
+        witness.auxiliary.fieldIndex === 2,
+    );
+    expect(chunkedSteps.length).toBeGreaterThan(0);
+    // And it is chunked *because* the item crossed the threshold, not because
+    // the field is large: field 2 emits no complete-item step for this item.
+    expect(
+      chunkedTrace.witnesses.some(
+        (witness) =>
+          witness.phase === "canonicalDecode" &&
+          witness.auxiliary?.kind === "transactionFieldItem" &&
+          witness.auxiliary.fieldIndex === 2,
+      ),
+    ).toBe(false);
+  }, 240_000);
+
+  it("builds a block-path trace for a field preimage above the tier-1 cap", async () => {
+    // **The regression pin for #597's unrecorded consequence (#600).** This
+    // producer is not only the dispute path's: the operator's block-build
+    // routine runs it once per transaction in a block
+    // (`demo/midgard-node/src/workers/utils/mpf.ts:1194-1234`, wired at
+    // `:4480-4483`), where a thrown carriage refusal fails the **whole block**.
+    // While the producer named a tier, a single legal ~14.3 KB output — far
+    // under `maxLedgerOutputPreimageBytes` — was enough to do that.
     //
-    // **DEVIATION — #597, confirmed by orchestrator RULING 2 (2026-08-12).**
-    // This row used to assert stage-4 evidence was O(1) in output size at every
-    // admissible size, and that assertion is **not recoverable under tier 1**.
+    // So this row asserts the plain thing the narrowing broke: the trace builds.
+    // It deliberately uses no resolver and no L1 context, because the block-build
+    // caller has none and never will.
+    const itemBytes = MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOutputPreimageBytes;
+    const trace = await buildTraceWithOutputs([
+      makeExactSizeOutputItem(itemBytes),
+    ]);
+    expect(trace.verdict).toBe("accepted");
+
+    // Field 2's preimage is the whole point: §8.4 puts these bytes at tier 3,
+    // and the producer neither knows nor cares.
+    const expectedPreimageBytes = encodeMidgardFieldPreimageV1([
+      Buffer.alloc(itemBytes),
+    ]).length;
+    expect(selectMidgardFieldCarriageTierV1(expectedPreimageBytes)).toBe(
+      "Certified",
+    );
+    const fieldTwoSteps = trace.witnesses.filter(
+      (witness) =>
+        witness.auxiliary !== null &&
+        "fieldPreimage" in witness.auxiliary &&
+        witness.auxiliary.fieldIndex === 2 &&
+        witness.auxiliary.fieldPreimage.length === expectedPreimageBytes,
+    );
+    expect(fieldTwoSteps.length).toBeGreaterThan(0);
+
+    // …and the other half of the same rule, on the same trace: what the block
+    // path may do freely, *evidence commitment* may not. Building the one-step
+    // argument for one of these steps without a resolver is the caller that has
+    // no reference inputs asking for an `evidence_hash` over indices that would
+    // have to point at nothing, and it refuses by name rather than emitting a
+    // tier-1 `Inline` §8.4 does not admit at this length (#600).
+    const { stateIndex } = findFieldItemStep(trace, itemBytes, "scriptSources");
+    let thrown: unknown = null;
+    try {
+      buildValidationOneStepArgumentV1({ trace, stateIndex });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(
+      ValidationMachineCarriageResolutionRequiredErrorV1,
+    );
+    const refusal =
+      thrown as ValidationMachineCarriageResolutionRequiredErrorV1;
+    expect(refusal.fieldIndex).toBe(2);
+    expect(refusal.preimageLength).toBe(expectedPreimageBytes);
+    expect(refusal.selectedTier).toBe("Certified");
+    expect(refusal.maxTier1PreimageBytes).toBe(
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+    );
+    // The same step with the submitter's resolver commits without complaint.
+    expect(() =>
+      buildValidationOneStepArgumentV1({
+        trace,
+        stateIndex,
+        resolveFieldCarriage: carriageResolverForTrace(trace),
+      }),
+    ).not.toThrow();
+  }, 240_000);
+
+  it("keeps stage-4 one-step evidence O(1) in output size at every admissible output", async () => {
+    // C21-STAGE4-GAP closure, restored to "every admissible output size" (#600).
+    // Before the original fix, the stage-4 fold revealed the complete output
+    // bytes *in addition to* a per-item opening, its evidence crossed the
+    // 16,384-byte L1 envelope at a measured 14,774-byte single-output best case,
+    // and the deployed direct-only carriage bounded it near 8,769 bytes — so a
+    // dishonest operator could finalize an invalid block by forging exactly that
+    // fold step for a legal large output.
     //
-    // (a) Why the old ±8 bound cannot hold. Under §8 the fold's evidence is a
-    //     `FieldCarriageV1`, which is O(1) **only under tiers 2–3**, where the
-    //     preimage rides reference inputs —
-    //     `onchain/aiken/lib/midgard/validation-machine-v1.ak:9190` says exactly
-    //     that. Tier-1 `Inline` carriage *is* the preimage, so under the only
-    //     tier this producer can emit (see `machineFieldCarriageV1`) the
-    //     auxiliary is proportional to the field by construction. Measured here:
-    //     a 260-byte preimage gives a 280-byte auxiliary (overhead 20) and a
-    //     14,336-byte preimage gives 14,795 (overhead 459). The overhead is the
-    //     CBOR segment framing below, not a constant, so no ±8 bound exists to
-    //     assert.
+    // #597 could only reach the tier-1 domain and substituted a framing bound
+    // for the ±8 O(1) assertion, because tier-1 `Inline` carriage *is* the
+    // preimage. Both halves of that Deviation retire here:
     //
-    //     The substitute pin is
-    //         auxiliaryBytes <= preimageBytes + ceil(preimageBytes / 64) * 2 + 64
-    //     checked at both probes. That is the property C21-STAGE4 actually
-    //     protects: the auxiliary is the carriage plus Plutus-data segment
-    //     framing and **nothing else** — no per-item opening, frontier or
-    //     sibling path, and no second copy of the item beside the carriage.
+    // (a) **Above the cap the assertion is the original ±8 O(1) form.** A
+    //     tier-2/3 carriage is reference-input indices and carries no preimage
+    //     at all, which is what
+    //     `onchain/aiken/lib/midgard/validation-machine-v1.ak:9189-9192` says in
+    //     terms. So the auxiliary stops growing with the output entirely, and
+    //     the 14,774 B and 16,384 B probes — the two the closure used to cover
+    //     and #597 re-pinned to a refusal — assert a built argument again.
     //
-    // (b) #600 restores the O(1) form. The bound above collapses to a constant
-    //     the moment tiers 2–3 are emittable, because a tier-2/3 carriage is
-    //     reference-input indices and carries no preimage at all; the same
-    //     constructor and the same pin then express the original assertion.
-    //
-    // (c) Recorded as a deviation from RULING 2's item 3, which had assumed the
-    //     ±8 bound survived inside tier 1. The two probes above the cap are
-    //     re-pinned to the named refusal, as that ruling directs.
+    // (b) **Inside tier 1 the framing bound stays**, because there the carriage
+    //     genuinely is the preimage and no O(1) claim is true. It is still the
+    //     property C21-STAGE4 protects: carriage plus Plutus-data segment
+    //     framing and nothing else — no per-item opening, frontier or sibling
+    //     path, and no second copy of the item.
     const largestTier1Item = MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 - 4;
 
     const probe = async (
@@ -397,6 +546,7 @@ describe("complete-item proof fit V1", () => {
       readonly auxiliaryBytes: number;
       readonly evidenceBytes: number;
       readonly preimageBytes: number;
+      readonly tier: string;
     }> => {
       const trace = await buildTraceWithOutputs([
         makeExactSizeOutputItem(itemBytes),
@@ -407,32 +557,30 @@ describe("complete-item proof fit V1", () => {
       if (auxiliary?.kind !== "transactionRedeemerItemBegin") {
         throw new Error("stage-4 step is not the carriage-only witness");
       }
-      const { carriage } = auxiliary;
-      if (carriage.carriage !== "Inline") {
-        throw new Error("stage-4 carriage is not tier-1 Inline");
-      }
       const argument = buildValidationOneStepArgumentV1({
         trace,
         stateIndex: step.stateIndex,
+        resolveFieldCarriage: carriageResolverForTrace(trace),
       });
       return {
         auxiliaryBytes: argument.auxiliaryCbor.length,
         evidenceBytes: argument.evidenceCbor.length,
-        preimageBytes: carriage.preimage.length,
+        preimageBytes: auxiliary.fieldPreimage.length,
+        tier: selectMidgardFieldCarriageTierV1(auxiliary.fieldPreimage.length),
       };
     };
 
     const atTier1Cap = await probe(largestTier1Item);
     const small = await probe(256);
 
-    // Plutus data splits a long byte string into 64-byte segments with a
-    // two-byte header each, so the framing is `ceil(n / 64) * 2` plus a small
-    // constant — proportional to the preimage and to **nothing else**. Anything
-    // per-item (an opening, a frontier, a sibling path) would exceed this bound,
-    // and a second copy of the item would roughly double the whole figure. This
-    // is the substitute for the retired ±8 O(1) assertion; see (a) above.
+    // (b) Inside tier 1: Plutus data splits a long byte string into 64-byte
+    // segments with a two-byte header each, so the framing is
+    // `ceil(n / 64) * 2` plus a small constant — proportional to the preimage
+    // and to **nothing else**.
     const framingBound = (preimageBytes: number): number =>
       preimageBytes + Math.ceil(preimageBytes / 64) * 2 + 64;
+    expect(atTier1Cap.tier).toBe("Inline");
+    expect(small.tier).toBe("Inline");
     expect(atTier1Cap.auxiliaryBytes).toBeLessThanOrEqual(
       framingBound(atTier1Cap.preimageBytes),
     );
@@ -441,14 +589,16 @@ describe("complete-item proof fit V1", () => {
     );
     const overheadAtCap = atTier1Cap.auxiliaryBytes - atTier1Cap.preimageBytes;
     const overheadSmall = small.auxiliaryBytes - small.preimageBytes;
-    // Everything in the admitted domain still builds inside the L1 envelope.
     expect(atTier1Cap.evidenceBytes).toBeLessThan(
       MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
     );
 
-    // Above the cap the producer refuses, by name, with the numbers a reader
-    // needs to see that the refusal is §8.4's partition and not an accident.
-    // These are the two probes the closure used to cover.
+    // (a) Above the cap: the two probes the C21 closure used to cover, built
+    // rather than refused, with the ±8 O(1) assertion the closure originally
+    // made. The auxiliary is reference-input indices, so it does not move with
+    // the output at all — 14,774 B and 16,384 B outputs, 1,610 bytes apart,
+    // produce auxiliaries within 8 bytes of each other.
+    const aboveCap = [];
     for (const { itemBytes, tier } of [
       // The old C21 frontier: §8.4 carries its field preimage as tier 2.
       { itemBytes: 14_774, tier: "RawUtxo" as const },
@@ -458,26 +608,24 @@ describe("complete-item proof fit V1", () => {
         tier: "Certified" as const,
       },
     ]) {
-      const refusal = await buildTraceWithOutputs([
-        makeExactSizeOutputItem(itemBytes),
-      ]).then(
-        () => null,
-        (cause: unknown) => cause,
-      );
-      const typed = carriageRefusalOf(refusal);
-      expect(typed.fieldIndex).toBe(2);
-      expect(typed.selectedTier).toBe(tier);
-      expect(typed.maxTier1PreimageBytes).toBe(
+      const measured = await probe(itemBytes);
+      expect(measured.tier).toBe(tier);
+      expect(measured.preimageBytes).toBeGreaterThan(
         MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
       );
-      expect(typed.followUpIssue).toBe(600);
-      expect(typed.preimageLength).toBeGreaterThan(
-        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      // O(1): the auxiliary carries indices, never the preimage, so it is a
+      // small constant rather than a function of the output.
+      expect(measured.auxiliaryBytes).toBeLessThan(128);
+      expect(measured.evidenceBytes).toBeLessThan(
+        MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
       );
-      // The refusal names §8.4's own selection, so it cannot be satisfied by
-      // quietly widening tier 1.
-      expect(selectMidgardFieldCarriageTierV1(typed.preimageLength)).toBe(tier);
+      aboveCap.push(measured);
     }
+    // The ±8 O(1) assertion itself, across the whole above-cap range.
+    const [tier2, tier3] = aboveCap;
+    expect(
+      Math.abs(tier3!.auxiliaryBytes - tier2!.auxiliaryBytes),
+    ).toBeLessThanOrEqual(8);
 
     if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
       console.info(
@@ -488,6 +636,7 @@ describe("complete-item proof fit V1", () => {
             small,
             overheadAtCap,
             overheadSmall,
+            aboveCap,
             evidenceEnvelopeBytes: 16 * 1024 - 1,
           },
         }),

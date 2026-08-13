@@ -7,6 +7,7 @@ import {
 import {
   MIDGARD_MAX_TIER3_CHUNK_COUNT_V1,
   MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+  type MidgardFieldCarriageV1,
   type MidgardFieldPreimageCertificateV1,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
@@ -530,6 +531,154 @@ export const resolveCertificateReferenceIndexV1 = ({
     );
   }
   return index;
+};
+
+/**
+ * Resolves one field's §8 carriage against the reference-input set of the
+ * transaction **whose door will read it** (#600).
+ *
+ * The tier is §8.4's partition over the preimage's length — never a choice made
+ * here — and the indices are resolved by content through the two resolvers
+ * above, so nothing about a carriage produced here is asserted rather than
+ * located.
+ *
+ * `referenceInputs` must be the door-running transaction's **complete**
+ * reference-input set, not just the carriage UTxOs. Positional indices count
+ * into the ledger's canonically-sorted list, and a dispute step references more
+ * than its carriage — the published spending validator arrives the same way
+ * (`readFrom`) and sorts into the same list. Passing only the carriage produces
+ * indices that are right until the first transaction that references anything
+ * else, which is every real one. {@link
+ * assertMidgardFieldCarriageResolvesAtDoorV1} is the check that catches it.
+ */
+export const resolveMidgardFieldCarriageAgainstReferenceInputsV1 = ({
+  plan,
+  referenceInputs,
+  certificatePolicyId,
+}: {
+  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly referenceInputs: readonly UTxO[];
+  readonly certificatePolicyId?: string;
+}): MidgardFieldCarriageV1 => {
+  if (plan.tier === "Inline") {
+    if (plan.inlinePreimage === null) {
+      throw new Error(
+        `tier-1 plan for field ${plan.fieldIndex.toString()} carries no preimage`,
+      );
+    }
+    return { carriage: "Inline", preimage: plan.inlinePreimage };
+  }
+  const chunkIndices = resolveChunkReferenceIndicesV1({
+    plan,
+    referenceInputs,
+  });
+  if (plan.tier === "RawUtxo") {
+    const refInputIndex = chunkIndices[0];
+    if (refInputIndex === undefined || chunkIndices.length !== 1) {
+      throw new Error(
+        `tier-2 plan for field ${plan.fieldIndex.toString()} must resolve exactly one publication`,
+      );
+    }
+    return { carriage: "RawUtxo", refInputIndex };
+  }
+  if (certificatePolicyId === undefined) {
+    throw new Error(
+      `tier-3 carriage for field ${plan.fieldIndex.toString()} requires the §8.6 certificate policy id`,
+    );
+  }
+  if (plan.certificateAssetName === null) {
+    throw new Error(
+      `tier-3 plan for field ${plan.fieldIndex.toString()} carries no certificate`,
+    );
+  }
+  return {
+    carriage: "Certified",
+    certRefInputIndex: resolveCertificateReferenceIndexV1({
+      certificatePolicyId,
+      certificateAssetName: plan.certificateAssetName,
+      referenceInputs,
+      label: `field ${plan.fieldIndex.toString()}`,
+    }),
+    chunkRefInputIndices: chunkIndices,
+  };
+};
+
+/**
+ * Refuses a carriage whose positional indices would not resolve to the same
+ * UTxOs in the transaction that actually runs the §8.8 door (#600, ruling D3-A).
+ *
+ * A carriage is fixed one transaction *before* the door reads it: the auxiliary
+ * is hashed into `evidence_hash` by the PrepareSelected transaction
+ * (`onchain/aiken/lib/midgard/validation-resolution-v1.ak:163-182`) and only
+ * dereferenced later, at the stage where the door runs — for the complete-item
+ * route that is `canonical_decode_item_observe_v1`, three transactions further
+ * on. Between those points a builder can change the reference-input set without
+ * noticing, and the failure is silent in the worst way: the indices are
+ * well-formed, they simply name the wrong UTxOs, and the step fails on L1 after
+ * the evidence hash is already staged and can only be re-staged.
+ *
+ * So the indices are re-resolved against the door transaction's final set and
+ * any difference refuses here, off-chain, while re-staging is still free.
+ *
+ * **Its production wiring point is the observe-stage dispute builder, and it is
+ * deferred to #579's tiers-2/3 emulator leg.** That builder is the only caller
+ * that holds both the committed carriage and the door transaction's final
+ * reference-input set, and it cannot be exercised before #579; wiring it here
+ * would add a call site no test could reach. Until then this guard is pinned by
+ * its own unit tests
+ * (`demo/midgard-sdk/tests/field-preimage-carriage-door-v1.test.ts`).
+ */
+export const assertMidgardFieldCarriageResolvesAtDoorV1 = ({
+  carriage,
+  plan,
+  doorReferenceInputs,
+  certificatePolicyId,
+  label,
+}: {
+  readonly carriage: MidgardFieldCarriageV1;
+  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly doorReferenceInputs: readonly UTxO[];
+  readonly certificatePolicyId?: string;
+  readonly label: string;
+}): void => {
+  if (carriage.carriage === "Inline") {
+    // Tier 1 indexes nothing, so there is nothing that can drift.
+    return;
+  }
+  const atDoor = resolveMidgardFieldCarriageAgainstReferenceInputsV1({
+    plan,
+    referenceInputs: doorReferenceInputs,
+    ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
+  });
+  const disagreement = ((): string | null => {
+    if (atDoor.carriage !== carriage.carriage) {
+      return `tier ${carriage.carriage} committed, ${atDoor.carriage} at the door`;
+    }
+    if (carriage.carriage === "RawUtxo" && atDoor.carriage === "RawUtxo") {
+      return carriage.refInputIndex === atDoor.refInputIndex
+        ? null
+        : `reference-input index ${carriage.refInputIndex.toString()} committed, ${atDoor.refInputIndex.toString()} at the door`;
+    }
+    if (carriage.carriage === "Certified" && atDoor.carriage === "Certified") {
+      if (carriage.certRefInputIndex !== atDoor.certRefInputIndex) {
+        return `certificate index ${carriage.certRefInputIndex.toString()} committed, ${atDoor.certRefInputIndex.toString()} at the door`;
+      }
+      const committed = carriage.chunkRefInputIndices;
+      const observed = atDoor.chunkRefInputIndices;
+      return committed.length === observed.length &&
+        committed.every((index, position) => index === observed[position])
+        ? null
+        : `chunk indices [${committed.join(",")}] committed, [${observed.join(",")}] at the door`;
+    }
+    return null;
+  })();
+  if (disagreement !== null) {
+    throw new Error(
+      `${label} §8 carriage does not resolve at the door-running transaction: ${disagreement}. ` +
+        "The committed evidence hash binds the indices, so the reference-input set the door " +
+        "sees must be the one they were resolved against (§8.7 content addressing, #600).",
+    );
+  }
 };
 
 /**

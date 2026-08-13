@@ -1,5 +1,3 @@
-import type { MidgardFieldCarriageV1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
-
 import type {
   MidgardBlake2b256TraceControlV1,
   MidgardBoundedItemChunkProofV1,
@@ -41,6 +39,11 @@ import {
   readCborInteger,
   readCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
+import {
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  type MidgardFieldCarriageV1,
+  selectMidgardFieldCarriageTierV1,
+} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import type {
@@ -56,6 +59,7 @@ import type {
 } from "./script-context-proof.js";
 import type {
   DeterministicValidationMachineTrace,
+  ValidationMachineFieldCarriagePlanInputV1,
   ValidationMachineSignerSetProof,
   ValidationMachineWorkWitness,
 } from "./validation-machine.js";
@@ -150,6 +154,223 @@ const fieldCarriageData = (carriage: MidgardFieldCarriageV1): PlutusData => {
         carriage.chunkRefInputIndices.map((index) => int(index)),
       ]);
   }
+};
+
+/**
+ * Turns one step's carriage plan input into the §8 carriage §8.4 admits for it
+ * (#600).
+ *
+ * This is the seam. A trace records *which field a step read*; a carriage says
+ * *how those bytes reach the consuming transaction*, and tiers 2–3 answer that
+ * with positional reference-input indices §8.7 requires to be resolved by
+ * content against a concrete transaction. So the tier is named here, at the
+ * point where the auxiliary is first hashed into committed evidence
+ * (`prepare_semantic_resolution`,
+ * `onchain/aiken/lib/midgard/validation-resolution-v1.ak:163-182`), and not one
+ * step earlier.
+ *
+ * A resolver is supplied by the dispute submitter, which holds the reference
+ * inputs; `resolveMidgardFieldCarriageAgainstReferenceInputsV1` in
+ * `@al-ft/midgard-sdk` is the one this repository builds against.
+ */
+export type ValidationMachineFieldCarriageResolverV1 = (
+  planInput: ValidationMachineFieldCarriagePlanInputV1,
+) => MidgardFieldCarriageV1;
+
+/**
+ * Raised when an auxiliary is encoded without a carriage resolver and §8.4 does
+ * not admit tier 1 for the preimage's length.
+ *
+ * **This is not the retired trace-time refusal.** Nothing refuses while a trace
+ * is built — the block-build path depends on that (#600). What refuses is
+ * *encoding committed evidence without the context that evidence needs*: above
+ * §8.3's tier-1 cap the carriage is reference-input indices, and a caller that
+ * supplied no reference inputs has nothing for them to point at. Emitting tier-1
+ * `Inline` anyway would name a carriage §8.4 does not admit for that length, and
+ * inventing indices would commit an `evidence_hash` no transaction can satisfy.
+ */
+export class ValidationMachineCarriageResolutionRequiredErrorV1 extends Error {
+  override readonly name = "ValidationMachineCarriageResolutionRequiredErrorV1";
+  readonly fieldIndex: number;
+  readonly preimageLength: number;
+  readonly selectedTier: "RawUtxo" | "Certified";
+  readonly maxTier1PreimageBytes: number;
+
+  constructor({
+    fieldIndex,
+    preimageLength,
+    selectedTier,
+  }: {
+    readonly fieldIndex: number;
+    readonly preimageLength: number;
+    readonly selectedTier: "RawUtxo" | "Certified";
+  }) {
+    super(
+      `V1 field ${fieldIndex.toString()} has a ${preimageLength.toString()}-byte §5.1 preimage, ` +
+        `which §8.4's partition carries as tier-${selectedTier === "RawUtxo" ? "2" : "3"} ` +
+        `\`${selectedTier}\` rather than tier-1 \`Inline\` (cap ` +
+        `${MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1.toString()} bytes), so its carriage is ` +
+        "positional reference-input indices that §8.7 resolves by content against a concrete " +
+        "transaction. Encoding this auxiliary requires a carriage resolver built from that " +
+        "transaction's complete reference-input set.",
+    );
+    this.fieldIndex = fieldIndex;
+    this.preimageLength = preimageLength;
+    this.selectedTier = selectedTier;
+    this.maxTier1PreimageBytes = MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1;
+  }
+}
+
+/**
+ * The resolver used when a caller supplies none: tier-1 `Inline` wherever §8.4
+ * admits it, and a refusal above, because there is nothing honest to emit.
+ *
+ * Most callers are inside the tier-1 domain and should not have to think about
+ * reference inputs; the ones above it must, and this is what makes that
+ * non-optional rather than silently wrong.
+ */
+export const inlineFieldCarriageResolverV1: ValidationMachineFieldCarriageResolverV1 =
+  ({ fieldIndex, fieldPreimage }) => {
+    const tier = selectMidgardFieldCarriageTierV1(fieldPreimage.length);
+    if (tier !== "Inline") {
+      throw new ValidationMachineCarriageResolutionRequiredErrorV1({
+        fieldIndex,
+        preimageLength: fieldPreimage.length,
+        selectedTier: tier,
+      });
+    }
+    return { carriage: "Inline", preimage: Buffer.from(fieldPreimage) };
+  };
+
+/**
+ * Raised when a caller-supplied resolver returns a carriage whose tier is not
+ * the one §8.4's partition admits for the preimage it was asked about.
+ *
+ * The resolver is the dispute submitter's, and the submitter is not trusted to
+ * pick a tier: §8.4 is a *partition*, so the preimage's own length names
+ * exactly one admissible carriage and there is no choice to delegate (#597
+ * Ruling 1). Without this check the seam would encode whatever came back — a
+ * tier-1 `Inline` above §8.3's cap, or an index tier below it — into the
+ * `evidence_hash` that `prepare_semantic_resolution` commits, which is a
+ * carriage §8.4 does not admit committed as though it did.
+ */
+export class ValidationMachineCarriageTierMismatchErrorV1 extends Error {
+  override readonly name = "ValidationMachineCarriageTierMismatchErrorV1";
+  readonly fieldIndex: number;
+  readonly preimageLength: number;
+  readonly expectedTier: MidgardFieldCarriageV1["carriage"];
+  readonly returnedTier: MidgardFieldCarriageV1["carriage"];
+
+  constructor({
+    fieldIndex,
+    preimageLength,
+    expectedTier,
+    returnedTier,
+  }: {
+    readonly fieldIndex: number;
+    readonly preimageLength: number;
+    readonly expectedTier: MidgardFieldCarriageV1["carriage"];
+    readonly returnedTier: MidgardFieldCarriageV1["carriage"];
+  }) {
+    super(
+      `V1 field ${fieldIndex.toString()} has a ${preimageLength.toString()}-byte §5.1 preimage, ` +
+        `which §8.4's partition carries as \`${expectedTier}\`, but the supplied carriage ` +
+        `resolver returned \`${returnedTier}\`. §8.4 admits exactly one tier per length, so a ` +
+        "resolver names indices for the tier the length selects and never chooses the tier " +
+        "itself; encoding this carriage would commit an `evidence_hash` for a carriage the " +
+        "spec does not admit.",
+    );
+    this.fieldIndex = fieldIndex;
+    this.preimageLength = preimageLength;
+    this.expectedTier = expectedTier;
+    this.returnedTier = returnedTier;
+  }
+}
+
+/**
+ * Raised when a resolver returns tier-1 `Inline` carrying bytes that are not the
+ * preimage the step actually read.
+ *
+ * The tier check above says the resolver picked the right *shape*; this says it
+ * carried the right *bytes*. Only tier 1 can get this wrong, because only tier 1
+ * carries bytes at all — tiers 2 and 3 carry positional indices, and what is
+ * behind those indices is §8.7's content-addressed problem rather than this
+ * seam's. The auxiliary **is** the committed evidence, so an `Inline` preimage
+ * that diverges from the trace's own is an `evidence_hash` over bytes the trace
+ * never read: true by a caller's convention rather than by construction, which
+ * is the same class as the tier substitution.
+ */
+export class ValidationMachineCarriagePreimageSubstitutedErrorV1 extends Error {
+  override readonly name =
+    "ValidationMachineCarriagePreimageSubstitutedErrorV1";
+  readonly fieldIndex: number;
+  readonly preimageLength: number;
+  readonly returnedPreimageLength: number;
+
+  constructor({
+    fieldIndex,
+    preimageLength,
+    returnedPreimageLength,
+  }: {
+    readonly fieldIndex: number;
+    readonly preimageLength: number;
+    readonly returnedPreimageLength: number;
+  }) {
+    super(
+      `V1 field ${fieldIndex.toString()} read a ${preimageLength.toString()}-byte §5.1 preimage, ` +
+        `but the supplied carriage resolver returned tier-1 \`Inline\` carrying ` +
+        `${returnedPreimageLength.toString()} substituted bytes. A resolver decides how a step's ` +
+        "preimage travels, never which bytes they are; committing this carriage would hash an " +
+        "`evidence_hash` over bytes the trace never read.",
+    );
+    this.fieldIndex = fieldIndex;
+    this.preimageLength = preimageLength;
+    this.returnedPreimageLength = returnedPreimageLength;
+  }
+}
+
+/**
+ * The seam itself: resolve one step's carriage, then check the answer against
+ * §8.4's partition — and, at tier 1, against the step's own bytes — before it
+ * can reach `evidence_hash`.
+ *
+ * Every field-reading auxiliary arm goes through here rather than calling the
+ * resolver directly, so the invariant is structural — a misbehaving or merely
+ * stale resolver cannot put an inadmissible tier on the wire at any one of the
+ * arms while the others are checked.
+ *
+ * The byte comparison applies to tier 1 and to nothing else: tiers 2 and 3 carry
+ * reference-input indices rather than bytes, so there is no preimage here to
+ * disagree with. What is behind those indices is §8.7 content addressing, which
+ * the door resolves and `assertMidgardFieldCarriageResolvesAtDoorV1` guards.
+ */
+const resolvedFieldCarriageData = (
+  resolveFieldCarriage: ValidationMachineFieldCarriageResolverV1,
+  planInput: ValidationMachineFieldCarriagePlanInputV1,
+): PlutusData => {
+  const carriage = resolveFieldCarriage(planInput);
+  const expectedTier = selectMidgardFieldCarriageTierV1(
+    planInput.fieldPreimage.length,
+  );
+  if (carriage.carriage !== expectedTier) {
+    throw new ValidationMachineCarriageTierMismatchErrorV1({
+      fieldIndex: planInput.fieldIndex,
+      preimageLength: planInput.fieldPreimage.length,
+      expectedTier,
+      returnedTier: carriage.carriage,
+    });
+  }
+  if (
+    carriage.carriage === "Inline" &&
+    !carriage.preimage.equals(planInput.fieldPreimage)
+  ) {
+    throw new ValidationMachineCarriagePreimageSubstitutedErrorV1({
+      fieldIndex: planInput.fieldIndex,
+      preimageLength: planInput.fieldPreimage.length,
+      returnedPreimageLength: carriage.preimage.length,
+    });
+  }
+  return fieldCarriageData(carriage);
 };
 
 const chunkProofData = (
@@ -1298,6 +1519,7 @@ export const validationOneStepWitnessDataV1 = ({
 
 export const validationAuxiliaryWitnessDataV1 = (
   auxiliary: ValidationMachineWorkWitness["auxiliary"],
+  resolveFieldCarriage: ValidationMachineFieldCarriageResolverV1 = inlineFieldCarriageResolverV1,
 ): PlutusData => {
   if (auxiliary === null) return new Constr(0, []);
   switch (auxiliary.kind) {
@@ -1305,11 +1527,11 @@ export const validationAuxiliaryWitnessDataV1 = (
       return new Constr(1, [
         int(auxiliary.fieldIndex),
         int(auxiliary.itemIndex),
-        fieldCarriageData(auxiliary.carriage),
+        resolvedFieldCarriageData(resolveFieldCarriage, auxiliary),
       ]);
     case "requiredSignerItem":
       return new Constr(2, [
-        fieldCarriageData(auxiliary.carriage),
+        resolvedFieldCarriageData(resolveFieldCarriage, auxiliary),
         signerProofData(auxiliary.signerProof),
       ]);
     case "nativeScriptToken":
@@ -1535,9 +1757,13 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.siblings),
       ]);
     case "transactionRedeemerItemBegin":
-      return new Constr(29, [fieldCarriageData(auxiliary.carriage)]);
+      return new Constr(29, [
+        resolvedFieldCarriageData(resolveFieldCarriage, auxiliary),
+      ]);
     case "transactionFieldItem":
-      return new Constr(30, [fieldCarriageData(auxiliary.carriage)]);
+      return new Constr(30, [
+        resolvedFieldCarriageData(resolveFieldCarriage, auxiliary),
+      ]);
     case "ledgerOutputProofBegin":
       return new Constr(31, [
         int(auxiliary.outputIndex),
@@ -1593,18 +1819,34 @@ export const encodeValidationOneStepWitnessCborV1 = (input: {
 
 export const encodeValidationAuxiliaryWitnessCborV1 = (
   auxiliary: ValidationMachineWorkWitness["auxiliary"],
+  resolveFieldCarriage?: ValidationMachineFieldCarriageResolverV1,
 ): Buffer =>
   Buffer.from(
-    Data.to(validationAuxiliaryWitnessDataV1(auxiliary) as never),
+    Data.to(
+      validationAuxiliaryWitnessDataV1(
+        auxiliary,
+        resolveFieldCarriage,
+      ) as never,
+    ),
     "hex",
   );
 
+/**
+ * `resolveFieldCarriage` is #600's seam: the tier every field-reading step's
+ * evidence names is chosen **here**, because this is where the auxiliary first
+ * becomes committed evidence and the earliest point at which a transaction — and
+ * therefore a reference-input set — exists. Omit it inside §8.3's tier-1 domain;
+ * above the cap it is required, and its absence is a refusal rather than a
+ * fabricated index.
+ */
 export const buildValidationOneStepArgumentV1 = ({
   trace,
   stateIndex,
+  resolveFieldCarriage,
 }: {
   readonly trace: DeterministicValidationMachineTrace;
   readonly stateIndex: number;
+  readonly resolveFieldCarriage?: ValidationMachineFieldCarriageResolverV1;
 }): ValidationOneStepArgumentV1 => {
   if (!Number.isSafeInteger(stateIndex) || stateIndex < 0) {
     throw new Error(
@@ -1636,7 +1878,10 @@ export const buildValidationOneStepArgumentV1 = ({
     witness,
     claimedSuccessor,
   });
-  const auxiliaryData = validationAuxiliaryWitnessDataV1(witness.auxiliary);
+  const auxiliaryData = validationAuxiliaryWitnessDataV1(
+    witness.auxiliary,
+    resolveFieldCarriage,
+  );
   const transitionCbor = Buffer.from(Data.to(transitionData as never), "hex");
   const auxiliaryCbor = Buffer.from(Data.to(auxiliaryData as never), "hex");
   const evidenceCbor = Buffer.from(

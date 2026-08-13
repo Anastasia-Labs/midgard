@@ -22,6 +22,13 @@ import {
   MIDGARD_CONSENSUS_PROFILE_V1,
   MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
 } from "../../midgard-core/dist/index.js";
+import { planMidgardFieldCarriageV1 } from "../../midgard-core/dist/codec/native-tx-carriage-v1.js";
+import { selectMidgardFieldCarriageTierV1 } from "../../midgard-core/dist/codec/native-tx-field-access-v1.js";
+import {
+  deriveFieldPreimageCertificationV1,
+  fieldPreimagePublicationDatumCborV1,
+  resolveMidgardFieldCarriageAgainstReferenceInputsV1,
+} from "../../midgard-sdk/dist/index.js";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -166,6 +173,121 @@ const trace = await Effect.runPromise(
   }),
 );
 
+/**
+ * The same transaction shape as above with one output sized to `itemBytes`, so
+ * field 2's §5.1 preimage lands wherever §8.4's partition puts it (#600).
+ */
+const buildTraceForOutputItem = async (itemBytes) => {
+  const encodeBoundedChunk = (payload) =>
+    payload.length < 24
+      ? Buffer.concat([Buffer.from([0x40 + payload.length]), payload])
+      : Buffer.concat([Buffer.from([0x58, payload.length]), payload]);
+  const datumFiller = (payloadBytes) => {
+    if (payloadBytes <= 64) {
+      return encodeBoundedChunk(Buffer.alloc(payloadBytes, 0xa5));
+    }
+    const items = [];
+    let remaining = payloadBytes;
+    while (remaining > 0) {
+      const take = Math.min(remaining, 64);
+      items.push(encodeBoundedChunk(Buffer.alloc(take, 0xa5)));
+      remaining -= take;
+    }
+    return Buffer.concat([Buffer.from([0x9f]), ...items, Buffer.from([0xff])]);
+  };
+  const probe = (payloadBytes) =>
+    encodeMidgardTxOutput({
+      address,
+      value: { lovelace: 10n, assets: new Map() },
+      datum: { kind: "inline", cbor: datumFiller(payloadBytes) },
+    });
+  let payload = Math.max(0, itemBytes - probe(0).length);
+  let sizedOutput = null;
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const candidate = probe(payload);
+    if (candidate.length === itemBytes) {
+      sizedOutput = candidate;
+      break;
+    }
+    payload += itemBytes - candidate.length;
+  }
+  if (sizedOutput === null) {
+    throw new Error(
+      `could not converge on an exact ${itemBytes.toString()}-byte output item`,
+    );
+  }
+  const vectorBody = {
+    ...body,
+    outputsPreimageCbor: encodeByteList([sizedOutput]),
+  };
+  const vectorBodyHash = computeMidgardNativeTxIdV1({
+    version: MIDGARD_NATIVE_TX_V1_VERSION,
+    transactionBody: deriveMidgardNativeTxBodyCompactV1(vectorBody),
+    transactionWitnessSetHash: Buffer.alloc(32),
+    validity: "TxIsValid",
+  });
+  const vectorWitnessSet = {
+    ...witnessSet,
+    addrTxWitsPreimageCbor: encodeByteList([
+      Buffer.from(
+        CML.make_vkey_witness(
+          CML.TransactionHash.from_raw_bytes(vectorBodyHash),
+          privateKey,
+        ).to_cbor_bytes(),
+      ),
+    ]),
+  };
+  const vectorTransaction = {
+    version: MIDGARD_NATIVE_TX_V1_VERSION,
+    validity: "TxIsValid",
+    compact: deriveMidgardNativeTxCompactV1(
+      vectorBody,
+      vectorWitnessSet,
+      "TxIsValid",
+      MIDGARD_NATIVE_TX_V1_VERSION,
+    ),
+    body: vectorBody,
+    witnessSet: vectorWitnessSet,
+  };
+  const vectorTransactionId = computeMidgardNativeTxIdV1(vectorTransaction);
+  const vectorOps = [
+    { type: "delete", key: spent },
+    buildValidationMachineLedgerInsertOpV1({
+      key: encodeMidgardSpendInputItemV1({
+        txId: vectorTransactionId,
+        outputIndex: 0,
+      }),
+      outputCbor: sizedOutput,
+    }),
+  ];
+  const vectorSteps = await buildValidationMachineLedgerMutationSteps({
+    initialEntries: [{ outRef: spent, output }],
+    operations: vectorOps,
+  });
+  return Effect.runPromise(
+    buildDeterministicValidationMachineTrace({
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x41)]),
+      sourceKind: "forced",
+      blockEndTimeMs: 1_750_000_000_000,
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
+      blockSlot: 100n,
+      transactionId: vectorTransactionId,
+      canonicalTransactionCbor:
+        encodeMidgardNativeTxCanonicalV1(vectorTransaction),
+      priorUtxosRoot: vectorSteps[0].preRoot.toString("hex"),
+      postUtxosRoot: vectorSteps.at(-1).postRoot.toString("hex"),
+      ledgerWitnessEntries: [{ outRef: spent, output }],
+      expectedLedgerOps: vectorOps,
+      ledgerMutationSteps: vectorSteps,
+      expectedVerdict: "accepted",
+      expectedRejectionCode: null,
+    }),
+  );
+};
+
 const lowIndex = trace.witnesses.findIndex(
   (witness) =>
     witness.phase === "canonicalDecode" && witness.auxiliary === null,
@@ -193,14 +315,123 @@ const fieldChunkArgument = buildValidationOneStepArgumentV1({
   trace,
   stateIndex: fieldChunkIndex,
 });
-if (fieldChunkWitness.auxiliary.carriage.carriage !== "Inline") {
-  throw new Error(
-    "generated transactionFieldChunk carriage is not tier-1 Inline",
-  );
-}
 const fieldChunkFieldIndex = fieldChunkWitness.auxiliary.fieldIndex;
 const fieldChunkItemIndex = fieldChunkWitness.auxiliary.itemIndex;
-const fieldChunkPreimage = fieldChunkWitness.auxiliary.carriage.preimage;
+const fieldChunkPreimage = fieldChunkWitness.auxiliary.fieldPreimage;
+if (selectMidgardFieldCarriageTierV1(fieldChunkPreimage.length) !== "Inline") {
+  throw new Error(
+    "generated transactionFieldChunk preimage is not in the tier-1 domain",
+  );
+}
+
+// #600. The same emitted constructor at the two tiers §8.4 selects above the
+// tier-1 cap. This is what the trace producer could not reach before: the tier
+// is resolved at evidence commitment against a concrete transaction's
+// reference-input set, so the auxiliary carries positional indices instead of
+// the preimage, and it is those bytes the Aiken door has to decode.
+//
+// Everything is producer-emitted. The preimage is a real field-2 §5.1 envelope
+// out of a real trace; `planMidgardFieldCarriageV1` picks the tier by §8.4's
+// partition over its length; the publication datums are
+// `fieldPreimagePublicationDatumCborV1`'s bytes and the manifest is
+// `deriveFieldPreimageCertificationV1`'s; and every index comes back from
+// `resolveMidgardFieldCarriageAgainstReferenceInputsV1`, which locates each one
+// **by content** in the canonically-sorted list (§8.7). No index is written down
+// in this file.
+//
+// The reference-input set carries a decoy in front of the carriage — the
+// published spending validator a real step reads through `readFrom` — because a
+// dispute step references more than its own carriage and the decoy shifts every
+// index after it. A vector built without one would pin indices that only look
+// right (ruling D3-A).
+const carriageOwner = Buffer.alloc(28, 0x7c);
+const certificatePolicyId = "ab".repeat(28);
+const decoyReferenceInput = {
+  txHash: "00".repeat(32),
+  outputIndex: 0,
+  address: "addr_test1_published_validator",
+  assets: { lovelace: 5_000_000n },
+  datum: "d87980",
+};
+const tierVector = async (itemBytes, expectedTier) => {
+  const vectorTrace = await buildTraceForOutputItem(itemBytes);
+  const stateIndex = vectorTrace.witnesses.findIndex(
+    (witness) =>
+      witness.auxiliary?.kind === "transactionFieldChunk" &&
+      witness.auxiliary.fieldIndex === 2,
+  );
+  if (stateIndex < 0) {
+    throw new Error(
+      `generated ${expectedTier} trace has no field-2 transactionFieldChunk transition`,
+    );
+  }
+  const planInput = vectorTrace.witnesses[stateIndex].auxiliary;
+  const plan = planMidgardFieldCarriageV1({
+    owner: carriageOwner,
+    txId: vectorTrace.states[0].transactionId,
+    fieldIndex: planInput.fieldIndex,
+    preimage: planInput.fieldPreimage,
+  });
+  if (plan.tier !== expectedTier) {
+    throw new Error(
+      `§8.4 selected ${plan.tier} for a ${planInput.fieldPreimage.length.toString()}-byte preimage, expected ${expectedTier}`,
+    );
+  }
+  const referenceInputs = [
+    decoyReferenceInput,
+    ...plan.publications.map((publication, offset) => ({
+      txHash: `${(offset + 3).toString(16).padStart(2, "0")}`.repeat(32),
+      outputIndex: offset,
+      address: "addr_test1_prover_key_address",
+      assets: { lovelace: 5_000_000n },
+      datum: fieldPreimagePublicationDatumCborV1(publication.bytes),
+    })),
+    ...(plan.tier === "Certified"
+      ? [
+          {
+            txHash: "f1".repeat(32),
+            outputIndex: 0,
+            address: "addr_test1_field_preimage_certificate",
+            assets: {
+              lovelace: 5_000_000n,
+              [`${certificatePolicyId}${deriveFieldPreimageCertificationV1(plan).assetNameHex}`]:
+                1n,
+            },
+            datum: deriveFieldPreimageCertificationV1(plan).datumCbor,
+          },
+        ]
+      : []),
+  ];
+  const resolveFieldCarriage = ({ fieldIndex, fieldPreimage }) =>
+    resolveMidgardFieldCarriageAgainstReferenceInputsV1({
+      plan: planMidgardFieldCarriageV1({
+        owner: carriageOwner,
+        txId: vectorTrace.states[0].transactionId,
+        fieldIndex,
+        preimage: fieldPreimage,
+      }),
+      referenceInputs,
+      certificatePolicyId,
+    });
+  const carriage = resolveFieldCarriage(planInput);
+  const argument = buildValidationOneStepArgumentV1({
+    trace: vectorTrace,
+    stateIndex,
+    resolveFieldCarriage,
+  });
+  return {
+    auxiliaryCbor: argument.auxiliaryCbor,
+    fieldIndex: planInput.fieldIndex,
+    itemIndex: planInput.itemIndex,
+    preimageBytes: planInput.fieldPreimage.length,
+    carriage,
+  };
+};
+// A field-2 preimage is four bytes wider than its single item, so these two
+// item sizes land either side of `chunk_bytes_k` (15,148) and select tier 2 and
+// tier 3 respectively.
+const rawUtxoVector = await tierVector(14_774, "RawUtxo");
+const certifiedVector = await tierVector(16_384, "Certified");
 const challengerStates = trace.states.map((state, index) => {
   if (index !== highIndex && index !== trace.states.length - 1) {
     return state;
@@ -299,7 +530,7 @@ const generated = `// Generated by demo/midgard-validation/scripts/generate-vali
 
 use aiken/cbor
 use aiken/primitive/bytearray
-use midgard/native_tx_field_access_v1.{Inline}
+use midgard/native_tx_field_access_v1.{Certified, Inline, RawUtxo}
 use midgard/validation_dispute_v1
 use midgard/validation_machine_v1.{
   TransactionFieldChunkWitness, ValidationAuxiliaryWitnessV1,
@@ -323,6 +554,10 @@ const field_chunk_auxiliary_cbor =
 
 const field_chunk_preimage =
   #"${fieldChunkPreimage.toString("hex")}"
+
+const raw_utxo_auxiliary_cbor = #"${rawUtxoVector.auxiliaryCbor.toString("hex")}"
+
+const certified_auxiliary_cbor = #"${certifiedVector.auxiliaryCbor.toString("hex")}"
 
 const evidence_hash =
   #"${evidenceHash.toString("hex")}"
@@ -387,8 +622,8 @@ test typescript_generated_canonical_decode_step_is_exact() {
 /// producer put in them, in the order Aiken names them.
 ///
 /// The carriage is tier-1 \`Inline\`: §8.4's partition admits only that tier for a
-/// preimage this size, and it is the only tier the TypeScript trace producer can
-/// emit (https://github.com/Anastasia-Labs/midgard/issues/600).
+/// preimage this size. The two tiers above it are pinned by the two vectors
+/// below (#600).
 test typescript_generated_field_chunk_auxiliary_is_exact() {
   expect Some(auxiliary_data) = cbor.deserialise(field_chunk_auxiliary_cbor)
   expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
@@ -402,6 +637,62 @@ test typescript_generated_field_chunk_auxiliary_is_exact() {
     // The carriage delivers the field's whole §5.1 preimage — what the door
     // hashes against the flat §4 commitment — not one item and an opening.
     bytearray.length(field_chunk_preimage) == ${fieldChunkPreimage.length.toString()},
+  }
+}
+
+/// #600. The same emitted constructor at tier 2, where §8.4's partition puts a
+/// ${rawUtxoVector.preimageBytes.toString()}-byte field-2 preimage.
+///
+/// This is the vector the trace producer could not build before: the tier is
+/// resolved at evidence commitment against a concrete transaction's
+/// canonically-sorted reference-input set, so the auxiliary names a **positional
+/// reference-input index** and carries no preimage at all. That is what makes
+/// stage-4 evidence O(1) in output size — the property
+/// \`validation_machine_v1.ak:9189-9192\` states and C21-STAGE4 protects — and it
+/// is checked here as a byte length rather than asserted: ${rawUtxoVector.auxiliaryCbor.length.toString()} bytes for a
+/// field of ${rawUtxoVector.preimageBytes.toString()}.
+///
+/// The index is not \`0\`. The TypeScript side resolved it by content (§8.7)
+/// against a set whose first entry is the published spending validator a real
+/// step reads through \`readFrom\`, so this pins that a resolver counts the
+/// transaction's *whole* reference-input list and not just its carriage.
+test typescript_generated_raw_utxo_carriage_auxiliary_is_exact() {
+  expect Some(auxiliary_data) = cbor.deserialise(raw_utxo_auxiliary_cbor)
+  expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
+  expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
+  and {
+    // O(1) in field size: a tier-2 carriage is one integer.
+    bytearray.length(raw_utxo_auxiliary_cbor) == ${rawUtxoVector.auxiliaryCbor.length.toString()},
+    field_index == ${rawUtxoVector.fieldIndex.toString()},
+    item_index == ${rawUtxoVector.itemIndex.toString()},
+    carriage == RawUtxo { ref_input_index: ${rawUtxoVector.carriage.refInputIndex.toString()} },
+  }
+}
+
+/// #600. The same emitted constructor at tier 3, where §8.4's partition puts a
+/// ${certifiedVector.preimageBytes.toString()}-byte field-2 preimage — above \`chunk_bytes_k\`, so the preimage is
+/// split into ${certifiedVector.carriage.chunkRefInputIndices.length.toString()} deterministic chunks with one §8.6 digest manifest.
+///
+/// \`chunk_ref_input_indices\` is all-chunks-positional and its **order** is the
+/// §8.4 chunk order, which is also the order the certificate's digest vector is
+/// written in. Both the manifest index and the chunk indices were located by
+/// content — the manifest by its \`(tx_id, field_index)\` token, the chunks by
+/// their datum bytes — so this vector pins the resolution discipline and not
+/// just the shape.
+test typescript_generated_certified_carriage_auxiliary_is_exact() {
+  expect Some(auxiliary_data) = cbor.deserialise(certified_auxiliary_cbor)
+  expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
+  expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
+  and {
+    // O(1) in field size at the top of the ladder too: at most three indices
+    // plus the manifest's, whatever the preimage weighs.
+    bytearray.length(certified_auxiliary_cbor) == ${certifiedVector.auxiliaryCbor.length.toString()},
+    field_index == ${certifiedVector.fieldIndex.toString()},
+    item_index == ${certifiedVector.itemIndex.toString()},
+    carriage == Certified {
+      cert_ref_input_index: ${certifiedVector.carriage.certRefInputIndex.toString()},
+      chunk_ref_input_indices: [${certifiedVector.carriage.chunkRefInputIndices.join(", ")}],
+    },
   }
 }
 

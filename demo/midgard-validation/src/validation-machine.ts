@@ -103,11 +103,6 @@ import {
   readCborMapHeader,
   readCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
-import {
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-  type MidgardFieldCarriageV1,
-  selectMidgardFieldCarriageTierV1,
-} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
@@ -317,89 +312,40 @@ export const countedMachineFieldChunkStepsV1 = (
  */
 
 /**
- * Raised when §8.4's partition selects a carriage tier this producer cannot
- * build, which today is anything above tier 1.
+ * What a field-reading step says about the field it read, before anything knows
+ * how the bytes will travel (#600).
  *
- * **It is a refusal, not a failure.** Tiers 2–3 name their preimage by
- * *positional reference-input index*, and §8.7 requires those indices to be
- * resolved by **content** against a concrete transaction's canonically-sorted
- * reference-input set (`resolveChunkReferenceIndicesV1` in
- * `@al-ft/midgard-sdk`). A trace has no transaction, so the indices do not exist
- * yet — and `buildValidationOneStepArgumentV1` hashes this auxiliary straight
- * into the committed one-step evidence, so there is no later seam at which a
- * submitter could substitute them. The two honest answers are therefore to
- * refuse or to open that seam; opening it is {@link
- * https://github.com/Anastasia-Labs/midgard/issues/600 #600}.
+ * A step names one committed field and needs its §5.1 preimage to reach the
+ * consuming transaction; §8's three tiers are three answers to *how*, and the
+ * answer is not a property of the field. Tiers 2–3 name their bytes by
+ * **positional reference-input index**, and §8.7 makes those indices
+ * content-resolved against a concrete transaction's canonically-sorted
+ * reference-input set — so the tier cannot be decided here, where no transaction
+ * exists.
  *
- * The dishonest answers are both refused here rather than left available. A
- * tier-1 `Inline` carriage above the cap is not merely large: §8.4 is a
- * *partition*, not a preference, so it names a tier the partition does not admit
- * for that length — and it is refused by the L1 transaction size in any case
- * (`onchain/aiken/lib/midgard/validation-machine-v1.ak:9189-9192` says so in
- * terms). Fabricated reference-input indices would produce evidence whose
- * `evidence_hash` no transaction can satisfy. Either would be a producer that
- * emits proofs nobody can submit, which is the class this program retires.
+ * The tier is therefore decided at the one place that has a transaction:
+ * `buildValidationOneStepArgumentV1`, which is also where the auxiliary is first
+ * hashed into committed evidence (`prepare_semantic_resolution` in
+ * `onchain/aiken/lib/midgard/validation-resolution-v1.ak:163-182`, staged by the
+ * PrepareSelected transaction). Nothing is committed before that point, so
+ * resolving there is not a late substitution — it is the first moment a tier can
+ * honestly be named.
+ *
+ * **This is why the producer never refuses.** It is not only the dispute path
+ * that builds traces: the operator's block-build routine runs this exact
+ * producer once per transaction in a block
+ * (`demo/midgard-node/src/workers/utils/mpf.ts:1194-1234`, wired at `:4480-4483`),
+ * where there is no dispute transaction, no published carriage and no
+ * reference-input set — and never will be. A producer that refused a preimage
+ * above §8.3's tier-1 cap would fail the whole block build for a legal ~14.3 KB
+ * output, which is strictly worse than the dispute-side gap refusing was meant to
+ * name. Carrying the plan input keeps the producer a pure function of the L2
+ * transaction, exactly as its callers require, while no carriage §8.4 does not
+ * admit ever exists at any instant.
  */
-export class ValidationMachineCarriageTierUnsupportedErrorV1 extends Error {
-  override readonly name = "ValidationMachineCarriageTierUnsupportedErrorV1";
+export type ValidationMachineFieldCarriagePlanInputV1 = {
   readonly fieldIndex: number;
-  readonly preimageLength: number;
-  readonly selectedTier: "RawUtxo" | "Certified";
-  readonly maxTier1PreimageBytes: number;
-  readonly followUpIssue = 600;
-
-  constructor({
-    fieldIndex,
-    preimageLength,
-    selectedTier,
-  }: {
-    readonly fieldIndex: number;
-    readonly preimageLength: number;
-    readonly selectedTier: "RawUtxo" | "Certified";
-  }) {
-    super(
-      `V1 field ${fieldIndex.toString()} has a ${preimageLength.toString()}-byte §5.1 preimage, ` +
-        `which §8.4's partition carries as tier-${selectedTier === "RawUtxo" ? "2" : "3"} ` +
-        `\`${selectedTier}\` rather than tier-1 \`Inline\` (cap ` +
-        `${MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1.toString()} bytes). The validation ` +
-        "trace producer cannot name reference inputs: tiers 2-3 index them positionally and " +
-        "§8.7 resolves those indices by content against a concrete transaction, which a trace " +
-        "does not have. Emitting tier-1 anyway would name a carriage the partition does not " +
-        "admit, and fabricating indices would commit an evidence hash no transaction can " +
-        "satisfy — so this refuses instead. The carriage-resolution seam is " +
-        "https://github.com/Anastasia-Labs/midgard/issues/600.",
-    );
-    this.fieldIndex = fieldIndex;
-    this.preimageLength = preimageLength;
-    this.selectedTier = selectedTier;
-    this.maxTier1PreimageBytes = MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1;
-  }
-}
-
-/**
- * The §8 carriage one machine step names for one committed field.
- *
- * The tier comes from `selectMidgardFieldCarriageTierV1` — §8.4's own partition —
- * rather than from a choice made here, because a preimage has exactly one
- * admissible carriage for its length. Within tier 1 that is `Inline`: the step's
- * redeemer carries the preimage and the door hashes it once against the flat §4
- * commitment. Above tier 1 this refuses; see {@link
- * ValidationMachineCarriageTierUnsupportedErrorV1} for why refusing is the
- * correct answer rather than a gap left open.
- */
-export const machineFieldCarriageV1 = (
-  fieldIndex: number,
-  preimageCbor: Uint8Array,
-): MidgardFieldCarriageV1 => {
-  const tier = selectMidgardFieldCarriageTierV1(preimageCbor.length);
-  if (tier !== "Inline") {
-    throw new ValidationMachineCarriageTierUnsupportedErrorV1({
-      fieldIndex,
-      preimageLength: preimageCbor.length,
-      selectedTier: tier,
-    });
-  }
-  return { carriage: "Inline", preimage: Buffer.from(preimageCbor) };
+  readonly fieldPreimage: Buffer;
 };
 
 /** Every field's chunk steps, field-major — the whole-transaction walk order. */
@@ -711,20 +657,26 @@ export type ValidationMachineWorkWitness = {
          * alternates fields 0 and 1. `itemIndex` is on the wire because two
          * sites let the prover choose the item order and the claimed successor
          * pins it.
+         *
+         * `fieldPreimage` is the plan input, not wire: it is replaced by the §8
+         * carriage §8.4 admits for its length when the auxiliary is encoded
+         * (#600). See {@link ValidationMachineFieldCarriagePlanInputV1}.
          */
         readonly kind: "transactionFieldChunk";
         readonly fieldIndex: number;
         readonly itemIndex: number;
-        readonly carriage: MidgardFieldCarriageV1;
+        readonly fieldPreimage: Buffer;
       }
     | {
         /**
          * `canonicalDecode`'s complete-item step: one item read whole rather
          * than chunk by chunk. Field index and item index come from the phase's
-         * control, so the carriage is the entire wire surface.
+         * control, so the carriage is the entire wire surface — `fieldIndex`
+         * here is the plan input's, never encoded (#600).
          */
         readonly kind: "transactionFieldItem";
-        readonly carriage: MidgardFieldCarriageV1;
+        readonly fieldIndex: number;
+        readonly fieldPreimage: Buffer;
       }
     | {
         readonly kind: "ledgerOutputProofBegin";
@@ -745,11 +697,14 @@ export type ValidationMachineWorkWitness = {
     | {
         /**
          * A field-4 required-signer item plus the signer-set membership
-         * evidence the step decides on. No field or item index: the field is 4
-         * by construction and the item index is `control.required_seen`.
+         * evidence the step decides on. No field or item index **on the wire**:
+         * the field is 4 by construction and the item index is
+         * `control.required_seen`. `fieldIndex` is carried only as the plan
+         * input's, and is never encoded (#600).
          */
         readonly kind: "requiredSignerItem";
-        readonly carriage: MidgardFieldCarriageV1;
+        readonly fieldIndex: number;
+        readonly fieldPreimage: Buffer;
         readonly signerProof: ValidationMachineSignerSetProof;
       }
     | {
@@ -821,10 +776,17 @@ export type ValidationMachineWorkWitness = {
          * (field 2, one output item). Both stages need the item's length and its
          * `bounded_item_v1` commitment and never look at its bytes, so the
          * door's derived commitment is all the carriage has to yield; field
-         * index and item index are fixed by the stage and its cursor.
+         * index and item index are fixed by the stage and its cursor, so
+         * `fieldIndex` here is the plan input's and is never encoded (#600).
+         *
+         * This is the C21-STAGE4 site. Its evidence is O(1) in output size
+         * exactly when the resolved carriage is tier 2 or 3
+         * (`onchain/aiken/lib/midgard/validation-machine-v1.ak:9189-9192`), which
+         * is what resolving at evidence-commitment time restores.
          */
         readonly kind: "transactionRedeemerItemBegin";
-        readonly carriage: MidgardFieldCarriageV1;
+        readonly fieldIndex: number;
+        readonly fieldPreimage: Buffer;
       }
     | {
         readonly kind: "nativeExecutionScan";
@@ -1811,16 +1773,14 @@ export const buildDeterministicValidationMachineTrace = (
         fieldPreimages[fieldIndex]!.preimageCbor,
       );
     /**
-     * The §8 carriage every field-reading step names. One helper rather than
-     * thirteen call-site expressions, because the tier policy is one decision:
-     * §8.4's partition picks it, and the refusal above tier 1 (#600) has to be
-     * identical at every site or a caller would meet it at some and not others.
+     * The §5.1 preimage every field-reading step names — the carriage plan
+     * input, not a carriage (#600). One helper rather than thirteen call-site
+     * expressions, because "which bytes this step read" has to be answered the
+     * same way at every site; the tier those bytes travel under is decided once,
+     * later, where a transaction exists.
      */
-    const fieldCarriage = (fieldIndex: number): MidgardFieldCarriageV1 =>
-      machineFieldCarriageV1(
-        fieldIndex,
-        fieldPreimages[fieldIndex]!.preimageCbor,
-      );
+    const fieldPreimage = (fieldIndex: number): Buffer =>
+      Buffer.from(fieldPreimages[fieldIndex]!.preimageCbor);
     const spendInputsCollection = machineFieldTrace(0);
     const referenceInputsCollection = machineFieldTrace(1);
     const outputsCollection = machineFieldTrace(2);
@@ -2653,7 +2613,8 @@ export const buildDeterministicValidationMachineTrace = (
             ]),
             {
               kind: "transactionFieldItem",
-              carriage: fieldCarriage(field.fieldIndex),
+              fieldIndex: field.fieldIndex,
+              fieldPreimage: fieldPreimage(field.fieldIndex),
             },
           );
           if (itemCount === -1) {
@@ -2685,7 +2646,7 @@ export const buildDeterministicValidationMachineTrace = (
               kind: "transactionFieldChunk",
               fieldIndex: field.fieldIndex,
               itemIndex: item.itemIndex,
-              carriage: fieldCarriage(field.fieldIndex),
+              fieldPreimage: fieldPreimage(field.fieldIndex),
             },
           );
           if (itemCount === -1) {
@@ -2759,7 +2720,7 @@ export const buildDeterministicValidationMachineTrace = (
             // own collection rather than a literal.
             fieldIndex: scan.collection.fieldIndex,
             itemIndex: scan.item.itemIndex,
-            carriage: fieldCarriage(scan.collection.fieldIndex),
+            fieldPreimage: fieldPreimage(scan.collection.fieldIndex),
           });
           if (previousKey.length > 0 && key.equals(previousKey)) {
             if (
@@ -2855,7 +2816,9 @@ export const buildDeterministicValidationMachineTrace = (
             kind: "transactionFieldChunk",
             fieldIndex: MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX,
             itemIndex: scan.item.itemIndex,
-            carriage: fieldCarriage(MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX),
+            fieldPreimage: fieldPreimage(
+              MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX,
+            ),
           });
           if (
             signatureControl.previousOrderKey.length > 0 &&
@@ -2965,7 +2928,8 @@ export const buildDeterministicValidationMachineTrace = (
             kind: "requiredSignerItem",
             // No field or item index on the wire: the field is 4 by
             // construction and the item index is `control.required_seen`.
-            carriage: fieldCarriage(4),
+            fieldIndex: 4,
+            fieldPreimage: fieldPreimage(4),
             signerProof,
           });
           if (signerProof.kind !== "membership") {
@@ -3068,7 +3032,9 @@ export const buildDeterministicValidationMachineTrace = (
             kind: "transactionFieldChunk",
             fieldIndex: MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX,
             itemIndex: item.itemIndex,
-            carriage: fieldCarriage(MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX),
+            fieldPreimage: fieldPreimage(
+              MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX,
+            ),
           });
 
           let header: ValidationMachineVersionedScriptHeaderV1;
@@ -3394,7 +3360,7 @@ export const buildDeterministicValidationMachineTrace = (
             kind: "transactionFieldChunk",
             fieldIndex: 3,
             itemIndex: observer.itemIndex,
-            carriage: fieldCarriage(3),
+            fieldPreimage: fieldPreimage(3),
           },
         );
         if (
@@ -3628,7 +3594,9 @@ export const buildDeterministicValidationMachineTrace = (
               kind: "transactionFieldChunk",
               fieldIndex: MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX,
               itemIndex: item.itemIndex,
-              carriage: fieldCarriage(MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX),
+              fieldPreimage: fieldPreimage(
+                MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX,
+              ),
             });
             if (inlineSourceTotalCount === 0) {
               inlineSourceTotalCount = scriptWitnessesCollection.items.length;
@@ -3824,7 +3792,8 @@ export const buildDeterministicValidationMachineTrace = (
               // Stage 1: field 8, item index `control.redeemer_count`. Both are
               // fixed by the stage and its cursor, so the carriage is the whole
               // wire surface.
-              carriage: fieldCarriage(8),
+              fieldIndex: 8,
+              fieldPreimage: fieldPreimage(8),
             });
             if (redeemerTotalCount === 0) {
               redeemerTotalCount = redeemerWitnessesCollection.items.length;
@@ -4104,14 +4073,16 @@ export const buildDeterministicValidationMachineTrace = (
               // carriage keeps this redeemer O(1) in output size only under
               // tiers 2-3, where the preimage rides reference inputs
               // (`onchain/aiken/lib/midgard/validation-machine-v1.ak:9189`).
-              // This producer can only emit tier 1, so above the 14,336-byte
-              // tier-1 cap `fieldCarriage` refuses by name rather than emitting
-              // a step no prover could submit — #600 opens the seam that lets
-              // it emit tiers 2-3 and restores the closure to every admissible
-              // output size.
+              // The step therefore carries the *plan input* — which field, which
+              // bytes — and the tier is resolved at evidence commitment, where a
+              // transaction exists to index reference inputs into (#600). Above
+              // §8.3's 14,336-byte tier-1 cap the resolution is genuinely tier 2
+              // or 3 and this evidence is O(1); below it, tier-1 `Inline`. The
+              // producer itself never refuses and never names a tier.
               pushWitness("scriptSources", currentOutputCommitmentWitness(), {
                 kind: "transactionRedeemerItemBegin",
-                carriage: fieldCarriage(2),
+                fieldIndex: 2,
+                fieldPreimage: fieldPreimage(2),
               });
               if (outputTotalCount === 0) {
                 outputTotalCount = outputsCollection.items.length;
@@ -4344,7 +4315,7 @@ export const buildDeterministicValidationMachineTrace = (
                     kind: "transactionFieldChunk",
                     fieldIndex: 5,
                     itemIndex: policyItem.itemIndex,
-                    carriage: fieldCarriage(5),
+                    fieldPreimage: fieldPreimage(5),
                   },
                 );
                 const itemHeader = readCborArrayHeader(
@@ -4541,7 +4512,7 @@ export const buildDeterministicValidationMachineTrace = (
                   kind: "transactionFieldChunk",
                   fieldIndex: 3,
                   itemIndex: observer.itemIndex,
-                  carriage: fieldCarriage(3),
+                  fieldPreimage: fieldPreimage(3),
                 });
                 if (observerTotalCount === 0) {
                   observerTotalCount = requiredObserversCollection.items.length;
@@ -6302,7 +6273,7 @@ export const buildDeterministicValidationMachineTrace = (
                   kind: "transactionFieldChunk",
                   fieldIndex: 3,
                   itemIndex: observer.itemIndex,
-                  carriage: fieldCarriage(3),
+                  fieldPreimage: fieldPreimage(3),
                 },
               );
               contextControl = {

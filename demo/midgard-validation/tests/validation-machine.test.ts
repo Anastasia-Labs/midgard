@@ -7,6 +7,7 @@ import {
   computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1,
+  deriveMidgardV1TxFieldPreimages,
   encodeCbor,
   encodeMidgardCekProgramMaterialSidecarV1,
   encodeMidgardTxOutput,
@@ -19,10 +20,7 @@ import {
   decodeSingleCbor,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
-import {
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-  type MidgardFieldCarriageV1,
-} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import { MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
   Application,
   Lambda,
@@ -53,6 +51,7 @@ import {
   redeemerTagForPurposeKindV1,
   RejectCodes,
   validateCekRouteMaterialV1,
+  type ValidationMachineFieldCarriagePlanInputV1,
   type ValidationMachineWorkWitness,
   validationSemanticResolverIndexV1,
 } from "../src/index.js";
@@ -260,15 +259,36 @@ const canonicalDecodeFieldIndexV1 = (
   return Number(control[4] as bigint);
 };
 
-/** The bytes a tier-1 `Inline` carriage delivers to the door. */
-const inlineCarriagePreimageV1 = (
-  carriage: MidgardFieldCarriageV1,
-): Buffer => {
-  if (carriage.carriage !== "Inline") {
-    throw new Error("machine carriage is expected to be tier-1 Inline");
-  }
-  return carriage.preimage;
-};
+/**
+ * The carriage plan input a field-reading step carries for one field (#600).
+ *
+ * This replaces a `carriage: { carriage: "Inline" }` assertion, and it is
+ * stronger than what it replaces rather than weaker. A step no longer names a
+ * tier at all — §8.4's partition is applied at evidence commitment, where a
+ * transaction exists to resolve reference inputs against — so "the producer
+ * chose tier 1" is no longer a property of the trace to assert. What is worth
+ * pinning is the thing the arm now means: the step read the **real** field, byte
+ * for byte, out of the transaction under test.
+ */
+const expectedFieldPlanInputV1 = (
+  txCbor: Buffer,
+  fieldIndex: number,
+): { readonly fieldIndex: number; readonly fieldPreimage: Buffer } => ({
+  fieldIndex,
+  fieldPreimage:
+    deriveMidgardV1TxFieldPreimages(txCbor)[fieldIndex]!.preimageCbor,
+});
+
+/**
+ * The §5.1 preimage a field-reading step read.
+ *
+ * Since #600 a step carries the carriage **plan input**, so this is a field read
+ * rather than a tier assertion: the tier is chosen later, at evidence
+ * commitment, and these rows are about which bytes a step named.
+ */
+const stepFieldPreimageV1 = (
+  planInput: ValidationMachineFieldCarriagePlanInputV1,
+): Buffer => planInput.fieldPreimage;
 
 type MintFoldWitnessV1 = Extract<
   NonNullable<ValidationMachineWorkWitness["auxiliary"]>,
@@ -403,7 +423,10 @@ const validateBoundaryAbiAndCollectAuxiliaryKinds = (
       oneStepArgument.auxiliaryCbor.length,
       oneStepArgument.evidenceCbor.length,
     );
-    if (!auxiliaryIsFrozenStale && oneStepArgument.semanticResolverIndex !== null) {
+    if (
+      !auxiliaryIsFrozenStale &&
+      oneStepArgument.semanticResolverIndex !== null
+    ) {
       const globalIndex =
         semanticResolverOffsetsV1[oneStepArgument.resolverIndex]! +
         oneStepArgument.semanticResolverIndex;
@@ -542,7 +565,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ) {
           return (
             witness.cbor.length +
-              inlineCarriagePreimageV1(witness.auxiliary.carriage).length <
+              stepFieldPreimageV1(witness.auxiliary).length <
             16 * 1024
           );
         }
@@ -676,9 +699,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           witness.auxiliary.kind === "transactionFieldItem" ||
           witness.auxiliary.kind === "transactionFieldChunk"
         ) {
-          return !inlineCarriagePreimageV1(
-            witness.auxiliary.carriage,
-          ).includes(transaction.txCbor);
+          return !stepFieldPreimageV1(witness.auxiliary).includes(
+            transaction.txCbor,
+          );
         }
         return false;
       }),
@@ -789,9 +812,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     expect(scriptSourceWitnesses[0]?.auxiliary).toMatchObject({
       kind: "transactionFieldChunk",
-      fieldIndex: 6,
       itemIndex: 0,
-      carriage: { carriage: "Inline" },
+      ...expectedFieldPlanInputV1(transaction.txCbor, 6),
     });
     const sourceHashBlocks = scriptSourceWitnesses.filter(
       (witness) => witness.auxiliary?.kind === "scriptSourceHashBlock",
@@ -811,7 +833,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     expect(redeemerSourceWitness?.auxiliary).toMatchObject({
       kind: "transactionRedeemerItemBegin",
-      carriage: { carriage: "Inline" },
+      ...expectedFieldPlanInputV1(transaction.txCbor, 8),
     });
     expect(validationSemanticResolverIndexV1(redeemerSourceWitness!)).toBe(15);
     expect(
@@ -1510,9 +1532,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(cekObserverWitnesses).toHaveLength(1);
     expect(cekObserverWitnesses[0]?.auxiliary).toMatchObject({
       kind: "transactionFieldChunk",
-      fieldIndex: 3,
       itemIndex: 0,
-      carriage: { carriage: "Inline" },
+      ...expectedFieldPlanInputV1(transaction.txCbor, 3),
     });
     const cekObserverWitnessIndex = trace.witnesses.indexOf(
       cekObserverWitnesses[0]!,
@@ -1671,7 +1692,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           // refuses above; the 4,095-byte chunk bound was the retired
           // `ChunkProofV1`'s and has no wire surface left.
           return (
-            inlineCarriagePreimageV1(witness.carriage).length <=
+            stepFieldPreimageV1(witness).length <=
             MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1
           );
         }
@@ -1713,8 +1734,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       )?.auxiliary,
     ).toMatchObject({
       kind: "transactionFieldChunk",
-      fieldIndex: 6,
-      carriage: { carriage: "Inline" },
+      ...expectedFieldPlanInputV1(transaction.txCbor, 6),
     });
     expect(
       trace.witnesses
@@ -1865,7 +1885,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           // refuses above; the 4,095-byte chunk bound was the retired
           // `ChunkProofV1`'s and has no wire surface left.
           return (
-            inlineCarriagePreimageV1(witness.carriage).length <=
+            stepFieldPreimageV1(witness).length <=
             MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1
           );
         }
@@ -1968,8 +1988,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toEqual(["transactionFieldChunk", "requiredSignerItem", null]);
     expect(signatureWitnesses[0]?.auxiliary).toMatchObject({
       kind: "transactionFieldChunk",
-      fieldIndex: 7,
-      carriage: { carriage: "Inline" },
+      ...expectedFieldPlanInputV1(transaction.txCbor, 7),
     });
     expect(
       signatureWitnesses[1]?.auxiliary?.kind === "requiredSignerItem"
@@ -2015,8 +2034,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toEqual(["transactionFieldChunk", "requiredSignerItem"]);
     expect(signatureWitnesses[0]?.auxiliary).toMatchObject({
       kind: "transactionFieldChunk",
-      fieldIndex: 7,
-      carriage: { carriage: "Inline" },
+      ...expectedFieldPlanInputV1(transaction.txCbor, 7),
     });
     expect(
       signatureWitnesses[1]?.auxiliary?.kind === "requiredSignerItem"
@@ -2170,7 +2188,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       canonicalOutputItems.every(
         (auxiliary) =>
           auxiliary.kind === "transactionFieldItem" &&
-          inlineCarriagePreimageV1(auxiliary.carriage).equals(outputsPreimage),
+          stepFieldPreimageV1(auxiliary).equals(outputsPreimage),
       ),
     ).toBe(true);
     // C21-STAGE4 Option A: stage-4 emits the carriage-only witness. The stage-1
@@ -2181,9 +2199,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       .filter((witness) => witness.phase === "scriptSources")
       .flatMap((witness) =>
         witness.auxiliary?.kind === "transactionRedeemerItemBegin" &&
-        inlineCarriagePreimageV1(witness.auxiliary.carriage).equals(
-          outputsPreimage,
-        )
+        stepFieldPreimageV1(witness.auxiliary).equals(outputsPreimage)
           ? [witness.auxiliary]
           : [],
       );

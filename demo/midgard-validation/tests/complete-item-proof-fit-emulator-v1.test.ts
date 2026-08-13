@@ -6,11 +6,11 @@ import {
   MIDGARD_CONSENSUS_PROFILE_V1,
 } from "@al-ft/midgard-core";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
+import { encodeMidgardFieldPreimageV1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
   MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_V1_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { encodeMidgardFieldPreimageV1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
   AuthenticatedCanonicalDecodeItemDatumV1,
   buildUnsignedValidationProofItemPublicationV1Program,
@@ -208,10 +208,12 @@ const buildCanonicalDecodeItemCase = async (
   let stateIndex = -1;
   for (let index = 0; index < trace.witnesses.length; index += 1) {
     const witness = trace.witnesses[index]!;
+    // This harness runs entirely inside §8.3's tier-1 domain — its probes are
+    // the measured publication frontiers, all below the 14,336-byte cap — so the
+    // default resolver's `Inline` is the carriage every case here uses (#600).
     if (
       witness.phase === "canonicalDecode" &&
-      witness.auxiliary?.kind === "transactionFieldItem" &&
-      witness.auxiliary.carriage.carriage === "Inline"
+      witness.auxiliary?.kind === "transactionFieldItem"
     ) {
       stateIndex = index;
       break;
