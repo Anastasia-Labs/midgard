@@ -52,11 +52,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   midgardTxOutputFromCanonicalCborV1,
-  publishInputNoIdxSpendInputsV1,
   resolveProverSigner,
   submitInputNoIdxStep01,
   submitInputNoIdxStep02,
-  submitInputNoIdxStep02UntilTerminal,
   submitInputNoIdxStep03,
   submitInputNoIdxStep04,
   submitRemoveFraudulentBlock,
@@ -358,82 +356,21 @@ const setupFraudulentBlock = async ({
 const STEP02_RELEASE_MEMORY_LIMIT = 13_200_000n;
 const STEP02_RELEASE_CPU_LIMIT = 8_000_000_000n;
 const HALF_CANONICAL_MATURITY_MS = 302_400_000;
-/**
- * Pinned `CompletePublished` measurement, re-derived at `7fd434a7` (#542).
+/*
+ * The byte-exact `CompletePublished` proof-fit pin that stood here is **gone,
+ * not relaxed.** It measured a transaction shape that no longer exists: the
+ * retired route referenced a bespoke `PublishedSpendInputsV1` datum, and #604
+ * replaced it with §8.5 raw carriage under a different redeemer. Every measured
+ * quantity — signed bytes, fee, execution units, the CBOR sha256 — moves with
+ * that change, so re-pinning here would mean inventing numbers rather than
+ * measuring them.
  *
- * The previous pin (fee `542_885`, mem `521_130`, cpu `209_629_043`, CBOR sha
- * `8ec9d1d8…`) was taken against the **pre-#521** blueprint. #521's decoder
- * remediation (`a954669f`, blueprint re-pinned in `c682cc69`) renamed
- * `cek_machine_v1.ValueWitnessV1` -> `MachineValueWitnessV1` and
- * `user_events/deposit.Datum` -> `DepositDatum`, which moved the compiled
- * bytes of 8 validators; the applied step scripts therefore changed size
- * slightly while the transaction layout stayed identical — exactly the
- * observed signature of drifted ex-units/fee/tx-hash with an unchanged
- * `signedTxBytes` (7_771) and unchanged structural counts.
- *
- * Attribution (both `aiken v1.1.22+39d6b04`, `aiken build --env testnet`):
- *   - pre-rename blueprint built from `84aa1ce3` (plutus.json sha256
- *     `991da062…`) reproduces the OLD pin verbatim — this case passes when the
- *     suite is pointed at it via `MIDGARD_REAL_BLUEPRINT_PATH`;
- *   - post-rename blueprint built from `7fd434a7` (plutus.json sha256
- *     `76f9e53d…`, byte-identical to the `c682cc69` build) yields the values
- *     pinned below.
- *
- * Determinism (Q13 discipline — deterministic test wallets, fixed emulator
- * clock, two fresh `vitest run --pool=forks` processes on `7fd434a7` with the
- * `7fd434a7` blueprint): both producing runs emitted identical fee, ex-units,
- * and CBOR sha256 `e6936871…`.
- *
- * Serializer provenance (prose, deliberately not asserted anywhere): the
- * producing runs used `@anastasia-labs/cardano-multiplatform-lib-nodejs`
- * `6.2.0-1` with the locally shadow-stack-patched
- * `cardano_multiplatform_lib_bg.wasm` (sha256 `cd96b005…`; pristine npm
- * `6.2.0-1` is `91b38c8e…`). RE-VERIFIED 2026-08-05: the `6.2.0-2` bump
- * (source-built 16 MiB shadow stack, wasm sha256 `47e56638…`; patcher
- * retired) landed and this suite reproduced every pin below unchanged —
- * the shadow-stack size is serialization-invisible, as expected.
- *
- * Re-pinned at issue #545. Wiring the four foundational families onto
- * published-chunk proof carriage changed the Q00-owned shared binding
- * (`midgard/fraud_proofs/common`) and made
- * `midgard/common/utils.get_unique_withdraw_redeemer` public, so every applied
- * step script in the blueprint recompiled. The transaction layout is untouched
- * — `signedTxBytes` is still 7,771 and every structural count is unchanged —
- * and the drift is 0.4% of execution: memory 523,998 to 521,130, cpu
- * 210,521,290 to 209,629,043, fee 543,115 to 542,885, which moves the CBOR
- * sha256. That is the same signature this pin has drifted under before, and it
- * is re-pinned rather than relaxed.
- *
- * Re-pinned at issue #547. Registering `noReferenceInput`,
- * `referenceInputNoIdx` and `invalidSignature` grew the fraud-proof catalogue
- * from 8 to 11 leaves, so the `nonExistentInputNoIndex` membership proof this
- * transaction carries in its catalogue redeemer folds a different set of
- * neighbours. Every measured quantity is bit-for-bit unchanged — same 7,771
- * signed bytes, same fee, same memory, same cpu, same structural counts — so
- * the proof is the same length and only its content, and therefore the CBOR
- * sha256, moves: 2eae6308… to ae89c6c6….
+ * Re-measurement is **#580**, which this ticket blocks by owner order precisely
+ * so it runs against working builders. Until then the structural fit assertions
+ * (`expectStep02ProofFit`, the release memory/cpu margins, the reference-input
+ * shape) are what hold, and they are the ones that would catch a regression in
+ * kind rather than in degree.
  */
-const COMPLETE_PUBLISHED_CANONICAL_PROOF = {
-  signedTxBytes: 7_771,
-  signedTxSha256:
-    "ae89c6c6026e038f0bcf4e8f868e077c96f9eb0a71a604da121c93f813533654",
-  txByteMargin: 8_613,
-  fee: 542_885n,
-  executionMemory: 521_130n,
-  executionCpu: 209_629_043n,
-  releaseMemoryMargin: 12_678_870n,
-  releaseCpuMargin: 7_790_370_957n,
-  inputCount: 2,
-  referenceInputCount: 1,
-  outputCount: 2,
-  collateralInputCount: 1,
-  vkeyWitnessCount: 1,
-  redeemerCount: 1,
-  outputLovelace: 1_512_810n,
-  outputMinAda: 1_499_880n,
-  outputValueBytes: 73,
-  valueByteMargin: 4_927,
-} as const;
 
 const measureStep02ProofTransaction = ({
   transactionCbor,
@@ -666,9 +603,8 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
       awaitConfirmation: true,
     });
     expect(step01Result.badTxId).toBe(fixture.badTxId);
-    expect(step01Result.verifiedTxInputsHash).toBe(
-      fixture.verifiedTxInputsHash,
-    );
+    // #604: the thread carries the §2.5 anchor, not field 0's commitment.
+    expect(step01Result.verifiedTxId).toBe(fixture.badTxId);
 
     const secondStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
@@ -677,9 +613,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     );
     expect(Data.from(secondStepUtxo.datum!, InputNoIdxStep02Datum)).toEqual({
       fraud_prover: proverPaymentKeyHash,
-      data: {
-        Direct: { verified_tx_inputs_hash: fixture.verifiedTxInputsHash },
-      },
+      data: { verified_tx_id: fixture.badTxId },
     });
 
     // ## step-02: open the spend-inputs commitment and forward the input
@@ -698,6 +632,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
             inputsPreimage: [fixture.badInput],
             badInputsIndex: 0,
           },
+          nativeTxCompactCbor: fixture.badTxInclusion.nativeTxCompactCbor,
           awaitConfirmation: true,
         }),
     );
@@ -750,9 +685,6 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
       awaitConfirmation: true,
     });
     expect(step03Result.producingTxId).toBe(fixture.producingTxId);
-    expect(step03Result.producingTxOutputsHash).toBe(
-      fixture.producingTxOutputsHash,
-    );
 
     const fourthStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
@@ -762,7 +694,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     expect(Data.from(fourthStepUtxo.datum!, InputNoIdxStep04Datum)).toEqual({
       fraud_prover: proverPaymentKeyHash,
       data: {
-        producing_tx_outputs_hash: fixture.producingTxOutputsHash,
+        producing_tx_id: fixture.producingTxId,
         bad_input_output_index: CHALLENGED_OUTPUT_INDEX,
       },
     });
@@ -776,6 +708,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
       signer: proverSigner,
       threadOutRef: outRefLabel(fourthStepUtxo),
       outputsPreimage: { outputsPreimage: [] },
+      nativeTxCompactCbor: fixture.producingTxInclusion.nativeTxCompactCbor,
       awaitConfirmation: true,
     });
     expect(step04Result.producingTxOutputCount).toBe(0);
@@ -841,31 +774,18 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     expect(retainedFraudProof.assets[step04Result.fraudProofUnit]).toBe(1n);
   }, 240_000);
 
-  it("constructs and measures a genuine CompletePublished consuming proof", async () => {
+  it("carries field 0 as §8.5 raw carriage and consumes it through the door", async () => {
+    // The §8 replacement for the retired `CompletePublished` route. That route
+    // referenced a bespoke `PublishedSpendInputsV1` datum bound to one
+    // computation thread and one prover; this one references a
+    // nothing-but-bytes §8.5 publication located by content, which is what makes
+    // it healable by anyone (§8.7).
     const harness = await makeEmulatorHarness();
     const fixture = await buildInputNoIdxBlockFixture({
       producingOutputCount: 0,
     });
-    const { deploymentInfo, initResult, secondStepUtxo } =
+    const { deploymentInfo, secondStepUtxo } =
       await startInputNoIdxStep02Thread({ harness, fixture });
-    const inputsPreimage = {
-      inputsPreimage: fixture.badInputs,
-      badInputsIndex: fixture.badInputsIndex,
-    };
-
-    const publicationStartedAt = performance.now();
-    const publication = await publishInputNoIdxSpendInputsV1({
-      lucid: harness.proverLucid,
-      network,
-      signer: harness.proverSigner,
-      computationThreadPolicyId: initResult.computationThreadPolicyId,
-      computationThreadAssetName: initResult.computationThreadAssetName,
-      verifiedTxInputsHash: fixture.verifiedTxInputsHash,
-      inputsPreimage,
-    });
-    const publicationBuildSubmitConfirmWallMs = Number(
-      (performance.now() - publicationStartedAt).toFixed(3),
-    );
 
     const proofStartedAt = performance.now();
     const proofCapture = await captureEmulatorSubmission(
@@ -878,43 +798,58 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
           network,
           signer: harness.proverSigner,
           threadOutRef: outRefLabel(secondStepUtxo),
-          inputsPreimage,
-          publicationReference: publication,
+          inputsPreimage: {
+            inputsPreimage: fixture.badInputs,
+            badInputsIndex: fixture.badInputsIndex,
+          },
+          nativeTxCompactCbor: fixture.badTxInclusion.nativeTxCompactCbor,
+          // The one tier choice §8 leaves open: spend a prior transaction's
+          // bytes rather than this one's.
+          publishCarriage: true,
           awaitConfirmation: true,
         }),
     );
     const proofElapsedMs = performance.now() - proofStartedAt;
     const proofResult = proofCapture.result;
+    // Tier 2 is two transactions, in this order: §8.5 publication first, then the
+    // step that references it. Reference inputs are resolved against the UTxO set
+    // as it stands *before* a transaction, so they cannot share one — that is a
+    // ledger rule, not a builder limitation.
+    expect(proofCapture.transactionCbors).toHaveLength(2);
+    const proofTransactionCbor = proofCapture.transactionCbors[1]!;
     const proofMeasurement = measureStep02ProofTransaction({
-      transactionCbor: proofCapture.transactionCbors[0]!,
+      transactionCbor: proofTransactionCbor,
       outputIndex: proofResult.outputIndex,
       elapsedMs: proofElapsedMs,
     });
 
-    expect(proofResult.step02Execution).toBe("published");
-    expect(proofResult.terminal).toBe(true);
-    expect(proofResult.publicationOutRef).toBe(publication.outRef);
-    expect(proofMeasurement).toMatchObject(COMPLETE_PUBLISHED_CANONICAL_PROOF);
+    expect(proofResult.carriageTier).toBe("RawUtxo");
+    expect(proofResult.carriageOutRefs).toHaveLength(1);
+    // The consuming transaction reads exactly the carriage it published, and
+    // reads it as a reference input rather than spending it.
     expect(proofMeasurement.referenceInputCount).toBe(1);
-    const signedProofTransaction = CML.Transaction.from_cbor_hex(
-      proofCapture.transactionCbors[0]!,
-    );
+    const signedProofTransaction =
+      CML.Transaction.from_cbor_hex(proofTransactionCbor);
     const proofReferenceInputs = signedProofTransaction
       .body()
       .reference_inputs();
     expect(proofReferenceInputs?.len()).toBe(1);
+    const [carriageTxHash, carriageOutputIndex] =
+      proofResult.carriageOutRefs[0]!.split("#");
     expect(proofReferenceInputs?.get(0).transaction_id().to_hex()).toBe(
-      publication.utxo.txHash,
+      carriageTxHash,
     );
     expect(proofReferenceInputs?.get(0).index()).toBe(
-      BigInt(publication.utxo.outputIndex),
+      BigInt(carriageOutputIndex!),
     );
     expectStep02ProofFit(proofMeasurement);
+    // The publication survives its consumer: §8.7 carriage is referenced, never
+    // spent, so a second dispute over the same field reuses it.
     await expect(
       harness.proverLucid.utxosByOutRef([
         {
-          txHash: publication.utxo.txHash,
-          outputIndex: publication.utxo.outputIndex,
+          txHash: carriageTxHash!,
+          outputIndex: Number(carriageOutputIndex!),
         },
       ]),
     ).resolves.toHaveLength(1);
@@ -922,13 +857,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
       console.info(
         JSON.stringify(
-          {
-            q13CompletePublished: {
-              publication: publication.measurement,
-              publicationBuildSubmitConfirmWallMs,
-              consumingProof: proofMeasurement,
-            },
-          },
+          { q13Tier2Carriage: { consumingProof: proofMeasurement } },
           (_key, value: unknown) =>
             typeof value === "bigint" ? value.toString() : value,
         ),
@@ -936,24 +865,26 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     }
   }, 240_000);
 
-  it("confirms every intermediate root in a true 20-input ordered fold", async () => {
+  it("opens a 20-input field in one transaction, where the fold took twenty", async () => {
+    // The §8 replacement for the retired ordered fold. Twenty inputs are 800
+    // bytes of §5.1 preimage — far inside §8.4's 14,336-byte tier-1 bound — so
+    // the whole field rides in the step's own redeemer and the thread advances
+    // to step 03 in a single transaction. The fold existed only because the
+    // collection had to be reproduced inside the step to re-hash it.
     const harness = await makeEmulatorHarness();
     const fixture = await buildInputNoIdxBlockFixture({
       producingOutputCount: 0,
       badSpendInputCount: 20,
     });
     expect(fixture.badInputs).toHaveLength(20);
-    expect(inputNoIdxSpendInputsCommitmentV1(fixture.badInputs)).toBe(
-      fixture.verifiedTxInputsHash,
-    );
     const { deploymentInfo, secondStepUtxo } =
       await startInputNoIdxStep02Thread({ harness, fixture });
 
-    const foldStartedAt = performance.now();
-    const foldCapture = await captureEmulatorSubmission(
+    const startedAt = performance.now();
+    const capture = await captureEmulatorSubmission(
       harness.emulator,
       async () =>
-        await submitInputNoIdxStep02UntilTerminal({
+        await submitInputNoIdxStep02({
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           deploymentInfo,
@@ -964,83 +895,46 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
             inputsPreimage: fixture.badInputs,
             badInputsIndex: fixture.badInputsIndex,
           },
+          nativeTxCompactCbor: fixture.badTxInclusion.nativeTxCompactCbor,
           awaitConfirmation: true,
         }),
     );
-    const foldBuildSubmitConfirmWallMs = Number(
-      (performance.now() - foldStartedAt).toFixed(3),
-    );
-    const { submissions } = foldCapture.result;
-    expect(submissions).toHaveLength(20);
-    expect(foldCapture.transactionCbors).toHaveLength(20);
-    expect(submissions[0]!.step02Execution).toBe("fold-start");
-    expect(
-      submissions
-        .slice(1)
-        .every((item) => item.step02Execution === "fold-next"),
-    ).toBe(true);
-    expect(submissions.slice(0, -1).every((item) => !item.terminal)).toBe(true);
-    expect(submissions.at(-1)!.terminal).toBe(true);
+    const elapsedMs = performance.now() - startedAt;
+    const result = capture.result;
 
-    const measurements = foldCapture.transactionCbors.map(
-      (transactionCbor, index) => {
-        const submission = submissions[index]!;
-        const transaction = CML.Transaction.from_cbor_hex(transactionCbor);
-        const threadOutput = transaction
-          .body()
-          .outputs()
-          .get(submission.outputIndex);
-        const coreOutput = coreToTxOutput(threadOutput);
-        if (index < 19) {
-          const expectedSelected =
-            fixture.badInputsIndex <= index ? fixture.badInput : null;
-          expect(Data.from(coreOutput.datum!, InputNoIdxStep02Datum)).toEqual({
-            fraud_prover: harness.proverSigner.paymentKeyHash,
-            data: {
-              Folding: {
-                verified_tx_inputs_hash: fixture.verifiedTxInputsHash,
-                item_count: 20n,
-                next_item_index: BigInt(index + 1),
-                bad_inputs_index: BigInt(fixture.badInputsIndex),
-                selected_input: expectedSelected,
-              },
-            },
-          });
-          expect(submission.nextFoldItemIndex).toBe(index + 1);
-        } else {
-          expect(Data.from(coreOutput.datum!, InputNoIdxStep03Datum)).toEqual({
-            fraud_prover: harness.proverSigner.paymentKeyHash,
-            data: {
-              bad_input_tx_id: fixture.badInput.tx_id,
-              bad_input_output_index: fixture.badInput.output_index,
-            },
-          });
-        }
-        const measurement = measureStep02ProofTransaction({
-          transactionCbor,
-          outputIndex: submission.outputIndex,
-        });
-        expectStep02ProofFit(measurement);
-        return { itemIndex: index, ...measurement };
-      },
+    // One transaction, not twenty.
+    expect(capture.transactionCbors).toHaveLength(1);
+    expect(result.carriageTier).toBe("Inline");
+    expect(result.carriageOutRefs).toHaveLength(0);
+    expect(result.inputsPreimageItemCount).toBe(20);
+    // And it lands at step 03 directly.
+    const transaction = CML.Transaction.from_cbor_hex(
+      capture.transactionCbors[0]!,
     );
-    expect(foldBuildSubmitConfirmWallMs).toBeGreaterThan(0);
+    const threadOutput = coreToTxOutput(
+      transaction.body().outputs().get(result.outputIndex),
+    );
+    expect(Data.from(threadOutput.datum!, InputNoIdxStep03Datum)).toEqual({
+      fraud_prover: harness.proverSigner.paymentKeyHash,
+      data: {
+        bad_input_tx_id: fixture.badInput.tx_id,
+        bad_input_output_index: fixture.badInput.output_index,
+      },
+    });
+    const measurement = measureStep02ProofTransaction({
+      transactionCbor: capture.transactionCbors[0]!,
+      outputIndex: result.outputIndex,
+      elapsedMs,
+    });
+    expectStep02ProofFit(measurement);
     expect(
-      HALF_CANONICAL_MATURITY_MS - foldBuildSubmitConfirmWallMs,
+      HALF_CANONICAL_MATURITY_MS - measurement.localBuildSubmitConfirmWallMs!,
     ).toBeGreaterThan(0);
 
     if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
       console.info(
         JSON.stringify(
-          {
-            q13Fold20: {
-              badInputsIndex: fixture.badInputsIndex,
-              foldBuildSubmitConfirmWallMs,
-              localHalfMaturityMarginMs:
-                HALF_CANONICAL_MATURITY_MS - foldBuildSubmitConfirmWallMs,
-              measurements,
-            },
-          },
+          { q13Inline20: { measurement } },
           (_key, value: unknown) =>
             typeof value === "bigint" ? value.toString() : value,
         ),
@@ -1132,9 +1026,10 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
           inputsPreimage: [{ tx_id: fixture.producingTxId, output_index: 7n }],
           badInputsIndex: 0,
         },
+        nativeTxCompactCbor: fixture.badTxInclusion.nativeTxCompactCbor,
         awaitConfirmation: true,
       }),
-    ).rejects.toThrow(/does not open the committed spend-inputs hash/u);
+    ).rejects.toThrow(/the disputed transaction commits at §2\.5 field 0/u);
 
     const step02Result = await submitInputNoIdxStep02({
       lucid: proverLucid,
@@ -1147,6 +1042,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
         inputsPreimage: [fixture.badInput],
         badInputsIndex: 0,
       },
+      nativeTxCompactCbor: fixture.badTxInclusion.nativeTxCompactCbor,
       awaitConfirmation: true,
     });
     const thirdStepUtxo = await expectSingleUtxoWithUnit(
@@ -1182,6 +1078,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
         signer: proverSigner,
         threadOutRef: outRefLabel(fourthStepUtxo),
         outputsPreimage: { outputsPreimage: producingOutputs },
+        nativeTxCompactCbor: fixture.producingTxInclusion.nativeTxCompactCbor,
         awaitConfirmation: true,
       }),
     ).rejects.toThrow(
@@ -1199,9 +1096,16 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
         signer: proverSigner,
         threadOutRef: outRefLabel(fourthStepUtxo),
         outputsPreimage: { outputsPreimage: [] },
+        nativeTxCompactCbor: fixture.producingTxInclusion.nativeTxCompactCbor,
         awaitConfirmation: true,
       }),
-    ).rejects.toThrow(/does not open the committed outputs hash/u);
+      // #604: the refusal now names the slot as well as the mismatch. Stripping
+      // the producer's outputs to fake an empty list produces a §5.1 preimage
+      // that commits to the empty-field constant, which is not what that
+      // transaction commits *at field 2* — and under §4 that constant is the
+      // same 32 bytes in all nine slots, so naming the slot is what makes the
+      // refusal mean anything.
+    ).rejects.toThrow(/the disputed transaction commits at §2\.5 field 2/u);
 
     // The thread is stuck at step 04 and the valid block is still queued.
     const stillFourthStep = await expectSingleUtxoWithUnit(

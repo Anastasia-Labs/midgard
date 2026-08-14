@@ -1,14 +1,16 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * Re-derived onto the flat field commitments by #604 (the #575 off-chain builder
+ * remediation): thread state carries the §2.5 anchor rather than a per-field
+ * collection commitment, and a step redeemer carries a `FieldOpeningV1` rather
+ * than a reproduced `..._preimage: List<…>`. The rebind is explained once in
+ * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
 
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "@/common.js";
 
+import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -48,9 +50,14 @@ export type DoubleSpendStepCancel = FaultProofStepCancel;
 export const DoubleSpendStepCancel =
   FaultProofStepCancel as unknown as DoubleSpendStepCancel;
 
+/**
+ * Mirrors `midgard/fraud_proofs/double_spend/step_01.State`. #604: the retired
+ * `verified_tx1_spend_inputs_hash` is gone — the §2.5 anchor alone is what a
+ * downstream step needs, and the door extracts field 0's commitment positionally
+ * from the compact structures that anchor authenticates.
+ */
 export const DoubleSpendStep01StateSchema = Data.Object({
   verified_tx1_id: H32Schema,
-  verified_tx1_spend_inputs_hash: H32Schema,
 });
 export type DoubleSpendStep01State = Data.Static<
   typeof DoubleSpendStep01StateSchema
@@ -75,9 +82,9 @@ export type DoubleSpendStep01SpendRedeemer = Data.Static<
 export const DoubleSpendStep01SpendRedeemer =
   DoubleSpendStep01SpendRedeemerSchema as unknown as DoubleSpendStep01SpendRedeemer;
 
+/** Mirrors `midgard/fraud_proofs/double_spend/step_02.State`. */
 export const DoubleSpendStep02StateSchema = Data.Object({
   verified_tx1_id: H32Schema,
-  verified_tx1_spend_inputs_hash: H32Schema,
 });
 export type DoubleSpendStep02State = Data.Static<
   typeof DoubleSpendStep02StateSchema
@@ -102,9 +109,13 @@ export type DoubleSpendStep02SpendRedeemer = Data.Static<
 export const DoubleSpendStep02SpendRedeemer =
   DoubleSpendStep02SpendRedeemerSchema as unknown as DoubleSpendStep02SpendRedeemer;
 
+/**
+ * Mirrors `midgard/fraud_proofs/double_spend/step_03.State`: the §2.5 anchors of
+ * both disputed transactions, not their field-0 collection commitments.
+ */
 export const DoubleSpendStep03StateSchema = Data.Object({
-  verified_tx1_spend_inputs_hash: H32Schema,
-  verified_tx2_spend_inputs_hash: H32Schema,
+  verified_tx1_id: H32Schema,
+  verified_tx2_id: H32Schema,
 });
 export type DoubleSpendStep03State = Data.Static<
   typeof DoubleSpendStep03StateSchema
@@ -121,10 +132,16 @@ export type DoubleSpendStep03Datum = Data.Static<
 export const DoubleSpendStep03Datum =
   DoubleSpendStep03DatumSchema as unknown as DoubleSpendStep03Datum;
 
+/**
+ * Mirrors `midgard/fraud_proofs/double_spend/step_03.Args`. The retired
+ * `tx1_spend_inputs_ref_input_index` named a bespoke publication UTxO; the §8
+ * carriage ladder subsumes it — tier 2 is now the door's own `RawUtxo` arm,
+ * carried inside the opening.
+ */
 export const DoubleSpendStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  tx1_spend_inputs_ref_input_index: Data.Integer(),
+  tx1_spend_inputs_opening: FieldOpeningV1Schema,
   double_spent_input_index: Data.Integer(),
 });
 export type DoubleSpendStep03Args = Data.Static<
@@ -141,8 +158,9 @@ export type DoubleSpendStep03SpendRedeemer = Data.Static<
 export const DoubleSpendStep03SpendRedeemer =
   DoubleSpendStep03SpendRedeemerSchema as unknown as DoubleSpendStep03SpendRedeemer;
 
+/** Mirrors `midgard/fraud_proofs/double_spend/step_04.State`. */
 export const DoubleSpendStep04StateSchema = Data.Object({
-  verified_tx2_spend_inputs_hash: H32Schema,
+  verified_tx2_id: H32Schema,
   double_spent_input: MidgardTxInputSchema,
 });
 export type DoubleSpendStep04State = Data.Static<
@@ -160,11 +178,12 @@ export type DoubleSpendStep04Datum = Data.Static<
 export const DoubleSpendStep04Datum =
   DoubleSpendStep04DatumSchema as unknown as DoubleSpendStep04Datum;
 
+/** Mirrors `midgard/fraud_proofs/double_spend/step_04.Args`. */
 export const DoubleSpendStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
-  tx2_spend_inputs_ref_input_index: Data.Integer(),
+  tx2_spend_inputs_opening: FieldOpeningV1Schema,
   double_spent_input_index: Data.Integer(),
 });
 export type DoubleSpendStep04Args = Data.Static<

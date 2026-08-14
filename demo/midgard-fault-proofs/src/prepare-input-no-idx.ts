@@ -1,8 +1,10 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * **Re-derived onto the flat field commitments by #604.** The two forwarded step
+ * states it emits carry §2.5 anchors — `verified_tx_id` and `producing_tx_id` —
+ * where they used to carry field-0 and field-2 collection commitments, and the
+ * proof-fit measurement reports §8.4's carriage tier where it used to report a
+ * retired direct/fold split. See
+ * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  *
  * `input-no-idx` (`nonExistentInputNoIndex`) evidence builder (Goal task `Q13`,
  * §9.1 outputs 6-8).
@@ -41,7 +43,9 @@ import { join } from "node:path";
 
 import {
   decodeMidgardNativeByteListPreimage,
+  encodeMidgardFieldPreimageV1,
   formatUnknownError,
+  selectMidgardFieldCarriageTierV1,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -456,10 +460,17 @@ export type PreparedInputNoIdxProofFitV1 = {
   readonly step04OutputsPreimageDatumBytes: number;
   readonly badTxCompactCborBytes: number;
   readonly producingTxCompactCborBytes: number;
-  /** The direct complete-item redeemer is used only through the measured cap. */
-  readonly completeItemCarriage: boolean;
-  /** Larger preimages are re-opened in authenticated, ordered fold steps. */
-  readonly step02Execution: "direct" | "fold";
+  /**
+   * §5.1's envelope over field 0's items — the bytes §8.4 partitions on.
+   *
+   * #604: this replaced the retired `completeItemCarriage`/`step02Execution`
+   * pair, which reported a direct/fold split that no longer exists. Step-02 has
+   * one route; what varies is which §8 tier the preimage travels under, and
+   * §8.4 decides that from this length alone.
+   */
+  readonly step02SpendInputsPreimageBytes: number;
+  /** The tier §8.4 selects for that preimage: `Inline`, `RawUtxo` or `Certified`. */
+  readonly step02CarriageTier: string;
 };
 
 export type PreparedInputNoIdxOutput = {
@@ -764,16 +775,22 @@ export const prepareInputNoIdxFromTransactions = async ({
     );
   }
 
+  // #604: thread state carries the §2.5 anchor — the transaction id — not the
+  // field-0 commitment. Step-02 re-opens field 0 through the §8.8 door from it.
   const step02State = SDK.inputNoIdxStep02StateFromBadTxV1(
-    candidate.badTx.nativeTxCompact.body.spend_inputs_hash,
+    candidate.badTx.nodeTxId,
   );
   const step03State = SDK.inputNoIdxStep03StateFromEvidenceV1(evidence);
   const step04State = SDK.inputNoIdxStep04StateFromEvidenceV1({
     evidence,
-    producingTxOutputsHash:
-      candidate.producingTx.nativeTxCompact.body.outputs_hash,
+    producingTxId: candidate.producingTx.nodeTxId,
   });
 
+  // §5.1's envelope over field 0's canonical items — the bytes the door hashes
+  // and the length §8.4 partitions the carriage tier on.
+  const step02SpendInputsPreimage = encodeMidgardFieldPreimageV1(
+    inputsPreimage.map(SDK.encodeMidgardTxInputCanonicalV1),
+  );
   const inputsPreimageDatum = Data.to(
     inputsPreimage,
     SDK.MidgardTxInputList as unknown as LucidDataSchema,
@@ -820,7 +837,8 @@ export const prepareInputNoIdxFromTransactions = async ({
     step03State,
     step04: {
       producingTxId: candidate.producingTx.nodeTxId,
-      producingTxOutputsHash: step04State.producing_tx_outputs_hash,
+      producingTxOutputsHash:
+        candidate.producingTx.nativeTxCompact.body.outputs_hash,
       outputsPreimageCbor: candidate.producingOutputs.map((item) =>
         item.toString("hex"),
       ),
@@ -836,12 +854,10 @@ export const prepareInputNoIdxFromTransactions = async ({
       badTxCompactCborBytes: candidate.badTx.nativeCompactCbor.length / 2,
       producingTxCompactCborBytes:
         candidate.producingTx.nativeCompactCbor.length / 2,
-      completeItemCarriage:
-        inputsPreimage.length <= SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1,
-      step02Execution:
-        inputsPreimage.length <= SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1
-          ? "direct"
-          : "fold",
+      step02SpendInputsPreimageBytes: step02SpendInputsPreimage.length,
+      step02CarriageTier: selectMidgardFieldCarriageTierV1(
+        step02SpendInputsPreimage.length,
+      ),
     },
   };
 

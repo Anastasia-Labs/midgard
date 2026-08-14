@@ -1,20 +1,21 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * Re-derived onto the flat field commitments by #604 (the #575 off-chain builder
+ * remediation): thread state carries the §2.5 anchor rather than a per-field
+ * collection commitment, and a step redeemer carries a `FieldOpeningV1` rather
+ * than a reproduced `..._preimage: List<…>`. The rebind is explained once in
+ * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
 
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, ProofSchema } from "@/common.js";
 
+import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  MidgardTxInputListSchema,
   MidgardTxInputSchema,
   NativeTxInclusionArgs,
   NativeTxInclusionArgsSchema,
@@ -60,8 +61,12 @@ export const NoReferenceInputStep01SpendRedeemer =
 
 // ## Step 02 — provide the reference-inputs preimage and select the bad input
 
+/**
+ * Mirrors `midgard/fraud_proofs/no_reference_input/step_02.State`. #604: the
+ * retired `bad_tx_reference_inputs_hash` became the §2.5 anchor `bad_tx_id`.
+ */
 export const NoReferenceInputStep02StateSchema = Data.Object({
-  bad_tx_reference_inputs_hash: H32Schema,
+  bad_tx_id: H32Schema,
   blocks_prev_utxos_root: H32Schema,
   blocks_transactions_root: H32Schema,
 });
@@ -80,10 +85,15 @@ export type NoReferenceInputStep02Datum = Data.Static<
 export const NoReferenceInputStep02Datum =
   NoReferenceInputStep02DatumSchema as unknown as NoReferenceInputStep02Datum;
 
+/**
+ * Mirrors `midgard/fraud_proofs/no_reference_input/step_02.Args`. Field 1, not
+ * field 0 — the index is a literal at the on-chain call site, and §4 removed the
+ * domain separation that used to make the two distinguishable by hash alone.
+ */
 export const NoReferenceInputStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  reference_inputs_preimage: MidgardTxInputListSchema,
+  reference_inputs_opening: FieldOpeningV1Schema,
   bad_reference_input_index: Data.Integer(),
 });
 export type NoReferenceInputStep02Args = Data.Static<

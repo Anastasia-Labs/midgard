@@ -1,20 +1,21 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * Re-derived onto the flat field commitments by #604 (the #575 off-chain builder
+ * remediation): thread state carries the §2.5 anchor rather than a per-field
+ * collection commitment, and a step redeemer carries a `FieldOpeningV1` rather
+ * than a reproduced `..._preimage: List<…>`. The rebind is explained once in
+ * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
 
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "@/common.js";
 
+import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  MidgardTxInputListSchema,
   MidgardTxInputSchema,
   NativeTxInclusionArgs,
   NativeTxInclusionArgsSchema,
@@ -61,8 +62,13 @@ export const NonExistentInputStep01SpendRedeemer =
 
 // ## Step 02 — provide the spend-inputs preimage and select the bad input
 
+/**
+ * Mirrors `midgard/fraud_proofs/no_input/step_02.State`. #604: the retired
+ * `bad_tx_inputs_hash` became the §2.5 anchor `bad_tx_id`; the two ledger roots
+ * are unchanged.
+ */
 export const NonExistentInputStep02StateSchema = Data.Object({
-  bad_tx_inputs_hash: H32Schema,
+  bad_tx_id: H32Schema,
   blocks_prev_utxos_root: H32Schema,
   blocks_transactions_root: H32Schema,
 });
@@ -81,10 +87,11 @@ export type NonExistentInputStep02Datum = Data.Static<
 export const NonExistentInputStep02Datum =
   NonExistentInputStep02DatumSchema as unknown as NonExistentInputStep02Datum;
 
+/** Mirrors `midgard/fraud_proofs/no_input/step_02.Args`. */
 export const NonExistentInputStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  inputs_preimage: MidgardTxInputListSchema,
+  spend_inputs_opening: FieldOpeningV1Schema,
   bad_input_index: Data.Integer(),
 });
 export type NonExistentInputStep02Args = Data.Static<

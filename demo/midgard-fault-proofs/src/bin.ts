@@ -35,10 +35,7 @@ import {
   submitInitFromFiles,
 } from "./submit-init.js";
 import { submitInputNoIdxStep01FromFiles } from "./submit-input-no-idx-step-01.js";
-import {
-  submitInputNoIdxStep02FromFiles,
-  submitInputNoIdxStep02UntilTerminalFromFiles,
-} from "./submit-input-no-idx-step-02.js";
+import { submitInputNoIdxStep02FromFiles } from "./submit-input-no-idx-step-02.js";
 import { submitInputNoIdxStep03FromFiles } from "./submit-input-no-idx-step-03.js";
 import { submitInputNoIdxStep04FromFiles } from "./submit-input-no-idx-step-04.js";
 import { submitInvalidRangeStep01FromFiles } from "./submit-invalid-range-step-01.js";
@@ -122,6 +119,7 @@ export type ParsedArgs = {
   readonly referenceInputsPreimagePath: string | undefined;
   readonly badReferenceInputIndex: string | undefined;
   readonly witnessSetCompactPath: string | undefined;
+  readonly nativeTxCompactPath: string | undefined;
   readonly addrTxWitsPreimagePath: string | undefined;
   readonly badAddrTxWitIndex: string | undefined;
   readonly validationClaimCborPath: string | undefined;
@@ -151,12 +149,12 @@ const usage = `Usage:
   midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|validationTraceDispute|daHashPreimage|noReferenceInput|referenceInputNoIdx|invalidSignature>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs submit-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx1-inputs <raw-input-cbor-list.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs submit-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx2-inputs <raw-input-cbor-list.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx1-inputs <raw-input-cbor-list.json> --native-tx-compact <tx1-compact.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx2-inputs <raw-input-cbor-list.json> --native-tx-compact <tx2-compact.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-invalid-range-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-invalid-range-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-non-existent-input-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs submit-non-existent-input-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --inputs-preimage <path> --bad-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-non-existent-input-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --inputs-preimage <path> --native-tx-compact <native-tx-compact.json> --bad-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-non-existent-input-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --ledger-non-membership-proof <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-non-existent-input-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --txs-non-membership-proof <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-validation-dispute-open --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --validation-claim-cbor <path> --challenger-descriptor-cbor <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -171,24 +169,24 @@ const usage = `Usage:
   midgard-fault-proofs submit-validation-dispute-enter-timeout --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-validation-dispute-timeout --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-zero-input-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs submit-zero-input-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-zero-input-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --native-tx-compact <native-tx-compact.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-da-hash-preimage-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-da-hash-preimage-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-input-no-idx-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <bad-tx-inclusion.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs submit-input-no-idx-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --inputs-preimage <inputs-preimage.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs submit-input-no-idx-fold --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --inputs-preimage <inputs-preimage.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-input-no-idx-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --inputs-preimage <inputs-preimage.json> --native-tx-compact <native-tx-compact.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-input-no-idx-fold  (RETIRED by #604 — step 02 has one route; use submit-input-no-idx-step-02)
   midgard-fault-proofs submit-input-no-idx-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <producing-tx-inclusion.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs submit-input-no-idx-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --outputs-preimage <outputs-preimage.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-input-no-idx-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --outputs-preimage <outputs-preimage.json> --native-tx-compact <producing-tx-compact.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-no-reference-input-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <nri-tx-inclusion.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs submit-no-reference-input-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --reference-inputs-preimage <nri-reference-inputs-preimage.json> --bad-reference-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-no-reference-input-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --reference-inputs-preimage <nri-reference-inputs-preimage.json> --native-tx-compact <native-tx-compact.json> --bad-reference-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-no-reference-input-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --ledger-non-membership-proof <nri-ledger-non-membership.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-no-reference-input-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --txs-non-membership-proof <nri-txs-non-membership.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-reference-input-no-idx-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <bad-tx-inclusion.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs submit-reference-input-no-idx-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --reference-inputs-preimage <reference-inputs-preimage.json> [--bad-reference-input-index <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-reference-input-no-idx-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --reference-inputs-preimage <reference-inputs-preimage.json> --native-tx-compact <native-tx-compact.json> [--bad-reference-input-index <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-reference-input-no-idx-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <producing-tx-inclusion.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs submit-reference-input-no-idx-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --outputs-preimage <outputs-preimage.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-reference-input-no-idx-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --outputs-preimage <outputs-preimage.json> --native-tx-compact <producing-tx-compact.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-invalid-signature-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> --witness-set-compact <invalid-signature-witness-set-compact.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs submit-invalid-signature-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --addr-tx-wits-preimage <invalid-signature-addr-tx-wits-preimage.json> --bad-addr-tx-wit-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-invalid-signature-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --addr-tx-wits-preimage <invalid-signature-addr-tx-wits-preimage.json> --native-tx-compact <native-tx-compact.json> --witness-set-compact <invalid-signature-witness-set-compact.json> --bad-addr-tx-wit-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|validationTraceDispute|daHashPreimage|noReferenceInput|referenceInputNoIdx|invalidSignature>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
 `;
 
@@ -271,6 +269,7 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let referenceInputsPreimagePath: string | undefined;
   let badReferenceInputIndex: string | undefined;
   let witnessSetCompactPath: string | undefined;
+  let nativeTxCompactPath: string | undefined;
   let addrTxWitsPreimagePath: string | undefined;
   let badAddrTxWitIndex: string | undefined;
   let validationClaimCborPath: string | undefined;
@@ -439,6 +438,9 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--witness-set-compact":
         witnessSetCompactPath = rest[++index];
         break;
+      case "--native-tx-compact":
+        nativeTxCompactPath = rest[++index];
+        break;
       case "--addr-tx-wits-preimage":
         addrTxWitsPreimagePath = rest[++index];
         break;
@@ -571,6 +573,7 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     referenceInputsPreimagePath,
     badReferenceInputIndex,
     witnessSetCompactPath,
+    nativeTxCompactPath,
     addrTxWitsPreimagePath,
     badAddrTxWitIndex,
     validationClaimCborPath,
@@ -1274,6 +1277,11 @@ export const main = async (): Promise<void> => {
         `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
       );
     }
+    if (args.nativeTxCompactPath === undefined) {
+      throw new Error(
+        `Missing required --native-tx-compact <native-tx-compact.json>.\n${usage}`,
+      );
+    }
     const output = await submitZeroInputStep02FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -1288,6 +1296,7 @@ export const main = async (): Promise<void> => {
       walletPrivateKey: args.walletPrivateKey,
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
+      nativeTxCompactPath: args.nativeTxCompactPath,
       awaitConfirmation: args.awaitConfirmation,
     });
 
@@ -1341,6 +1350,11 @@ export const main = async (): Promise<void> => {
     if (args.inputsPreimagePath === undefined) {
       throw new Error(`Missing required --inputs-preimage <path>.\n${usage}`);
     }
+    if (args.nativeTxCompactPath === undefined) {
+      throw new Error(
+        `Missing required --native-tx-compact <native-tx-compact.json>.\n${usage}`,
+      );
+    }
     const output = await submitInputNoIdxStep02FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -1356,6 +1370,7 @@ export const main = async (): Promise<void> => {
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
       inputsPreimagePath: args.inputsPreimagePath,
+      nativeTxCompactPath: args.nativeTxCompactPath,
       awaitConfirmation: args.awaitConfirmation,
     });
 
@@ -1364,34 +1379,22 @@ export const main = async (): Promise<void> => {
   }
 
   if (args.command === "submit-input-no-idx-fold") {
-    if (args.threadOutRef === undefined) {
-      throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    if (args.inputsPreimagePath === undefined) {
-      throw new Error(`Missing required --inputs-preimage <path>.\n${usage}`);
-    }
-    const output = await submitInputNoIdxStep02UntilTerminalFromFiles({
-      blueprintPath: args.blueprintPath,
-      deploymentInfoPath: args.deploymentInfoPath,
-      network: parseNetwork(args.network),
-      provider: args.provider,
-      blockfrostApiUrl: args.blockfrostApiUrl,
-      blockfrostKey: args.blockfrostKey,
-      kupoUrl: args.kupoUrl,
-      ogmiosUrl: args.ogmiosUrl,
-      walletSeedPhrase: args.walletSeedPhrase,
-      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
-      walletPrivateKey: args.walletPrivateKey,
-      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
-      threadOutRef: args.threadOutRef,
-      inputsPreimagePath: args.inputsPreimagePath,
-      awaitConfirmation: args.awaitConfirmation,
-    });
-
-    writeJson(output);
-    return;
+    // Retired by #604, not renamed. `fraud_proofs/input_no_idx/step_02.Args` is
+    // a flat record on-chain: the `FoldStart`/`FoldNext` arms this command drove
+    // no longer exist, so there is no redeemer it could emit. The ordered fold
+    // was a way to reproduce a collection inside the step in order to re-hash it,
+    // and §4's flat commitment plus the §8.8 door removed the need — the whole
+    // preimage now travels under one §8 carriage tier and the step reads item
+    // `n` by arithmetic. Run `submit-input-no-idx-step-02`; if the preimage does
+    // not fit the step's own redeemer, §8's ladder publishes it.
+    throw new Error(
+      "submit-input-no-idx-fold is retired: input-no-idx step 02 has a single " +
+        "route since #575 moved it onto the \u00a78.8 field-opening door, and the " +
+        "FoldStart/FoldNext redeemer arms it drove no longer exist on-chain. " +
+        "Use submit-input-no-idx-step-02 --native-tx-compact <native-tx-compact.json>; " +
+        "\u00a78's carriage ladder publishes the preimage when it does not fit the " +
+        `redeemer.\n${usage}`,
+    );
   }
 
   if (args.command === "submit-input-no-idx-step-03") {
@@ -1440,6 +1443,11 @@ export const main = async (): Promise<void> => {
     if (args.outputsPreimagePath === undefined) {
       throw new Error(`Missing required --outputs-preimage <path>.\n${usage}`);
     }
+    if (args.nativeTxCompactPath === undefined) {
+      throw new Error(
+        `Missing required --native-tx-compact <native-tx-compact.json>.\n${usage}`,
+      );
+    }
     const output = await submitInputNoIdxStep04FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -1455,6 +1463,7 @@ export const main = async (): Promise<void> => {
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
       outputsPreimagePath: args.outputsPreimagePath,
+      nativeTxCompactPath: args.nativeTxCompactPath,
       awaitConfirmation: args.awaitConfirmation,
     });
 
@@ -1515,6 +1524,11 @@ export const main = async (): Promise<void> => {
         `Missing required --bad-reference-input-index <n>.\n${usage}`,
       );
     }
+    if (args.nativeTxCompactPath === undefined) {
+      throw new Error(
+        `Missing required --native-tx-compact <native-tx-compact.json>.\n${usage}`,
+      );
+    }
     const output = await submitNoReferenceInputStep02FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -1530,6 +1544,7 @@ export const main = async (): Promise<void> => {
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
       referenceInputsPreimagePath: args.referenceInputsPreimagePath,
+      nativeTxCompactPath: args.nativeTxCompactPath,
       badReferenceInputIndex: args.badReferenceInputIndex,
       awaitConfirmation: args.awaitConfirmation,
     });
@@ -1652,6 +1667,11 @@ export const main = async (): Promise<void> => {
         `Missing required --reference-inputs-preimage <path>.\n${usage}`,
       );
     }
+    if (args.nativeTxCompactPath === undefined) {
+      throw new Error(
+        `Missing required --native-tx-compact <native-tx-compact.json>.\n${usage}`,
+      );
+    }
     const output = await submitReferenceInputNoIdxStep02FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -1667,6 +1687,7 @@ export const main = async (): Promise<void> => {
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
       referenceInputsPreimagePath: args.referenceInputsPreimagePath,
+      nativeTxCompactPath: args.nativeTxCompactPath,
       badReferenceInputIndex: args.badReferenceInputIndex,
       awaitConfirmation: args.awaitConfirmation,
     });
@@ -1721,6 +1742,11 @@ export const main = async (): Promise<void> => {
     if (args.outputsPreimagePath === undefined) {
       throw new Error(`Missing required --outputs-preimage <path>.\n${usage}`);
     }
+    if (args.nativeTxCompactPath === undefined) {
+      throw new Error(
+        `Missing required --native-tx-compact <native-tx-compact.json>.\n${usage}`,
+      );
+    }
     const output = await submitReferenceInputNoIdxStep04FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -1736,6 +1762,7 @@ export const main = async (): Promise<void> => {
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
       outputsPreimagePath: args.outputsPreimagePath,
+      nativeTxCompactPath: args.nativeTxCompactPath,
       awaitConfirmation: args.awaitConfirmation,
     });
 
@@ -1802,6 +1829,16 @@ export const main = async (): Promise<void> => {
         `Missing required --bad-addr-tx-wit-index <n>.\n${usage}`,
       );
     }
+    if (args.nativeTxCompactPath === undefined) {
+      throw new Error(
+        `Missing required --native-tx-compact <native-tx-compact.json>.\n${usage}`,
+      );
+    }
+    if (args.witnessSetCompactPath === undefined) {
+      throw new Error(
+        `Missing required --witness-set-compact <witness-set-compact.json>.\n${usage}`,
+      );
+    }
     const output = await submitInvalidSignatureStep02FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -1817,6 +1854,8 @@ export const main = async (): Promise<void> => {
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
       addrTxWitsPreimagePath: args.addrTxWitsPreimagePath,
+      nativeTxCompactPath: args.nativeTxCompactPath,
+      witnessSetCompactPath: args.witnessSetCompactPath,
       badAddrTxWitIndex: args.badAddrTxWitIndex,
       awaitConfirmation: args.awaitConfirmation,
     });
@@ -1977,6 +2016,11 @@ export const main = async (): Promise<void> => {
         `Missing required --double-spent-input-index <n>.\n${usage}`,
       );
     }
+    if (args.nativeTxCompactPath === undefined) {
+      throw new Error(
+        `Missing required --native-tx-compact <native-tx-compact.json>.\n${usage}`,
+      );
+    }
     const output = await submitStep03FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -1992,6 +2036,7 @@ export const main = async (): Promise<void> => {
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
       tx1InputsPath: args.tx1InputsPath,
+      nativeTxCompactPath: args.nativeTxCompactPath,
       doubleSpentInputIndex: args.doubleSpentInputIndex,
       awaitConfirmation: args.awaitConfirmation,
     });
@@ -2014,6 +2059,11 @@ export const main = async (): Promise<void> => {
         `Missing required --double-spent-input-index <n>.\n${usage}`,
       );
     }
+    if (args.nativeTxCompactPath === undefined) {
+      throw new Error(
+        `Missing required --native-tx-compact <native-tx-compact.json>.\n${usage}`,
+      );
+    }
     const output = await submitStep04FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -2029,6 +2079,7 @@ export const main = async (): Promise<void> => {
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
       tx2InputsPath: args.tx2InputsPath,
+      nativeTxCompactPath: args.nativeTxCompactPath,
       doubleSpentInputIndex: args.doubleSpentInputIndex,
       awaitConfirmation: args.awaitConfirmation,
     });
@@ -2086,6 +2137,11 @@ export const main = async (): Promise<void> => {
     if (args.badInputIndex === undefined) {
       throw new Error(`Missing required --bad-input-index <n>.\n${usage}`);
     }
+    if (args.nativeTxCompactPath === undefined) {
+      throw new Error(
+        `Missing required --native-tx-compact <native-tx-compact.json>.\n${usage}`,
+      );
+    }
     const output = await neSubmitStep02FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -2101,6 +2157,7 @@ export const main = async (): Promise<void> => {
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
       inputsPreimagePath: args.inputsPreimagePath,
+      nativeTxCompactPath: args.nativeTxCompactPath,
       badInputIndex: args.badInputIndex,
       awaitConfirmation: args.awaitConfirmation,
     });

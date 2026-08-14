@@ -1,8 +1,11 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * `no-reference-input` step-04 submitter — a non-membership proof, not a field
+ * opening.
+ *
+ * **Unchanged by #604's re-derivation, and checked to be.** The #575 rebind moved
+ * this family's step-02 state and redeemer onto the §2.5 anchor and the §8.8
+ * door; this step's state and redeemer are exactly what
+ * `midgard/fraud_proofs/no_reference_input/step_04` still declares.
  *
  * `no-reference-input` step-04 submitter (Goal task `Q18`, §9.1 output 8).
  *

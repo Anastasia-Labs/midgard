@@ -1,53 +1,70 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
- *
  * `input-no-idx` step-02 submitter (Goal task `Q13`, §9.1 output 8).
  *
- * Opens the spend-inputs commitment carried by step 01. Nothing in the prepared
- * file is trusted: the complete preimage is re-encoded with the canonical
- * `encode_midgard_tx_input` twin and re-committed with
- * `bounded_collection_v1.from_items(0, ...)`, and the result must equal the
- * `verified_tx_inputs_hash` read back from the **on-chain** step-01 datum. Only
- * then is the challenged input forwarded to step 03.
+ * Opens §2.5 field 0 of the transaction carried by step-01 and forwards the
+ * challenged `(tx_id, output_index)` to step-03.
  *
- * §3.2: the complete list may travel directly, through a typed Ada-only
- * publication reference, or one canonical authenticated item at a time through
- * the same computation thread. No partial list or caller-selected fold cursor
- * is accepted.
+ * **Re-derived onto the §8.8 door by #604, and this step lost two mechanisms to
+ * it.** The on-chain `Args` used to be a four-arm sum, and this module drove all
+ * four:
+ *
+ *   * `Complete` reproduced the whole input list in the redeemer;
+ *   * `CompletePublished` referenced a **bespoke** `PublishedSpendInputsV1`
+ *     typed datum that this module published, matched by out-ref, and checked
+ *     field by field;
+ *   * `FoldStart`/`FoldNext` streamed the collection one counted opening at a
+ *     time, resuming through the computation thread itself.
+ *
+ * All four existed because the collection had to be reproduced *inside the step*
+ * to re-hash it against the commitment the thread carried. §4's flat commitment
+ * and the §8.8 door removed that need entirely: the door hashes the preimage
+ * once and reads item `n` by arithmetic. So the redeemer has exactly one route,
+ * and the prover's only remaining choice is *how the preimage travels* — which
+ * is §8's carriage ladder, not a family-specific mechanism.
+ *
+ * Concretely:
+ *
+ *   * the typed publication is **deleted**, not re-pointed. Its replacement is
+ *     §8.5 raw carriage — a nothing-but-bytes inline datum published through
+ *     `buildUnsignedFieldPreimagePublicationV1Program` and located by *content*
+ *     (§8.7), so a republished copy is interchangeable with the one it replaces.
+ *     The bespoke datum could not be: it bound the publication to one computation
+ *     thread and one prover, which is precisely the coupling §8.7 forbids;
+ *   * the ordered fold is **gone**, and with it
+ *     `submitInputNoIdxStep02UntilTerminal` and the `submit-input-no-idx-fold`
+ *     command. There is no `FoldStart` arm on-chain to emit.
+ *
+ * Nothing in the prepared file is trusted: the anchor is read from the
+ * **on-chain** step-01 datum, and the supplied list must be the §5.1 preimage the
+ * anchored transaction commits at field 0 — checked by
+ * {@link planFaultProofFieldOpeningV1} before a transaction is built.
  */
-import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
-  buildInputNoIdxSpendInputFoldOpeningsV1,
-  INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1,
-  inputNoIdxSpendInputsCommitmentV1,
+  encodeMidgardTxInputCanonicalV1,
+  type FieldOpeningV1,
   InputNoIdxStep02Datum,
   InputNoIdxStep02SpendRedeemer,
   InputNoIdxStep03Datum,
+  MIDGARD_FIELD_INDEX_V1,
   type MidgardTxInput,
-  PublishedSpendInputsV1,
-  type PublishedSpendInputsV1 as PublishedSpendInputsV1Data,
   requireInputIndex,
   requireOwnSpendPurpose,
-  requireReferenceInputIndex,
   requireUniqueOutputIndex,
-  verifyInputNoIdxSpendInputFoldOpeningV1,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
-  CML,
-  coreToTxOutput,
-  credentialToAddress,
   Data,
-  getAddressDetails,
   type LucidEvolution,
   type Network,
-  type TxSigned,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import {
+  faultProofFieldOpeningV1,
+  parseNativeTxCompactCborV1,
+  planFaultProofFieldOpeningV1,
+  publishFaultProofFieldCarriageV1,
+} from "./field-opening-v1.js";
 import { parseHex, requireRecord } from "./json-file.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -61,11 +78,7 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import {
-  excludeUtxo,
-  minimumLovelaceForInlineDatumOutput,
-  resolveProtocolParameters,
-} from "./spend-input-witness.js";
+import { excludeUtxo } from "./spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
@@ -76,269 +89,6 @@ import { computationThreadOutputPredicate } from "./tx-layout.js";
 export type SubmitInputNoIdxInputsPreimage = {
   readonly inputsPreimage: readonly MidgardTxInput[];
   readonly badInputsIndex: number;
-};
-
-export type InputNoIdxPublishedSpendInputsReferenceV1 = {
-  readonly utxo: UTxO;
-  readonly outRef: string;
-  readonly datum: PublishedSpendInputsV1Data;
-  readonly datumCbor: string;
-  readonly lovelace: bigint;
-  readonly txHash: string;
-  /** Fee input consumed by the publication transaction. */
-  readonly spentFeeInput: UTxO;
-  readonly measurement: InputNoIdxSpendInputsPublicationMeasurementV1;
-};
-
-export type InputNoIdxSpendInputsPublicationMeasurementV1 = {
-  /** Exact bytes of the fully signed Cardano transaction. */
-  readonly signedTxBytes: number;
-  readonly signedTxCbor: string;
-  readonly fee: bigint;
-  readonly outputMinAda: bigint;
-  readonly inputCount: number;
-  readonly referenceInputCount: number;
-  readonly outputCount: number;
-  readonly collateralInputCount: number;
-  readonly vkeyWitnessCount: number;
-  readonly redeemerCount: number;
-  readonly publicationOutputIndex: number;
-  readonly maxOutputValueBytes: number;
-  readonly txByteMargin: number;
-  readonly valueByteMargin: number;
-};
-
-export type SignedInputNoIdxSpendInputsPublicationV1 = {
-  readonly signed: TxSigned;
-  readonly address: string;
-  readonly datum: PublishedSpendInputsV1Data;
-  readonly datumCbor: string;
-  readonly lovelace: bigint;
-  readonly spentFeeInput: UTxO;
-  readonly measurement: InputNoIdxSpendInputsPublicationMeasurementV1;
-};
-
-const onlyLovelace = (utxo: UTxO): boolean =>
-  Object.keys(utxo.assets).every((unit) => unit === "lovelace");
-
-/**
- * Wallet inputs eligible for step-02 fee and collateral selection.
- *
- * A publication is matched by out-ref rather than object identity because the
- * provider may return a fresh copy of the same UTxO. The returned array is
- * transaction-local; this helper never mutates the Lucid wallet override.
- */
-export const inputNoIdxStep02WalletInputs = ({
-  walletUtxos,
-  publicationUtxo,
-}: {
-  readonly walletUtxos: readonly UTxO[];
-  readonly publicationUtxo?: UTxO;
-}): UTxO[] =>
-  publicationUtxo === undefined
-    ? [...walletUtxos]
-    : [...excludeUtxo(walletUtxos, publicationUtxo)];
-
-export const selectInputNoIdxStep02FeeInput = ({
-  walletUtxos,
-  publicationUtxo,
-}: {
-  readonly walletUtxos: readonly UTxO[];
-  readonly publicationUtxo?: UTxO;
-}): UTxO =>
-  selectFeeInput(
-    inputNoIdxStep02WalletInputs({ walletUtxos, publicationUtxo }),
-  );
-
-const findTypedPublicationOutputIndex = ({
-  transaction: tx,
-  address,
-  datum,
-}: {
-  readonly transaction: CML.Transaction;
-  readonly address: string;
-  readonly datum: string;
-}): number => {
-  const expectedDatum = canonicalPlutusDataCbor(datum);
-  const outputs = tx.body().outputs();
-  const matches: number[] = [];
-  for (let index = 0; index < outputs.len(); index += 1) {
-    const output = coreToTxOutput(outputs.get(index));
-    if (
-      output.address === address &&
-      output.datum != null &&
-      canonicalPlutusDataCbor(output.datum) === expectedDatum &&
-      Object.keys(output.assets).every((unit) => unit === "lovelace") &&
-      (output.assets.lovelace ?? 0n) > 0n
-    ) {
-      matches.push(index);
-    }
-  }
-  if (matches.length !== 1) {
-    throw new Error(
-      `Input-no-idx publication transaction must contain exactly one matching Ada-only typed output; found ${matches.length.toString()}.`,
-    );
-  }
-  return matches[0]!;
-};
-
-/** Builds and signs a whole-list publication without submitting it. */
-export const buildSignedInputNoIdxSpendInputsPublicationV1 = async ({
-  lucid,
-  network,
-  signer,
-  computationThreadPolicyId,
-  computationThreadAssetName,
-  verifiedTxInputsHash,
-  inputsPreimage,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly network: Network;
-  readonly signer: ResolvedProverSigner;
-  readonly computationThreadPolicyId: string;
-  readonly computationThreadAssetName: string;
-  readonly verifiedTxInputsHash: string;
-  readonly inputsPreimage: SubmitInputNoIdxInputsPreimage;
-}): Promise<SignedInputNoIdxSpendInputsPublicationV1> => {
-  const inputs = inputsPreimage.inputsPreimage;
-  if (inputs.length === 0) {
-    throw new Error(
-      "Input-no-idx publication requires the complete non-empty inputs list.",
-    );
-  }
-  if (inputs[inputsPreimage.badInputsIndex] === undefined) {
-    throw new Error(
-      `Input-no-idx publication badInputsIndex ${inputsPreimage.badInputsIndex.toString()} is out of range for the complete ${inputs.length.toString()}-item list.`,
-    );
-  }
-  const derivedCommitment = inputNoIdxSpendInputsCommitmentV1(inputs);
-  if (derivedCommitment !== verifiedTxInputsHash) {
-    throw new Error(
-      `Published inputs do not open the committed spend-inputs hash: derived=${derivedCommitment}, expected=${verifiedTxInputsHash}.`,
-    );
-  }
-  const address = credentialToAddress(network, {
-    type: "Key",
-    hash: signer.paymentKeyHash,
-  });
-  const datum: PublishedSpendInputsV1Data = {
-    version: 1n,
-    computation_thread_policy_id: computationThreadPolicyId,
-    computation_thread_asset_name: computationThreadAssetName,
-    fraud_prover: signer.paymentKeyHash,
-    verified_tx_inputs_hash: verifiedTxInputsHash,
-    item_count: BigInt(inputs.length),
-    inputs: [...inputs],
-  };
-  const datumCbor = Data.to(datum, PublishedSpendInputsV1);
-  const protocolParameters = await resolveProtocolParameters(lucid);
-  const lovelace = minimumLovelaceForInlineDatumOutput({
-    address,
-    datum: datumCbor,
-    coinsPerUtxoByte: protocolParameters.coinsPerUtxoByte,
-  });
-
-  signer.selectWallet(lucid);
-  const spentFeeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const unsigned = await lucid
-    .newTx()
-    .collectFrom([spentFeeInput])
-    .pay.ToAddressWithData(
-      address,
-      { kind: "inline", value: datumCbor },
-      { lovelace },
-    )
-    .addSignerKey(signer.paymentKeyHash)
-    .complete({ localUPLCEval: true });
-  const outputIndex = findTypedPublicationOutputIndex({
-    transaction: unsigned.toTransaction(),
-    address,
-    datum: datumCbor,
-  });
-  const signed = await unsigned.sign.withWallet().complete();
-  const transaction = signed.toTransaction();
-  const body = transaction.body();
-  const witnessSet = transaction.witness_set();
-  const signedTxCbor = signed.toCBOR();
-  const outputs = body.outputs();
-  let maxOutputValueBytes = 0;
-  for (let index = 0; index < outputs.len(); index += 1) {
-    maxOutputValueBytes = Math.max(
-      maxOutputValueBytes,
-      outputs.get(index).amount().to_cbor_bytes().length,
-    );
-  }
-  const signedTxBytes = Buffer.from(signedTxCbor, "hex").length;
-  return {
-    signed,
-    address,
-    datum,
-    datumCbor,
-    lovelace,
-    spentFeeInput,
-    measurement: {
-      signedTxBytes,
-      signedTxCbor,
-      fee: body.fee(),
-      outputMinAda: lovelace,
-      inputCount: body.inputs().len(),
-      referenceInputCount: body.reference_inputs()?.len() ?? 0,
-      outputCount: outputs.len(),
-      collateralInputCount: body.collateral_inputs()?.len() ?? 0,
-      vkeyWitnessCount: witnessSet.vkeywitnesses()?.len() ?? 0,
-      redeemerCount: witnessSet.redeemers()?.to_flat_format().len() ?? 0,
-      publicationOutputIndex: outputIndex,
-      maxOutputValueBytes,
-      txByteMargin: protocolParameters.maxTxSize - signedTxBytes,
-      valueByteMargin: protocolParameters.maxValSize - maxOutputValueBytes,
-    },
-  };
-};
-
-/**
- * Publishes a whole typed spend-input list at the prover's enterprise key
- * address and returns only the exact confirmed output reference.
- */
-export const publishInputNoIdxSpendInputsV1 = async (
-  args: Parameters<typeof buildSignedInputNoIdxSpendInputsPublicationV1>[0],
-): Promise<InputNoIdxPublishedSpendInputsReferenceV1> => {
-  const built = await buildSignedInputNoIdxSpendInputsPublicationV1(args);
-  const txHash = await built.signed.submit();
-  const { lucid } = args;
-  await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  const outRef = `${txHash}#${built.measurement.publicationOutputIndex.toString()}`;
-  const utxo = await fetchUtxoByOutRef({
-    lucid,
-    outRef: {
-      txHash,
-      outputIndex: built.measurement.publicationOutputIndex,
-    },
-    label: "confirmed input-no-idx published spend-inputs UTxO",
-  });
-  if (
-    utxo.address !== built.address ||
-    utxo.datum == null ||
-    utxo.datumHash != null ||
-    canonicalPlutusDataCbor(utxo.datum) !==
-      canonicalPlutusDataCbor(built.datumCbor) ||
-    !onlyLovelace(utxo) ||
-    (utxo.assets.lovelace ?? 0n) <= 0n ||
-    utxo.scriptRef !== undefined
-  ) {
-    throw new Error(
-      `Confirmed input-no-idx publication UTxO ${outRef} does not reproduce the exact typed Ada-only output.`,
-    );
-  }
-  return {
-    utxo,
-    outRef,
-    datum: built.datum,
-    datumCbor: built.datumCbor,
-    lovelace: utxo.assets.lovelace ?? 0n,
-    txHash,
-    spentFeeInput: built.spentFeeInput,
-    measurement: built.measurement,
-  };
 };
 
 const parseNonNegativeInteger = (value: unknown, label: string): number => {
@@ -394,6 +144,28 @@ export type SubmitInputNoIdxStep02CliConfig = SubmitProviderConfig & {
   readonly walletPrivateKeyEnv?: string;
   readonly threadOutRef: string;
   readonly inputsPreimagePath: string;
+  /**
+   * JSON `{ "nativeTxCompactCbor": "<hex>" }` — the disputed transaction's
+   * compact structure. New in #604: the door re-derives the anchored id from
+   * these bytes and authenticates field 0 against them.
+   */
+  readonly nativeTxCompactPath: string;
+  /**
+   * Force §8 tier 2 for field 0's preimage: publish the bytes as raw carriage
+   * and reference them, instead of carrying them in this step's own redeemer.
+   *
+   * **Programmatic only — `bin.ts` parses no `--publish-carriage` flag**, so a
+   * config assembled from argv never sets it and the shipped CLI always lets
+   * the ladder decide. It is settable only by a caller that builds this config
+   * in process, and it is forwarded from here to the same-named option on
+   * {@link submitInputNoIdxStep02}, which is what the emulator leg exercises
+   * directly. That the CLI does not expose it is deliberate: it is the **only**
+   * tier choice §8 leaves open, and it changes which transaction pays rather
+   * than what the door authenticates, so there is nothing an operator gains by
+   * naming it. Above the tier-1 bound the ladder publishes on its own and the
+   * option is redundant.
+   */
+  readonly publishCarriage?: boolean;
   readonly awaitConfirmation?: boolean;
 };
 
@@ -410,141 +182,30 @@ export type SubmitInputNoIdxStep02Result = {
   readonly computationThreadUnit: string;
   readonly secondStepAddress: string;
   readonly thirdStepAddress: string;
+  /** The §2.5 anchor the thread carried, and the id these compact bytes derive to. */
+  readonly verifiedTxId: string;
+  /** §4's flat commitment for field 0 — re-derived here and by the door. */
   readonly verifiedTxInputsHash: string;
   readonly inputsPreimageItemCount: number;
   readonly badInputsIndex: number;
   readonly badInputTxId: string;
   readonly badInputOutputIndex: number;
-  /** The on-chain execution branch used by this submission. */
-  readonly step02Execution: "direct" | "published" | "fold-start" | "fold-next";
-  /** Whether this submission advanced the thread to step 03. */
-  readonly terminal: boolean;
-  /** Present only while the thread remains at step 02. */
-  readonly nextFoldItemIndex?: number;
+  /** Which §8 tier field 0's preimage travelled under. */
+  readonly carriageTier: string;
+  /** Out-refs of the §8.5 raw carriage this submission referenced, in §8.4 order. */
+  readonly carriageOutRefs: readonly string[];
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly publicationOutRef?: string;
-  readonly publicationReferenceInputIndex?: number;
   readonly awaitedConfirmation: boolean;
-};
-
-/**
- * Resumes the ordered fold only after every prior continuation is observable.
- * The caller supplies only the complete preimage; each next cursor is read
- * from the output of the preceding confirmed transaction.
- */
-export type SubmitInputNoIdxStep02UntilTerminalResult = {
-  readonly submissions: readonly SubmitInputNoIdxStep02Result[];
-  readonly terminal: SubmitInputNoIdxStep02Result;
 };
 
 type InputNoIdxStep02Layout = {
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
-  readonly publicationReferenceInputIndex?: bigint;
 };
 
 type InputNoIdxStep02DatumWithState = InputNoIdxStep02Datum & {
   readonly data: NonNullable<InputNoIdxStep02Datum["data"]>;
-};
-
-type Step02Submission = {
-  readonly execution: "direct" | "published" | "fold-start" | "fold-next";
-  readonly terminal: boolean;
-  readonly outputAddress: string;
-  readonly outputDatum: string;
-  readonly buildArgs: (layout: InputNoIdxStep02Layout) => unknown;
-  readonly nextFoldItemIndex?: number;
-};
-
-const requirePublishedInputsMatch = ({
-  utxo,
-  signer,
-  computationThreadPolicyId,
-  computationThreadAssetName,
-  verifiedTxInputsHash,
-  inputs,
-}: {
-  readonly utxo: UTxO;
-  readonly signer: ResolvedProverSigner;
-  readonly computationThreadPolicyId: string;
-  readonly computationThreadAssetName: string;
-  readonly verifiedTxInputsHash: string;
-  readonly inputs: readonly MidgardTxInput[];
-}): void => {
-  const details = getAddressDetails(utxo.address);
-  if (
-    details.paymentCredential?.type !== "Key" ||
-    details.paymentCredential.hash !== signer.paymentKeyHash ||
-    details.stakeCredential !== undefined
-  ) {
-    throw new Error(
-      "Input-no-idx publication must be locked at the fraud prover's enterprise payment-key address.",
-    );
-  }
-  if (
-    utxo.datum == null ||
-    utxo.datumHash != null ||
-    !onlyLovelace(utxo) ||
-    (utxo.assets.lovelace ?? 0n) <= 0n ||
-    utxo.scriptRef !== undefined
-  ) {
-    throw new Error(
-      "Input-no-idx publication must carry an inline typed datum in an Ada-only output without a reference script.",
-    );
-  }
-  const expected: PublishedSpendInputsV1Data = {
-    version: 1n,
-    computation_thread_policy_id: computationThreadPolicyId,
-    computation_thread_asset_name: computationThreadAssetName,
-    fraud_prover: signer.paymentKeyHash,
-    verified_tx_inputs_hash: verifiedTxInputsHash,
-    item_count: BigInt(inputs.length),
-    inputs: [...inputs],
-  };
-  const expectedCbor = Data.to(expected, PublishedSpendInputsV1);
-  if (
-    canonicalPlutusDataCbor(utxo.datum) !==
-    canonicalPlutusDataCbor(expectedCbor)
-  ) {
-    throw new Error(
-      "Input-no-idx publication datum does not match the computation thread and complete inputs preimage.",
-    );
-  }
-};
-
-const transactionInputsContain = (
-  inputs: CML.TransactionInputList | undefined,
-  utxo: UTxO,
-): boolean => {
-  if (inputs === undefined) {
-    return false;
-  }
-  for (let index = 0; index < inputs.len(); index += 1) {
-    const input = inputs.get(index);
-    if (
-      input.transaction_id().to_hex() === utxo.txHash &&
-      input.index() === BigInt(utxo.outputIndex)
-    ) {
-      return true;
-    }
-  }
-  return false;
-};
-
-const requirePublicationKeptUnspent = (
-  tx: CML.Transaction,
-  publicationUtxo: UTxO,
-): void => {
-  const body = tx.body();
-  if (
-    transactionInputsContain(body.inputs(), publicationUtxo) ||
-    transactionInputsContain(body.collateral_inputs(), publicationUtxo)
-  ) {
-    throw new Error(
-      `Input-no-idx publication ${outRefLabel(publicationUtxo)} was selected as a spending or collateral input.`,
-    );
-  }
 };
 
 const requireStep02Datum = ({
@@ -565,55 +226,10 @@ const requireStep02Datum = ({
   }
   if (datum.data === null) {
     throw new Error(
-      "Input-no-idx step 02 input datum must carry the verified spend-inputs hash.",
+      "Input-no-idx step 02 input datum must carry the disputed transaction's §2.5 anchor.",
     );
   }
   return datum as InputNoIdxStep02DatumWithState;
-};
-
-const sameInput = (
-  left: MidgardTxInput | null,
-  right: MidgardTxInput | null,
-): boolean =>
-  left === null || right === null
-    ? left === right
-    : left.tx_id === right.tx_id && left.output_index === right.output_index;
-
-const requireFoldingStateMatchesPreimage = ({
-  state,
-  inputsPreimage,
-}: {
-  readonly state: Extract<
-    NonNullable<InputNoIdxStep02Datum["data"]>,
-    { readonly Folding: unknown }
-  >["Folding"];
-  readonly inputsPreimage: SubmitInputNoIdxInputsPreimage;
-}): void => {
-  const itemCount = Number(state.item_count);
-  const nextItemIndex = Number(state.next_item_index);
-  const badInputsIndex = Number(state.bad_inputs_index);
-  if (
-    !Number.isSafeInteger(itemCount) ||
-    !Number.isSafeInteger(nextItemIndex) ||
-    !Number.isSafeInteger(badInputsIndex) ||
-    itemCount !== inputsPreimage.inputsPreimage.length ||
-    nextItemIndex <= 0 ||
-    nextItemIndex >= itemCount ||
-    badInputsIndex !== inputsPreimage.badInputsIndex
-  ) {
-    throw new Error(
-      "Input-no-idx step 02 folding datum does not match the complete inputs preimage.",
-    );
-  }
-  const expectedSelected =
-    badInputsIndex < nextItemIndex
-      ? inputsPreimage.inputsPreimage[badInputsIndex]!
-      : null;
-  if (!sameInput(state.selected_input, expectedSelected)) {
-    throw new Error(
-      "Input-no-idx step 02 folding datum has an unexpected selected input.",
-    );
-  }
 };
 
 export const submitInputNoIdxStep02 = async ({
@@ -624,7 +240,8 @@ export const submitInputNoIdxStep02 = async ({
   signer,
   threadOutRef,
   inputsPreimage,
-  publicationReference,
+  nativeTxCompactCbor,
+  publishCarriage = false,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -634,10 +251,10 @@ export const submitInputNoIdxStep02 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly inputsPreimage: SubmitInputNoIdxInputsPreimage;
-  /** Exact confirmed tier-2 output or its exact out-ref. Programmatic only. */
-  readonly publicationReference?:
-    | string
-    | InputNoIdxPublishedSpendInputsReferenceV1;
+  /** The disputed transaction's §2.5 compact structure, as committed. */
+  readonly nativeTxCompactCbor: string;
+  /** Force §8 tier 2; see {@link SubmitInputNoIdxStep02CliConfig.publishCarriage}. */
+  readonly publishCarriage?: boolean;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInputNoIdxStep02Result> => {
   const { nonExistentInputNoIndexCategory, contracts } =
@@ -665,22 +282,22 @@ export const submitInputNoIdxStep02 = async ({
     categoryLabel: "input-no-idx",
   });
   const inputDatum = requireStep02Datum({ threadUtxo, signer });
-  const inputState = inputDatum.data;
-  const verifiedTxInputsHash =
-    "Direct" in inputState
-      ? inputState.Direct.verified_tx_inputs_hash
-      : inputState.Folding.verified_tx_inputs_hash;
+  const verifiedTxId = inputDatum.data.verified_tx_id;
 
-  // Re-derive the commitment the validator will recompute, from the preimage
-  // itself, and require it to open the on-chain state.
-  const derivedCommitment = inputNoIdxSpendInputsCommitmentV1(
-    inputsPreimage.inputsPreimage,
-  );
-  if (derivedCommitment !== verifiedTxInputsHash) {
-    throw new Error(
-      `--inputs-preimage does not open the committed spend-inputs hash: derived=${derivedCommitment}, thread=${verifiedTxInputsHash}.`,
-    );
-  }
+  // Re-run the door off-chain, before anything is paid for: the compact bytes
+  // must re-derive to the anchor the thread carries, and this list must be the
+  // §5.1 preimage that transaction commits at field 0 specifically.
+  const planned = planFaultProofFieldOpeningV1({
+    fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+    anchorTxId: verifiedTxId,
+    nativeTxCompactCbor,
+    itemCbors: inputsPreimage.inputsPreimage.map(
+      encodeMidgardTxInputCanonicalV1,
+    ),
+    owner: signer.paymentKeyHash,
+    publish: publishCarriage,
+    label: "Input-no-idx step 02 spend-inputs",
+  });
   const badInput = inputsPreimage.inputsPreimage[inputsPreimage.badInputsIndex];
   if (badInput === undefined) {
     throw new Error(
@@ -688,66 +305,31 @@ export const submitInputNoIdxStep02 = async ({
     );
   }
 
-  const isDirect = "Direct" in inputState;
-  if (publicationReference !== undefined && !isDirect) {
-    throw new Error(
-      "Input-no-idx CompletePublished can be used only from the Direct step-02 state.",
-    );
-  }
-  const publicationUtxo =
-    publicationReference === undefined
-      ? undefined
-      : typeof publicationReference === "string"
-        ? await fetchUtxoByOutRef({
-            lucid,
-            outRef: parseOutRef(
-              publicationReference,
-              "input-no-idx publication out-ref",
-            ),
-            label: "confirmed input-no-idx published spend-inputs UTxO",
-          })
-        : publicationReference.utxo;
-  if (publicationUtxo !== undefined) {
-    if (
-      publicationReference !== undefined &&
-      typeof publicationReference !== "string" &&
-      publicationReference.outRef !== outRefLabel(publicationUtxo)
-    ) {
-      throw new Error(
-        "Input-no-idx publication reference out-ref does not match its exact UTxO.",
-      );
-    }
-    requirePublishedInputsMatch({
-      utxo: publicationUtxo,
-      signer,
-      computationThreadPolicyId: contracts.computationThread.policyId,
-      computationThreadAssetName: threadToken.assetName,
-      verifiedTxInputsHash,
-      inputs: inputsPreimage.inputsPreimage,
-    });
-  }
-  const mustFold =
-    publicationUtxo === undefined &&
-    (!isDirect ||
-      inputsPreimage.inputsPreimage.length >
-        INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1);
-  if (!mustFold && !isDirect) {
-    throw new Error("Unreachable input-no-idx step 02 execution state.");
-  }
-
-  if (!isDirect) {
-    requireFoldingStateMatchesPreimage({
-      state: inputState.Folding,
-      inputsPreimage,
-    });
-  }
-
   signer.selectWallet(lucid);
-  const walletUtxos = await lucid.wallet().getUtxos();
-  const feeInput = selectInputNoIdxStep02FeeInput({
-    walletUtxos,
-    publicationUtxo,
+  // §8's ladder decides whether anything has to exist on-chain first. Tier 1
+  // publishes nothing; tiers 2–3 publish raw carriage located by content (§8.7),
+  // and a chunk that already exists at this address is reused rather than
+  // republished.
+  const carriageUtxos = await publishFaultProofFieldCarriageV1({
+    lucid,
+    signer,
+    planned,
+    publisherAddress: signer.address,
+    label: "Input-no-idx step 02 spend-inputs",
   });
+  const walletUtxos = await lucid.wallet().getUtxos();
+  const feeInput = selectFeeInput(
+    carriageUtxos.reduce<readonly UTxO[]>(
+      (candidates, utxo) => excludeUtxo(candidates, utxo),
+      walletUtxos,
+    ),
+  );
+  const spendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+    planned,
+    referenceInputs: carriageUtxos,
+    label: "Input-no-idx step 02 spend-inputs",
+  });
+
   const step03Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -758,118 +340,9 @@ export const submitInputNoIdxStep02 = async ({
     },
     InputNoIdxStep03Datum,
   );
-  let submission: Step02Submission;
-  if (publicationUtxo !== undefined) {
-    submission = {
-      execution: "published",
-      terminal: true,
-      outputAddress: chain.steps[2].spendingScriptAddress,
-      outputDatum: step03Datum,
-      buildArgs: (layout) => {
-        if (layout.publicationReferenceInputIndex === undefined) {
-          throw new Error(
-            "Input-no-idx CompletePublished layout is missing its publication reference input.",
-          );
-        }
-        return {
-          CompletePublished: {
-            input_index: layout.inputIndex,
-            output_index: layout.outputIndex,
-            publication_reference_input_index:
-              layout.publicationReferenceInputIndex,
-            bad_inputs_index: BigInt(inputsPreimage.badInputsIndex),
-          },
-        };
-      },
-    };
-  } else if (!mustFold) {
-    submission = {
-      execution: "direct",
-      terminal: true,
-      outputAddress: chain.steps[2].spendingScriptAddress,
-      outputDatum: step03Datum,
-      buildArgs: (layout) => ({
-        Complete: {
-          input_index: layout.inputIndex,
-          output_index: layout.outputIndex,
-          inputs_preimage: [...inputsPreimage.inputsPreimage],
-          bad_inputs_index: BigInt(inputsPreimage.badInputsIndex),
-        },
-      }),
-    };
-  } else {
-    const itemIndex = isDirect ? 0 : Number(inputState.Folding.next_item_index);
-    const opening = buildInputNoIdxSpendInputFoldOpeningsV1(
-      inputsPreimage.inputsPreimage,
-    )[itemIndex];
-    if (
-      opening === undefined ||
-      !verifyInputNoIdxSpendInputFoldOpeningV1({
-        inputs: inputsPreimage.inputsPreimage,
-        opening,
-      })
-    ) {
-      throw new Error(
-        "Failed to derive an authenticated input-no-idx step 02 fold opening from the complete inputs preimage.",
-      );
-    }
-    const nextItemIndex = itemIndex + 1;
-    const selectedInput =
-      inputsPreimage.badInputsIndex === itemIndex
-        ? inputsPreimage.inputsPreimage[itemIndex]!
-        : isDirect
-          ? null
-          : inputState.Folding.selected_input;
-    const terminal = nextItemIndex === inputsPreimage.inputsPreimage.length;
-    const outputDatum = terminal
-      ? step03Datum
-      : Data.to(
-          {
-            fraud_prover: signer.paymentKeyHash,
-            data: {
-              Folding: {
-                verified_tx_inputs_hash: verifiedTxInputsHash,
-                item_count: BigInt(inputsPreimage.inputsPreimage.length),
-                next_item_index: BigInt(nextItemIndex),
-                bad_inputs_index: BigInt(inputsPreimage.badInputsIndex),
-                selected_input: selectedInput,
-              },
-            },
-          },
-          InputNoIdxStep02Datum,
-        );
-    submission = {
-      execution: isDirect ? "fold-start" : "fold-next",
-      terminal,
-      outputAddress: terminal
-        ? chain.steps[2].spendingScriptAddress
-        : chain.steps[1].spendingScriptAddress,
-      outputDatum,
-      ...(terminal ? {} : { nextFoldItemIndex: nextItemIndex }),
-      buildArgs: (layout) =>
-        isDirect
-          ? {
-              FoldStart: {
-                input_index: layout.inputIndex,
-                output_index: layout.outputIndex,
-                bad_inputs_index: BigInt(inputsPreimage.badInputsIndex),
-                input_cbor: opening.inputCbor,
-                collection_proof: opening.collectionProof,
-              },
-            }
-          : {
-              FoldNext: {
-                input_index: layout.inputIndex,
-                output_index: layout.outputIndex,
-                input_cbor: opening.inputCbor,
-                collection_proof: opening.collectionProof,
-              },
-            },
-    };
-  }
   const outputMatches = computationThreadOutputPredicate({
-    address: submission.outputAddress,
-    datum: submission.outputDatum,
+    address: chain.steps[2].spendingScriptAddress,
+    datum: step03Datum,
     unit: threadToken.unit,
   });
   let resolvedLayout: InputNoIdxStep02Layout | undefined;
@@ -882,21 +355,19 @@ export const submitInputNoIdxStep02 = async ({
         outputMatches,
         "input-no-idx step 02 output",
       ),
-      ...(publicationUtxo === undefined
-        ? {}
-        : {
-            publicationReferenceInputIndex: requireReferenceInputIndex(
-              ctx,
-              publicationUtxo,
-              "input-no-idx step 02 published spend inputs",
-            ),
-          }),
     };
     resolvedLayout = layout;
     return Data.to(
       {
-        Continue: [submission.buildArgs(layout)],
-      } as never,
+        Continue: [
+          {
+            input_index: layout.inputIndex,
+            output_index: layout.outputIndex,
+            spend_inputs_opening: spendInputsOpening,
+            bad_inputs_index: BigInt(inputsPreimage.badInputsIndex),
+          },
+        ],
+      },
       InputNoIdxStep02SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
@@ -910,13 +381,13 @@ export const submitInputNoIdxStep02 = async ({
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer);
   const txWithReferences =
-    publicationUtxo === undefined
+    carriageUtxos.length === 0
       ? txWithInputs
-      : txWithInputs.readFrom([publicationUtxo]);
+      : txWithInputs.readFrom([...carriageUtxos]);
   const tx = txWithReferences.pay
     .ToContract(
-      submission.outputAddress,
-      { kind: "inline", value: submission.outputDatum },
+      chain.steps[2].spendingScriptAddress,
+      { kind: "inline", value: step03Datum },
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
@@ -924,18 +395,15 @@ export const submitInputNoIdxStep02 = async ({
 
   const unsigned = await tx.complete({
     localUPLCEval: true,
-    ...(publicationUtxo === undefined
+    ...(carriageUtxos.length === 0
       ? {}
       : {
-          presetWalletInputs: inputNoIdxStep02WalletInputs({
+          presetWalletInputs: carriageUtxos.reduce<readonly UTxO[]>(
+            (candidates, utxo) => excludeUtxo(candidates, utxo),
             walletUtxos,
-            publicationUtxo,
-          }),
+          ) as UTxO[],
         }),
   });
-  if (publicationUtxo !== undefined) {
-    requirePublicationKeptUnspent(unsigned.toTransaction(), publicationUtxo);
-  }
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve input-no-idx step 02 layout.",
@@ -960,28 +428,16 @@ export const submitInputNoIdxStep02 = async ({
     computationThreadUnit: threadToken.unit,
     secondStepAddress: chain.steps[1].spendingScriptAddress,
     thirdStepAddress: chain.steps[2].spendingScriptAddress,
-    verifiedTxInputsHash,
-    inputsPreimageItemCount: inputsPreimage.inputsPreimage.length,
+    verifiedTxId,
+    verifiedTxInputsHash: planned.commitment,
+    inputsPreimageItemCount: planned.itemCount,
     badInputsIndex: inputsPreimage.badInputsIndex,
     badInputTxId: badInput.tx_id,
     badInputOutputIndex: Number(badInput.output_index),
-    step02Execution: submission.execution,
-    terminal: submission.terminal,
-    ...(submission.nextFoldItemIndex === undefined
-      ? {}
-      : { nextFoldItemIndex: submission.nextFoldItemIndex }),
+    carriageTier: planned.plan.tier,
+    carriageOutRefs: carriageUtxos.map(outRefLabel),
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
-    ...(publicationUtxo === undefined
-      ? {}
-      : { publicationOutRef: outRefLabel(publicationUtxo) }),
-    ...(resolvedLayout.publicationReferenceInputIndex === undefined
-      ? {}
-      : {
-          publicationReferenceInputIndex: Number(
-            resolvedLayout.publicationReferenceInputIndex,
-          ),
-        }),
     awaitedConfirmation: awaitConfirmation,
   };
 };
@@ -989,13 +445,19 @@ export const submitInputNoIdxStep02 = async ({
 export const submitInputNoIdxStep02FromFiles = async (
   config: SubmitInputNoIdxStep02CliConfig,
 ): Promise<SubmitInputNoIdxStep02Result> => {
-  const [blueprint, deploymentInfo, inputsPreimageJson, lucid] =
-    await Promise.all([
-      readJsonFile(config.blueprintPath),
-      readJsonFile(config.deploymentInfoPath),
-      readJsonFile(config.inputsPreimagePath),
-      makeLucidForSubmit(config),
-    ]);
+  const [
+    blueprint,
+    deploymentInfo,
+    inputsPreimageJson,
+    nativeTxCompactJson,
+    lucid,
+  ] = await Promise.all([
+    readJsonFile(config.blueprintPath),
+    readJsonFile(config.deploymentInfoPath),
+    readJsonFile(config.inputsPreimagePath),
+    readJsonFile(config.nativeTxCompactPath),
+    makeLucidForSubmit(config),
+  ]);
   const signer = resolveProverSigner(config);
   return await submitInputNoIdxStep02({
     lucid,
@@ -1005,63 +467,13 @@ export const submitInputNoIdxStep02FromFiles = async (
     signer,
     threadOutRef: config.threadOutRef,
     inputsPreimage: parseSubmitInputNoIdxInputsPreimage(inputsPreimageJson),
-    awaitConfirmation: config.awaitConfirmation,
-  });
-};
-
-export const submitInputNoIdxStep02UntilTerminal = async ({
-  awaitConfirmation = true,
-  ...args
-}: Omit<Parameters<typeof submitInputNoIdxStep02>[0], "awaitConfirmation"> & {
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitInputNoIdxStep02UntilTerminalResult> => {
-  if (!awaitConfirmation) {
-    throw new Error(
-      "input-no-idx fold resume requires confirmation before it can locate the next computation-thread UTxO.",
-    );
-  }
-  const submissions: SubmitInputNoIdxStep02Result[] = [];
-  let currentThreadOutRef = args.threadOutRef;
-  for (
-    let attempt = 0;
-    attempt < args.inputsPreimage.inputsPreimage.length;
-    attempt += 1
-  ) {
-    const submission = await submitInputNoIdxStep02({
-      ...args,
-      threadOutRef: currentThreadOutRef,
-      awaitConfirmation: true,
-    });
-    submissions.push(submission);
-    if (submission.terminal) {
-      return { submissions, terminal: submission };
-    }
-    currentThreadOutRef = submission.nextThreadOutRef;
-  }
-  throw new Error(
-    "input-no-idx fold did not reach its terminal step-03 transition within the authenticated preimage length.",
-  );
-};
-
-export const submitInputNoIdxStep02UntilTerminalFromFiles = async (
-  config: SubmitInputNoIdxStep02CliConfig,
-): Promise<SubmitInputNoIdxStep02UntilTerminalResult> => {
-  const [blueprint, deploymentInfo, inputsPreimageJson, lucid] =
-    await Promise.all([
-      readJsonFile(config.blueprintPath),
-      readJsonFile(config.deploymentInfoPath),
-      readJsonFile(config.inputsPreimagePath),
-      makeLucidForSubmit(config),
-    ]);
-  const signer = resolveProverSigner(config);
-  return await submitInputNoIdxStep02UntilTerminal({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    inputsPreimage: parseSubmitInputNoIdxInputsPreimage(inputsPreimageJson),
+    nativeTxCompactCbor: parseNativeTxCompactCborV1(
+      nativeTxCompactJson,
+      "--native-tx-compact",
+    ),
+    ...(config.publishCarriage === undefined
+      ? {}
+      : { publishCarriage: config.publishCarriage }),
     awaitConfirmation: config.awaitConfirmation,
   });
 };

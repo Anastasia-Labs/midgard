@@ -1,8 +1,11 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * `double-spend` step-02 submitter — binds the second transaction to the same
+ * block and forwards both §2.5 anchors to step-03.
+ *
+ * **Re-derived onto the flat field commitments by #604.** The thread carries
+ * `verified_tx1_id`/`verified_tx2_id`; the two field-0 collection commitments it
+ * used to forward are gone, because step-03 and step-04 open field 0 through the
+ * §8.8 door from the anchors instead.
  */
 
 import {
@@ -94,8 +97,12 @@ export type SubmitStep02Result = {
   readonly thirdStepAddress: string;
   readonly verifiedTx1Id: string;
   readonly nativeTx2Id: string;
-  readonly verifiedTx1SpendInputsHash: string;
-  readonly verifiedTx2SpendInputsHash: string;
+  /**
+   * The second transaction's §2.5 anchor, as written into thread state. Equal to
+   * `nativeTx2Id`; named for what step-03 reads rather than for what this step
+   * challenged.
+   */
+  readonly verifiedTx2Id: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
@@ -273,10 +280,8 @@ export const submitStep02 = async ({
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
-        verified_tx1_spend_inputs_hash:
-          inputDatum.data.verified_tx1_spend_inputs_hash,
-        verified_tx2_spend_inputs_hash:
-          txInclusion.nativeTx.body.spend_inputs_hash,
+        verified_tx1_id: inputDatum.data.verified_tx1_id,
+        verified_tx2_id: txInclusion.nativeTxId,
       },
     },
     DoubleSpendStep03Datum,
@@ -420,8 +425,7 @@ export const submitStep02 = async ({
     thirdStepAddress: contracts.doubleSpend.steps[2].spendingScriptAddress,
     verifiedTx1Id: inputDatum.data.verified_tx1_id,
     nativeTx2Id: txInclusion.nativeTxId,
-    verifiedTx1SpendInputsHash: inputDatum.data.verified_tx1_spend_inputs_hash,
-    verifiedTx2SpendInputsHash: txInclusion.nativeTx.body.spend_inputs_hash,
+    verifiedTx2Id: txInclusion.nativeTxId,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     hubOracleRefInputIndex: Number(resolvedLayout.hubOracleRefInputIndex),

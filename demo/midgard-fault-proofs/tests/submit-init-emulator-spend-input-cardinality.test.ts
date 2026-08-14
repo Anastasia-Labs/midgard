@@ -345,6 +345,8 @@ const runDoubleSpendCardinalityJourney = async (
         fixture.tx1SpendInputCbors,
         "--tx1-inputs",
       ),
+      nativeTxCompactCbor: parseSubmitStep01TxInclusion(fixture.tx1.inclusion)
+        .nativeTxCompactCbor,
       doubleSpentInputIndex: selectedIndex,
       awaitConfirmation: true,
     }),
@@ -368,6 +370,8 @@ const runDoubleSpendCardinalityJourney = async (
         fixture.tx2SpendInputCbors,
         "--tx2-inputs",
       ),
+      nativeTxCompactCbor: parseSubmitStep01TxInclusion(fixture.tx2.inclusion)
+        .nativeTxCompactCbor,
       doubleSpentInputIndex: selectedIndex,
       awaitConfirmation: true,
     }),
@@ -477,6 +481,7 @@ const runNoInputCardinalityJourney = async (
       signer: proverSigner,
       threadOutRef: outRefLabel(secondStepUtxo),
       inputsPreimage: fixture.inputsPreimage,
+      nativeTxCompactCbor: fixture.inclusion.nativeTxCompactCbor,
       badInputIndex: fixture.badInputIndex,
       awaitConfirmation: true,
     }),

@@ -1,8 +1,11 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * **Re-derived onto the flat field commitments by #604.** Thread state carries
+ * `WitnessAnchor`'s two components — the disputed transaction's id and the
+ * `witness_set_hash` this step reads off the compact structure the block
+ * committed — where it used to carry field 7's own collection commitment. §3's
+ * id preimage is the body alone, so this step is the last place that hash is
+ * authenticated rather than asserted. See
+ * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  *
  * `invalid-signature` step-01 submitter (Goal task `Q15`, §9.1 output 8).
  *
@@ -141,8 +144,14 @@ export type SubmitInvalidSignatureStep01Result = {
   readonly firstStepAddress: string;
   readonly secondStepAddress: string;
   readonly nativeTxId: string;
+  /**
+   * The `witness_set_hash` this step read off the compact structure the block's
+   * `transactions_root` committed, and — since #604 — wrote into thread state as
+   * the second half of `WitnessAnchor`. Field 7's own commitment is no longer
+   * forwarded: §3's id preimage is the body alone, so a witness-set field can
+   * only be anchored through this value.
+   */
   readonly badTxWitnessSetHash: string;
-  readonly badAddrTxWitsHash: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
@@ -260,7 +269,6 @@ export const submitInvalidSignatureStep01 = async ({
       `--witness-set-compact does not open the committed witness_set_hash: derived=${derivedWitnessSetHash}, committed=${badTxWitnessSetHash}.`,
     );
   }
-  const badAddrTxWitsHash = badTxWitnessSetCompact.addr_tx_wits_hash;
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -278,7 +286,7 @@ export const submitInvalidSignatureStep01 = async ({
       fraud_prover: signer.paymentKeyHash,
       data: invalidSignatureStep02StateFromBadTxV1({
         badTxId: txInclusion.nativeTxId,
-        badAddrTxWitsHash,
+        badTxWitnessSetHash,
       }),
     },
     InvalidSignatureStep02Datum,
@@ -316,26 +324,29 @@ export const submitInvalidSignatureStep01 = async ({
     resolvedLayout = layout;
     return Data.to(
       {
+        // #575 collapsed these arguments to a bare `NativeTxInclusionArgs`: the
+        // witness-set preimage no longer travels through step-01, because
+        // step-02 opens field 7 through the §8.8 door and re-derives it from
+        // whatever carriage the prover chose. The `--witness-set-compact` this
+        // builder still takes is checked below and forwarded as a *hash* in the
+        // step-02 state, never as a redeemer argument.
         Continue: [
           {
-            tx_inclusion_args: {
-              input_index: layout.inputIndex,
-              output_index: layout.outputIndex,
-              hub_ref_input_index: layout.hubOracleRefInputIndex,
-              state_queue_node_ref_input_index:
-                layout.stateQueueNodeRefInputIndex,
-              native_tx_id: txInclusion.nativeTxId,
-              native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
-              transactions_phas_root: txInclusion.transactionsPhasRoot,
-              tx_membership_proof: txInclusion.txMembershipProof,
-              inclusion_proof_script_withdraw_redeemer_index:
-                requireWithdrawalRedeemerIndex(
-                  ctx,
-                  phasRewardAddress,
-                  "invalid-signature step 01 PHAS membership",
-                ),
-            },
-            bad_tx_witness_set_compact: badTxWitnessSetCompact,
+            input_index: layout.inputIndex,
+            output_index: layout.outputIndex,
+            hub_ref_input_index: layout.hubOracleRefInputIndex,
+            state_queue_node_ref_input_index:
+              layout.stateQueueNodeRefInputIndex,
+            native_tx_id: txInclusion.nativeTxId,
+            native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+            transactions_phas_root: txInclusion.transactionsPhasRoot,
+            tx_membership_proof: txInclusion.txMembershipProof,
+            inclusion_proof_script_withdraw_redeemer_index:
+              requireWithdrawalRedeemerIndex(
+                ctx,
+                phasRewardAddress,
+                "invalid-signature step 01 PHAS membership",
+              ),
           },
         ],
       },
@@ -405,7 +416,6 @@ export const submitInvalidSignatureStep01 = async ({
       contracts.invalidSignature.steps[1].spendingScriptAddress,
     nativeTxId: txInclusion.nativeTxId,
     badTxWitnessSetHash,
-    badAddrTxWitsHash,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     hubOracleRefInputIndex: Number(resolvedLayout.hubOracleRefInputIndex),

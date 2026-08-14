@@ -1,11 +1,21 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * `non-existent-input` step-02 submitter — the step that selects the challenged
+ * input out of the disputed transaction's spend-input field.
+ *
+ * **Re-derived onto the §8.8 door by #604.** The redeemer used to reproduce the
+ * whole `inputs_preimage: List<MidgardTxInput>` so the validator could re-hash
+ * it against the commitment the thread carried. It now carries a
+ * `FieldOpeningV1` — the disputed transaction's compact structure plus one §8
+ * carriage tier — and the validator reads item `bad_input_index` off the
+ * authenticated view arithmetically. The complete input list is still this
+ * builder's input, because it is the §5.1 preimage; what changed is that it
+ * travels as bytes under a carriage tier rather than as a typed list.
  */
 
 import {
+  encodeMidgardTxInputCanonicalV1,
+  type FieldOpeningV1,
+  MIDGARD_FIELD_INDEX_V1,
   type MidgardTxInput,
   NonExistentInputStep02Datum,
   NonExistentInputStep02SpendRedeemer,
@@ -22,6 +32,11 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import {
+  faultProofFieldOpeningV1,
+  parseNativeTxCompactCborV1,
+  planFaultProofFieldOpeningV1,
+} from "./field-opening-v1.js";
 import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -61,6 +76,12 @@ export type NeSubmitStep02CliConfig = SubmitProviderConfig & {
   readonly walletPrivateKeyEnv?: string;
   readonly threadOutRef: string;
   readonly inputsPreimagePath: string;
+  /**
+   * JSON `{ "nativeTxCompactCbor": "<hex>" }` — the disputed transaction's
+   * compact structure. New in #604: the door re-derives the anchored id from
+   * these bytes and authenticates field 0 against them.
+   */
+  readonly nativeTxCompactPath: string;
   readonly badInputIndex: string;
   readonly awaitConfirmation?: boolean;
 };
@@ -77,6 +98,8 @@ export type NeSubmitStep02Result = {
   readonly secondStepAddress: string;
   readonly thirdStepAddress: string;
   readonly missingInput: MidgardTxInput;
+  /** The door's authenticated item count for field 0. */
+  readonly spendInputsItemCount: number;
   readonly badInputIndex: number;
   readonly inputIndex: number;
   readonly outputIndex: number;
@@ -117,6 +140,7 @@ export const neSubmitStep02 = async ({
   signer,
   threadOutRef,
   inputsPreimage,
+  nativeTxCompactCbor,
   badInputIndex,
   awaitConfirmation = true,
 }: {
@@ -127,6 +151,8 @@ export const neSubmitStep02 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly inputsPreimage: readonly NeInputPreimageEntry[];
+  /** The disputed transaction's §2.5 compact structure, as committed. */
+  readonly nativeTxCompactCbor: string;
   readonly badInputIndex: bigint;
   readonly awaitConfirmation?: boolean;
 }): Promise<NeSubmitStep02Result> => {
@@ -163,6 +189,22 @@ export const neSubmitStep02 = async ({
   }
   const midgardInputs = inputsPreimage.map(toMidgardTxInput);
   const missingInput = midgardInputs[Number(badInputIndex)]!;
+  // The complete list *is* the §5.1 preimage. Planning it against the anchored
+  // transaction is what the validator's `opened_field_view` will re-derive, so a
+  // list that does not open the disputed transaction's field 0 is refused here
+  // rather than at a validator that has already been paid for.
+  const planned = planFaultProofFieldOpeningV1({
+    fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+    anchorTxId: inputDatum.data.bad_tx_id,
+    nativeTxCompactCbor,
+    itemCbors: midgardInputs.map(encodeMidgardTxInputCanonicalV1),
+    owner: signer.paymentKeyHash,
+    label: "Non-existent-input step 02 spend-inputs",
+  });
+  const spendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+    planned,
+    label: "Non-existent-input step 02 spend-inputs",
+  });
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -204,7 +246,7 @@ export const neSubmitStep02 = async ({
           {
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
-            inputs_preimage: midgardInputs,
+            spend_inputs_opening: spendInputsOpening,
             bad_input_index: badInputIndex,
           },
         ],
@@ -252,6 +294,7 @@ export const neSubmitStep02 = async ({
     secondStepAddress: steps[1].spendingScriptAddress,
     thirdStepAddress: steps[2].spendingScriptAddress,
     missingInput,
+    spendInputsItemCount: planned.itemCount,
     badInputIndex: Number(badInputIndex),
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
@@ -265,12 +308,14 @@ export const neSubmitStep02FromFiles = async (
   rejectRetiredUnauthenticatedSubmissionRouteV1({
     command: "submit-non-existent-input-step-02",
   });
-  const [blueprint, deploymentInfo, inputsJson, lucid] = await Promise.all([
-    readJsonFile(config.blueprintPath),
-    readJsonFile(config.deploymentInfoPath),
-    readJsonFile(config.inputsPreimagePath),
-    makeLucidForSubmit(config),
-  ]);
+  const [blueprint, deploymentInfo, inputsJson, nativeTxCompactJson, lucid] =
+    await Promise.all([
+      readJsonFile(config.blueprintPath),
+      readJsonFile(config.deploymentInfoPath),
+      readJsonFile(config.inputsPreimagePath),
+      readJsonFile(config.nativeTxCompactPath),
+      makeLucidForSubmit(config),
+    ]);
   const signer = resolveProverSigner(config);
   return await neSubmitStep02({
     lucid,
@@ -280,6 +325,10 @@ export const neSubmitStep02FromFiles = async (
     signer,
     threadOutRef: config.threadOutRef,
     inputsPreimage: inputsJson as readonly NeInputPreimageEntry[],
+    nativeTxCompactCbor: parseNativeTxCompactCborV1(
+      nativeTxCompactJson,
+      "--native-tx-compact",
+    ),
     badInputIndex: BigInt(config.badInputIndex),
     awaitConfirmation: config.awaitConfirmation,
   });

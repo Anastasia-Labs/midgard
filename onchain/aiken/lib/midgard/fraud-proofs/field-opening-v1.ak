@@ -40,7 +40,7 @@
 ////     redeemer supplied, and §3's id preimage does not cover that value, so
 ////     for fields 6–8 the certificate binds the preimage to nothing this
 ////     thread anchored. `carriage_reaches_the_anchor` refuses it; §8.3
-////     erratum E2 limit 3 records the cost and #579 owns the repair.
+////     erratum E2 limit 3 records the cost and #606 owns the repair.
 ////
 //// A step that opens **more than one field** of the same transaction says so
 //// once. `anchored_native_tx` verifies the anchor and hands back an
@@ -543,7 +543,13 @@ fn tx_opening_of(opening: FieldOpeningV1) -> NativeTxOpeningV1 {
 /// is to fold the field commitment into the §8.6 asset name so the token cannot
 /// be borrowed for a preimage the transaction did not commit; that is a change
 /// to a frozen wire format and to a landed minting policy, and it is assigned
-/// to [#579](https://github.com/Anastasia-Labs/midgard/issues/579) — see E2.
+/// to [#606](https://github.com/Anastasia-Labs/midgard/issues/606) — see E2.
+/// (Assigned to #579 when this was written, and re-pointed at #604 with the rest
+/// of the #575 off-chain remediation; #604 measured the repair to be an on-chain
+/// identity move, which #579's single regeneration had already spent, so the
+/// owner deferred it to #606 to ride the next natural regeneration event —
+/// 2026-08-14, in-session, recorded on #606. The refusal below is unaffected:
+/// it holds until the asset name changes.)
 ///
 /// The abort is unconditional. Nothing here falls back to tier 1 or 2 on the
 /// prover's behalf: a step handed an inadmissible carriage fails, which is

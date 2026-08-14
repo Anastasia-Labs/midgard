@@ -1,30 +1,38 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
- *
  * `invalid-signature` step-02 submitter (Goal task `Q15`, §9.1 output 8).
  *
  * Finalizes the proof: burns the computation thread, mints the permanent
  * fraud-proof token and locks it at the always-fails fraud-proof address.
  *
- * Nothing in the prepared JSON is trusted. The accused transaction id and the
- * canonical `addr_tx_wits_hash` are read back from the **on-chain** step-01
- * datum, the supplied witness list is re-committed with the
- * `bounded_collection_v1.from_items(7, ...)` twin and must equal that hash, and
- * the accused witness is re-tested with the same Ed25519 verification the
- * validator performs. A thread that cannot conclude therefore fails here
- * instead of burning a submission on-chain.
+ * **Re-derived onto the §8.8 door by #604, and this is the family that shows why
+ * `NativeTxAnchorV1` has two arms.** Field 7 lives in the witness set, and §3's
+ * transaction-id preimage is the body alone, so the id does not commit it. The
+ * thread therefore carries `bad_tx_witness_set_hash` — read by step-01 off the
+ * compact structure the block committed — and this step's opening must be the
+ * `WitnessFieldOpening` arm, carrying the transaction's
+ * `NativeTxWitnessSetCompact` for the door to check against it. Both the arm and
+ * the §8.3 erratum E2 tier-3 refusal are derived from the field index by
+ * `fieldOpeningV1ForField`, never chosen here.
+ *
+ * Nothing in the prepared JSON is trusted. The anchor and the committed
+ * `witness_set_hash` are read back from the **on-chain** step-01 datum; the
+ * supplied witness set must hash to that value and the supplied witness list
+ * must be the §5.1 preimage the transaction committed *at field 7*; and the
+ * accused witness is re-tested with the same Ed25519 verification the validator
+ * performs. A thread that cannot conclude therefore fails here instead of
+ * burning a submission on-chain.
  */
 import {
+  encodeMidgardAddressWitnessCanonicalV1,
+  type FieldOpeningV1,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  invalidSignatureAddressWitnessesCommitmentV1,
   InvalidSignatureStep02Datum,
   InvalidSignatureStep02SpendRedeemer,
+  MIDGARD_FIELD_INDEX_V1,
   type MidgardAddressWitness,
+  type NativeTxWitnessSetCompact,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
@@ -43,6 +51,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  faultProofFieldOpeningV1,
+  parseNativeTxCompactCborV1,
+  planFaultProofFieldOpeningV1,
+} from "./field-opening-v1.js";
+import {
   parseHex,
   parseSafeNonNegativeInteger,
   requireRecord,
@@ -59,6 +72,7 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
+import { parseSubmitInvalidSignatureWitnessSetCompact } from "./submit-invalid-signature-step-01.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
@@ -100,6 +114,17 @@ export type SubmitInvalidSignatureStep02CliConfig = SubmitProviderConfig & {
   readonly walletPrivateKeyEnv?: string;
   readonly threadOutRef: string;
   readonly addrTxWitsPreimagePath: string;
+  /**
+   * JSON `{ "nativeTxCompactCbor": "<hex>" }` — the disputed transaction's
+   * compact structure. New in #604.
+   */
+  readonly nativeTxCompactPath: string;
+  /**
+   * The bad transaction's compact witness set, the same file step-01 takes. The
+   * door authenticates it against the `witness_set_hash` the thread anchored
+   * before reading field 7 out of it.
+   */
+  readonly witnessSetCompactPath: string;
   readonly badAddrTxWitIndex: string;
   readonly awaitConfirmation?: boolean;
 };
@@ -121,7 +146,10 @@ export type SubmitInvalidSignatureStep02Result = {
   readonly fraudProofAddress: string;
   readonly secondStepAddress: string;
   readonly badTxId: string;
+  /** §4's flat commitment for field 7 — re-derived here and by the door. */
   readonly badAddrTxWitsHash: string;
+  /** The witness-set half of `WitnessAnchor`, as the thread carried it. */
+  readonly badTxWitnessSetHash: string;
   readonly addrTxWitsPreimageItemCount: number;
   readonly badAddrTxWitIndex: number;
   readonly badAddrTxWitVerificationKey: string;
@@ -193,7 +221,7 @@ const makeInvalidSignatureStep02SpendRedeemer = ({
   fraudProofPolicyId,
   fraudProofUnit,
   fraudProofDatum,
-  addrTxWitsPreimage,
+  addrTxWitsOpening,
   badAddrTxWitIndex,
   onLayout,
 }: {
@@ -202,7 +230,7 @@ const makeInvalidSignatureStep02SpendRedeemer = ({
   readonly fraudProofPolicyId: string;
   readonly fraudProofUnit: string;
   readonly fraudProofDatum: string;
-  readonly addrTxWitsPreimage: readonly MidgardAddressWitness[];
+  readonly addrTxWitsOpening: FieldOpeningV1;
   readonly badAddrTxWitIndex: bigint;
   readonly onLayout: (layout: InvalidSignatureStep02SpendLayout) => void;
 }): BuildTxWithRedeemer =>
@@ -236,7 +264,7 @@ const makeInvalidSignatureStep02SpendRedeemer = ({
           {
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
-            addr_tx_wits_preimage: [...addrTxWitsPreimage],
+            addr_tx_wits_opening: addrTxWitsOpening,
             bad_addr_tx_wit_index: badAddrTxWitIndex,
             fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
           },
@@ -308,6 +336,8 @@ export const submitInvalidSignatureStep02 = async ({
   signer,
   threadOutRef,
   addrTxWitsPreimage,
+  nativeTxCompactCbor,
+  witnessSetCompact,
   badAddrTxWitIndex,
   awaitConfirmation = true,
 }: {
@@ -319,6 +349,10 @@ export const submitInvalidSignatureStep02 = async ({
   readonly threadOutRef: string;
   /** Complete positional address-witness list opened by this step. */
   readonly addrTxWitsPreimage: readonly MidgardAddressWitness[];
+  /** The disputed transaction's §2.5 compact structure, as committed. */
+  readonly nativeTxCompactCbor: string;
+  /** That transaction's compact witness set — §2.5's other half. */
+  readonly witnessSetCompact: NativeTxWitnessSetCompact;
   readonly badAddrTxWitIndex: bigint;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInvalidSignatureStep02Result> => {
@@ -352,18 +386,27 @@ export const submitInvalidSignatureStep02 = async ({
   });
   const inputDatum = requireStep02Datum({ threadUtxo, signer });
   const badTxId = inputDatum.data.bad_tx_id;
-  const badAddrTxWitsHash = inputDatum.data.bad_addr_tx_wits_hash;
+  const badTxWitnessSetHash = inputDatum.data.bad_tx_witness_set_hash;
 
-  // Mirror every category-specific check the validator makes, in its order.
-  // Re-derive the canonical collection commitment from the preimage itself and
-  // require it to open the state step 01 forwarded.
-  const derivedAddrTxWitsHash =
-    invalidSignatureAddressWitnessesCommitmentV1(addrTxWitsPreimage);
-  if (derivedAddrTxWitsHash !== badAddrTxWitsHash) {
-    throw new Error(
-      `--addr-tx-wits-preimage does not open the committed address-witness collection: derived=${derivedAddrTxWitsHash}, thread=${badAddrTxWitsHash}.`,
-    );
-  }
+  // Mirror every check the door makes, in its order: the compact bytes
+  // re-derive to the anchored id, the supplied witness set hashes to the
+  // anchored `witness_set_hash`, and the supplied witness list is the §5.1
+  // preimage that witness set commits at field 7.
+  const planned = planFaultProofFieldOpeningV1({
+    fieldIndex: MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+    anchorTxId: badTxId,
+    nativeTxCompactCbor,
+    itemCbors: addrTxWitsPreimage.map(encodeMidgardAddressWitnessCanonicalV1),
+    owner: signer.paymentKeyHash,
+    witnessSet: witnessSetCompact,
+    anchorWitnessSetHash: badTxWitnessSetHash,
+    label: "Invalid-signature step 02 address-witnesses",
+  });
+  const badAddrTxWitsHash = planned.commitment;
+  const addrTxWitsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+    planned,
+    label: "Invalid-signature step 02 address-witnesses",
+  });
   const badAddrTxWit = addrTxWitsPreimage[Number(badAddrTxWitIndex)];
   if (badAddrTxWit === undefined) {
     throw new Error(
@@ -404,7 +447,7 @@ export const submitInvalidSignatureStep02 = async ({
         fraudProofPolicyId: contracts.fraudProof.policyId,
         fraudProofUnit,
         fraudProofDatum,
-        addrTxWitsPreimage,
+        addrTxWitsOpening,
         badAddrTxWitIndex,
         onLayout: (layout) => {
           spendLayout = layout;
@@ -479,6 +522,7 @@ export const submitInvalidSignatureStep02 = async ({
       contracts.invalidSignature.steps[1].spendingScriptAddress,
     badTxId,
     badAddrTxWitsHash,
+    badTxWitnessSetHash,
     addrTxWitsPreimageItemCount: addrTxWitsPreimage.length,
     badAddrTxWitIndex: Number(badAddrTxWitIndex),
     badAddrTxWitVerificationKey: badAddrTxWit.verification_key,
@@ -497,13 +541,21 @@ export const submitInvalidSignatureStep02 = async ({
 export const submitInvalidSignatureStep02FromFiles = async (
   config: SubmitInvalidSignatureStep02CliConfig,
 ): Promise<SubmitInvalidSignatureStep02Result> => {
-  const [blueprint, deploymentInfo, addrTxWitsPreimageJson, lucid] =
-    await Promise.all([
-      readJsonFile(config.blueprintPath),
-      readJsonFile(config.deploymentInfoPath),
-      readJsonFile(config.addrTxWitsPreimagePath),
-      makeLucidForSubmit(config),
-    ]);
+  const [
+    blueprint,
+    deploymentInfo,
+    addrTxWitsPreimageJson,
+    nativeTxCompactJson,
+    witnessSetCompactJson,
+    lucid,
+  ] = await Promise.all([
+    readJsonFile(config.blueprintPath),
+    readJsonFile(config.deploymentInfoPath),
+    readJsonFile(config.addrTxWitsPreimagePath),
+    readJsonFile(config.nativeTxCompactPath),
+    readJsonFile(config.witnessSetCompactPath),
+    makeLucidForSubmit(config),
+  ]);
   const signer = resolveProverSigner(config);
   return await submitInvalidSignatureStep02({
     lucid,
@@ -514,6 +566,13 @@ export const submitInvalidSignatureStep02FromFiles = async (
     threadOutRef: config.threadOutRef,
     addrTxWitsPreimage: parseSubmitInvalidSignatureAddrTxWitsPreimage(
       addrTxWitsPreimageJson,
+    ),
+    nativeTxCompactCbor: parseNativeTxCompactCborV1(
+      nativeTxCompactJson,
+      "--native-tx-compact",
+    ),
+    witnessSetCompact: parseSubmitInvalidSignatureWitnessSetCompact(
+      witnessSetCompactJson,
     ),
     badAddrTxWitIndex: parseSafeNonNegativeInteger(
       config.badAddrTxWitIndex,

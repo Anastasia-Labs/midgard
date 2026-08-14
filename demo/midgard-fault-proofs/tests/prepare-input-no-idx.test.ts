@@ -21,6 +21,11 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core";
+import {
+  encodeMidgardFieldPreimageV1,
+  midgardFieldCommitmentV1,
+  selectMidgardFieldCarriageTierV1,
+} from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -252,12 +257,9 @@ describe("Q13 input-no-idx canonical evidence", () => {
       expect(inclusion.txMembershipProofCbor.length).toBeGreaterThan(0);
     }
 
-    // step-01 -> step-02
+    // step-01 -> step-02. #604: the §2.5 anchor, and no `Direct`/`Folding` sum.
     expect(output.step02State).toEqual({
-      Direct: {
-        verified_tx_inputs_hash:
-          output.badTxInclusion.nativeTx.body.spend_inputs_hash,
-      },
+      verified_tx_id: output.badTxInclusion.nativeTxId,
     });
     // step-02 -> step-03
     expect(output.step03State).toEqual({
@@ -269,9 +271,10 @@ describe("Q13 input-no-idx canonical evidence", () => {
     ]);
     expect(output.step02.badInputsIndex).toBe(0);
     // step-03 -> step-04
+    // step-03 -> step-04. #604: the producing transaction's anchor, not its
+    // outputs commitment — step-04 opens its field 2 through the §8.8 door.
     expect(output.step04State).toEqual({
-      producing_tx_outputs_hash:
-        output.producingTxInclusion.nativeTx.body.outputs_hash,
+      producing_tx_id: output.producingTxInclusion.nativeTxId,
       bad_input_output_index: 7n,
     });
     expect(output.outputsPreimage).toHaveLength(1);
@@ -380,32 +383,35 @@ describe("Q13 input-no-idx canonical evidence", () => {
     ).toEqual([...output.step04.outputsPreimageCbor]);
   });
 
-  it("derives ordered field-0 fold openings from a complete public preimage", () => {
-    const inputs = Array.from({ length: 20 }, (_, index) => ({
-      tx_id: `${index.toString(16).padStart(2, "0")}${"ab".repeat(31)}`,
-      output_index: BigInt(index),
-    }));
-    const openings = SDK.buildInputNoIdxSpendInputFoldOpeningsV1(inputs);
-    expect(openings).toHaveLength(20);
-    expect(
-      openings.every((opening) =>
-        SDK.verifyInputNoIdxSpendInputFoldOpeningV1({ inputs, opening }),
-      ),
-    ).toBe(true);
-    const substituted = {
-      ...openings[7]!,
-      inputCbor: openings[8]!.inputCbor,
-    };
-    expect(
-      SDK.verifyInputNoIdxSpendInputFoldOpeningV1({
-        inputs,
-        opening: substituted,
-      }),
-    ).toBe(false);
+  it("plans one §8 carriage tier for the whole field-0 preimage", async () => {
+    // #604: the retired test here derived per-item counted fold openings
+    // (`buildInputNoIdxSpendInputFoldOpeningsV1`). §4 gives a field one flat hash
+    // and no per-item openings at all, so those functions were deleted rather
+    // than re-pointed. What the artifact reports instead is the §5.1 preimage's
+    // length and the §8.4 tier that length selects.
+    const block = await violatingBlock(20);
+    const output = await prepareInputNoIdxFromTransactions({
+      headerHash: h28("aa"),
+      transactions: block.transactions,
+      expectedTransactionsRoot: block.expectedTransactionsRoot,
+    });
+    const preimage = encodeMidgardFieldPreimageV1(
+      output.step02.inputsPreimage.map(SDK.encodeMidgardTxInputCanonicalV1),
+    );
+    expect(output.proofFit.step02SpendInputsPreimageBytes).toBe(
+      preimage.length,
+    );
+    expect(output.proofFit.step02CarriageTier).toBe(
+      selectMidgardFieldCarriageTierV1(preimage.length),
+    );
+    // §4: the preimage the artifact describes is the one the door will hash.
+    expect(midgardFieldCommitmentV1(preimage).toString("hex")).toBe(
+      output.badTxInclusion.nativeTx.body.spend_inputs_hash,
+    );
   });
 
   it.each([20, 296])(
-    "selects the resumable ordered fold plan at the %i-input boundary",
+    "keeps one step-02 route at the %i-input preimage",
     async (spendInputCount) => {
       const block = await violatingBlock(spendInputCount);
       const output = await prepareInputNoIdxFromTransactions({
@@ -416,30 +422,16 @@ describe("Q13 input-no-idx canonical evidence", () => {
 
       expect(output.step02.inputsPreimage).toHaveLength(spendInputCount);
       expect(output.step02.badInputsIndex).toBe(spendInputCount - 1);
-      expect(output.proofFit).toMatchObject({
-        completeItemCarriage: false,
-        step02Execution: "fold",
-      });
-      const openings = SDK.buildInputNoIdxSpendInputFoldOpeningsV1(
-        output.step02.inputsPreimage,
+      // #604: there is no direct/fold boundary any more. Both sizes are one
+      // route; both fit tier 1, because §8.4's bound is 14,336 bytes and 296
+      // spend inputs are 40 bytes apiece.
+      const preimage = encodeMidgardFieldPreimageV1(
+        output.step02.inputsPreimage.map(SDK.encodeMidgardTxInputCanonicalV1),
       );
-      expect(
-        openings.map((opening) => opening.collectionProof.item_index),
-      ).toEqual(
-        Array.from({ length: spendInputCount }, (_, index) => BigInt(index)),
+      expect(output.proofFit.step02SpendInputsPreimageBytes).toBe(
+        preimage.length,
       );
-      for (const index of [
-        0,
-        Math.floor(spendInputCount / 2),
-        spendInputCount - 1,
-      ]) {
-        expect(
-          SDK.verifyInputNoIdxSpendInputFoldOpeningV1({
-            inputs: output.step02.inputsPreimage,
-            opening: openings[index]!,
-          }),
-        ).toBe(true);
-      }
+      expect(output.proofFit.step02CarriageTier).toBe("Inline");
       expect(output.step03State).toEqual({
         bad_input_tx_id: block.producer.nodeTxId,
         bad_input_output_index: 7n,
@@ -447,7 +439,12 @@ describe("Q13 input-no-idx canonical evidence", () => {
     },
   );
 
-  it("selects direct carriage at the shared 19-input release boundary", async () => {
+  it("reports the §8.4 tier at the retired 19-input release boundary", async () => {
+    // The boundary itself is retired: `INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1`
+    // bounded the direct redeemer arm against the folding one, and step-02 has
+    // one arm now. The size is kept as a case because it is a real preimage the
+    // family produced; what is asserted is the §8.4 tier, which is a function of
+    // bytes rather than of item count.
     const block = await violatingBlock(
       SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1,
     );
@@ -460,10 +457,7 @@ describe("Q13 input-no-idx canonical evidence", () => {
     expect(output.step02.inputsPreimage).toHaveLength(
       SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1,
     );
-    expect(output.proofFit).toMatchObject({
-      completeItemCarriage: true,
-      step02Execution: "direct",
-    });
+    expect(output.proofFit.step02CarriageTier).toBe("Inline");
   });
 
   it("round-trips a native-asset output through the canonical encoder", () => {
@@ -497,7 +491,7 @@ describe("Q13 input-no-idx canonical evidence", () => {
       expectedTransactionsRoot: block.expectedTransactionsRoot,
     });
 
-    expect(output.proofFit.completeItemCarriage).toBe(true);
+    expect(output.proofFit.step02CarriageTier).toBe("Inline");
     expect(output.proofFit.step02InputsPreimageItemCount).toBe(1);
     expect(output.proofFit.step04OutputsPreimageItemCount).toBe(1);
     expect(output.proofFit.step02InputsPreimageDatumBytes).toBeGreaterThan(0);
@@ -646,12 +640,12 @@ describe("Q13 input-no-idx resumable artifacts", () => {
         await readFile(output.files!.planPath, "utf8"),
       ) as {
         readonly committedTransactionsRoot: string;
-        readonly proofFit: { readonly completeItemCarriage: boolean };
+        readonly proofFit: { readonly step02CarriageTier: string };
       };
       expect(plan.committedTransactionsRoot).toBe(
         output.committedTransactionsRoot,
       );
-      expect(plan.proofFit.completeItemCarriage).toBe(true);
+      expect(plan.proofFit.step02CarriageTier).toBe("Inline");
     });
   });
 

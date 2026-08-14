@@ -1,8 +1,14 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * `double-spend` step-01 submitter, plus the shared helpers every family's
+ * submitter reuses.
+ *
+ * **Re-derived onto the flat field commitments by #604.** Thread state carries
+ * the §2.5 anchor — `verified_tx1_id` — and nothing else: the retired
+ * `verified_tx1_spend_inputs_hash` is not replaced but *removed*, because the
+ * §8.8 door extracts field 0's commitment positionally from the compact
+ * structures the anchor authenticates. Carrying it forward would be carrying a
+ * value no validator reads. See
+ * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
 
 import {
@@ -535,8 +541,6 @@ export const submitStep01 = async ({
       fraud_prover: signer.paymentKeyHash,
       data: {
         verified_tx1_id: txInclusion.nativeTxId,
-        verified_tx1_spend_inputs_hash:
-          txInclusion.nativeTx.body.spend_inputs_hash,
       },
     },
     DoubleSpendStep02Datum,

@@ -46,11 +46,11 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "@/common.js";
 
+import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {
   encodeMidgardTxInputCanonicalV1,
   encodeMidgardTxOutputCanonicalV1,
   type MidgardTxOutput,
-  MidgardTxOutputListSchema,
 } from "./input-no-idx.js";
 import {
   FaultProofStepCancel,
@@ -58,7 +58,6 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   type MidgardTxInput as MidgardTxInputData,
-  MidgardTxInputListSchema,
   NativeTxInclusionArgs,
   NativeTxInclusionArgsSchema,
 } from "./native.js";
@@ -156,8 +155,17 @@ export const ReferenceInputNoIdxStep01SpendRedeemer =
 
 // ## Step 02 — open the reference-inputs preimage and select the bad input
 
+/**
+ * Mirrors `midgard/fraud_proofs/reference_input_no_idx/step_02.State`.
+ *
+ * **This family was rebound by #576, one day after
+ * `docs/fault-proofs/offchain-builder-staleness-575.md` was written**, so its §5
+ * exclusion ("not among the nine families #575 rebound; no validator under
+ * `reference-input-no-idx/` changed") was true when written and false by the
+ * time the banners were read. It is re-derived here with the other nine.
+ */
 export const ReferenceInputNoIdxStep02StateSchema = Data.Object({
-  verified_tx_reference_inputs_hash: H32Schema,
+  verified_tx_id: H32Schema,
 });
 export type ReferenceInputNoIdxStep02State = Data.Static<
   typeof ReferenceInputNoIdxStep02StateSchema
@@ -174,10 +182,11 @@ export type ReferenceInputNoIdxStep02Datum = Data.Static<
 export const ReferenceInputNoIdxStep02Datum =
   ReferenceInputNoIdxStep02DatumSchema as unknown as ReferenceInputNoIdxStep02Datum;
 
+/** Mirrors `midgard/fraud_proofs/reference_input_no_idx/step_02.Args`. */
 export const ReferenceInputNoIdxStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  reference_inputs_preimage: MidgardTxInputListSchema,
+  reference_inputs_opening: FieldOpeningV1Schema,
   bad_reference_input_index: Data.Integer(),
 });
 export type ReferenceInputNoIdxStep02Args = Data.Static<
@@ -236,8 +245,9 @@ export const ReferenceInputNoIdxStep03SpendRedeemer =
 // `outputs_hash` therefore also fixes the exact output count, which is what
 // makes the out-of-range check sound.
 
+/** Mirrors `midgard/fraud_proofs/reference_input_no_idx/step_04.State`. */
 export const ReferenceInputNoIdxStep04StateSchema = Data.Object({
-  producing_tx_outputs_hash: H32Schema,
+  producing_tx_id: H32Schema,
   bad_reference_input_output_index: Data.Integer(),
 });
 export type ReferenceInputNoIdxStep04State = Data.Static<
@@ -255,11 +265,12 @@ export type ReferenceInputNoIdxStep04Datum = Data.Static<
 export const ReferenceInputNoIdxStep04Datum =
   ReferenceInputNoIdxStep04DatumSchema as unknown as ReferenceInputNoIdxStep04Datum;
 
+/** Mirrors `midgard/fraud_proofs/reference_input_no_idx/step_04.Args`. */
 export const ReferenceInputNoIdxStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
-  outputs_preimage: MidgardTxOutputListSchema,
+  outputs_opening: FieldOpeningV1Schema,
 });
 export type ReferenceInputNoIdxStep04Args = Data.Static<
   typeof ReferenceInputNoIdxStep04ArgsSchema
@@ -279,9 +290,9 @@ export const ReferenceInputNoIdxStep04SpendRedeemer =
 
 /** Exactly the state `step-01` writes for `step-02`. */
 export const referenceInputNoIdxStep02StateFromBadTxV1 = (
-  badTxReferenceInputsHash: string,
+  badTxId: string,
 ): ReferenceInputNoIdxStep02State => ({
-  verified_tx_reference_inputs_hash: badTxReferenceInputsHash.toLowerCase(),
+  verified_tx_id: badTxId.toLowerCase(),
 });
 
 /** Exactly the state `step-02` writes for `step-03`. */
@@ -295,11 +306,11 @@ export const referenceInputNoIdxStep03StateFromBadInputV1 = (
 /** Exactly the state `step-03` writes for `step-04`. */
 export const referenceInputNoIdxStep04StateFromBadInputV1 = ({
   badReferenceInput,
-  producingTxOutputsHash,
+  producingTxId,
 }: {
   readonly badReferenceInput: MidgardTxInputData;
-  readonly producingTxOutputsHash: string;
+  readonly producingTxId: string;
 }): ReferenceInputNoIdxStep04State => ({
-  producing_tx_outputs_hash: producingTxOutputsHash.toLowerCase(),
+  producing_tx_id: producingTxId.toLowerCase(),
   bad_reference_input_output_index: badReferenceInput.output_index,
 });

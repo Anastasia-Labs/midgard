@@ -1,8 +1,9 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * Re-derived onto the flat field commitments by #604 (the #575 off-chain builder
+ * remediation): thread state carries the §2.5 anchor rather than a per-field
+ * collection commitment, and a step redeemer carries a `FieldOpeningV1` rather
+ * than a reproduced `..._preimage: List<…>`. The rebind is explained once in
+ * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  *
  * `invalid-signature` fault-proof family (Goal task `Q15`).
  *
@@ -46,17 +47,16 @@ import { CML, Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "@/common.js";
 
+import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   type MidgardAddressWitness as MidgardAddressWitnessData,
-  MidgardAddressWitnessListSchema,
   NativeTxInclusionArgs,
   NativeTxInclusionArgsSchema,
   type NativeTxWitnessSetCompact as NativeTxWitnessSetCompactData,
-  NativeTxWitnessSetCompactSchema,
 } from "./native.js";
 
 /** Catalogue violation identifier adjudicated by this family. */
@@ -276,10 +276,27 @@ export type InvalidSignatureStep01Datum = Data.Static<
 export const InvalidSignatureStep01Datum =
   InvalidSignatureStep01DatumSchema as unknown as InvalidSignatureStep01Datum;
 
-export const InvalidSignatureStep01ArgsSchema = Data.Object({
-  tx_inclusion_args: NativeTxInclusionArgsSchema,
-  bad_tx_witness_set_compact: NativeTxWitnessSetCompactSchema,
-});
+/**
+ * Mirrors `midgard/fraud_proofs/invalid_signature/step_01.Args`.
+ *
+ * **A fourth #575 divergence, found by #604 and named nowhere else.**
+ * `docs/fault-proofs/offchain-builder-staleness-575.md` §2 lists three — the
+ * thread anchor, the `FieldOpeningV1`, the certificate-policy parameter — and
+ * this is not one of them: #575 (`2fec6b0fb`) also *deleted* step-01's
+ * `bad_tx_witness_set_compact` argument, collapsing a two-field record to a bare
+ * `NativeTxInclusionArgs`.
+ *
+ * The witness-set preimage no longer travels through step-01, because step-02
+ * opens field 7 through the §8.8 door and re-derives it from whatever carriage
+ * the prover chose. What step-01 still owes the thread is the witness-set
+ * *hash*, which it alone can authenticate — §3's transaction id does not commit
+ * it — and that goes into `step_02.State`, not into these arguments.
+ *
+ * Emitting the retired wrapper produces a redeemer the validator decodes
+ * positionally into the wrong fields; the observed signature was
+ * `Spend[0] unexpected empty list`, not a clean decode failure.
+ */
+export const InvalidSignatureStep01ArgsSchema = NativeTxInclusionArgsSchema;
 export type InvalidSignatureStep01Args = Data.Static<
   typeof InvalidSignatureStep01ArgsSchema
 >;
@@ -296,9 +313,22 @@ export const InvalidSignatureStep01SpendRedeemer =
 
 // ## Step 02 — open the address-witness collection and convict the signature
 
+/**
+ * Mirrors `midgard/fraud_proofs/invalid_signature/step_02.State` — and this is
+ * the family that shows why `NativeTxAnchorV1` has two arms.
+ *
+ * Field 7 lives in the **witness set**, and §3's transaction-id preimage is the
+ * body alone, so the id does not commit it: a prover may hand over the genuine
+ * body followed by any trailing `witness_set_hash` it likes and the bytes still
+ * re-derive to the committed id. The retired `bad_addr_tx_wits_hash` (field 7's
+ * own collection commitment) is therefore replaced not by nothing but by
+ * `bad_tx_witness_set_hash` — the value step-01 read off the compact structure
+ * the block committed, which is what `WitnessAnchor` anchors and what the door
+ * checks the supplied witness set against.
+ */
 export const InvalidSignatureStep02StateSchema = Data.Object({
   bad_tx_id: H32Schema,
-  bad_addr_tx_wits_hash: H32Schema,
+  bad_tx_witness_set_hash: H32Schema,
 });
 export type InvalidSignatureStep02State = Data.Static<
   typeof InvalidSignatureStep02StateSchema
@@ -315,10 +345,19 @@ export type InvalidSignatureStep02Datum = Data.Static<
 export const InvalidSignatureStep02Datum =
   InvalidSignatureStep02DatumSchema as unknown as InvalidSignatureStep02Datum;
 
+/**
+ * Mirrors `midgard/fraud_proofs/invalid_signature/step_02.Args`.
+ *
+ * `addr_tx_wits_opening` must be the `WitnessFieldOpening` arm — it carries the
+ * transaction's `NativeTxWitnessSetCompact` alongside the compact bytes, and the
+ * door refuses a body opening at field 7. It also may **not** name tier 3
+ * (§8.3 erratum E2 limit 3); `fieldOpeningV1ForField` refuses that off-chain and
+ * `carriage_reaches_the_anchor` refuses it on-chain.
+ */
 export const InvalidSignatureStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  addr_tx_wits_preimage: MidgardAddressWitnessListSchema,
+  addr_tx_wits_opening: FieldOpeningV1Schema,
   bad_addr_tx_wit_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
 });
@@ -341,11 +380,17 @@ export const InvalidSignatureStep02SpendRedeemer =
 /** Exactly the state `step-01` writes for `step-02`. */
 export const invalidSignatureStep02StateFromBadTxV1 = ({
   badTxId,
-  badAddrTxWitsHash,
+  badTxWitnessSetHash,
 }: {
   readonly badTxId: string;
-  readonly badAddrTxWitsHash: string;
+  /**
+   * The `witness_set_hash` read off the compact structure the block's
+   * `transactions_root` committed — **not** field 7's own commitment, and not a
+   * value any later redeemer supplies. It is the second half of `WitnessAnchor`,
+   * and the only reason a witness-set field can be opened at all.
+   */
+  readonly badTxWitnessSetHash: string;
 }): InvalidSignatureStep02State => ({
   bad_tx_id: badTxId.toLowerCase(),
-  bad_addr_tx_wits_hash: badAddrTxWitsHash.toLowerCase(),
+  bad_tx_witness_set_hash: badTxWitnessSetHash.toLowerCase(),
 });

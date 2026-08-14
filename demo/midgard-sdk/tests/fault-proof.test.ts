@@ -229,7 +229,6 @@ describe("fault-proof ABI", () => {
       fraud_prover: h28,
       data: {
         verified_tx1_id: h32,
-        verified_tx1_spend_inputs_hash: h32b,
       },
     };
     expect(roundTrip(step02Datum, DoubleSpendStep02Datum)).toEqual(step02Datum);
@@ -245,8 +244,8 @@ describe("fault-proof ABI", () => {
     const step03Datum = {
       fraud_prover: h28,
       data: {
-        verified_tx1_spend_inputs_hash: h32,
-        verified_tx2_spend_inputs_hash: h32b,
+        verified_tx1_id: h32,
+        verified_tx2_id: h32b,
       },
     };
     expect(roundTrip(step03Datum, DoubleSpendStep03Datum)).toEqual(step03Datum);
@@ -259,7 +258,12 @@ describe("fault-proof ABI", () => {
             {
               input_index: 0n,
               output_index: 0n,
-              tx1_spend_inputs_ref_input_index: 1n,
+              tx1_spend_inputs_opening: {
+                BodyFieldOpening: {
+                  native_tx_compact_cbor: "a1b2c3",
+                  carriage: { RawUtxo: { ref_input_index: 1n } },
+                },
+              },
               double_spent_input_index: 0n,
             },
           ],
@@ -267,13 +271,22 @@ describe("fault-proof ABI", () => {
         DoubleSpendStep03SpendRedeemer,
       ),
     ).toMatchObject({
-      Continue: [{ tx1_spend_inputs_ref_input_index: 1n }],
+      Continue: [
+        {
+          tx1_spend_inputs_opening: {
+            BodyFieldOpening: {
+              native_tx_compact_cbor: "a1b2c3",
+              carriage: { RawUtxo: { ref_input_index: 1n } },
+            },
+          },
+        },
+      ],
     });
 
     const step04Datum = {
       fraud_prover: h28,
       data: {
-        verified_tx2_spend_inputs_hash: h32b,
+        verified_tx2_id: h32b,
         double_spent_input: doubleSpentInput,
       },
     };
@@ -286,7 +299,12 @@ describe("fault-proof ABI", () => {
               input_index: 0n,
               output_index: 0n,
               fraud_proof_mint_redeemer_index: 1n,
-              tx2_spend_inputs_ref_input_index: 2n,
+              tx2_spend_inputs_opening: {
+                BodyFieldOpening: {
+                  native_tx_compact_cbor: "c3b2a1",
+                  carriage: { RawUtxo: { ref_input_index: 2n } },
+                },
+              },
               double_spent_input_index: 0n,
             },
           ],
@@ -475,34 +493,45 @@ describe("fault-proof ABI", () => {
       ),
     ).toEqual({ fraud_prover: h28, data: null });
 
-    const witnessSetCompact = {
-      addr_tx_wits_hash: h32,
-      script_tx_wits_hash: h32b,
-      redeemer_tx_wits_hash: "77".repeat(32),
-    };
-    // Step 01 carries the inclusion args *and* the witness-set compact whose
-    // hash the committed transaction pins.
-    const step01Args = {
-      tx_inclusion_args: txInclusionArgs,
-      bad_tx_witness_set_compact: witnessSetCompact,
-    };
+    // #575 collapsed step-01's arguments to a bare `NativeTxInclusionArgs`
+    // (`2fec6b0fb`), and #604 followed it off-chain. The witness-set *preimage*
+    // no longer travels here: step-02 opens field 7 through the §8.8 door and
+    // re-derives it from the prover's carriage. What step-01 still owes the
+    // thread is the witness-set *hash*, and that goes into `step_02.State`
+    // below, not into these arguments.
     expect(
       roundTrip(
-        { Continue: [step01Args] },
+        { Continue: [txInclusionArgs] },
         SDK.InvalidSignatureStep01SpendRedeemer,
       ),
     ).toMatchObject({
-      Continue: [
-        {
-          tx_inclusion_args: { native_tx_id: h32 },
-          bad_tx_witness_set_compact: witnessSetCompact,
-        },
-      ],
+      Continue: [{ native_tx_id: h32 }],
     });
+    // The retired two-field wrapper must not encode any more. Left as an
+    // explicit negative because emitting it produced a redeemer the validator
+    // decoded positionally into the wrong fields rather than refusing —
+    // `Spend[0] unexpected empty list`, which reads like a fixture defect.
+    expect(() =>
+      Data.to(
+        {
+          Continue: [
+            {
+              tx_inclusion_args: txInclusionArgs,
+              bad_tx_witness_set_compact: {
+                addr_tx_wits_hash: h32,
+                script_tx_wits_hash: h32b,
+                redeemer_tx_wits_hash: "77".repeat(32),
+              },
+            },
+          ],
+        } as never,
+        SDK.InvalidSignatureStep01SpendRedeemer,
+      ),
+    ).toThrow();
 
     const step02Datum = {
       fraud_prover: h28,
-      data: { bad_tx_id: h32, bad_addr_tx_wits_hash: h32b },
+      data: { bad_tx_id: h32, bad_tx_witness_set_hash: h32b },
     };
     expect(roundTrip(step02Datum, SDK.InvalidSignatureStep02Datum)).toEqual(
       step02Datum,
@@ -510,17 +539,27 @@ describe("fault-proof ABI", () => {
     expect(
       SDK.invalidSignatureStep02StateFromBadTxV1({
         badTxId: h32.toUpperCase(),
-        badAddrTxWitsHash: h32b.toUpperCase(),
+        badTxWitnessSetHash: h32b.toUpperCase(),
       }),
     ).toEqual(step02Datum.data);
 
     const step02Args = {
       input_index: 0n,
       output_index: 0n,
-      addr_tx_wits_preimage: [
-        { verification_key: "aa".repeat(32), signature: "bb".repeat(64) },
-        { verification_key: "cc".repeat(32), signature: "dd".repeat(64) },
-      ],
+      // Field 7 is a witness-set field, so the opening is the `WitnessFieldOpening`
+      // arm and carries the transaction's compact witness set. Tier 3 is refused
+      // for this arm (§8.3 erratum E2 limit 3), which is asserted below.
+      addr_tx_wits_opening: {
+        WitnessFieldOpening: {
+          native_tx_compact_cbor: "a1b2c3",
+          witness_set: {
+            addr_tx_wits_hash: h32,
+            script_tx_wits_hash: h32b,
+            redeemer_tx_wits_hash: h32,
+          },
+          carriage: { Inline: { preimage: "80" } },
+        },
+      },
       bad_addr_tx_wit_index: 1n,
       fraud_proof_mint_redeemer_index: 1n,
     };
@@ -530,6 +569,26 @@ describe("fault-proof ABI", () => {
         SDK.InvalidSignatureStep02SpendRedeemer,
       ),
     ).toEqual({ Continue: [step02Args] });
+
+    // The witness-set family is where E2 limit 3 actually bites, so the refusal
+    // is asserted at the family rather than only in the shared module's tests.
+    expect(() =>
+      SDK.fieldOpeningV1ForField({
+        fieldIndex: SDK.MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+        nativeTxCompactCbor: "a1b2c3",
+        carriage: {
+          Certified: {
+            cert_ref_input_index: 0n,
+            chunk_ref_input_indices: [1n],
+          },
+        },
+        witnessSet: {
+          addr_tx_wits_hash: h32,
+          script_tx_wits_hash: h32b,
+          redeemer_tx_wits_hash: h32,
+        },
+      }),
+    ).toThrow(/erratum E2 limit 3/u);
   });
 
   it("round-trips zero-input step datums and redeemers", () => {
@@ -547,7 +606,7 @@ describe("fault-proof ABI", () => {
 
     const step02Datum = {
       fraud_prover: h28,
-      data: { bad_tx_spend_inputs_hash: EMPTY_SPEND_INPUTS_HASH },
+      data: { bad_tx_id: h32 },
     };
     expect(roundTrip(step02Datum, ZeroInputStep02Datum)).toEqual(step02Datum);
     expect(
@@ -558,6 +617,14 @@ describe("fault-proof ABI", () => {
               input_index: 0n,
               output_index: 0n,
               fraud_proof_mint_redeemer_index: 1n,
+              // §5.1's empty field is exactly one byte, so a genuinely empty
+              // field 0 always fits tier 1.
+              spend_inputs_opening: {
+                BodyFieldOpening: {
+                  native_tx_compact_cbor: "a1b2c3",
+                  carriage: { Inline: { preimage: "80" } },
+                },
+              },
             },
           ],
         },
@@ -579,55 +646,37 @@ describe("fault-proof ABI", () => {
       ),
     ).toMatchObject({ Continue: [{ native_tx_id: h32 }] });
 
+    // #604: the thread carries the §2.5 anchor, and the step redeemer carries a
+    // `FieldOpeningV1` rather than a reproduced `inputs_preimage`. The retired
+    // `Direct`/`Folding` state, the `PublishedSpendInputsV1` publication datum
+    // and the four-arm `Complete`/`CompletePublished`/`FoldStart`/`FoldNext`
+    // redeemer are gone from the validator, so their round-trips are gone here.
     const step02Datum = {
       fraud_prover: h28,
-      data: { Direct: { verified_tx_inputs_hash: h32 } },
+      data: { verified_tx_id: h32 },
     };
     expect(roundTrip(step02Datum, SDK.InputNoIdxStep02Datum)).toEqual(
       step02Datum,
     );
-    const publishedInputs = {
-      version: 1n,
-      computation_thread_policy_id: h28,
-      computation_thread_asset_name: h28b,
-      fraud_prover: h28,
-      verified_tx_inputs_hash: h32,
-      item_count: 1n,
-      inputs: [{ tx_id: h32b, output_index: 7n }],
-    };
-    expect(roundTrip(publishedInputs, SDK.PublishedSpendInputsV1)).toEqual(
-      publishedInputs,
-    );
-    expect(
-      roundTrip(
-        {
-          Continue: [
-            {
-              Complete: {
-                input_index: 0n,
-                output_index: 0n,
-                inputs_preimage: [{ tx_id: h32b, output_index: 7n }],
-                bad_inputs_index: 0n,
-              },
-            },
-          ],
-        },
-        SDK.InputNoIdxStep02SpendRedeemer,
-      ),
-    ).toMatchObject({
-      Continue: [{ Complete: { inputs_preimage: [{ output_index: 7n }] } }],
+    expect(SDK.inputNoIdxStep02StateFromBadTxV1(h32)).toEqual({
+      verified_tx_id: h32,
     });
+
+    const spendInputsOpening = {
+      BodyFieldOpening: {
+        native_tx_compact_cbor: "a1b2c3",
+        carriage: { Inline: { preimage: "80" } },
+      },
+    };
     expect(
       roundTrip(
         {
           Continue: [
             {
-              CompletePublished: {
-                input_index: 1n,
-                output_index: 0n,
-                publication_reference_input_index: 2n,
-                bad_inputs_index: 0n,
-              },
+              input_index: 0n,
+              output_index: 0n,
+              spend_inputs_opening: spendInputsOpening,
+              bad_inputs_index: 0n,
             },
           ],
         },
@@ -636,140 +685,12 @@ describe("fault-proof ABI", () => {
     ).toEqual({
       Continue: [
         {
-          CompletePublished: {
-            input_index: 1n,
-            output_index: 0n,
-            publication_reference_input_index: 2n,
-            bad_inputs_index: 0n,
-          },
+          input_index: 0n,
+          output_index: 0n,
+          spend_inputs_opening: spendInputsOpening,
+          bad_inputs_index: 0n,
         },
       ],
-    });
-
-    const foldInputs = Array.from({ length: 20 }, (_, index) => ({
-      tx_id: index % 2 === 0 ? h32 : h32b,
-      output_index: BigInt(index),
-    }));
-    expect(SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1).toBe(19);
-    expect(SDK.inputNoIdxStep02ExecutionModeV1(19)).toBe("direct");
-    expect(SDK.inputNoIdxStep02ExecutionModeV1(20)).toBe("fold");
-    const openings = SDK.buildInputNoIdxSpendInputFoldOpeningsV1(foldInputs);
-    expect(openings).toHaveLength(20);
-    expect(
-      SDK.verifyInputNoIdxSpendInputFoldOpeningV1({
-        inputs: foldInputs,
-        opening: openings[0]!,
-      }),
-    ).toBe(true);
-    expect(
-      SDK.verifyInputNoIdxSpendInputFoldOpeningV1({
-        inputs: foldInputs,
-        opening: { ...openings[0]!, inputCbor: "00" },
-      }),
-    ).toBe(false);
-    const opening = openings[7]!;
-    const malformedOpenings = [
-      {
-        ...opening,
-        collectionProof: { ...opening.collectionProof, field_index: 1n },
-      },
-      {
-        ...opening,
-        collectionProof: { ...opening.collectionProof, item_count: 21n },
-      },
-      {
-        ...opening,
-        collectionProof: { ...opening.collectionProof, item_index: 8n },
-      },
-      {
-        ...opening,
-        collectionProof: {
-          ...opening.collectionProof,
-          item_length: opening.collectionProof.item_length + 1n,
-        },
-      },
-      {
-        ...opening,
-        collectionProof: {
-          ...opening.collectionProof,
-          item_commitment: "00".repeat(32),
-        },
-      },
-      {
-        ...opening,
-        collectionProof: { ...opening.collectionProof, frontier: [] },
-      },
-      {
-        ...opening,
-        collectionProof: {
-          ...opening.collectionProof,
-          siblings: [...opening.collectionProof.siblings, "00".repeat(32)],
-        },
-      },
-      { ...opening, inputCbor: openings[8]!.inputCbor },
-      { ...opening, inputCbor: `${opening.inputCbor}00` },
-    ];
-    for (const malformed of malformedOpenings) {
-      expect(
-        SDK.verifyInputNoIdxSpendInputFoldOpeningV1({
-          inputs: foldInputs,
-          opening: malformed,
-        }),
-      ).toBe(false);
-    }
-    for (const alteredInputs of [
-      foldInputs.slice(0, -1),
-      [...foldInputs, foldInputs[7]!],
-      [...foldInputs].reverse(),
-      foldInputs.map((input, index) =>
-        index === 19 ? { ...input, output_index: 99n } : input,
-      ),
-    ]) {
-      expect(
-        SDK.verifyInputNoIdxSpendInputFoldOpeningV1({
-          inputs: alteredInputs,
-          opening,
-        }),
-      ).toBe(false);
-    }
-    expect(
-      roundTrip(
-        {
-          Continue: [
-            {
-              FoldStart: {
-                input_index: 0n,
-                output_index: 0n,
-                bad_inputs_index: 7n,
-                input_cbor: openings[0]!.inputCbor,
-                collection_proof: openings[0]!.collectionProof,
-              },
-            },
-          ],
-        },
-        SDK.InputNoIdxStep02SpendRedeemer,
-      ),
-    ).toMatchObject({
-      Continue: [{ FoldStart: { collection_proof: { item_count: 20n } } }],
-    });
-    expect(
-      roundTrip(
-        {
-          Continue: [
-            {
-              FoldNext: {
-                input_index: 0n,
-                output_index: 0n,
-                input_cbor: openings[1]!.inputCbor,
-                collection_proof: openings[1]!.collectionProof,
-              },
-            },
-          ],
-        },
-        SDK.InputNoIdxStep02SpendRedeemer,
-      ),
-    ).toMatchObject({
-      Continue: [{ FoldNext: { collection_proof: { item_index: 1n } } }],
     });
 
     const step03Datum = {
@@ -788,21 +709,16 @@ describe("fault-proof ABI", () => {
 
     const step04Datum = {
       fraud_prover: h28,
-      data: { producing_tx_outputs_hash: h32, bad_input_output_index: 7n },
+      data: { producing_tx_id: h32, bad_input_output_index: 7n },
     };
     expect(roundTrip(step04Datum, SDK.InputNoIdxStep04Datum)).toEqual(
       step04Datum,
     );
-    const output = {
-      address: {
-        protected: false,
-        network_id: 0n,
-        payment_credential: { PubKeyCredential: [h28] },
-        stake_credential: null,
+    const outputsOpening = {
+      BodyFieldOpening: {
+        native_tx_compact_cbor: "c3b2a1",
+        carriage: { RawUtxo: { ref_input_index: 2n } },
       },
-      value: { lovelace: 5_000_000n, assets: new Map<string, bigint>() },
-      datum_cbor: null,
-      script_ref: null,
     };
     expect(
       roundTrip(
@@ -812,7 +728,7 @@ describe("fault-proof ABI", () => {
               input_index: 0n,
               output_index: 0n,
               fraud_proof_mint_redeemer_index: 1n,
-              outputs_preimage: [output],
+              outputs_opening: outputsOpening,
             },
           ],
         },
@@ -824,7 +740,7 @@ describe("fault-proof ABI", () => {
           input_index: 0n,
           output_index: 0n,
           fraud_proof_mint_redeemer_index: 1n,
-          outputs_preimage: [output],
+          outputs_opening: outputsOpening,
         },
       ],
     });
@@ -846,7 +762,7 @@ describe("fault-proof ABI", () => {
 
     const step02Datum = {
       fraud_prover: h28,
-      data: { verified_tx_reference_inputs_hash: h32b },
+      data: { verified_tx_id: h32b },
     };
     expect(roundTrip(step02Datum, SDK.ReferenceInputNoIdxStep02Datum)).toEqual(
       step02Datum,
@@ -858,7 +774,12 @@ describe("fault-proof ABI", () => {
             {
               input_index: 0n,
               output_index: 0n,
-              reference_inputs_preimage: referenceInputs,
+              reference_inputs_opening: {
+                BodyFieldOpening: {
+                  native_tx_compact_cbor: "a1b2c3",
+                  carriage: { Inline: { preimage: "80" } },
+                },
+              },
               bad_reference_input_index: 1n,
             },
           ],
@@ -868,7 +789,12 @@ describe("fault-proof ABI", () => {
     ).toMatchObject({
       Continue: [
         {
-          reference_inputs_preimage: referenceInputs,
+          reference_inputs_opening: {
+            BodyFieldOpening: {
+              native_tx_compact_cbor: "a1b2c3",
+              carriage: { Inline: { preimage: "80" } },
+            },
+          },
           bad_reference_input_index: 1n,
         },
       ],
@@ -894,7 +820,7 @@ describe("fault-proof ABI", () => {
     const step04Datum = {
       fraud_prover: h28,
       data: {
-        producing_tx_outputs_hash: h32b,
+        producing_tx_id: h32b,
         bad_reference_input_output_index: badReferenceInput.output_index,
       },
     };
@@ -923,7 +849,12 @@ describe("fault-proof ABI", () => {
               input_index: 0n,
               output_index: 0n,
               fraud_proof_mint_redeemer_index: 2n,
-              outputs_preimage: [referenceOutput],
+              outputs_opening: {
+                BodyFieldOpening: {
+                  native_tx_compact_cbor: "c3b2a1",
+                  carriage: { Inline: { preimage: "80" } },
+                },
+              },
             },
           ],
         },
@@ -935,7 +866,12 @@ describe("fault-proof ABI", () => {
           input_index: 0n,
           output_index: 0n,
           fraud_proof_mint_redeemer_index: 2n,
-          outputs_preimage: [referenceOutput],
+          outputs_opening: {
+            BodyFieldOpening: {
+              native_tx_compact_cbor: "c3b2a1",
+              carriage: { Inline: { preimage: "80" } },
+            },
+          },
         },
       ],
     });
@@ -955,124 +891,131 @@ describe("fault-proof ABI", () => {
     );
   });
 
-  it("pins the flattened input-no-idx step-02 wire ABI", () => {
-    const inputs = [
-      { tx_id: h32b, output_index: 7n },
-      { tx_id: h32, output_index: 8n },
-    ];
-    const openings = SDK.buildInputNoIdxSpendInputFoldOpeningsV1(inputs);
-    const complete = {
-      Complete: {
-        input_index: 0n,
-        output_index: 0n,
-        inputs_preimage: [inputs[0]!],
-        bad_inputs_index: 0n,
+  it("pins the rebound input-no-idx step-02 wire ABI", () => {
+    // The regression this exists for is subtler than an arity change, and it is
+    // why the stale builders failed as `Spend[0] the validator crashed` rather
+    // than as a clean decode error: the retired four-arm enum's `Complete` arm
+    // sat at tag 0 with arity 4, and the rebound flat `Args` record is ALSO tag
+    // 0 with arity 4. Only field 2 moved — a `List<MidgardTxInput>` became a
+    // `FieldOpeningV1` constructor. A test that checked tag and arity alone
+    // would pass against a builder that is still completely wrong, so the
+    // assertions below pin the *shape of field 2*.
+    const opening = {
+      BodyFieldOpening: {
+        native_tx_compact_cbor: "a1b2c3",
+        carriage: { Inline: { preimage: "80" } },
       },
     };
-    const variants = [
-      ["Complete", 0, 4, complete],
-      [
-        "CompletePublished",
-        1,
-        4,
-        {
-          CompletePublished: {
-            input_index: 1n,
-            output_index: 0n,
-            publication_reference_input_index: 2n,
-            bad_inputs_index: 0n,
-          },
-        },
-      ],
-      [
-        "FoldStart",
-        2,
-        5,
-        {
-          FoldStart: {
-            input_index: 0n,
-            output_index: 0n,
-            bad_inputs_index: 1n,
-            input_cbor: openings[0]!.inputCbor,
-            collection_proof: openings[0]!.collectionProof,
-          },
-        },
-      ],
-      [
-        "FoldNext",
-        3,
-        4,
-        {
-          FoldNext: {
-            input_index: 0n,
-            output_index: 0n,
-            input_cbor: openings[1]!.inputCbor,
-            collection_proof: openings[1]!.collectionProof,
-          },
-        },
-      ],
-    ] as const;
-    let completeFields: readonly unknown[] | undefined;
+    const args = {
+      input_index: 0n,
+      output_index: 0n,
+      spend_inputs_opening: opening,
+      bad_inputs_index: 0n,
+    };
+    const redeemer = { Continue: [args] };
+    const cbor = Data.to(redeemer as never, SDK.InputNoIdxStep02SpendRedeemer);
+    const outer = Data.from(cbor);
 
-    for (const [label, tag, arity, args] of variants) {
-      const redeemer = { Continue: [args] };
-      const cbor = Data.to(
-        redeemer as never,
-        SDK.InputNoIdxStep02SpendRedeemer,
-      );
-      const outer = Data.from(cbor);
+    expect(outer).toBeInstanceOf(Constr);
+    const continueConstr = outer as Constr<unknown>;
+    expect(continueConstr.index).toBe(1);
+    expect(continueConstr.fields).toHaveLength(1);
+    const argsConstr = continueConstr.fields[0] as Constr<unknown>;
+    expect(argsConstr).toBeInstanceOf(Constr);
+    // A flat record, not a sum: tag 0 because that is what a single-constructor
+    // Aiken record encodes to, and four fields in declaration order.
+    expect(argsConstr.index).toBe(0);
+    expect(argsConstr.fields).toHaveLength(4);
+    expect(typeof argsConstr.fields[0]).toBe("bigint");
+    expect(typeof argsConstr.fields[1]).toBe("bigint");
+    expect(typeof argsConstr.fields[3]).toBe("bigint");
 
-      expect(outer, label).toBeInstanceOf(Constr);
-      const continueConstr = outer as Constr<unknown>;
-      expect(continueConstr.index, label).toBe(1);
-      expect(continueConstr.fields, label).toHaveLength(1);
-      expect(continueConstr.fields[0], label).toBeInstanceOf(Constr);
-      const argsConstr = continueConstr.fields[0] as Constr<unknown>;
-      expect(argsConstr.index, label).toBe(tag);
-      expect(argsConstr.fields, label).toHaveLength(arity);
-      expect(
-        typeof argsConstr.fields[0],
-        `${label} has no wrapper constructor`,
-      ).toBe("bigint");
-      expect(Data.from(cbor, SDK.InputNoIdxStep02SpendRedeemer), label).toEqual(
-        redeemer,
-      );
+    // Field 2 is the whole of the #575 divergence. Under the retired scheme it
+    // was a *list* of inputs; it is now a `FieldOpeningV1` constructor whose own
+    // field 1 is a `FieldCarriageV1` constructor. Asserting `not an array` is
+    // what makes a re-stalened builder fail here instead of at a validator.
+    const openingConstr = argsConstr.fields[2];
+    expect(Array.isArray(openingConstr)).toBe(false);
+    expect(openingConstr).toBeInstanceOf(Constr);
+    const bodyOpening = openingConstr as Constr<unknown>;
+    expect(bodyOpening.index).toBe(0);
+    expect(bodyOpening.fields).toHaveLength(2);
+    expect(bodyOpening.fields[0]).toBe("a1b2c3");
+    const carriage = bodyOpening.fields[1] as Constr<unknown>;
+    expect(carriage).toBeInstanceOf(Constr);
+    expect(carriage.index).toBe(0);
+    expect(carriage.fields).toEqual(["80"]);
 
-      if (label === "Complete") {
-        completeFields = argsConstr.fields;
-        expect(cbor).toBe(`d87a9fd8799f00009fd8799f5820${h32b}07ffff00ffff`);
-      }
-    }
+    expect(cbor).toBe("d87a9fd8799f0000d8799f43a1b2c3d8799f4180ffff00ffff");
+    expect(Data.from(cbor, SDK.InputNoIdxStep02SpendRedeemer)).toEqual(
+      redeemer,
+    );
 
-    expect(completeFields).toBeDefined();
-    const fields = [...completeFields!];
+    const fields = [...argsConstr.fields];
     const invalid = [
+      [
+        "retired Complete arm: a reproduced input list where the opening goes",
+        new Constr(1, [
+          new Constr(0, [0n, 0n, [new Constr(0, [h32b, 7n])], 0n]),
+        ]),
+      ],
       [
         "obsolete nested CompleteArgs wrapper",
         new Constr(1, [new Constr(0, [new Constr(0, fields)])]),
       ],
       [
-        "Complete payload under adjacent CompletePublished tag",
+        "args under an adjacent tag the flat record does not have",
         new Constr(1, [new Constr(1, fields)]),
       ],
-      [
-        "Complete wrong arity",
-        new Constr(1, [new Constr(0, fields.slice(0, 3))]),
-      ],
-      [
-        "args adjacent out-of-range tag",
-        new Constr(1, [new Constr(4, fields)]),
-      ],
+      ["args wrong arity", new Constr(1, [new Constr(0, fields.slice(0, 3))])],
       ["Continue wrong arity", new Constr(1, [])],
     ] as const;
 
     for (const [label, malformed] of invalid) {
-      const cbor = Data.to(malformed as never);
+      const malformedCbor = Data.to(malformed as never);
       expect(
-        () => Data.from(cbor, SDK.InputNoIdxStep02SpendRedeemer),
+        () => Data.from(malformedCbor, SDK.InputNoIdxStep02SpendRedeemer),
         label,
       ).toThrow();
     }
+
+    // The §2.5 pairing is deliberately NOT a decode-time property, and that is
+    // worth pinning rather than assuming: `WitnessFieldOpening` is a legitimate
+    // arm of `FieldOpeningV1`, so a witness opening aimed at a body field
+    // decodes cleanly and is refused later — off-chain by
+    // `fieldOpeningV1ForField`, on-chain by `field_pairs_with`. A reader who
+    // expected the schema to catch it (this test's first draft did) would
+    // otherwise conclude the guard was somewhere it is not.
+    const witnessOpeningAtBodyField = new Constr(1, [
+      new Constr(0, [
+        0n,
+        0n,
+        new Constr(1, [
+          "a1b2c3",
+          new Constr(0, [h32, h32b, h32]),
+          new Constr(0, ["80"]),
+        ]),
+        0n,
+      ]),
+    ]);
+    expect(() =>
+      Data.from(
+        Data.to(witnessOpeningAtBodyField as never),
+        SDK.InputNoIdxStep02SpendRedeemer,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      SDK.fieldOpeningV1ForField({
+        fieldIndex: SDK.MIDGARD_FIELD_INDEX_V1.spendInputs,
+        nativeTxCompactCbor: "a1b2c3",
+        carriage: { Inline: { preimage: "80" } },
+        witnessSet: {
+          addr_tx_wits_hash: h32,
+          script_tx_wits_hash: h32b,
+          redeemer_tx_wits_hash: h32,
+        },
+      }),
+    ).toThrow(SDK.MidgardFieldOpeningError);
   });
 
   it("detects an input-no-idx violation from the producing outputs count", () => {
@@ -1105,10 +1048,10 @@ describe("fault-proof ABI", () => {
     expect(
       SDK.inputNoIdxStep04StateFromEvidenceV1({
         evidence,
-        producingTxOutputsHash: h32,
+        producingTxId: h32,
       }),
     ).toEqual({
-      producing_tx_outputs_hash: h32,
+      producing_tx_id: h32,
       bad_input_output_index: 7n,
     });
   });

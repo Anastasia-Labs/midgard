@@ -59,10 +59,11 @@ validator main(
           tx,
         )
 
-        // 2. The UTxO must be produced at next step's script hash with the
-        //    native spend-inputs hash of the bad transaction. Step-02 concludes
-        //    the proof by comparing it against the hash of an empty input list,
-        //    so no block roots need to be threaded forward.
+        // 2. The UTxO must be produced at next step's script hash carrying the
+        //    bad transaction's §2.5 anchor. Step-02 opens field 0 through the
+        //    door against that anchor and concludes on the door's authenticated
+        //    item count, so neither a field commitment nor any block root needs
+        //    to be threaded forward.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State { bad_tx_id }
         expect output_state_data == expected_output_state
@@ -88,7 +89,7 @@ fn zero_input_bad_tx() -> MidgardTransaction {
 
 /// Positive binding selector: a native-V1 transaction with no spend inputs,
 /// genuinely committed under the block's counted `transactions_root`, passes
-/// the first step and forwards its canonical spend-inputs hash.
+/// the first step and forwards its §2.5 anchor.
 test zero_input_step_01_binds_native_v1_block_fixture() {
   let block = fixture.native_block_fixture_v1(zero_input_bad_tx())
   let expected_output_state: Data = step_02.State { bad_tx_id: block.tx_id }

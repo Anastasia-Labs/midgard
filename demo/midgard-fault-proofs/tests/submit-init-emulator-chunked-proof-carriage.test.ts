@@ -39,10 +39,7 @@
  */
 
 import { outRefLabel } from "@al-ft/midgard-core";
-import {
-  EMPTY_SPEND_INPUTS_HASH,
-  MAXIMUM_CHUNK_PROOF_STEP_COUNT,
-} from "@al-ft/midgard-sdk";
+import { MAXIMUM_CHUNK_PROOF_STEP_COUNT } from "@al-ft/midgard-sdk";
 import {
   Emulator,
   generateEmulatorAccount,
@@ -433,7 +430,8 @@ describe("fault-proof published-chunk proof carriage", () => {
     );
     proofFit["step-01"] = step01Capture.measurement;
     const step01Result = step01Capture.result;
-    expect(step01Result.badTxSpendInputsHash).toBe(EMPTY_SPEND_INPUTS_HASH);
+    // #604: the thread carries the §2.5 anchor, not the field commitment.
+    expect(step01Result.badTxId).toBe(fixture.badTx.nativeTxId);
     expect(step01Result.proofCarriage).toBe("published-chunks");
     expect(step01Result.publishedChunkOutRefs.length).toBe(
       EXPECTED_CHUNK_COUNT,
@@ -464,6 +462,9 @@ describe("fault-proof published-chunk proof carriage", () => {
         network,
         signer: proverSigner,
         threadOutRef: outRefLabel(secondStepUtxo),
+        nativeTxCompactCbor: parseSubmitStep01TxInclusion(
+          fixture.badTx.inclusion,
+        ).nativeTxCompactCbor,
         awaitConfirmation: true,
       }),
     );
@@ -981,6 +982,8 @@ describe("fault-proof published-chunk proof carriage", () => {
           fixture.tx1SpendInputCbors,
           "--tx1-inputs",
         ),
+        nativeTxCompactCbor: parseSubmitStep01TxInclusion(fixture.tx1.inclusion)
+          .nativeTxCompactCbor,
         doubleSpentInputIndex: 1n,
         awaitConfirmation: true,
       }),
@@ -1005,6 +1008,8 @@ describe("fault-proof published-chunk proof carriage", () => {
           fixture.tx2SpendInputCbors,
           "--tx2-inputs",
         ),
+        nativeTxCompactCbor: parseSubmitStep01TxInclusion(fixture.tx2.inclusion)
+          .nativeTxCompactCbor,
         doubleSpentInputIndex: 1n,
         awaitConfirmation: true,
       }),
@@ -1224,6 +1229,7 @@ describe("fault-proof published-chunk proof carriage", () => {
         signer: proverSigner,
         threadOutRef: outRefLabel(secondStepUtxo),
         inputsPreimage: fixture.inputsPreimage,
+        nativeTxCompactCbor: fixture.inclusion.nativeTxCompactCbor,
         badInputIndex: fixture.badInputIndex,
         awaitConfirmation: true,
       }),

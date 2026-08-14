@@ -9,7 +9,6 @@
 
 import { outRefLabel } from "@al-ft/midgard-core";
 import {
-  EMPTY_SPEND_INPUTS_HASH,
   FraudProofTokenDatum,
   InvalidRangeStep02Datum,
   ZeroInputStep02Datum,
@@ -593,7 +592,8 @@ describe("fault-proof emulator integration", () => {
     expect(step01Result.txHash).toHaveLength(64);
     expect(step01Result.fraudulentHeaderHash).toBe(headerHash);
     expect(step01Result.nativeTxId).toBe(zeroInputInclusion.badTx.nativeTxId);
-    expect(step01Result.badTxSpendInputsHash).toBe(EMPTY_SPEND_INPUTS_HASH);
+    // #604: the thread carries the §2.5 anchor, not the field commitment.
+    expect(step01Result.badTxId).toBe(zeroInputInclusion.badTx.nativeTxId);
     await expect(
       proverLucid.utxosAtWithUnit(
         initResult.firstStepAddress,
@@ -608,8 +608,41 @@ describe("fault-proof emulator integration", () => {
     );
     expect(Data.from(secondStepUtxo.datum!, ZeroInputStep02Datum)).toEqual({
       fraud_prover: proverPaymentKeyHash,
-      data: { bad_tx_spend_inputs_hash: EMPTY_SPEND_INPUTS_HASH },
+      data: { bad_tx_id: zeroInputInclusion.badTx.nativeTxId },
     });
+
+    // #604 mutation negative: the step-02 opening is bound to the transaction
+    // the thread anchored, and nothing else. A different transaction's compact
+    // structure — a genuinely committed one, from a valid block — re-derives to
+    // a different §2.5 id, so the door would refuse it and the builder refuses
+    // it first.
+    const otherTxInclusion = parseSubmitStep01TxInclusion(
+      (await buildTransactionInclusionFixture()).tx1.inclusion,
+    );
+    // The mutation landed: a different transaction, hence a different anchor.
+    expect(otherTxInclusion.nativeTxId).not.toBe(
+      zeroInputInclusion.badTx.nativeTxId,
+    );
+    await expect(
+      submitZeroInputStep02({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(secondStepUtxo),
+        nativeTxCompactCbor: otherTxInclusion.nativeTxCompactCbor,
+        awaitConfirmation: true,
+      }),
+    ).rejects.toThrow(/not the anchored transaction id/u);
+    // The refusal cost the thread nothing: it is still at step 02, unspent, and
+    // no fraud-proof token was minted.
+    await expect(
+      proverLucid.utxosAtWithUnit(
+        step01Result.secondStepAddress,
+        initResult.computationThreadUnit,
+      ),
+    ).resolves.toHaveLength(1);
 
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
       submitZeroInputStep02({
@@ -619,6 +652,9 @@ describe("fault-proof emulator integration", () => {
         network,
         signer: proverSigner,
         threadOutRef: outRefLabel(secondStepUtxo),
+        nativeTxCompactCbor: parseSubmitStep01TxInclusion(
+          zeroInputInclusion.badTx.inclusion,
+        ).nativeTxCompactCbor,
         awaitConfirmation: true,
       }),
     );
@@ -627,7 +663,9 @@ describe("fault-proof emulator integration", () => {
 
     expect(step02Result.txHash).toHaveLength(64);
     expect(step02Result.fraudulentHeaderHash).toBe(headerHash);
-    expect(step02Result.badTxSpendInputsHash).toBe(EMPTY_SPEND_INPUTS_HASH);
+    expect(step02Result.badTxId).toBe(zeroInputInclusion.badTx.nativeTxId);
+    // The door's authenticated count, which is what the validator asserts on.
+    expect(step02Result.spendInputsItemCount).toBe(0);
     expect(step02Result.fraudProofAssetName).toBe(
       initResult.computationThreadAssetName,
     );
@@ -989,6 +1027,41 @@ describe("fault-proof emulator integration", () => {
       step01Result.secondStepAddress,
       initResult.computationThreadUnit,
     );
+    // #604 mutation negative: the §5.1 preimage the redeemer carries must open
+    // the disputed transaction's field 0 and no other bytes. An input list with
+    // one item's `output_index` changed commits to a different §4 hash, which is
+    // exactly what the door re-derives, so it is refused before submission.
+    const tamperedInputsPreimage = fixture.inputsPreimage.map((entry, index) =>
+      index === Number(fixture.badInputIndex)
+        ? { ...entry, index: BigInt(entry.index) + 1n }
+        : entry,
+    );
+    // The mutation landed: the list genuinely differs.
+    expect(tamperedInputsPreimage).not.toStrictEqual([
+      ...fixture.inputsPreimage,
+    ]);
+    await expect(
+      neSubmitStep02({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(secondStepUtxo),
+        inputsPreimage: tamperedInputsPreimage,
+        nativeTxCompactCbor: fixture.inclusion.nativeTxCompactCbor,
+        badInputIndex: fixture.badInputIndex,
+        awaitConfirmation: true,
+      }),
+    ).rejects.toThrow(/the disputed transaction commits at §2\.5 field 0/u);
+    // The refusal cost the thread nothing: it is still at step 02, unspent.
+    await expect(
+      proverLucid.utxosAtWithUnit(
+        step01Result.secondStepAddress,
+        initResult.computationThreadUnit,
+      ),
+    ).resolves.toHaveLength(1);
+
     const step02ResultCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
@@ -1000,6 +1073,7 @@ describe("fault-proof emulator integration", () => {
           signer: proverSigner,
           threadOutRef: outRefLabel(secondStepUtxo),
           inputsPreimage: fixture.inputsPreimage,
+          nativeTxCompactCbor: fixture.inclusion.nativeTxCompactCbor,
           badInputIndex: fixture.badInputIndex,
           awaitConfirmation: true,
         }),

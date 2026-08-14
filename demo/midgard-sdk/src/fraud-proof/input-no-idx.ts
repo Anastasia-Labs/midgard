@@ -1,9 +1,4 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
- *
  * `input-no-idx` (`nonExistentInputNoIndex`) fault-proof family (Goal task
  * `Q13`).
  *
@@ -24,36 +19,39 @@
  * The proof is a four-step computation thread:
  *
  * 1. bind the bad transaction to the block's counted `transactions_root` and
- *    forward its canonical `spend_inputs_hash`;
- * 2. open that commitment with the complete spend-inputs preimage and forward
- *    the challenged `(tx_id, output_index)`;
- * 3. bind the producing transaction to the *same* block and forward its
- *    canonical `outputs_hash` alongside the challenged index; and
- * 4. open the outputs commitment with the complete outputs preimage and
- *    require `output_index >= |outputs|`.
+ *    forward its §2.5 anchor — the transaction **id**;
+ * 2. open field 0 through the §8.8 door with the prover's chosen carriage and
+ *    forward the challenged `(tx_id, output_index)`;
+ * 3. bind the producing transaction to the *same* block and forward **its**
+ *    anchor alongside the challenged index; and
+ * 4. open that transaction's field 2 through the door and require
+ *    `output_index >= |outputs|`, on the door's authenticated item count.
  *
  * This module is the strict TypeScript twin of
  * `onchain/aiken/lib/midgard/fraud-proofs/input-no-idx/step-0{1..4}.ak` and of
  * the `MidgardTxOutput` shape in
- * `onchain/aiken/lib/midgard/fraud-proofs/native-tx/types.ak`.
+ * `onchain/aiken/lib/midgard/fraud-proofs/native-tx/types.ak`. Field order in
+ * every `Data.Object` mirrors the aiken record declarations 1:1 — the
+ * PlutusData encoding is positional, so re-ordering here would silently produce
+ * redeemers the validators reject.
+ *
+ * **Re-derived onto the flat field commitments by #604** (the #575 off-chain
+ * builder remediation). What moved is recorded once in
+ * `docs/fault-proofs/offchain-builder-staleness-575.md`: thread state carries
+ * the §2.5 anchor rather than a per-field collection commitment, and a step
+ * redeemer carries a `FieldOpeningV1` rather than a reproduced
+ * `..._preimage: List<…>`.
  */
 import {
-  buildMidgardBoundedCollectionItemProofV1,
-  buildMidgardBoundedCollectionV1,
   encodeCbor,
   encodeMidgardSpendInputItemV1,
-  type MidgardBoundedCollectionItemProofV1,
   midgardFieldCommitmentFromItemsV1,
-  verifyMidgardBoundedCollectionItemProofV1,
 } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema, PubKeyHashSchema, ScriptHashSchema } from "@/common.js";
-import {
-  type BoundedCollectionItemProofV1,
-  BoundedCollectionItemProofV1Schema,
-} from "@/ledger-state.js";
+import { H32Schema } from "@/common.js";
 
+import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -61,7 +59,6 @@ import {
   faultProofStepRedeemerSchema,
   MidgardTxInput,
   type MidgardTxInput as MidgardTxInputData,
-  MidgardTxInputListSchema,
   MidgardTxInputSchema,
   NativeTxInclusionArgs,
   NativeTxInclusionArgsSchema,
@@ -240,21 +237,21 @@ export type InputNoIdxStep01SpendRedeemer = Data.Static<
 export const InputNoIdxStep01SpendRedeemer =
   InputNoIdxStep01SpendRedeemerSchema as unknown as InputNoIdxStep01SpendRedeemer;
 
-/** Mirrors `midgard/fraud_proofs/input_no_idx/step_02.State`. */
-export const InputNoIdxStep02DirectStateSchema = Data.Object({
-  verified_tx_inputs_hash: H32Schema,
+/**
+ * Mirrors `midgard/fraud_proofs/input_no_idx/step_02.State` — **one state, one
+ * route**.
+ *
+ * This step used to carry a two-constructor state (`Direct`/`Folding`) whose
+ * folding arm streamed the spend-input collection one counted opening at a
+ * time, and the state it carried was the field's *collection commitment*. Both
+ * are gone. Under §4's flat scheme the thread carries the §2.5 anchor — the
+ * transaction id — and the door hashes the preimage once and reads item `n` by
+ * arithmetic, so there is nothing left to stream and nothing left to re-hash.
+ * See `docs/fault-proofs/offchain-builder-staleness-575.md` §2, divergence 1.
+ */
+export const InputNoIdxStep02StateSchema = Data.Object({
+  verified_tx_id: H32Schema,
 });
-export const InputNoIdxStep02FoldingStateSchema = Data.Object({
-  verified_tx_inputs_hash: H32Schema,
-  item_count: Data.Integer(),
-  next_item_index: Data.Integer(),
-  bad_inputs_index: Data.Integer(),
-  selected_input: Data.Nullable(MidgardTxInputSchema),
-});
-export const InputNoIdxStep02StateSchema = Data.Enum([
-  Data.Object({ Direct: InputNoIdxStep02DirectStateSchema }),
-  Data.Object({ Folding: InputNoIdxStep02FoldingStateSchema }),
-]);
 export type InputNoIdxStep02State = Data.Static<
   typeof InputNoIdxStep02StateSchema
 >;
@@ -270,55 +267,29 @@ export type InputNoIdxStep02Datum = Data.Static<
 export const InputNoIdxStep02Datum =
   InputNoIdxStep02DatumSchema as unknown as InputNoIdxStep02Datum;
 
-/** Typed inline datum carried by an Ada-only tier-2 publication output. */
-export const PublishedSpendInputsV1Schema = Data.Object({
-  version: Data.Integer(),
-  computation_thread_policy_id: ScriptHashSchema,
-  computation_thread_asset_name: Data.Bytes({ maxLength: 32 }),
-  fraud_prover: PubKeyHashSchema,
-  verified_tx_inputs_hash: H32Schema,
-  item_count: Data.Integer(),
-  inputs: MidgardTxInputListSchema,
-});
-export type PublishedSpendInputsV1 = Data.Static<
-  typeof PublishedSpendInputsV1Schema
->;
-export const PublishedSpendInputsV1 =
-  PublishedSpendInputsV1Schema as unknown as PublishedSpendInputsV1;
-
-export const InputNoIdxStep02CompleteArgsSchema = Data.Object({
+/**
+ * Mirrors `midgard/fraud_proofs/input_no_idx/step_02.Args` — a flat record, not
+ * the retired four-arm enum.
+ *
+ * `Complete` reproduced the whole spend-input list in the redeemer,
+ * `CompletePublished` referenced a bespoke `PublishedSpendInputsV1` datum, and
+ * `FoldStart`/`FoldNext` streamed the collection with per-item counted proofs.
+ * All four existed because the collection had to be reproduced inside the step
+ * to re-hash it. The §8.8 door replaced every one of them with a single
+ * `FieldOpeningV1` naming one of §8's three carriage tiers, so this step now has
+ * exactly one route and the prover's only remaining choice is *how the preimage
+ * travels* — which is what `spend_inputs_opening` carries.
+ *
+ * See `docs/fault-proofs/offchain-builder-staleness-575.md` §2, divergence 2: a
+ * builder still emitting a `..._preimage` argument produces a constructor arity
+ * the validator cannot decode.
+ */
+export const InputNoIdxStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  inputs_preimage: MidgardTxInputListSchema,
+  spend_inputs_opening: FieldOpeningV1Schema,
   bad_inputs_index: Data.Integer(),
 });
-export const InputNoIdxStep02CompletePublishedArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  publication_reference_input_index: Data.Integer(),
-  bad_inputs_index: Data.Integer(),
-});
-export const InputNoIdxStep02FoldStartArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  bad_inputs_index: Data.Integer(),
-  input_cbor: Data.Bytes(),
-  collection_proof: BoundedCollectionItemProofV1Schema,
-});
-export const InputNoIdxStep02FoldNextArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  input_cbor: Data.Bytes(),
-  collection_proof: BoundedCollectionItemProofV1Schema,
-});
-export const InputNoIdxStep02ArgsSchema = Data.Enum([
-  Data.Object({ Complete: InputNoIdxStep02CompleteArgsSchema }),
-  Data.Object({
-    CompletePublished: InputNoIdxStep02CompletePublishedArgsSchema,
-  }),
-  Data.Object({ FoldStart: InputNoIdxStep02FoldStartArgsSchema }),
-  Data.Object({ FoldNext: InputNoIdxStep02FoldNextArgsSchema }),
-]);
 export type InputNoIdxStep02Args = Data.Static<
   typeof InputNoIdxStep02ArgsSchema
 >;
@@ -364,9 +335,16 @@ export type InputNoIdxStep03SpendRedeemer = Data.Static<
 export const InputNoIdxStep03SpendRedeemer =
   InputNoIdxStep03SpendRedeemerSchema as unknown as InputNoIdxStep03SpendRedeemer;
 
-/** Mirrors `midgard/fraud_proofs/input_no_idx/step_04.State`. */
+/**
+ * Mirrors `midgard/fraud_proofs/input_no_idx/step_04.State`.
+ *
+ * `producing_tx_outputs_hash` became `producing_tx_id` with the rest of
+ * divergence 1: step-04 opens the *producing* transaction's field 2 through the
+ * door, so what it needs forwarded is that transaction's §2.5 anchor, not a
+ * commitment it would have to re-derive a reproduced output list against.
+ */
 export const InputNoIdxStep04StateSchema = Data.Object({
-  producing_tx_outputs_hash: H32Schema,
+  producing_tx_id: H32Schema,
   bad_input_output_index: Data.Integer(),
 });
 export type InputNoIdxStep04State = Data.Static<
@@ -384,11 +362,19 @@ export type InputNoIdxStep04Datum = Data.Static<
 export const InputNoIdxStep04Datum =
   InputNoIdxStep04DatumSchema as unknown as InputNoIdxStep04Datum;
 
+/**
+ * Mirrors `midgard/fraud_proofs/input_no_idx/step_04.Args`.
+ *
+ * `outputs_preimage` became `outputs_opening`: the producing transaction's
+ * field-2 preimage travels under one of §8's carriage tiers instead of being
+ * reproduced as a `List<MidgardTxOutput>` in the redeemer. Its authenticated
+ * item count is the output count the out-of-range verdict rests on (§5.2).
+ */
 export const InputNoIdxStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
-  outputs_preimage: MidgardTxOutputListSchema,
+  outputs_opening: FieldOpeningV1Schema,
 });
 export type InputNoIdxStep04Args = Data.Static<
   typeof InputNoIdxStep04ArgsSchema
@@ -416,13 +402,19 @@ export {
 
 // ## Step-state builders (twins of the on-chain forwarding rules)
 
-/** Exactly the state `step-01` writes for `step-02`. */
+/**
+ * Exactly the state `step-01` writes for `step-02`: the §2.5 anchor of the
+ * transaction the thread is disputing.
+ *
+ * The argument is the transaction **id**, not its spend-inputs hash. Step-01
+ * reads it off the compact structure the block's `transactions_root` committed,
+ * which is the only provenance `BodyAnchor` accepts — anything a later redeemer
+ * supplies is the prover's own and anchors nothing.
+ */
 export const inputNoIdxStep02StateFromBadTxV1 = (
-  badTxSpendInputsHash: string,
+  badTxId: string,
 ): InputNoIdxStep02State => ({
-  Direct: {
-    verified_tx_inputs_hash: badTxSpendInputsHash.toLowerCase(),
-  },
+  verified_tx_id: badTxId.toLowerCase(),
 });
 
 /** Exactly the state `step-02` writes for `step-03`. */
@@ -433,15 +425,18 @@ export const inputNoIdxStep03StateFromEvidenceV1 = (
   bad_input_output_index: evidence.badInput.output_index,
 });
 
-/** Exactly the state `step-03` writes for `step-04`. */
+/**
+ * Exactly the state `step-03` writes for `step-04`: the §2.5 anchor of the
+ * *producing* transaction, alongside the challenged output index.
+ */
 export const inputNoIdxStep04StateFromEvidenceV1 = ({
   evidence,
-  producingTxOutputsHash,
+  producingTxId,
 }: {
   readonly evidence: InputNoIdxEvidenceV1;
-  readonly producingTxOutputsHash: string;
+  readonly producingTxId: string;
 }): InputNoIdxStep04State => ({
-  producing_tx_outputs_hash: producingTxOutputsHash.toLowerCase(),
+  producing_tx_id: producingTxId.toLowerCase(),
   bad_input_output_index: evidence.badInput.output_index,
 });
 
@@ -649,183 +644,21 @@ export const inputNoIdxSpendInputsCommitmentV1 = (
     inputs.map(encodeMidgardTxInputCanonicalV1),
   ).toString("hex");
 
-// ## The step-02 fold family
+// ## The retired counted fold family
 //
-// ⚠️ **STILL COUNTED, and deliberately so — the last counted per-item surface in
-// this module.** Everything above now derives §4's flat field commitment, but the
-// three declarations below (`InputNoIdxSpendInputFoldOpeningV1`,
-// `buildInputNoIdxSpendInputFoldOpeningsV1`,
-// `verifyInputNoIdxSpendInputFoldOpeningV1`) still route through
-// `buildMidgardBoundedCollectionV1` — the counted bounded-collection Merkle root
-// and its per-item openings.
+// `InputNoIdxSpendInputFoldOpeningV1`, `buildInputNoIdxSpendInputFoldOpeningsV1`
+// and `verifyInputNoIdxSpendInputFoldOpeningV1` lived here and are **deleted**,
+// not re-pointed. They published per-item openings against the counted
+// bounded-collection Merkle root, and §4 gives a field one flat hash with no
+// per-item openings at all — so the flat rebind did not move them to a new
+// commitment, it deleted the concept they published. Their replacement is the
+// §8.8 door (`FieldOpeningV1` + one of §8's three carriage tiers), which
+// step-02's `Args` now names directly.
 //
-// **Why it was not swapped here.** §4 gives a field one flat hash and no per-item
-// openings at all, so a flat rebind does not move these functions to a new
-// commitment: it deletes the concept they publish. The replacement is §8's
-// `authenticated_field_view` door plus §10's resumable walk — the same
-// re-pointing that #592 owns for `validation-machine-v1.ak`'s per-item evidence,
-// and the same class #587 retired for the tx-order receipt chain. Doing it here
-// would move the `fraud_proofs/input_no_idx/step_02` redeemer shape, i.e.
-// compiled on-chain code in a named validator, which this ticket's constraints
-// forbid.
-//
-// **What that means for callers today.** These openings are internally consistent
-// (counted root checked against counted opening), and
-// `demo/midgard-fault-proofs/src/submit-input-no-idx-step-02.ts` still builds a
-// redeemer from them — so they are live, not dead. But a counted root is not what
-// `body.spend_inputs_hash` carries any more, so chain will not accept the result:
-// exactly the module-header staleness, whose three concrete divergences are
-// written up once in `docs/fault-proofs/offchain-builder-staleness-575.md`.
-// Owners: **#579** for the family rebind and the blueprint regeneration it lands
-// against, **#592** for the per-item evidence door these openings have to move
-// onto. Do not "fix" the drift by swapping the commitment under the openings —
-// that yields a shape neither language can check.
-
-/** One ordered field-0 opening used by the step-02 fold path. */
-export type InputNoIdxSpendInputFoldOpeningV1 = {
-  readonly inputCbor: string;
-  readonly collectionProof: BoundedCollectionItemProofV1;
-};
-
-const collectionProofFromCoreV1 = (
-  proof: MidgardBoundedCollectionItemProofV1,
-): BoundedCollectionItemProofV1 => ({
-  version: BigInt(proof.version),
-  field_index: BigInt(proof.fieldIndex),
-  item_count: BigInt(proof.itemCount),
-  item_index: BigInt(proof.itemIndex),
-  item_length: BigInt(proof.itemLength),
-  item_commitment: proof.itemCommitment.toString("hex"),
-  frontier: proof.frontier.peaks.map((peak) => ({
-    height: BigInt(peak.height),
-    hash: peak.hash.toString("hex"),
-  })),
-  siblings: proof.siblings.map((sibling) => sibling.toString("hex")),
-});
-
-const proofIntegerV1 = (value: bigint, label: string): number => {
-  const exact = Number(value);
-  if (!Number.isSafeInteger(exact) || exact < 0 || BigInt(exact) !== value) {
-    throw new Error(`${label} must be a non-negative safe integer`);
-  }
-  return exact;
-};
-
-const proofHashV1 = (value: string, label: string): Buffer => {
-  if (!/^[0-9a-f]{64}$/u.test(value)) {
-    throw new Error(`${label} must be a lowercase 32-byte hexadecimal hash`);
-  }
-  return Buffer.from(value, "hex");
-};
-
-const collectionProofToCoreV1 = (
-  proof: BoundedCollectionItemProofV1,
-): MidgardBoundedCollectionItemProofV1 => {
-  const version = proofIntegerV1(proof.version, "collection proof version");
-  if (version !== 1) {
-    throw new Error(`unknown bounded-collection proof version ${version}`);
-  }
-  const itemCount = proofIntegerV1(
-    proof.item_count,
-    "collection proof item count",
-  );
-  return {
-    version,
-    fieldIndex: proofIntegerV1(
-      proof.field_index,
-      "collection proof field index",
-    ),
-    itemCount,
-    itemIndex: proofIntegerV1(proof.item_index, "collection proof item index"),
-    itemLength: proofIntegerV1(
-      proof.item_length,
-      "collection proof item length",
-    ),
-    itemCommitment: proofHashV1(
-      proof.item_commitment,
-      "collection proof item commitment",
-    ),
-    frontier: {
-      count: itemCount,
-      peaks: proof.frontier.map((peak) => ({
-        height: proofIntegerV1(peak.height, "collection proof peak height"),
-        hash: proofHashV1(peak.hash, "collection proof peak hash"),
-      })),
-    },
-    siblings: proof.siblings.map((sibling) =>
-      proofHashV1(sibling, "collection proof sibling"),
-    ),
-  };
-};
-
-/**
- * Derives every consecutive field-0 opening from one complete canonical input
- * list. Callers expose the complete list, never fold indices or frontiers.
- */
-export const buildInputNoIdxSpendInputFoldOpeningsV1 = (
-  inputs: readonly MidgardTxInputData[],
-): readonly InputNoIdxSpendInputFoldOpeningV1[] => {
-  const inputCbors = inputs.map(encodeMidgardTxInputCanonicalV1);
-  const collection = buildMidgardBoundedCollectionV1({
-    fieldIndex: INPUT_NO_IDX_SPEND_INPUTS_FIELD_INDEX_V1,
-    items: inputCbors,
-  });
-  return inputCbors.map((inputCbor, itemIndex) => ({
-    inputCbor: inputCbor.toString("hex"),
-    collectionProof: collectionProofFromCoreV1(
-      buildMidgardBoundedCollectionItemProofV1(collection, itemIndex),
-    ),
-  }));
-};
-
-/**
- * Verifies an opening against a complete input list, including canonical item
- * bytes, ordered index, item commitment, and the collection commitment.
- */
-export const verifyInputNoIdxSpendInputFoldOpeningV1 = ({
-  inputs,
-  opening,
-}: {
-  readonly inputs: readonly MidgardTxInputData[];
-  readonly opening: InputNoIdxSpendInputFoldOpeningV1;
-}): boolean => {
-  try {
-    const proof = collectionProofToCoreV1(opening.collectionProof);
-    if (
-      proof.fieldIndex !== INPUT_NO_IDX_SPEND_INPUTS_FIELD_INDEX_V1 ||
-      proof.itemCount !== inputs.length ||
-      proof.itemIndex >= inputs.length
-    ) {
-      return false;
-    }
-    const canonicalItem = encodeMidgardTxInputCanonicalV1(
-      inputs[proof.itemIndex]!,
-    );
-    if (
-      opening.inputCbor !== canonicalItem.toString("hex") ||
-      proof.itemLength !== canonicalItem.length
-    ) {
-      return false;
-    }
-    const collection = buildMidgardBoundedCollectionV1({
-      fieldIndex: INPUT_NO_IDX_SPEND_INPUTS_FIELD_INDEX_V1,
-      items: inputs.map(encodeMidgardTxInputCanonicalV1),
-    });
-    if (
-      !proof.itemCommitment.equals(
-        collection.items[proof.itemIndex]!.commitment,
-      )
-    ) {
-      return false;
-    }
-    return verifyMidgardBoundedCollectionItemProofV1({
-      expectedCommitment: collection.commitment,
-      proof,
-    });
-  } catch {
-    return false;
-  }
-};
+// The comment that stood here recorded that the swap could not be made in that
+// lane because it would move the `fraud_proofs/input_no_idx/step_02` redeemer
+// shape. #575 has since moved exactly that shape on-chain, and #604 is the
+// off-chain half following it.
 
 /**
  * The `outputs_hash` a native transaction body commits for `outputs`: §4's flat

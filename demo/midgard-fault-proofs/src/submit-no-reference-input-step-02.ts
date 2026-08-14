@@ -1,31 +1,38 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
- *
  * `no-reference-input` step-02 submitter (Goal task `Q18`, §9.1 output 8).
  *
  * Structural mirror of the `non-existent-input` chain's step 02
- * (`ne-submit-step-02.ts`): opens the inputs commitment carried by step 01 and
- * forwards the single challenged input to step 03. Only the field differs — the
- * bad transaction's native **reference** inputs, committed under
- * `bounded_collection_v1.from_items(1, ...)`, rather than its spend inputs
- * (field 0).
+ * (`ne-submit-step-02.ts`): opens a field of the transaction carried by step 01
+ * and forwards the single challenged input to step 03. Only the field differs —
+ * §2.5 field **1**, the bad transaction's native reference inputs, rather than
+ * field 0's spend inputs.
  *
- * Nothing in the prepared JSON is trusted for anything the chain re-derives:
- * the complete preimage is re-committed with the canonical
- * `encode_midgard_tx_input` twin at the reference-inputs field index and must
- * equal the `bad_tx_reference_inputs_hash` read back from the **on-chain**
- * step-01 output datum before a transaction is built; the block roots forwarded
- * to step 03 are likewise copied from that on-chain datum, never from the file.
+ * **Re-derived onto the §8.8 door by #604.** The redeemer used to reproduce the
+ * whole `reference_inputs_preimage: List<MidgardTxInput>`; it now carries a
+ * `FieldOpeningV1`, and the validator reads item `bad_reference_input_index`
+ * off the authenticated view.
+ *
+ * **What distinguishes field 1 from field 0 is position, not encoding.** The
+ * header this replaces claimed the two fields' commitments differed because the
+ * items were committed "under `bounded_collection_v1.from_items(1, ...)`"; §4
+ * removed field-index domain separation, so identical items in fields 0 and 1
+ * commit to identical hashes and only the slot the door reads tells them apart.
+ * {@link planFaultProofFieldOpeningV1} names the slot explicitly and checks the
+ * preimage against the commitment the compact body carries *there*, which is the
+ * off-chain twin of `field_commitment_at`.
+ *
+ * Nothing in the prepared JSON is trusted for anything the chain re-derives: the
+ * anchor and the block roots forwarded to step 03 are read from the **on-chain**
+ * step-01 output datum, never from the file.
  */
 import {
+  encodeMidgardTxInputCanonicalV1,
+  type FieldOpeningV1,
+  MIDGARD_FIELD_INDEX_V1,
   type MidgardTxInput,
   NoReferenceInputStep02Datum,
   NoReferenceInputStep02SpendRedeemer,
   NoReferenceInputStep03Datum,
-  referenceInputNoIdxReferenceInputsCommitmentV1,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -38,6 +45,11 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import {
+  faultProofFieldOpeningV1,
+  parseNativeTxCompactCborV1,
+  planFaultProofFieldOpeningV1,
+} from "./field-opening-v1.js";
 import { type NoReferenceInputPreimageEntry } from "./prepare-no-reference-input.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -73,6 +85,11 @@ export type SubmitNoReferenceInputStep02CliConfig = SubmitProviderConfig & {
   readonly walletPrivateKeyEnv?: string;
   readonly threadOutRef: string;
   readonly referenceInputsPreimagePath: string;
+  /**
+   * JSON `{ "nativeTxCompactCbor": "<hex>" }` — the disputed transaction's
+   * compact structure. New in #604: the door authenticates field 1 against it.
+   */
+  readonly nativeTxCompactPath: string;
   readonly badReferenceInputIndex: string;
   readonly awaitConfirmation?: boolean;
 };
@@ -89,7 +106,10 @@ export type SubmitNoReferenceInputStep02Result = {
   readonly secondStepAddress: string;
   readonly thirdStepAddress: string;
   readonly missingReferenceInput: MidgardTxInput;
+  /** §4's flat commitment for field 1 — re-derived here and by the door. */
   readonly verifiedTxReferenceInputsHash: string;
+  /** The door's authenticated item count for field 1. */
+  readonly referenceInputsItemCount: number;
   readonly badReferenceInputIndex: number;
   readonly inputIndex: number;
   readonly outputIndex: number;
@@ -132,6 +152,7 @@ export const submitNoReferenceInputStep02 = async ({
   signer,
   threadOutRef,
   referenceInputsPreimage,
+  nativeTxCompactCbor,
   badReferenceInputIndex,
   awaitConfirmation = true,
 }: {
@@ -142,6 +163,8 @@ export const submitNoReferenceInputStep02 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceInputsPreimage: readonly NoReferenceInputPreimageEntry[];
+  /** The disputed transaction's §2.5 compact structure, as committed. */
+  readonly nativeTxCompactCbor: string;
   readonly badReferenceInputIndex: bigint;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNoReferenceInputStep02Result> => {
@@ -180,20 +203,25 @@ export const submitNoReferenceInputStep02 = async ({
     );
   }
   const midgardReferenceInputs = referenceInputsPreimage.map(toMidgardTxInput);
-  // Re-run the on-chain rule of step 02 before spending: the supplied preimage
-  // must be the exact list the bad transaction committed. Reference inputs and
-  // spend inputs share the per-item encoder but not the field index, so a
-  // spend-inputs preimage can never open this commitment.
-  const verifiedTxReferenceInputsHash =
-    referenceInputNoIdxReferenceInputsCommitmentV1(midgardReferenceInputs);
-  if (
-    verifiedTxReferenceInputsHash !==
-    inputDatum.data.bad_tx_reference_inputs_hash
-  ) {
-    throw new Error(
-      `--reference-inputs-preimage commits to reference_inputs_hash ${verifiedTxReferenceInputsHash}, which does not match the on-chain step-02 datum's bad_tx_reference_inputs_hash ${inputDatum.data.bad_tx_reference_inputs_hash}.`,
-    );
-  }
+  // Re-run the on-chain rule of step 02 before spending. The supplied list must
+  // be the exact §5.1 preimage the bad transaction committed **at field 1**:
+  // reference inputs and spend inputs share the per-item encoder *and*, since §4
+  // removed domain separation, the resulting commitment, so it is the field
+  // index named here — never the encoding — that stops a spend-inputs preimage
+  // from opening this slot.
+  const planned = planFaultProofFieldOpeningV1({
+    fieldIndex: MIDGARD_FIELD_INDEX_V1.referenceInputs,
+    anchorTxId: inputDatum.data.bad_tx_id,
+    nativeTxCompactCbor,
+    itemCbors: midgardReferenceInputs.map(encodeMidgardTxInputCanonicalV1),
+    owner: signer.paymentKeyHash,
+    label: "No-reference-input step 02 reference-inputs",
+  });
+  const verifiedTxReferenceInputsHash = planned.commitment;
+  const referenceInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+    planned,
+    label: "No-reference-input step 02 reference-inputs",
+  });
   const missingReferenceInput =
     midgardReferenceInputs[Number(badReferenceInputIndex)]!;
 
@@ -237,7 +265,7 @@ export const submitNoReferenceInputStep02 = async ({
           {
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
-            reference_inputs_preimage: midgardReferenceInputs,
+            reference_inputs_opening: referenceInputsOpening,
             bad_reference_input_index: badReferenceInputIndex,
           },
         ],
@@ -286,6 +314,7 @@ export const submitNoReferenceInputStep02 = async ({
     thirdStepAddress: steps[2].spendingScriptAddress,
     missingReferenceInput,
     verifiedTxReferenceInputsHash,
+    referenceInputsItemCount: planned.itemCount,
     badReferenceInputIndex: Number(badReferenceInputIndex),
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
@@ -296,13 +325,19 @@ export const submitNoReferenceInputStep02 = async ({
 export const submitNoReferenceInputStep02FromFiles = async (
   config: SubmitNoReferenceInputStep02CliConfig,
 ): Promise<SubmitNoReferenceInputStep02Result> => {
-  const [blueprint, deploymentInfo, referenceInputsJson, lucid] =
-    await Promise.all([
-      readJsonFile(config.blueprintPath),
-      readJsonFile(config.deploymentInfoPath),
-      readJsonFile(config.referenceInputsPreimagePath),
-      makeLucidForSubmit(config),
-    ]);
+  const [
+    blueprint,
+    deploymentInfo,
+    referenceInputsJson,
+    nativeTxCompactJson,
+    lucid,
+  ] = await Promise.all([
+    readJsonFile(config.blueprintPath),
+    readJsonFile(config.deploymentInfoPath),
+    readJsonFile(config.referenceInputsPreimagePath),
+    readJsonFile(config.nativeTxCompactPath),
+    makeLucidForSubmit(config),
+  ]);
   const signer = resolveProverSigner(config);
   return await submitNoReferenceInputStep02({
     lucid,
@@ -313,6 +348,10 @@ export const submitNoReferenceInputStep02FromFiles = async (
     threadOutRef: config.threadOutRef,
     referenceInputsPreimage:
       referenceInputsJson as readonly NoReferenceInputPreimageEntry[],
+    nativeTxCompactCbor: parseNativeTxCompactCborV1(
+      nativeTxCompactJson,
+      "--native-tx-compact",
+    ),
     badReferenceInputIndex: BigInt(config.badReferenceInputIndex),
     awaitConfirmation: config.awaitConfirmation,
   });

@@ -1,8 +1,8 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * **Re-derived onto the flat field commitments by #604.** Thread state carries
+ * the §2.5 anchor — the disputed transaction's **id** — where it used to carry
+ * that transaction's `spend_inputs_hash`; step-02 re-opens field 0 through the
+ * §8.8 door from it. See `docs/fault-proofs/offchain-builder-staleness-575.md`.
  *
  * `input-no-idx` step-01 submitter (Goal task `Q13`, §9.1 output 8).
  *
@@ -97,7 +97,12 @@ export type SubmitInputNoIdxStep01Result = {
   readonly firstStepAddress: string;
   readonly secondStepAddress: string;
   readonly badTxId: string;
-  readonly verifiedTxInputsHash: string;
+  /**
+   * The §2.5 anchor this step wrote into thread state. It replaced
+   * `verifiedTxInputsHash` in #604 — the thread no longer carries field 0's
+   * commitment.
+   */
+  readonly verifiedTxId: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
@@ -212,7 +217,9 @@ export const submitInputNoIdxStep01 = async ({
   }
 
   requireNativeTxMatchesCompactCbor(txInclusion);
-  const verifiedTxInputsHash = txInclusion.nativeTx.body.spend_inputs_hash;
+  // §2.5's anchor, read off the compact structure the block's
+  // `transactions_root` committed — the only provenance `BodyAnchor` accepts.
+  const verifiedTxId = txInclusion.nativeTxId;
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -228,7 +235,7 @@ export const submitInputNoIdxStep01 = async ({
   const step02Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: inputNoIdxStep02StateFromBadTxV1(verifiedTxInputsHash),
+      data: inputNoIdxStep02StateFromBadTxV1(verifiedTxId),
     },
     InputNoIdxStep02Datum,
   );
@@ -340,7 +347,7 @@ export const submitInputNoIdxStep01 = async ({
     firstStepAddress: chain.steps[0].spendingScriptAddress,
     secondStepAddress: chain.steps[1].spendingScriptAddress,
     badTxId: txInclusion.nativeTxId,
-    verifiedTxInputsHash,
+    verifiedTxId,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     hubOracleRefInputIndex: Number(resolvedLayout.hubOracleRefInputIndex),

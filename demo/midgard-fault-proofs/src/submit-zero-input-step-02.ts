@@ -1,15 +1,26 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * `zero-input` step-02 submitter — the step that concludes the proof.
+ *
+ * **Re-derived onto the §8.8 door by #604.** The step used to compare the
+ * `spend_inputs_hash` its thread carried against the pinned empty-field
+ * constant. It now opens §2.5 field 0 of the disputed transaction through the
+ * door and asserts the *authenticated item count* is zero, which is why this
+ * builder takes the disputed transaction's compact CBOR: under §4's plain
+ * hashing the empty commitment is the same 32 bytes for every field of every
+ * transaction, so a hash equality proved only that *some* field was empty.
+ *
+ * The pre-flight below is the same strengthening off-chain. It no longer asks
+ * "is this hash the empty one" but "does field 0 of *this anchored transaction*
+ * open to no items", and it is
+ * {@link planFaultProofFieldOpeningV1} that ties the bytes to the slot.
  */
 
 import {
-  EMPTY_SPEND_INPUTS_HASH,
+  type FieldOpeningV1,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
+  MIDGARD_FIELD_INDEX_V1,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
@@ -28,6 +39,11 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import {
+  faultProofFieldOpeningV1,
+  parseNativeTxCompactCborV1,
+  planFaultProofFieldOpeningV1,
+} from "./field-opening-v1.js";
 import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -55,6 +71,13 @@ export type SubmitZeroInputStep02CliConfig = SubmitProviderConfig & {
   readonly walletPrivateKey?: string;
   readonly walletPrivateKeyEnv?: string;
   readonly threadOutRef: string;
+  /**
+   * JSON `{ "nativeTxCompactCbor": "<hex>" }` — the disputed transaction's
+   * compact structure. New in #604: the door re-derives the anchored id from
+   * these bytes and reads field 0 out of them, so the step cannot be built
+   * without the transaction it disputes.
+   */
+  readonly nativeTxCompactPath: string;
   readonly awaitConfirmation?: boolean;
 };
 
@@ -74,7 +97,10 @@ export type SubmitZeroInputStep02Result = {
   readonly fraudProofUnit: string;
   readonly fraudProofAddress: string;
   readonly secondStepAddress: string;
-  readonly badTxSpendInputsHash: string;
+  /** The §2.5 anchor the thread carried, and the id these compact bytes derive to. */
+  readonly badTxId: string;
+  /** The door's authenticated item count for field 0 — zero, or this step could not be built. */
+  readonly spendInputsItemCount: number;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
@@ -116,7 +142,7 @@ const requireStep02Datum = ({
   }
   if (datum.data === null) {
     throw new Error(
-      "Zero-input step 02 input datum must carry the verified spend-inputs hash.",
+      "Zero-input step 02 input datum must carry the disputed transaction's §2.5 anchor.",
     );
   }
   return datum as ZeroInputStep02DatumWithState;
@@ -143,6 +169,7 @@ const makeZeroInputStep02SpendRedeemer = ({
   fraudProofPolicyId,
   fraudProofUnit,
   fraudProofDatum,
+  spendInputsOpening,
   onLayout,
 }: {
   readonly threadUtxo: UTxO;
@@ -150,6 +177,7 @@ const makeZeroInputStep02SpendRedeemer = ({
   readonly fraudProofPolicyId: string;
   readonly fraudProofUnit: string;
   readonly fraudProofDatum: string;
+  readonly spendInputsOpening: FieldOpeningV1;
   readonly onLayout: (layout: ZeroInputStep02SpendLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -179,6 +207,7 @@ const makeZeroInputStep02SpendRedeemer = ({
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
             fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
+            spend_inputs_opening: spendInputsOpening,
           },
         ],
       },
@@ -247,6 +276,7 @@ export const submitZeroInputStep02 = async ({
   network,
   signer,
   threadOutRef,
+  nativeTxCompactCbor,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -255,6 +285,8 @@ export const submitZeroInputStep02 = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
+  /** The disputed transaction's §2.5 compact structure, as committed. */
+  readonly nativeTxCompactCbor: string;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitZeroInputStep02Result> => {
   const { zeroInputCategory, contracts } =
@@ -285,14 +317,35 @@ export const submitZeroInputStep02 = async ({
     categoryLabel: "zero-input",
   });
   const inputDatum = requireStep02Datum({ threadUtxo, signer });
-  const badTxSpendInputsHash = inputDatum.data.bad_tx_spend_inputs_hash;
-  // Mirrors the validator's only category-specific check, so a thread that
-  // cannot conclude fails here instead of burning a submission on-chain.
-  if (badTxSpendInputsHash !== EMPTY_SPEND_INPUTS_HASH) {
+  const badTxId = inputDatum.data.bad_tx_id;
+  // The family's whole claim is that field 0 holds nothing, so the §5.1
+  // preimage is the empty envelope and the prover supplies no items. Planning
+  // it against the anchored transaction is what proves the claim off-chain:
+  // `planFaultProofFieldOpeningV1` refuses unless these bytes re-derive to
+  // `badTxId` *and* the empty preimage matches the commitment that transaction
+  // carries at field 0 specifically.
+  const planned = planFaultProofFieldOpeningV1({
+    fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+    anchorTxId: badTxId,
+    nativeTxCompactCbor,
+    itemCbors: [],
+    owner: signer.paymentKeyHash,
+    label: "Zero-input step 02 spend-inputs",
+  });
+  // Mirrors the validator's only category-specific check (`field_item_count ==
+  // 0`), so a thread that cannot conclude fails here instead of burning a
+  // submission on-chain. Redundant against the empty `itemCbors` above by
+  // construction, and kept because the assertion the validator makes is about
+  // the count rather than about what the builder passed.
+  if (planned.itemCount !== 0) {
     throw new Error(
-      `Zero-input step 02 datum spend-inputs hash ${badTxSpendInputsHash} is not the empty-input-list hash ${EMPTY_SPEND_INPUTS_HASH}.`,
+      `Zero-input step 02 opens field 0 to ${planned.itemCount.toString()} items, so the challenged transaction does spend inputs.`,
     );
   }
+  const spendInputsOpening = faultProofFieldOpeningV1({
+    planned,
+    label: "Zero-input step 02 spend-inputs",
+  });
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -322,6 +375,7 @@ export const submitZeroInputStep02 = async ({
         fraudProofPolicyId: contracts.fraudProof.policyId,
         fraudProofUnit,
         fraudProofDatum,
+        spendInputsOpening,
         onLayout: (layout) => {
           spendLayout = layout;
         },
@@ -390,7 +444,8 @@ export const submitZeroInputStep02 = async ({
     fraudProofUnit,
     fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
     secondStepAddress: contracts.zeroInput.steps[1].spendingScriptAddress,
-    badTxSpendInputsHash,
+    badTxId,
+    spendInputsItemCount: planned.itemCount,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     computationThreadMintRedeemerIndex: Number(
@@ -409,11 +464,13 @@ export const submitZeroInputStep02FromFiles = async (
   rejectRetiredUnauthenticatedSubmissionRouteV1({
     command: "submit-zero-input-step-02",
   });
-  const [blueprint, deploymentInfo, lucid] = await Promise.all([
-    readJsonFile(config.blueprintPath),
-    readJsonFile(config.deploymentInfoPath),
-    makeLucidForSubmit(config),
-  ]);
+  const [blueprint, deploymentInfo, nativeTxCompactJson, lucid] =
+    await Promise.all([
+      readJsonFile(config.blueprintPath),
+      readJsonFile(config.deploymentInfoPath),
+      readJsonFile(config.nativeTxCompactPath),
+      makeLucidForSubmit(config),
+    ]);
   const signer = resolveProverSigner(config);
   return await submitZeroInputStep02({
     lucid,
@@ -422,6 +479,10 @@ export const submitZeroInputStep02FromFiles = async (
     network: config.network,
     signer,
     threadOutRef: config.threadOutRef,
+    nativeTxCompactCbor: parseNativeTxCompactCborV1(
+      nativeTxCompactJson,
+      "--native-tx-compact",
+    ),
     awaitConfirmation: config.awaitConfirmation,
   });
 };

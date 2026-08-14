@@ -92,8 +92,13 @@ export type SubmitReferenceInputNoIdxStep03Result = {
   readonly computationThreadUnit: string;
   readonly thirdStepAddress: string;
   readonly fourthStepAddress: string;
+  /**
+   * The §2.5 anchor this step forwards to step-04 — the *producing*
+   * transaction's id. Before #604 the thread carried that transaction's
+   * `outputs_hash` instead; step-04 now opens its field 2 through the §8.8 door,
+   * so what it needs is the anchor.
+   */
   readonly producingTxId: string;
-  readonly producingTxOutputsHash: string;
   readonly badReferenceInputOutputIndex: number;
   readonly inputIndex: number;
   readonly outputIndex: number;
@@ -239,7 +244,6 @@ export const submitReferenceInputNoIdxStep03 = async ({
       `--tx-inclusion is transaction ${txInclusion.nativeTxId}, but the thread challenges a reference input produced by ${inputDatum.data.bad_reference_input_tx_id}.`,
     );
   }
-  const producingTxOutputsHash = txInclusion.nativeTx.body.outputs_hash;
   const badReferenceInputOutputIndex =
     inputDatum.data.bad_reference_input_output_index;
 
@@ -262,7 +266,7 @@ export const submitReferenceInputNoIdxStep03 = async ({
           tx_id: inputDatum.data.bad_reference_input_tx_id,
           output_index: badReferenceInputOutputIndex,
         },
-        producingTxOutputsHash,
+        producingTxId: txInclusion.nativeTxId,
       }),
     },
     ReferenceInputNoIdxStep04Datum,
@@ -379,7 +383,6 @@ export const submitReferenceInputNoIdxStep03 = async ({
     thirdStepAddress: chain.steps[2].spendingScriptAddress,
     fourthStepAddress: chain.steps[3].spendingScriptAddress,
     producingTxId: txInclusion.nativeTxId,
-    producingTxOutputsHash,
     badReferenceInputOutputIndex: Number(badReferenceInputOutputIndex),
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),

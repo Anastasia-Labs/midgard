@@ -1,8 +1,8 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * **Re-derived onto the flat field commitments by #604.** This step forwards the
+ * *producing* transaction's §2.5 anchor to step-04, where it used to forward that
+ * transaction's `outputs_hash`; step-04 opens its field 2 through the §8.8 door.
+ * See `docs/fault-proofs/offchain-builder-staleness-575.md`.
  *
  * `input-no-idx` step-03 submitter (Goal task `Q13`, §9.1 output 8).
  *
@@ -95,8 +95,13 @@ export type SubmitInputNoIdxStep03Result = {
   readonly computationThreadUnit: string;
   readonly thirdStepAddress: string;
   readonly fourthStepAddress: string;
+  /**
+   * The §2.5 anchor this step forwards to step-04 — the *producing*
+   * transaction's id. Before #604 the thread carried that transaction's
+   * `outputs_hash` instead; step-04 now opens its field 2 through the §8.8 door,
+   * so what it needs forwarded is the anchor.
+   */
   readonly producingTxId: string;
-  readonly producingTxOutputsHash: string;
   readonly badInputOutputIndex: number;
   readonly inputIndex: number;
   readonly outputIndex: number;
@@ -240,7 +245,9 @@ export const submitInputNoIdxStep03 = async ({
       `--tx-inclusion is transaction ${txInclusion.nativeTxId}, but the thread challenges an input produced by ${inputDatum.data.bad_input_tx_id}.`,
     );
   }
-  const producingTxOutputsHash = txInclusion.nativeTx.body.outputs_hash;
+  // §2.5's anchor for the producing transaction, read off the compact structure
+  // the block's `transactions_root` committed.
+  const producingTxId = txInclusion.nativeTxId;
   const badInputOutputIndex = inputDatum.data.bad_input_output_index;
 
   signer.selectWallet(lucid);
@@ -258,7 +265,7 @@ export const submitInputNoIdxStep03 = async ({
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
-        producing_tx_outputs_hash: producingTxOutputsHash,
+        producing_tx_id: producingTxId,
         bad_input_output_index: badInputOutputIndex,
       },
     },
@@ -371,8 +378,7 @@ export const submitInputNoIdxStep03 = async ({
     computationThreadUnit: threadToken.unit,
     thirdStepAddress: chain.steps[2].spendingScriptAddress,
     fourthStepAddress: chain.steps[3].spendingScriptAddress,
-    producingTxId: txInclusion.nativeTxId,
-    producingTxOutputsHash,
+    producingTxId,
     badInputOutputIndex: Number(badInputOutputIndex),
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),

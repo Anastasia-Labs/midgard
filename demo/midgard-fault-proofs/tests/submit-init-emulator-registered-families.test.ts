@@ -287,10 +287,10 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         awaitConfirmation: true,
       });
       expect(step01Result.txHash).toHaveLength(64);
+      // #604: the thread carries the §2.5 anchor. The field-1 commitment it
+      // used to forward is still in the compact structure step-02 opens, and is
+      // checked there against the slot rather than carried loose.
       expect(step01Result.badTxId).toBe(fixture.nativeTxId);
-      expect(step01Result.badTxReferenceInputsHash).toBe(
-        fixture.inclusion.nativeTx.body.reference_inputs_hash,
-      );
       await expect(
         proverLucid.utxosAtWithUnit(
           initResult.firstStepAddress,
@@ -372,9 +372,10 @@ describe("registered fraud-proof families emulator lifecycle", () => {
       });
       expect(step01Result.txHash).toHaveLength(64);
       expect(step01Result.badTxId).toBe(fixture.nativeTxId);
-      expect(step01Result.verifiedTxReferenceInputsHash).toBe(
-        fixture.inclusion.nativeTx.body.reference_inputs_hash,
-      );
+      // #604: the thread carries the §2.5 anchor. Field 1's commitment is
+      // re-derived at step-02 from the compact structure that anchor
+      // authenticates, so it is not forwarded here any more.
+      expect(step01Result.verifiedTxId).toBe(fixture.nativeTxId);
       await expectSingleUtxoWithUnit(
         proverLucid,
         step01Result.secondStepAddress,
@@ -460,11 +461,11 @@ describe("registered fraud-proof families emulator lifecycle", () => {
       });
       expect(step01Result.txHash).toHaveLength(64);
       expect(step01Result.nativeTxId).toBe(fixture.nativeTxId);
+      // #604: the thread carries `WitnessAnchor` — the id plus the committed
+      // `witness_set_hash` — rather than field 7's own commitment. Field 7 is
+      // re-derived at step-02 out of the witness set this hash authenticates.
       expect(step01Result.badTxWitnessSetHash).toBe(
         fixture.inclusion.nativeTx.witness_set_hash,
-      );
-      expect(step01Result.badAddrTxWitsHash).toBe(
-        badTxWitnessSetCompact.addr_tx_wits_hash,
       );
       await expectSingleUtxoWithUnit(
         proverLucid,

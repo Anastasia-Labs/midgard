@@ -976,9 +976,38 @@ name**, so that a certificate token cannot be borrowed for a preimage the named
 transaction did not commit and the door's own `expected_hash` becomes checkable
 against the name. That is a change to a frozen wire format (§8.6) and to a
 landed minting policy, so it is **assigned to
-[#604](https://github.com/Anastasia-Labs/midgard/issues/604)**, not to #575.
-(Assigned to #579 when this erratum was written; moved to #604 with the rest of
-the #575 off-chain remediation by owner ruling on #579, 2026-08-13.)
+[#606](https://github.com/Anastasia-Labs/midgard/issues/606)**, not to #575.
+
+**Disposition (owner ruling, 2026-08-14, in-session, recorded on #606).** The
+assignment has moved twice and this is where it rests. It was written against
+#579, moved to #604 with the rest of the #575 off-chain remediation by owner
+ruling on #579 (2026-08-13), and deferred from #604 to #606 once #604 measured
+what the repair actually costs: folding the field commitment into the asset name
+changes `field_preimage_certificate_asset_name`, which both the §8.6 minting
+policy and the §8.8 door compile against, so it moves the certificate policy id
+— a validator *parameter* at the twelve applied sites #579 swept — and therefore
+every field-opening step's applied script hash. That is a blueprint regeneration
+and a full identity cascade, and #579's single regeneration was already spent.
+#606 carries it on the next natural regeneration event, as a **pre-launch
+obligation**; the interim exposure is owner-accepted and bounded by the refusal
+below, which stays live and pinned from both sides until the asset name changes.
+
+One hypothesis is recorded as **falsified** so it is not re-tried: carrying
+`witness_set_hash` in the thread anchor does *not* repair limit 3. The anchor
+already carries it — `WitnessAnchor { tx_id, witness_set_hash }`, checked in
+`anchored_native_tx` — and that is what closes the tiers-1/2 forgery, because
+under those tiers the door hashes the preimage itself. Under tier 3 the door
+never hashes the preimage; the certificate is the binding, and the certificate's
+token name is `(tx_id, field_index)` alone. There is nothing in the token for a
+step to check the anchored `witness_set_hash` against, which is precisely why the
+repair has to be in the asset name.
+
+Off-chain builders additionally decline to *emit* tier-3 carriage for fields 6–8,
+which duplicates the door's refusal at the point a transaction is built rather
+than at the point it is submitted. That is ordinary hardening and is **not** the
+repair: it constrains honest builders and does nothing to an adversary, who does
+not use them.
+
 Vectors: `field_opening_v1.test`'s tier-3 block states the premise in both
 directions — the minting predicate accepts the fabrication on a witness field
 and refuses it on a body field — and
@@ -1002,7 +1031,7 @@ state and a fault spread over several transactions — which is
 [#565](https://github.com/Anastasia-Labs/midgard/issues/565)'s work, with the
 deployed-identity half in
 [#579](https://github.com/Anastasia-Labs/midgard/issues/579); the resolution for
-limit 3 is the §8.6 asset-name change above, which is #604's. What #575 owed and
+limit 3 is the §8.6 asset-name change above, which is #606's. What #575 owed and
 has delivered is that the limits are **measured and asserted** rather than
 latent: the ledger row above goes red if the figure moves in either direction,
 including if the step ever starts fitting, and limit 3's refusal is pinned from

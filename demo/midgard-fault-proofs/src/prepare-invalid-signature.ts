@@ -1,8 +1,10 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * **Checked to be unaffected by #604.** This module emits evidence — the witness
+ * list, the compact witness set and the inclusion argument — and constructs no
+ * datum or redeemer, so the #575 rebind left its output shape alone. Its
+ * consumers changed: `submit-invalid-signature-step-02` now opens §2.5 field 7
+ * through the §8.8 door and takes the compact witness set this module already
+ * emits.
  *
  * `invalid-signature` evidence builder (Goal task `Q15`).
  *

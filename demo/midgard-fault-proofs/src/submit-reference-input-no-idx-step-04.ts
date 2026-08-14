@@ -4,23 +4,30 @@
  * Finalizes the proof: burns the computation thread, mints the permanent
  * fraud-proof token and locks it at the always-fails fraud-proof address.
  *
+ * **Re-derived onto the §8.8 door by #604.** The redeemer used to reproduce the
+ * producing transaction's whole `outputs_preimage: List<MidgardTxOutput>`; it
+ * now carries a `FieldOpeningV1` over §2.5 field **2**, and the door's
+ * authenticated item count is the output count the out-of-range verdict rests
+ * on (§5.2). Thread state carries that transaction's `producing_tx_id` rather
+ * than its `outputs_hash`, which is why this builder takes the producing
+ * transaction's compact CBOR.
+ *
  * Nothing in the prepared file is trusted. The complete outputs preimage is
- * re-encoded with the canonical `encode_midgard_tx_output` twin and
- * re-committed with `bounded_collection_v1.from_items(2, ...)`; the result must
- * equal the `producing_tx_outputs_hash` read back from the **on-chain** step-03
- * datum. The rule itself is then re-run locally
- * (`bad_reference_input_output_index >= |outputs|`), so a thread whose
- * challenged index exists in its producing transaction cannot be finalized
- * off-chain either.
+ * re-encoded with the canonical `encode_midgard_tx_output` twin, checked against
+ * the commitment the producing transaction carries *at field 2*, and the rule
+ * itself is then re-run locally (`bad_reference_input_output_index >=
+ * |outputs|`), so a thread whose challenged index exists in its producing
+ * transaction cannot be finalized off-chain either.
  */
 import {
   encodeMidgardTxOutputCanonicalV1,
+  type FieldOpeningV1,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
   isReferenceInputNoIdxViolationV1,
+  MIDGARD_FIELD_INDEX_V1,
   type MidgardTxOutput,
-  referenceInputNoIdxOutputsCommitmentV1,
   ReferenceInputNoIdxStep04Datum,
   ReferenceInputNoIdxStep04SpendRedeemer,
   requireInputIndex,
@@ -39,6 +46,11 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import {
+  faultProofFieldOpeningV1,
+  parseNativeTxCompactCborV1,
+  planFaultProofFieldOpeningV1,
+} from "./field-opening-v1.js";
 import { parseHex, requireRecord } from "./json-file.js";
 import { midgardTxOutputFromCanonicalCborV1 } from "./prepare-input-no-idx.js";
 import {
@@ -106,6 +118,12 @@ export type SubmitReferenceInputNoIdxStep04CliConfig = SubmitProviderConfig & {
   readonly walletPrivateKeyEnv?: string;
   readonly threadOutRef: string;
   readonly outputsPreimagePath: string;
+  /**
+   * JSON `{ "nativeTxCompactCbor": "<hex>" }` — the **producing** transaction's
+   * compact structure. New in #604: the door authenticates its field 2 against
+   * the `producing_tx_id` the thread anchored.
+   */
+  readonly nativeTxCompactPath: string;
   readonly awaitConfirmation?: boolean;
 };
 
@@ -125,7 +143,10 @@ export type SubmitReferenceInputNoIdxStep04Result = {
   readonly fraudProofUnit: string;
   readonly fraudProofAddress: string;
   readonly fourthStepAddress: string;
+  /** §4's flat commitment for the producing transaction's field 2. */
   readonly producingTxOutputsHash: string;
+  /** The §2.5 anchor the thread carried for the producing transaction. */
+  readonly producingTxId: string;
   readonly producingTxOutputCount: number;
   readonly badReferenceInputOutputIndex: number;
   readonly inputIndex: number;
@@ -197,7 +218,7 @@ const makeReferenceInputNoIdxStep04SpendRedeemer = ({
   fraudProofPolicyId,
   fraudProofUnit,
   fraudProofDatum,
-  outputsPreimage,
+  outputsOpening,
   onLayout,
 }: {
   readonly threadUtxo: UTxO;
@@ -205,7 +226,7 @@ const makeReferenceInputNoIdxStep04SpendRedeemer = ({
   readonly fraudProofPolicyId: string;
   readonly fraudProofUnit: string;
   readonly fraudProofDatum: string;
-  readonly outputsPreimage: readonly MidgardTxOutput[];
+  readonly outputsOpening: FieldOpeningV1;
   readonly onLayout: (layout: ReferenceInputNoIdxStep04SpendLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -239,7 +260,7 @@ const makeReferenceInputNoIdxStep04SpendRedeemer = ({
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
             fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
-            outputs_preimage: [...outputsPreimage],
+            outputs_opening: outputsOpening,
           },
         ],
       },
@@ -309,6 +330,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
   signer,
   threadOutRef,
   outputsPreimage,
+  nativeTxCompactCbor,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -318,6 +340,8 @@ export const submitReferenceInputNoIdxStep04 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly outputsPreimage: SubmitReferenceInputNoIdxOutputsPreimage;
+  /** The **producing** transaction's §2.5 compact structure, as committed. */
+  readonly nativeTxCompactCbor: string;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitReferenceInputNoIdxStep04Result> => {
   const { referenceInputNoIdxCategory, contracts } =
@@ -346,19 +370,28 @@ export const submitReferenceInputNoIdxStep04 = async ({
     categoryLabel: "reference-input-no-idx",
   });
   const inputDatum = requireStep04Datum({ threadUtxo, signer });
-  const producingTxOutputsHash = inputDatum.data.producing_tx_outputs_hash;
+  const producingTxId = inputDatum.data.producing_tx_id;
   const badReferenceInputOutputIndex =
     inputDatum.data.bad_reference_input_output_index;
 
-  const derivedCommitment = referenceInputNoIdxOutputsCommitmentV1(
-    outputsPreimage.outputsPreimage,
-  );
-  if (derivedCommitment !== producingTxOutputsHash) {
-    throw new Error(
-      `--outputs-preimage does not open the committed outputs hash: derived=${derivedCommitment}, thread=${producingTxOutputsHash}.`,
-    );
-  }
-  const producingTxOutputCount = outputsPreimage.outputsPreimage.length;
+  const planned = planFaultProofFieldOpeningV1({
+    fieldIndex: MIDGARD_FIELD_INDEX_V1.outputs,
+    anchorTxId: producingTxId,
+    nativeTxCompactCbor,
+    itemCbors: outputsPreimage.outputsPreimage.map(
+      encodeMidgardTxOutputCanonicalV1,
+    ),
+    owner: signer.paymentKeyHash,
+    label: "Reference-input-no-idx step 04 outputs",
+  });
+  const producingTxOutputsHash = planned.commitment;
+  const outputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+    planned,
+    label: "Reference-input-no-idx step 04 outputs",
+  });
+  // §5.2: the count the verdict rests on is the door's authenticated one, which
+  // for tiers 1–2 is derived by walking the same preimage the door hashes.
+  const producingTxOutputCount = planned.itemCount;
   if (
     !isReferenceInputNoIdxViolationV1({
       badReferenceInputOutputIndex,
@@ -398,7 +431,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
         fraudProofPolicyId: contracts.fraudProof.policyId,
         fraudProofUnit,
         fraudProofDatum,
-        outputsPreimage: outputsPreimage.outputsPreimage,
+        outputsOpening,
         onLayout: (layout) => {
           spendLayout = layout;
         },
@@ -468,6 +501,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
     fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
     fourthStepAddress: chain.steps[3].spendingScriptAddress,
     producingTxOutputsHash,
+    producingTxId,
     producingTxOutputCount,
     badReferenceInputOutputIndex: Number(badReferenceInputOutputIndex),
     inputIndex: Number(resolvedLayout.inputIndex),
@@ -485,13 +519,19 @@ export const submitReferenceInputNoIdxStep04 = async ({
 export const submitReferenceInputNoIdxStep04FromFiles = async (
   config: SubmitReferenceInputNoIdxStep04CliConfig,
 ): Promise<SubmitReferenceInputNoIdxStep04Result> => {
-  const [blueprint, deploymentInfo, outputsPreimageJson, lucid] =
-    await Promise.all([
-      readJsonFile(config.blueprintPath),
-      readJsonFile(config.deploymentInfoPath),
-      readJsonFile(config.outputsPreimagePath),
-      makeLucidForSubmit(config),
-    ]);
+  const [
+    blueprint,
+    deploymentInfo,
+    outputsPreimageJson,
+    nativeTxCompactJson,
+    lucid,
+  ] = await Promise.all([
+    readJsonFile(config.blueprintPath),
+    readJsonFile(config.deploymentInfoPath),
+    readJsonFile(config.outputsPreimagePath),
+    readJsonFile(config.nativeTxCompactPath),
+    makeLucidForSubmit(config),
+  ]);
   const signer = resolveProverSigner(config);
   return await submitReferenceInputNoIdxStep04({
     lucid,
@@ -502,6 +542,10 @@ export const submitReferenceInputNoIdxStep04FromFiles = async (
     threadOutRef: config.threadOutRef,
     outputsPreimage:
       parseSubmitReferenceInputNoIdxOutputsPreimage(outputsPreimageJson),
+    nativeTxCompactCbor: parseNativeTxCompactCborV1(
+      nativeTxCompactJson,
+      "--native-tx-compact",
+    ),
     awaitConfirmation: config.awaitConfirmation,
   });
 };

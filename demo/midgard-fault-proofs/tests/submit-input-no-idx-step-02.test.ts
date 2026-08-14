@@ -1,228 +1,155 @@
-import { inputNoIdxSpendInputsCommitmentV1 } from "@al-ft/midgard-sdk";
+/**
+ * `input-no-idx` step-02's carriage route, after #604 replaced the family's
+ * bespoke publication with §8's ladder.
+ *
+ * The file this replaces tested `PublishedSpendInputsV1` internals — fee
+ * selection around a typed publication UTxO, and that publication transaction's
+ * exact typed output. None of it survives: the step has one redeemer route, and
+ * the preimage travels under a §8 carriage tier chosen by its own length rather
+ * than by this builder. What is worth pinning now is what replaced it, so that is
+ * what this file pins.
+ *
+ * Every negative asserts that its mutation genuinely landed before concluding
+ * anything from the refusal.
+ */
 import {
-  CML,
-  Emulator,
-  generateEmulatorAccount,
-  Lucid,
-  PROTOCOL_PARAMETERS_DEFAULT,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+  computeMidgardNativeTxIdV1,
+  encodeMidgardNativeTxCompactV1,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+} from "@al-ft/midgard-core";
+import {
+  encodeMidgardTxInputCanonicalV1,
+  fieldPreimagePublicationDatumCborV1,
+  MIDGARD_FIELD_INDEX_V1,
+  type MidgardTxInput,
+} from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { resolveProverSigner } from "../src/runtime.js";
 import {
-  buildSignedInputNoIdxSpendInputsPublicationV1,
-  inputNoIdxStep02WalletInputs,
-  selectInputNoIdxStep02FeeInput,
-} from "../src/submit-input-no-idx-step-02.js";
+  faultProofFieldOpeningV1,
+  planFaultProofFieldOpeningV1,
+} from "../src/field-opening-v1.js";
+import { h32, makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
-const PREPROD_EPOCH_303_BOUND_PROTOCOL_PARAMETERS = {
-  ...PROTOCOL_PARAMETERS_DEFAULT,
-  minFeeA: 44,
-  minFeeB: 155_381,
-  maxTxSize: 16_384,
-  maxValSize: 5_000,
-  maxTxExMem: 16_500_000n,
-  maxTxExSteps: 10_000_000_000n,
-  priceMem: 0.0577,
-  priceStep: 0.0000721,
-  coinsPerUtxoByte: 4_310n,
-  collateralPercentage: 150,
-  maxCollateralInputs: 3,
-  minFeeRefScriptCostPerByte: 15,
-} as const;
+const OWNER = "cd".repeat(28);
 
-const utxo = (txHashByte: string, lovelace: bigint): UTxO => ({
-  txHash: txHashByte.repeat(64),
-  outputIndex: 0,
-  address: "addr_test1vfee",
-  assets: { lovelace },
+const inputItem = (txIdByte: string, outputIndex: bigint): MidgardTxInput => ({
+  tx_id: h32(txIdByte),
+  output_index: outputIndex,
 });
 
-describe("input-no-idx step-02 tier-2 internals", () => {
-  it("excludes the exact publication out-ref from fee selection", () => {
-    const publication = utxo("a", 100_000_000n);
-    const feeInput = utxo("b", 20_000_000n);
-
-    expect(
-      selectInputNoIdxStep02FeeInput({
-        walletUtxos: [publication, feeInput],
-        publicationUtxo: publication,
-      }),
-    ).toBe(feeInput);
+const fixture = () => {
+  const inputs = [inputItem("31", 0n), inputItem("32", 1n)];
+  const nativeTx = makeNativeTx({
+    spendInputCbors: inputs.map(encodeMidgardTxInputCanonicalV1),
+    fee: 11n,
+    outputByte: "33",
   });
+  return {
+    inputs,
+    anchorTxId: computeMidgardNativeTxIdV1(nativeTx).toString("hex"),
+    compactCbor: encodeMidgardNativeTxCompactV1(nativeTx.compact).toString(
+      "hex",
+    ),
+    spendInputsHash: Buffer.from(
+      nativeTx.compact.transactionBody.spendInputsHash,
+    ).toString("hex"),
+  };
+};
 
-  it("excludes by out-ref rather than object identity", () => {
-    const publication = utxo("a", 100_000_000n);
-    const providerCopy = { ...publication, assets: { ...publication.assets } };
-    const feeInput = utxo("b", 20_000_000n);
-
-    expect(
-      selectInputNoIdxStep02FeeInput({
-        walletUtxos: [providerCopy, feeInput],
-        publicationUtxo: publication,
-      }),
-    ).toBe(feeInput);
+const plan = (
+  overrides: Partial<Parameters<typeof planFaultProofFieldOpeningV1>[0]> = {},
+) => {
+  const { inputs, anchorTxId, compactCbor } = fixture();
+  return planFaultProofFieldOpeningV1({
+    fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+    anchorTxId,
+    nativeTxCompactCbor: compactCbor,
+    itemCbors: inputs.map(encodeMidgardTxInputCanonicalV1),
+    owner: OWNER,
+    label: "Input-no-idx step 02 spend-inputs",
+    ...overrides,
   });
+};
 
-  it("derives transaction-local wallet inputs without poisoning the wallet snapshot", () => {
-    const publication = utxo("a", 100_000_000n);
-    const providerCopy = { ...publication, assets: { ...publication.assets } };
-    const feeInput = utxo("b", 20_000_000n);
-    const collateralInput = utxo("c", 10_000_000n);
-    const walletSnapshot = [providerCopy, feeInput, collateralInput];
+describe("input-no-idx step-02 §8 carriage", () => {
+  it("carries a short preimage in the step's own redeemer (tier 1)", () => {
+    const { compactCbor, spendInputsHash } = fixture();
+    const planned = plan();
 
-    const eligible = inputNoIdxStep02WalletInputs({
-      walletUtxos: walletSnapshot,
-      publicationUtxo: publication,
-    });
-
-    expect(eligible).toEqual([feeInput, collateralInput]);
-    expect(eligible).not.toBe(walletSnapshot);
-    expect(walletSnapshot).toEqual([providerCopy, feeInput, collateralInput]);
-    expect(
-      eligible.some(
-        ({ txHash, outputIndex }) =>
-          txHash === publication.txHash &&
-          outputIndex === publication.outputIndex,
-      ),
-    ).toBe(false);
-  });
-
-  it("measures genuine signed publication-only transactions at 19/20/296", async () => {
-    const prover = generateEmulatorAccount({ lovelace: 30_000_000_000n });
-    const emulator = new Emulator(
-      [prover],
-      PREPROD_EPOCH_303_BOUND_PROTOCOL_PARAMETERS,
+    expect(planned.plan.tier).toBe("Inline");
+    expect(planned.itemCount).toBe(2);
+    // §4: the commitment is the disputed transaction's own field-0 hash.
+    expect(planned.commitment).toBe(spendInputsHash);
+    // Two 38-byte items and a one-byte §5.1 header — far inside tier 1.
+    expect(planned.preimage.length).toBeLessThan(
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
     );
-    const lucid = await Lucid(emulator, "Custom");
-    const signer = resolveProverSigner({
-      network: "Preprod",
-      walletSeedPhrase: prover.seedPhrase,
+    expect(planned.plan.publications).toHaveLength(0);
+
+    expect(faultProofFieldOpeningV1({ planned, label: "t" })).toStrictEqual({
+      BodyFieldOpening: {
+        native_tx_compact_cbor: compactCbor,
+        carriage: { Inline: { preimage: planned.preimage.toString("hex") } },
+      },
     });
-    const measurements = [];
+  });
 
-    for (const itemCount of [19, 20, 296] as const) {
-      const inputs = Array.from({ length: itemCount }, (_, index) => ({
-        tx_id: (index + 1).toString(16).padStart(64, "0"),
-        output_index: BigInt(index),
-      }));
-      const verifiedTxInputsHash = inputNoIdxSpendInputsCommitmentV1(inputs);
-      const result = await buildSignedInputNoIdxSpendInputsPublicationV1({
-        lucid,
-        network: "Preprod",
-        signer,
-        computationThreadPolicyId: "11".repeat(28),
-        computationThreadAssetName: "22".repeat(32),
-        verifiedTxInputsHash,
-        inputsPreimage: {
-          inputsPreimage: inputs,
-          badInputsIndex: itemCount - 1,
-        },
-      });
-      const { measurement } = result;
-      const signedTransaction = CML.Transaction.from_cbor_hex(
-        measurement.signedTxCbor,
-      );
+  it("publishes the same preimage as §8.5 raw carriage when tier 2 is chosen", () => {
+    const inline = plan();
+    const published = plan({ publish: true });
 
-      expect(measurement.signedTxBytes).toBe(
-        Buffer.from(measurement.signedTxCbor, "hex").length,
-      );
-      expect(measurement.signedTxBytes).toBeLessThanOrEqual(
-        emulator.protocolParameters.maxTxSize,
-      );
-      expect(measurement.maxOutputValueBytes).toBeLessThanOrEqual(
-        emulator.protocolParameters.maxValSize,
-      );
-      expect(measurement.txByteMargin).toBeGreaterThanOrEqual(0);
-      expect(measurement.valueByteMargin).toBeGreaterThanOrEqual(0);
-      expect(measurement.fee).toBe(signedTransaction.body().fee());
-      expect(measurement.outputMinAda).toBe(result.lovelace);
-      expect(measurement.outputMinAda).toBeGreaterThan(0n);
-      expect(measurement.inputCount).toBe(1);
-      expect(measurement.referenceInputCount).toBe(0);
-      expect(measurement.outputCount).toBe(2);
-      expect(measurement.collateralInputCount).toBe(0);
-      expect(measurement.vkeyWitnessCount).toBe(1);
-      expect(measurement.redeemerCount).toBe(0);
-      expect(signedTransaction.witness_set().vkeywitnesses()?.len()).toBe(
-        measurement.vkeyWitnessCount,
-      );
-      expect(signedTransaction.witness_set().redeemers()).toBeUndefined();
+    // The one tier choice §8 leaves open changes which transaction pays, never
+    // what the door authenticates: same bytes, same §4 commitment.
+    expect(published.plan.tier).toBe("RawUtxo");
+    expect(published.commitment).toBe(inline.commitment);
+    expect(published.preimage).toStrictEqual(inline.preimage);
 
-      measurements.push({
-        itemCount,
-        ...measurement,
-        signedTxCbor: undefined,
-        executionReserve: "100% (publication-only; no redeemers)",
-      });
-    }
+    // §8.5: a nothing-but-bytes inline datum — not the retired
+    // `PublishedSpendInputsV1`, which bound the publication to one computation
+    // thread and one prover and so could not be healed by anyone else (§8.7).
+    expect(published.plan.publications).toHaveLength(1);
+    const publication = published.plan.publications[0]!;
+    expect(publication.bytes).toStrictEqual(published.preimage);
+    expect(fieldPreimagePublicationDatumCborV1(publication.bytes)).toBe(
+      fieldPreimagePublicationDatumCborV1(inline.preimage),
+    );
 
-    expect(measurements).toEqual([
-      {
-        itemCount: 19,
-        signedTxBytes: 1_188,
-        signedTxCbor: undefined,
-        fee: 207_829n,
-        outputMinAda: 4_672_040n,
-        inputCount: 1,
-        referenceInputCount: 0,
-        outputCount: 2,
-        collateralInputCount: 0,
-        vkeyWitnessCount: 1,
-        redeemerCount: 0,
-        publicationOutputIndex: 0,
-        maxOutputValueBytes: 9,
-        txByteMargin: 15_196,
-        valueByteMargin: 4_991,
-        executionReserve: "100% (publication-only; no redeemers)",
-      },
-      {
-        itemCount: 20,
-        signedTxBytes: 1_227,
-        signedTxCbor: undefined,
-        fee: 209_545n,
-        outputMinAda: 4_840_130n,
-        inputCount: 1,
-        referenceInputCount: 0,
-        outputCount: 2,
-        collateralInputCount: 0,
-        vkeyWitnessCount: 1,
-        redeemerCount: 0,
-        publicationOutputIndex: 0,
-        maxOutputValueBytes: 9,
-        txByteMargin: 15_157,
-        valueByteMargin: 4_991,
-        executionReserve: "100% (publication-only; no redeemers)",
-      },
-      {
-        itemCount: 296,
-        signedTxBytes: 12_305,
-        signedTxCbor: undefined,
-        fee: 696_977n,
-        outputMinAda: 52_586_310n,
-        inputCount: 1,
-        referenceInputCount: 0,
-        outputCount: 2,
-        collateralInputCount: 0,
-        vkeyWitnessCount: 1,
-        redeemerCount: 0,
-        publicationOutputIndex: 0,
-        maxOutputValueBytes: 9,
-        txByteMargin: 4_079,
-        valueByteMargin: 4_991,
-        executionReserve: "100% (publication-only; no redeemers)",
-      },
-    ]);
+    // Tier 2 names a reference input, so it cannot be built without one.
+    expect(() =>
+      faultProofFieldOpeningV1({ planned: published, label: "t" }),
+    ).toThrow(/is not among the transaction's reference inputs/u);
+  });
 
-    if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
-      console.info(
-        JSON.stringify(
-          { q13Tier2Publications: measurements },
-          (_key, value: unknown) =>
-            typeof value === "bigint" ? value.toString() : value,
-        ),
-      );
-    }
-  }, 30_000);
+  it("refuses an input list that is not the anchored transaction's field 0", () => {
+    const { inputs } = fixture();
+    const tampered = [inputs[0]!, { ...inputs[1]!, output_index: 2n }];
+    // The mutation landed.
+    expect(tampered).not.toStrictEqual(inputs);
+
+    expect(() =>
+      plan({ itemCbors: tampered.map(encodeMidgardTxInputCanonicalV1) }),
+    ).toThrow(/the disputed transaction commits at §2\.5 field 0/u);
+  });
+
+  it("refuses compact bytes for a transaction the thread did not anchor", () => {
+    const { inputs, anchorTxId } = fixture();
+    const otherTx = makeNativeTx({
+      spendInputCbors: inputs.map(encodeMidgardTxInputCanonicalV1),
+      fee: 12n,
+      outputByte: "33",
+    });
+    // The mutation landed: same field 0, different transaction.
+    expect(computeMidgardNativeTxIdV1(otherTx).toString("hex")).not.toBe(
+      anchorTxId,
+    );
+
+    expect(() =>
+      plan({
+        nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(
+          otherTx.compact,
+        ).toString("hex"),
+      }),
+    ).toThrow(/not the anchored transaction id/u);
+  });
 });

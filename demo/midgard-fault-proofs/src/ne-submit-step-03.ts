@@ -1,8 +1,13 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * `non-existent-input` step-03 submitter — the initial-ledger absence proof.
+ *
+ * **Unchanged by #604's re-derivation, and checked to be.** The #575 rebind
+ * moved this family's step-02 state and redeemer onto the §2.5 anchor and the
+ * §8.8 door; step-03 forwards `missing_input` and the two ledger roots exactly
+ * as `midgard/fraud_proofs/no_input/step_03` still declares them, and carries a
+ * non-membership proof rather than a field preimage. The banner this header
+ * used to carry is gone because the family is re-derived, not because this step
+ * was skipped.
  */
 
 import { encodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core/codec";

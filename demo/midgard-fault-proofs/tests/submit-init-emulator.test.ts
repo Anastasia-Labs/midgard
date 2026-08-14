@@ -392,8 +392,6 @@ describe("fault-proof emulator integration", () => {
       fraud_prover: proverPaymentCredential!.hash,
       data: {
         verified_tx1_id: transactionInclusion.tx1.nativeTxId,
-        verified_tx1_spend_inputs_hash:
-          transactionInclusion.tx1.nativeTx.body.spend_inputs_hash,
       },
     });
     expect(secondStepUtxo.assets[result.computationThreadUnit]).toBe(1n);
@@ -424,11 +422,10 @@ describe("fault-proof emulator integration", () => {
       transactionInclusion.tx1.nativeTxId,
     );
     expect(step02Result.nativeTx2Id).toBe(transactionInclusion.tx2.nativeTxId);
-    expect(step02Result.verifiedTx1SpendInputsHash).toBe(
-      transactionInclusion.tx1.nativeTx.body.spend_inputs_hash,
-    );
-    expect(step02Result.verifiedTx2SpendInputsHash).toBe(
-      transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
+    // #604: the thread carries both §2.5 anchors; the field-0 commitments it
+    // used to forward are re-derived at the door instead.
+    expect(step02Result.verifiedTx2Id).toBe(
+      transactionInclusion.tx2.nativeTxId,
     );
     const remainingSecondStepUtxos = await proverLucid.utxosAtWithUnit(
       step01Result.secondStepAddress,
@@ -444,10 +441,8 @@ describe("fault-proof emulator integration", () => {
     expect(step03Datum).toEqual({
       fraud_prover: proverPaymentCredential!.hash,
       data: {
-        verified_tx1_spend_inputs_hash:
-          transactionInclusion.tx1.nativeTx.body.spend_inputs_hash,
-        verified_tx2_spend_inputs_hash:
-          transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
+        verified_tx1_id: transactionInclusion.tx1.nativeTxId,
+        verified_tx2_id: transactionInclusion.tx2.nativeTxId,
       },
     });
     expect(thirdStepUtxo.assets[result.computationThreadUnit]).toBe(1n);
@@ -466,6 +461,9 @@ describe("fault-proof emulator integration", () => {
             transactionInclusion.tx1SpendInputCbors,
             "--tx1-inputs",
           ),
+          nativeTxCompactCbor: parseSubmitStep01TxInclusion(
+            transactionInclusion.tx1.inclusion,
+          ).nativeTxCompactCbor,
           doubleSpentInputIndex: 1n,
           awaitConfirmation: true,
         }),
@@ -477,9 +475,6 @@ describe("fault-proof emulator integration", () => {
     expect(step03Result.verifiedTx1SpendInputsHash).toBe(
       transactionInclusion.tx1.nativeTx.body.spend_inputs_hash,
     );
-    expect(step03Result.verifiedTx2SpendInputsHash).toBe(
-      transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
-    );
     expect(step03Result.doubleSpentInputIndex).toBe(1);
     expect(step03Result.doubleSpentInput).toEqual(
       midgardTxInput(transactionInclusion.tx1InputsPreimage[1]!),
@@ -487,11 +482,6 @@ describe("fault-proof emulator integration", () => {
     expect(step03Result.doubleSpentInputCbor).toEqual(
       transactionInclusion.tx1SpendInputCbors[1],
     );
-    expect(step03Result.tx1SpendInputsWitnessCreated).toBe(true);
-    expect(step03Result.tx1SpendInputsWitnessOutRef).toMatch(
-      /^[0-9a-f]{64}#\d+$/,
-    );
-    expect(step03Result.tx1SpendInputsRefInputIndex).toBe(0);
     const remainingThirdStepUtxos = await proverLucid.utxosAtWithUnit(
       step02Result.thirdStepAddress,
       result.computationThreadUnit,
@@ -509,8 +499,7 @@ describe("fault-proof emulator integration", () => {
     expect(step04Datum).toEqual({
       fraud_prover: proverPaymentCredential!.hash,
       data: {
-        verified_tx2_spend_inputs_hash:
-          transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
+        verified_tx2_id: transactionInclusion.tx2.nativeTxId,
         double_spent_input: midgardTxInput(
           transactionInclusion.tx1InputsPreimage[1]!,
         ),
@@ -532,6 +521,9 @@ describe("fault-proof emulator integration", () => {
             transactionInclusion.tx2SpendInputCbors,
             "--tx2-inputs",
           ),
+          nativeTxCompactCbor: parseSubmitStep01TxInclusion(
+            transactionInclusion.tx2.inclusion,
+          ).nativeTxCompactCbor,
           doubleSpentInputIndex: 1n,
           awaitConfirmation: true,
         }),
@@ -540,9 +532,6 @@ describe("fault-proof emulator integration", () => {
     proofFit["step-04"] = step04ResultCapture.measurement;
 
     expect(step04Result.txHash).toHaveLength(64);
-    expect(step04Result.verifiedTx2SpendInputsHash).toBe(
-      transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
-    );
     expect(step04Result.doubleSpentInputIndex).toBe(1);
     expect(step04Result.doubleSpentInput).toEqual(
       midgardTxInput(transactionInclusion.tx2InputsPreimage[1]!),
@@ -550,11 +539,6 @@ describe("fault-proof emulator integration", () => {
     expect(step04Result.doubleSpentInputCbor).toEqual(
       transactionInclusion.tx2SpendInputCbors[1],
     );
-    expect(step04Result.tx2SpendInputsWitnessCreated).toBe(true);
-    expect(step04Result.tx2SpendInputsWitnessOutRef).toMatch(
-      /^[0-9a-f]{64}#\d+$/,
-    );
-    expect(step04Result.tx2SpendInputsRefInputIndex).toBe(0);
     expect(step04Result.fraudProofAssetName).toBe(
       result.computationThreadAssetName,
     );

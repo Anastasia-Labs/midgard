@@ -389,7 +389,9 @@ fn tier_three_decoy_preimage() -> ByteArray {
 /// `field_opening_v1.carriage_reaches_the_anchor` refuses tier-3 carriage of a
 /// witness-set field, and that is the only thing standing here. Neutralise it
 /// and this test passes — which is how the exposure was reproduced in the first
-/// place. §8.3 erratum E2 limit 3 records the cost; #579 owns the repair.
+/// place. §8.3 erratum E2 limit 3 records the cost; #606 owns the repair
+/// (re-pointed from #579 via #604 by owner ruling, 2026-08-14 — see E2's
+/// disposition paragraph for why the repair is a regeneration event).
 test missing_signature_step_04_rejects_certified_carriage() fail {
   let block = challenged_block()
   let preimage = tier_three_decoy_preimage()

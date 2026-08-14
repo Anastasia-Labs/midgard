@@ -96,8 +96,16 @@ export const MIDGARD_ENVELOPE_VERDICT_CODE_COUNT_V1 = 11;
 /** §2.5's nine committed fields — the range a fault address may name. */
 export const MIDGARD_COMMITTED_FIELD_COUNT_V1 = 9;
 
-/** §2.5's split point: fields 0–5 are the body's, 6–8 the witness set's. */
-export const MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX_V1 = 6;
+/**
+ * §2.5's split point: fields 0–5 are the body's, 6–8 the witness set's.
+ *
+ * Re-exported from `./field-opening-v1.js` rather than restated, so the boundary
+ * has one definition — that one is derived off the §2.5 field table and pinned
+ * against `field-opening-v1.ak`'s own `first_witness_set_field_index` by
+ * `tests/field-opening-v1.test.ts`. Two independent `= 6` literals would agree
+ * until the day they did not.
+ */
+export { MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX_V1 } from "./field-opening-v1.js";
 
 /** Every verdict code paired with the name `rule.ak` gives it. */
 export const MIDGARD_ENVELOPE_VERDICT_NAMES_V1 = Object.freeze([
@@ -280,7 +288,10 @@ export const miscountedMidgardFieldPreimageV1 = (
  */
 const MIDGARD_FIELD_HEADER_MAX_V1 = 0xffff;
 
-const assertMidgardFieldHeaderRangeV1 = (label: string, value: number): void => {
+const assertMidgardFieldHeaderRangeV1 = (
+  label: string,
+  value: number,
+): void => {
   if (
     !Number.isInteger(value) ||
     value < 0 ||

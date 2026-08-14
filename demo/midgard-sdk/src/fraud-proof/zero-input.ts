@@ -1,8 +1,9 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * Re-derived onto the flat field commitments by #604 (the #575 off-chain builder
+ * remediation): thread state carries the §2.5 anchor rather than a per-field
+ * collection commitment, and a step redeemer carries a `FieldOpeningV1` rather
+ * than a reproduced `..._preimage: List<…>`. The rebind is explained once in
+ * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
 
 import { MIDGARD_EMPTY_FIELD_COMMITMENT_V1 } from "@al-ft/midgard-core";
@@ -10,6 +11,7 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "@/common.js";
 
+import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -38,8 +40,15 @@ export type ZeroInputStep01SpendRedeemer = Data.Static<
 export const ZeroInputStep01SpendRedeemer =
   ZeroInputStep01SpendRedeemerSchema as unknown as ZeroInputStep01SpendRedeemer;
 
+/**
+ * Mirrors `midgard/fraud_proofs/zero_input/step_02.State`. #604: the thread
+ * carries the §2.5 anchor. The retired `bad_tx_spend_inputs_hash` was compared
+ * against `empty_field_commitment` directly; the step now opens field 0 through
+ * the door and reads its authenticated item count instead, so what has to reach
+ * step-02 is the transaction id.
+ */
 export const ZeroInputStep02StateSchema = Data.Object({
-  bad_tx_spend_inputs_hash: H32Schema,
+  bad_tx_id: H32Schema,
 });
 export type ZeroInputStep02State = Data.Static<
   typeof ZeroInputStep02StateSchema
@@ -56,10 +65,17 @@ export type ZeroInputStep02Datum = Data.Static<
 export const ZeroInputStep02Datum =
   ZeroInputStep02DatumSchema as unknown as ZeroInputStep02Datum;
 
+/**
+ * Mirrors `midgard/fraud_proofs/zero_input/step_02.Args`. The opening is new:
+ * the step no longer compares a carried hash against the empty commitment, it
+ * opens the field. For a genuinely empty field the §5.1 preimage is the single
+ * byte `80`, so tier 1 always carries it.
+ */
 export const ZeroInputStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
+  spend_inputs_opening: FieldOpeningV1Schema,
 });
 export type ZeroInputStep02Args = Data.Static<typeof ZeroInputStep02ArgsSchema>;
 export const ZeroInputStep02Args =

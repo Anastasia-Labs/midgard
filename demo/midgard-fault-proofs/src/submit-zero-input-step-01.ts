@@ -1,8 +1,14 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * `zero-input` step-01 submitter.
+ *
+ * **Re-derived onto the flat field commitments by #604.** Thread state now
+ * carries the §2.5 anchor — the disputed transaction's **id** — where it used to
+ * carry that transaction's `spend_inputs_hash`. Step-02 re-opens field 0 through
+ * the §8.8 door rather than comparing a forwarded commitment against the pinned
+ * empty-field constant, and under §4's plain hashing that constant is the same
+ * 32 bytes in all nine slots, so the forwarded hash could not say *which* field
+ * was empty. The rebind is recorded once in
+ * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
 
 import {
@@ -93,7 +99,13 @@ export type SubmitZeroInputStep01Result = {
   readonly firstStepAddress: string;
   readonly secondStepAddress: string;
   readonly nativeTxId: string;
-  readonly badTxSpendInputsHash: string;
+  /**
+   * The §2.5 anchor this step wrote into thread state. Equal to `nativeTxId` by
+   * construction — reported under its own name because it is what step-02 will
+   * read back and open field 0 against, where `nativeTxId` merely says which
+   * transaction was challenged.
+   */
+  readonly badTxId: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
@@ -207,7 +219,11 @@ export const submitZeroInputStep01 = async ({
       "--tx-inclusion.nativeTx spends at least one input, so it does not violate the zero-input ledger rule.",
     );
   }
-  const badTxSpendInputsHash = txInclusion.nativeTx.body.spend_inputs_hash;
+  // §2.5's anchor, read off the compact structure the block's
+  // `transactions_root` committed — the only provenance `BodyAnchor` accepts.
+  // `requireNativeTxMatchesCompactCbor` above is what makes this id the
+  // committed transaction's rather than the prover's.
+  const badTxId = txInclusion.nativeTxId;
 
   signer.selectWallet(lucid);
   const chunks = publishedProofChunks ?? [];
@@ -246,7 +262,7 @@ export const submitZeroInputStep01 = async ({
   const step02Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: { bad_tx_spend_inputs_hash: badTxSpendInputsHash },
+      data: { bad_tx_id: badTxId },
     },
     ZeroInputStep02Datum,
   );
@@ -395,7 +411,7 @@ export const submitZeroInputStep01 = async ({
     firstStepAddress: contracts.zeroInput.steps[0].spendingScriptAddress,
     secondStepAddress: contracts.zeroInput.steps[1].spendingScriptAddress,
     nativeTxId: txInclusion.nativeTxId,
-    badTxSpendInputsHash,
+    badTxId,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     hubOracleRefInputIndex: Number(resolvedLayout.hubOracleRefInputIndex),

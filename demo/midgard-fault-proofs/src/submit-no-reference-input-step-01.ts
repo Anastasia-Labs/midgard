@@ -1,10 +1,13 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
- *
  * `no-reference-input` step-01 submitter (Goal task `Q18`, §9.1 output 8).
+ *
+ * **Re-derived onto the flat field commitments by #604.** Thread state carries
+ * the §2.5 anchor — the disputed transaction's **id** — where it used to carry
+ * that transaction's `reference_inputs_hash`. Step-02 re-opens field 1 through
+ * the §8.8 door, which is also what keeps field 1 distinguishable from field 0:
+ * §4's plain hashing gives the two the same commitment for the same items, and
+ * only the position tells them apart. See
+ * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  *
  * Structural mirror of the `non-existent-input` chain's step 01
  * (`ne-submit-step-01.ts`): the same applied-parameter order, the same native
@@ -119,8 +122,12 @@ export type SubmitNoReferenceInputStep01Result = {
   readonly computationThreadUnit: string;
   readonly firstStepAddress: string;
   readonly secondStepAddress: string;
+  /**
+   * The §2.5 anchor this step wrote into thread state — what step-02 reads back
+   * and opens field 1 against. It was already reported here before #604; what
+   * changed is that it is now the thread's state rather than a convenience.
+   */
   readonly badTxId: string;
-  readonly badTxReferenceInputsHash: string;
   readonly blocksPrevUtxosRoot: string;
   readonly blocksTransactionsRoot: string;
   readonly inputIndex: number;
@@ -232,8 +239,9 @@ export const submitNoReferenceInputStep01 = async ({
   }
 
   requireNativeTxMatchesCompactCbor(txInclusion);
-  const badTxReferenceInputsHash =
-    txInclusion.nativeTx.body.reference_inputs_hash;
+  // §2.5's anchor, read off the compact structure the block's
+  // `transactions_root` committed — the only provenance `BodyAnchor` accepts.
+  const badTxId = txInclusion.nativeTxId;
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -250,7 +258,7 @@ export const submitNoReferenceInputStep01 = async ({
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
-        bad_tx_reference_inputs_hash: badTxReferenceInputsHash,
+        bad_tx_id: badTxId,
         blocks_prev_utxos_root: header.prevUtxosRoot,
         blocks_transactions_root: txInclusion.transactionsPhasRoot,
       },
@@ -368,8 +376,7 @@ export const submitNoReferenceInputStep01 = async ({
     computationThreadUnit: threadToken.unit,
     firstStepAddress: steps[0].spendingScriptAddress,
     secondStepAddress: steps[1].spendingScriptAddress,
-    badTxId: txInclusion.nativeTxId,
-    badTxReferenceInputsHash,
+    badTxId,
     blocksPrevUtxosRoot: header.prevUtxosRoot,
     blocksTransactionsRoot: txInclusion.transactionsPhasRoot,
     inputIndex: Number(resolvedLayout.inputIndex),

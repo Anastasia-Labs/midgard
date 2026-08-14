@@ -44,10 +44,7 @@
  */
 
 import { outRefLabel } from "@al-ft/midgard-core";
-import {
-  EMPTY_SPEND_INPUTS_HASH,
-  FraudProofTokenDatum,
-} from "@al-ft/midgard-sdk";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
 import {
   Data,
   Emulator,
@@ -424,6 +421,9 @@ describe("fault-proof maximum proof fit", () => {
           inclusion.tx1SpendInputCbors,
           "--tx1-inputs",
         ),
+        nativeTxCompactCbor: parseSubmitStep01TxInclusion(
+          inclusion.tx1.inclusion,
+        ).nativeTxCompactCbor,
         doubleSpentInputIndex: 1n,
         awaitConfirmation: true,
       }),
@@ -448,6 +448,9 @@ describe("fault-proof maximum proof fit", () => {
           inclusion.tx2SpendInputCbors,
           "--tx2-inputs",
         ),
+        nativeTxCompactCbor: parseSubmitStep01TxInclusion(
+          inclusion.tx2.inclusion,
+        ).nativeTxCompactCbor,
         doubleSpentInputIndex: 1n,
         awaitConfirmation: true,
       }),
@@ -637,6 +640,7 @@ describe("fault-proof maximum proof fit", () => {
         signer: proverSigner,
         threadOutRef: outRefLabel(secondStepUtxo),
         inputsPreimage: fixture.inputsPreimage,
+        nativeTxCompactCbor: fixture.inclusion.nativeTxCompactCbor,
         badInputIndex: fixture.badInputIndex,
         awaitConfirmation: true,
       }),
@@ -1030,7 +1034,8 @@ describe("fault-proof maximum proof fit", () => {
     );
     proofFit["step-01"] = step01Capture.measurement;
     const step01Result = step01Capture.result;
-    expect(step01Result.badTxSpendInputsHash).toBe(EMPTY_SPEND_INPUTS_HASH);
+    // #604: the thread carries the §2.5 anchor, not the field commitment.
+    expect(step01Result.badTxId).toBe(fixture.badTx.nativeTxId);
 
     const secondStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
@@ -1045,6 +1050,9 @@ describe("fault-proof maximum proof fit", () => {
         network,
         signer: proverSigner,
         threadOutRef: outRefLabel(secondStepUtxo),
+        nativeTxCompactCbor: parseSubmitStep01TxInclusion(
+          fixture.badTx.inclusion,
+        ).nativeTxCompactCbor,
         awaitConfirmation: true,
       }),
     );

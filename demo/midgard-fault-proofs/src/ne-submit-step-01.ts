@@ -1,8 +1,12 @@
 /**
- * ⚠️ **STALE AS OF #575 — do not build a datum or redeemer from this module
- * and expect chain to accept it. Owner: #579.** The rebind, its three concrete
- * divergences, and why they are not re-derived in this lane are explained once
- * in `docs/fault-proofs/offchain-builder-staleness-575.md`.
+ * `non-existent-input` step-01 submitter.
+ *
+ * **Re-derived onto the flat field commitments by #604.** Thread state carries
+ * the §2.5 anchor — the disputed transaction's **id** — where it used to carry
+ * that transaction's `spend_inputs_hash`. Step-02 re-opens field 0 through the
+ * §8.8 door and reads one input arithmetically instead of reproducing the whole
+ * collection to re-hash it (the Q1X-F6 shape, #551). The two ledger roots are
+ * unchanged. See `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
 
 import {
@@ -101,7 +105,12 @@ export type NeSubmitStep01Result = {
   readonly firstStepAddress: string;
   readonly secondStepAddress: string;
   readonly nativeTxId: string;
-  readonly badTxInputsHash: string;
+  /**
+   * The §2.5 anchor this step wrote into thread state. Equal to `nativeTxId` by
+   * construction — reported under its own name because it is what step-02 reads
+   * back and opens field 0 against.
+   */
+  readonly badTxId: string;
   readonly blocksPrevUtxosRoot: string;
   readonly blocksTransactionsRoot: string;
   readonly inputIndex: number;
@@ -249,7 +258,7 @@ export const neSubmitStep01 = async ({
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
-        bad_tx_inputs_hash: txInclusion.nativeTx.body.spend_inputs_hash,
+        bad_tx_id: txInclusion.nativeTxId,
         blocks_prev_utxos_root: header.prevUtxosRoot,
         blocks_transactions_root: txInclusion.transactionsPhasRoot,
       },
@@ -401,7 +410,7 @@ export const neSubmitStep01 = async ({
     firstStepAddress: steps[0].spendingScriptAddress,
     secondStepAddress: steps[1].spendingScriptAddress,
     nativeTxId: txInclusion.nativeTxId,
-    badTxInputsHash: txInclusion.nativeTx.body.spend_inputs_hash,
+    badTxId: txInclusion.nativeTxId,
     blocksPrevUtxosRoot: header.prevUtxosRoot,
     blocksTransactionsRoot: txInclusion.transactionsPhasRoot,
     inputIndex: Number(resolvedLayout.inputIndex),

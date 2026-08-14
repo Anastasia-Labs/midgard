@@ -93,7 +93,13 @@ export type SubmitReferenceInputNoIdxStep01Result = {
   readonly firstStepAddress: string;
   readonly secondStepAddress: string;
   readonly badTxId: string;
-  readonly verifiedTxReferenceInputsHash: string;
+  /**
+   * The §2.5 anchor this step wrote into thread state — the disputed
+   * transaction's id. It replaced `verifiedTxReferenceInputsHash` in #604: the
+   * thread no longer carries field 1's commitment, because step-02 re-opens the
+   * field through the §8.8 door from the anchor instead.
+   */
+  readonly verifiedTxId: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
@@ -209,8 +215,9 @@ export const submitReferenceInputNoIdxStep01 = async ({
   }
 
   requireNativeTxMatchesCompactCbor(txInclusion);
-  const verifiedTxReferenceInputsHash =
-    txInclusion.nativeTx.body.reference_inputs_hash;
+  // §2.5's anchor, read off the compact structure the block's
+  // `transactions_root` committed — the only provenance `BodyAnchor` accepts.
+  const verifiedTxId = txInclusion.nativeTxId;
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -226,9 +233,7 @@ export const submitReferenceInputNoIdxStep01 = async ({
   const step02Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: referenceInputNoIdxStep02StateFromBadTxV1(
-        verifiedTxReferenceInputsHash,
-      ),
+      data: referenceInputNoIdxStep02StateFromBadTxV1(verifiedTxId),
     },
     ReferenceInputNoIdxStep02Datum,
   );
@@ -344,7 +349,7 @@ export const submitReferenceInputNoIdxStep01 = async ({
     firstStepAddress: chain.steps[0].spendingScriptAddress,
     secondStepAddress: chain.steps[1].spendingScriptAddress,
     badTxId: txInclusion.nativeTxId,
-    verifiedTxReferenceInputsHash,
+    verifiedTxId,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     hubOracleRefInputIndex: Number(resolvedLayout.hubOracleRefInputIndex),
