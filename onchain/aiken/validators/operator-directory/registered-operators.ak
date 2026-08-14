@@ -296,9 +296,15 @@ validator mint(
       } -> {
         let Transaction { inputs, outputs, reference_inputs, mint, fee, .. } = self
 
-        // 1. `slashing_penalty` must be paid via the transaction fee. The rest
-        //    of the bond is assumed to be going to the signer's desired
-        //    destination.
+        // 1. `slashing_penalty` must be paid via the transaction fee, which is
+        //    the pinned destination of the slashed bond (F04 §2.3).
+        //
+        //    Duplicate-registration slashing pays no `fraud_prover_reward`:
+        //    the 2026-08-11 owner ruling 7 (D4) routes the reward exclusively
+        //    through the bond-consuming arms of the state queue's
+        //    `RemoveFraudulentBlockHeader`, so no other endpoint may pay it.
+        //    Exactness of the remainder on this route is F04 §2.5's open
+        //    tranche-preservation item, owned by Q53.
         expect fee >= env.slashing_penalty
 
         // 2. Removal of the duplicate operator's node from the registered

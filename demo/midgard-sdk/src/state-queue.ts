@@ -81,15 +81,28 @@ const encodeActiveOperatorSpendRedeemer = (
     ? redeemer
     : Data.to(redeemer as never, ActiveOperatorSpendRedeemer as never);
 
+/**
+ * Mirrors `midgard/state_queue.SlashingApproach`.
+ *
+ * The two bond-consuming constructors carry
+ * `m_fraud_prover_reward_output_index`, the output that pays the fraud prover
+ * exactly `env.fraud_prover_reward` (2026-08-11 owner ruling 7, D3). It is
+ * `null` exactly when that compiled reward is zero — today's placeholder
+ * economics, which F04 §2.5 assigns to Q53. `OperatorAlreadySlashed` consumes
+ * no bond and so cannot name a reward output at all: that is the type-level
+ * half of the D4 exclusivity ruling.
+ */
 export const SlashingApproachSchema = Data.Enum([
   Data.Object({
     SlashActiveOperator: Data.Object({
       active_operators_redeemer_index: Data.Integer(),
+      m_fraud_prover_reward_output_index: Data.Nullable(Data.Integer()),
     }),
   }),
   Data.Object({
     SlashRetiredOperator: Data.Object({
       retired_operators_redeemer_index: Data.Integer(),
+      m_fraud_prover_reward_output_index: Data.Nullable(Data.Integer()),
     }),
   }),
   Data.Object({
@@ -268,8 +281,27 @@ type AlreadySlashedRemoveParams = {
   readonly retiredOperatorsElementRefInput: UTxO;
 };
 
+/**
+ * The fraud-prover reward a bond-consuming removal must route (F04 §2.3;
+ * 2026-08-11 owner ruling 7, D3).
+ *
+ * `proverEnterpriseAddress` is the enterprise address of the `fraud_prover`
+ * key hash carried by the fraud-proof token's datum — never a submitter,
+ * change, or stake-delegated address, which the on-chain guard refuses.
+ * `lovelace` must equal the compiled `env.fraud_prover_reward`; there is no
+ * default here because this SDK is not an economics authority (F04 §2.5), and
+ * omitting the plan altogether is correct only while that compiled value is
+ * zero.
+ */
+export type FraudProverRewardPlan = {
+  readonly proverEnterpriseAddress: Address;
+  readonly lovelace: bigint;
+};
+
 type SlashActiveOperatorRemoveParams = {
   readonly kind: "slashActiveOperator";
+  /** Reward routing; omit only while `env.fraud_prover_reward` is zero. */
+  readonly fraudProverReward?: FraudProverRewardPlan;
   /**
    * Supports the active-operators `SlashOperator` mint path. For full
    * active-operator validation, provide the anchor/node inputs, continued
@@ -301,6 +333,8 @@ type SlashActiveOperatorRemoveParams = {
 
 type SlashRetiredOperatorRemoveParams = {
   readonly kind: "slashRetiredOperator";
+  /** Reward routing; omit only while `env.fraud_prover_reward` is zero. */
+  readonly fraudProverReward?: FraudProverRewardPlan;
   readonly retiredOperatorsAssetsToBurn: Assets;
   readonly retiredOperatorsMintRedeemer: BuildTxWithRedeemer;
   readonly retiredOperatorsMintingScript: Script;
@@ -568,6 +602,12 @@ const resolveRemoveSlashingApproach = (
             ),
             "state-queue remove active-operators burn",
           ),
+          m_fraud_prover_reward_output_index:
+            resolveFraudProverRewardOutputIndex(
+              ctx,
+              slashing.fraudProverReward,
+              "state-queue remove active-operator fraud-prover reward",
+            ),
         },
       };
     case "slashRetiredOperator":
@@ -581,10 +621,50 @@ const resolveRemoveSlashingApproach = (
             ),
             "state-queue remove retired-operators burn",
           ),
+          m_fraud_prover_reward_output_index:
+            resolveFraudProverRewardOutputIndex(
+              ctx,
+              slashing.fraudProverReward,
+              "state-queue remove retired-operator fraud-prover reward",
+            ),
         },
       };
   }
 };
+
+/**
+ * Locates the reward output the on-chain guard will check, or reports `null`
+ * when no reward is being routed. The predicate mirrors
+ * `fraud_prover_reward_output_is_exact_v1`: the prover's enterprise address,
+ * exactly the reward in lovelace, nothing else in the value, and no reference
+ * script — so a builder that pays the wrong shape fails here rather than
+ * on-chain. The reference-script leg never bites on the `pay.ToAddress` route
+ * this module builds, and is carried anyway so the mirror is complete rather
+ * than merely sufficient for the current caller.
+ */
+export const resolveFraudProverRewardOutputIndex = (
+  ctx: Parameters<BuildTxWithRedeemer>[0],
+  reward: FraudProverRewardPlan | undefined,
+  label: string,
+): bigint | null =>
+  reward === undefined
+    ? null
+    : requireUniqueOutputIndex(
+        ctx.outputs,
+        (output) =>
+          output.address === reward.proverEnterpriseAddress &&
+          output.assets.lovelace === reward.lovelace &&
+          Object.keys(output.assets).length === 1 &&
+          (output.scriptRef ?? null) === null,
+        label,
+      );
+
+const removeSlashingFraudProverReward = (
+  slashing: EmulatorStateQueueRemoveSlashingParams,
+): FraudProverRewardPlan | undefined =>
+  slashing.kind === "operatorAlreadySlashed"
+    ? undefined
+    : slashing.fraudProverReward;
 
 const removeSlashingReferenceInputs = (
   slashing: EmulatorStateQueueRemoveSlashingParams,
@@ -744,6 +824,30 @@ const buildStateQueueRemovalTx = (
       params.continuedOutput.assets,
     )
     .mintAssets(params.assetsToBurn, params.stateQueueMintRedeemer);
+
+  // D3: the fraud prover's exact reward, ADA-only, at their enterprise
+  // address. Nothing is paid while the compiled reward is zero, which is the
+  // only case in which the slashing redeemer may carry a null reward index.
+  //
+  // The prover's own signature rides the same branch, because
+  // `route_fraud_prover_reward_v1` demands it exactly when the reward output
+  // exists (the 2026-08-12 orchestrator ruling on #603). It is added here, from
+  // the payment credential of the very address being paid, so that a submitter
+  // who is not the prover produces a transaction the prover can sign rather
+  // than one that fails the on-chain guard with no preflight. When the
+  // submitter *is* the prover the key is already required and this is a no-op.
+  // On the null-index path no reward is paid, no signature is owed, and none is
+  // requested — demanding one there would let an absent prover block a slash.
+  const rewardPlan = removeSlashingFraudProverReward(params.slashing);
+  if (rewardPlan !== undefined) {
+    tx = tx.pay
+      .ToAddress(rewardPlan.proverEnterpriseAddress, {
+        lovelace: rewardPlan.lovelace,
+      })
+      .addSignerKey(
+        paymentCredentialOf(rewardPlan.proverEnterpriseAddress).hash,
+      );
+  }
 
   if (params.referenceScripts?.stateQueueSpend === undefined) {
     tx = tx.attach.Script(params.stateQueueSpendingScript);

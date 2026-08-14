@@ -962,6 +962,7 @@ describe("state-queue ABI", () => {
             slashing_approach: {
               SlashActiveOperator: {
                 active_operators_redeemer_index: 6n,
+                m_fraud_prover_reward_output_index: 8n,
               },
             },
             block_removal_approach: {
@@ -979,10 +980,29 @@ describe("state-queue ABI", () => {
         slashing_approach: {
           SlashActiveOperator: {
             active_operators_redeemer_index: 6n,
+            m_fraud_prover_reward_output_index: 8n,
           },
         },
       },
     });
+
+    // D3: a bond-consuming slash that routes no reward encodes the index as
+    // `null`, which the on-chain guard accepts only while the compiled
+    // `env.fraud_prover_reward` is zero.
+    const rewardlessRetiredSlash = {
+      RemoveFraudulentBlockHeader: {
+        ...removeRedeemer.RemoveFraudulentBlockHeader,
+        slashing_approach: {
+          SlashRetiredOperator: {
+            retired_operators_redeemer_index: 9n,
+            m_fraud_prover_reward_output_index: null,
+          },
+        },
+      },
+    };
+    expect(roundTrip(rewardlessRetiredSlash, StateQueueRedeemer)).toEqual(
+      rewardlessRetiredSlash,
+    );
   });
 });
 

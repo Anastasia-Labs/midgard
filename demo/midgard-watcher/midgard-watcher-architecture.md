@@ -369,7 +369,7 @@ The watcher should treat proof submission as a state machine with durable recove
 3. Submit computation-thread `Init`, referencing the fraud-proof catalogue entry and the target state-queue node.
 4. Submit each proof step transaction, advancing the computation-thread token through the category validators.
 5. On the final step, mint the permanent fraud-proof token and burn the computation-thread token through `Success`.
-6. Submit `RemoveFraudulentBlockHeader` against the state queue, referencing the fraud-proof token and slashing the operator through the active or retired operator path.
+6. Submit `RemoveFraudulentBlockHeader` against the state queue, referencing the fraud-proof token and slashing the operator through the active or retired operator path. The bond-consuming slash is also the transaction that pays the prover: it routes exactly `env.fraud_prover_reward` to the enterprise address of the `fraud_prover` recorded in the fraud-proof token's datum, with the residual bond going to the Cardano treasury as the transaction fee, and it must carry that prover's signature (2026-08-11 owner ruling 7, D3). No other transaction shape may pay the reward — a repeat removal against an already-slashed operator carries no payout at all (D4).
 7. Track descendant removal if the bad block is not the tail.
 8. Verify the state queue no longer contains the fraudulent block or its invalid descendants.
 

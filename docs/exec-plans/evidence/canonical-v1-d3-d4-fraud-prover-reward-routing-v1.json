@@ -1,0 +1,204 @@
+{
+  "artifact": "canonical-v1-d3-d4-fraud-prover-reward-routing-v1",
+  "issue": 603,
+  "title": "Riders 4+5 — exact fraud_prover_reward routing (D3) exclusively via the once-per-header RemoveFraudulentBlockHeader transaction (D4)",
+  "rulingProvenance": {
+    "owner": "repository owner (Philip DiSarro)",
+    "session": "2026-08-11 owner session, ruling 7",
+    "recordedAt": "https://github.com/Anastasia-Labs/midgard/issues/593#issuecomment-5261103820 (comment of 2026-08-12T01:43:55Z)",
+    "verbatim": "D3 approved: on-chain exact `fraud_prover_reward` routing to the prover credential from the thread datum, pinned residual-bond destination, settlement.ts 60% heuristic deleted. D4 approved: reward routed exclusively through the once-per-header `RemoveFraudulentBlockHeader` transaction. … D3/D4 validator changes land pre-#579 and ride its cascade.",
+    "note": "The 2026-08-12T02:20Z comment on #593 is retracted and void; it is not execution scope for anything in this artifact."
+  },
+  "residualBondDestination": {
+    "resolved": true,
+    "destination": "the Cardano treasury, via the transaction fee",
+    "citation": "docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md §2.3 — the successful fraud-slash transaction \"sets the transaction fee to exactly `slashing_penalty`\" (and to exactly `slashing_penalty - inactivity_slashing_penalty` for a previously inactivity-slashed node), and \"the reward output and exact fee conserve the complete designated bond tranche\".",
+    "enforcedAt": "onchain/aiken/lib/midgard/operator-directory.ak:304-313, an existing floor that this lane preserves guard-for-guard and re-documents; the retired assumption it used to carry (\"fraud prover is assumed to be the signer of the transaction, and therefore will receive the remaining bond\") is exactly what D3 replaces.",
+    "escalationAvoided": "The destination was not guessed. It is named in the decision record, so the ticket's escalation trigger for an unspecified residual destination did not fire."
+  },
+  "rewardAnchorAdjudication": {
+    "question": "Ruling 7 pins the reward to the `RemoveFraudulentBlockHeader` transaction; F04 §2.3's closing bullet additionally required that same transaction to remove the fraud-proved target block. The two cannot both hold for a non-tail fraudulent block.",
+    "evidence": "A block with successors must have them pruned one `RemoveFraudulentBlocksLink` transaction at a time; each such transaction must itself present a `slashing_approach`; `OperatorAlreadySlashed` proves NON-membership in both operator directories and is therefore only constructible after the slash. The slash consequently lands on the first pruning transaction — confirmed operationally at `demo/midgard-fault-proofs/src/remove-fraudulent-block.ts`, whose removal loop re-resolves the slashing plan per transaction. Pinning the reward to `RemoveLastFraudulentBlock` would demand payment from a transaction that consumes no bond.",
+    "adjudication": "Orchestrator adjudication under ruling 7, 2026-08-13, recorded on #603: the reward anchors on the bond-consuming arms of `RemoveFraudulentBlockHeader`. The idempotency boundary is unchanged — F04 §2.4's \"at most one reward from an operator's slashable bond\", carried by the singleton operator-directory node.",
+    "recordedIn": "docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md §2.3, whose closing bullet is rewritten and carries \"Amendment 3 — §2.3 reward-pairing clause\". No other bullet of §2.3 moved."
+  },
+  "retiredAssumptionComments": {
+    "note": "Two live validator comments asserted the behaviour D3/D4 retire — that the slashing transaction's signer simply keeps the remainder of the bond. Both are corrected as comment-only edits, proven code-neutral by an identical scratch blueprint md5 on both sides.",
+    "sites": [
+      "onchain/aiken/lib/midgard/operator-directory.ak — \"Fraud prover is assumed to be the signer of the transaction, and therefore will receive the remaining bond\"",
+      "onchain/aiken/validators/operator-directory/registered-operators.ak — \"The rest of the bond is assumed to be going to the signer's desired destination\" on the duplicate-registration slash, which D4 forbids from paying a reward"
+    ],
+    "notFixedHere": "Exactness of the remainder on the bad-settlement and duplicate-registration routes is F04 §2.5's open tranche-preservation item and stays Q53's; only the contradicting prose moved."
+  },
+  "rewardValueBinding": {
+    "compiledValue": "env.fraud_prover_reward, unchanged",
+    "movedInThisLane": false,
+    "note": "`onchain/aiken/env/default.ak:21` and `env/testnet.ak:20` both compile 0 and are untouched here: setting them is rider D2, which the same ruling approved only contingent on W31 faucet feasibility. This lane wires the plumbing so whatever that constant becomes is the amount routed. F04 §2.2's bounded-acceptance figure (400_000_000 lovelace) appears only as an Aiken test vector, never as a compiled constant.",
+    "consequenceAtZero": "With the reward at zero the redeemer's `m_fraud_prover_reward_output_index` is `None` and no output is paid — an exact-zero output cannot exist on L1. Stated precisely, because an earlier draft of this field overclaimed: at zero the bond-consuming arms impose NO output constraint at all (`fraud_prover_reward_routing_is_exact_v1` reduces to `0 == 0`), and — since the 2026-08-12 orchestrator ruling on finding 2 of the adversarial review gated the extra-signatory binding on the reward-bearing case — no prover signature is demanded either. The `OperatorAlreadySlashed` refusal is likewise vacuous at exact zero, since the reward-shaped output it forbids is a zero-lovelace output that cannot exist. What this lane retires at zero is therefore not an on-chain constraint but the old default it replaces: that the slashing transaction's signer simply keeps the bond remainder — `settlement.ts`'s 60% heuristic, deleted here, and the two stale validator comments corrected in `retiredAssumptionComments`. Both live guards, exactness and signature, go live together at any nonzero profile, which is why their negatives are pinned on the pure seams at a nonzero test vector rather than on the compiled zero."
+  },
+  "rewardRoutingHashMovement": {
+    "note": "Recorded as a measurement with its method, not as a prose assurance, and recorded here because the movement lands nowhere else in the tree yet: `onchain/aiken/plutus.json` is regenerated under #579, so until that batch runs the change is source-only and this block is the only durable record of what the source now compiles to. Nothing in this repository re-derives it; the parent must re-verify at the identity batch.",
+    "method": "The `onchain/aiken` tree carrying this rider was built under the patched fork into a throwaway path outside the repository (`aiken build --env testnet -o <scratch>`, never writing the repository's `plutus.json`), and compared entry by entry against the same command run on the pre-rider tree. Every blueprint entry was compared by title and hash — not only the ones expected to move — so \"nothing else moved\" is a measurement rather than an inference from the diff. Definitions were compared as whole objects, both directions.",
+    "compiler": "aiken v1.1.23+2a78108",
+    "compilerBinaryMd5": "b3acfdf348235798cb6b921d0f87750a",
+    "buildCommand": "aiken build --env testnet",
+    "priorBlueprintMd5": "79014c68e0a30f7842d39af63652505c",
+    "observedBlueprintMd5": "b20c9a14a8fe445cdddbe5305b3857c1",
+    "supersededIntermediate": {
+      "observedBlueprintMd5": "956a20b5a0d812719a55b92e1e988c32",
+      "stateQueueMintHash": "c6dddab597d19017651c4bfd74b16cbc336b28489113df36762fc329",
+      "stateQueueMintCompiledCodeLength": 23626,
+      "why": "That measurement was taken before the adversarial review's finding 2 and the 2026-08-12 orchestrator ruling it produced, which gated the prover-signature conjunct on the reward-bearing case. The guard changed, so `state_queue.mint` moved a second time. The intermediate hash is recorded here only so a reader who saw it elsewhere can tell it is superseded — it must not be pinned by any consumer. The old→new pair to carry forward is `priorHash` → `observedHash` below.",
+      "unmovedByTheSecondPass": "The two operator-directory mints landed on the same hashes in both passes (`508f33a1…`, `b49663ac…`), which is the expected result: the second pass changed only the body of `route_fraud_prover_reward_v1` inside `validators/state-queue.ak`, and those validators move solely because of the widened `SlashingApproach` decoder."
+    },
+    "remeasuredAt": "2026-08-13, after the review-fix pass. The prior side was rebuilt from a clean detached worktree at HEAD `ac67670d` rather than reused from the earlier run, and it reproduced `79014c68e0a30f7842d39af63652505c` exactly — so the comparison below is a fresh two-sided measurement under the same compiler binary, not a splice of the old prior against a new observed.",
+    "entryCounts": {
+      "validatorsPrior": 398,
+      "validatorsObserved": 398,
+      "definitionsPrior": 702,
+      "definitionsObserved": 702,
+      "titlesAdded": [],
+      "titlesRemoved": []
+    },
+    "movedValidators": [
+      {
+        "validator": "state_queue.mint",
+        "entries": ["state_queue.mint.mint", "state_queue.mint.else"],
+        "priorHash": "9a823d55fd7bc0823c3c4d40bed5f7bc41169127ae3655e48424964e",
+        "observedHash": "1bb1b7760927a386ebf71760e55906c5741725d4707f6f237bc37215",
+        "priorCompiledCodeLength": 22708,
+        "observedCompiledCodeLength": 23668,
+        "basis": "The `RemoveFraudulentBlockHeader` handler gained the D3 reward routing and the D4 exclusivity refusal, reads the fraud prover off the fraud-proof reference input's datum, and requires that prover's signature on the reward-bearing arms — demanded, per the 2026-08-12 orchestrator ruling on the review's finding 2, exactly when the reward output exists (the `Some` arm) rather than unconditionally. Its redeemer's `SlashingApproach` also gained a field."
+      },
+      {
+        "validator": "operator_directory/active_operators.mint",
+        "entries": [
+          "operator_directory/active_operators.mint.mint",
+          "operator_directory/active_operators.mint.else"
+        ],
+        "priorHash": "b37370a3b09dcbd5173d6e3c611a2f627bacde44c9fa8a4a220fb234",
+        "observedHash": "508f33a13578b8eaa69eebc3de39b0d6c70c7324e9bade14f9c720e6",
+        "priorCompiledCodeLength": 18692,
+        "observedCompiledCodeLength": 18736,
+        "basis": "Not a semantic change: this validator decodes the state queue's `RemoveFraudulentBlockHeader` redeemer through `operator_directory.slash_fraudulent_operator_and_get_info`, so the widened `SlashingApproach` constructor changes its generated decoder. The lane's only edit to `operator-directory.ak` is comment text."
+      },
+      {
+        "validator": "operator_directory/retired_operators.mint",
+        "entries": [
+          "operator_directory/retired_operators.mint.mint",
+          "operator_directory/retired_operators.mint.else"
+        ],
+        "priorHash": "11791af7dba04296a72b26a6fe30d33ac5200272b275038db34d3ab9",
+        "observedHash": "b49663ac61d8a31e9263ec33c50aefd0b47a7e3a2dd10c43a1b6817e",
+        "priorCompiledCodeLength": 15358,
+        "observedCompiledCodeLength": 15402,
+        "basis": "Same decoder reason as the active-operators mint."
+      }
+    ],
+    "changedDefinitions": ["midgard/state_queue/SlashingApproach"],
+    "addedDefinitions": [],
+    "removedDefinitions": [],
+    "result": "six blueprint entries move, forming three validators; 398 validators and 702 definitions on both sides, with no title added, removed, or otherwise re-hashed, and exactly one definition changed",
+    "landsIn": "`onchain/aiken/plutus.json` at #579's regeneration; source-only until then. That blueprint is generated and untracked, nothing in this rider rewrites it, and the working copy is byte-unchanged at md5 `c52589df225145ad74c8f444d500dfe5`, still carrying the prior hashes — so the observed hashes exist in no checked-in file and this block is what carries them forward."
+  },
+  "wireChangeInherited": {
+    "type": "midgard/state_queue/SlashingApproach",
+    "change": "`SlashActiveOperator` and `SlashRetiredOperator` each gain `m_fraud_prover_reward_output_index: Option<Int>`; `OperatorAlreadySlashed` is unchanged.",
+    "rationale": "The reward-output index lives only on the bond-consuming constructors, so the arm that consumes no bond cannot even express a reward destination. That is the D4 exclusivity ruling expressed in the type rather than in a comparison, and it is why the off-chain twins cannot accidentally route a reward on the already-slashed path.",
+    "offChainMirrors": [
+      "demo/midgard-sdk/src/state-queue.ts — `SlashingApproachSchema`",
+      "demo/midgard-sdk/src/state-queue.ts — `resolveRemoveSlashingApproach`, `resolveFraudProverRewardOutputIndex`, `buildStateQueueRemovalTx`",
+      "demo/midgard-fault-proofs/src/remove-fraudulent-block.ts — `resolveStateQueueSlashingApproach`, `buildSlashingInputs`, `submitRemoveFraudulentBlock`"
+    ]
+  },
+  "proverSignatureCarriage": {
+    "note": "Added in the review-fix pass for finding 3, which observed that the on-chain signature binding had no off-chain twin: a submitter who is not the prover would build a reward-bearing slash that fails `has_signed` on-chain with nothing catching it first.",
+    "builder": "`demo/midgard-sdk/src/state-queue.ts` — `buildStateQueueRemovalTx` now calls `addSignerKey(paymentCredentialOf(rewardPlan.proverEnterpriseAddress).hash)` on the same branch that creates the reward output, and only on that branch. The key is derived from the address being paid, so it is the prover named by the fraud-proof datum by construction. On the null-index path no reward is paid, no signature is owed, and none is requested — which is the off-chain half of the finding-2 ruling.",
+    "cliAlreadyCovered": "`demo/midgard-fault-proofs/src/submitRemoveFraudulentBlock` needed no change: a pre-existing guard refuses outright unless `fraudProofDatum.fraud_prover === signer.paymentKeyHash`, and its `addSignerKey(signer.paymentKeyHash)` is therefore already the prover's key. The builder-level addition is what covers callers that do not carry that identity check.",
+    "doubleAddIsSafe": "Measured rather than assumed, because the CLI now adds the same key twice on a reward-bearing slash: CML's `add_required_signer` deduplicates. Building the same transaction with `addSignerKey` called once and twice yields `required_signers` of length 1 in both cases, so no duplicate set entry reaches the ledger.",
+    "notExercisedByAnyGate": "No test in either suite supplies `fraudProverReward`/`fraudProverRewardLovelace`, so this branch is dormant under every current gate and cannot have moved a row. It goes live with rider D2."
+  },
+  "frozenBlueprintConsequence": {
+    "note": "A redeemer-shape change under a frozen `plutus.json` necessarily reddens every emulator test that drives the changed redeemer against the old compiled validator. This is the same mechanism that produced the already-accepted frozen-blueprint red set, and it clears at #579's regeneration. Recorded exactly rather than absorbed silently: the failure set MOVED, and by this much.",
+    "mechanism": "`plutus.json` is byte-identical, so the guards added by this lane are not executing in these runs at all. The only input that changed for these transactions is the redeemer CBOR, which now carries the extra `SlashingApproach` field the frozen validator's decoder does not expect.",
+    "attribution": "Measured, not asserted: every one of the fifteen newly-red rows fails with `failed script execution Mint[0] the validator crashed / exited prematurely`, and that string occurs zero times in the pre-rider run of the same suite. The count matches exactly — fifteen distinct failures, no other new signature — so the whole movement is one mechanism.",
+    "suiteTotals": {
+      "command": "pnpm --filter @al-ft/midgard-fault-proofs exec vitest run --pool=forks --no-file-parallelism --bail=0",
+      "prior": "19 failed | 324 passed (343), 11 failed | 25 passed (36) files",
+      "observed": "34 failed | 309 passed (343), 14 failed | 22 passed (36) files",
+      "cleared": []
+    },
+    "newlyRed": [
+      "tests/submit-init-emulator.test.ts > proves and removes a non-tail double-spend block by pruning successors first",
+      "tests/submit-init-emulator.test.ts > removes a tail double-spend block without acquiring a lease",
+      "tests/submit-init-emulator.test.ts > removes a non-tail double-spend block with multiple successors in queue order",
+      "tests/submit-init-emulator-removal-lease.test.ts > coordinates non-tail removal with lease acquire, refetch, renew, and release ordering",
+      "tests/submit-init-emulator-input-no-idx.test.ts > proves and removes an out-of-range spend-input block end to end",
+      "tests/submit-init-emulator-ledger-rules.test.ts > proves and removes a tail invalid-range block end to end",
+      "tests/submit-init-emulator-ledger-rules.test.ts > proves and removes a tail zero-input block end to end",
+      "tests/submit-init-emulator-da-hash-preimage.test.ts > proves and removes a tail miskeyed-leaf block end to end",
+      "tests/submit-init-emulator-max-proof-fit.test.ts > fits a maximum-depth double-spend proof inside the L1 envelope",
+      "tests/submit-init-emulator-max-proof-fit.test.ts > fits a maximum-depth invalid-range proof inside the L1 envelope",
+      "tests/submit-init-emulator-max-proof-fit.test.ts > fits a maximum-depth zero-input proof inside the L1 envelope",
+      "tests/submit-init-emulator-max-proof-fit.test.ts > bounds the membership-depth axis with a measured marginal cost per level",
+      "tests/submit-init-emulator-chunked-proof-carriage.test.ts > carries a zero-input membership proof past the direct route's envelope ceiling",
+      "tests/submit-init-emulator-chunked-proof-carriage.test.ts > carries an invalid-range membership proof past the direct route's envelope ceiling",
+      "tests/submit-init-emulator-chunked-proof-carriage.test.ts > carries both double-spend membership proofs past the direct route's envelope ceiling"
+    ],
+    "newlyRedNote": "The `max-proof-fit` and `chunked-proof-carriage` rows are envelope measurements that drive a complete lifecycle, removal included, which is why a removal-redeemer change reaches them.",
+    "alreadyRedBefore": [
+      "tests/submit-init-emulator-input-no-idx.test.ts > constructs and measures a genuine CompletePublished consuming proof",
+      "tests/submit-init-emulator-input-no-idx.test.ts > confirms every intermediate root in a true 20-input ordered fold",
+      "tests/submit-init-emulator-ledger-rules.test.ts > proves and removes a tail non-existent-input block end to end",
+      "tests/submit-init-emulator-transition-trace.test.ts > submits and removes a tail transition-trace fraud proof end to end",
+      "tests/submit-init-emulator-max-proof-fit.test.ts > fits a maximum-depth non-existent-input proof inside the L1 envelope",
+      "tests/submit-init-emulator-chunked-proof-carriage.test.ts > carries a no-input membership and absence proof past the direct route's envelope ceiling",
+      "plus the non-emulator rows recorded in the program's accepted baseline (validation-dispute ABI, family-scaffold scanner, inspect-contracts, spend-input cardinality, validation-dispute lifecycle and soundness)"
+    ],
+    "clearsAt": "#579's single regeneration, after which the compiled state-queue mint decodes the widened redeemer and these rows should return to their pre-rider state. The parent must re-run them at the batch rather than assume the clearance."
+  },
+  "mutationVerification": {
+    "note": "Each mutation was applied to `onchain/aiken/validators/state-queue.ak`, the D3/D4 selectors (`aiken check -m d3_ -m d4_`) were run under the fork, and the file was restored and re-verified byte-exact against its pre-mutation md5. Two passes are recorded. The implementation pass ran the four selectors that existed then against md5 `0d6b0b7b21b4320db6abc24c4b555b0c`; both of its mutations were taken before the closing explanatory comment was added, and that comment is proven code-neutral because the scratch blueprint md5 was identical on both sides (`956a20b5a0d812719a55b92e1e988c32`). The review-fix pass ran five selectors — the fifth is the signature-binding test added for the review's findings 1 and 2 — against md5 `21219e11a0ce7946557931da462a0845`.",
+    "mutations": [
+      {
+        "pass": "implementation",
+        "guard": "exactness (D3)",
+        "edit": "`assets.lovelace_of(value) == expected_reward` → `>= expected_reward` in `fraud_prover_reward_output_is_exact_v1`",
+        "result": "4 checks, 2 failed — `d3_reward_output_exactness_control_and_mutations` (the one-lovelace-over row) and `d4_reward_exclusivity_control_and_double_claim` (whose reach row depends on the same predicate) both redden.",
+        "restored": "md5 verified"
+      },
+      {
+        "pass": "implementation",
+        "guard": "exclusivity (D4)",
+        "edit": "body of `no_output_pays_fraud_prover_reward_v1` replaced by `True`",
+        "result": "4 checks, 1 failed — exactly `d4_reward_exclusivity_control_and_double_claim`; the three D3 selectors stay green, so the mutation is narrow.",
+        "restored": "md5 verified"
+      },
+      {
+        "pass": "review-fix",
+        "guard": "prover signature (F04 §2.3 second binding)",
+        "why": "The review's finding 1 measured the signature conjunct as a guard that could not fail: deleting it left the full fork tree green at 2482 checks. That is now falsifiable.",
+        "edit": "the `when m_reward_output_index is { None -> True; Some(_) -> fraud_prover |> utils.has_signed(extra_signatories) }` conjunct of `route_fraud_prover_reward_v1` replaced by `True` — i.e. the conjunct deleted, reproducing the reviewer's MUT4",
+        "result": "5 checks, 1 error — exactly `d3_reward_signature_binding_is_gated_on_the_reward_bearing_case`; the four pre-existing D3/D4 selectors stay green, so the mutation is narrow and the new test is the only thing pinning the signature.",
+        "restored": "md5 `21219e11a0ce7946557931da462a0845` verified byte-exact"
+      },
+      {
+        "pass": "review-fix",
+        "guard": "the gating of that signature on the reward-bearing case",
+        "why": "Proves the gate itself is load-bearing rather than decorative: the zero-profile positive row would pass just as well under an unconditional demand if it were not.",
+        "edit": "the `None` arm changed from `True` back to `fraud_prover |> utils.has_signed(extra_signatories)` — the un-gated, pre-ruling shape the orchestrator's 2026-08-12 ruling rejected",
+        "result": "5 checks, 1 error — again exactly `d3_reward_signature_binding_is_gated_on_the_reward_bearing_case`, this time on its zero-profile row: a bond-consuming slash at zero reward with `None` and no prover signature must succeed, and under the un-gated shape it refuses.",
+        "restored": "md5 `21219e11a0ce7946557931da462a0845` verified byte-exact"
+      }
+    ],
+    "postRestore": "5 checks, 0 errors; full fork tree 2483 checks, 0 errors, 7 warnings"
+  },
+  "parentIntegration": {
+    "owner": "parent",
+    "pendingEdits": [
+      "Regenerate `onchain/aiken/plutus.json` and re-pin every consumer of the three moved validator hashes recorded in `rewardRoutingHashMovement`.",
+      "Re-run the fifteen emulator rows in `frozenBlueprintConsequence.newlyRed` after the regeneration and confirm they clear; they are not independent defects.",
+      "Rider D2 (the F04 economics values in `onchain/aiken/env/{default,testnet}.ak`) remains unlanded and contingent on W31. Until it lands, the reward routing is exercised only at zero, and the exactness evidence is the Aiken seam tests rather than a live payout."
+    ]
+  }
+}

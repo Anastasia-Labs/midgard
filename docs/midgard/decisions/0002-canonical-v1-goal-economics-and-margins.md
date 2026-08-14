@@ -110,16 +110,30 @@ or the submitting wallet is not a reward-routing rule.
   fees balance independently and cannot reduce, supplement, or receive the
   reward. Registration and every directory transition preserve exactly the
   expected tranche rather than accepting an unclassified bond surplus.
-- Only the transaction that both consumes the operator-directory node and
-  removes the fraud-proved target block can pay the reward. Removing dependent
-  successor links and the `OperatorAlreadySlashed` path pay no reward and do
-  not levy the same penalty again.
+- The reward can be paid only within a `RemoveFraudulentBlockHeader`
+  transaction for that header (the bond-consuming slashing arms;
+  successor-pruning transactions that carry the slash pay the reward;
+  `OperatorAlreadySlashed` and target-block-removal-without-bond pay none). A
+  path that pays no reward also does not levy the same penalty again. See
+  Amendment 3 below.
 
 The public-profile full/partial allocations are therefore
 `100_000_000_000 = 75_000_000_000 + 25_000_000_000` lovelace and
 `90_000_000_000 = 75_000_000_000 + 15_000_000_000` lovelace. The bounded
 acceptance allocations are `900_000_000 = 400_000_000 + 500_000_000` and
 `800_000_000 = 400_000_000 + 400_000_000` lovelace.
+
+**Amendment 3 — §2.3 reward-pairing clause (2026-08-13, orchestrator
+adjudication under the 2026-08-11 owner session ruling 7, recorded on #603)**
+
+The bullet above previously required the reward-paying transaction to _both_
+consume the operator-directory node _and_ remove the fraud-proved target block.
+That literal pairing is unimplementable for non-tail fraudulent blocks;
+evidence and rationale on #603. The amended clause keeps the same idempotency
+boundary — §2.4's "at most one reward from an operator's slashable bond" — by
+pinning the reward to the bond-consuming slash inside a
+`RemoveFraudulentBlockHeader` transaction, which is what ruling 7's own text
+requires. No other bullet of §2.3 is affected.
 
 ### 2.4 Duplicate-token and duplicate-reward prevention (ACCEPTED)
 

@@ -21,6 +21,7 @@ import {
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   type FraudProofCatalogueCategoryName,
   FraudProofTokenDatum,
+  type FraudProverRewardPlan,
   getHeaderV1FromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   hashBlockHeaderV1,
@@ -45,6 +46,7 @@ import {
   requireReferenceInputIndex,
   requireSpendRedeemerIndex,
   requireUniqueOutputIndex,
+  resolveFraudProverRewardOutputIndex,
   RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   RetiredOperatorMintRedeemer,
@@ -1634,6 +1636,7 @@ const buildActiveSlashingInputs = ({
   contracts,
   hubOracleUtxo,
   registeredOperatorsRootUtxo,
+  fraudProverReward,
 }: {
   readonly plan: Extract<
     OperatorSlashingPlan,
@@ -1643,6 +1646,7 @@ const buildActiveSlashingInputs = ({
   readonly contracts: RemoveFraudulentBlockContracts;
   readonly hubOracleUtxo: UTxO;
   readonly registeredOperatorsRootUtxo?: UTxO;
+  readonly fraudProverReward?: FraudProverRewardPlan;
 }): SlashingTxPlan => {
   const schedulerUnit = toUnit(
     contracts.schedulerPolicyId,
@@ -1716,6 +1720,7 @@ const buildActiveSlashingInputs = ({
             };
       return {
         kind: "slashActiveOperator",
+        ...(fraudProverReward === undefined ? {} : { fraudProverReward }),
         activeOperatorsAssetsToBurn: {
           [activeOperatorUnit(contracts.activeOperatorsPolicyId, operator)]:
             -1n,
@@ -1771,6 +1776,7 @@ const buildRetiredSlashingInputs = ({
   operator,
   contracts,
   hubOracleUtxo,
+  fraudProverReward,
 }: {
   readonly plan: Extract<
     OperatorSlashingPlan,
@@ -1779,6 +1785,7 @@ const buildRetiredSlashingInputs = ({
   readonly operator: string;
   readonly contracts: RemoveFraudulentBlockContracts;
   readonly hubOracleUtxo: UTxO;
+  readonly fraudProverReward?: FraudProverRewardPlan;
 }): SlashingTxPlan => ({
   approach: "SlashRetiredOperator",
   removedOperatorNodeOutRef: outRefLabel(plan.removalPlan.node.utxo),
@@ -1794,6 +1801,7 @@ const buildRetiredSlashingInputs = ({
     };
     return {
       kind: "slashRetiredOperator",
+      ...(fraudProverReward === undefined ? {} : { fraudProverReward }),
       retiredOperatorsAssetsToBurn: {
         [toUnit(
           contracts.retiredOperatorsPolicyId,
@@ -1855,12 +1863,19 @@ const buildSlashingInputs = ({
   contracts,
   hubOracleUtxo,
   registeredOperatorsRootUtxo,
+  fraudProverReward,
 }: {
   readonly plan: OperatorSlashingPlan;
   readonly operator: string;
   readonly contracts: RemoveFraudulentBlockContracts;
   readonly hubOracleUtxo: UTxO;
   readonly registeredOperatorsRootUtxo?: UTxO;
+  /**
+   * D3 reward routing. Only the bond-consuming approaches can carry it;
+   * `OperatorAlreadySlashed` consumes no bond and pays no reward, which is the
+   * D4 exclusivity ruling expressed in the redeemer's own shape.
+   */
+  readonly fraudProverReward?: FraudProverRewardPlan;
 }): SlashingTxPlan => {
   switch (plan.approach) {
     case "SlashActiveOperator":
@@ -1870,6 +1885,7 @@ const buildSlashingInputs = ({
         contracts,
         hubOracleUtxo,
         registeredOperatorsRootUtxo,
+        ...(fraudProverReward === undefined ? {} : { fraudProverReward }),
       });
     case "SlashRetiredOperator":
       return buildRetiredSlashingInputs({
@@ -1877,6 +1893,7 @@ const buildSlashingInputs = ({
         operator,
         contracts,
         hubOracleUtxo,
+        ...(fraudProverReward === undefined ? {} : { fraudProverReward }),
       });
     case "OperatorAlreadySlashed":
       return buildAlreadySlashedInputs({ plan });
@@ -2023,6 +2040,12 @@ const resolveStateQueueSlashingApproach = ({
         slashingApproach: {
           SlashActiveOperator: {
             active_operators_redeemer_index: activeOperatorsRedeemerTxInfoIndex,
+            m_fraud_prover_reward_output_index:
+              resolveFraudProverRewardOutputIndex(
+                ctx,
+                slashing.fraudProverReward,
+                "remove-fraudulent-block active-operator fraud-prover reward",
+              ),
           },
         },
         layout: { activeOperatorsRedeemerTxInfoIndex },
@@ -2039,6 +2062,12 @@ const resolveStateQueueSlashingApproach = ({
           SlashRetiredOperator: {
             retired_operators_redeemer_index:
               retiredOperatorsRedeemerTxInfoIndex,
+            m_fraud_prover_reward_output_index:
+              resolveFraudProverRewardOutputIndex(
+                ctx,
+                slashing.fraudProverReward,
+                "remove-fraudulent-block retired-operator fraud-prover reward",
+              ),
           },
         },
         layout: { retiredOperatorsRedeemerTxInfoIndex },
@@ -2197,6 +2226,7 @@ export const submitRemoveFraudulentBlock = async ({
   validFrom,
   validTo,
   stateQueueMutationLeaseCoordinator,
+  fraudProverRewardLovelace,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -2210,6 +2240,13 @@ export const submitRemoveFraudulentBlock = async ({
   readonly validFrom?: bigint;
   readonly validTo?: bigint;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
+  /**
+   * Exact `env.fraud_prover_reward` of the deployment being driven. Omit while
+   * the compiled reward is zero; supplying a value that disagrees with the
+   * compiled one makes the slash refuse on-chain rather than silently pay the
+   * wrong amount.
+   */
+  readonly fraudProverRewardLovelace?: bigint;
 }): Promise<SubmitRemoveFraudulentBlockResult> => {
   const headerHash = parseHex(
     fraudulentHeaderHash,
@@ -2311,6 +2348,32 @@ export const submitRemoveFraudulentBlock = async ({
       `Fraud-proof token prover ${fraudProofDatum.fraud_prover} does not match signer ${signer.paymentKeyHash}.`,
     );
   }
+
+  // D3: the reward destination is the enterprise address of the prover carried
+  // by the fraud-proof datum, never the submitter's or a CLI-supplied address.
+  // The amount is caller-supplied because this package is not an economics
+  // authority (F04 §2.5); omitting it is correct only while the compiled
+  // `env.fraud_prover_reward` is zero, which is the state F04 §2.5 records as
+  // Q53's to replace. A supplied zero is rejected rather than silently treated
+  // as "no reward": a zero-lovelace output cannot exist on L1.
+  if (
+    fraudProverRewardLovelace !== undefined &&
+    fraudProverRewardLovelace <= 0n
+  ) {
+    throw new Error(
+      "Fraud-prover reward must be a positive lovelace amount; omit it entirely when the deployed economics reward is zero.",
+    );
+  }
+  const fraudProverRewardPlan =
+    fraudProverRewardLovelace === undefined
+      ? undefined
+      : {
+          proverEnterpriseAddress: credentialToAddress(network, {
+            type: "Key" as const,
+            hash: fraudProofDatum.fraud_prover,
+          }),
+          lovelace: fraudProverRewardLovelace,
+        };
 
   let topology = await loadStateQueueTopology({
     lucid,
@@ -2418,6 +2481,9 @@ export const submitRemoveFraudulentBlock = async ({
       ...(registeredOperatorsRootForSlashing === undefined
         ? {}
         : { registeredOperatorsRootUtxo: registeredOperatorsRootForSlashing }),
+      ...(fraudProverRewardPlan === undefined
+        ? {}
+        : { fraudProverReward: fraudProverRewardPlan }),
     });
     const { txValidFrom, txValidTo } = txValidityWindow();
     const feeInput = selectFeeInput(await lucid.wallet().getUtxos());

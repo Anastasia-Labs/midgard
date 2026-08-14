@@ -292,6 +292,14 @@ pub fn slash_fraudulent_operator_and_get_info(
   //    of the removed node.
   expect slashed_operator_node_key == slashed_operator
 
+  // 6. The transaction fee is the pinned destination of the residual bond
+  //    (F04 §2.3: the penalty is paid to the Cardano treasury as fee, and
+  //    "the reward output and exact fee conserve the complete designated bond
+  //    tranche"). The complementary half — routing exactly
+  //    `env.fraud_prover_reward` to the fraud prover instead of letting the
+  //    submitter keep it as change — is enforced by the state queue's
+  //    `RemoveFraudulentBlockHeader` handler, which is the only endpoint that
+  //    may pay the reward (2026-08-11 owner ruling 7, D3/D4).
   expect
     if slashed_operator_node_lovelace < env.required_bond {
       // 6a. If the operator is partially slashed, the portion already sent to
@@ -300,8 +308,7 @@ pub fn slash_fraudulent_operator_and_get_info(
       fee >= env.slashing_penalty - env.inactivity_slashing_penalty
     } else {
       // 6b. Slashing penalty must be paid to the Cardano treasury via the
-      //     transaction fee. Fraud prover is assumed to be the signer of the
-      //     transaction, and therefore will receive the remaining bond.
+      //     transaction fee.
       fee >= env.slashing_penalty
     }
 

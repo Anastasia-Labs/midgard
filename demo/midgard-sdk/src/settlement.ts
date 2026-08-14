@@ -606,11 +606,20 @@ export const incompleteDisproveResolutionClaimTxProgram = (
     }),
   );
 
+/**
+ * Bad-settlement slashing carries no fraud-prover payout.
+ *
+ * The 2026-08-11 owner ruling 7 (D4) routes the `fraud_prover_reward`
+ * exclusively through the once-per-header `RemoveFraudulentBlockHeader`
+ * transaction, so this route pays no reward and therefore needs no prover
+ * destination. The former `fraudProverAddress`/`fraudProverDatum` fields and
+ * the 60% bond remainder they were paid with are deleted, not relocated: F04
+ * §2.5 records that remainder rule as a non-authority that "must not be
+ * revived".
+ */
 export type RemoveOperatorBadSettlementParams = {
   slashedOperatorKey: string;
   activeOperatorMintingPolicy: MintingPolicy;
-  fraudProverAddress: string;
-  fraudProverDatum: string;
   hubOracleValidator: AuthenticatedValidator;
   eventType: EventType;
   eventAddress: string;
@@ -683,8 +692,6 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
       operatorInputUTxO,
       params.slashedOperatorKey,
     );
-    const bondAmount = (operatorInputUTxO.utxo.assets.lovelace * 60n) / 100n;
-
     const operatorNFT = yield* getOperatorNFT(
       operatorInputUTxO,
       params.activeOperatorParams.activeOperatorPolicyId,
@@ -723,11 +730,6 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
           [operatorNFT]: -1n,
         },
         mintRedeemerCBOR,
-      )
-      .pay.ToAddressWithData(
-        params.fraudProverAddress,
-        { kind: "inline", value: params.fraudProverDatum },
-        { lovelace: bondAmount },
       )
       .attach.MintingPolicy(params.activeOperatorMintingPolicy)
       .setMinFee(slashingPenalty);

@@ -1,6 +1,7 @@
+use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{Input}
+use cardano/transaction.{InlineDatum, Input}
 use midgard/common/utils
 use midgard/fraud_proof_catalogue
 use midgard/ledger_state.{HeaderHash}
@@ -20,15 +21,32 @@ pub fn asset_name_to_header_hash(
   fraud_proof_asset_name |> bytearray.drop(fraud_proof_catalogue.id_byte_count)
 }
 
-pub fn get_proven_fraudulent_blocks_header_hash(
+/// Reads the authentic fraud-proof reference input and yields both halves of
+/// the terminal fraud record it carries: the fraudulent block's header hash
+/// (the asset-name suffix) and the fraud prover recorded in its datum.
+///
+/// Both halves are equally trustworthy. The asset name is authenticated by the
+/// fraud-proof policy id exactly as before, and the datum is pinned to the
+/// computation thread's `fraud_prover` by
+/// [`fraud_proofs/common.finalize`](./fraud-proofs/common.html#finalize) at the
+/// terminal step — which in turn carries the identity `computation_thread.Init`
+/// authenticated with the prover's own signature. The fraud-proof spending
+/// validator never permits the token to be spent, so the pairing is immutable.
+///
+/// Supersedes the header-hash-only reader: every caller needs the prover too,
+/// because F04 §2.3 routes `fraud_prover_reward` to exactly this key hash.
+pub fn get_proven_fraud_record(
   reference_inputs: List<Input>,
   fraud_proof_policy_id: PolicyId,
   fraud_proof_ref_input_index: Int,
-) -> HeaderHash {
-  let fraud_proof_asset_name = utils.get_authentic_input_asset_name_with_policy_at(
+  return: fn(HeaderHash, VerificationKeyHash) -> result,
+) -> result {
+  let fraud_proof_input, fraud_proof_asset_name <- utils.get_authentic_input_and_asset_name_with_policy_at(
     reference_inputs,
     fraud_proof_policy_id,
     fraud_proof_ref_input_index,
   )
-  asset_name_to_header_hash(fraud_proof_asset_name)
+  expect InlineDatum(fraud_proof_datum_data) = fraud_proof_input.output.datum
+  expect Datum { fraud_prover }: Datum = fraud_proof_datum_data
+  return(asset_name_to_header_hash(fraud_proof_asset_name), fraud_prover)
 }
