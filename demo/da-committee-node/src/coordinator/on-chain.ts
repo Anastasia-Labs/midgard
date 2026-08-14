@@ -81,7 +81,41 @@ export type OnChainLifecycleCoordinatorDeps = {
   readonly l1SubmitterId?: string;
   readonly l1SubmitterIds?: readonly string[];
   readonly l1LeaderFailoverMs?: number;
+  /**
+   * Where the single-key attest-loop notice goes. Defaults to `console.warn`.
+   *
+   * Injected rather than imported so the notice is measurable, and so this
+   * package — which otherwise logs nothing at all — does not acquire a logging
+   * dependency for one line.
+   */
+  readonly log?: (message: string) => void;
+  /**
+   * Minimum gap between single-key notices. Defaults to ten minutes.
+   *
+   * The rate limit is the point: the ruling accepted the single-key attest
+   * loop *with a rate-limited explanatory log*, and this coordinator reconciles
+   * once per published signature and per header, so an unlimited notice would
+   * emit thousands of identical lines and train an operator to filter it.
+   */
+  readonly singleKeyNoticeIntervalMs?: number;
 };
+
+/** Ten minutes. */
+const DEFAULT_SINGLE_KEY_NOTICE_INTERVAL_MS = 600_000;
+
+/**
+ * The single-key attest-loop notice, emitted at most once per interval.
+ *
+ * `threshold === 1` is exactly the single-key configuration and not a proxy
+ * for it: the governor floors `da_threshold` at `ceil(2*committee_len/3)`,
+ * which is `>= 2` for every committee of two or more, so a threshold of one is
+ * representable only over a committee of one.
+ */
+const SINGLE_KEY_ATTEST_NOTICE =
+  "Single-key DA attest loop: da_threshold is 1, so this committee attests every block's data availability with one key — " +
+  "no independent corroboration, and no liveness redundancy if that key is lost. " +
+  "F04 §4 (amended 2026-08-11) permits it; two-key committees are the standing configuration. " +
+  "This notice is rate-limited.";
 
 export class OnChainLifecycleCoordinator implements AttestationCoordinator {
   readonly retryPublishedSignatures = true;
@@ -89,9 +123,41 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
   private readonly deps: OnChainLifecycleCoordinatorDeps;
   private readonly headerLocks = new Map<string, Promise<void>>();
   private readonly lastErrors = new Map<string, string>();
+  private lastSingleKeyNoticeAt: number | undefined;
 
   constructor(deps: OnChainLifecycleCoordinatorDeps) {
     this.deps = deps;
+  }
+
+  /**
+   * Emits the single-key attest-loop notice, at most once per configured
+   * interval, for as long as the configuration stays single-key.
+   *
+   * Deliberately not once-per-process, but note what that does and does not
+   * buy: `deps.threshold` is fixed at construction, so a rotation is noticed
+   * only when the coordinator is rebuilt around the new params, not mid-run.
+   * The re-emission is for the operator rather than for the rotation — a
+   * long-lived single-key node keeps saying so, instead of burying the fact in
+   * one line at startup that whoever reads the log later never sees.
+   */
+  private noticeSingleKeyAttestLoop(): void {
+    if (this.deps.threshold !== 1) {
+      return;
+    }
+    const intervalMs =
+      this.deps.singleKeyNoticeIntervalMs ??
+      DEFAULT_SINGLE_KEY_NOTICE_INTERVAL_MS;
+    const now = Date.now();
+    if (
+      this.lastSingleKeyNoticeAt !== undefined &&
+      now - this.lastSingleKeyNoticeAt < intervalMs
+    ) {
+      return;
+    }
+    this.lastSingleKeyNoticeAt = now;
+    (this.deps.log ?? ((message: string) => console.warn(message)))(
+      SINGLE_KEY_ATTEST_NOTICE,
+    );
   }
 
   async publishSignature(
@@ -111,6 +177,7 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
     signerIndex,
     submitterId = this.deps.l1SubmitterId,
   }: ReconcileAttestationArgs): Promise<"posted" | "post_failed"> {
+    this.noticeSingleKeyAttestLoop();
     try {
       await this.withHeaderLock(context.headerHash, () =>
         this.reconcile({

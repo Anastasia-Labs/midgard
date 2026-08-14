@@ -56,54 +56,69 @@ export type DaParamsDatum = Data.Static<typeof DaParamsDatumSchema>;
 export const DaParamsDatum = DaParamsDatumSchema as unknown as DaParamsDatum;
 
 /**
- * Lower clamp of the F04 §4 governed threshold floor — the twin of
- * `min_governed_threshold` in
- * `onchain/aiken/validators/da-params-governor.ak`. This is what makes
- * single-key capture of `da_threshold` or `update_threshold` unrepresentable.
+ * Smallest owner set the DA params governor will represent: **one**.
  *
- * Deliberately a separate constant from {@link MIN_DA_OWNER_COUNT} even though
- * both are currently two, mirroring the on-chain split: this one bounds a
- * threshold, that one bounds a set size, and a change to either must not
- * silently move the other.
+ * This was two until the 2026-08-13 in-session owner ruling recorded on #602
+ * dropped the governor's owner-set minimum, making a one-owner set carrying
+ * `updateThreshold === 1` representable. Single-key governance — one key
+ * rotating the committee and both thresholds — is accepted behaviour by owner
+ * decision, not an unreachable state.
  *
- * Source: `docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md`
- * §4 (Q63, ACCEPTED).
- */
-export const MIN_DA_GOVERNED_THRESHOLD = 2;
-
-/**
- * Smallest owner set the DA params governor will represent — the twin of
- * `min_owner_count` in `onchain/aiken/validators/da-params-governor.ak`.
+ * On-chain there is no longer a matching constant: at one the check would be a
+ * guard that cannot fail, because `sorted_unique_len_at_most` aborts on an
+ * empty list before a count exists, so `da-params-governor.ak` carries the
+ * non-emptiness refusal structurally and declares no `min_owner_count`.
  *
- * As on-chain, the `owner_set_below_minimum` check this constant drives is
- * currently *redundant* rather than load-bearing: a one-owner set is already
- * unrepresentable because `updateThreshold` would have to be both
- * `>= governedThresholdFloor(1) === 2` and `<= ownerCount === 1`. It is kept as
- * declared defense in depth so the drain protection survives a future change to
- * the floor expression, and {@link daParamsFloorViolations} reports it as its
- * own violation class so a caller can tell the two apart.
+ * Off-chain the constant survives because the check here is *not* vacuous:
+ * {@link daParamsFloorViolations} takes `ownerCount` as caller-supplied data
+ * and a caller can pass zero. It is reported as its own
+ * `owner_set_below_minimum` class so a caller can tell an empty set apart from
+ * a threshold that merely sits below its floor.
  *
  * Source: `docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md`
- * §4 (Q63, ACCEPTED).
+ * §4 (Q63, ACCEPTED; §4 amended 2026-08-11 and 2026-08-13).
  */
-export const MIN_DA_OWNER_COUNT = 2;
+export const MIN_DA_OWNER_COUNT = 1;
 
 /**
- * F04 §4 governed threshold floor: `max(2, ceil(2*setLength/3))`.
+ * Smallest DA committee the governor will represent: **one**.
+ *
+ * The committee-side twin of {@link MIN_DA_OWNER_COUNT}, and it exists for the
+ * same reason. On-chain the empty committee is refused structurally — the same
+ * `sorted_unique_*` walker aborts before any count exists — so the validator
+ * declares no constant for it either. Off-chain {@link daParamsFloorViolations}
+ * takes `committeeLength` as caller-supplied data and a caller can pass zero,
+ * where the threshold bounds alone would say nothing: `governedThresholdFloor(0)
+ * === 0`, so `daThreshold: 0` sits on that floor and does not exceed the empty
+ * committee either. Without this class an empty committee would be reported as
+ * no violation at all.
+ */
+export const MIN_DA_COMMITTEE_SIZE = 1;
+
+/**
+ * F04 §4 governed threshold floor: `ceil(2*setLength/3)`, defined for
+ * `setLength >= 1`.
  *
  * TypeScript twin of `governed_threshold_floor` in
  * `onchain/aiken/validators/da-params-governor.ak`. Both evaluate the ceiling
- * as `(2*setLength + 2) / 3` under integer division and both clamp with the
- * threshold constant (`MIN_DA_GOVERNED_THRESHOLD` / `min_governed_threshold`).
+ * as `(2*setLength + 2) / 3` under integer division, and neither carries a
+ * lower clamp: the 2026-08-11 owner ruling lifted the 1-of-1 prohibition, so a
+ * one-member DA committee floors at one and a single-key attest loop is
+ * representable. The 2026-08-13 ruling extended the same shape to the owner
+ * set — see {@link MIN_DA_OWNER_COUNT} — so a lone owner governs at
+ * `updateThreshold === 1`. What the floor still guarantees at every set size is
+ * that it never returns less than one: no set can name a threshold of zero.
  *
- * How far that agreement is actually measured differs by side, and the two
- * should not be conflated. Off-chain, `tests/da-governor-safety-v1.test.ts`
- * sweeps every representable set size — 0 through `max_indexed_signer_count`
- * (256), the largest committee the attested-signer bitmap can index — and pins
- * the whole table by digest. On-chain, the equivalent Aiken test pins a
- * *sample* of set sizes (the clamp boundary and the top of the range), because
- * a full sweep in a Plutus test is not practical. So: full-table off-chain,
- * sample-pinned on-chain, against the same shared vectors.
+ * How far the cross-language agreement is actually measured differs by side,
+ * and the two should not be conflated. Off-chain,
+ * `tests/da-governor-safety-v1.test.ts` sweeps every representable set size — 0
+ * through `max_indexed_signer_count` (256), the largest committee the
+ * attested-signer bitmap can index — and pins the whole table by digest.
+ * On-chain, the equivalent Aiken test pins a *sample* of set sizes (the lifted
+ * region, the boundary where the ceiling overtakes two, and the top of the
+ * range), because a full sweep in a Plutus test is not practical. So:
+ * full-table off-chain, sample-pinned on-chain, against the same shared
+ * vectors.
  */
 export const governedThresholdFloor = (setLength: number): number => {
   if (!Number.isSafeInteger(setLength) || setLength < 0) {
@@ -111,14 +126,12 @@ export const governedThresholdFloor = (setLength: number): number => {
       `governed threshold floor requires a non-negative integer set size, received ${String(setLength)}`,
     );
   }
-  const twoThirdsCeiling = Math.floor((2 * setLength + 2) / 3);
-  return twoThirdsCeiling > MIN_DA_GOVERNED_THRESHOLD
-    ? twoThirdsCeiling
-    : MIN_DA_GOVERNED_THRESHOLD;
+  return Math.floor((2 * setLength + 2) / 3);
 };
 
 /** One governed-bound violation class reported by {@link daParamsFloorViolations}. */
 export type DaParamsFloorViolation =
+  | "committee_below_minimum"
   | "owner_set_below_minimum"
   | "da_threshold_below_floor"
   | "da_threshold_exceeds_committee"
@@ -142,6 +155,9 @@ export const daParamsFloorViolations = (params: {
 }): DaParamsFloorViolation[] => {
   const violations: DaParamsFloorViolation[] = [];
 
+  if (params.committeeLength < MIN_DA_COMMITTEE_SIZE) {
+    violations.push("committee_below_minimum");
+  }
   if (params.daThreshold < governedThresholdFloor(params.committeeLength)) {
     violations.push("da_threshold_below_floor");
   }

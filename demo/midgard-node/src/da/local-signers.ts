@@ -50,24 +50,27 @@ const signerFromSeed = (
 /**
  * The DA governance keys this process itself holds, operator first.
  *
- * Q63 (F04 §4) made a 1-of-1 DA configuration unrepresentable: `da_threshold`
- * and `update_threshold` both carry a floor of at least two. A node that
- * bootstraps its own deployment therefore needs a *second* key before it can
- * write a governor-valid `DaParamsDatum`, and before it can reach an
- * attestation threshold without peers.
+ * Q63 (F04 §4) once made a 1-of-1 DA configuration unrepresentable, because
+ * both governed thresholds carried a floor of at least two and the governor
+ * carried an owner-set minimum beside them. Two owner rulings retired both —
+ * 2026-08-11 for the committee floor, 2026-08-13 for the owner-set minimum — so
+ * a node holding only its own key now writes a governor-valid `DaParamsDatum`,
+ * attests 1-of-1, and governs 1-of-1. `deriveOperatorDaParams` warns about each
+ * of those topologies instead of refusing them.
  *
- * `DA_COSIGNER_SEED_PHRASE` is that second key, and it is always explicit
- * configuration:
+ * `DA_COSIGNER_SEED_PHRASE` therefore buys redundancy rather than
+ * representability, and it is always explicit configuration:
  *
  * - Dev and emulator bootstrap generate it next to the operator wallet, so one
- *   process can produce a genuine 2-of-2 attestation with two distinct keys.
+ *   process can produce a genuine 2-of-2 attestation with two distinct keys —
+ *   the standing test configuration the ruling named.
  * - A real deployment leaves it unset: the committee is other machines' keys,
  *   named by `DA_COMMITTEE_HEX`, the owner set by `DA_OWNERS_HEX`, and peers
  *   contribute their own signatures over libp2p.
  *
- * Nothing here invents a key. When neither a configured committee/owner set nor
- * a cosigner seed is present, the callers below fail closed rather than fall
- * back to the 1-of-1 shape the governor rejects.
+ * Nothing here invents a key. Absent any configuration the caller derives both
+ * sets from this process's own keys and warns; only malformed configuration
+ * fails closed.
  */
 export const daLocalSigners = (
   config: DaLocalSignerConfig,

@@ -10,10 +10,19 @@
 // and fails closed if the quoted floor text drifted, so a future edit to the
 // decision record cannot leave the validator silently enforcing a number the
 // owner never accepted. Quoting is necessary but not sufficient, so the gate
-// also recomputes `max(2, ceil(2n/3))` from an independently written integer
+// also recomputes `ceil(2n/3)` from an independently written integer
 // ceiling and pins the whole floor table by digest — a transcription error in
 // an implementation is a different defect from a drifted quotation, and each
 // now has its own detector.
+//
+// F04 §4 was amended twice, by two owner rulings quoted verbatim in the
+// decision record's §4.1. On 2026-08-11 (owner session ruling 4) the floor's
+// `max(2, …)` lower clamp was retired, so `ceil(2n/3)` with n ≥ 1 is the whole
+// floor and a one-member DA committee attesting 1-of-1 is representable. On
+// 2026-08-13 the governor's owner-set minimum was dropped to one, so a lone
+// owner governs at `update_threshold` 1 and single-key governance rotation is
+// accepted behaviour. This gate moved with both rather than carrying a floor
+// value of its own — see `independentGovernedThresholdFloor`.
 //
 // Every published count is recomputed from an executed runner report. Nothing
 // here reads test source or counts declarations: the cited Aiken selectors run
@@ -141,6 +150,17 @@ const REQUIRED_GROUPS = [
     expected: 2,
     languages: ["aiken", "vitest"],
   },
+  // The owner-side counterpart, added when the 2026-08-13 owner ruling dropped
+  // the governor's owner-set minimum to one. It is a required group rather than
+  // a few extra uncited tests because the acceptance clause it carries is a
+  // positive one — single-key governance rotation is representable and accepted
+  // — and a positive clause left uncited is exactly the kind that quietly stops
+  // being measured.
+  {
+    id: "single-owner-governance-consequence",
+    expected: 2,
+    languages: ["aiken", "vitest"],
+  },
   { id: "mint-seam-datum-enforcement", expected: 2, languages: ["aiken"] },
   { id: "spend-seam-datum-enforcement", expected: 2, languages: ["aiken"] },
   { id: "floor-arithmetic-provenance", expected: 1, languages: ["vitest"] },
@@ -163,16 +183,36 @@ const requiredGroup = (id) =>
 // and fails if it ever stops being 256.
 const MAX_INDEXED_SIGNER_COUNT = 256;
 
-// `max(2, ceil(2n/3))`, written as an exact integer ceiling rather than as the
+// `ceil(2n/3)`, written as an exact integer ceiling rather than as the
 // `(2n + 2) / 3` integer-division form BOTH implementations use. Sharing the
 // clever form would make this a restatement; deriving the ceiling from a
 // quotient and a remainder makes a floor/ceil transcription error in that form
 // visible here.
+//
+// This is the whole floor. It carried a `Math.max(2, …)` lower clamp until the
+// repository owner's 2026-08-11 session ruling 4 retired it — "governor floors
+// become `ceil(2n/3)` with n ≥ 1" — and the clamp's removal here is not an
+// independent editorial decision: it is the arithmetic the two F04 §4 rows this
+// gate already re-reads verbatim now authorise, and only those rows.
+// `evidence.decisionSource.boundValues` pins them at
+// `docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md:191`
+// (`da_threshold >= ceil(2*committee_len/3)`) and `:193`
+// (`update_threshold >= ceil(2*owner_len/3)`), each by exact-line quote
+// equality, and `assertFloorTableProvenance` additionally requires each row's
+// declared expression to be `floorTable.expression` with the set named — so
+// restoring a clamp here without amending §4, or amending §4 without moving
+// this expression, fails the gate rather than passing quietly. No floor
+// constant is maintained in this file: there is none left to maintain.
+//
+// The owner-set minimum was never part of this floor and is not modelled here.
+// It was a separate `expect` in the validator, and the 2026-08-13 ruling
+// removed it outright — see `implementation.ownerSetMinimum` in the artifact —
+// so both a one-member committee and a one-owner set are now representable.
+// Nothing in this table changed as a result: the floor is a function of set
+// size alone, and it always was.
 const independentGovernedThresholdFloor = (setLength) => {
   const numerator = 2 * setLength;
-  const twoThirdsCeiling =
-    Math.trunc(numerator / 3) + (numerator % 3 === 0 ? 0 : 1);
-  return Math.max(2, twoThirdsCeiling);
+  return Math.trunc(numerator / 3) + (numerator % 3 === 0 ? 0 : 1);
 };
 
 const independentFloorTable = [];
@@ -200,7 +240,7 @@ const assertFloorTableProvenance = (candidate) => {
   }
   if (floorTable.sha256 !== independentFloorDigest) {
     throw new Error(
-      `ERR_FLOOR_TABLE_DIGEST: the published floor table digest ${String(floorTable.sha256)} disagrees with max(2, ceil(2n/3)) recomputed here as ${independentFloorDigest}, so an implementation or the table has a floor/ceil transcription error`,
+      `ERR_FLOOR_TABLE_DIGEST: the published floor table digest ${String(floorTable.sha256)} disagrees with ceil(2n/3) recomputed here as ${independentFloorDigest}, so an implementation or the table has a floor/ceil transcription error`,
     );
   }
   for (const [name, setName] of [

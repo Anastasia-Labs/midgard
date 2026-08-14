@@ -186,14 +186,65 @@ deployed or economics-complete.
 | `da_attestation_timeout` (Q61)                                   | 3,600,000 ms (1 h)                                                                                                                                                                                                         | A live committee attests in seconds; 1 h cannot trigger accidentally yet keeps the head-of-line unblock drillable and the queue live. Timeout removal does not slash (D-L1 recommendation).                                   |
 | DA retention (`RETENTION_DAYS`, `minimumRetentionDays`)          | 15 days                                                                                                                                                                                                                    | ≥ maturity (7 d) + worst-case proof time + margin; matches `LIBP2P_DA_MIN_RETENTION_DAYS = 15`.                                                                                                                               |
 
-## 4. DA-governor floors (Q63, ACCEPTED)
+## 4. DA-governor floors (Q63, ACCEPTED; AMENDED 2026-08-11 and 2026-08-13)
 
-- `da_threshold` ≥ max(2, ⌈2·committee_len/3⌉); the governor rejects any
-  update below the floor.
-- `update_threshold` ≥ max(2, ⌈2·owner_len/3⌉); single-key capture of either
-  threshold is unrepresentable.
+- `da_threshold` ≥ ⌈2·committee_len/3⌉ for committee_len ≥ 1; the governor
+  rejects any update below the floor.
+- `update_threshold` ≥ ⌈2·owner_len/3⌉ for owner_len ≥ 1; the governor holds no
+  separate owner-set minimum, so a lone owner governs at update_threshold 1.
 - Mid-flight committee rotation must leave partially signed attestations
   rescuable/refundable (Q63 acceptance).
+
+### 4.1 Amendments — the 1-of-1 prohibition is lifted (two owner rulings)
+
+The two floor rows above carried a `max(2, …)` lower clamp, and the governor
+carried an owner-set minimum of two beside them. Both are retired, by two
+separate repository-owner rulings quoted verbatim below so this record carries
+its own provenance.
+
+**Amendment 1 — the committee floor (2026-08-11 owner session ruling 4**,
+recorded on issue #593, comment of 2026-08-12T01:43Z**)**
+
+> **Single-key attest-loop: accepted** with a rate-limited explanatory log;
+> two-key committees are the standing test configuration. **The 1-of-1
+> prohibition is lifted at both layers:** governor floors become `ceil(2n/3)`
+> with n ≥ 1, bootstrap warns instead of rejecting, F04 §4 amended in lockstep
+> with the Q63 gate that re-reads it; governor hash change rides #579.
+
+**Amendment 2 — the owner-set minimum (2026-08-13 owner ruling, in-session,
+recorded on #602)**
+
+> **Option B — the owner-set minimum drops to 1.** A genuinely single-key
+> deployment bootstraps end-to-end with warnings only; single-key governance
+> rotation becomes representable and is ACCEPTED behavior by owner decision.
+
+What the amendments change, and what they deliberately do not:
+
+- The floor differs from the retired `max(2, ⌈2n/3⌉)` at exactly one set size,
+  n = 1, where it is now 1 instead of 2. For every n ≥ 2 the two-thirds ceiling
+  is already ≥ 2, so no other set size moves.
+- A one-member DA committee attesting 1-of-1 is therefore representable, which
+  is the single-key attest loop the first ruling accepted. Two-key committees
+  remain the standing test configuration, and the single-key shape carries a
+  rate-limited explanatory log in the attesting node.
+- Under the second ruling the owner set follows the same shape. The governor no
+  longer declares an owner-set minimum at all: at a minimum of one the check
+  could not fail, because the sorted-unique length walker already aborts on an
+  empty set, so the non-emptiness refusal is structural and the redundant guard
+  is deleted rather than kept vacuous.
+- Single-key _governance_ — one key rotating the committee and both governed
+  thresholds on its own signature — is therefore representable, and is accepted
+  behaviour by owner decision rather than an oversight. It is pinned positively
+  by test, not merely permitted by the absence of a rejection.
+- What no ruling licensed, and what still refuses: an owner set of zero, a
+  threshold of zero at any set size (the floor is ≥ 1 everywhere), a threshold
+  above its own set size, and any malformed or unsorted set encoding.
+- Consumers in lockstep with this section: the on-chain floor
+  (`onchain/aiken/validators/da-params-governor.ak`), its off-chain twin
+  (`demo/midgard-sdk/src/da-attestation.ts`), and the Q63 gate
+  (`demo/scripts/verify-canonical-v1-q63-da-governor-safety.mjs`), which
+  re-reads the two floor rows above at their exact line numbers and pins the
+  whole floor table by digest.
 
 ## 5. Resource ceilings and hardware floors
 
