@@ -1,26 +1,29 @@
 {
   "schemaVersion": "midgard-canonical-v1-abi-freeze-v1",
-  "goalIds": ["IG1", "IG2"],
-  "goalSpecAnchors": [
-    "GOAL_SPEC.md 11 IG1 — ABI gate",
-    "GOAL_SPEC.md 11 IG2 — Proof-family gate",
-    "GOAL_SPEC.md 11 IG4 — Release gate (this freeze is an input to it, never a substitute)"
+  "goalIds": [
+    "IG1",
+    "IG2"
   ],
-  "sourceRevision": "1a94c00a11b6f3ad8ca04d655dbe5e74a3e6c007",
+  "goalSpecAnchors": [
+    "GOAL_SPEC.md 11 IG1 \u2014 ABI gate",
+    "GOAL_SPEC.md 11 IG2 \u2014 Proof-family gate",
+    "GOAL_SPEC.md 11 IG4 \u2014 Release gate (this freeze is an input to it, never a substitute)"
+  ],
+  "sourceRevision": "573a536f (parent of the #579 landing commit; identities derived from the working tree that became that commit)",
   "freezeStatus": "BLOCKED",
   "waivers": [],
-  "reviewNote": "This is the single consolidated IG1 + IG2 ABI review required by the B34 acceptance criteria. It is a binding layer, not a re-pinning: F02 owns the 132-row format registry, the HeaderV1 gate owns the three-way HeaderV1 contract, sdk-abi-fixtures owns the 86 golden encodings and F20 owns the coverage reconciliation, and this artifact binds those surfaces by number instead of copying their contents. Everything published here is re-derived from source by demo/scripts/verify-canonical-v1-abi-freeze.mjs; nothing in this file is its own authority. IG1's structural half is closed: the seven deployment-ABI identities agree across midgard-core, midgard-node and midgard-sdk, the frozen catalogue order is a bijection onto the validator tree, and the blueprint comes from the compiler aiken.toml declares. Two observations are recorded rather than hidden. ABI-04 carries declarationOrder DIVERGENT: midgard-core and midgard-sdk declare the same 38-role token mapping in different key orders. That is not an ABI break because every consumer reads the map by key and midgard-node compares it with requireExactKeys, but it is measured and published so the divergence cannot grow into one unseen. IG2 is BLOCKED: 11 families are registered in the frozen catalogue while none of them carries valid-block rejection, maximum proof-fit or correction evidence, so under GOAL_SPEC 11 IG2 none of them may be integrated on this evidence.",
+  "reviewNote": "This is the single consolidated IG1 + IG2 ABI review required by the B34 acceptance criteria. It is a binding layer, not a re-pinning: F02 owns the 132-row format registry, the HeaderV1 gate owns the three-way HeaderV1 contract, sdk-abi-fixtures owns the 86 golden encodings and F20 owns the coverage reconciliation, and this artifact binds those surfaces by number instead of copying their contents. Everything published here is re-derived from source by demo/scripts/verify-canonical-v1-abi-freeze.mjs; nothing in this file is its own authority. IG1's structural half is closed: the seven deployment-ABI identities agree across midgard-core, midgard-node and midgard-sdk, the frozen catalogue order is a bijection onto the validator tree, and the blueprint comes from the compiler aiken.toml declares. Two observations are recorded rather than hidden. ABI-04 carries declarationOrder DIVERGENT: midgard-core and midgard-sdk declare the same 37-role token mapping in different key orders. That is not an ABI break because every consumer reads the map by key and midgard-node compares it with requireExactKeys, but it is measured and published so the divergence cannot grow into one unseen. IG2 is BLOCKED: 11 families are registered in the frozen catalogue while none of them carries valid-block rejection, maximum proof-fit or correction evidence, so under GOAL_SPEC 11 IG2 none of them may be integrated on this evidence.",
   "crossPackageIdentities": [
     {
       "id": "ABI-01",
       "title": "Deployment contract-name vector",
       "kind": "vector",
-      "cardinality": 55,
+      "cardinality": 54,
       "declaredBy": [
         "demo/midgard-core/src/deployment-manifest-identity-v1.ts:DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES",
         "demo/midgard-node/src/deployment-manifest-v1.ts:DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES"
       ],
-      "digest": "695a3f1df53b0a06ba839d415bfab0039f866eb65c0951ecf9abc26cbc19c1c0",
+      "digest": "4ddc94c7e57860f9ef89a73f73822bbb7eed729b4578e5194395af9554df160b",
       "agreement": "EXACT",
       "declarationOrder": "IDENTICAL"
     },
@@ -41,12 +44,12 @@
       "id": "ABI-03",
       "title": "Reference-script role to contract map",
       "kind": "record",
-      "cardinality": 37,
+      "cardinality": 36,
       "declaredBy": [
         "demo/midgard-core/src/deployment-manifest-identity-v1.ts:DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE",
         "demo/midgard-node/src/deployment-manifest-v1.ts:DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE"
       ],
-      "digest": "612e348aec800e0aa6ee4b4b81f07e342658e2159e305b7dfaa89fb04471473a",
+      "digest": "06b0383ebecfbe9a4f8ae4dd96dfe4ca51a8ee09d94fa8e2794261617e1688b0",
       "agreement": "EXACT",
       "declarationOrder": "IDENTICAL"
     },
@@ -54,12 +57,12 @@
       "id": "ABI-04",
       "title": "Reference-script auth token names",
       "kind": "record",
-      "cardinality": 38,
+      "cardinality": 37,
       "declaredBy": [
         "demo/midgard-core/src/deployment-manifest-identity-v1.ts:DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES",
         "demo/midgard-sdk/src/reference-scripts.ts:REFERENCE_SCRIPT_AUTH_TOKEN_NAMES"
       ],
-      "digest": "4a15705ea7a3cedee9d580891b7facbd899e9d5ff4ce75674de8d27b7456e711",
+      "digest": "691f1a606c9c20d82c755ea8e5ea2297e670fc32cecdf1538c8adcdfcfdc2c6e",
       "agreement": "EXACT",
       "declarationOrder": "DIVERGENT"
     },
@@ -92,11 +95,11 @@
       "id": "ABI-07",
       "title": "Required transaction-order contracts",
       "kind": "vector",
-      "cardinality": 12,
+      "cardinality": 9,
       "declaredBy": [
         "demo/midgard-node/src/deployment-manifest-v1.ts:REQUIRED_TRANSACTION_ORDER_CONTRACTS"
       ],
-      "digest": "90ca7f0459bbf077aea5ab486ac6b055dbb29a30714bff092beccadc1d1c7fb4",
+      "digest": "2dc93dc63e0f1fef3bca7050271475c9955f426b19b14216a028567bf0079fae",
       "agreement": "EXACT",
       "declarationOrder": "IDENTICAL"
     }
@@ -133,7 +136,9 @@
       "violations": []
     }
   ],
-  "tokenMapExtraRoles": ["V1 validation-trace CEK direct resolver"],
+  "tokenMapExtraRoles": [
+    "V1 validation-trace CEK direct resolver"
+  ],
   "catalogueBinding": {
     "categoryOrder": [
       "doubleSpend",
@@ -162,6 +167,8 @@
       "0000000a"
     ],
     "validatorDirectories": [
+      "canonical-decodability",
+      "committed-field-shape",
       "da-hash-preimage",
       "double-spend",
       "input-no-idx",
@@ -193,6 +200,8 @@
       "invalid-signature": "invalidSignature"
     },
     "uncategorisedValidatorDirectories": [
+      "canonical-decodability",
+      "committed-field-shape",
       "min-fee",
       "missing-native-script-tx",
       "missing-signature",
@@ -202,13 +211,13 @@
   },
   "blueprintIdentity": {
     "path": "onchain/aiken/plutus.json",
-    "validatorCount": 393,
-    "uniqueValidatorTitles": 393,
-    "validatorTitleDigest": "0136d350c5866e559e58706b113f6a29ded750ad390cc486a45c57b35c726698",
-    "compilerVersion": "v1.1.22+39d6b04",
+    "validatorCount": 398,
+    "uniqueValidatorTitles": 398,
+    "validatorTitleDigest": "18b27c4a873393784a8039338f1892699212e60589c24af68d3133ed89842da5",
+    "compilerVersion": "v1.1.23+2a78108",
     "plutusVersion": "v3",
-    "declaredCompiler": "v1.1.22",
-    "measuredSha256": "2b5973fe2832bac0d60961d24a2a66c31516fc3f045e517d30e4a4a08382befb",
+    "declaredCompiler": "v1.1.23",
+    "measuredSha256": "91861fac2d0bcafade6d8e1b4872e669cf9e7b52f5ed75d3b9729e4e02d6dd6b",
     "measuredEnv": "testnet"
   },
   "boundGates": [
@@ -218,9 +227,9 @@
       "artifact": "docs/exec-plans/evidence/canonical-v1-format-registry-v1.json",
       "counts": {
         "rows": 132,
-        "forbiddenActivePatterns": 29,
-        "withCounterpartTests": 66,
-        "notApplicable": 66,
+        "forbiddenActivePatterns": 30,
+        "withCounterpartTests": 64,
+        "notApplicable": 68,
         "unverified": 0
       }
     },
@@ -252,11 +261,111 @@
       "correction",
       "matrix_evidence"
     ],
-    "derivedDimensions": ["reachability", "tooling", "matrix_evidence"],
+    "derivedDimensions": [
+      "reachability",
+      "tooling",
+      "matrix_evidence"
+    ],
     "status": "BLOCKED",
     "integrableFamilies": 0,
     "violations": 11,
     "families": [
+      {
+        "directory": "canonical-decodability",
+        "category": null,
+        "integrated": false,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "BLOCKED",
+            "evidence": "the directory carries 2 validator modules but no catalogue category registers it, so no proof of this family is reachable through the deployed catalogue",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/canonical-decodability/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain verifier for this family exists in the index: demo/midgard-sdk/src/fraud-proof/canonical-decodability-v1.ts",
+            "paths": [
+              "demo/midgard-sdk/src/fraud-proof/canonical-decodability-v1.ts"
+            ]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "BLOCKED",
+            "evidence": "docs/fault-proofs/coverage-matrix.md does not name canonical-decodability; the family postdates the matrix's last recapture and F20 owns the row that would add it",
+            "paths": []
+          }
+        }
+      },
+      {
+        "directory": "committed-field-shape",
+        "category": null,
+        "integrated": false,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "BLOCKED",
+            "evidence": "the directory carries 2 validator modules but no catalogue category registers it, so no proof of this family is reachable through the deployed catalogue",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/committed-field-shape/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain verifier for this family exists in the index: demo/midgard-sdk/src/fraud-proof/committed-field-shape-v1.ts",
+            "paths": [
+              "demo/midgard-sdk/src/fraud-proof/committed-field-shape-v1.ts"
+            ]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "F20 reconciliation records 49 open coverage rows and 0 preprod-complete rows; no per-family valid-block rejection sweep exists in the tree. Q10-Q50 own this measurement and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "BLOCKED",
+            "evidence": "docs/fault-proofs/coverage-matrix.md does not name committed-field-shape; the family postdates the matrix's last recapture and F20 owns the row that would add it",
+            "paths": []
+          }
+        }
+      },
       {
         "directory": "da-hash-preimage",
         "category": "daHashPreimage",
@@ -301,10 +410,16 @@
           "matrix_evidence": {
             "status": "PASS",
             "evidence": "docs/fault-proofs/coverage-matrix.md names da-hash-preimage",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         },
-        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+        "violates": [
+          "valid_block_rejection",
+          "maximum_proof_fit",
+          "correction"
+        ]
       },
       {
         "directory": "double-spend",
@@ -322,7 +437,9 @@
           "tooling": {
             "status": "PASS",
             "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/prepare-double-spend.ts",
-            "paths": ["demo/midgard-fault-proofs/src/prepare-double-spend.ts"]
+            "paths": [
+              "demo/midgard-fault-proofs/src/prepare-double-spend.ts"
+            ]
           },
           "valid_block_rejection": {
             "status": "BLOCKED",
@@ -348,10 +465,16 @@
           "matrix_evidence": {
             "status": "PASS",
             "evidence": "docs/fault-proofs/coverage-matrix.md names double-spend",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         },
-        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+        "violates": [
+          "valid_block_rejection",
+          "maximum_proof_fit",
+          "correction"
+        ]
       },
       {
         "directory": "input-no-idx",
@@ -369,7 +492,9 @@
           "tooling": {
             "status": "PASS",
             "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/prepare-input-no-idx.ts",
-            "paths": ["demo/midgard-fault-proofs/src/prepare-input-no-idx.ts"]
+            "paths": [
+              "demo/midgard-fault-proofs/src/prepare-input-no-idx.ts"
+            ]
           },
           "valid_block_rejection": {
             "status": "BLOCKED",
@@ -395,10 +520,16 @@
           "matrix_evidence": {
             "status": "PASS",
             "evidence": "docs/fault-proofs/coverage-matrix.md names input-no-idx",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         },
-        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+        "violates": [
+          "valid_block_rejection",
+          "maximum_proof_fit",
+          "correction"
+        ]
       },
       {
         "directory": "invalid-range",
@@ -416,7 +547,9 @@
           "tooling": {
             "status": "PASS",
             "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/prepare-invalid-range.ts",
-            "paths": ["demo/midgard-fault-proofs/src/prepare-invalid-range.ts"]
+            "paths": [
+              "demo/midgard-fault-proofs/src/prepare-invalid-range.ts"
+            ]
           },
           "valid_block_rejection": {
             "status": "BLOCKED",
@@ -442,10 +575,16 @@
           "matrix_evidence": {
             "status": "PASS",
             "evidence": "docs/fault-proofs/coverage-matrix.md names invalid-range",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         },
-        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+        "violates": [
+          "valid_block_rejection",
+          "maximum_proof_fit",
+          "correction"
+        ]
       },
       {
         "directory": "invalid-signature",
@@ -491,10 +630,16 @@
           "matrix_evidence": {
             "status": "PASS",
             "evidence": "docs/fault-proofs/coverage-matrix.md names invalid-signature",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         },
-        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+        "violates": [
+          "valid_block_rejection",
+          "maximum_proof_fit",
+          "correction"
+        ]
       },
       {
         "directory": "min-fee",
@@ -538,7 +683,9 @@
           "matrix_evidence": {
             "status": "PASS",
             "evidence": "docs/fault-proofs/coverage-matrix.md names min-fee",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         }
       },
@@ -584,7 +731,9 @@
           "matrix_evidence": {
             "status": "PASS",
             "evidence": "docs/fault-proofs/coverage-matrix.md names missing-native-script-tx",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         }
       },
@@ -630,7 +779,9 @@
           "matrix_evidence": {
             "status": "PASS",
             "evidence": "docs/fault-proofs/coverage-matrix.md names missing-signature",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         }
       },
@@ -650,7 +801,9 @@
           "tooling": {
             "status": "PASS",
             "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/publish-proof-chunks.ts",
-            "paths": ["demo/midgard-fault-proofs/src/publish-proof-chunks.ts"]
+            "paths": [
+              "demo/midgard-fault-proofs/src/publish-proof-chunks.ts"
+            ]
           },
           "valid_block_rejection": {
             "status": "BLOCKED",
@@ -676,7 +829,9 @@
           "matrix_evidence": {
             "status": "BLOCKED",
             "evidence": "docs/fault-proofs/coverage-matrix.md does not name mpf-chunked-proof, so this family has no matrix row of its own",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         }
       },
@@ -724,10 +879,16 @@
           "matrix_evidence": {
             "status": "PASS",
             "evidence": "docs/fault-proofs/coverage-matrix.md names no-input",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         },
-        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+        "violates": [
+          "valid_block_rejection",
+          "maximum_proof_fit",
+          "correction"
+        ]
       },
       {
         "directory": "no-reference-input",
@@ -773,10 +934,16 @@
           "matrix_evidence": {
             "status": "PASS",
             "evidence": "docs/fault-proofs/coverage-matrix.md names no-reference-input",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         },
-        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+        "violates": [
+          "valid_block_rejection",
+          "maximum_proof_fit",
+          "correction"
+        ]
       },
       {
         "directory": "reference-input-no-idx",
@@ -822,10 +989,16 @@
           "matrix_evidence": {
             "status": "PASS",
             "evidence": "docs/fault-proofs/coverage-matrix.md names reference-input-no-idx",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         },
-        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+        "violates": [
+          "valid_block_rejection",
+          "maximum_proof_fit",
+          "correction"
+        ]
       },
       {
         "directory": "transition-trace",
@@ -871,10 +1044,16 @@
           "matrix_evidence": {
             "status": "PASS",
             "evidence": "docs/fault-proofs/coverage-matrix.md names transition-trace",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         },
-        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+        "violates": [
+          "valid_block_rejection",
+          "maximum_proof_fit",
+          "correction"
+        ]
       },
       {
         "directory": "validation-trace",
@@ -920,7 +1099,9 @@
           "matrix_evidence": {
             "status": "BLOCKED",
             "evidence": "docs/fault-proofs/coverage-matrix.md does not name validation-trace, so this family has no matrix row of its own",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         },
         "violates": [
@@ -972,7 +1153,9 @@
           "matrix_evidence": {
             "status": "PASS",
             "evidence": "docs/fault-proofs/coverage-matrix.md names withdrawn-reference-input",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         }
       },
@@ -992,7 +1175,9 @@
           "tooling": {
             "status": "PASS",
             "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/prepare-zero-input.ts",
-            "paths": ["demo/midgard-fault-proofs/src/prepare-zero-input.ts"]
+            "paths": [
+              "demo/midgard-fault-proofs/src/prepare-zero-input.ts"
+            ]
           },
           "valid_block_rejection": {
             "status": "BLOCKED",
@@ -1018,10 +1203,16 @@
           "matrix_evidence": {
             "status": "PASS",
             "evidence": "docs/fault-proofs/coverage-matrix.md names zero-input",
-            "paths": ["docs/fault-proofs/coverage-matrix.md"]
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
           }
         },
-        "violates": ["valid_block_rejection", "maximum_proof_fit", "correction"]
+        "violates": [
+          "valid_block_rejection",
+          "maximum_proof_fit",
+          "correction"
+        ]
       }
     ]
   },

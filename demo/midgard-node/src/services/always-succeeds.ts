@@ -221,18 +221,25 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const payout = yield* mkAuthVal("payout");
     const withdrawal = yield* mkAuthVal("withdrawal");
     const txOrder = yield* mkAuthVal("tx_order");
-    const txOrderFieldPreimage = yield* makeSpendingValidator(
+    // #579 retired the `txOrderFieldPreimage` and `txOrderFieldReceipt`
+    // stand-ins with the tx-field family itself. This one always-succeeds spend
+    // validator is all that survives of them, and it now serves only the two
+    // roles that are still deployed. This service exists to give the node a
+    // contract set that always succeeds, so the §8.6 certificate below is a
+    // spend+mint pair like every other authenticated role, not a real
+    // certificate policy.
+    const alwaysSucceedsSpend = yield* makeSpendingValidator(
       "midgard",
       "tx_order",
       NETWORK,
     );
-    const txOrderFieldReceipt = {
-      ...txOrderFieldPreimage,
+    const fieldPreimageCertificate = {
+      ...alwaysSucceedsSpend,
       mintingScriptCBOR: txOrder.mintingScriptCBOR,
       mintingScript: txOrder.mintingScript,
       policyId: txOrder.policyId,
     };
-    const cekProgramMaterial = txOrderFieldPreimage;
+    const cekProgramMaterial = alwaysSucceedsSpend;
     const settlement = yield* mkAuthVal("settlement");
 
     // Reserve
@@ -313,8 +320,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       deposit,
       withdrawal,
       txOrder,
-      txOrderFieldPreimage,
-      txOrderFieldReceipt,
+      fieldPreimageCertificate,
       cekProgramMaterial,
       settlement,
       reserve,

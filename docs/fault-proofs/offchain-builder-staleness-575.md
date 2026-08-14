@@ -4,7 +4,21 @@
 > This is the single explanation behind every `⚠️ **STALE AS OF #575**` banner in
 > `demo/midgard-sdk/src/fraud-proof/` and `demo/midgard-fault-proofs/src/`. Those
 > banners are pointers; the reasoning lives here and nowhere else. Owner of the
-> remediation: **#579**, the identity re-derivation batch.
+> remediation: **#604**.
+>
+> Re-pointed at #604 on 2026-08-13 by owner ruling on #579. #579 regenerated the
+> blueprint and carried the third divergence below — the new
+> `field_preimage_certificate_policy_id` parameter — at all twelve of its applied
+> sites, because that one is derivable from the blueprint alone. The first two
+> divergences are not: they are hand-written datum and redeemer shapes across the
+> thirty-three modules listed in §5, and they split out of the identity batch
+> into #604 rather than riding a cascade whose other work is bookkeeping. The
+> split is measured, not assumed: after #579's parameter fix, `da-hash-preimage`
+> — not one of the nine rebound families — passes its emulator lifecycle 2/2,
+> while `input-no-idx` — one of the nine — stays 4/4 red on
+> `failed script execution Spend[0] the validator crashed / exited prematurely`.
+> The separation lands exactly on the rebound/not-rebound line, which is what
+> identifies the residue as these two divergences and nothing else.
 
 ## 1. What changed on-chain
 
@@ -62,7 +76,9 @@ and 8 — may not be carried under tier 3. A §8.6 certificate is minted against
 does not commit that value, so for those three fields the certificate binds the
 preimage to nothing the disputing thread anchored. `carriage_reaches_the_anchor`
 in `field-opening-v1.ak` refuses it, and `docs/spec/midgard-tx.md` §8.3 erratum
-E2 records the limit and assigns the repair to #579.
+E2 records the limit. The repair rides #604 with the rest of this remediation
+(owner ruling on #579, 2026-08-13); it was assigned to #579 when this was
+written.
 
 **The validators take a new parameter.** Every step that opens a field is now
 parameterised by `field_preimage_certificate_policy_id`, because tier-3 carriage
@@ -88,11 +104,11 @@ Re-deriving them correctly requires the regenerated blueprint.
 artifact, so a hand-written re-derivation landed in this branch could not be
 checked against anything — it would be a second hand-written guess sitting beside
 the first, with no mechanism to tell which one matched the compiled validators.
-Blueprint regeneration and the identity re-derivation that follows from it are
-#579's scope. Splitting the work that way keeps this branch's on-chain rebind
+Blueprint regeneration is #579's scope, and the re-derivation that follows from
+it is #604's. Splitting the work that way keeps this branch's on-chain rebind
 reviewable on its own terms and keeps the off-chain correction honest, because
-#579 can diff its output against a regenerated blueprint rather than against
-prose.
+#604 can diff its output against a regenerated blueprint rather than against
+prose — that blueprint now exists, having been produced by #579.
 
 The authority for the current shapes, until that blueprint exists, is the Aiken
 source under `onchain/aiken/lib/midgard/fraud-proofs/` — in particular

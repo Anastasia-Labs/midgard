@@ -47,6 +47,46 @@ on:
       - ".github/workflows/evidence-integrity-ci.yml"
       - ".github/workflows/midgard-node-ci.yml"
 
+# THE COMPILER PIN. Issue #579, rider 1, and the owner's 2026-08-13 ruling A:
+# the patched fork is the SOLE compiler, and it is what defines deployed script
+# identity. Stock v1.1.22 is retired from every role and is no longer installed
+# by this workflow.
+#
+# The job below is not a bystander to that ruling. Its `aiken build --env
+# testnet` produces the testnet blueprint the node, SDK, validation and
+# fault-proof suites resolve script hashes from, so the compiler chosen here is
+# the compiler whose identity those suites assert; and the seven golden-vector
+# channels below shell out to `aiken fmt` through
+# `demo/midgard-core/scripts/golden-channel.mjs` — in `--check` mode as well as
+# `:sync` — so it is also the formatting authority whose output those
+# cross-language claims are compared against.
+# Under stock v1.1.22 both were measured against the wrong artifact: stock keys
+# generated expect-decoders by LOCAL type name with no module path (issue
+# #521), so two same-named types in different modules share one decoder, and
+# the retirement snapshot recorded in `aiken-ci.yml` measured the consequence
+# on this tree — `user_events/tx_order_v1.mint` diverges (stock 81fa79f4…,
+# 9,851 bytes; fork b5541807…, 10,071 bytes).
+#
+# All four arms of rider 1's pin, so a reviewer on other hardware can reproduce
+# the toolchain rather than take it on trust:
+#   repo    https://github.com/Anastasia-Labs/aiken   (org-controlled)
+#   tag     midgard-2a78108c                          (annotated, immutable)
+#   commit  2a78108ccb184161689b8a06c84d942e13b5b209
+#   md5     b3acfdf348235798cb6b921d0f87750a          (published in the tag
+#                                                      message, so it is fixed
+#                                                      once for everyone)
+# The version string `v1.1.23+2a78108` is derived from the commit at build
+# time, so it is the arm that reproduces from source anywhere; the md5 is a
+# released-artifact hash and is pinned as provenance, not as a build-time
+# equality check (two honest builds of one tag on two machines need not agree
+# byte for byte).
+env:
+  AIKEN_FORK_REPO: https://github.com/Anastasia-Labs/aiken
+  AIKEN_FORK_TAG: midgard-2a78108c
+  AIKEN_FORK_REV: 2a78108ccb184161689b8a06c84d942e13b5b209
+  AIKEN_FORK_VERSION: aiken v1.1.23+2a78108
+  AIKEN_FORK_BINARY_MD5: b3acfdf348235798cb6b921d0f87750a
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -92,9 +132,58 @@ jobs:
           # actions/checkout defaults to a depth-1 shallow clone, in which
           # every such check fails regardless of correctness.
           fetch-depth: 0
-      - uses: aiken-lang/setup-aiken@v1.0.3
+      # No `setup-aiken` step: the fork is the compiler here for the reason
+      # given at the top of this file, and it is installed exactly the way
+      # `aiken-ci` and `evidence-integrity-ci` install it — same cache path,
+      # same key shape, same rev — so the blueprint this job builds cannot come
+      # from a different compiler than the one those workflows judge.
+      - name: Cache the pinned Aiken fork
+        id: aiken-fork
+        uses: actions/cache@v4
         with:
-          version: v1.1.22
+          path: ~/.aiken-fork
+          key: aiken-fork-${{ env.AIKEN_FORK_REV }}-${{ runner.os }}
+      - name: Build the pinned Aiken fork
+        if: steps.aiken-fork.outputs.cache-hit != 'true'
+        run: |
+          # The fork's toolchain is selected explicitly with `cargo +1.94.1`
+          # rather than by changing the default, so this leaves the 1.91.0
+          # toolchain the native MPF steps below install untouched.
+          rustup toolchain install 1.94.1 --profile minimal
+          # --locked honours the fork's committed Cargo.lock; without it cargo
+          # re-resolves every dependency on each cache miss, so an unrelated
+          # crate release could redden this branch or silently change the
+          # compiler the blueprint below was produced by.
+          cargo +1.94.1 install \
+            --git "$AIKEN_FORK_REPO" \
+            --rev "$AIKEN_FORK_REV" \
+            --locked \
+            --root ~/.aiken-fork \
+            aiken
+      # Assert, don't just print: a cache poisoned by an earlier rev must fail
+      # here rather than silently changing which compiler produced the testnet
+      # blueprint the suites below assert hashes against. Putting the fork on
+      # PATH is what makes it the compiler for `aiken build --env testnet` AND
+      # for the golden channels that spawn a bare `aiken fmt`. There is no
+      # second compiler on PATH to fall through to.
+      - name: Assert the pinned compiler identity and put it on PATH
+        run: |
+          set -euo pipefail
+          patched="$(~/.aiken-fork/bin/aiken --version)"
+          printf 'pinned fork: %s\nexpected:    %s\n' "$patched" "$AIKEN_FORK_VERSION"
+          test "$patched" = "$AIKEN_FORK_VERSION"
+          test "$patched" = "aiken v1.1.23+${AIKEN_FORK_REV:0:7}"
+          echo "$HOME/.aiken-fork/bin" >> "$GITHUB_PATH"
+      - name: Assert no stock compiler is reachable
+        run: |
+          set -euo pipefail
+          # Fail closed if a stock binary ever returns to PATH: a step that
+          # silently compiled under v1.1.22 would publish the wrong identity,
+          # and this is the cheapest place to notice.
+          resolved="$(command -v aiken)"
+          version="$(aiken --version)"
+          printf 'aiken on PATH: %s (%s)\n' "$resolved" "$version"
+          test "$version" = "$AIKEN_FORK_VERSION"
       - uses: pnpm/action-setup@v4
         with:
           version: 9

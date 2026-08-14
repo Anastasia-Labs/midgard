@@ -1,0 +1,219 @@
+{
+  "schema": "midgard.canonical-v1-tx-order-receipt-identity-removal.v1",
+  "version": 1,
+  "goalIds": [
+    "F05"
+  ],
+  "issue": 579,
+  "ruling": "Owner ruling A, 2026-08-14 (the receipt pair) and the owner's follow-up ruling of the same day (the preimage lock), which together retire all three tx-field names. Both execute the owner's 2026-08-10 ruling that the tx-field chain dies before #579's single blueprint regeneration.",
+  "claim": "The regenerated blueprint's (hub_oracle, field_preimage_certificate_policy_id) parameters are applied to user_events/tx_order_v1.mint, and all THREE dead tx-field entries \u2014 txOrderFieldPreimageSpend, txOrderFieldReceiptSpend and txOrderFieldReceiptMint \u2014 are removed from the positional deployment ABI vectors.",
+  "verdict": "APPLIED",
+  "note": "This is an identity REMOVAL from positional vectors, not a cleanup, and it is the FIRST removal in the deployment-manifest chain \u2014 every prior movement was append-only. DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES is ordered and its order IS the ABI, so dropping three entries renumbers every contract after them and moves the deployment-manifest id and every position-derived downstream identity. It is recorded here rather than left implicit in a diff because the value of a positional ABI is that every movement in it is enumerated with its cause. Every digest below was re-derived by running the gate, never copied from prose. EXECUTION HISTORY, kept because it is the honest record: the receipt pair was removed first under ruling A, which moved ABI-01 57->55; executing that surfaced the preimage lock as a third member of the same retirement, which was escalated rather than guessed at, and the owner then ruled it removed too, taking ABI-01 55->54. The intermediate digests are recorded as superseded, not erased.",
+  "whyTheEntriesWereDead": {
+    "onchain": "Commit df53dc6a7 (#587), executing the owner's 2026-08-10 ruling that 'the tx-field receipt chain dies before #579's single blueprint regeneration rather than being frozen into it', deleted THREE validators in one change: validators/user-events/tx-field-preimage-v1.ak, tx-field-receipt-v1.ak and tx-field-receipt-spend-v1.ak. Confirmed by `git log --diff-filter=D --name-only -- onchain/aiken/validators/user-events/`. Removing the three off-chain registrations completes off-chain what that commit did on-chain.",
+    "parameters": "#594 replaced the tx-order mint's two receipt parameters with the \u00a78.6 certificate policy id.",
+    "blueprint": "The regenerated onchain/aiken/plutus.json (md5 b20c9a14a8fe445cdddbe5305b3857c1, 398 validators) declares none of `user_events/tx_field_preimage_v1.spend.spend`, `user_events/tx_field_receipt_v1.mint.mint` or `user_events/tx_field_receipt_spend_v1.spend.spend`, and declares `user_events/tx_order_v1.mint` with exactly two parameters: hub_oracle (aiken/crypto/ScriptHash) and field_preimage_certificate_policy_id (cardano/assets/PolicyId). Measured by sweeping all 36 blueprint-title string literals in midgard-contracts.ts against the blueprint: after the full removal, 35 of 35 resolve and 0 are missing.",
+    "consequence": "Until this change the load site resolved titles that no longer exist and applied a three-term parameter vector against a two-parameter declaration. `applyBlueprintDeclaredParams` is what kept that honest \u2014 it checks the application against the blueprint's declared parameters and fails by name rather than producing a wrong policy id from a wrong arity."
+  },
+  "identitiesMoved": [
+    {
+      "id": "ABI-01",
+      "title": "Deployment contract-name vector",
+      "removed": [
+        "txOrderFieldPreimageSpend",
+        "txOrderFieldReceiptSpend",
+        "txOrderFieldReceiptMint"
+      ],
+      "cardinalityBefore": 57,
+      "cardinalityAfter": 54,
+      "digestBefore": "f613a53d8cd9498d8749b98a838c2fb0bee0c865eaccf6da85e4e2ed769c15f3",
+      "digestAfter": "4ddc94c7e57860f9ef89a73f73822bbb7eed729b4578e5194395af9554df160b",
+      "declaredBy": [
+        "demo/midgard-core/src/deployment-manifest-identity-v1.ts:DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES",
+        "demo/midgard-node/src/deployment-manifest-v1.ts:DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES"
+      ],
+      "supersededIntermediate": {
+        "afterReceiptPairOnly": {
+          "cardinality": 55,
+          "digest": "0c841adda9ae206d43974a4d98ec5812dae3d5af1cfd0ba1c5cffc1ca7ea36d3"
+        }
+      }
+    },
+    {
+      "id": "ABI-03",
+      "title": "Reference-script role to contract map",
+      "removed": [
+        "V1 transaction-field preimage publication",
+        "V1 transaction-field receipt",
+        "V1 transaction-field receipt minting"
+      ],
+      "cardinalityBefore": 39,
+      "cardinalityAfter": 36,
+      "digestBefore": "1086e83fc16b1e2a444306c11d91d2f6f242c3d5ebf93a6b8673c60fc1d51eb1",
+      "digestAfter": "06b0383ebecfbe9a4f8ae4dd96dfe4ca51a8ee09d94fa8e2794261617e1688b0",
+      "declaredBy": [
+        "demo/midgard-core/src/deployment-manifest-identity-v1.ts:DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE",
+        "demo/midgard-node/src/deployment-manifest-v1.ts:DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE"
+      ],
+      "why": "A reference-script role whose contract no longer exists cannot be deployed; leaving it would make the map describe a deployment that can never be performed.",
+      "supersededIntermediate": {
+        "afterReceiptPairOnly": {
+          "cardinality": 37,
+          "digest": "7f917aedfc2db83ee27ccdb0b31917835fed8901e8dfa95c819f86e537372331"
+        }
+      }
+    },
+    {
+      "id": "ABI-04",
+      "title": "Reference-script auth token names",
+      "removed": [
+        "V1TxFieldPreimageSpend",
+        "V1TxFieldReceiptSpend",
+        "V1TxFieldReceiptMint"
+      ],
+      "cardinalityBefore": 40,
+      "cardinalityAfter": 37,
+      "digestBefore": "83692b969fc8198edba461cb88792f201606060f98e7aa31be3b4fa11eb244c1",
+      "digestAfter": "691f1a606c9c20d82c755ea8e5ea2297e670fc32cecdf1538c8adcdfcfdc2c6e",
+      "declaredBy": [
+        "demo/midgard-core/src/deployment-manifest-identity-v1.ts:DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES",
+        "demo/midgard-sdk/src/reference-scripts.ts:REFERENCE_SCRIPT_AUTH_TOKEN_NAMES"
+      ],
+      "why": "Token names are minted per deployed reference script; a name with no script mints nothing.",
+      "supersededIntermediate": {
+        "afterReceiptPairOnly": {
+          "cardinality": 38,
+          "digest": "9e4eac895769a733ea0b34691777601869788fe08238912ef0b6e69cf3a04637"
+        }
+      }
+    },
+    {
+      "id": "ABI-07",
+      "title": "Required transaction-order contracts",
+      "removed": [
+        "txOrderFieldPreimageSpend",
+        "txOrderFieldReceiptSpend",
+        "txOrderFieldReceiptMint"
+      ],
+      "cardinalityBefore": 12,
+      "cardinalityAfter": 9,
+      "digestBefore": "90ca7f0459bbf077aea5ab486ac6b055dbb29a30714bff092beccadc1d1c7fb4",
+      "digestAfter": "2dc93dc63e0f1fef3bca7050271475c9955f426b19b14216a028567bf0079fae",
+      "declaredBy": [
+        "demo/midgard-node/src/deployment-manifest-v1.ts:REQUIRED_TRANSACTION_ORDER_CONTRACTS"
+      ],
+      "why": "This vector gates what a transaction-order deployment is REQUIRED to carry. Keeping a name the blueprint cannot resolve would make every deployment fail a requirement it has no way to satisfy.",
+      "supersededIntermediate": {
+        "afterReceiptPairOnly": {
+          "cardinality": 10,
+          "digest": "4d19e6cb46b9885ae730cfd4db4bb04ed45c6f164fcfaf325a736a8a50027384"
+        }
+      }
+    }
+  ],
+  "identitiesDeliberatelyUnmoved": [
+    {
+      "id": "ABI-02",
+      "title": "Fraud-proof catalogue category order",
+      "cardinality": 11,
+      "why": "The receipt family is not a catalogue category, so no category id shifts and the catalogue root and every membership proof are untouched. Independently corroborated: the F20 reconciliation's bindingInventory.registeredCatalogueCategories measures 11, and the ABI gate reports core and sdk agreement EXACT at 11."
+    }
+  ],
+  "downstreamIdentitiesMovedByTheRenumbering": [
+    {
+      "surface": "demo/midgard-watcher/tests/canonical-fraud-proof-catalogue.ts:POSITIONAL_SCRIPT_CATALOGUE",
+      "whatMoved": "The catalogue root, all 11 category script hashes and all 11 membership proofs.",
+      "rootBefore": "e6462b6317f94bdba00639082ced98523770679bf7d9c0b512ab874f1d6d103f",
+      "rootAfter": "dc6d920a1e6d2e94e14ea147ad6bedaaba6148b8199afc543ffc7f26e2c1bb26",
+      "exampleCategory": "doubleSpend 9dfd836b\u2026 -> 394ec879\u2026 (receipt pair) -> 9c294dd2\u2026 (all three)",
+      "why": "These are NOT blueprint hashes. The six watcher suites build one synthetic single-byte script per contract, keyed on the contract's POSITION in DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES. Removing the two receipt names shifted every fraud-proof contract two places down (fraudProofDoubleSpend 39 -> 37 \u2026 fraudProofInvalidSignature 54 -> 52), so every synthetic hash and therefore the whole catalogue changed. This is the clearest demonstration in the batch of why a positional vector's removals must be enumerated: nothing about the fraud-proof families changed, yet every one of their identities moved.",
+      "notMoved": "FIXED_SCRIPT_CATALOGUE (one shared script hash) is position-independent and is correct unchanged. The category count stays 11.",
+      "derivedBy": "buildFraudProofCatalogueDeploymentInfo(fraudProofsToIndexedValidators(...)) \u2014 the deployment producer itself, run over the same synthetic contract set the suites build. verifyDeploymentManifestV1FraudProofCatalogueIdentity re-checks canonical proof CBOR and membership at module load, so a transcription slip cannot survive import.",
+      "effect": "Cleared the file-level 'No canonical watcher fraud-proof catalogue fixture matches the deployed scripts' failure from all six dependent watcher suites.",
+      "supersededIntermediate": "9e71465da205b1f525f652386209c29ac87e25af77b5e7de9c92a1e5174a7e74 (receipt pair only)",
+      "shiftedBy": "three positions",
+      "verified": "All six dependent watcher suites green: 123/123."
+    },
+    {
+      "surface": "demo/midgard-fault-proofs/tests/inspect-contracts.test.ts:Q13_APPLIED_STEP_HASHES and Q13_CATALOGUE_ROOT",
+      "stepHashesBefore": [
+        "5c79063d\u2026",
+        "a562f6b3\u2026",
+        "e22e2b38\u2026",
+        "9984b16c\u2026"
+      ],
+      "stepHashesAfter": [
+        "2389abf7\u2026",
+        "55c27cdb\u2026",
+        "a966c6be\u2026",
+        "b2685117\u2026"
+      ],
+      "catalogueRootBefore": "32e29b6d07cc4f6c7947e75b1653f03fc840c854b45ce61ec0310c13c7321701",
+      "catalogueRootAfter": "173cabdb279e82cda76d0a7ac4b5a50bfc50406aec97d442790ed2810c2114be",
+      "note": "Q13_CATALOGUE_ROOT was ALSO stale and was masked behind the step-hash assertion \u2014 the row would have stayed red after a step-hash-only fix. Recorded because a pin hidden behind another failing pin is the shape that survives a careless re-pin.",
+      "suiteAfter": "12/12 green"
+    },
+    {
+      "surface": "demo/midgard-validation/tests/complete-item-carriage-policy-v1.test.ts \u2014 ActionV1.Verify field vector",
+      "before": [
+        "input_index",
+        "output_index",
+        "transition",
+        "collection_proof",
+        "item_cbor"
+      ],
+      "after": [
+        "input_index",
+        "output_index",
+        "transition",
+        "carriage"
+      ],
+      "why": "Moved by the regeneration itself rather than by the renumbering; the test's own comment predicted this exact change 'when #579 regenerates'. Confirmed directly against the regenerated blueprint's fraud_proofs/validation_trace/canonical_decode_item_semantic_v1/ActionV1 definition.",
+      "suiteAfter": "6/6 green"
+    },
+    {
+      "surface": "demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts \u2014 applied \u00a73.2 necessity identity",
+      "before": "semanticResolvers[1] 983051b4a0c3fe90057a599e77ed44c5ab694014036d49c86373a143",
+      "after": "semanticResolvers[1] f492660e7977de3cc0d78695560e7b7c4d08ef1653c89b138ca8a29f",
+      "note": "Resolver count (76) and proofItem (22c9a103\u2026) measured UNCHANGED \u2014 the movement is confined to the one recompiled resolver, which is what makes this a re-pin rather than a semantic change."
+    }
+  ],
+  "derivedIdentityStillOutstanding": {
+    "surface": "demo/midgard-node/tests/deployment-manifest-v1.test.ts \u2014 canonicalManifest().manifestId",
+    "before": "a5f805922c08a2b0eac52488f64f43617d91e72e5730a7b3b39a71ce0fd0be41",
+    "after": "d9c811abd62e8acc619181d1836b749e3fb2e295e0a309f9cf09b03d996813ef",
+    "supersededIntermediate": "9682f09b968bc189a8b04c17e159a640e7814beef10c0d9b07965585232099cd (receipt pair only; never pinned, deliberately held pending the ruling on the third member)",
+    "status": "RE-PINNED, with entry 8 appended to the test\u2019s numbered manifest-id cause chain \u2014 the first NON-append-only entry in it."
+  },
+  "verification": {
+    "gateHazard": "demo/scripts/verify-canonical-v1-abi-freeze.mjs reads its identity sources from the GIT INDEX (`git show :<path>`, readIndexedText at line 105), not the working tree. On an uncommitted tree it therefore measures HEAD. Here that is actively deceptive: the default run reported ABI-01 cardinality 55 \u2014 the SAME number as the true post-purge value, because the certificate append (+2) and this removal (-2) cancel \u2014 while the digest differed (695a3f1d\u2026 index vs 0c841add\u2026 worktree). Verifying by cardinality alone yields a false green.",
+    "worktreeCommand": "cd demo && node scripts/verify-canonical-v1-abi-freeze.mjs --source-core=demo/midgard-core/src/deployment-manifest-identity-v1.ts --source-node=demo/midgard-node/src/deployment-manifest-v1.ts --source-sdkCatalogue=demo/midgard-sdk/src/fraud-proof/catalogue.ts --source-sdkReferenceScripts=demo/midgard-sdk/src/reference-scripts.ts",
+    "committedEquivalentProof": "The three residual gate failures (two aiken.toml compiler arms, one F20 reconciliation drift finding) were proved to be index artifacts rather than real drift by building a scratch index and re-running against it: `cp .git/index $TMP/probe.index && GIT_INDEX_FILE=$TMP/probe.index git add -A && GIT_INDEX_FILE=$TMP/probe.index node scripts/verify-canonical-v1-abi-freeze.mjs`. The real index was left untouched. Result: 'Canonical V1 ABI freeze verified. cross-package identities re-derived: 7/7; catalogue categories: 11, validator directories: 18; blueprint: 398 validators from v1.1.23+2a78108; drift findings: 0; waivers: 0.' All three resolve on commit.",
+    "selfTest": "demo/scripts/verify-canonical-v1-abi-freeze-self-test.mjs \u2014 PASS, 2 control runs accepted, 23 hostile mutations rejected. NOTE: this suite itself contained a latent vacuous mutation. Its 'understated ABI-01 cardinality' seed was hardcoded to 54 while the truth was 55; when this removal made 54 the TRUE value the seeded defect became a no-op and the gate accepted it \u2014 caught only because the self-test asserts that a rejection occurred at all. The seed is now derived (`cardinality -= 1`) with a numeric-agnostic expectation, so it cannot go vacuous again on a future cardinality change.",
+    "suitesGreenAfter": [
+      "demo/midgard-core \u2014 505/505",
+      "demo/midgard-sdk \u2014 285/285",
+      "demo/midgard-sdk tests/fault-proof.test.ts (script-source resolver pins) \u2014 30/30",
+      "demo/midgard-node tests/sdk-aiken-schema-parity.test.ts \u2014 33/33",
+      "demo/midgard-node tests/tx-order-carriage-l1-observation-v1.test.ts \u2014 11/11",
+      "demo/da-committee-node tests/deployment-fixture.test.ts \u2014 4/4",
+      "demo/scripts/verify-canonical-v1-format-registry.mjs \u2014 132 rows",
+      "demo/scripts/verify-canonical-v1-structural-na-q47.mjs \u2014 PASS, 13/13 on-chain selectors under aiken v1.1.23+2a78108",
+      "workspace typecheck \u2014 clean"
+    ],
+    "gateHazardAudience": "Recorded for #580 and #581, which inherit this tree. TWO independent workers hit this in the same batch from opposite directions \u2014 one measuring identity cardinality, one measuring an F20 drift finding \u2014 which is why it is written down rather than remembered. Any gate in demo/scripts/ that calls readIndexedText has the same property."
+  },
+  "vacuousGateFoundAndClosed": {
+    "surface": "demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts \u2014 'rejects substituted and trailing-byte items through the deployed reference route'",
+    "shape": "gate that cannot fail",
+    "finding": "buildCanonicalDecodeItemCase selected the FIRST canonicalDecode + transactionFieldItem witness, which is field 0's, not field 2's. Its itemBytes parameter therefore had no relationship to the preimage the row measured. The consequence was that `substituted[itemBytes - 100]` wrote PAST THE END of a roughly 40-byte buffer and was a silent no-op: the 'substituted' preimage was byte-identical to the original, so the row asserted a rejection of something it had never actually altered.",
+    "howItSurfaced": "The row was initially triaged as a regeneration-moved pin ('resolved instead of rejecting'). Re-pinning it would have converted a rejection assertion into an acceptance assertion and cemented the vacuity permanently. It was caught because two workers cross-checked: one measured the failure, another diagnosed the selection defect independently.",
+    "fix": "Selection now requires fieldIndex === 2 AND fieldPreimage.length === encodeMidgardFieldPreimageV1([item]).length; the substitution is keyed off substituted.length - 100 and guarded by assertions that the flip actually landed (length unchanged, equals(original) false). A test that mutates a buffer now proves the mutation took.",
+    "outcome": "The row genuinely rejects both the substituted and the trailing-byte publication. The property it exists to protect is real for the first time.",
+    "noRegression": "complete-item-proof-fit-v1.test.ts 5/5 and complete-item-carriage-tiers-emulator-v1.test.ts 4/4 remain green after the selection edit."
+  },
+  "collateralRedFixed": {
+    "surface": "demo/da-committee-node/tests/fixtures/da-contract-deployment-info.json",
+    "finding": "The fixture must contain exactly the contract-name vector. It carried the pre-#579 55 names: the earlier certificate registration (+2) never reached it, so `contains exactly every canonical V1 contract record` was already red before this change. Removing the two receipt entries and adding the two certificate entries brings it to 55 again and green. The two reference-script UTxO slots freed by the retired receipt roles (txHash 2727\u2026, 2828\u2026) were reused by the certificate roles that replaced them."
+  }
+}

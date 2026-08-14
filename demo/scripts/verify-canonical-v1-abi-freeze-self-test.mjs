@@ -101,11 +101,20 @@ mustAccept("opening control");
 /* 1-6: cross-package identities are re-derived, not read.             */
 /* ------------------------------------------------------------------ */
 
+// The seed is DERIVED (`-= 1`) rather than a literal, and the expectation
+// matches any two numbers. That is not stylistic: this mutation was previously
+// hardcoded to understate the cardinality to 54 while the true value was 55.
+// When #579 removed the three retired tx-field names the true value BECAME 54,
+// so the seeded "defect" silently turned into a no-op — the gate accepted it,
+// correctly, and the self-test caught itself only because it asserts that a
+// rejection happened at all. A self-test whose seeded defect can become true is
+// the same gate-that-cannot-fail shape this suite exists to detect, so the seed
+// is now expressed relative to whatever the truth is.
 mustReject(
   "understated ABI-01 cardinality",
-  /- ABI-01 cardinality is 54 but source declares 55/u,
+  /- ABI-01 cardinality is \d+ but source declares \d+/u,
   (candidate) => {
-    identity(candidate, "ABI-01").cardinality = 54;
+    identity(candidate, "ABI-01").cardinality -= 1;
   },
 );
 
@@ -224,7 +233,7 @@ mustReject(
 
 mustReject(
   "validator directory dropped from the catalogue binding",
-  /- catalogueBinding\.validatorDirectories must equal the 16 directories the index carries/u,
+  /- catalogueBinding\.validatorDirectories must equal the 18 directories the index carries/u,
   (candidate) => {
     candidate.catalogueBinding.validatorDirectories =
       candidate.catalogueBinding.validatorDirectories.filter(
@@ -239,9 +248,9 @@ mustReject(
 
 mustReject(
   "understated blueprint validator count",
-  /- blueprintIdentity\.validatorCount is 392 but the built blueprint measures 393/u,
+  /- blueprintIdentity\.validatorCount is 397 but the built blueprint measures 398/u,
   (candidate) => {
-    candidate.blueprintIdentity.validatorCount = 392;
+    candidate.blueprintIdentity.validatorCount = 397;
   },
 );
 
@@ -303,7 +312,7 @@ mustReject(
 
 mustReject(
   "family inventory truncated",
-  /- ig2ProofFamilies\.families must enumerate exactly the 16 directories that carry verifier logic/u,
+  /- ig2ProofFamilies\.families must enumerate exactly the 18 directories that carry verifier logic/u,
   (candidate) => {
     candidate.ig2ProofFamilies.families.pop();
   },

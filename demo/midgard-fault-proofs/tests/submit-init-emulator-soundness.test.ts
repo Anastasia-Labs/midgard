@@ -140,6 +140,21 @@ describe("validation-dispute soundness with a non-empty claimed ledger delta", (
     expect(removalReferenceScriptPublicationAttempts).toBe(0);
   }, 600_000);
 
+  // RED, and it is the direction that matters. This is the symmetric-soundness
+  // case: a FORGED dispute against an HONEST operator must be refused at
+  // `prepare-selected` or `semantic-resolution`, and as of #579's close it is
+  // ACCEPTED instead ("promise resolved instead of rejecting"). The sibling
+  // positive case above — a challenger legitimately winning — passes, so this is
+  // not a broken harness; it is specifically the refusal direction that is not
+  // refusing.
+  //
+  // Owner-ordered tracking: **#605** (blocked_by #604, blocking #581). It is
+  // deliberately NOT filed under #604's offchain-builder staleness and NOT
+  // written off as accepted baseline: it is either a downstream effect of that
+  // staleness producing a malformed forgery that happens to be accepted, or a
+  // genuine soundness defect, and #579 did not bisect which. Do not re-pin,
+  // skip, or weaken this assertion to get a green suite — the whole value of the
+  // row is that it fails while the question is open.
   it("cannot be defeated when the operator honestly accepted a valid transaction carrying a non-empty ledger delta", async () => {
     // Same disputed instruction, same rejection code, same non-empty claimed
     // delta as the challenger-wins case; only the transaction's validity

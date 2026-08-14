@@ -406,15 +406,20 @@ toolchains.
 - K01–K13 now have current-source canonical forms, production boundaries,
   parser/encoder symbols, positive/rejection evidence, cross-language vectors
   or exact Aiken N/A reasons, and one executable retired-identity scan.
-  TypeScript focused replay passes 55/55 across core and validation. Pinned
-  Aiken v1.1.22 passes the 62-test blob/Data/scan/constant/builtin aggregate and
-  the 24-test machine/proof aggregate.
+  TypeScript focused replay passes 55/55 across core and validation. The
+  pinned Aiken fork v1.1.23+2a78108 passes the 62-test
+  blob/Data/scan/constant/builtin aggregate and the 24-test machine/proof
+  aggregate.
 - The negative bignum immediately below `-2^64` exposed a production compiler
   defect rather than a protocol-vector defect. Aiken v1.1.21 alone disagrees
   with the canonical TypeScript CBOR; v1.1.22 agrees, and its bundled
   changelog names the same large-negative-bigint `Data::integer`
-  reification/tracing fix. The undeployed compiler pin and both CI actions are
-  replaced in place with v1.1.22. Do not weaken the vector or add
+  reification/tracing fix. The undeployed compiler pin and both CI actions were
+  replaced in place with v1.1.22 at the time. SUPERSEDED by #579 owner ruling A
+  (2026-08-13): stock v1.1.22 is retired from every role and the pin is now the
+  patched fork v1.1.23+2a78108 (`Anastasia-Labs/aiken`, tag `midgard-2a78108c`),
+  which carries the same fix. The finding above still stands on its own terms —
+  it is the record of why v1.1.21 was abandoned. Do not weaken the vector or add
   compatibility behavior; rebuild `plutus.json` once at final IG1.
 - The registry absence scanner previously omitted `.ak` from active source,
   allowing a false-green result for on-chain directories. The extension set
@@ -634,8 +639,11 @@ toolchains.
   15 test instance uses a tmpfs data directory and test-only
   `fsync=off/full_page_writes=off`; it is evidence infrastructure only, never
   a production setting.
-- Exact repository compiler `v1.1.22+39d6b04` is installed at the pinned
-  version path and must be invoked directly for evidence. Final blueprint and
+- Exact repository compiler — the patched fork `v1.1.23+2a78108`
+  (`Anastasia-Labs/aiken`, tag `midgard-2a78108c`) — is installed at the pinned
+  version path and must be invoked directly for evidence. It is the sole
+  authority for `build`, `check` and `fmt`; a stock binary on PATH is not the
+  repository compiler and the gates that name it fail closed on one. Final blueprint and
   release-manifest binding remain open.
 - The standalone Nix pnpm `9.15.9` wrapper has a Node `24.14.1` shebang, and
   the host `node` is `24.13.1`, despite the declared Node 22 evidence

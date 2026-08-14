@@ -398,7 +398,10 @@ const resolveReferenceInputs = ({
     return [];
   }
   const chunkInputs = plan.publications.map((publication) => {
-    const expected = publicationOutputFor(plan, publication.chunkIndex).datumCbor;
+    const expected = publicationOutputFor(
+      plan,
+      publication.chunkIndex,
+    ).datumCbor;
     const utxo = utxos.find((candidate) => candidate.datum === expected);
     if (utxo === undefined) {
       throw new Error(
@@ -547,7 +550,9 @@ describe("§8 carriage ladder — one consumer path, three tiers", () => {
         // live defect, and it is asserted as an exact overrun so that the day
         // `K` is re-pinned this line turns red and has to be revisited rather
         // than silently continuing to pass.
-        if (publication.byteLength <= MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1) {
+        if (
+          publication.byteLength <= MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1
+        ) {
           expect(result.signedBytes).toBeLessThanOrEqual(
             MAX_L1_TX_BYTES - RELIABILITY_RESERVE_BYTES,
           );
@@ -740,10 +745,12 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
         fieldIndex: FIELD_INDEX,
         preimage,
       });
-      expect(midgardFieldCarriagePlansAreInterchangeableV1(plan, healedPlan)).toBe(
-        true,
+      expect(
+        midgardFieldCarriagePlansAreInterchangeableV1(plan, healedPlan),
+      ).toBe(true);
+      expect(healedPlan.certificate?.owner).not.toEqual(
+        plan.certificate?.owner,
       );
-      expect(healedPlan.certificate?.owner).not.toEqual(plan.certificate?.owner);
 
       const healedPublication = publicationOutputFor(healedPlan, chunkIndex);
       // Byte-identical to what was yanked, which is the whole mechanism: the
@@ -964,11 +971,15 @@ describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
     // A frontier is a pair of adjacent measurements, not a single one: the
     // largest payload that fits, and the smallest that does not. Both are real
     // signed transactions.
-    const exactSigned = await measure(MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1);
+    const exactSigned = await measure(
+      MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1,
+    );
     const exactOverSigned = await measure(
       MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1 + 1,
     );
-    const reliableSigned = await measure(MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1);
+    const reliableSigned = await measure(
+      MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
+    );
     const reliableOverSigned = await measure(
       MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1 + 1,
     );
@@ -988,7 +999,8 @@ describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
         firstUnpublishablePreimageBytes:
           MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1 + 1,
         firstUnpublishableTransactionBytes: exactOverSigned,
-        reliableFrontierPreimageBytes: MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
+        reliableFrontierPreimageBytes:
+          MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
         reliableFrontierTransactionBytes: reliableSigned,
         transactionBytesAtSupersededK: atKSigned,
         supersededKOverrunBytes: atKSigned - MAX_L1_TX_BYTES,
@@ -1006,8 +1018,7 @@ describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
         countedEraExactFrontier:
           MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactCompleteItemPublicationBytes,
         countedEraReliableFrontier:
-          MIDGARD_V1_ENVELOPE_MEASUREMENTS
-            .maxReliableCompleteItemPublicationBytes,
+          MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationBytes,
         countedEraAppliedCap:
           MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
       }),
@@ -1035,22 +1046,34 @@ describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
     // applied policy cap with 1,128 bytes of unused headroom, and comparing a
     // frontier to a cap measures the cap's safety margin rather than the
     // format's gain; the previous revision did that and reported +1,247 B,
-    // about 8× the real figure.
+    // about 17× the real figure.
+    //
+    // **CORRECTED 2026-08-14 (owner ruling): the gain was +74 / +75 B, not
+    // +155 / +155.** The two counted-era frontiers this subtracts from were
+    // themselves ~80 bytes low — 14,993/15,489 where the counted publisher
+    // actually reaches 15,073/15,570, as the three sibling measurements in the
+    // same `MIDGARD_V1_ENVELOPE_MEASUREMENTS` block (datum bytes, min-Ada, fee)
+    // had said all along. The flat format's real gain over the counted era is
+    // therefore about half what was claimed. The overstated figure is not
+    // preserved anywhere as if it still held; the measured one replaces it here
+    // and in §8.10 of `docs/spec/midgard-tx.md`.
     expect(
       MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1 -
         MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactCompleteItemPublicationBytes,
-    ).toBe(155);
+    ).toBe(74);
     expect(
       MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1 -
-        MIDGARD_V1_ENVELOPE_MEASUREMENTS
-          .maxReliableCompleteItemPublicationBytes,
-    ).toBe(155);
+        MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationBytes,
+    ).toBe(75);
     // The counted reliable publication and the flat reliable frontier land in
-    // the same size of transaction, which is what makes the two +155s the same
-    // gain rather than a coincidence.
+    // the same size of transaction. That is what makes the two gains comparable
+    // at all. They differ by one byte rather than being equal, and that byte is
+    // accounted for: across the 512-byte reserve the counted shape's non-payload
+    // framing steps by 15 (814 B at 15,570 -> 799 B at 15,073) while the flat
+    // shape's steps by 16 (740 B at 15,644 -> 724 B at 15,148), so 16 - 15 = 1.
+    // Two ends of one gain, not two different gains.
     expect(reliableSigned).toBe(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS
-        .maxReliableCompleteItemPublicationTransactionBytes,
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationTransactionBytes,
     );
 
     // §8.3's provisional `K = 15,900` was **falsified** by this measurement: a
@@ -1138,7 +1161,9 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
       txId: TX_ID,
       fieldIndex: FIELD_INDEX,
       preimage: fieldPreimage(
-        itemCountForPreimageBytes(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1),
+        itemCountForPreimageBytes(
+          MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+        ),
       ),
     });
     // This is E1's repair as an end-to-end property, at the largest plan the
@@ -1148,9 +1173,9 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
     // and that was the whole shape of the outage: every tier-3 plan there was
     // had a chunk the ledger would refuse.
     expect(plan.tier).toBe("Certified");
-    expect(plan.publications.map((publication) => publication.bytes.length)).toEqual(
-      [MIDGARD_CHUNK_BYTES_K_V1, MIDGARD_CHUNK_BYTES_K_V1, 2_467],
-    );
+    expect(
+      plan.publications.map((publication) => publication.bytes.length),
+    ).toEqual([MIDGARD_CHUNK_BYTES_K_V1, MIDGARD_CHUNK_BYTES_K_V1, 2_467]);
     const report = midgardFieldCarriagePublishabilityV1({ plan });
     expect(report.publishable).toBe(true);
     expect(report.unpublishableChunks).toEqual([]);
@@ -1163,9 +1188,9 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
       budgetBytes: MAX_L1_TX_BYTES - RELIABILITY_RESERVE_BYTES - 1,
     });
     expect(tightened.publishable).toBe(false);
-    expect(tightened.unpublishableChunks.map((chunk) => chunk.chunkIndex)).toEqual(
-      [0, 1],
-    );
+    expect(
+      tightened.unpublishableChunks.map((chunk) => chunk.chunkIndex),
+    ).toEqual([0, 1]);
     for (const chunk of tightened.unpublishableChunks) {
       expect(chunk.byteLength).toBe(MIDGARD_CHUNK_BYTES_K_V1);
       expect(chunk.publicationBytes).toBe(
@@ -1192,7 +1217,9 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
       preimage,
     });
     expect(plan.tier).toBe("RawUtxo");
-    expect(midgardFieldCarriagePublishabilityV1({ plan }).publishable).toBe(true);
+    expect(midgardFieldCarriagePublishabilityV1({ plan }).publishable).toBe(
+      true,
+    );
 
     const original = await publish({
       harness,
@@ -1236,9 +1263,9 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
       fieldIndex: FIELD_INDEX,
       preimage,
     });
-    expect(midgardFieldCarriagePlansAreInterchangeableV1(plan, healedPlan)).toBe(
-      true,
-    );
+    expect(
+      midgardFieldCarriagePlansAreInterchangeableV1(plan, healedPlan),
+    ).toBe(true);
     const healed = await publish({
       harness,
       publication: publicationOutputFor(healedPlan, 0),
@@ -1360,11 +1387,15 @@ describe("§8.6 Phase-4 exit measurement — certificate min-Ada and the one-tra
     // erratum E1's repair of `K`: the full chunk was 15,900 B of payload in a
     // 16,400-byte datum at 71.5762 ADA, and the ragged tail 963 B in 996 at
     // 5.1849 ADA. The manifest is unmoved — three digests either way.)
-    expect(
-      midgardCarriageDataByteStringBytesV1(MIDGARD_CHUNK_BYTES_K_V1),
-    ).toBe(15_624);
-    expect(publicationOutputFor(cornerPlan, 0).datumCbor.length / 2).toBe(15_624);
-    expect(publicationOutputFor(cornerPlan, 2).datumCbor.length / 2).toBe(2_547);
+    expect(midgardCarriageDataByteStringBytesV1(MIDGARD_CHUNK_BYTES_K_V1)).toBe(
+      15_624,
+    );
+    expect(publicationOutputFor(cornerPlan, 0).datumCbor.length / 2).toBe(
+      15_624,
+    );
+    expect(publicationOutputFor(cornerPlan, 2).datumCbor.length / 2).toBe(
+      2_547,
+    );
 
     // A manifest is small: three digests, a length and an owner. The whole
     // point of tier 3 is that the *certified* object is tiny even though the

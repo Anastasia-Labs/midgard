@@ -105,9 +105,63 @@ const stripTrailingLineWhitespace = (bytes) => {
   return Buffer.concat(normalized);
 };
 
+// Issue #579, owner ruling A (2026-08-13): the patched fork is the sole
+// authority for `fmt` as well as `build` and `check`, so this gate must not run
+// whatever `aiken` happens to be first on PATH. Formatting is not cosmetic
+// here — this script decides whether a tracked source is correctly formatted,
+// and two compilers with different formatters disagree about that, so an
+// unpinned binary would publish one compiler's verdict under the other's name.
+//
+// Resolution order matches the Q62/Q63 gates: `MIDGARD_AIKEN_BIN`, then
+// `MIDGARD_FORK_AIKEN_BIN`, then a bare `aiken` from PATH. The PATH fallback is
+// kept because every caller in the F05 task manifest invokes this script with
+// no environment at all, and CI puts the pinned fork on PATH; it is safe only
+// because the identity below is then MEASURED rather than assumed. A stock
+// binary reaching this point fails closed.
+//
+// The version alone is not the identity. Upstream will one day release a stock
+// v1.1.23, and a version-prefix-only check would then accept it here — the exact
+// failure this gate exists to prevent, arriving silently. So the REV is checked
+// too: `.github/workflows/aiken-ci.yml` pins AIKEN_FORK_REV
+// 2a78108ccb184161689b8a06c84d942e13b5b209 at tag midgard-2a78108c and asserts
+// the installed binary reports `aiken v1.1.23+${AIKEN_FORK_REV:0:7}` (line 105).
+// This gate asserts the same two halves, so a stock build of the same version,
+// or a fork built from a different commit, fails closed rather than formatting.
+const FORK_VERSION_PREFIX = "aiken v1.1.23";
+const FORK_REV_SUFFIX = "+2a78108";
+
+const resolveForkBinary = () => {
+  const named = ["MIDGARD_AIKEN_BIN", "MIDGARD_FORK_AIKEN_BIN"].find(
+    (name) =>
+      typeof process.env[name] === "string" && process.env[name].length > 0,
+  );
+  const binary = named === undefined ? "aiken" : process.env[named];
+  const source =
+    named === undefined ? "the bare `aiken` on PATH" : `${named}=${binary}`;
+
+  const version = spawnSync(binary, ["--version"], { encoding: "utf8" });
+  if (version.error !== undefined || version.status !== 0) {
+    throw new Error(
+      `ERR_AIKEN_BINARY_UNPINNED: could not run \`${binary} --version\` (${source}) — this gate is fork-only and will not guess a formatter`,
+    );
+  }
+
+  const reported = version.stdout.trim();
+  if (
+    !reported.startsWith(FORK_VERSION_PREFIX) ||
+    !reported.endsWith(FORK_REV_SUFFIX)
+  ) {
+    throw new Error(
+      `ERR_AIKEN_BINARY_UNPINNED: ${source} reports "${reported}", which is not the patched Aiken fork this gate requires (expected a ${FORK_VERSION_PREFIX}${FORK_REV_SUFFIX} build — the version AND the pinned rev, because a future upstream stock ${FORK_VERSION_PREFIX} would otherwise pass this check). Stock is retired from all roles by the 2026-08-13 owner ruling on #579; set MIDGARD_AIKEN_BIN to the pinned fork, or put it on PATH.`,
+    );
+  }
+
+  return binary;
+};
+
 const runFormatter = (temporaryDirectory, files) => {
   const result = spawnSync(
-    "aiken",
+    resolveForkBinary(),
     ["fmt", ...files.map(({ argument }) => argument)],
     {
       cwd: temporaryDirectory,

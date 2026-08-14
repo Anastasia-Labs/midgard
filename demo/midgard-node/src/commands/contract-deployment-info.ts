@@ -230,9 +230,9 @@ const REFERENCE_SCRIPT_TARGET_BY_CONTRACT_NAME: Readonly<
   reserveSpend: "reserve spending",
   reserveWithdraw: "reserve observer",
   phasMembershipWithdraw: "membership proof withdrawal",
-  txOrderFieldPreimageSpend: "V1 transaction-field preimage publication",
-  txOrderFieldReceiptSpend: "V1 transaction-field receipt",
-  txOrderFieldReceiptMint: "V1 transaction-field receipt minting",
+  // #579 ruling A: receipt roles retired with their contracts.
+  fieldPreimageCertificateSpend: "V1 field-preimage certificate",
+  fieldPreimageCertificateMint: "V1 field-preimage certificate minting",
   cekProgramMaterialSpend: "V1 immutable CEK program-material publication",
   validationTraceDispute: "V1 validation-trace dispute",
   validationTraceDisputeSource: "V1 validation-trace source",
@@ -471,19 +471,14 @@ const collectScriptDescriptors = (
   spendDescriptor("txOrderSpend", contracts.txOrder),
   mintDescriptor("txOrderMint", contracts.txOrder),
   spendDescriptor(
-    "txOrderFieldPreimageSpend",
-    contracts.txOrderFieldPreimage,
-    "V1 transaction-field preimage publication",
-  ),
-  spendDescriptor(
-    "txOrderFieldReceiptSpend",
-    contracts.txOrderFieldReceipt,
-    "V1 transaction-field receipt",
+    "fieldPreimageCertificateSpend",
+    contracts.fieldPreimageCertificate,
+    "V1 field-preimage certificate",
   ),
   mintDescriptor(
-    "txOrderFieldReceiptMint",
-    contracts.txOrderFieldReceipt,
-    "V1 transaction-field receipt minting",
+    "fieldPreimageCertificateMint",
+    contracts.fieldPreimageCertificate,
+    "V1 field-preimage certificate minting",
   ),
   spendDescriptor(
     "cekProgramMaterialSpend",

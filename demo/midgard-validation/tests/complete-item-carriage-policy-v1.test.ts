@@ -200,20 +200,21 @@ describe("C21 complete-item carriage production searches", () => {
       "Verify",
       "VerifyReference",
     ]);
-    // The blueprint rows below read the **committed** `plutus.json`, which #592
-    // deliberately leaves byte-identical: compiled on-chain code moves in this
-    // lane, blueprints move once, in #579's single regeneration pass (#587's
-    // precedent). So `Verify` still reads `collection_proof`/`item_cbor` here
-    // while the source above already reads `carriage`, and that disagreement is
-    // the recorded state rather than a drift. When #579 regenerates, this list
-    // becomes `["input_index", "output_index", "transition", "carriage"]` and
-    // the source assertion above is what says so.
+    // The blueprint rows below read the **committed** `plutus.json`. #592 left
+    // it byte-identical and recorded that `Verify` still read
+    // `collection_proof`/`item_cbor` here while the Aiken source asserted above
+    // already read `carriage` — a disagreement that was the recorded state
+    // rather than a drift, and that #579's single regeneration pass (#587's
+    // precedent) was predicted to close. #579 has now regenerated
+    // (`onchain/aiken/plutus.json` md5 b20c9a14a8fe445cdddbe5305b3857c1, 398
+    // validators, aiken v1.1.23+2a78108) and the prediction held exactly: the
+    // list below is now the four-field carriage form, so blueprint and source
+    // agree again.
     expect(action?.anyOf?.[0]?.fields?.map((field) => field.title)).toEqual([
       "input_index",
       "output_index",
       "transition",
-      "collection_proof",
-      "item_cbor",
+      "carriage",
     ]);
     expect(action?.anyOf?.[1]?.fields?.map((field) => field.title)).toEqual([
       "input_index",

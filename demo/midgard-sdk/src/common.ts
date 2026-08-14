@@ -261,15 +261,15 @@ export type MidgardValidators = {
   withdrawal: AuthenticatedValidator;
   txOrder: AuthenticatedValidator;
   /**
-   * V1 field fragments remain locked here until the corresponding
-   * tx-order NFT is burned.
+   * The §8.6 field-preimage certificate. #594 retired the receipt family and
+   * replaced it with this policy: the tx-order mint and every field-opening
+   * step take its policy id as a parameter, and the field-access door checks
+   * tier-3 chunk digests against a certificate minted under it. #579 gave it
+   * a deployment role so that one deployed policy serves every reader rather
+   * than each load site rederiving it. The validator takes no parameters, so
+   * its policy id is a pure function of the blueprint.
    */
-  txOrderFieldPreimage: SpendingValidator;
-  /**
-   * V1 receipts are minted only after L1 verifies one referenced field
-   * preimage and remain locked until the corresponding tx-order NFT burns.
-   */
-  txOrderFieldReceipt: SpendingValidator & MintingValidator;
+  fieldPreimageCertificate: SpendingValidator & MintingValidator;
   /**
    * Permissionless append-only L1 availability for content-addressed V1
    * CEK material. Its validator has no successful spending path.

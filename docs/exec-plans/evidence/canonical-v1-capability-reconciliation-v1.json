@@ -111,9 +111,7 @@
       {
         "kind": "aiken",
         "module": "onchain/aiken/lib/midgard/user-events/tx-order-v1.test.ak",
-        "selectors": [
-          "script_field_6_precedes_address_field_7_with_exact_receipt_sizes"
-        ]
+        "selectors": ["inline_carriage_authenticates_a_witness_set_field"]
       }
     ],
     "C20-7": [
@@ -124,9 +122,7 @@
       {
         "kind": "aiken",
         "module": "onchain/aiken/lib/midgard/user-events/tx-order-v1.test.ak",
-        "selectors": [
-          "script_field_6_precedes_address_field_7_with_exact_receipt_sizes"
-        ]
+        "selectors": ["inline_carriage_authenticates_a_witness_set_field"]
       }
     ],
     "C20-8": [
@@ -209,7 +205,7 @@
     "pnpm --dir demo/midgard-core exec vitest run tests/script-proof.test.ts",
     "pnpm --dir demo/midgard-validation exec vitest run tests/cek-program.test.ts",
     "pnpm --dir demo/midgard-validation exec vitest run tests/redeemer-collateral-schema-feasibility-v1.test.ts",
-    "cd onchain/aiken && aiken check -e -m script_field_6_precedes_address_field_7_with_exact_receipt_sizes"
+    "cd onchain/aiken && aiken check -e -m inline_carriage_authenticates_a_witness_set_field"
   ],
   "p2PerTaskAikenCoverage": {
     "note": "Issue #538. p2TaskWitnesses is one focused verification per PASS task; canonical-v1-goal-task-manifest-v1.json declares more for every one of them — the per-task `node scripts/run-focused-check.mjs <module> <selector> ...` citations covering the heavier maximum_*/CEK/boundary selectors — and nothing replayed those, so the gate's scope was a strict subset of the scope its own authority declares. The verifier now derives this plan from the manifest's focusedCommands (never from plannedFocusedCommands, which commit 6e805a78 quarantined as planned rather than executable, and never from this artifact), executes every distinct selector in one batched `check -e` invocation of the patched fork, and refuses to publish a task as PASS unless each selector the manifest binds to it was collected from its declared module and passed. The counts below are pins asserted against that runner report; they are not compared to each other. A selector's identity is its source pair, not the spelling a citation happens to use: `lib/midgard/x-v1.ak` and `lib/midgard/x-v1.test.ak` are one pair addressed by one `aiken check -m` prefix, and the manifest cites it both ways (commit e4335bbd corrected C21 to the `.test` form while C20-0/C20-1/C20-2 still name the stem). `selectors` therefore counts distinct source-pair selectors, `citations` counts every manifest mention of one, and `modules` lists the module names the runner reported collecting from rather than either citation spelling.",

@@ -552,18 +552,42 @@ value are in E1 immediately after this list.
   15,900-byte chunk plus datum envelope, output, fee, and one vkey witness
   inside 16,384. **Phase-4 cross-check, mandatory:** the counted-era
   _complete-item_ publication — a heavier script-custody shape — measured
-  two item-size frontiers: `maxExactCompleteItemPublicationBytes` 15,489,
+  two item-size frontiers: `maxExactCompleteItemPublicationBytes` 15,570,
   the largest item whose signed publication lands exactly on `maxTxSize`
-  (16,384), and `maxReliableCompleteItemPublicationBytes` 14,993, the
+  (16,384), and `maxReliableCompleteItemPublicationBytes` 15,073, the
   largest whose publication lands on `maxTxSize` minus the 512-byte
   `proofItemEnvelopeReliabilityReserveBytes`. The reserve is a
   **transaction-side** budget, not an item-side one: the two frontiers are
-  496 item bytes apart because that shape's non-item framing is itself 16
-  bytes lighter at the smaller size (895 B at 15,489 → 879 B at 14,993).
+  497 item bytes apart because that shape's non-item framing is itself 15
+  bytes lighter at the smaller size (814 B at 15,570 → 799 B at 15,073).
   Both frontiers are pinned by the "pins the exact applied publication
   frontiers and reliability reserve" case in
   `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`.
-  K = 15,900 exceeds both. That is expected, because the tier-2/3
+  (**Corrected 2026-08-14**, owner ruling: these two were 15,489 and 14,993,
+  about 80 bytes below the shape they describe. The error was internal to
+  `MIDGARD_V1_ENVELOPE_MEASUREMENTS` — the same block's
+  `maxReliableCompleteItemPublicationDatumBytes` 15,624,
+  `...MinAdaLovelace` 68,231,610 and `...FeeLovelace` 853,925 are
+  measurements of that same publication and all three land on an item size
+  of 15,073. The publication carries no script, so no blueprint change can
+  move it.)
+
+  **#580 — the 64-byte tier-1 overhang.** `maxSinglePublicationCompleteItemBytes`
+  is 14,396, but §8.4's tier-1 ceiling of 14,336 admits an item of at most
+  **14,332** once the 4-byte single-item field-2 envelope is counted. Items in
+  (14,332, 14,396] are therefore publishable but **not inline-carriable** — a
+  64-byte gap between the publication cap and tier-1 admissibility. It surfaced
+  on 2026-08-14 when the publication-maximum case was corrected to select field 2
+  rather than field 0, and it is **#580's to re-measure**; nothing here settles
+  it. The case itself now runs as "carries one complete item at the applied
+  publication maximum through the tier-2 door" in
+  `demo/midgard-validation/tests/complete-item-carriage-tiers-emulator-v1.test.ts`,
+  which is where a >tier-1 publication belongs.
+
+  Returning to the Phase-4 cross-check: K = 15,900 exceeds both complete-item
+  publication frontiers above — `maxExactCompleteItemPublicationBytes` 15,570
+  and `maxReliableCompleteItemPublicationBytes` 15,073, not the tier-1 figures
+  of the #580 note. That is expected, because the tier-2/3
   publication drops the counted proof envelope and the script address, but
   Phase 4 MUST measure the real signed key-address chunk publication and
   re-pin K downward if that transaction does not clear `maxTxSize` with the
@@ -952,7 +976,9 @@ name**, so that a certificate token cannot be borrowed for a preimage the named
 transaction did not commit and the door's own `expected_hash` becomes checkable
 against the name. That is a change to a frozen wire format (§8.6) and to a
 landed minting policy, so it is **assigned to
-[#579](https://github.com/Anastasia-Labs/midgard/issues/579)**, not to #575.
+[#604](https://github.com/Anastasia-Labs/midgard/issues/604)**, not to #575.
+(Assigned to #579 when this erratum was written; moved to #604 with the rest of
+the #575 off-chain remediation by owner ruling on #579, 2026-08-13.)
 Vectors: `field_opening_v1.test`'s tier-3 block states the premise in both
 directions — the minting predicate accepts the fabrication on a witness field
 and refuses it on a body field — and
@@ -976,7 +1002,7 @@ state and a fault spread over several transactions — which is
 [#565](https://github.com/Anastasia-Labs/midgard/issues/565)'s work, with the
 deployed-identity half in
 [#579](https://github.com/Anastasia-Labs/midgard/issues/579); the resolution for
-limit 3 is the §8.6 asset-name change above, which is #579's. What #575 owed and
+limit 3 is the §8.6 asset-name change above, which is #604's. What #575 owed and
 has delivered is that the limits are **measured and asserted** rather than
 latent: the ledger row above goes red if the figure moves in either direction,
 including if the step ever starts fitting, and limit 3's refusal is pinned from
@@ -1457,21 +1483,35 @@ in `demo/midgard-core/tests/native-tx-carriage-v1.test.ts` rather than left as
 prose a reader has to recompute.
 
 **What the flat bound actually beats, measured like for like.** The counted era's
-two frontiers are `maxExactCompleteItemPublicationBytes` = 15,489 and
-`maxReliableCompleteItemPublicationBytes` = 14,993, and those are the
+two frontiers are `maxExactCompleteItemPublicationBytes` = 15,570 and
+`maxReliableCompleteItemPublicationBytes` = 15,073, and those are the
 comparable numbers: they are frontiers, found the same way, judged against the
 same 16,384-byte floor and the same 512-byte reserve. Against them the flat
-bound is **+155 B at the exact end and +155 B at the reliable end** — the same
-gain twice, which is what one expects when the deleted proof envelope is a fixed
-cost. The counted reliable publication's transaction measured 15,872 bytes, the
-same figure the flat reliable frontier lands on; the flat format buys 155 more
-payload bytes inside an identical transaction budget.
+bound is **+74 B at the exact end and +75 B at the reliable end**. The counted
+reliable publication's transaction measured 15,872 bytes, the same figure the
+flat reliable frontier lands on; the flat format buys 75 more payload bytes
+inside an identical transaction budget. The one-byte difference between the two
+ends is accounted for and is not two different gains: across the 512-byte reserve
+the counted shape's non-payload framing steps by 15 (814 B at 15,570 → 799 B at
+15,073) while the flat shape's steps by 16 (740 B at 15,644 → 724 B at 15,148).
+
+**Correction, 2026-08-14 (owner ruling).** This section previously reported
+**+155 B at both ends** and called it "the same gain twice, which is what one
+expects when the deleted proof envelope is a fixed cost". That figure was
+**overstated by roughly half**, and the tidiness of the coincidence was part of
+why it went unchallenged. The cause was not in the flat measurement but in the
+counted-era frontiers it subtracts from: they were pinned at 15,489 and 14,993,
+about 80 bytes below what the counted publisher actually reaches, while the three
+sibling measurements of that same publication in the same
+`MIDGARD_V1_ENVELOPE_MEASUREMENTS` block had recorded 15,073's datum bytes,
+min-Ada and fee all along. The gain is +74 / +75 B. It is smaller and it is not
+symmetric, and both of those are the measurement rather than the story.
 
 A previous revision of this section compared against
 `maxSinglePublicationCompleteItemBytes` = 14,396 and reported **+1,247 B** exact
 and **+727 B** reliable, attributing the difference to "the deleted proof
 envelope and script custody showing up as capacity". That is wrong by about
-8×, and the stated cause is not the cause: 14,396 is an **applied policy cap**
+17×, and the stated cause is not the cause: 14,396 is an **applied policy cap**
 the counted publisher was configured with, not a measured frontier — at that cap
 the counted publisher produced a 15,256-byte transaction and retained 1,128
 bytes of unused headroom below the deployment floor. Comparing a frontier to a

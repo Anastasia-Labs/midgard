@@ -1232,22 +1232,17 @@ export const nodeRuntimeReferenceScriptTargets = (
     name: "payout minting",
     script: contracts.payout.mintingScript,
   },
-  ...(contracts.txOrderFieldPreimage.spendingScriptHash ===
+  // #579 removed all three "V1 transaction-field" reference scripts with their
+  // contracts; the §8.6 certificate carries its own roles elsewhere in this
+  // list. Only the CEK publication survives inside this guard, so the guard now
+  // reads off `cekProgramMaterial` rather than the retired preimage lock. The
+  // test is unchanged in meaning: under the always-succeeds contract set that
+  // validator IS the tx-order spend script, and this list must not publish a
+  // stand-in as though it were a distinct deployed reference script.
+  ...(contracts.cekProgramMaterial.spendingScriptHash ===
   contracts.txOrder.spendingScriptHash
     ? []
     : [
-        {
-          name: "V1 transaction-field preimage publication",
-          script: contracts.txOrderFieldPreimage.spendingScript,
-        },
-        {
-          name: "V1 transaction-field receipt",
-          script: contracts.txOrderFieldReceipt.spendingScript,
-        },
-        {
-          name: "V1 transaction-field receipt minting",
-          script: contracts.txOrderFieldReceipt.mintingScript,
-        },
         {
           name: "V1 immutable CEK program-material publication",
           script: contracts.cekProgramMaterial.spendingScript,

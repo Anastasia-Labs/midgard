@@ -83,8 +83,23 @@ const MAX_CEK_PROGRAM_MATERIAL_BYTES = Number(
  */
 export const MIDGARD_V1_ENVELOPE_MEASUREMENTS = Object.freeze({
   proofItemEnvelopeReliabilityReserveBytes: 512,
-  maxExactCompleteItemPublicationBytes: 15_489,
-  maxReliableCompleteItemPublicationBytes: 14_993,
+  // Corrected 2026-08-14 (owner ruling, #579 lane): these two counted-era
+  // item-size frontiers had drifted ~80 bytes below the shape they describe.
+  // The tell is internal: the three sibling rows below
+  // (`...DatumBytes` 15,624, `...MinAdaLovelace` 68,231,610,
+  // `...FeeLovelace` 853,925) are measurements of *the same publication*, and
+  // all three land exactly on an item size of 15,073 — not on 14,993. Measured
+  // by the publication producer itself (`publishProofItem` ->
+  // `deriveValidationProofItemPublicationV1` ->
+  // `buildUnsignedValidationProofItemPublicationV1Program`):
+  //   item 15,072 -> signed 15,871   item 15,073 -> signed 15,872 (= 16,384-512)
+  //   item 15,074 -> signed 15,873   item 15,570 -> signed 16,384 (= maxTxSize)
+  //   item 15,571 -> signed 16,385
+  // This publication carries no script — it is an inline-datum output to a
+  // 28-byte script address — so no blueprint regeneration can move it, which
+  // is why this is a correction and not a #579 cascade re-pin.
+  maxExactCompleteItemPublicationBytes: 15_570,
+  maxReliableCompleteItemPublicationBytes: 15_073,
   maxReliableCompleteItemPublicationTransactionBytes: 15_872,
   maxReliableCompleteItemPublicationDatumBytes: 15_624,
   maxReliableCompleteItemPublicationMinAdaLovelace: 68_231_610,

@@ -10,23 +10,42 @@ on:
       - onchain/aiken/**
 
 env:
-  # github.com/colll78/aiken, reporting v1.1.23+6d14ab2. Pinned by commit
-  # rather than branch so the toolchain is reproducible. The full-suite timing
-  # this pin was chosen on was taken here: `aiken check` in 735.9 s / 819 tests
-  # / 0 failures on 4 vCPU, the GitHub-hosted runner size for this public repo.
-  # Do not advance this pin without re-running that measurement.
+  # THE COMPILER PIN. Issue #579, rider 1, and the owner's 2026-08-13 ruling A:
+  # the patched fork is the SOLE compiler for `fmt`, `build` and `check`, and it
+  # is what defines deployed script identity. Stock v1.1.22 is retired from
+  # every role and is no longer installed by this workflow.
   #
-  # The branch tip is 2a78108c, exactly one commit ahead: `chore: satisfy
-  # clippy 1.97`, whose whole diff is lint idiom across the LSP, blueprint,
-  # telemetry and `tx simulate` paths plus one `Display` helper in
-  # `uplc::flat` — no file under code generation or evaluation is touched.
-  # Some execution-ledger rows in `onchain/aiken/scripts/` were therefore
-  # *taken* on 2a78108 locally rather than on this pin, and the equivalence is
-  # verified rather than only argued: the #574 §8.10 carriage ledger, pinned
-  # under 6d14ab2, re-verifies to the unit under 2a78108. What has NOT been
-  # re-measured on the tip is the wall-clock figure above, which is the reason
-  # the pin has not moved.
-  AIKEN_FORK_REV: 6d14ab2dd63633db6a7d626c4ad129d87c0f108c
+  # All four arms of rider 1's pin, so a reviewer on other hardware can
+  # reproduce the toolchain rather than take it on trust:
+  #   repo    https://github.com/Anastasia-Labs/aiken   (org-controlled)
+  #   tag     midgard-2a78108c                          (annotated, immutable)
+  #   commit  2a78108ccb184161689b8a06c84d942e13b5b209
+  #   md5     b3acfdf348235798cb6b921d0f87750a          (published in the tag
+  #                                                      message, so it is fixed
+  #                                                      once for everyone)
+  # The version string `v1.1.23+2a78108` is derived from the commit at build
+  # time, so it is the arm that reproduces from source anywhere; the md5 is a
+  # released-artifact hash and is pinned as provenance, not as a build-time
+  # equality check (two honest builds of one tag on two machines need not agree
+  # byte for byte).
+  #
+  # Why the pin advanced from 6d14ab2d to the tag: the owner's 2026-08-13
+  # ruling B settles the immutable tag at 2a78108c. The wall-clock figure the
+  # previous pin was chosen on (`aiken check` in 735.9 s / 819 tests / 0
+  # failures on 4 vCPU) has NOT been re-taken on the tip; it is recorded as
+  # not-re-measured rather than quietly restated. The headroom makes that safe
+  # to defer: 735.9 s is 12.3 minutes against this job's 360-minute ceiling.
+  # The diff between the two revisions is `chore: satisfy clippy 1.97` — lint
+  # idiom across the LSP, blueprint, telemetry and `tx simulate` paths plus one
+  # `Display` helper in `uplc::flat`, with no file under code generation or
+  # evaluation touched — and the equivalence is verified rather than argued:
+  # the #574 §8.10 carriage ledger, pinned under 6d14ab2, re-verifies to the
+  # unit under 2a78108.
+  AIKEN_FORK_REPO: https://github.com/Anastasia-Labs/aiken
+  AIKEN_FORK_TAG: midgard-2a78108c
+  AIKEN_FORK_REV: 2a78108ccb184161689b8a06c84d942e13b5b209
+  AIKEN_FORK_VERSION: aiken v1.1.23+2a78108
+  AIKEN_FORK_BINARY_MD5: b3acfdf348235798cb6b921d0f87750a
 
 jobs:
   build:
@@ -37,23 +56,26 @@ jobs:
         working-directory: ./onchain/aiken
     steps:
       - uses: actions/checkout@v3
-      - uses: aiken-lang/setup-aiken@v1.0.3
-        with:
-          version: v1.1.22
-      # The released v1.1.22 compiler stays the authority for `aiken fmt`,
-      # `aiken build`, and every applied validator hash in release evidence.
-      # It cannot, however, run the test suite: upstream aiken#1389 makes a
-      # full `aiken check` take 485 minutes on this tree, against a 360-minute
-      # job ceiling, so this workflow could never pass. The patched fork runs
-      # the identical suite in ~10 minutes. It is used ONLY to execute tests;
-      # it is pinned by commit, not branch, and cached by that commit.
-      - name: Cache patched Aiken test compiler
+      # No `setup-aiken` step: stock v1.1.22 is retired from every role by the
+      # owner's 2026-08-13 ruling A, so this workflow installs exactly one
+      # compiler. The fork both compiles and executes. Two reasons it has to be
+      # the fork rather than the release:
+      #   1. Identity. Stock v1.1.22 keys generated expect-decoders by LOCAL
+      #      type name with no module path (issue #521), so two same-named types
+      #      in different modules share one decoder. That bites live on this
+      #      tree: `MintRedeemer` is shared by 12 modules, and the stock
+      #      blueprint's `user_events/tx_order_v1.mint` is the WRONG artifact.
+      #      The retirement snapshot below records the measurement.
+      #   2. Runtime. Upstream aiken#1389 makes a full stock `aiken check` take
+      #      485 minutes on this tree against a 360-minute job ceiling, so a
+      #      stock-executed suite could never pass here at all.
+      - name: Cache the pinned Aiken fork
         id: aiken-fork
         uses: actions/cache@v4
         with:
           path: ~/.aiken-fork
           key: aiken-fork-${{ env.AIKEN_FORK_REV }}-${{ runner.os }}
-      - name: Build patched Aiken test compiler
+      - name: Build the pinned Aiken fork
         if: steps.aiken-fork.outputs.cache-hit != 'true'
         working-directory: .
         run: |
@@ -63,22 +85,35 @@ jobs:
           # crate release could redden this branch or silently change the
           # toolchain the measurement above was taken on.
           cargo +1.94.1 install \
-            --git https://github.com/colll78/aiken \
+            --git "$AIKEN_FORK_REPO" \
             --rev "$AIKEN_FORK_REV" \
             --locked \
             --root ~/.aiken-fork \
             aiken
-      # Assert, don't just print: a cache poisoned by an earlier rev or a
-      # setup-aiken resolution drift must fail here rather than silently
-      # changing which compiler produced the result.
-      - name: Assert both compiler identities
+      # Assert, don't just print: a cache poisoned by an earlier rev must fail
+      # here rather than silently changing which compiler produced the result.
+      # Putting the fork on PATH is what makes it the compiler for every later
+      # step AND for the scripts those steps invoke — `aiken fmt`,
+      # `aiken build`, `aiken check`, and the shell/node helpers that spawn a
+      # bare `aiken`. There is no second compiler on PATH to fall through to.
+      - name: Assert the pinned compiler identity and put it on PATH
         run: |
           set -euo pipefail
-          released="$(aiken --version)"
           patched="$(~/.aiken-fork/bin/aiken --version)"
-          printf 'released: %s\npatched:  %s\n' "$released" "$patched"
-          test "$released" = "aiken v1.1.22+39d6b04"
+          printf 'pinned fork: %s\nexpected:    %s\n' "$patched" "$AIKEN_FORK_VERSION"
+          test "$patched" = "$AIKEN_FORK_VERSION"
           test "$patched" = "aiken v1.1.23+${AIKEN_FORK_REV:0:7}"
+          echo "$HOME/.aiken-fork/bin" >> "$GITHUB_PATH"
+      - name: Assert no stock compiler is reachable
+        run: |
+          set -euo pipefail
+          # Fail closed if a stock binary ever returns to PATH: a step that
+          # silently compiled under v1.1.22 would publish the wrong identity,
+          # and this is the cheapest place to notice.
+          resolved="$(command -v aiken)"
+          version="$(aiken --version)"
+          printf 'aiken on PATH: %s (%s)\n' "$resolved" "$version"
+          test "$version" = "$AIKEN_FORK_VERSION"
       - name: Verify generated user events witness prefix
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main')
         working-directory: .
@@ -113,21 +148,20 @@ jobs:
         run: node --test scripts/exec-ledger-within-basis-v1.test.mjs
       - name: Run normalized Aiken auto-formatter check
         run: |
-          # The two formerly excluded lib files were another task's in-flight
-          # checkpoint; they are integrated now, so the exclusion and its
-          # protected-format-checkpoint.sha256 pin are gone and every tracked
-          # .ak file is held to the same standard.
+          # `aiken` here is the pinned fork — see the PATH step above. The fork
+          # is the formatting authority as well as the build and check
+          # authority (owner ruling A); the one repo-wide re-format at the
+          # switch is what makes this step green under it.
           git ls-files -z '*.ak' | xargs -0 aiken fmt
-          # Aiken 1.1.22 emits trailing spaces for monadic let/expect syntax.
+          # The formatter emits trailing spaces for monadic let/expect syntax.
           # Normalize only that formatter artifact before comparing sources.
           git ls-files -z '*.ak' | xargs -0 sed -i 's/[[:space:]]\+$//'
           git diff --name-only --exit-code -- '*.ak'
-      # Type/compile check with the released authority compiler, then execute
-      # the suite with the patched one. Both must pass.
-      - name: Compile Aiken code with the released compiler
-        run: aiken check --skip-tests
-      - name: Run the Aiken test suite with the patched compiler
-        run: ~/.aiken-fork/bin/aiken check
+      # One compiler now type-checks AND executes. The split that used to live
+      # here (released compiler compiles, patched compiler executes) is gone
+      # with stock's retirement.
+      - name: Compile and run the Aiken test suite with the pinned fork
+        run: aiken check
       # Issue #574. `docs/spec/midgard-tx.md` §8.10 publishes thirteen absolute
       # execution readings and nine subtractions derived from them. They were
       # hand-transcribed and nothing asserted them — a grep for any published
@@ -211,18 +245,33 @@ jobs:
         env:
           MIDGARD_AIKEN_BIN: /home/runner/.aiken-fork/bin/aiken
         run: node scripts/verify-committed-field-shape-exec-ledger-v1.mjs
-      # Issue #521. The released compiler keys generated expect-decoders by
-      # local type name only, so two same-named types in different modules
-      # share one decoder and the shipped blueprint silently gets a decoder
-      # that is wrong in both directions. Neither step above can see that
-      # class: `aiken check` compiles every test as its own program, so
-      # colliding types never co-occur there, and the suite runs on the
-      # patched compiler anyway. Building the blueprint with BOTH compilers
-      # and requiring byte-identical validators is what makes it visible.
-      - name: Assert both compilers agree on the blueprint
-        run: |
-          MIDGARD_STOCK_AIKEN_BIN=aiken \
-          MIDGARD_FORK_AIKEN_BIN="$HOME/.aiken-fork/bin/aiken" \
-          node scripts/verify-dual-compiler-blueprint-agreement.mjs
+      # RETIREMENT RECORD — the dual-compiler blueprint-agreement guard
+      # (issue #521; `scripts/verify-dual-compiler-blueprint-agreement.mjs`),
+      # retired by the owner's 2026-08-13 ruling A on #579 together with the
+      # stock compiler it compared against. Recorded here rather than deleted
+      # silently, because the guard's FINAL reading is the reason the switch
+      # happened and is the only surviving evidence of the defect class.
+      #
+      # Final divergence snapshot, both blueprints built from the same tree:
+      #
+      #   validator                      stock v1.1.22+39d6b04   fork v1.1.23+2a78108
+      #   user_events/tx_order_v1.mint   81fa79f4…  9,851 bytes  b5541807…  10,071 bytes
+      #
+      # ONE validator diverged, and the stock side is the WRONG artifact. Stock
+      # v1.1.22 keys generated expect-decoders as `__expect_{local_type_name}`
+      # with no module path, so types sharing a local name across modules share
+      # a single decoder and at least one of them gets a decoder that is wrong
+      # in both directions. `MintRedeemer` is declared in 12 modules on this
+      # tree, and #594 gave the tx-order mint its own `MintRedeemer` wrapper —
+      # which is exactly where the collision lands. Upstream fixed this in
+      # `cb6105cb`; the pinned fork carries that fix.
+      #
+      # The 2026-08-11 ruling's estimate of an "expected 8-validator delta" is
+      # VOID: the measured delta is 1 validator / 2 blueprint entries.
+      #
+      # The guard is not replaced by another gate. With one compiler there is
+      # no second opinion to compare against, so the property it protected is
+      # now carried by the pin itself: the identity assertion above fails
+      # closed if anything but `v1.1.23+2a78108` ever compiles this tree.
       - name: Check that aiken.lock is up-to-date
         run: git diff --name-only --exit-code aiken.lock

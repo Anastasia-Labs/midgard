@@ -397,39 +397,6 @@
       },
       "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
     },
-    "txOrderFieldPreimageSpend": {
-      "refScriptUTxO": {
-        "txHash": "2626262626262626262626262626262626262626262626262626262626262626",
-        "outputIndex": 0
-      },
-      "contract": {
-        "type": "PlutusV3",
-        "cborHex": "525101010023259800a518a4d136564004ae69"
-      },
-      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
-    },
-    "txOrderFieldReceiptSpend": {
-      "refScriptUTxO": {
-        "txHash": "2727272727272727272727272727272727272727272727272727272727272727",
-        "outputIndex": 0
-      },
-      "contract": {
-        "type": "PlutusV3",
-        "cborHex": "525101010023259800a518a4d136564004ae69"
-      },
-      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
-    },
-    "txOrderFieldReceiptMint": {
-      "refScriptUTxO": {
-        "txHash": "2828282828282828282828282828282828282828282828282828282828282828",
-        "outputIndex": 0
-      },
-      "contract": {
-        "type": "PlutusV3",
-        "cborHex": "525101010023259800a518a4d136564004ae69"
-      },
-      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
-    },
     "cekProgramMaterialSpend": {
       "refScriptUTxO": {
         "txHash": "2929292929292929292929292929292929292929292929292929292929292929",
@@ -655,6 +622,28 @@
     },
     "fraudProofInvalidSignature": {
       "refScriptUTxO": null,
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fieldPreimageCertificateSpend": {
+      "refScriptUTxO": {
+        "txHash": "2727272727272727272727272727272727272727272727272727272727272727",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fieldPreimageCertificateMint": {
+      "refScriptUTxO": {
+        "txHash": "2828282828282828282828282828282828282828282828282828282828282828",
+        "outputIndex": 0
+      },
       "contract": {
         "type": "PlutusV3",
         "cborHex": "525101010023259800a518a4d136564004ae69"

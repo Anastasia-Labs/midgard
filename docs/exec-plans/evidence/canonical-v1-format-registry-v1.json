@@ -6506,7 +6506,7 @@
           {
             "path": "demo/da-committee-node/tests/scalus-add-signatures-eval.test.ts",
             "testNames": [
-              "completes the one-signature AddSignatures transaction with local UPLC"
+              "completes the two-signature AddSignatures transaction with local UPLC"
             ]
           },
           {

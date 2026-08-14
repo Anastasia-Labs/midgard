@@ -289,9 +289,42 @@ describe("V1 deployment manifest", () => {
   //     catalogue root and every membership proof. All six additions are
   //     append-only, so no existing category ID shifts.
   //     `c9cb35df...` -> `28ac3909...`.
+  //  7. Issue #579 registered the §8.6 field-preimage certificate as a
+  //     deployment role. `fieldPreimageCertificateSpend` and
+  //     `fieldPreimageCertificateMint` were appended to
+  //     `DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES` (55 -> 57 `contracts`
+  //     entries) and the roles `V1 field-preimage certificate` and
+  //     `V1 field-preimage certificate minting` were added to
+  //     `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE` (37 -> 39)
+  //     and `..._TOKEN_NAMES` (38 -> 40). #594 retired the receipt family and
+  //     gave the tx-order mint and every field-opening step a
+  //     `field_preimage_certificate_policy_id` parameter; one deployed
+  //     certificate policy serves both readers (§8.6, _Consumption_), so it
+  //     takes a role rather than being rederived per load site. Both
+  //     additions are append-only, so no existing contract index shifts, and
+  //     the catalogue category order is untouched — this family is not a
+  //     catalogue category.
+  //     `28ac3909...` -> `a5f80592...`.
+  //  8. Issue #579, owner rulings of 2026-08-14, REMOVED the three retired
+  //     tx-field names in one movement: `txOrderFieldPreimageSpend`,
+  //     `txOrderFieldReceiptSpend` and `txOrderFieldReceiptMint` (57 -> 54
+  //     `contracts` entries), with their reference-script roles (39 -> 36) and
+  //     token names (40 -> 37). This is the first REMOVAL in this chain and so
+  //     the first entry that is NOT append-only: every contract after the
+  //     removed positions shifts down, which is why the watcher's
+  //     position-derived synthetic catalogue moved with it.
+  //     Cause: commit df53dc6a7 (#587), executing the owner's 2026-08-10 ruling
+  //     that the tx-field receipt chain dies before #579's single blueprint
+  //     regeneration, deleted `tx-field-preimage-v1.ak`,
+  //     `tx-field-receipt-v1.ak` and its spend twin together; #594 replaced the
+  //     tx-order mint's receipt parameters with the §8.6 certificate policy id.
+  //     The regenerated blueprint declares none of the three titles, so removing
+  //     them here completes off-chain what #587 did on-chain. The catalogue
+  //     category order is again untouched — none of the three is a category.
+  //     `a5f80592...` -> `d9c811ab...`.
   it("accepts the sole exact authenticated V1 manifest", () => {
     expect(canonicalManifest().manifestId).toBe(
-      "28ac3909dff13b37a817b01071cb30b1c371d53e688c58cee17adfa1ea4697c0",
+      "d9c811abd62e8acc619181d1836b749e3fb2e295e0a309f9cf09b03d996813ef",
     );
     expect(parseDeploymentManifestV1Value(canonicalManifest())).toEqual(
       canonicalManifest(),

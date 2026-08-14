@@ -156,6 +156,21 @@ const spendingScript = (script: string): LucidSpendingValidator => ({
 const spendingScriptHash = (script: string): string =>
   validatorToScriptHash(spendingScript(script));
 
+/**
+ * The §8.6 certificate policy id, derived here from the blueprint rather than
+ * read off the builder's output, so these expectations stay an independent
+ * re-derivation. The certificate validator declares no parameters, so its
+ * compiled script is its deployed script and the script hash of that script is
+ * the policy id.
+ */
+const certificatePolicyId = (blueprint: FaultProofBlueprint): string =>
+  spendingScriptHash(
+    compiledScript(
+      blueprint,
+      SDK.FAULT_PROOF_SHARED_TITLES.fieldPreimageCertificateMint,
+    ),
+  );
+
 describe("fault-proof ABI", () => {
   it("round-trips computation-thread mint redeemers", () => {
     expect(
@@ -1450,6 +1465,7 @@ describe("fault-proof contract builder", () => {
         contracts.fraudProof.policyId,
         fraudProofTokenAddressData,
         contracts.computationThread.policyId,
+        certificatePolicyId(blueprint),
       ],
     );
     const expectedStep01Cbor = applyParamsToScript(
@@ -1533,6 +1549,7 @@ describe("fault-proof contract builder", () => {
         contracts.computationThread.policyId,
         contracts.fraudProof.policyId,
         fraudProofTokenAddressData,
+        certificatePolicyId(blueprint),
       ],
     );
     const expectedStep01Cbor = applyParamsToScript(
@@ -1621,6 +1638,7 @@ describe("fault-proof contract builder", () => {
         contracts.computationThread.policyId,
         contracts.fraudProof.policyId,
         fraudProofTokenAddressData,
+        certificatePolicyId(blueprint),
       ],
     );
     const expectedStep03Cbor = applyParamsToScript(
@@ -1642,6 +1660,7 @@ describe("fault-proof contract builder", () => {
       [
         spendingScriptHash(expectedStep03Cbor),
         contracts.computationThread.policyId,
+        certificatePolicyId(blueprint),
       ],
     );
     const expectedStep01Cbor = applyParamsToScript(

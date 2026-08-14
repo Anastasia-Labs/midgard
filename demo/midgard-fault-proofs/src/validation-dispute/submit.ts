@@ -24,16 +24,19 @@ import {
   timeoutMidgardValidationDispute,
   verifyMidgardNativeTxProofSourceV1,
 } from "@al-ft/midgard-core";
+import type { MidgardFieldCarriagePlanV1 } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
+import {
+  decodeMidgardFieldPreimageV1,
+  type MidgardFieldCarriageV1,
+  midgardFieldCommitmentV1,
+} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
   MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_V1_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { midgardV1TxFieldCommitmentsFromSourceV1 } from "@al-ft/midgard-core/consensus-validation-v1";
 import {
-  decodeMidgardFieldPreimageV1,
-  midgardFieldCommitmentV1,
-} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
-import {
+  assertMidgardFieldCarriageResolvesAtDoorV1,
   AuthenticatedCanonicalDecodeItemDatumV1,
   buildUnsignedValidationProofItemPublicationV1Program,
   deriveCekProgramMaterialPublicationsV1,
@@ -646,6 +649,86 @@ export type ValidationOneStepSubmissionArgumentV1 = {
 export type ValidatedCekSubmissionEvidenceV1 = {
   readonly cekRouteMaterial?: CekRouteMaterialV1;
   readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSetV1;
+};
+
+/**
+ * The §8 carriage a tiers-2/3 one-step argument already committed to, together
+ * with the ledger UTxOs its positional indices name (#600, ruling D3-A).
+ *
+ * A tier-1 argument needs none of this: `Inline` carries its own bytes and
+ * indexes nothing. Above §8.3's 14,336-byte cap the auxiliary is *only*
+ * indices, so a submitter has to hand the builder the material those indices
+ * point at — otherwise the door-running transaction cannot reference the
+ * carriage at all, and nothing off chain can tell whether the committed indices
+ * still resolve.
+ *
+ * `plan` is the producer's own `planMidgardFieldCarriageV1` output, never a
+ * hand-assembled record: it is what lets the builder re-resolve the indices by
+ * content (§8.7) against the door's final reference-input set and refuse a
+ * divergence while re-staging is still free.
+ */
+export type ValidationFieldCarriageMaterialV1 = {
+  readonly plan: MidgardFieldCarriagePlanV1;
+  /**
+   * The carriage UTxOs the door transaction must read: the plan's publications
+   * under tier 2, and the publications plus the §8.6 certificate under tier 3.
+   */
+  readonly referenceUtxos: readonly UTxO[];
+  /** Required at tier 3; the §8.6 minting policy the door is parameterised by. */
+  readonly certificatePolicyId?: string;
+};
+
+/**
+ * The committed carriage, read back out of the staged auxiliary as the
+ * `MidgardFieldCarriageV1` the SDK resolvers speak.
+ *
+ * Constructor order is the frozen §8.1 one — `Inline` 0, `RawUtxo` 1,
+ * `Certified` 2 — and every arm is checked for arity rather than pattern-matched
+ * loosely, because this value is the one `evidence_hash` already committed and a
+ * misread here would be a silently different carriage.
+ */
+const midgardFieldCarriageFromDataV1 = (
+  value: PlutusDataValue,
+  label: string,
+): MidgardFieldCarriageV1 => {
+  if (!(value instanceof Constr)) {
+    throw new Error(`${label} is not a §8 FieldCarriageV1 constructor`);
+  }
+  if (value.index === 0 && value.fields.length === 1) {
+    const preimage = value.fields[0];
+    if (typeof preimage !== "string" || preimage.length % 2 !== 0) {
+      throw new Error(`${label} tier-1 Inline bytes are malformed`);
+    }
+    return { carriage: "Inline", preimage: Buffer.from(preimage, "hex") };
+  }
+  if (value.index === 1 && value.fields.length === 1) {
+    const refInputIndex = value.fields[0];
+    if (typeof refInputIndex !== "bigint" || refInputIndex < 0n) {
+      throw new Error(`${label} tier-2 reference-input index is malformed`);
+    }
+    return { carriage: "RawUtxo", refInputIndex: Number(refInputIndex) };
+  }
+  if (value.index === 2 && value.fields.length === 2) {
+    const certRefInputIndex = value.fields[0];
+    const chunkRefInputIndices = value.fields[1];
+    if (typeof certRefInputIndex !== "bigint" || certRefInputIndex < 0n) {
+      throw new Error(`${label} tier-3 certificate index is malformed`);
+    }
+    if (!Array.isArray(chunkRefInputIndices)) {
+      throw new Error(`${label} tier-3 chunk index vector is malformed`);
+    }
+    return {
+      carriage: "Certified",
+      certRefInputIndex: Number(certRefInputIndex),
+      chunkRefInputIndices: chunkRefInputIndices.map((index) => {
+        if (typeof index !== "bigint" || index < 0n) {
+          throw new Error(`${label} tier-3 chunk index is malformed`);
+        }
+        return Number(index);
+      }),
+    };
+  }
+  throw new Error(`${label} is not a §8 FieldCarriageV1 constructor`);
 };
 
 const exactPlutusDataFromCbor = (
@@ -4910,7 +4993,7 @@ const canonicalFieldItemEncodedLength = ({
  * a slice. The retired `collectionProof`/`itemCbor` pair claimed both, and §4
  * left the claim nothing to be checked against.
  */
-const deriveCanonicalDecodeItemStageDataV1 = ({
+export const deriveCanonicalDecodeItemStageDataV1 = ({
   preparedResolution,
   transition,
   fieldPreimage,
@@ -5076,6 +5159,7 @@ export const submitValidationDisputeSemanticResolution = async ({
   threadOutRef,
   oneStepArgument,
   proofItemReferenceOutRef,
+  carriageMaterial,
   validityRange,
   awaitConfirmation = true,
 }: {
@@ -5087,6 +5171,8 @@ export const submitValidationDisputeSemanticResolution = async ({
   readonly threadOutRef: string;
   readonly oneStepArgument: ValidationOneStepSubmissionArgumentV1;
   readonly proofItemReferenceOutRef?: string;
+  /** Required when the committed carriage is tier 2 or tier 3 (#600). */
+  readonly carriageMaterial?: ValidationFieldCarriageMaterialV1;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValidationDisputeSemanticResolutionResult> => {
@@ -5150,36 +5236,66 @@ export const submitValidationDisputeSemanticResolution = async ({
       staged.auxiliary,
       VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
     );
-  // #597. `TransactionFieldItemWitness` carries one field now — a
-  // `FieldCarriageV1` — and the bytes a publication has to hold are the field's
-  // whole §5.1 preimage rather than one item with an opening into it. The
-  // producer emits tier-1 `Inline` (Constr 0, one byte-string field), which is
-  // the only tier the trace producer can name; tiers 2-3 already name reference
-  // inputs of their own and would never reach this publication route. Reading
-  // the preimage off the carriage rather than off a second auxiliary field is
-  // what makes the direct-versus-reference decision below measure the right
-  // number of bytes.
-  const completeFieldPreimage = ((): string | undefined => {
-    if (!isCompleteCanonicalItem) {
+  // #597/#600. `TransactionFieldItemWitness` carries one field — a
+  // `FieldCarriageV1` — and the bytes it stands for are the field's whole §5.1
+  // preimage rather than one item with an opening into it. #597 could only read
+  // tier-1 `Inline`; #600 made the producer tier-free, so all three §8.4 rungs
+  // reach here and the tier is decided by the preimage's own length, never by
+  // this builder.
+  //
+  // Tier 1 is self-contained: the preimage is inside the auxiliary. Tiers 2-3
+  // carry positional reference-input indices and no bytes at all, so the
+  // submitter must supply the material those indices name — that is what
+  // `carriageMaterial` is, and its absence is a refusal rather than a
+  // transaction that references nothing.
+  const committedItemCarriage = isCompleteCanonicalItem
+    ? midgardFieldCarriageFromDataV1(
+        staged.auxiliary.fields[0]!,
+        "Validation complete proof-item §8 carriage",
+      )
+    : undefined;
+  const completeItemCarriageMaterial = (():
+    | ValidationFieldCarriageMaterialV1
+    | undefined => {
+    if (
+      committedItemCarriage === undefined ||
+      committedItemCarriage.carriage === "Inline"
+    ) {
       return undefined;
     }
-    const carriage = staged.auxiliary.fields[0];
-    if (
-      !(carriage instanceof Constr) ||
-      carriage.index !== 0 ||
-      carriage.fields.length !== 1
-    ) {
+    if (carriageMaterial === undefined) {
       throw new Error(
-        "Validation complete proof-item auxiliary must carry tier-1 Inline §8 carriage",
+        `Validation complete proof-item carriage is tier-${
+          committedItemCarriage.carriage === "RawUtxo" ? "2" : "3"
+        } \`${committedItemCarriage.carriage}\`, which names reference inputs and carries no ` +
+          "bytes, so the submission must supply the §8 carriage material those indices name (#600)",
       );
     }
-    const preimage = carriage.fields[0];
-    if (typeof preimage !== "string" || preimage.length % 2 !== 0) {
+    if (carriageMaterial.plan.tier !== committedItemCarriage.carriage) {
       throw new Error(
-        "Validation complete proof-item auxiliary bytes are malformed",
+        `Validation complete proof-item carriage material plans tier \`${carriageMaterial.plan.tier}\` ` +
+          `while the committed evidence names \`${committedItemCarriage.carriage}\``,
       );
     }
-    return preimage;
+    return carriageMaterial;
+  })();
+  const completeFieldPreimage = ((): string | undefined => {
+    if (committedItemCarriage === undefined) {
+      return undefined;
+    }
+    if (committedItemCarriage.carriage === "Inline") {
+      return committedItemCarriage.preimage.toString("hex");
+    }
+    // §8.4's split is positional and exhaustive, so the plan's own publications
+    // concatenate back to exactly the preimage the door will materialise. Taking
+    // the bytes from the producer's plan rather than from a caller-supplied copy
+    // is what keeps the staged datums below derived from the same bytes the door
+    // authenticates.
+    return Buffer.concat(
+      completeItemCarriageMaterial!.plan.publications.map(
+        (publication) => publication.bytes,
+      ),
+    ).toString("hex");
   })();
   // The complete-item proof transaction must source the semantic validator
   // from the published reference script: embedding the validator body would
@@ -5211,6 +5327,12 @@ export const submitValidationDisputeSemanticResolution = async ({
   if (
     proofItemReferenceUtxo === undefined &&
     isCompleteCanonicalItem &&
+    // The publication route reconstructs tier-1 `Inline` from a datum, so it
+    // exists only inside tier 1 — as a redeemer-size optimisation, never as a
+    // fourth rung (#600 Ruling 1, Q4). Above the cap the carriage already names
+    // reference inputs of its own and a second one would be an unbound copy of
+    // the same bytes.
+    committedItemCarriage?.carriage === "Inline" &&
     selectValidationCompleteItemCarriageV1(
       Buffer.from(completeFieldPreimage as string, "hex").length,
     ) === "reference"
@@ -5269,6 +5391,11 @@ export const submitValidationDisputeSemanticResolution = async ({
     if (!isCompleteCanonicalItem) {
       throw new Error(
         "Validation complete proof-item reference is only valid for a CanonicalDecode complete item",
+      );
+    }
+    if (committedItemCarriage?.carriage !== "Inline") {
+      throw new Error(
+        "Validation complete proof-item reference reconstructs tier-1 `Inline` carriage and is not available above §8.3's tier-1 cap",
       );
     }
     if (
@@ -5625,6 +5752,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       label,
       proofReference,
       scriptReference,
+      carriageReferences,
       awaitStage,
       encode,
     }: {
@@ -5635,6 +5763,8 @@ export const submitValidationDisputeSemanticResolution = async ({
       readonly label: string;
       readonly proofReference?: UTxO;
       readonly scriptReference?: UTxO;
+      /** §8 tiers 2-3: the carriage UTxOs the committed indices name. */
+      readonly carriageReferences?: readonly UTxO[];
       readonly awaitStage: boolean;
       readonly encode: (layout: {
         readonly inputIndex: bigint;
@@ -5668,6 +5798,9 @@ export const submitValidationDisputeSemanticResolution = async ({
       }
       if (scriptReference !== undefined) {
         stageTx = stageTx.readFrom([scriptReference]);
+      }
+      if (carriageReferences !== undefined && carriageReferences.length > 0) {
+        stageTx = stageTx.readFrom([...carriageReferences]);
       }
       const currentLedgerTime = lucid.slotToUnixTime(lucid.currentSlot());
       const stageRange =
@@ -5742,6 +5875,10 @@ export const submitValidationDisputeSemanticResolution = async ({
       proofReference: proofItemReferenceUtxo,
       scriptReference: semanticReferenceScriptUtxo,
       awaitStage: true,
+      // #592's `Verify` is `(input_index, output_index, transition, carriage)`.
+      // The carriage is the auxiliary's single field, forwarded verbatim so the
+      // `hash_one_step_evidence` equality the stage checks is over the bytes
+      // PrepareSelected committed and not over a re-encoding of them.
       encode: ({ inputIndex, outputIndex, referenceInputIndex }) =>
         proofItemReferenceUtxo === undefined
           ? Data.to(
@@ -5751,7 +5888,6 @@ export const submitValidationDisputeSemanticResolution = async ({
                   outputIndex,
                   staged.transitionData,
                   staged.auxiliary.fields[0]!,
-                  staged.auxiliary.fields[1]!,
                 ]),
               ]),
             )
@@ -5776,6 +5912,46 @@ export const submitValidationDisputeSemanticResolution = async ({
       encode: ({ inputIndex, outputIndex }) =>
         Data.to(new Constr(1, [new Constr(0, [inputIndex, outputIndex])])),
     });
+    // **The §8.8 door's own transaction (#600, ruling D3-A).** The observe stage
+    // is the one stage that dereferences the carriage — every earlier stage only
+    // hashes it — so it is the one that has to read the carriage UTxOs, and the
+    // one whose reference-input set the committed positional indices are indices
+    // into.
+    //
+    // The indices were resolved by content (§8.7) against a reference-input set
+    // chosen three transactions ago and frozen into `evidence_hash` at
+    // PrepareSelected. Nothing since then has held the builder to that set. So
+    // they are re-resolved here against exactly the list this stage will read,
+    // and a disagreement refuses off chain — where re-staging is still free —
+    // rather than on L1, where the staged evidence is already spent.
+    const observeCarriageReferences =
+      completeItemCarriageMaterial === undefined
+        ? undefined
+        : completeItemCarriageMaterial.referenceUtxos;
+    if (
+      committedItemCarriage !== undefined &&
+      completeItemCarriageMaterial !== undefined
+    ) {
+      assertMidgardFieldCarriageResolvesAtDoorV1({
+        carriage: committedItemCarriage,
+        plan: completeItemCarriageMaterial.plan,
+        // The complete set this stage reads, in the order it will hand it to
+        // the ledger; the guard sorts canonically itself.
+        doorReferenceInputs: [
+          ...(proofItemReferenceUtxo === undefined
+            ? []
+            : [proofItemReferenceUtxo]),
+          ...(observeCarriageReferences ?? []),
+        ],
+        ...(completeItemCarriageMaterial.certificatePolicyId === undefined
+          ? {}
+          : {
+              certificatePolicyId:
+                completeItemCarriageMaterial.certificatePolicyId,
+            }),
+        label: `Validation canonical item field ${completeItemCarriageMaterial.plan.fieldIndex.toString()}`,
+      });
+    }
     const observe = await submitStage({
       inputUtxo: source.nextThreadUtxo!,
       inputContract: stages.observe,
@@ -5783,7 +5959,11 @@ export const submitValidationDisputeSemanticResolution = async ({
       stageOutputDatum: observedDatum,
       label: "Validation canonical item observation",
       proofReference: proofItemReferenceUtxo,
+      ...(observeCarriageReferences === undefined
+        ? {}
+        : { carriageReferences: observeCarriageReferences }),
       awaitStage: true,
+      // #592's `Observe` is `(input_index, output_index, carriage)`.
       encode: ({ inputIndex, outputIndex, referenceInputIndex }) =>
         proofItemReferenceUtxo === undefined
           ? Data.to(
@@ -5792,7 +5972,6 @@ export const submitValidationDisputeSemanticResolution = async ({
                   inputIndex,
                   outputIndex,
                   staged.auxiliary.fields[0]!,
-                  staged.auxiliary.fields[1]!,
                 ]),
               ]),
             )

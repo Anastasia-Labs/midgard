@@ -317,6 +317,8 @@ export const FAULT_PROOF_SHARED_TITLES = {
   computationThreadMint: "computation_thread.mint.mint",
   fraudProofMint: "fraud_proof.mint.mint",
   fraudProofSpend: "fraud_proof.spend.else",
+  fieldPreimageCertificateMint:
+    "field_preimage_certificate.field_preimage_certificate.mint",
 } as const;
 
 export type FraudProofChain = {
@@ -626,6 +628,17 @@ type SharedFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fraudProofTokenAddressData: Data;
+  /**
+   * The §8.6 field-preimage certificate minting policy id. #592 gave the
+   * step validators that consult a carried field preimage a trailing
+   * `field_preimage_certificate_policy_id` parameter; the certificate
+   * validator itself takes no parameters, so this id is a pure function of
+   * the blueprint. It is derived here rather than accepted from callers
+   * precisely because it cannot vary independently of the blueprint the
+   * other contracts are built from — a caller-supplied value could only ever
+   * agree or be wrong.
+   */
+  readonly fieldPreimageCertificatePolicyId: string;
 };
 
 export type BuildFaultProofContractsParams = {
@@ -834,10 +847,22 @@ const buildSharedFaultProofContracts = ({
       fraudProof.spendingScriptAddress,
     );
 
+    const fieldPreimageCertificate = yield* tryBuild(
+      "Failed to build field-preimage certificate minting policy",
+      () =>
+        makeMintingPolicy(
+          getCompiledScript(
+            blueprint,
+            FAULT_PROOF_SHARED_TITLES.fieldPreimageCertificateMint,
+          ),
+        ),
+    );
+
     return {
       computationThread,
       fraudProof,
       fraudProofTokenAddressData,
+      fieldPreimageCertificatePolicyId: fieldPreimageCertificate.policyId,
     };
   });
 
@@ -848,6 +873,7 @@ const buildDoubleSpendChain = ({
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
@@ -855,6 +881,7 @@ const buildDoubleSpendChain = ({
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
 }): Effect.Effect<DoubleSpendFaultProofContracts["doubleSpend"], Error> =>
   Effect.gen(function* () {
     const step04 = yield* tryBuild("Failed to build double-spend step 04", () =>
@@ -866,6 +893,7 @@ const buildDoubleSpendChain = ({
             computationThread.policyId,
             fraudProof.policyId,
             fraudProofTokenAddressData,
+            fieldPreimageCertificatePolicyId,
           ],
         ),
       ),
@@ -876,7 +904,11 @@ const buildDoubleSpendChain = ({
         network,
         applyParamsToScript(
           getCompiledScript(blueprint, DOUBLE_SPEND_FAULT_PROOF_TITLES.step03),
-          [step04.spendingScriptHash, computationThread.policyId],
+          [
+            step04.spendingScriptHash,
+            computationThread.policyId,
+            fieldPreimageCertificatePolicyId,
+          ],
         ),
       ),
     );
@@ -922,6 +954,7 @@ const buildNonExistentInputChain = ({
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
@@ -929,6 +962,7 @@ const buildNonExistentInputChain = ({
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
 }): Effect.Effect<
   NonExistentInputFaultProofContracts["nonExistentInput"],
   Error
@@ -978,7 +1012,11 @@ const buildNonExistentInputChain = ({
               blueprint,
               NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step02,
             ),
-            [step03.spendingScriptHash, computationThread.policyId],
+            [
+              step03.spendingScriptHash,
+              computationThread.policyId,
+              fieldPreimageCertificatePolicyId,
+            ],
           ),
         ),
     );
@@ -1015,6 +1053,7 @@ const buildNoReferenceInputChain = ({
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
@@ -1022,6 +1061,7 @@ const buildNoReferenceInputChain = ({
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
 }): Effect.Effect<
   NoReferenceInputFaultProofContracts["noReferenceInput"],
   Error
@@ -1071,7 +1111,11 @@ const buildNoReferenceInputChain = ({
               blueprint,
               NO_REFERENCE_INPUT_FAULT_PROOF_TITLES.step02,
             ),
-            [step03.spendingScriptHash, computationThread.policyId],
+            [
+              step03.spendingScriptHash,
+              computationThread.policyId,
+              fieldPreimageCertificatePolicyId,
+            ],
           ),
         ),
     );
@@ -1115,6 +1159,7 @@ const buildInputNoIdxChain = ({
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
@@ -1122,6 +1167,7 @@ const buildInputNoIdxChain = ({
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
 }): Effect.Effect<
   InputNoIdxFaultProofContracts["nonExistentInputNoIndex"],
   Error
@@ -1136,6 +1182,7 @@ const buildInputNoIdxChain = ({
             computationThread.policyId,
             fraudProof.policyId,
             fraudProofTokenAddressData,
+            fieldPreimageCertificatePolicyId,
           ],
         ),
       ),
@@ -1160,7 +1207,11 @@ const buildInputNoIdxChain = ({
         network,
         applyParamsToScript(
           getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step02),
-          [step03.spendingScriptHash, computationThread.policyId],
+          [
+            step03.spendingScriptHash,
+            computationThread.policyId,
+            fieldPreimageCertificatePolicyId,
+          ],
         ),
       ),
     );
@@ -1201,6 +1252,7 @@ const buildReferenceInputNoIdxChain = ({
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
@@ -1208,6 +1260,7 @@ const buildReferenceInputNoIdxChain = ({
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
 }): Effect.Effect<
   ReferenceInputNoIdxFaultProofContracts["referenceInputNoIdx"],
   Error
@@ -1227,6 +1280,7 @@ const buildReferenceInputNoIdxChain = ({
               computationThread.policyId,
               fraudProof.policyId,
               fraudProofTokenAddressData,
+              fieldPreimageCertificatePolicyId,
             ],
           ),
         ),
@@ -1261,7 +1315,11 @@ const buildReferenceInputNoIdxChain = ({
               blueprint,
               REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step02,
             ),
-            [step03.spendingScriptHash, computationThread.policyId],
+            [
+              step03.spendingScriptHash,
+              computationThread.policyId,
+              fieldPreimageCertificatePolicyId,
+            ],
           ),
         ),
     );
@@ -1358,6 +1416,7 @@ const buildInvalidSignatureChain = ({
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
@@ -1365,6 +1424,7 @@ const buildInvalidSignatureChain = ({
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
 }): Effect.Effect<
   InvalidSignatureFaultProofContracts["invalidSignature"],
   Error
@@ -1384,6 +1444,7 @@ const buildInvalidSignatureChain = ({
               computationThread.policyId,
               fraudProof.policyId,
               fraudProofTokenAddressData,
+              fieldPreimageCertificatePolicyId,
             ],
           ),
         ),
@@ -1421,6 +1482,7 @@ const buildZeroInputChain = ({
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
@@ -1428,6 +1490,7 @@ const buildZeroInputChain = ({
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
 }): Effect.Effect<ZeroInputFaultProofContracts["zeroInput"], Error> =>
   Effect.gen(function* () {
     const zeroInputStep02 = yield* tryBuild(
@@ -1441,6 +1504,7 @@ const buildZeroInputChain = ({
               fraudProof.policyId,
               fraudProofTokenAddressData,
               computationThread.policyId,
+              fieldPreimageCertificatePolicyId,
             ],
           ),
         ),
@@ -1639,6 +1703,7 @@ const buildValidationTraceDisputeChain = ({
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
@@ -1647,6 +1712,7 @@ const buildValidationTraceDisputeChain = ({
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
 }): Effect.Effect<
   ValidationTraceDisputeFaultProofContracts["validationTraceDispute"],
   Error
@@ -1854,6 +1920,7 @@ const buildValidationTraceDisputeChain = ({
               canonicalDecodeItemProof.spendingScriptHash,
               computationThread.policyId,
               proofItem.spendingScriptHash,
+              fieldPreimageCertificatePolicyId,
             ],
           ),
         ),
@@ -2144,6 +2211,7 @@ const buildValidationTraceDisputeChain = ({
               fraudProof.policyId,
               fraudProofTokenAddressData,
               cekProgramMaterial.spendingScriptHash,
+              fieldPreimageCertificatePolicyId,
             ],
           ),
         ),

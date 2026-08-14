@@ -238,10 +238,12 @@ const publishCarriage = async (
     const tx = await Effect.runPromise(
       SDK.buildUnsignedFieldPreimageCertificationV1Program(harness.lucid, {
         plan: field.plan,
-        certificatePolicyId: harness.contracts.txOrderFieldReceipt.policyId,
+        certificatePolicyId:
+          harness.contracts.fieldPreimageCertificate.policyId,
         certificateAddress:
-          harness.contracts.txOrderFieldPreimage.spendingScriptAddress,
-        certificateScript: harness.contracts.txOrderFieldReceipt.mintingScript,
+          harness.contracts.fieldPreimageCertificate.spendingScriptAddress,
+        certificateScript:
+          harness.contracts.fieldPreimageCertificate.mintingScript,
         chunkUtxos,
         compactCbor: "",
         witnessSetCompactCbor: "",
@@ -334,7 +336,8 @@ const submitForcedOrder = async ({
       material_carriage: [
         ...SDK.txOrderMaterialCarriageVectorV1({
           plan,
-          certificatePolicyId: harness.contracts.txOrderFieldReceipt.policyId,
+          certificatePolicyId:
+            harness.contracts.fieldPreimageCertificate.policyId,
           referenceInputs,
         }),
       ],

@@ -16,8 +16,8 @@
  *
  *   1. The deployment ABI identity is declared three times — in
  *      `midgard-core`, in `midgard-node` and in `midgard-sdk` — and until this
- *      gate existed nothing compared the copies. A 55-entry contract vector, a
- *      37-role reference-script map, a 38-role token map, an 11-entry
+ *      gate existed nothing compared the copies. A 54-entry contract vector, a
+ *      36-role reference-script map, a 37-role token map, an 11-entry
  *      catalogue order and a 6-entry step list were duplicated verbatim across
  *      packages with no cross-package equality anywhere in CI, so the #547
  *      registration could have landed in one package and not another.
@@ -370,10 +370,22 @@ const CATEGORY_BY_VALIDATOR_DIRECTORY = new Map([
  * Directories under `validators/fraud-proofs/` that are deliberately not
  * catalogue categories. `mpf-chunked-proof` is the #545 chunked-carriage
  * verifier shared by every family rather than a family of its own; the other
- * four are families with verifier logic that the deployed catalogue does not
+ * six are families with verifier logic that the deployed catalogue does not
  * register.
+ *
+ * `canonical-decodability` and `committed-field-shape` join that second group
+ * at #579's regeneration. They are listed here rather than in
+ * `CATEGORY_BY_VALIDATOR_DIRECTORY` because it is measured, not assumed: the
+ * deployed catalogue order is eleven entries long in all three packages that
+ * declare it (`midgard-core`, `midgard-sdk`, `midgard-node`) and neither
+ * family appears in any of them. Registering a category is a deployment
+ * event — the category id is a positional index, so the catalogue root and the
+ * manifest identity move with it — and no such event has happened for these
+ * two.
  */
 const UNCATEGORISED_VALIDATOR_DIRECTORIES = [
+  "canonical-decodability",
+  "committed-field-shape",
   "min-fee",
   "missing-native-script-tx",
   "missing-signature",
@@ -571,6 +583,18 @@ const tokenMapExtraRoles = tokenMap
  * family, and a family with no module measures BLOCKED.
  */
 const FAMILY_OFFCHAIN_MODULES = new Map([
+  // The two #579-era families keep their verifier logic in the SDK rather than
+  // behind a `midgard-fault-proofs` `prepare-*` builder, so that is what this
+  // table names for them. IG2's tooling clause asks whether a family is
+  // buildable and submittable, not which package it is buildable from.
+  [
+    "canonical-decodability",
+    ["demo/midgard-sdk/src/fraud-proof/canonical-decodability-v1.ts"],
+  ],
+  [
+    "committed-field-shape",
+    ["demo/midgard-sdk/src/fraud-proof/committed-field-shape-v1.ts"],
+  ],
   [
     "da-hash-preimage",
     ["demo/midgard-fault-proofs/src/prepare-da-hash-preimage.ts"],
@@ -1080,11 +1104,13 @@ if (publishedBlueprint === undefined || publishedBlueprint === null) {
     );
   }
   // IG1's "exact pinned compiler rebuild": the blueprint an ABI claim is
-  // measured against must come from the compiler the repository declares, not
-  // from the patched fork that exists only to execute tests. The released
-  // compiler reports its own build metadata (`v1.1.22+39d6b04`) where
-  // `aiken.toml` declares only the release (`v1.1.22`), so the release must
-  // match exactly and only a `+build` suffix may follow it.
+  // measured against must come from the compiler the repository declares. Since
+  // #579's owner ruling A that compiler IS the patched fork — it is the sole
+  // authority for build, check and fmt, and stock has no remaining role, so
+  // there is no "released compiler" to prefer over it. The fork reports its own
+  // build metadata (`v1.1.23+2a78108`) where `aiken.toml` declares only the
+  // release (`v1.1.23`), so the release must match exactly and only a `+build`
+  // suffix may follow it.
   const producedRelease = String(measuredBlueprint.compilerVersion).split(
     "+",
   )[0];

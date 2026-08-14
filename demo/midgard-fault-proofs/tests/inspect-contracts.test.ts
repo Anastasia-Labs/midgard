@@ -29,11 +29,19 @@ const placeholderDoubleSpend = "00".repeat(28);
 const placeholderNonExistentInput = "02".repeat(28);
 const placeholderInvalidRange = "01".repeat(28);
 const placeholderZeroInput = "03".repeat(28);
+// Re-pinned 2026-08-14 (#579): the regeneration
+// (`onchain/aiken/plutus.json` md5 b20c9a14a8fe445cdddbe5305b3857c1, 398
+// validators, aiken v1.1.23+2a78108) recompiled these four step validators and
+// #594 gave every field-opening step a trailing
+// `field_preimage_certificate_policy_id` parameter, which the SDK applies from
+// the blueprint itself. Both move the applied hashes. Derived by running this
+// suite's own producer with `MIDGARD_PRINT_PROOF_FIT=1` (the
+// `q13AppliedIdentities.stepHashes` line), not read off an assertion diff.
 const Q13_APPLIED_STEP_HASHES = [
-  "5c79063d6b56296f23f7df24380efb980fb43ae1462ee1c01989334f",
-  "a562f6b3f7b1337f0f764aa0d94fc85390dfa74b9c06682e1fcb55e2",
-  "e22e2b38df904c51090c66a7eebb20a78d5b9b60a0c55b833cd80abb",
-  "9984b16ce9b35df88905e1eb732a65febb21a624c56d915a16fcd355",
+  "2389abf7a2f8702b97317bb0c5d12b914f75378488fe07c78ebfc1cf",
+  "55c27cdb1df929d382df955006c00af8e51ba8adc5e4c7c13159836f",
+  "a966c6bef59c676ac30cbce990230928f4b4ce3c3c47d7beb677b5ed",
+  "b2685117b180e1ddbe7f2c25a447d5ac374837bb6040b1f7d45d5183",
 ] as const;
 // Re-pinned 2026-08-05 (#544): the original-epoch root d88f9829…bcca394
 // (blueprint f5ae651e…, 380 validators) moved with the #521 renames — the
@@ -46,8 +54,14 @@ const Q13_APPLIED_STEP_HASHES = [
 // `invalidSignature` 0000000a), which moves the folded root without shifting
 // any existing category id. Measured by this suite's own derivation under
 // blueprint 2b5973fe… (393 validators): d1a70a1b… -> 32e29b6d….
+// Re-pinned 2026-08-14 (#579): the root folds every category's applied step-01
+// hash, and the regeneration moved those hashes (see the note on
+// `Q13_APPLIED_STEP_HASHES` above), so the fold moves with them without any
+// category being added, removed, or renumbered. Measured by this suite's own
+// derivation under blueprint b20c9a14… (398 validators, aiken v1.1.23+2a78108):
+// 32e29b6d… -> 173cabdb….
 const Q13_CATALOGUE_ROOT =
-  "32e29b6d07cc4f6c7947e75b1653f03fc840c854b45ce61ec0310c13c7321701";
+  "173cabdb279e82cda76d0a7ac4b5a50bfc50406aec97d442790ed2810c2114be";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,

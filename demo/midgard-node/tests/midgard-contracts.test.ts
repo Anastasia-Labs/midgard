@@ -120,8 +120,11 @@ describe("midgard contracts registry", () => {
       expect(REAL_TX_ORDER_SCRIPT_TITLES.mint).toBe(
         "user_events/tx_order_v1.mint.mint",
       );
-      expect(REAL_TX_ORDER_SCRIPT_TITLES.fieldReceiptMint).toBe(
-        "user_events/tx_field_receipt_v1.mint.mint",
+      // #579 ruling A: the receipt titles are gone. The certificate titles are
+      // what the tx-order family now resolves alongside the mint, so they are
+      // what this pin has to hold.
+      expect(REAL_TX_ORDER_SCRIPT_TITLES.fieldPreimageCertificateMint).toBe(
+        "field_preimage_certificate.field_preimage_certificate.mint",
       );
       expect(REAL_WITHDRAWAL_SCRIPT_TITLES.mint).toBe(
         "user_events/withdrawal.mint.mint",
@@ -219,14 +222,13 @@ describe("midgard contracts registry", () => {
       expect(txOrderContracts.txOrder.policyId).toEqual(
         mintingPolicyToId(txOrderContracts.txOrder.mintingScript),
       );
-      expect(txOrderContracts.txOrderFieldReceipt.policyId).toEqual(
-        mintingPolicyToId(txOrderContracts.txOrderFieldReceipt.mintingScript),
+      expect(txOrderContracts.fieldPreimageCertificate.policyId).toEqual(
+        mintingPolicyToId(
+          txOrderContracts.fieldPreimageCertificate.mintingScript,
+        ),
       );
       expect(
-        txOrderContracts.txOrderFieldPreimage.spendingScriptHash,
-      ).toHaveLength(56);
-      expect(
-        txOrderContracts.txOrderFieldReceipt.spendingScriptHash,
+        txOrderContracts.fieldPreimageCertificate.spendingScriptHash,
       ).toHaveLength(56);
       expect(
         txOrderContracts.cekProgramMaterial.spendingScriptHash,

@@ -6389,7 +6389,15 @@ spawn and return.
   floors and (b) drain protection are production code in
   `da-params-governor.ak` (+205/−2): `da_threshold >= max(2,
   ceil(2·committee_len/3))`, `update_threshold >= max(2,
-  ceil(2·owner_len/3))`, floor computed as integer `(2n+2)/3`
+  ceil(2·owner_len/3))` — **SUPERSEDED at #602 (`ac67670d`): the
+  `max(2, …)` clamp is deleted at both layers and the floors are now
+  plain `ceil(2n/3)` with n ≥ 1, per the owner's 2026-08-11 ruling 4
+  and the 2026-08-13 in-session Option-B ruling. A one-member set
+  floors at 1 and single-key governance rotation is accepted
+  behaviour. The row is left standing rather than rewritten because
+  it is the durable record of what Q63 measured at `98975333`; read
+  the floor arithmetic from #602's row, not this one.** — floor
+  computed as integer `(2n+2)/3`
   identically in Aiken and TS, every value bound to F04 §4 lines
   191/193/195 with the verifier re-reading F04 at those lines. TDD
   witnessed red-first. Two repairs en route: the `da_params_governor`
@@ -6584,6 +6592,16 @@ mutation-proven evidence:
   a governor property; weakening F04's economic term (e.g. ceil(n/2))
   would otherwise re-admit a one-owner set silently. Comments and the
   renamed `..._by_overlapping_bounds` test say so plainly.
+  **DOUBLY SUPERSEDED at #602 (`ac67670d`): `min_owner_count` is
+  DELETED, along with `min_governed_threshold`. Both rulings that
+  produced this line are reversed — the owner-set minimum dropped to
+  1 (2026-08-13 in-session Option-B ruling), so the guard was not
+  merely redundant but wrong, and a vacuous guard is the
+  gate-that-cannot-fail class this ledger elsewhere tracks. The
+  empty-set refusal now lives structurally in the sorted-unique
+  walkers and is pinned by `rejects_empty_owner_set`. Do not restore
+  this line; #602's mutation testing shows restoring the owner
+  minimum turns exactly two acceptance pins red.**
 - **Compiled bytes unchanged, twice measured:** temp-dir A/B builds at
   both rounds — governor mint/spend/else hash `f00f70a2…8352`,
   compiledCode 4448 chars, identical to 98975333. Not an
@@ -7154,3 +7172,53 @@ scheme swap, serialized on the shared Aiken lib surface) per the #563
 phase order; B-series re-anchoring comments (#561 decision 4) may post
 in parallel, each citing `docs/spec/midgard-tx.md` as the format
 authority.
+
+## Superseding measurement correction (2026-08-14, #579 batch — counted-era publication frontiers)
+
+The counted-era complete-item publication frontiers this ledger records at
+lines 473, 6788, 6854 and 6940 — **15,489 exact / 14,993 reliable** — are
+**superseded**. Those lines are left exactly as written: they are the durable
+record of what was measured and believed at the time, and the convention here
+is that a row keeps its text and gains a marker rather than being rewritten.
+Read the frontiers from this entry, not from those rows.
+
+**Measured values:** `maxExactCompleteItemPublicationBytes` **15,489 → 15,570**
+and `maxReliableCompleteItemPublicationBytes` **14,993 → 15,073**, corrected at
+source in `demo/midgard-core/src/consensus-profile-v1.ts:101-102`.
+
+**Cause — a pre-existing measurement error, not a flat-format regression.** The
+counted-era frontiers were pinned about 80 bytes below what the counted
+publisher actually reaches. The error was self-evidencing and had been sitting
+in plain sight: three sibling measurements of that same publication, in the same
+`MIDGARD_V1_ENVELOPE_MEASUREMENTS` block, had recorded 15,073's datum bytes,
+min-Ada and fee all along. Nothing in the flat measurement was wrong; only the
+baseline it subtracts from.
+
+**Consequence — the flat-format gain was overstated by roughly half.** The claim
+of **+155 B at both ends** re-derives to **+74 B at the exact end and +75 B at
+the reliable end**. The one-byte asymmetry is accounted for and is not two
+different gains: across the 512-byte reserve the counted shape's non-payload
+framing steps by 15 (814 B at 15,570 → 799 B at 15,073) while the flat shape's
+steps by 16 (740 B at 15,644 → 724 B at 15,148). The old figure's tidiness —
+"the same gain twice, which is what one expects when the deleted proof envelope
+is a fixed cost" — is part of why it went unchallenged for as long as it did. It
+is recorded here because a coincidence that flatters a claim deserves more
+suspicion than one that does not.
+
+**Owner ruling (2026-08-14, in-session):** correct everything rather than pin
+the discrepancy — constants, the three `docs/spec/midgard-tx.md` sites, the
+counted-era baseline assertions, and the claim prose itself. The smaller,
+asymmetric number is the measurement; the story was the part that was wrong.
+
+**Surfaced by:** the #579 identity re-derivation batch, when a
+`complete-item-proof-fit-emulator-v1` row refused to re-pin cleanly and was
+escalated rather than absorbed.
+
+**Related, deliberately not absorbed:** `maxSinglePublicationCompleteItemBytes`
+= 14,396 is an **applied policy cap**, not a measured frontier, and it exceeds
+§8.4's tier-1 admissible item size of **14,332 B** by 64 bytes. Items in
+(14,332, 14,396] are publishable but not tier-1 carriable. That overhang is now
+asserted as a gate in
+`demo/midgard-validation/tests/complete-item-carriage-tiers-emulator-v1.test.ts`
+and is **inherited by #580's re-measurement lane** rather than silently
+retargeted away.

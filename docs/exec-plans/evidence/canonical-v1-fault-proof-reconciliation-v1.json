@@ -81,6 +81,8 @@
       "invalidSignature"
     ],
     "deployedValidatorDirectories": [
+      "canonical-decodability",
+      "committed-field-shape",
       "da-hash-preimage",
       "double-spend",
       "input-no-idx",
@@ -99,6 +101,8 @@
       "zero-input"
     ],
     "unregisteredValidatorDirectories": [
+      "canonical-decodability",
+      "committed-field-shape",
       "min-fee",
       "missing-native-script-tx",
       "missing-signature",
@@ -154,7 +158,8 @@
     "docs/fault-proofs/catalogue-status.md": "Native V1 binding is complete; closure is still family-specific",
     "docs/fault-proofs/coverage-matrix.md": "Q13 `LOCAL_PASS`; live evidence remains Q57/QG3",
     "docs/fault-proofs/testing-status.md": "Q13 `input-no-idx` init → all steps",
-    "docs/fault-proofs/execution-plan.md": "Completed native-V1 binding port."
+    "docs/fault-proofs/execution-plan.md": "Completed native-V1 binding port.",
+    "docs/fault-proofs/offchain-builder-staleness-575.md": "**The validators take a new parameter.**"
   },
   "criticalFindings": [
     {

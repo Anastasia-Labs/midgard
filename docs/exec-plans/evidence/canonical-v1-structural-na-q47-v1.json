@@ -1,21 +1,20 @@
 {
   "schema": "midgard.canonical-v1-structural-na-q47.v1",
   "version": 1,
-  "goalIds": ["Q47"],
+  "goalIds": [
+    "Q47"
+  ],
   "issue": 482,
   "note": "Q47 (omitted / out-of-window deposit, withdrawal and forced-event variants) is structurally N/A as a standalone proof family: all six violation variants are constructors of the shared transitionTrace family. GOAL_SPEC.md 9.1 requires an adversarial EXECUTABLE proof of that fact plus a precise matrix N/A; prose is insufficient. This artifact binds the executable disposition only. It records LOCAL_PASS for the Q47 disposition and claims no Q57/QG3 LIVE_PASS.",
   "compilers": {
-    "note": "Issue #538. The measured blocks below used to carry a free-text `compiler` line asserting the selectors pass under stock v1.1.22 and the patched fork, while the verifier spawned exactly one compiler — whatever `aiken` resolved to, which is the stock one. The gate now executes every cited selector under both, requires the two to pass the identical selector set, and reads each compiler's identity from the binary it spawned instead of describing it. The fork pin is bound to AIKEN_FORK_REV in .github/workflows/aiken-ci.yml, so a fork built from another revision cannot answer to it.",
-    "stock": {
-      "version": "aiken v1.1.22+39d6b04",
-      "role": "released authority: compilation and every applied validator hash",
-      "binaryEnv": "MIDGARD_STOCK_AIKEN_BIN",
-      "binaryDefault": "aiken"
-    },
+    "note": "Issues #538 and #579. This gate used to execute every cited selector under BOTH the released v1.1.22 compiler and the patched fork, requiring the two to pass an identical selector set. The stock arm retired on 2026-08-13 with the stock compiler itself (owner ruling A on #579): stock v1.1.22 no longer compiles, formats, builds or executes anything in this repository, and the single measured divergence between the two compilers showed the STOCK artifact was the wrong one - user_events/tx_order_v1.mint built to stock 81fa79f4... 9,851 bytes versus fork b5541807... 10,071 bytes, because stock keys generated expect-decoders by local type name only (issue #521) and MintRedeemer is declared in 12 modules. That snapshot is preserved as the retirement record in .github/workflows/aiken-ci.yml. What #538 bought survives: this gate still executes every selector it cites and reads the compiler identity from the binary that produced the result, instead of describing it. The fork pin is bound to AIKEN_FORK_REV in .github/workflows/aiken-ci.yml, so a fork built from another revision cannot answer to it.",
     "fork": {
-      "version": "aiken v1.1.23+6d14ab2",
-      "rev": "6d14ab2dd63633db6a7d626c4ad129d87c0f108c",
-      "role": "patched test executor: the compiler CI uses to run the suite (upstream aiken#1389)",
+      "version": "aiken v1.1.23+2a78108",
+      "rev": "2a78108ccb184161689b8a06c84d942e13b5b209",
+      "repo": "https://github.com/Anastasia-Labs/aiken",
+      "tag": "midgard-2a78108c",
+      "binaryMd5": "b3acfdf348235798cb6b921d0f87750a",
+      "role": "sole compiler: fmt, build, check, and every applied validator hash (owner ruling A, #579)",
       "binaryEnv": "MIDGARD_FORK_AIKEN_BIN",
       "binaryDefault": "aiken-fork"
     }
@@ -25,7 +24,10 @@
     "catalogueCategoryIndex": 4,
     "catalogueCategoryId": "00000004",
     "constructorHome": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak",
-    "faultConstructors": ["OmittedDueL1Event", "OutOfWindowSourceEvent"],
+    "faultConstructors": [
+      "OmittedDueL1Event",
+      "OutOfWindowSourceEvent"
+    ],
     "witnessEnums": [
       "OmittedDueL1EventWitness",
       "OutOfWindowSourceEventWitness"
@@ -34,7 +36,7 @@
       "validate_l1_event_fault_proof",
       "validate_transition_fault_proof"
     ],
-    "publicationWindow": "(start_time, end_time] \u2014 start_time is excluded and end_time is included, per timed_l1_event_is_due in proof.ak"
+    "publicationWindow": "(start_time, end_time] — start_time is excluded and end_time is included, per timed_l1_event_is_due in proof.ak"
   },
   "variantMatrix": [
     {
@@ -47,7 +49,9 @@
       "aiken": {
         "module": "midgard/fraud_proofs/transition_trace/proof",
         "file": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.test.ak",
-        "selectors": ["accepts_omitted_due_deposit_fault"]
+        "selectors": [
+          "accepts_omitted_due_deposit_fault"
+        ]
       }
     },
     {
@@ -60,7 +64,9 @@
       "aiken": {
         "module": "midgard/fraud_proofs/transition_trace/structural_na_q47_event_window_variants",
         "file": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/structural-na-q47-event-window-variants.test.ak",
-        "selectors": ["q47_omitted_due_withdrawal_accepts"]
+        "selectors": [
+          "q47_omitted_due_withdrawal_accepts"
+        ]
       }
     },
     {
@@ -73,7 +79,9 @@
       "aiken": {
         "module": "midgard/fraud_proofs/transition_trace/structural_na_q47_event_window_variants",
         "file": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/structural-na-q47-event-window-variants.test.ak",
-        "selectors": ["q47_omitted_due_forced_accepts"]
+        "selectors": [
+          "q47_omitted_due_forced_accepts"
+        ]
       }
     },
     {
@@ -86,7 +94,9 @@
       "aiken": {
         "module": "midgard/fraud_proofs/transition_trace/proof",
         "file": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.test.ak",
-        "selectors": ["accepts_out_of_window_deposit_fault"]
+        "selectors": [
+          "accepts_out_of_window_deposit_fault"
+        ]
       }
     },
     {
@@ -99,7 +109,9 @@
       "aiken": {
         "module": "midgard/fraud_proofs/transition_trace/structural_na_q47_event_window_variants",
         "file": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/structural-na-q47-event-window-variants.test.ak",
-        "selectors": ["q47_out_of_window_withdrawal_accepts"]
+        "selectors": [
+          "q47_out_of_window_withdrawal_accepts"
+        ]
       }
     },
     {
@@ -112,7 +124,9 @@
       "aiken": {
         "module": "midgard/fraud_proofs/transition_trace/structural_na_q47_event_window_variants",
         "file": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/structural-na-q47-event-window-variants.test.ak",
-        "selectors": ["q47_out_of_window_forced_accepts"]
+        "selectors": [
+          "q47_out_of_window_forced_accepts"
+        ]
       }
     }
   ],
@@ -291,7 +305,6 @@
     }
   ],
   "runners": [
-    "cd onchain/aiken && aiken check -e -m accepts_omitted_due_deposit_fault -m accepts_omitted_forced_order_at_authenticated_end_time_boundary -m rejects_omitted_forced_order_at_excluded_start_time_boundary -m rejects_omitted_forced_order_published_after_challenged_block -m accepts_out_of_window_deposit_fault -m q47_omitted_due_withdrawal_accepts -m q47_out_of_window_withdrawal_accepts -m q47_omitted_due_forced_accepts -m q47_out_of_window_forced_accepts -m q47_in_window_withdrawal_rejects -m q47_in_window_forced_rejects -m q47_wrong_domain_rejects -m q47_wrong_event_id_rejects",
     "cd onchain/aiken && aiken-fork check -e -m accepts_omitted_due_deposit_fault -m accepts_omitted_forced_order_at_authenticated_end_time_boundary -m rejects_omitted_forced_order_at_excluded_start_time_boundary -m rejects_omitted_forced_order_published_after_challenged_block -m accepts_out_of_window_deposit_fault -m q47_omitted_due_withdrawal_accepts -m q47_out_of_window_withdrawal_accepts -m q47_omitted_due_forced_accepts -m q47_out_of_window_forced_accepts -m q47_in_window_withdrawal_rejects -m q47_in_window_forced_rejects -m q47_wrong_domain_rejects -m q47_wrong_event_id_rejects",
     "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/structural-na-q47-event-window-variants.test.ts"
   ],

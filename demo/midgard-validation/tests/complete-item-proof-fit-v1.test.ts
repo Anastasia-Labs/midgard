@@ -685,11 +685,14 @@ describe("complete-item proof fit V1", () => {
     // `(input_index, output_index, transition, collection_proof, item_cbor)` to
     // `(input_index, output_index, transition, carriage)` in the Aiken source,
     // and left `plutus.json` byte-identical because blueprints move once, in
-    // #579's single regeneration (#587's precedent). So the committed blueprint
-    // still declares five fields while the deployed source declares four, and
-    // this row measures that recorded state instead of asserting agreement that
-    // does not exist yet. `complete-item-carriage-policy-v1.test.ts` pins the
-    // same divergence from the Aiken side.
+    // #579's single regeneration (#587's precedent). That regeneration has now
+    // run, so the blueprint and the deployed source agree at four fields:
+    // #592's rebind dropped `collection_proof`/`item_cbor` from `ActionV1.Verify`
+    // in favour of `carriage: FieldCarriageV1` (recorded in #592's round-4
+    // correction, quoted on #579), and this row now asserts that agreement
+    // rather than measuring its absence.
+    // `complete-item-carriage-policy-v1.test.ts` pins the same shape from the
+    // Aiken side.
     const frozenVerify = (
       validationDisputeBlueprint as {
         readonly definitions: Record<
@@ -708,11 +711,10 @@ describe("complete-item proof fit V1", () => {
       "input_index",
       "output_index",
       "transition",
-      "collection_proof",
-      "item_cbor",
+      "carriage",
     ]);
-    // When #579 regenerates, that list becomes the four-field form and this
-    // redeemer parses against it; until then its shape is asserted directly.
+    // #579 has regenerated: the list is the four-field form and this redeemer
+    // parses against it, so the divergence this row used to measure is closed.
     const directAction = Data.from(directRedeemer.toString("hex"));
     expect(directAction).toBeInstanceOf(Constr);
     const directContinue = (directAction as Constr<unknown>).fields[0];

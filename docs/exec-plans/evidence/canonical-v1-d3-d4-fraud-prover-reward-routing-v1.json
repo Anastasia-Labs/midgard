@@ -99,7 +99,7 @@
     "addedDefinitions": [],
     "removedDefinitions": [],
     "result": "six blueprint entries move, forming three validators; 398 validators and 702 definitions on both sides, with no title added, removed, or otherwise re-hashed, and exactly one definition changed",
-    "landsIn": "`onchain/aiken/plutus.json` at #579's regeneration; source-only until then. That blueprint is generated and untracked, nothing in this rider rewrites it, and the working copy is byte-unchanged at md5 `c52589df225145ad74c8f444d500dfe5`, still carrying the prior hashes — so the observed hashes exist in no checked-in file and this block is what carries them forward."
+    "landsIn": "`onchain/aiken/plutus.json` at #579's regeneration; source-only until then. That blueprint is generated and untracked, nothing in this rider rewrites it, and when this rider was written the working copy was byte-unchanged at md5 `c52589df225145ad74c8f444d500dfe5` — now SUPERSEDED, not the current digest — still carrying the prior hashes, so the observed hashes existed in no checked-in file and this block is what carries them forward. #579 has since performed that single regeneration; the blueprint's current md5 is `b20c9a14a8fe445cdddbe5305b3857c1`."
   },
   "wireChangeInherited": {
     "type": "midgard/state_queue/SlashingApproach",

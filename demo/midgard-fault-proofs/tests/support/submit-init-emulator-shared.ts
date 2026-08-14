@@ -679,7 +679,11 @@ export const makeAlwaysSucceedsContracts = (
   const fieldPreimageV1 = makeSpendingValidator(
     alwaysScript(blueprint, "midgard", "state_queue", "spend"),
   );
-  const fieldReceiptV1 = {
+  // #579 ruling A: this always-succeeds spend+mint pair used to stand in for the
+  // retired `tx_field_receipt_v1` family. It now stands in for the §8.6
+  // field-preimage certificate, which is the role the emulator set actually has
+  // to fill — the tx-order mint is parameterized by the certificate policy id.
+  const fieldPreimageCertificateV1 = {
     ...fieldPreimageV1,
     ...makeMintingValidator(
       alwaysScript(blueprint, "midgard", "state_queue", "mint"),
@@ -714,8 +718,7 @@ export const makeAlwaysSucceedsContracts = (
     deposit: alwaysAuthenticated(blueprint, "deposit"),
     withdrawal: alwaysAuthenticated(blueprint, "withdrawal"),
     txOrder: alwaysAuthenticated(blueprint, "tx_order"),
-    txOrderFieldPreimage: fieldPreimageV1,
-    txOrderFieldReceipt: fieldReceiptV1,
+    fieldPreimageCertificate: fieldPreimageCertificateV1,
     cekProgramMaterial: fieldPreimageV1,
     settlement: alwaysAuthenticated(blueprint, "settlement"),
     reserve,

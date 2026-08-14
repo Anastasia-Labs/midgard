@@ -17,6 +17,43 @@ on:
 permissions:
   contents: read
 
+# THE COMPILER PIN, shared by both compiler-bearing jobs below. Issue #579,
+# rider 1, and the owner's 2026-08-13 ruling A: the patched fork is the SOLE
+# compiler, and it is what defines deployed script identity. Stock v1.1.22 is
+# retired from every role and is no longer installed by this workflow.
+#
+# This workflow held the released pin the longest, on the argument that a job
+# which MEASURES identity must use the released compiler rather than the test
+# fork. That argument now points the other way. Stock v1.1.22 keys generated
+# expect-decoders by LOCAL type name with no module path (issue #521), so two
+# same-named types in different modules share one decoder; `MintRedeemer` is
+# declared in 12 modules on this tree, and the retirement snapshot recorded in
+# `aiken-ci.yml` measured the consequence — the stock blueprint's
+# `user_events/tx_order_v1.mint` is the WRONG artifact (81fa79f4…, 9,851 bytes
+# against the fork's b5541807…, 10,071 bytes). An ABI or freeze claim measured
+# against that blueprint is measured against bytes no deployment carries, so
+# the compiler that defines identity is the only one either job may use.
+#
+# All four arms of rider 1's pin, so a reviewer on other hardware can
+# reproduce the toolchain rather than take it on trust:
+#   repo    https://github.com/Anastasia-Labs/aiken   (org-controlled)
+#   tag     midgard-2a78108c                          (annotated, immutable)
+#   commit  2a78108ccb184161689b8a06c84d942e13b5b209
+#   md5     b3acfdf348235798cb6b921d0f87750a          (published in the tag
+#                                                      message, so it is fixed
+#                                                      once for everyone)
+# The version string `v1.1.23+2a78108` is derived from the commit at build
+# time, so it is the arm that reproduces from source anywhere; the md5 is a
+# released-artifact hash and is pinned as provenance, not as a build-time
+# equality check (two honest builds of one tag on two machines need not agree
+# byte for byte).
+env:
+  AIKEN_FORK_REPO: https://github.com/Anastasia-Labs/aiken
+  AIKEN_FORK_TAG: midgard-2a78108c
+  AIKEN_FORK_REV: 2a78108ccb184161689b8a06c84d942e13b5b209
+  AIKEN_FORK_VERSION: aiken v1.1.23+2a78108
+  AIKEN_FORK_BINARY_MD5: b3acfdf348235798cb6b921d0f87750a
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -113,13 +150,55 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: aiken-lang/setup-aiken@v1.0.3
+      # No `setup-aiken` step: the fork is the compiler here for the reason
+      # given at the top of this file, and it is installed exactly the way
+      # `aiken-ci` installs it — same cache path, same key shape, same rev — so
+      # the blueprint this job measures against and the blueprint that workflow
+      # builds cannot come from two different compilers.
+      - name: Cache the pinned Aiken fork
+        id: aiken-fork
+        uses: actions/cache@v4
         with:
-          # The released authority compiler, matching `aiken-ci`'s `aiken
-          # build` and every applied validator hash in release evidence. The
-          # patched fork is for executing tests only and must not produce the
-          # blueprint an ABI claim is measured against.
-          version: v1.1.22
+          path: ~/.aiken-fork
+          key: aiken-fork-${{ env.AIKEN_FORK_REV }}-${{ runner.os }}
+      - name: Build the pinned Aiken fork
+        if: steps.aiken-fork.outputs.cache-hit != 'true'
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal
+          # --locked honours the fork's committed Cargo.lock; without it cargo
+          # re-resolves every dependency on each cache miss, so an unrelated
+          # crate release could redden this branch or silently change the
+          # compiler this job's ABI evidence was produced by.
+          cargo +1.94.1 install \
+            --git "$AIKEN_FORK_REPO" \
+            --rev "$AIKEN_FORK_REV" \
+            --locked \
+            --root ~/.aiken-fork \
+            aiken
+      # Assert, don't just print: a cache poisoned by an earlier rev must fail
+      # here rather than silently changing which compiler produced the
+      # blueprint every gate below is measured against. Putting the fork on
+      # PATH is what makes it the compiler for `aiken build` AND for any gate
+      # script that spawns a bare `aiken`. There is no second compiler on PATH
+      # to fall through to.
+      - name: Assert the pinned compiler identity and put it on PATH
+        run: |
+          set -euo pipefail
+          patched="$(~/.aiken-fork/bin/aiken --version)"
+          printf 'pinned fork: %s\nexpected:    %s\n' "$patched" "$AIKEN_FORK_VERSION"
+          test "$patched" = "$AIKEN_FORK_VERSION"
+          test "$patched" = "aiken v1.1.23+${AIKEN_FORK_REV:0:7}"
+          echo "$HOME/.aiken-fork/bin" >> "$GITHUB_PATH"
+      - name: Assert no stock compiler is reachable
+        run: |
+          set -euo pipefail
+          # Fail closed if a stock binary ever returns to PATH: a step that
+          # silently compiled under v1.1.22 would publish the wrong identity,
+          # and this is the cheapest place to notice.
+          resolved="$(command -v aiken)"
+          version="$(aiken --version)"
+          printf 'aiken on PATH: %s (%s)\n' "$resolved" "$version"
+          test "$version" = "$AIKEN_FORK_VERSION"
       - uses: pnpm/action-setup@v4
         with:
           version: 9
@@ -196,13 +275,68 @@ jobs:
             echo "run=false" >> "$GITHUB_OUTPUT"
             echo "Not the Goal branch: the static Goal phase is scoped to ${declared} and is not run here."
           fi
-      - uses: aiken-lang/setup-aiken@v1.0.3
+      # The static phase asserts that the compiler on PATH agrees with the
+      # version `onchain/aiken/aiken.toml` declares. That assertion used to be
+      # the argument FOR the released pin; it is now the argument against it.
+      # aiken.toml declares `v1.1.23` — the compiler this tree is defined by
+      # under the owner's 2026-08-13 ruling A — and the policy gate
+      # (`demo/scripts/verify-canonical-v1-goal-static-policy.mjs`) compares the
+      # arm left of the `+`, so the fork's `aiken v1.1.23+2a78108` satisfies it
+      # and stock v1.1.22 no longer can. The phase then runs `aiken check
+      # --skip-tests` against `onchain/aiken`, which is a type-check of the
+      # deployed tree and so has to run under the compiler that defines it.
+      #
+      # Installed exactly as in `header-v1-abi` above and in `aiken-ci`; every
+      # step carries this job's scope guard as well, because the whole phase is
+      # skipped off the Goal branch and building a compiler for a phase that
+      # will not run is pure cost.
+      - name: Cache the pinned Aiken fork
+        id: aiken-fork
         if: steps.scope.outputs.run == 'true'
+        uses: actions/cache@v4
         with:
-          # The static phase asserts this compiler equals the version declared
-          # in onchain/aiken/aiken.toml, so it must be the released authority
-          # compiler, not the patched test fork used by Aiken CI.
-          version: v1.1.22
+          path: ~/.aiken-fork
+          key: aiken-fork-${{ env.AIKEN_FORK_REV }}-${{ runner.os }}
+      - name: Build the pinned Aiken fork
+        if: steps.scope.outputs.run == 'true' && steps.aiken-fork.outputs.cache-hit != 'true'
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal
+          # --locked honours the fork's committed Cargo.lock; without it cargo
+          # re-resolves every dependency on each cache miss, so an unrelated
+          # crate release could redden this branch or silently change the
+          # compiler the static phase was verified under.
+          cargo +1.94.1 install \
+            --git "$AIKEN_FORK_REPO" \
+            --rev "$AIKEN_FORK_REV" \
+            --locked \
+            --root ~/.aiken-fork \
+            aiken
+      # Assert, don't just print: a cache poisoned by an earlier rev must fail
+      # here rather than silently changing which compiler the phase ran under.
+      # Putting the fork on PATH is what makes it the compiler for the phase's
+      # `aiken check --skip-tests` and for the policy gate's own `aiken
+      # --version` probe, both of which spawn a bare `aiken`.
+      - name: Assert the pinned compiler identity and put it on PATH
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          patched="$(~/.aiken-fork/bin/aiken --version)"
+          printf 'pinned fork: %s\nexpected:    %s\n' "$patched" "$AIKEN_FORK_VERSION"
+          test "$patched" = "$AIKEN_FORK_VERSION"
+          test "$patched" = "aiken v1.1.23+${AIKEN_FORK_REV:0:7}"
+          echo "$HOME/.aiken-fork/bin" >> "$GITHUB_PATH"
+      - name: Assert no stock compiler is reachable
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          # Fail closed if a stock binary ever returns to PATH: a phase that
+          # silently type-checked under v1.1.22 would report a verdict about a
+          # tree no deployment compiles, and this is the cheapest place to
+          # notice.
+          resolved="$(command -v aiken)"
+          version="$(aiken --version)"
+          printf 'aiken on PATH: %s (%s)\n' "$resolved" "$version"
+          test "$version" = "$AIKEN_FORK_VERSION"
       - uses: pnpm/action-setup@v4
         if: steps.scope.outputs.run == 'true'
         with:

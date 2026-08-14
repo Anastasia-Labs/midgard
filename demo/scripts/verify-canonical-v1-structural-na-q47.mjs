@@ -22,11 +22,19 @@
 // CLI.
 //
 // Issue #538. That invocation used to be a single compiler while the artifact
-// claimed passage "under both stock v1.1.22 and fork v1.1.23". Batching makes
-// the second measurement cheap, so it is taken rather than asserted: the same
-// thirteen selectors run under the released authority compiler and under the
-// patched fork, both must pass the identical set, and each compiler's identity
-// is read from the binary that produced the result.
+// claimed passage "under both stock v1.1.22 and fork v1.1.23", so the gate was
+// made to take the second measurement rather than assert it.
+//
+// Issue #579 (owner ruling A, 2026-08-13). The dual-compiler leg is RETIRED
+// with the stock compiler itself: stock v1.1.22 no longer compiles, formats,
+// builds or executes anything in this repository, and the one measured
+// divergence between the two showed the stock artifact was the WRONG one (see
+// the retirement record in `.github/workflows/aiken-ci.yml`). Asserting that
+// the cited selectors also pass under a compiler the owner ruled unsound is not
+// a property worth gating on. What #538 actually bought is untouched and is the
+// point of the leg that remains: this gate still EXECUTES every selector it
+// cites, under a compiler whose identity it reads from the binary that produced
+// the result, so it cannot publish a passage claim it never ran.
 //
 // The artifact's `measured` blocks are pins asserted against those runner
 // results, never operands of each other. Source scanning survives only where it
@@ -52,7 +60,6 @@ import {
   forkAikenBinary,
   runAikenCheck,
   runVitest,
-  stockAikenBinary,
   vitestPublishedCommand,
 } from "./lib/runner-reports.mjs";
 
@@ -313,10 +320,23 @@ const aikenSelectors = [
 // patched fork `.github/workflows/aiken-ci.yml` uses to execute the suite. Each
 // compiler's identity is read from the binary itself and pinned, so a shadowed
 // or stale build cannot supply a result under the other's name.
-const stockAiken = stockAikenBinary();
+// RETIRED 2026-08-13 (#579, owner ruling A, confirmed by Ruling 1 on the
+// escalation): the stock arm of this gate is gone with the stock compiler
+// itself. Stock v1.1.22 has no remaining role — it does not compile, format,
+// build or execute anything — so requiring the cited selectors to ALSO pass
+// under it would assert agreement with a compiler the owner ruled unsound. The
+// measured divergence that ended it: `user_events/tx_order_v1.mint` built to
+// stock `81fa79f4…` 9,851 bytes versus fork `b5541807…` 10,071 bytes, and the
+// stock side is the WRONG artifact — stock keys generated expect-decoders by
+// local type name only (issue #521) and `MintRedeemer` is shared by 12 modules.
+// That evidence is preserved as the retirement record in
+// `.github/workflows/aiken-ci.yml`, not as a recurring gate.
+//
+// What survives unchanged is the property this gate was raised for (#538): it
+// still EXECUTES every selector it cites, under a compiler whose identity it
+// measures rather than describes, so it cannot publish a claim it did not run.
 const forkAiken = forkAikenBinary();
 const measuredCompilerVersions = {
-  stock: aikenCompilerVersion(stockAiken),
   fork: aikenCompilerVersion(forkAiken),
 };
 const runDeclaredSelectors = (binary, role) =>
@@ -334,37 +354,18 @@ const measuredKeys = (outcome) =>
     .map(({ module, selector }) => `${module}#${selector}`)
     .sort();
 
-const aikenOutcome = runDeclaredSelectors(stockAiken, "released authority");
-const forkOutcome = runDeclaredSelectors(forkAiken, "patched fork");
-assert.equal(
-  aikenOutcome.passed,
-  declaredAikenChecks.length,
-  "every cited on-chain selector must be measured as passing under the released compiler",
-);
+const forkOutcome = runDeclaredSelectors(forkAiken, "pinned fork");
 assert.equal(
   forkOutcome.passed,
   declaredAikenChecks.length,
-  "every cited on-chain selector must be measured as passing under the patched fork",
+  "every cited on-chain selector must be measured as passing under the pinned fork",
 );
-// The two compilers must agree selector for selector, not merely in total: a
-// dual-compiler claim that rests on two different passing subsets is not the
-// claim the artifact makes.
-assert.deepEqual(
-  measuredKeys(forkOutcome),
-  measuredKeys(aikenOutcome),
-  "the two compilers did not pass the same set of cited selectors",
-);
-assert.equal(
-  forkOutcome.collected,
-  aikenOutcome.collected,
-  "the two compilers collected different numbers of tests from the same selectors",
-);
-const measuredSelectors = new Set(measuredKeys(aikenOutcome));
 const forkMeasuredSelectors = new Set(measuredKeys(forkOutcome));
 const passedIn = (measured) => (checks) =>
   checks.filter(({ module, selector }) => measured.has(`${module}#${selector}`))
     .length;
-const measuredPassed = passedIn(measuredSelectors);
+// One compiler, one measured set: every per-variant count below is the pinned
+// fork's, so this is the only "measured passing" predicate there is.
 const forkPassed = passedIn(forkMeasuredSelectors);
 
 // The compiler identities the artifact publishes are the ones just spawned, and
@@ -374,21 +375,9 @@ const workflowSource = await readRepositoryFile(
   ".github/workflows/aiken-ci.yml",
 );
 assert.equal(
-  evidence.compilers.stock.version,
-  measuredCompilerVersions.stock,
-  "published released-compiler identity is not the compiler this gate spawned",
-);
-assert.equal(
   evidence.compilers.fork.version,
   measuredCompilerVersions.fork,
   "published patched-fork identity is not the compiler this gate spawned",
-);
-assert.equal(
-  stockAiken,
-  process.env[evidence.compilers.stock.binaryEnv] ??
-    process.env.MIDGARD_AIKEN_BIN ??
-    evidence.compilers.stock.binaryDefault,
-  "the released compiler this gate spawned is not the one the published selection rule names",
 );
 assert.equal(
   forkAiken,
@@ -428,13 +417,13 @@ const collectedTwinTitles = twinsRun.report.testResults
 
 for (const [variant, checks] of variantChecks) {
   assert.equal(
-    measuredPassed(checks),
+    forkPassed(checks),
     checks.length,
-    `variant ${variant} cites ${String(checks.length)} selector(s) but only ${String(measuredPassed(checks))} were measured passing`,
+    `variant ${variant} cites ${String(checks.length)} selector(s) but only ${String(forkPassed(checks))} were measured passing`,
   );
 }
 
-const inheritedPassed = measuredPassed(inheritedChecks);
+const inheritedPassed = forkPassed(inheritedChecks);
 assert.equal(
   inherited.measured.selectors,
   inheritedChecks.length,
@@ -461,7 +450,7 @@ assert.equal(
   "published inherited patched-fork pass count is not what that compiler passed",
 );
 
-const q47Passed = measuredPassed(q47Checks);
+const q47Passed = forkPassed(q47Checks);
 assert.equal(
   q47.measured.selectors,
   q47Checks.length,
@@ -512,11 +501,6 @@ assert.deepEqual(
 assert.deepEqual(
   evidence.runners,
   [
-    aikenPublishedCommand({
-      projectDirectory: aikenProjectDirectory,
-      selectors: aikenSelectors,
-      command: evidence.compilers.stock.binaryDefault,
-    }),
     aikenPublishedCommand({
       projectDirectory: aikenProjectDirectory,
       selectors: aikenSelectors,
@@ -704,7 +688,7 @@ for (const finding of evidence.residualFindings) {
 
 // ## The summary is recomputed from measured results, so it cannot lie
 
-const executedChecks = aikenOutcome.passed + twinsOutcome.passed;
+const executedChecks = forkOutcome.passed + twinsOutcome.passed;
 const recomputed = {
   variants: evidence.variantMatrix.length,
   inheritedSelectors: inheritedPassed,
@@ -828,8 +812,11 @@ for (const [flag, expectedStdout] of [
     "--compiler-fixture=stub-version",
     /compiler fixture stub-version: 1\/1 passed/u,
   ],
-  // … and both pinned compilers really run and agree on a real project.
-  ["--compiler-fixture=dual", /compiler fixture dual: 2\/2 passed/u],
+  // … and the pinned fork really runs a real project under its own name. The
+  // `dual` fixture this replaces required stock to agree, which ruling A
+  // retired; divergence detection needs no second compiler and stays covered by
+  // the `--aiken-fixture=*` negatives above.
+  ["--compiler-fixture=fork", /compiler fixture fork: 1\/1 passed/u],
 ]) {
   const control = runSelfTest(flag);
   assert.equal(
@@ -854,8 +841,7 @@ const report = {
   standaloneCategories: evidence.summary.standaloneCategories,
   executedChecks,
   compilers: measuredCompilerVersions,
-  aikenSelectorsCollected: aikenOutcome.collected,
-  aikenSelectorsCollectedUnderFork: forkOutcome.collected,
+  aikenSelectorsCollected: forkOutcome.collected,
   twinTestsCollected: twinsOutcome.collected,
   inventoryPathsScanned: inventoryChecks,
 };
@@ -869,10 +855,8 @@ if (emitJson) {
     )} runner-executed checks, ${String(inventoryChecks)} paths scanned, 0 standalone paths, 0 standalone categories)`,
   );
   console.log(
-    `Q47 dual-compiler leg: ${String(aikenOutcome.passed)}/${String(
+    `Q47 on-chain leg: ${String(forkOutcome.passed)}/${String(
       declaredAikenChecks.length,
-    )} selectors passed under ${measuredCompilerVersions.stock} and ${String(
-      forkOutcome.passed,
-    )}/${String(declaredAikenChecks.length)} under ${measuredCompilerVersions.fork}, identical selector sets`,
+    )} cited selectors executed and passed under ${measuredCompilerVersions.fork}`,
   );
 }

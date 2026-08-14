@@ -1245,7 +1245,12 @@ const catalogueSelectors = aikenTestSelectors(catalogueTestSource);
 const stateQueueSelectors = aikenTestSelectors(stateQueueTestSource);
 assert.equal(computationThreadSelectors.length, 15);
 assert.equal(catalogueSelectors.length, 4);
-assert.equal(stateQueueSelectors.length, 6);
+// Six `q49_l295_*` rows plus the five `d3_*`/`d4_*` reward-routing rows #603
+// added when it bound `fraud_prover_reward` exclusively to
+// `RemoveFraudulentBlockHeader`. Recaptured here, at #579, because F20's
+// inventory is one of the identities this batch re-derives; nothing was
+// removed, so the move is five additions and not a loosened guard.
+assert.equal(stateQueueSelectors.length, 11);
 assert.ok(
   computationThreadSelectors.every((selector) => selector.startsWith("ct_")),
   "computation-thread direct-test inventory lost its exact selectors",
@@ -1254,14 +1259,23 @@ assert.ok(
   catalogueSelectors.every((selector) => selector.startsWith("catalogue_")),
   "catalogue direct-test inventory lost its exact selectors",
 );
+// Two selector families now live in this file: the original `q49_l295_*`
+// HeaderV1 commit controls and the `d3_*`/`d4_*` reward-routing controls #603
+// added. The guard still pins the exact prefixes rather than accepting
+// anything, so a selector that belongs to neither family is still a drift.
 assert.ok(
-  stateQueueSelectors.every((selector) => selector.startsWith("q49_l295_")),
+  stateQueueSelectors.every(
+    (selector) =>
+      selector.startsWith("q49_l295_") ||
+      selector.startsWith("d3_") ||
+      selector.startsWith("d4_"),
+  ),
   "state-queue HeaderV1 selector inventory drifted",
 );
 for (const anchor of [
   "validators/computation-thread.ak:280-513`                                       | 15",
   "validators/fraud-proof-catalogue.ak:50-76`                                      | 4",
-  "validators/state-queue.ak:841-1065`                                             | 6",
+  "validators/state-queue.ak:1034-1477`                                            | 11",
 ]) {
   assert.ok(
     onchainReferenceSource.includes(anchor),
@@ -1271,7 +1285,7 @@ for (const anchor of [
 for (const anchor of [
   "computation-thread (15)",
   "immutable catalogue (4)",
-  "state-queue commit controls (6)",
+  "state-queue commit controls (11)",
 ]) {
   assert.ok(
     testingStatusSource.includes(anchor),

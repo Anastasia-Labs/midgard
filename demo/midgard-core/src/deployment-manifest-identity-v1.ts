@@ -54,9 +54,26 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "withdrawalMint",
   "txOrderSpend",
   "txOrderMint",
-  "txOrderFieldPreimageSpend",
-  "txOrderFieldReceiptSpend",
-  "txOrderFieldReceiptMint",
+  // #579, owner rulings of 2026-08-14. THREE names stood here and were all
+  // REMOVED together: `txOrderFieldPreimageSpend`, `txOrderFieldReceiptSpend`
+  // and `txOrderFieldReceiptMint`.
+  //
+  // They are one retirement, not three. Commit df53dc6a7 (#587), executing the
+  // owner's 2026-08-10 ruling that "the tx-field receipt chain dies before
+  // #579's single blueprint regeneration rather than being frozen into it",
+  // deleted `tx-field-preimage-v1.ak`, `tx-field-receipt-v1.ak` and its spend
+  // twin in a single commit; #594 then replaced the tx-order mint's receipt
+  // parameters with the §8.6 certificate policy id. The regenerated blueprint
+  // declares none of the three titles, so these names had no script to resolve
+  // to and were dead roles holding live ABI positions. Removing them here is
+  // what completes off-chain what #587 did on-chain.
+  //
+  // This is a removal from a POSITIONAL vector, so it renumbers every contract
+  // after it — which is why it is an owner-authorized identity movement rather
+  // than a tidy-up. The deployment-manifest id, the ABI-01/03/04/07 digests and
+  // every position-derived downstream identity (the watcher's synthetic
+  // catalogue among them) move with it and are re-pinned with cause in the same
+  // batch, the same way the certificate's registration was appended below.
   "cekProgramMaterialSpend",
   "settlementSpend",
   "settlementMint",
@@ -81,6 +98,17 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "fraudProofNoReferenceInput",
   "fraudProofReferenceInputNoIdx",
   "fraudProofInvalidSignature",
+  // #579. The §8.6 field-preimage certificate policy. Appended rather than
+  // slotted beside the transaction-field entries because this vector is
+  // positional — its order IS the ABI — so an insertion would renumber every
+  // contract after it. #594 retired the receipt family and gave the tx-order
+  // mint and every field-opening step a
+  // `field_preimage_certificate_policy_id` parameter; the certificate is the
+  // one deployed policy those readers share (§8.6 Consumption,
+  // docs/spec/midgard-tx.md), so it needs a deployment role rather than being
+  // rederived independently at each load site.
+  "fieldPreimageCertificateSpend",
+  "fieldPreimageCertificateMint",
 ] as const);
 
 export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
@@ -146,9 +174,13 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "reserve spending": "reserveSpend",
     "reserve observer": "reserveWithdraw",
     "membership proof withdrawal": "phasMembershipWithdraw",
-    "V1 transaction-field preimage publication": "txOrderFieldPreimageSpend",
-    "V1 transaction-field receipt": "txOrderFieldReceiptSpend",
-    "V1 transaction-field receipt minting": "txOrderFieldReceiptMint",
+    // #579: all three "V1 transaction-field" roles — the preimage publication
+    // and the two receipt roles — are gone with the contracts they named. A
+    // reference-script role whose contract no longer exists cannot be deployed,
+    // so leaving one would make this map describe a deployment that can never be
+    // performed.
+    "V1 field-preimage certificate": "fieldPreimageCertificateSpend",
+    "V1 field-preimage certificate minting": "fieldPreimageCertificateMint",
     "V1 immutable CEK program-material publication": "cekProgramMaterialSpend",
     "V1 validation-trace dispute": "validationTraceDispute",
     "V1 validation-trace source": "validationTraceDisputeSource",
@@ -187,9 +219,11 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES =
     "reserve spending": "ReserveSpend",
     "reserve observer": "ReserveObserver",
     "membership proof withdrawal": "MembershipProofWithdraw",
-    "V1 transaction-field preimage publication": "V1TxFieldPreimageSpend",
-    "V1 transaction-field receipt": "V1TxFieldReceiptSpend",
-    "V1 transaction-field receipt minting": "V1TxFieldReceiptMint",
+    // #579: `V1TxFieldPreimageSpend`, `V1TxFieldReceiptSpend` and
+    // `V1TxFieldReceiptMint` retired with their roles. Token names are minted
+    // per deployed reference script; a name with no script mints nothing.
+    "V1 field-preimage certificate": "V1FieldPreimageCertSpend",
+    "V1 field-preimage certificate minting": "V1FieldPreimageCertMint",
     "V1 immutable CEK program-material publication":
       "V1CekProgramMaterialSpend",
     "V1 validation-trace dispute": "V1ValidationTraceDispute",

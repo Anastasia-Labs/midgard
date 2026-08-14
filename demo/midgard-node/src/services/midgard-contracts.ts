@@ -557,23 +557,20 @@ export const midgardContractsFromDeploymentManifest = (
     "txOrderSpend",
     "txOrderMint",
   );
-  const txOrderFieldPreimage = spendingValidatorFromManifest(
-    network,
-    manifest,
-    sourcePath,
-    "txOrderFieldPreimageSpend",
-  );
-  const txOrderFieldReceipt = {
+  // #579: no `txOrderFieldPreimage` or `txOrderFieldReceipt` resolution here.
+  // The manifest no longer registers any of the three retired tx-field names,
+  // so asking for one would throw on every manifest-sourced load.
+  const fieldPreimageCertificate = {
     ...spendingValidatorFromManifest(
       network,
       manifest,
       sourcePath,
-      "txOrderFieldReceiptSpend",
+      "fieldPreimageCertificateSpend",
     ),
     ...mintingValidatorFromManifest(
       manifest,
       sourcePath,
-      "txOrderFieldReceiptMint",
+      "fieldPreimageCertificateMint",
     ),
   };
   const cekProgramMaterial = spendingValidatorFromManifest(
@@ -671,8 +668,7 @@ export const midgardContractsFromDeploymentManifest = (
       "withdrawalMint",
     ),
     txOrder,
-    txOrderFieldPreimage,
-    txOrderFieldReceipt,
+    fieldPreimageCertificate,
     cekProgramMaterial,
     settlement: authenticatedValidatorFromManifest(
       network,
@@ -875,9 +871,15 @@ export const REAL_DEPOSIT_SCRIPT_TITLES = {
 export const REAL_TX_ORDER_SCRIPT_TITLES = {
   mint: "user_events/tx_order_v1.mint.mint",
   spend: "user_events/tx_order_v1.spend.spend",
-  fieldPreimageSpend: "user_events/tx_field_preimage_v1.spend.spend",
-  fieldReceiptMint: "user_events/tx_field_receipt_v1.mint.mint",
-  fieldReceiptSpend: "user_events/tx_field_receipt_spend_v1.spend.spend",
+  // #579: `fieldPreimageSpend`, `fieldReceiptMint` and `fieldReceiptSpend` all
+  // removed. Commit df53dc6a7 (#587) deleted `tx-field-preimage-v1.ak`,
+  // `tx-field-receipt-v1.ak` and its spend twin in one change, so the
+  // regenerated blueprint declares none of the three titles and
+  // `getCompiledScript` would fail on every one of them.
+  fieldPreimageCertificateSpend:
+    "field_preimage_certificate.field_preimage_certificate.spend",
+  fieldPreimageCertificateMint:
+    "field_preimage_certificate.field_preimage_certificate.mint",
   cekProgramMaterialSpend: "user_events/cek_program_material_v1.spend.spend",
 } as const;
 
@@ -1685,24 +1687,24 @@ const buildRealDepositValidator = (
 
 export type TxOrderContracts = {
   readonly txOrder: SDK.AuthenticatedValidator;
-  readonly txOrderFieldPreimage: SDK.SpendingValidator;
-  readonly txOrderFieldReceipt: SDK.SpendingValidator & SDK.MintingValidator;
+  readonly fieldPreimageCertificate: SDK.SpendingValidator &
+    SDK.MintingValidator;
   readonly cekProgramMaterial: SDK.SpendingValidator;
 };
 
 /**
  * Derives the indivisible V1 tx-order script family. The dependency order is
- * consensus-critical: parameterless fragment/receipt locks first, then the receipt
- * policy, and finally the tx-order policy.
+ * consensus-critical: the parameterless fragment lock and the parameterless §8.6
+ * certificate first, then the tx-order policy that takes the certificate's policy
+ * id as a parameter.
  *
- * **The receipt half is dead source kept alive by a stale blueprint.** #587 deleted
- * the `tx_field_receipt_v1` validators and #594 replaced the tx-order mint's
- * receipt parameters with the §8.6 certificate policy id, but `plutus.json` at the
- * head of this branch predates both, so the titles below still resolve and the
- * three-parameter application below still matches what the blueprint declares.
- * #579's regeneration removes the receipt titles and the receipt parameters
- * together; see the note at the application itself for what fails loudly when it
- * does.
+ * **The receipt half is gone.** #587 deleted the `tx_field_receipt_v1` validators
+ * and #594 replaced the tx-order mint's receipt parameters with the §8.6
+ * certificate policy id. Until #579 regenerated the blueprint this file still had
+ * to speak the receipt-era shape, because the frozen `plutus.json` predated both
+ * changes and there was no certificate policy id to pass. The regeneration landed
+ * both halves at once, so the receipt titles and the receipt parameters are
+ * removed together here (owner ruling A, 2026-08-14).
  */
 export const buildRealTxOrderContracts = (
   network: Network,
@@ -1710,36 +1712,31 @@ export const buildRealTxOrderContracts = (
 ): Effect.Effect<TxOrderContracts, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
-    const fieldPreimageBase = yield* getCompiledScript(
-      blueprint,
-      REAL_TX_ORDER_SCRIPT_TITLES.fieldPreimageSpend,
-    );
-    const fieldReceiptSpendBase = yield* getCompiledScript(
-      blueprint,
-      REAL_TX_ORDER_SCRIPT_TITLES.fieldReceiptSpend,
-    );
     const cekProgramMaterialBase = yield* getCompiledScript(
       blueprint,
       REAL_TX_ORDER_SCRIPT_TITLES.cekProgramMaterialSpend,
     );
-    const txOrderFieldPreimage = makeSpendingValidator(
-      network,
-      fieldPreimageBase,
-    );
-    const fieldReceiptSpend = makeSpendingValidator(
-      network,
-      fieldReceiptSpendBase,
-    );
-    const fieldReceiptMintBase = yield* getCompiledScript(
+    const fieldPreimageCertificateSpendBase = yield* getCompiledScript(
       blueprint,
-      REAL_TX_ORDER_SCRIPT_TITLES.fieldReceiptMint,
+      REAL_TX_ORDER_SCRIPT_TITLES.fieldPreimageCertificateSpend,
     );
-    const fieldReceiptMint = makeMintingPolicy(
-      applyParamsToScript(fieldReceiptMintBase, [
-        txOrderFieldPreimage.spendingScriptHash,
-        fieldReceiptSpend.spendingScriptHash,
-      ]),
+    const fieldPreimageCertificateMintBase = yield* getCompiledScript(
+      blueprint,
+      REAL_TX_ORDER_SCRIPT_TITLES.fieldPreimageCertificateMint,
     );
+    // No `applyParamsToScript`: the §8.6 certificate validator declares no
+    // parameters, so the compiled script IS the deployed script and its policy
+    // id is a pure function of the blueprint. That is why the SDK's fault-proof
+    // builder can derive the same id locally without consulting the deployment
+    // registry — the two cannot disagree.
+    //
+    // It is derived BEFORE the tx-order policy because the tx-order mint now
+    // takes that policy id as a parameter; the dependency runs certificate ->
+    // tx-order, and it used to run receipt-lock -> receipt-policy -> tx-order.
+    const fieldPreimageCertificate = {
+      ...makeSpendingValidator(network, fieldPreimageCertificateSpendBase),
+      ...makeMintingPolicy(fieldPreimageCertificateMintBase),
+    };
     const txOrderMintValidator = yield* getBlueprintValidator(
       blueprint,
       REAL_TX_ORDER_SCRIPT_TITLES.mint,
@@ -1748,38 +1745,28 @@ export const buildRealTxOrderContracts = (
       blueprint,
       REAL_TX_ORDER_SCRIPT_TITLES.spend,
     );
-    // The three parameters below are the **receipt-era** form and they match the
-    // frozen `plutus.json`, which still declares
-    // `(hub_oracle, receipt_script_hash, field_receipt_policy_id)`. The Aiken
-    // source no longer does: #594 retired the receipt family and the mint now takes
-    // `(hub_oracle, field_preimage_certificate_policy_id)`, the §8.6 certificate
-    // policy that the field-access door consults on tier-3 carriage.
+    // The regenerated blueprint declares
+    // `(hub_oracle, field_preimage_certificate_policy_id)` — the §8.6 certificate
+    // policy that the field-access door consults on tier-3 carriage — and this is
+    // that two-term application. The receipt-era three-term form it replaces
+    // passed `(hub_oracle, receipt_script_hash, field_receipt_policy_id)` against
+    // a blueprint that predated #587 and #594.
     //
-    // It cannot be applied here yet, and the reason is a missing value rather than
-    // a missing edit: the certificate validator is outside the frozen blueprint and
-    // has no deployment-registry role, so there is no policy id to pass. Both land
-    // in #579's single regeneration event (rider 2), and until then this call site
-    // has to speak the blueprint it is given.
-    //
-    // `applyBlueprintDeclaredParams` is what keeps that honest: the moment the
-    // blueprint declares two parameters, this fails by name instead of producing a
-    // wrong policy id from a three-term application.
+    // `applyBlueprintDeclaredParams` is what makes the swap safe rather than
+    // hopeful: it checks the application against the parameters the blueprint
+    // actually declares and fails by name, so a stale blueprint cannot silently
+    // absorb the wrong arity and hand back a wrong policy id.
     const txOrder = makeAuthenticatedValidator(
       network,
       yield* applyBlueprintDeclaredParams(txOrderMintValidator, [
         hubOraclePolicyId,
-        fieldReceiptSpend.spendingScriptHash,
-        fieldReceiptMint.policyId,
+        fieldPreimageCertificate.policyId,
       ]),
       applyParamsToScript(txOrderSpendBase, [hubOraclePolicyId]),
     );
     return {
       txOrder,
-      txOrderFieldPreimage,
-      txOrderFieldReceipt: {
-        ...fieldReceiptSpend,
-        ...fieldReceiptMint,
-      },
+      fieldPreimageCertificate,
       cekProgramMaterial: makeSpendingValidator(
         network,
         cekProgramMaterialBase,
@@ -2014,8 +2001,11 @@ export const withRealStateQueueAndOperatorContracts = (
     const withRealHubOracleDepositAndTxOrder: SDK.MidgardValidators = {
       ...withRealHubOracleAndDeposit,
       txOrder: realTxOrderContracts.txOrder,
-      txOrderFieldPreimage: realTxOrderContracts.txOrderFieldPreimage,
-      txOrderFieldReceipt: realTxOrderContracts.txOrderFieldReceipt,
+      // #579 ruling A. The real certificate has to be propagated, not left as
+      // the always-succeeds stand-in it inherits from the base set: the tx-order
+      // mint above is parameterized by THIS policy id, so a set that reported
+      // the stand-in would describe a door the deployed script does not consult.
+      fieldPreimageCertificate: realTxOrderContracts.fieldPreimageCertificate,
       cekProgramMaterial: realTxOrderContracts.cekProgramMaterial,
     };
 

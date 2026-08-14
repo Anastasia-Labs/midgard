@@ -24,7 +24,6 @@ import {
   forkAikenBinary,
   runAikenCheck,
   runVitest,
-  stockAikenBinary,
 } from "./runner-reports.mjs";
 
 export const vitestFixtures = {
@@ -299,12 +298,28 @@ export const evaluateAikenFixture = (fixtureName) => {
 // result has to know which binary produced it. These exercise that resolution
 // end to end: an unavailable binary must fail closed rather than fall through to
 // whatever `aiken` is first on PATH, the reported identity must come from the
-// binary itself rather than from a constant in the gate, and the two compilers
-// the repository pins must both be spawnable and agree on a real project.
+// binary itself rather than from a constant in the gate, and the pinned compiler
+// must be spawnable by name and produce a real measured outcome.
+//
+// RETIRED 2026-08-14 (#579, owner ruling A): the `dual` fixture is gone with the
+// stock compiler. It ran the same probe under `stockAikenBinary()` (labelled
+// "released authority") and `forkAikenBinary()` and required the two to agree.
+// Under ruling A stock has no remaining role, and the arm had degenerated into a
+// gate that could not fail: `stockAikenBinary()` falls back to `aikenBinary()`,
+// which CI sets to the fork, so in CI the fixture compared the fork against
+// itself; locally it resolved to whatever stock `aiken` happened to be on PATH,
+// making the result machine-dependent. The half of that fixture worth keeping is
+// single-compiler and is kept below as `fork`: the pinned binary is spawned by
+// name on a real project and its outcome is DERIVED, never asserted. The other
+// half — proving the runner detects a divergence — needs no second compiler and
+// is already covered by the `aikenFixtures` above, which seed declared-versus-
+// measured divergences (`failing`, `zero-collection`, `missing-selector`,
+// `module-mismatch`, and the four `batch-*` cases) and require the derivation to
+// fail closed on each.
 export const compilerFixtures = {
   missing: "an unavailable compiler must fail closed",
   "stub-version": "the identity must be read from the binary",
-  dual: "both pinned compilers must run and agree",
+  fork: "the pinned fork compiler must run a real project under its own name",
 };
 
 export const evaluateCompilerFixture = (fixtureName) => {
@@ -342,26 +357,23 @@ export const evaluateCompilerFixture = (fixtureName) => {
       "test selftest_probe() {\n  1 + 1 == 2\n}\n",
     );
     const declared = [{ module: "selftest/probe", selector: "selftest_probe" }];
-    const under = (binary, role) =>
-      deriveAikenOutcome({
-        label: `compiler fixture dual (${role})`,
-        declared,
-        ...runAikenCheck({
-          projectRoot: project,
-          selectors: ["selftest/probe.{selftest_probe}"],
-          binary,
-        }),
-      });
-    const stock = under(stockAikenBinary(), "released authority");
-    const fork = under(forkAikenBinary(), "patched fork");
-    if (stock.passed !== fork.passed || stock.passed !== declared.length) {
+    const fork = deriveAikenOutcome({
+      label: "compiler fixture fork (patched fork)",
+      declared,
+      ...runAikenCheck({
+        projectRoot: project,
+        selectors: ["selftest/probe.{selftest_probe}"],
+        binary: forkAikenBinary(),
+      }),
+    });
+    if (fork.passed !== declared.length) {
       throw new Error(
-        `compiler fixture dual: the two compilers disagreed (${String(
-          stock.passed,
-        )} vs ${String(fork.passed)} of ${String(declared.length)})`,
+        `compiler fixture fork: the pinned fork measured ${String(
+          fork.passed,
+        )} of ${String(declared.length)}`,
       );
     }
-    return { collected: stock.collected + fork.collected, passed: 2 };
+    return { collected: fork.collected, passed: fork.passed };
   } finally {
     rmSync(fixtureRoot, { recursive: true, force: true });
   }

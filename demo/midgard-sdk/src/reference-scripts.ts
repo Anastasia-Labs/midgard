@@ -52,9 +52,10 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "reserve observer": "ReserveObserver",
   "payout spending": "PayoutSpend",
   "payout minting": "PayoutMint",
-  "V1 transaction-field preimage publication": "V1TxFieldPreimageSpend",
-  "V1 transaction-field receipt": "V1TxFieldReceiptSpend",
-  "V1 transaction-field receipt minting": "V1TxFieldReceiptMint",
+  // #579. Mirrors `midgard-core`'s token-name removal; ABI-04 fails closed on
+  // divergence.
+  "V1 field-preimage certificate": "V1FieldPreimageCertSpend",
+  "V1 field-preimage certificate minting": "V1FieldPreimageCertMint",
   "V1 immutable CEK program-material publication": "V1CekProgramMaterialSpend",
   "V1 validation-trace dispute": "V1ValidationTraceDispute",
   "V1 validation-trace source": "V1ValidationTraceSource",

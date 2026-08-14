@@ -620,13 +620,25 @@ export const resolveMidgardFieldCarriageAgainstReferenceInputsV1 = ({
  * So the indices are re-resolved against the door transaction's final set and
  * any difference refuses here, off-chain, while re-staging is still free.
  *
- * **Its production wiring point is the observe-stage dispute builder, and it is
- * deferred to #579's tiers-2/3 emulator leg.** That builder is the only caller
- * that holds both the committed carriage and the door transaction's final
- * reference-input set, and it cannot be exercised before #579; wiring it here
- * would add a call site no test could reach. Until then this guard is pinned by
- * its own unit tests
- * (`demo/midgard-sdk/tests/field-preimage-carriage-door-v1.test.ts`).
+ * **Its production call site is the observe-stage dispute builder**, in
+ * `submitValidationDisputeSemanticResolution`
+ * (`demo/midgard-fault-proofs/src/validation-dispute/submit.ts`), immediately
+ * before the `Validation canonical item observation` stage is built. That stage
+ * is the one place the §8.8 door runs for the complete-item path
+ * (`validators/fraud-proofs/validation-trace/canonical-decode-item-observe-v1.ak`),
+ * and its builder is the only caller that holds both the committed carriage —
+ * read straight out of the staged auxiliary the PrepareSelected transaction
+ * hashed into `evidence_hash` — and the complete reference-input set that
+ * transaction will read. The guard is called there with exactly the UTxOs the
+ * stage `readFrom`s, so a divergence refuses before a submission burns the
+ * staged evidence.
+ *
+ * It is additionally pinned by its own unit tests
+ * (`demo/midgard-sdk/tests/field-preimage-carriage-door-v1.test.ts`) and driven
+ * over real ledger-resolved carriage by the tiers-2/3 emulator leg
+ * (`demo/midgard-validation/tests/complete-item-carriage-tiers-emulator-v1.test.ts`),
+ * which submits the same door transaction the guard admits and the one it
+ * refuses.
  */
 export const assertMidgardFieldCarriageResolvesAtDoorV1 = ({
   carriage,

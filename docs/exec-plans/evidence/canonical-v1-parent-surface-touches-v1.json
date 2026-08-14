@@ -1,0 +1,108 @@
+{
+  "schema": "midgard.canonical-v1-parent-surface-touches.v1",
+  "version": 1,
+  "goalIds": ["F05"],
+  "issue": 579,
+  "claim": "#579 AC4 — 'Confirmed that no parent-only surface was touched by any earlier ticket in this set'",
+  "verdict": "FALSIFIED_AND_ACCEPTED",
+  "note": "AC4 asked for a confirmation and the confirmation does not hold: five earlier tickets in the flat-reversion set did touch a parent-only surface. Recorded as falsified rather than quietly restated as a pass, because the value of a parent-only rule is that its exceptions are enumerated. Each touch below is measured from the commit that made it — `git show --name-only <sha>` intersected with the `parentOwnedPaths` vector — not asserted from a changelog. All five are accepted: none of them moved a deployed identity, and none of them is the surface AC4 exists to protect (the generated blueprint, which no earlier ticket wrote and which #579 regenerated exactly once).",
+  "completeness": {
+    "method": "The four originally-recorded touches were found by inspecting known ticket commits. That is a search that can miss. This vector was therefore re-derived exhaustively: every commit in the flat-reversion range was intersected against `parentOwnedPaths`, with no reliance on which issue a commit belongs to.",
+    "range": "2fec6b0fb^..HEAD",
+    "rangeRationale": "2fec6b0fb (#575) is the earliest commit in the flat-reversion set, so its parent 3bee91ec (#574, 'publish/heal tooling + carriage exit measurements') is the last pre-set commit and the correct exclusive base. The range is linear and holds 23 commits, covering the #575-#588 and #592-#603 era commits on this branch plus the untickered chores between them.",
+    "commitsScanned": 23,
+    "commitsTouchingParentOwnedPaths": 5,
+    "command": "for sha in $(git log --format=%h 2fec6b0fb^..HEAD); do git show --name-only --format= $sha | grep -E '^(GOAL_SPEC\\.md|GOAL_PROGRESS\\.md|onchain/aiken/plutus\\.json|docs/exec-plans/evidence/canonical-v1-(format-registry|goal-closure|goal-task-manifest)-v1\\.json|docs/fault-proofs/(coverage-matrix|catalogue-status)\\.md|demo/package\\.json|demo/pnpm-lock\\.yaml)$'; done",
+    "result": "Exactly five commits intersect: 2fec6b0f, f0fa48e4, df53dc6a, 3e7a9e89, and f76d7fca. The first four are the originally-recorded touches and each matched on exactly the paths already recorded for it. f76d7fca was NOT recorded and has been added below. No sixth commit in the range touches any parent-owned path, so this vector is now complete for the range.",
+    "notTouchedInRange": "GOAL_SPEC.md, GOAL_PROGRESS.md, onchain/aiken/plutus.json, canonical-v1-goal-closure-v1.json, canonical-v1-goal-task-manifest-v1.json, and demo/package.json were touched by no commit in the range. demo/package.json is worth calling out: both lockfile bumps are workspace-wide and edit eleven per-package package.json files, but the root demo/package.json is not among them."
+  },
+  "parentOwnedPathsSource": "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json:parentOwnedPaths",
+  "parentOwnedPaths": [
+    "GOAL_SPEC.md",
+    "GOAL_PROGRESS.md",
+    "onchain/aiken/plutus.json",
+    "docs/exec-plans/evidence/canonical-v1-format-registry-v1.json",
+    "docs/exec-plans/evidence/canonical-v1-goal-closure-v1.json",
+    "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json",
+    "docs/fault-proofs/coverage-matrix.md",
+    "docs/fault-proofs/catalogue-status.md",
+    "demo/package.json",
+    "demo/pnpm-lock.yaml"
+  ],
+  "touches": [
+    {
+      "commit": "f0fa48e47",
+      "issue": 584,
+      "subject": "refactor(onchain,sdk): single-anchor multi-field opening; retire committed-source transaction_commitment",
+      "parentOwnedPathsTouched": [
+        "docs/exec-plans/evidence/canonical-v1-format-registry-v1.json"
+      ],
+      "why": "#584 retired `L2TransactionSourceV1.transaction_commitment`, which is a registered format row. The registry is the record of which formats exist, so a ticket that retires a format has to move it or the registry describes a surface that is gone.",
+      "movesDeployedIdentity": false,
+      "disposition": "ACCEPTED"
+    },
+    {
+      "commit": "df53dc6a7",
+      "issue": 587,
+      "subject": "refactor(onchain,sdk,node,watcher): retire the counted publication receipt chain",
+      "parentOwnedPathsTouched": [
+        "docs/exec-plans/evidence/canonical-v1-format-registry-v1.json"
+      ],
+      "why": "Same mechanism as #584 and the same surface: retiring the counted receipt chain retires its format rows. This is the second of the two touches that together account for the registry's row and counter movement, which #579 reconciled — the bound-gate counters moved 29/66/66 -> 30/64/68 and the ABI-freeze artifact was re-derived onto the measured values.",
+      "movesDeployedIdentity": false,
+      "disposition": "ACCEPTED"
+    },
+    {
+      "commit": "2fec6b0fb",
+      "issue": 575,
+      "subject": "refactor(onchain): rebind Q1x fraud-proof families onto the authenticated field door",
+      "parentOwnedPathsTouched": [
+        "docs/fault-proofs/coverage-matrix.md",
+        "docs/fault-proofs/catalogue-status.md"
+      ],
+      "why": "The Q1x rebind changed what nine families prove and how, which is exactly what these two documents describe. Leaving them behind would have made the coverage matrix describe a retired idiom.",
+      "movesDeployedIdentity": false,
+      "disposition": "ACCEPTED"
+    },
+    {
+      "commit": "3e7a9e899",
+      "issue": null,
+      "subject": "chore(demo): bump @lucid-evolution/lucid 0.6.0 -> 0.6.1 workspace-wide",
+      "parentOwnedPathsTouched": ["demo/pnpm-lock.yaml"],
+      "why": "A workspace-wide dependency bump cannot avoid the lockfile. The lockfile is parent-owned because it is the one file every package's build resolves through, not because dependency bumps are forbidden.",
+      "movesDeployedIdentity": false,
+      "disposition": "ACCEPTED"
+    },
+    {
+      "commit": "f76d7fcaa",
+      "issue": null,
+      "subject": "chore(demo): bump @lucid-evolution/lucid 0.6.1 -> 0.6.2 workspace-wide",
+      "parentOwnedPathsTouched": ["demo/pnpm-lock.yaml"],
+      "why": "The same mechanism and the same surface as 3e7a9e89, one version later: 0.6.1 -> 0.6.2 across the same eleven per-package manifests, and a workspace-wide bump cannot avoid the lockfile. This touch was missed by the original record, which enumerated the 0.6.0 -> 0.6.1 bump and stopped; the exhaustive range scan recorded under `completeness` found it. Its file list is identical in shape to 3e7a9e89's — the same eleven package.json files plus demo/pnpm-lock.yaml, and again not the root demo/package.json.",
+      "movesDeployedIdentity": false,
+      "disposition": "ACCEPTED",
+      "addedBy": "completeness re-derivation; not present in the original four-touch record",
+      "ownerRatified": "2026-08-14",
+      "ownerRatificationNote": "The owner ratified this fifth touch on 2026-08-14, so the accepted record stands at FIVE. A #579 batch report described this touch as 'retracted'; that description was wrong and is superseded by this field. The touch was never retracted — it was measured by the exhaustive range scan under `completeness`, and it is now ratified rather than merely recorded."
+    }
+  ],
+  "theSurfaceAc4Protects": {
+    "path": "onchain/aiken/plutus.json",
+    "touchedByAnyEarlierTicket": false,
+    "evidence": "The blueprint is gitignored (onchain/aiken/.gitignore) and untracked, so no commit in the set could have carried it. Its regeneration is a single event owned by #579, and the four touches above are all documentation or lockfile surfaces. AC4's substantive claim — that no earlier ticket regenerated or edited the blueprint out of band — holds.",
+    "regeneratedAt": {
+      "issue": 579,
+      "md5": "b20c9a14a8fe445cdddbe5305b3857c1",
+      "sha256": "91861fac2d0bcafade6d8e1b4872e669cf9e7b52f5ed75d3b9729e4e02d6dd6b",
+      "validators": 398,
+      "compiler": "v1.1.23+2a78108"
+    }
+  },
+  "focusedCommands": [
+    "git show --name-only --format= f0fa48e47 | grep docs/exec-plans/evidence/canonical-v1-format-registry-v1.json",
+    "git show --name-only --format= df53dc6a7 | grep docs/exec-plans/evidence/canonical-v1-format-registry-v1.json",
+    "git show --name-only --format= 2fec6b0fb | grep -E 'docs/fault-proofs/(coverage-matrix|catalogue-status).md'",
+    "git show --name-only --format= 3e7a9e899 | grep demo/pnpm-lock.yaml",
+    "git show --name-only --format= f76d7fcaa | grep demo/pnpm-lock.yaml"
+  ]
+}

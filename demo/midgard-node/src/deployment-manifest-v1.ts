@@ -43,9 +43,10 @@ export const DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION =
 export const REQUIRED_TRANSACTION_ORDER_CONTRACTS = Object.freeze([
   "txOrderSpend",
   "txOrderMint",
-  "txOrderFieldPreimageSpend",
-  "txOrderFieldReceiptSpend",
-  "txOrderFieldReceiptMint",
+  // #579: all three retired tx-field names are removed here too. This vector
+  // gates what a transaction-order deployment is REQUIRED to carry, so keeping a
+  // name the regenerated blueprint cannot resolve would make every deployment
+  // fail a requirement it has no way to satisfy.
   "cekProgramMaterialSpend",
   "validationTraceDispute",
   "validationTraceDisputeSource",
@@ -84,9 +85,8 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "withdrawalMint",
   "txOrderSpend",
   "txOrderMint",
-  "txOrderFieldPreimageSpend",
-  "txOrderFieldReceiptSpend",
-  "txOrderFieldReceiptMint",
+  // #579. Mirrors `midgard-core`'s three-name removal element for element — see
+  // the cause recorded there. ABI-01 fails closed if the two ever diverge.
   "cekProgramMaterialSpend",
   "settlementSpend",
   "settlementMint",
@@ -111,6 +111,11 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "fraudProofNoReferenceInput",
   "fraudProofReferenceInputNoIdx",
   "fraudProofInvalidSignature",
+  // #579. Mirrors `midgard-core`'s vector element for element; ABI-01 fails
+  // closed if these two declarations ever diverge. Appended, not inserted:
+  // this vector is positional.
+  "fieldPreimageCertificateSpend",
+  "fieldPreimageCertificateMint",
 ] as const);
 
 export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
@@ -142,9 +147,10 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "reserve spending": "reserveSpend",
     "reserve observer": "reserveWithdraw",
     "membership proof withdrawal": "phasMembershipWithdraw",
-    "V1 transaction-field preimage publication": "txOrderFieldPreimageSpend",
-    "V1 transaction-field receipt": "txOrderFieldReceiptSpend",
-    "V1 transaction-field receipt minting": "txOrderFieldReceiptMint",
+    // #579. Mirrors `midgard-core`'s role-map removal; ABI-03 fails closed on
+    // divergence.
+    "V1 field-preimage certificate": "fieldPreimageCertificateSpend",
+    "V1 field-preimage certificate minting": "fieldPreimageCertificateMint",
     "V1 immutable CEK program-material publication": "cekProgramMaterialSpend",
     "V1 validation-trace dispute": "validationTraceDispute",
     "V1 validation-trace source": "validationTraceDisputeSource",

@@ -6,7 +6,10 @@ import {
   MIDGARD_CONSENSUS_PROFILE_V1,
 } from "@al-ft/midgard-core";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
-import { encodeMidgardFieldPreimageV1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import {
+  encodeMidgardFieldPreimageV1,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
   MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_V1_ENVELOPE_MEASUREMENTS,
@@ -130,6 +133,41 @@ const makeExactSizeOutputItem = (targetItemBytes: number): Buffer => {
   );
 };
 
+/** The §5.1 outputs field, which is the field every case here carries. */
+const OUTPUT_FIELD_INDEX = 2;
+
+/**
+ * The largest complete item this **tier-1** harness can carry.
+ *
+ * §8.4 partitions on the field's §5.1 preimage, and a single-item field-2
+ * envelope is `81 ‖ 59 LLLL ‖ item` — four bytes — so the tier-1 ceiling of
+ * `MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1` (14,336) admits an item of at
+ * most 14,332 bytes. Anything larger resolves as tier-2 `RawUtxo`, which
+ * `buildCanonicalDecodeItemCase` refuses by design.
+ *
+ * **#580 NOTE — the 64-byte overhang.** The applied publication cap
+ * `MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes` is 14,396,
+ * which is 64 bytes ABOVE this ceiling: items in (14,332, 14,396] are publishable
+ * but cannot be carried inline. Before 2026-08-14 this suite hid that, because it
+ * selected its complete-item witness by `(phase, kind)` alone and so measured
+ * field 0's few-dozen-byte preimage while claiming to run at the cap. The
+ * publication-maximum row moved to
+ * `complete-item-carriage-tiers-emulator-v1.test.ts` (tier-2) under the same
+ * owner ruling, and **#580 owns re-measuring the overhang**. Retargeting this
+ * harness does not resolve it.
+ */
+/**
+ * The four bytes a single-item field-2 §5.1 envelope costs: `81 ‖ 59 LLLL`.
+ * Named so the derivation below states the arithmetic instead of restating its
+ * result — 14,332 is not an independent measurement, it is the tier-1 ceiling
+ * minus this envelope, and a change to that ceiling must move it.
+ */
+const SINGLE_ITEM_FIELD_ENVELOPE_BYTES = 4;
+
+const TIER1_MAX_COMPLETE_ITEM_BYTES =
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 -
+  SINGLE_ITEM_FIELD_ENVELOPE_BYTES;
+
 const traceContext = {
   consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
   eventKeyCbor: Buffer.from("d8799f4100ff", "hex"),
@@ -205,15 +243,30 @@ const buildCanonicalDecodeItemCase = async (
 ): Promise<CanonicalDecodeItemCase> => {
   const item = makeExactSizeOutputItem(itemBytes);
   const trace = await buildTraceWithOutputs([item]);
+  const expectedPreimageBytes = encodeMidgardFieldPreimageV1([item]).length;
   let stateIndex = -1;
   for (let index = 0; index < trace.witnesses.length; index += 1) {
     const witness = trace.witnesses[index]!;
     // This harness runs entirely inside §8.3's tier-1 domain — its probes are
     // the measured publication frontiers, all below the 14,336-byte cap — so the
     // default resolver's `Inline` is the carriage every case here uses (#600).
+    //
+    // #579: selecting on `(phase, kind)` alone is NOT enough, and the difference
+    // is not cosmetic. The canonicalDecode walk emits a complete-item witness
+    // for field 0 first, whose preimage is a few dozen bytes, so a first-match
+    // selector silently returns field 0 and every measurement below becomes a
+    // measurement of the wrong field — `itemBytes` then bears no relation to the
+    // bytes actually carried. That is what made the publication-maximum row
+    // measure ~363 signed bytes and made the substitution row write past the end
+    // of a ~40-byte buffer, i.e. mutate nothing at all. Locate the step by the
+    // field it opened AND the bytes it read, the discipline
+    // `complete-item-carriage-tiers-emulator-v1.test.ts` and
+    // `complete-item-proof-fit-v1.test.ts` already keep.
     if (
       witness.phase === "canonicalDecode" &&
-      witness.auxiliary?.kind === "transactionFieldItem"
+      witness.auxiliary?.kind === "transactionFieldItem" &&
+      witness.auxiliary.fieldIndex === OUTPUT_FIELD_INDEX &&
+      witness.auxiliary.fieldPreimage.length === expectedPreimageBytes
     ) {
       stateIndex = index;
       break;
@@ -221,7 +274,7 @@ const buildCanonicalDecodeItemCase = async (
   }
   if (stateIndex < 0) {
     throw new Error(
-      `trace has no canonicalDecode complete-item witness of ${itemBytes.toString()} bytes`,
+      `trace has no canonicalDecode field-${OUTPUT_FIELD_INDEX.toString()} complete-item witness of ${expectedPreimageBytes.toString()} preimage bytes`,
     );
   }
   const argument = buildValidationOneStepArgumentV1({ trace, stateIndex });
@@ -694,30 +747,11 @@ const measureDirectAt = async (
   return { itemCase, ...result };
 };
 
-const measureReferenceAt = async (
-  itemBytes: number,
-): Promise<{
-  readonly itemCase: CanonicalDecodeItemCase;
-  readonly publication: Awaited<ReturnType<typeof publishProofItem>>;
-  readonly consumption: {
-    readonly measurement: CompleteSignedTransactionMeasurement;
-    readonly outputDatum: string;
-    readonly signedCbor: string;
-  };
-}> => {
-  const itemCase = await buildCanonicalDecodeItemCase(itemBytes);
-  const harness = await setupEmulator([
-    preparedThreadDatumCbor(itemCase, SIGNER_HASH),
-  ]);
-  const publication = await publishProofItem({ harness, itemCase });
-  const consumption = await submitSemanticProof({
-    harness,
-    itemCase,
-    threadUtxo: harness.threadUtxos[0]!,
-    proofItemReferenceUtxo: publication.utxo,
-  });
-  return { itemCase, publication, consumption };
-};
+// `measureReferenceAt` lived here and went with the publication-maximum row it
+// was the only caller of — see the removal note in the describe block below.
+// Reference-carriage consumption is still measured in this file by the
+// "reaches the identical terminal state through direct and reference carriage"
+// row, which resolves a published item at a tier-1 size.
 
 const measurePublicationFrontierAt = async (
   itemByteCandidates: readonly number[],
@@ -727,8 +761,14 @@ const measurePublicationFrontierAt = async (
     readonly publication: Awaited<ReturnType<typeof publishProofItem>>;
   }[]
 > => {
+  // Retargeted 2026-08-14 (owner ruling) from
+  // `maxSinglePublicationCompleteItemBytes` (14,396) to the tier-1 maximum. The
+  // base case only supplies the thread datum and the transaction identity — every
+  // probe below overrides the field preimage outright — but it still has to be a
+  // case this tier-1-only harness can build, and a 14,396-byte item's field-2
+  // preimage is 14,400 bytes, i.e. tier-2. See TIER1_MAX_COMPLETE_ITEM_BYTES.
   const itemCase = await buildCanonicalDecodeItemCase(
-    MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
+    TIER1_MAX_COMPLETE_ITEM_BYTES,
   );
   const harness = await setupEmulator([
     preparedThreadDatumCbor(itemCase, SIGNER_HASH),
@@ -750,13 +790,37 @@ const measurePublicationFrontierAt = async (
 };
 
 /**
+ * **RESOLVED 2026-08-14: `5 passed (5)`.** The handoff below is the historical
+ * record of the pre-#579 freeze it describes; it is no longer the suite's state.
+ * #579 regenerated the blueprint, the applied §3.2 resolver hash was re-pinned
+ * from the producer, and two further things that the freeze had been masking
+ * came out with it:
+ *
+ * - The complete-item witness selector matched on `(phase, kind)` alone, so it
+ *   silently measured **field 0**'s few-dozen-byte preimage instead of field 2's.
+ *   The publication rows were measuring the wrong field, and the substitution row
+ *   was writing its flipped byte past the end of a ~40-byte buffer — mutating
+ *   nothing, and so rejecting nothing. Both are fixed and both now assert that
+ *   what they claim to exercise is what they exercise.
+ * - The row at the applied publication maximum MOVED to
+ *   `complete-item-carriage-tiers-emulator-v1.test.ts`, because 14,396 bytes is
+ *   tier-2 under §8.4 and this harness is tier-1 only (owner ruling). See
+ *   `TIER1_MAX_COMPLETE_ITEM_BYTES` for the 64-byte overhang that exposed, which
+ *   **#580 owns**.
+ *
+ * ---
+ *
  * **HANDOFF TO #579, measured 2026-08-12: `5 failed | 1 passed (6)`.**
  *
  * This suite applies the validators compiled into the **committed**
- * `onchain/aiken/plutus.json`, which #592 deliberately leaves byte-identical
- * (md5 `c52589df225145ad74c8f444d500dfe5`) — blueprints move once, in #579's
- * single regeneration pass (#587's precedent). #592 reshaped
- * `canonical_decode_item_semantic_v1`'s `Verify` from
+ * `onchain/aiken/plutus.json`, which #592 deliberately left byte-identical at
+ * the now-SUPERSEDED md5 `c52589df225145ad74c8f444d500dfe5` — blueprints move
+ * once, in #579's single regeneration pass (#587's precedent). That pass has
+ * since landed: the blueprint's current md5 is
+ * `b20c9a14a8fe445cdddbe5305b3857c1`, so the freeze described here is the
+ * pre-#579 condition and the digest above must not be read as current.
+ *
+ * #592 reshaped `canonical_decode_item_semantic_v1`'s `Verify` from
  * `(input_index, output_index, transition, collection_proof, item_cbor)` to
  * `(input_index, output_index, transition, carriage)` in the Aiken source, and
  * #597 moved the TypeScript half to match. So the redeemers this suite builds
@@ -786,12 +850,21 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
   // tree's stock testnet blueprint
   // 605c8b8dca1f01e2cde5219138a1f81e69214f9a182c10b73c20341187ddc2dc
   // (391 validators, aiken v1.1.22+39d6b04).
+  // Re-pinned 2026-08-14 (#579): the regeneration
+  // (`onchain/aiken/plutus.json` md5 b20c9a14a8fe445cdddbe5305b3857c1, 398
+  // validators, aiken v1.1.23+2a78108) recompiled the canonical-decode item
+  // semantic resolver, and #594 gave it a trailing
+  // `field_preimage_certificate_policy_id` parameter that the SDK applies from
+  // the blueprint, so its applied hash moves: 983051b4… -> f492660e….
+  // The resolver COUNT (76) and the proof-item hash below are measured
+  // unchanged — the movement is confined to the one recompiled resolver.
+  // Measured by `loadContracts()` here, the same producer this row asserts on.
   it("pins the applied §3.2 necessity identities on the measurement deployment", async () => {
     const contracts = await loadContracts();
     expect(contracts.validationTraceDispute.semanticResolvers).toHaveLength(76);
     expect(
       contracts.validationTraceDispute.semanticResolvers[1]!.spendingScriptHash,
-    ).toBe("983051b4a0c3fe90057a599e77ed44c5ab694014036d49c86373a143");
+    ).toBe("f492660e7977de3cc0d78695560e7b7c4d08ef1653c89b138ca8a29f");
     expect(contracts.validationTraceDispute.proofItem.spendingScriptHash).toBe(
       "22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab",
     );
@@ -898,62 +971,17 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     }
   }, 600_000);
 
-  it("measures inline-datum publication plus reference-input consumption at the publication maximum", async () => {
-    const publicationMax =
-      MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes;
-    const { itemCase, publication, consumption } =
-      await measureReferenceAt(publicationMax);
-    expect(itemCase.itemBytes).toBe(publicationMax);
-
-    expect(publication.measurement.redeemerCount).toBe(0);
-    expect(
-      (publication.utxo.assets.lovelace ?? 0n) >= publication.minAdaLovelace,
-    ).toBe(true);
-
-    expect(consumption.measurement.referenceInputCount).toBe(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.referenceCompleteItemProofReferenceInputCount,
-    );
-    expect(consumption.measurement.completeSignedBytes).toBeLessThanOrEqual(
-      MAX_L1_PROOF_TX_BYTES,
-    );
-    expect(Number(consumption.measurement.executionMemory)).toBeLessThanOrEqual(
-      RESERVED_MEMORY_UNITS,
-    );
-    expect(Number(consumption.measurement.executionSteps)).toBeLessThanOrEqual(
-      RESERVED_CPU_UNITS,
-    );
-    // The consuming transaction resolves the item from the UTxO set instead
-    // of serializing it again.
-    expect(consumption.measurement.completeSignedBytes).toBeLessThan(
-      publication.measurement.completeSignedBytes / 2,
-    );
-
-    if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
-      const contracts = await loadContracts();
-      console.info(
-        JSON.stringify(
-          {
-            completeItemPublicationProofFitV1: {
-              proofItemScriptHash:
-                contracts.validationTraceDispute.proofItem.spendingScriptHash,
-              publicationItemBytes: publicationMax,
-              publication: {
-                ...publication.measurement,
-                datumBytes: publication.datumCbor.length / 2,
-                minAdaLovelace: publication.minAdaLovelace,
-              },
-              referenceConsumption: consumption.measurement,
-              reservedMemoryUnits: RESERVED_MEMORY_UNITS,
-              reservedCpuUnits: RESERVED_CPU_UNITS,
-            },
-          },
-          (_key, value: unknown) =>
-            typeof value === "bigint" ? value.toString() : value,
-          2,
-        ),
-      );
-    }
-  }, 600_000);
+  // REMOVED 2026-08-14 (owner ruling): "measures inline-datum publication plus
+  // reference-input consumption at the publication maximum" MOVED to
+  // `complete-item-carriage-tiers-emulator-v1.test.ts` as "carries one complete
+  // item at the applied publication maximum through the tier-2 door".
+  //
+  // It cannot run here. The publication maximum is 14,396 bytes, whose field-2
+  // preimage is 14,400 — tier-2 `RawUtxo` under §8.4, and this harness is
+  // tier-1 `Inline` only. The row only appeared to run because the witness
+  // selector matched field 0 instead of field 2, so it measured a ~40-byte
+  // preimage and a 363-byte "publication". See TIER1_MAX_COMPLETE_ITEM_BYTES
+  // for the 64-byte overhang this exposed, which #580 owns.
 
   it("reaches the identical terminal state through direct and reference carriage of the same item", async () => {
     // Same complete item, both representations, one emulator: the deployed
@@ -1001,8 +1029,21 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     // Substitution: same length, one flipped byte deep inside the published
     // field preimage. The door hashes the whole preimage against the committed
     // field hash, so a single flipped byte anywhere inside it fails closed.
-    const substituted = Buffer.from(itemCase.fieldPreimageHex, "hex");
-    substituted[itemBytes - 100] = substituted[itemBytes - 100]! ^ 0x01;
+    //
+    // #579: the offset is taken from the preimage's OWN length. It used to be
+    // `itemBytes - 100`, an index into a buffer that the selection defect above
+    // had made ~40 bytes long — the write landed past the end, `Buffer` swallowed
+    // it, and the "substituted" preimage was byte-identical to the original. The
+    // row then proved nothing and resolved. The equality guard below is what
+    // keeps that from being silent again: a test that mutates a buffer must show
+    // the mutation took before it can claim the mutation was rejected.
+    const original = Buffer.from(itemCase.fieldPreimageHex, "hex");
+    const substituted = Buffer.from(original);
+    const flipOffset = substituted.length - 100;
+    expect(flipOffset).toBeGreaterThan(0);
+    substituted[flipOffset] = substituted[flipOffset]! ^ 0x01;
+    expect(substituted.length).toBe(original.length);
+    expect(substituted.equals(original)).toBe(false);
     const substitutedPublication = await publishRawProofItemForNegativeControl({
       harness,
       itemCase,

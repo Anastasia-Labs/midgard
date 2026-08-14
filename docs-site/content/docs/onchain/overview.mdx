@@ -50,9 +50,14 @@ validator entrypoint. The project pins its toolchain in `aiken.toml`:
 
 ```toml
 name = "al-ft/midgard"
-compiler = "v1.1.22"
+compiler = "v1.1.23"
 plutus = "v3"
 ```
+
+The compiler is the patched Aiken fork `v1.1.23+2a78108`, built from the
+org-controlled repository `Anastasia-Labs/aiken` at the annotated tag
+`midgard-2a78108c`. It is the sole authority for `build`, `check` and `fmt`;
+stock Aiken has no role in this repository.
 
 It depends on `aiken-lang/stdlib`, `aiken-lang/fuzz`,
 `anastasia-labs/aiken-design-patterns`, `keyan-m/aiken-scott-utils`, and
