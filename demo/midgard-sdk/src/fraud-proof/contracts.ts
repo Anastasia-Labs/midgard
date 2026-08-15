@@ -22,9 +22,24 @@ import {
   SpendingValidator,
 } from "@/common.js";
 
+/**
+ * One entry of a blueprint validator's `parameters[]`: the compiler's own
+ * record of a `validator main(...)` parameter, in declaration order.
+ */
+export type FaultProofBlueprintParameter = {
+  readonly title: string;
+};
+
 export type FaultProofBlueprintValidator = {
   readonly title: string;
   readonly compiledCode: string;
+  /**
+   * The parameters the compiled script declares, in declaration order. Carried
+   * (rather than dropped at parse time, as it was before #609) because it is
+   * the only authority on how many terms must be applied before the script is
+   * a complete validator — see {@link applyBlueprintParams}.
+   */
+  readonly parameters: readonly FaultProofBlueprintParameter[];
 };
 
 export type FaultProofBlueprint = {
@@ -712,6 +727,7 @@ export const parseFaultProofBlueprint = (
       const candidate = validator as {
         readonly title?: unknown;
         readonly compiledCode?: unknown;
+        readonly parameters?: unknown;
       };
       if (typeof candidate.title !== "string") {
         throw new Error(`validators[${index}].title must be a string`);
@@ -719,25 +735,124 @@ export const parseFaultProofBlueprint = (
       if (typeof candidate.compiledCode !== "string") {
         throw new Error(`validators[${index}].compiledCode must be a string`);
       }
+      // A validator that takes no parameters omits the key entirely, so absent
+      // means zero declared — never "unknown, skip the check".
+      const rawParameters = candidate.parameters ?? [];
+      if (!Array.isArray(rawParameters)) {
+        throw new Error(
+          `validators[${index}].parameters must be an array when present`,
+        );
+      }
       return {
         title: candidate.title,
         compiledCode: candidate.compiledCode,
+        parameters: rawParameters.map((parameter, parameterIndex) => {
+          const parameterTitle = (parameter as { readonly title?: unknown })
+            .title;
+          if (typeof parameterTitle !== "string") {
+            throw new Error(
+              `validators[${index}].parameters[${parameterIndex}].title must be a string`,
+            );
+          }
+          return { title: parameterTitle };
+        }),
       };
     }),
   };
 };
 
-const getCompiledScript = (
+const getBlueprintValidator = (
   blueprint: FaultProofBlueprint,
   title: string,
-): string => {
+): FaultProofBlueprintValidator => {
   const found = blueprint.validators.find(
     (validator) => validator.title === title,
   );
   if (found === undefined) {
     throw new Error(`Validator with title "${title}" not found in blueprint`);
   }
-  return found.compiledCode;
+  return found;
+};
+
+/**
+ * The parameters a blueprint entry declares.
+ *
+ * A validator that takes none omits the key entirely — that is the compiler's
+ * format, so ABSENT MEANS ZERO, never "unknown, skip the check". Read through
+ * this accessor rather than the field so a caller handing us a raw `plutus.json`
+ * object (where the key is simply missing on nullary validators) is checked by
+ * the same rule as one that went through {@link parseFaultProofBlueprint}.
+ */
+const declaredParameters = (
+  validator: FaultProofBlueprintValidator,
+): readonly FaultProofBlueprintParameter[] => validator.parameters ?? [];
+
+const describeDeclaredParameters = (
+  validator: FaultProofBlueprintValidator,
+): string =>
+  declaredParameters(validator).length === 0
+    ? "none"
+    : declaredParameters(validator)
+        .map((parameter) => parameter.title)
+        .join(", ");
+
+/**
+ * The single place this package turns a blueprint entry into a deployable
+ * script, and the only permitted caller of `applyParamsToScript` here.
+ *
+ * `applyParamsToScript` applies whatever list it is handed and never checks it
+ * against the script's own declared arity. Applying too FEW terms is silent and
+ * catastrophic: the remaining `validator main(...)` parameters stay as lambdas,
+ * so the ledger's single Plutus V3 script-context application reduces to a
+ * lambda VALUE instead of running the validator body. Evaluation terminates
+ * without error, and the ledger reads "no error" as SUCCESS — the deployment is
+ * an unconditional always-succeeds script whose Aiken guards never execute.
+ * That is exactly how ten validation-trace semantic resolvers shipped after
+ * #592 added their `field_preimage_certificate_policy_id` parameter (#605/#609).
+ * Applying too MANY is a well-formed script with a wrong hash, which surfaces
+ * days later as a credential that matches nothing on chain.
+ *
+ * Refusing both directions here converts that whole class into a build-time
+ * failure at the load site, for every validator this package deploys.
+ */
+const applyBlueprintParams = (
+  blueprint: FaultProofBlueprint,
+  title: string,
+  params: readonly Data[],
+): string => {
+  const validator = getBlueprintValidator(blueprint, title);
+  if (declaredParameters(validator).length !== params.length) {
+    throw new Error(
+      `Blueprint validator "${title}" declares ` +
+        `${declaredParameters(validator).length.toString()} parameter(s) ` +
+        `(${describeDeclaredParameters(validator)}) but ` +
+        `${params.length.toString()} were applied. Under-application deploys an ` +
+        "always-succeeds script and over-application deploys a wrong hash; " +
+        "apply exactly the declared parameters (#609).",
+    );
+  }
+  return applyParamsToScript(validator.compiledCode, [...params]);
+};
+
+/**
+ * The same fail-closed reading for validators deployed with no parameters at
+ * all: a title that silently grows a parameter must not keep being deployed
+ * bare, which is under-application by the whole parameter list.
+ */
+const getUnappliedScript = (
+  blueprint: FaultProofBlueprint,
+  title: string,
+): string => {
+  const validator = getBlueprintValidator(blueprint, title);
+  if (declaredParameters(validator).length !== 0) {
+    throw new Error(
+      `Blueprint validator "${title}" declares ` +
+        `${declaredParameters(validator).length.toString()} parameter(s) ` +
+        `(${describeDeclaredParameters(validator)}) but is deployed with none ` +
+        "applied, which is an always-succeeds script (#609).",
+    );
+  }
+  return validator.compiledCode;
 };
 
 const makeMintingPolicy = (mintingScriptCBOR: string): MintingValidator => {
@@ -814,11 +929,9 @@ const buildSharedFaultProofContracts = ({
       "Failed to build computation-thread minting policy",
       () =>
         makeMintingPolicy(
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              FAULT_PROOF_SHARED_TITLES.computationThreadMint,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            FAULT_PROOF_SHARED_TITLES.computationThreadMint,
             [fraudProofCataloguePolicyId, hubOraclePolicyId],
           ),
         ),
@@ -829,14 +942,12 @@ const buildSharedFaultProofContracts = ({
       () =>
         makeAuthenticatedValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              FAULT_PROOF_SHARED_TITLES.fraudProofMint,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            FAULT_PROOF_SHARED_TITLES.fraudProofMint,
             [computationThread.policyId],
           ),
-          getCompiledScript(
+          getUnappliedScript(
             blueprint,
             FAULT_PROOF_SHARED_TITLES.fraudProofSpend,
           ),
@@ -851,7 +962,7 @@ const buildSharedFaultProofContracts = ({
       "Failed to build field-preimage certificate minting policy",
       () =>
         makeMintingPolicy(
-          getCompiledScript(
+          getUnappliedScript(
             blueprint,
             FAULT_PROOF_SHARED_TITLES.fieldPreimageCertificateMint,
           ),
@@ -887,8 +998,9 @@ const buildDoubleSpendChain = ({
     const step04 = yield* tryBuild("Failed to build double-spend step 04", () =>
       makeSpendingValidator(
         network,
-        applyParamsToScript(
-          getCompiledScript(blueprint, DOUBLE_SPEND_FAULT_PROOF_TITLES.step04),
+        applyBlueprintParams(
+          blueprint,
+          DOUBLE_SPEND_FAULT_PROOF_TITLES.step04,
           [
             computationThread.policyId,
             fraudProof.policyId,
@@ -902,8 +1014,9 @@ const buildDoubleSpendChain = ({
     const step03 = yield* tryBuild("Failed to build double-spend step 03", () =>
       makeSpendingValidator(
         network,
-        applyParamsToScript(
-          getCompiledScript(blueprint, DOUBLE_SPEND_FAULT_PROOF_TITLES.step03),
+        applyBlueprintParams(
+          blueprint,
+          DOUBLE_SPEND_FAULT_PROOF_TITLES.step03,
           [
             step04.spendingScriptHash,
             computationThread.policyId,
@@ -916,8 +1029,9 @@ const buildDoubleSpendChain = ({
     const step02 = yield* tryBuild("Failed to build double-spend step 02", () =>
       makeSpendingValidator(
         network,
-        applyParamsToScript(
-          getCompiledScript(blueprint, DOUBLE_SPEND_FAULT_PROOF_TITLES.step02),
+        applyBlueprintParams(
+          blueprint,
+          DOUBLE_SPEND_FAULT_PROOF_TITLES.step02,
           [
             step03.spendingScriptHash,
             computationThread.policyId,
@@ -930,8 +1044,9 @@ const buildDoubleSpendChain = ({
     const step01 = yield* tryBuild("Failed to build double-spend step 01", () =>
       makeSpendingValidator(
         network,
-        applyParamsToScript(
-          getCompiledScript(blueprint, DOUBLE_SPEND_FAULT_PROOF_TITLES.step01),
+        applyBlueprintParams(
+          blueprint,
+          DOUBLE_SPEND_FAULT_PROOF_TITLES.step01,
           [
             step02.spendingScriptHash,
             computationThread.policyId,
@@ -973,11 +1088,9 @@ const buildNonExistentInputChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step04,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step04,
             [
               fraudProof.policyId,
               fraudProofTokenAddressData,
@@ -992,11 +1105,9 @@ const buildNonExistentInputChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step03,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step03,
             [step04.spendingScriptHash, computationThread.policyId],
           ),
         ),
@@ -1007,11 +1118,9 @@ const buildNonExistentInputChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step02,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step02,
             [
               step03.spendingScriptHash,
               computationThread.policyId,
@@ -1026,11 +1135,9 @@ const buildNonExistentInputChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step01,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step01,
             [
               step02.spendingScriptHash,
               computationThread.policyId,
@@ -1072,11 +1179,9 @@ const buildNoReferenceInputChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              NO_REFERENCE_INPUT_FAULT_PROOF_TITLES.step04,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            NO_REFERENCE_INPUT_FAULT_PROOF_TITLES.step04,
             [
               fraudProof.policyId,
               fraudProofTokenAddressData,
@@ -1091,11 +1196,9 @@ const buildNoReferenceInputChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              NO_REFERENCE_INPUT_FAULT_PROOF_TITLES.step03,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            NO_REFERENCE_INPUT_FAULT_PROOF_TITLES.step03,
             [step04.spendingScriptHash, computationThread.policyId],
           ),
         ),
@@ -1106,11 +1209,9 @@ const buildNoReferenceInputChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              NO_REFERENCE_INPUT_FAULT_PROOF_TITLES.step02,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            NO_REFERENCE_INPUT_FAULT_PROOF_TITLES.step02,
             [
               step03.spendingScriptHash,
               computationThread.policyId,
@@ -1125,11 +1226,9 @@ const buildNoReferenceInputChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              NO_REFERENCE_INPUT_FAULT_PROOF_TITLES.step01,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            NO_REFERENCE_INPUT_FAULT_PROOF_TITLES.step01,
             [
               step02.spendingScriptHash,
               computationThread.policyId,
@@ -1176,8 +1275,9 @@ const buildInputNoIdxChain = ({
     const step04 = yield* tryBuild("Failed to build input-no-idx step 04", () =>
       makeSpendingValidator(
         network,
-        applyParamsToScript(
-          getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step04),
+        applyBlueprintParams(
+          blueprint,
+          INPUT_NO_IDX_FAULT_PROOF_TITLES.step04,
           [
             computationThread.policyId,
             fraudProof.policyId,
@@ -1191,8 +1291,9 @@ const buildInputNoIdxChain = ({
     const step03 = yield* tryBuild("Failed to build input-no-idx step 03", () =>
       makeSpendingValidator(
         network,
-        applyParamsToScript(
-          getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step03),
+        applyBlueprintParams(
+          blueprint,
+          INPUT_NO_IDX_FAULT_PROOF_TITLES.step03,
           [
             step04.spendingScriptHash,
             computationThread.policyId,
@@ -1205,8 +1306,9 @@ const buildInputNoIdxChain = ({
     const step02 = yield* tryBuild("Failed to build input-no-idx step 02", () =>
       makeSpendingValidator(
         network,
-        applyParamsToScript(
-          getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step02),
+        applyBlueprintParams(
+          blueprint,
+          INPUT_NO_IDX_FAULT_PROOF_TITLES.step02,
           [
             step03.spendingScriptHash,
             computationThread.policyId,
@@ -1219,8 +1321,9 @@ const buildInputNoIdxChain = ({
     const step01 = yield* tryBuild("Failed to build input-no-idx step 01", () =>
       makeSpendingValidator(
         network,
-        applyParamsToScript(
-          getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step01),
+        applyBlueprintParams(
+          blueprint,
+          INPUT_NO_IDX_FAULT_PROOF_TITLES.step01,
           [
             step02.spendingScriptHash,
             computationThread.policyId,
@@ -1271,11 +1374,9 @@ const buildReferenceInputNoIdxChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step04,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step04,
             [
               computationThread.policyId,
               fraudProof.policyId,
@@ -1291,11 +1392,9 @@ const buildReferenceInputNoIdxChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step03,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step03,
             [
               step04.spendingScriptHash,
               computationThread.policyId,
@@ -1310,11 +1409,9 @@ const buildReferenceInputNoIdxChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step02,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step02,
             [
               step03.spendingScriptHash,
               computationThread.policyId,
@@ -1329,11 +1426,9 @@ const buildReferenceInputNoIdxChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step01,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step01,
             [
               step02.spendingScriptHash,
               computationThread.policyId,
@@ -1370,11 +1465,9 @@ const buildInvalidRangeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              INVALID_RANGE_FAULT_PROOF_TITLES.step02,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            INVALID_RANGE_FAULT_PROOF_TITLES.step02,
             [
               fraudProof.policyId,
               fraudProofTokenAddressData,
@@ -1389,11 +1482,9 @@ const buildInvalidRangeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              INVALID_RANGE_FAULT_PROOF_TITLES.step01,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            INVALID_RANGE_FAULT_PROOF_TITLES.step01,
             [
               invalidRangeStep02.spendingScriptHash,
               computationThread.policyId,
@@ -1435,11 +1526,9 @@ const buildInvalidSignatureChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              INVALID_SIGNATURE_FAULT_PROOF_TITLES.step02,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            INVALID_SIGNATURE_FAULT_PROOF_TITLES.step02,
             [
               computationThread.policyId,
               fraudProof.policyId,
@@ -1455,11 +1544,9 @@ const buildInvalidSignatureChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              INVALID_SIGNATURE_FAULT_PROOF_TITLES.step01,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            INVALID_SIGNATURE_FAULT_PROOF_TITLES.step01,
             [
               invalidSignatureStep02.spendingScriptHash,
               computationThread.policyId,
@@ -1498,8 +1585,9 @@ const buildZeroInputChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(blueprint, ZERO_INPUT_FAULT_PROOF_TITLES.step02),
+          applyBlueprintParams(
+            blueprint,
+            ZERO_INPUT_FAULT_PROOF_TITLES.step02,
             [
               fraudProof.policyId,
               fraudProofTokenAddressData,
@@ -1515,8 +1603,9 @@ const buildZeroInputChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(blueprint, ZERO_INPUT_FAULT_PROOF_TITLES.step01),
+          applyBlueprintParams(
+            blueprint,
+            ZERO_INPUT_FAULT_PROOF_TITLES.step01,
             [
               zeroInputStep02.spendingScriptHash,
               computationThread.policyId,
@@ -1553,11 +1642,9 @@ const buildDaHashPreimageChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              DA_HASH_PREIMAGE_FAULT_PROOF_TITLES.step02,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            DA_HASH_PREIMAGE_FAULT_PROOF_TITLES.step02,
             [
               fraudProof.policyId,
               fraudProofTokenAddressData,
@@ -1572,11 +1659,9 @@ const buildDaHashPreimageChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              DA_HASH_PREIMAGE_FAULT_PROOF_TITLES.step01,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            DA_HASH_PREIMAGE_FAULT_PROOF_TITLES.step01,
             [
               daHashPreimageStep02.spendingScriptHash,
               computationThread.policyId,
@@ -1629,11 +1714,9 @@ const buildTransitionTraceChain = ({
           () =>
             makeSpendingValidator(
               network,
-              applyParamsToScript(
-                getCompiledScript(
-                  blueprint,
-                  TRANSITION_TRACE_FAULT_PROOF_TITLES[name],
-                ),
+              applyBlueprintParams(
+                blueprint,
+                TRANSITION_TRACE_FAULT_PROOF_TITLES[name],
                 [
                   computationThread.policyId,
                   fraudProof.policyId,
@@ -1677,11 +1760,9 @@ const buildTransitionTraceChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              TRANSITION_TRACE_FAULT_PROOF_TITLES.route,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            TRANSITION_TRACE_FAULT_PROOF_TITLES.route,
             [finalHashesData, computationThread.policyId],
           ),
         ),
@@ -1723,7 +1804,7 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          getCompiledScript(blueprint, CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1),
+          getUnappliedScript(blueprint, CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1),
         ),
     );
     const award = yield* tryBuild(
@@ -1731,11 +1812,9 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
             [
               computationThread.policyId,
               fraudProof.policyId,
@@ -1755,7 +1834,7 @@ const buildValidationTraceDisputeChain = ({
       tryBuild(`Failed to build stage-one redeemer ${label} validator`, () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(getCompiledScript(blueprint, title), [
+          applyBlueprintParams(blueprint, title, [
             deploymentId,
             computationThread.policyId,
           ]),
@@ -1778,12 +1857,10 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-                .scriptSourcesStageOneRedeemerStages.outerNormalizer,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+              .scriptSourcesStageOneRedeemerStages.outerNormalizer,
             [deploymentId, computationThread.policyId],
           ),
         ),
@@ -1793,12 +1870,10 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-                .scriptSourcesStageOneRedeemerStages.traversalNormalizer,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+              .scriptSourcesStageOneRedeemerStages.traversalNormalizer,
             [deploymentId, computationThread.policyId],
           ),
         ),
@@ -1808,12 +1883,10 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-                .scriptSourcesStageOneRedeemerStages.settlement,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+              .scriptSourcesStageOneRedeemerStages.settlement,
             [
               deploymentId,
               stageOneRedeemerTraversalNormalizer.spendingScriptHash,
@@ -1831,12 +1904,10 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-                .scriptSourcesStageOneRedeemerStages.envelope,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+              .scriptSourcesStageOneRedeemerStages.envelope,
             [
               deploymentId,
               stageOneRedeemerTraversalNormalizer.spendingScriptHash,
@@ -1866,7 +1937,7 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          getCompiledScript(
+          getUnappliedScript(
             blueprint,
             VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.proofItem,
           ),
@@ -1877,12 +1948,10 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-                .canonicalDecodeItemStages.settlement,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+              .canonicalDecodeItemStages.settlement,
             [award.spendingScriptHash, computationThread.policyId],
           ),
         ),
@@ -1892,12 +1961,10 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-                .canonicalDecodeItemStages.proof,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+              .canonicalDecodeItemStages.proof,
             [
               canonicalDecodeItemSettlement.spendingScriptHash,
               computationThread.policyId,
@@ -1910,12 +1977,10 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-                .canonicalDecodeItemStages.observe,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+              .canonicalDecodeItemStages.observe,
             [
               canonicalDecodeItemProof.spendingScriptHash,
               computationThread.policyId,
@@ -1930,12 +1995,10 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-                .canonicalDecodeItemStages.source,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+              .canonicalDecodeItemStages.source,
             [
               canonicalDecodeItemObserve.spendingScriptHash,
               computationThread.policyId,
@@ -1949,6 +2012,50 @@ const buildValidationTraceDisputeChain = ({
       proof: canonicalDecodeItemProof,
       settlement: canonicalDecodeItemSettlement,
     } as const;
+    /**
+     * Every parameter any semantic resolver declares, keyed by the name the
+     * compiler recorded for it.
+     *
+     * The semantic family is deployed by iterating a title list, so the loop
+     * cannot carry a hand-written argument list per title without drifting from
+     * what the validators declare — which is precisely how the ten resolvers
+     * that gained `field_preimage_certificate_policy_id` in #592 kept being
+     * deployed with two arguments and became always-succeeds scripts (#605).
+     * Resolving each declared parameter BY NAME makes the blueprint the only
+     * authority on both the count and the order: a resolver that grows a
+     * parameter is served automatically if the name is known, and refused
+     * loudly if it is not. A count-only rule could not work here anyway — the
+     * canonical-decode item resolver declares three parameters that are a
+     * different set entirely, not `award_script_hash` plus one.
+     */
+    const semanticResolverParameterValues = new Map<string, Data>([
+      ["award_script_hash", award.spendingScriptHash],
+      ["computation_thread_policy_id", computationThread.policyId],
+      [
+        "field_preimage_certificate_policy_id",
+        fieldPreimageCertificatePolicyId,
+      ],
+      [
+        "source_binder_script_hash",
+        canonicalDecodeItemSource.spendingScriptHash,
+      ],
+      ["proof_item_script_hash", proofItem.spendingScriptHash],
+    ]);
+    const semanticResolverParams = (title: string): readonly Data[] =>
+      declaredParameters(getBlueprintValidator(blueprint, title)).map(
+        (parameter) => {
+          const value = semanticResolverParameterValues.get(parameter.title);
+          if (value === undefined) {
+            throw new Error(
+              `Semantic resolver "${title}" declares parameter ` +
+                `"${parameter.title}", which this deployment builder has no value ` +
+                "for. Add it to the semantic-resolver parameter set rather than " +
+                "deploying the resolver under-applied (#609).",
+            );
+          }
+          return value;
+        },
+      );
     const builtSemanticResolvers: SpendingValidator[] = [];
     for (const [index, title] of semanticTitles.entries()) {
       builtSemanticResolvers.push(
@@ -1957,15 +2064,10 @@ const buildValidationTraceDisputeChain = ({
           () =>
             makeSpendingValidator(
               network,
-              applyParamsToScript(
-                getCompiledScript(blueprint, title),
-                index === 1
-                  ? [
-                      canonicalDecodeItemSource.spendingScriptHash,
-                      computationThread.policyId,
-                      proofItem.spendingScriptHash,
-                    ]
-                  : [award.spendingScriptHash, computationThread.policyId],
+              applyBlueprintParams(
+                blueprint,
+                title,
+                semanticResolverParams(title),
               ),
             ),
         ),
@@ -2168,7 +2270,7 @@ const buildValidationTraceDisputeChain = ({
           () =>
             makeSpendingValidator(
               network,
-              applyParamsToScript(getCompiledScript(blueprint, title), [
+              applyBlueprintParams(blueprint, title, [
                 semanticResolverHashesData,
                 computationThread.policyId,
               ]),
@@ -2201,11 +2303,9 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers.cek,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers.cek,
             [
               computationThread.policyId,
               fraudProof.policyId,
@@ -2221,12 +2321,10 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers
-                .valueAndMint,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers
+              .valueAndMint,
             [
               computationThread.policyId,
               fraudProof.policyId,
@@ -2278,11 +2376,9 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
             [resolverHashesData, computationThread.policyId],
           ),
         ),
@@ -2292,11 +2388,9 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
             [
               computationThread.policyId,
               fraudProof.policyId,
@@ -2310,11 +2404,9 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
             [
               boundary.spendingScriptHash,
               timeout.spendingScriptHash,
@@ -2328,11 +2420,9 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
             [
               game.spendingScriptHash,
               award.spendingScriptHash,
@@ -2346,11 +2436,9 @@ const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyParamsToScript(
-            getCompiledScript(
-              blueprint,
-              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,
-            ),
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,
             [
               source.spendingScriptHash,
               computationThread.policyId,

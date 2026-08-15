@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   applyParamsToScript,
   Data,
+  mintingPolicyToId,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -15,24 +16,39 @@ import {
   addressDataFromBech32,
   buildFaultProofContracts,
   CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
+  FAULT_PROOF_SHARED_TITLES,
+  parseFaultProofBlueprint,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
 } from "../src/index.js";
 
-type BlueprintValidator = Readonly<{
-  compiledCode: string;
-  title: string;
-}>;
-
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(moduleDirectory, "../../..");
-const currentTreeBlueprintPath = process.env.MIDGARD_REAL_BLUEPRINT_PATH;
-const protectedBlueprint = JSON.parse(
-  readFileSync(resolve(repositoryRoot, "onchain/aiken/plutus.json"), "utf8"),
-) as Readonly<{
-  validators: readonly (BlueprintValidator & {
-    readonly parameters?: readonly unknown[];
-  })[];
-}>;
+/**
+ * #609: this leg used to be dormant unless `MIDGARD_REAL_BLUEPRINT_PATH` was
+ * set, so its assertions ran nowhere by default and went stale unnoticed (it
+ * still claimed the CEK direct resolver declared four parameters long after the
+ * blueprint declared five). It now defaults to the in-tree blueprint, and the
+ * env var only redirects it.
+ */
+const currentTreeBlueprintPath =
+  process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+  resolve(repositoryRoot, "onchain/aiken/plutus.json");
+const protectedBlueprint = parseFaultProofBlueprint(
+  JSON.parse(
+    readFileSync(resolve(repositoryRoot, "onchain/aiken/plutus.json"), "utf8"),
+  ) as unknown,
+);
+
+const fieldPreimageCertificatePolicyId = (
+  blueprint: typeof protectedBlueprint,
+): string =>
+  mintingPolicyToId({
+    type: "PlutusV3",
+    script: blueprint.validators.find(
+      (entry) =>
+        entry.title === FAULT_PROOF_SHARED_TITLES.fieldPreimageCertificateMint,
+    )!.compiledCode,
+  });
 const resolverTestSource = readFileSync(
   resolve(
     repositoryRoot,
@@ -139,31 +155,40 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
     if (scriptSourcesNonOutput === undefined) {
       throw new Error("ScriptSources non-output semantic validator is missing");
     }
-    // C21-STAGE4 Option B′: resolver 8 / semantic 0 remains the two-parameter
-    // generic resolver. Its ABI deliberately has no proof-item reference
-    // variant because stage four now authenticates tag-29 proof-only evidence.
-    expect(deployedSemanticHashes[32]).toBe(
-      validatorToScriptHash({
-        type: "PlutusV3",
-        script: applyParamsToScript(scriptSourcesNonOutput.compiledCode, [
-          contracts.validationTraceDispute.award.spendingScriptHash,
-          contracts.computationThread.policyId,
-        ]),
-      }),
+    // C21-STAGE4 Option B′: resolver 8 / semantic 0 has no proof-item reference
+    // variant because stage four authenticates tag-29 proof-only evidence.
+    // #592 gave it a third parameter, `field_preimage_certificate_policy_id`,
+    // for the field-access door — so the two-parameter application this row
+    // used to assert was an UNDER-APPLIED, always-succeeds script (#605). The
+    // pair below is deliberate: the deployment must equal the full application
+    // AND must not be the two-parameter one, so re-pinning a broken deployment
+    // against itself cannot green this row again.
+    expect(scriptSourcesNonOutput.parameters).toHaveLength(3);
+    const scriptSourcesNonOutputFullyApplied = validatorToScriptHash({
+      type: "PlutusV3",
+      script: applyParamsToScript(scriptSourcesNonOutput.compiledCode, [
+        contracts.validationTraceDispute.award.spendingScriptHash,
+        contracts.computationThread.policyId,
+        fieldPreimageCertificatePolicyId(protectedBlueprint),
+      ]),
+    });
+    const scriptSourcesNonOutputUnderApplied = validatorToScriptHash({
+      type: "PlutusV3",
+      script: applyParamsToScript(scriptSourcesNonOutput.compiledCode, [
+        contracts.validationTraceDispute.award.spendingScriptHash,
+        contracts.computationThread.policyId,
+      ]),
+    });
+    expect(deployedSemanticHashes[32]).toBe(scriptSourcesNonOutputFullyApplied);
+    expect(deployedSemanticHashes[32]).not.toBe(
+      scriptSourcesNonOutputUnderApplied,
     );
   });
 
   it("applies immutable CEK material identity as the exact fourth direct-resolver parameter", async () => {
-    if (currentTreeBlueprintPath === undefined) {
-      return;
-    }
-    const currentTreeBlueprint = JSON.parse(
-      readFileSync(currentTreeBlueprintPath, "utf8"),
-    ) as Readonly<{
-      validators: readonly (BlueprintValidator & {
-        readonly parameters?: readonly unknown[];
-      })[];
-    }>;
+    const currentTreeBlueprint = parseFaultProofBlueprint(
+      JSON.parse(readFileSync(currentTreeBlueprintPath, "utf8")) as unknown,
+    );
     const cekValidator = currentTreeBlueprint.validators.find(
       (entry) =>
         entry.title ===
@@ -175,7 +200,11 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
     if (cekValidator === undefined || materialValidator === undefined) {
       throw new Error("CEK direct or program-material validator is missing");
     }
-    expect(cekValidator.parameters).toHaveLength(4);
+    // Five since #592 added `field_preimage_certificate_policy_id`. This row
+    // asserted four while the blueprint declared five and the builder applied
+    // five — a stale expectation that never ran, because this leg was dormant
+    // without MIDGARD_REAL_BLUEPRINT_PATH (#609).
+    expect(cekValidator.parameters).toHaveLength(5);
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
         blueprint: currentTreeBlueprint,
@@ -209,19 +238,33 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
           contracts.fraudProof.policyId,
           fraudProofAddressData,
           materialHash,
+          fieldPreimageCertificatePolicyId(currentTreeBlueprint),
         ]),
       }),
     );
-    const legacyThreeParameterCekHash = validatorToScriptHash({
-      type: "PlutusV3",
-      script: applyParamsToScript(cekValidator.compiledCode, [
+    // Both shorter applications are always-succeeds scripts under Plutus V3
+    // (#605): the deployment must be neither.
+    for (const shortParams of [
+      [
         contracts.computationThread.policyId,
         contracts.fraudProof.policyId,
         fraudProofAddressData,
-      ]),
-    });
-    expect(
-      contracts.validationTraceDispute.directResolvers[0].spendingScriptHash,
-    ).not.toBe(legacyThreeParameterCekHash);
+      ],
+      [
+        contracts.computationThread.policyId,
+        contracts.fraudProof.policyId,
+        fraudProofAddressData,
+        materialHash,
+      ],
+    ]) {
+      expect(
+        contracts.validationTraceDispute.directResolvers[0].spendingScriptHash,
+      ).not.toBe(
+        validatorToScriptHash({
+          type: "PlutusV3",
+          script: applyParamsToScript(cekValidator.compiledCode, shortParams),
+        }),
+      );
+    }
   });
 });

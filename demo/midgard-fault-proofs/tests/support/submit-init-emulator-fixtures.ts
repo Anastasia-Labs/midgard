@@ -136,6 +136,7 @@ import {
   EMULATOR_PROTOCOL_PARAMETERS,
   expectSingleUtxoWithUnit,
   firstWalletUtxo,
+  funderPaymentKeyHash,
   getCompiledScript,
   h32,
   makeHeader,
@@ -2134,4 +2135,51 @@ export const expectRemovedFraudProofState = async (
   expect(retainedFraudProof.assets[fixture.step04Result.fraudProofUnit]).toBe(
     1n,
   );
+};
+
+/**
+ * Publish the fraudulent block the family suites then prove against: sample
+ * the emulator clock one slot before the aligned boundary, commit the
+ * fixture's raw transactions root under the counted-root domain, and submit
+ * the setup transaction. Every caller passed the same code; only the fixture
+ * type differed, so the parameter is structural.
+ */
+export const setupFraudulentBlockV1 = async ({
+  funderLucid,
+  emulator,
+  contracts,
+  catalogue,
+  fixture,
+}: {
+  readonly funderLucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly emulator: Emulator;
+  readonly contracts: Awaited<
+    ReturnType<typeof buildMinimalFaultProofContracts>
+  >;
+  readonly catalogue: Awaited<ReturnType<typeof buildCatalogueDeploymentInfo>>;
+  readonly fixture: {
+    readonly transactionsRoot: string;
+    readonly l2TransactionCount: bigint;
+  };
+}) => {
+  const funderKeyHash = await funderPaymentKeyHash(funderLucid);
+  const headerStartTime =
+    alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
+    1;
+  const fraudulentHeader = makeHeader(
+    funderKeyHash,
+    headerStartTime,
+    await countedTransactionsRoot(
+      fixture.transactionsRoot,
+      fixture.l2TransactionCount,
+    ),
+    fixture.l2TransactionCount,
+  );
+  return await submitSetupTx({
+    lucid: funderLucid,
+    contracts,
+    nonceUtxo: (await funderLucid.wallet().getUtxos())[0]!,
+    catalogue,
+    header: fraudulentHeader,
+  });
 };

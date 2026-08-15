@@ -31,17 +31,10 @@ import {
   type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core/codec";
 import { type NativeTxWitnessSetCompact, Proof } from "@al-ft/midgard-sdk";
-import {
-  Data,
-  Emulator,
-  generateEmulatorAccount,
-  getAddressDetails,
-  Lucid,
-} from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  resolveProverSigner,
   submitInvalidSignatureStep01,
   submitNoReferenceInputStep01,
   submitReferenceInputNoIdxStep01,
@@ -50,24 +43,15 @@ import type { SubmitStep01TxInclusion } from "../src/submit-step-01.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
-  countedTransactionsRoot,
   expectStateQueueHeaderOrder,
+  setupFraudulentBlockV1 as setupFraudulentBlock,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  alwaysSucceedsBlueprintPath,
-  buildCatalogueDeploymentInfo,
-  buildMinimalFaultProofContracts,
   buildRemovalDeploymentInfo,
-  EMULATOR_PROTOCOL_PARAMETERS,
   expectSingleUtxoWithUnit,
-  makeHeader,
+  makeFaultProofEmulatorHarnessV1,
   makeNativeTx,
   network,
-  readBlueprint,
-  realBlueprintPath,
-  registerPhasMembershipRewardAccount,
-  submitSetupTx,
   trieRootHex,
 } from "./support/submit-init-emulator-shared.js";
 
@@ -128,88 +112,10 @@ type FamilyFlag =
   | "realReferenceInputNoIdx"
   | "realInvalidSignature";
 
-const makeEmulatorHarness = async (familyFlag: FamilyFlag) => {
-  const realBlueprint = readBlueprint(realBlueprintPath);
-  const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-  const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
-  const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
-  const emulator = new Emulator([funder, prover], EMULATOR_PROTOCOL_PARAMETERS);
-  const funderLucid = await Lucid(emulator, "Custom");
-  const proverLucid = await Lucid(emulator, "Custom");
-  funderLucid.selectWallet.fromSeed(funder.seedPhrase);
-  proverLucid.selectWallet.fromSeed(prover.seedPhrase);
-  const proverSigner = resolveProverSigner({
-    network,
-    walletSeedPhrase: prover.seedPhrase,
+const makeEmulatorHarness = async (familyFlag: FamilyFlag) =>
+  await makeFaultProofEmulatorHarnessV1({
+    contractOptions: { [familyFlag]: true, alwaysFraudProofCatalogue: true },
   });
-
-  await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
-  const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
-  if (nonceUtxo === undefined) {
-    throw new Error("Expected funder wallet to expose a nonce UTxO");
-  }
-  const contracts = await buildMinimalFaultProofContracts(
-    realBlueprint,
-    alwaysBlueprint,
-    nonceUtxo,
-    { [familyFlag]: true, alwaysFraudProofCatalogue: true },
-  );
-  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
-  return {
-    realBlueprint,
-    emulator,
-    funderLucid,
-    proverLucid,
-    proverSigner,
-    contracts,
-    catalogue,
-  };
-};
-
-const setupFraudulentBlock = async ({
-  funderLucid,
-  emulator,
-  contracts,
-  catalogue,
-  fixture,
-}: {
-  readonly funderLucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly emulator: Emulator;
-  readonly contracts: Awaited<
-    ReturnType<typeof buildMinimalFaultProofContracts>
-  >;
-  readonly catalogue: Awaited<ReturnType<typeof buildCatalogueDeploymentInfo>>;
-  readonly fixture: SingleTxBlockFixture;
-}) => {
-  const funderPaymentCredential = getAddressDetails(
-    await funderLucid.wallet().address(),
-  ).paymentCredential;
-  if (
-    funderPaymentCredential === undefined ||
-    funderPaymentCredential.type !== "Key"
-  ) {
-    throw new Error("Expected funder wallet to expose a payment key hash");
-  }
-  const headerStartTime =
-    alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
-    1;
-  const fraudulentHeader = makeHeader(
-    funderPaymentCredential.hash,
-    headerStartTime,
-    await countedTransactionsRoot(
-      fixture.transactionsRoot,
-      fixture.l2TransactionCount,
-    ),
-    fixture.l2TransactionCount,
-  );
-  return await submitSetupTx({
-    lucid: funderLucid,
-    contracts,
-    nonceUtxo: (await funderLucid.wallet().getUtxos())[0]!,
-    catalogue,
-    header: fraudulentHeader,
-  });
-};
 
 describe("registered fraud-proof families emulator lifecycle", () => {
   it(

@@ -1,5 +1,5 @@
 /**
- * #605 INVESTIGATION ARTIFACT — candidate permanent regression evidence.
+ * #605/#609 PERMANENT GATE — the under-applied always-succeeds class.
  *
  * The compiled blueprint declares, per validator, exactly how many
  * `validator main(...)` parameters must be applied before the script context.
@@ -8,21 +8,47 @@
  * single Plutus V3 script-context application then reduces to a lambda VALUE,
  * evaluation terminates without error, and the ledger reads "no error" as
  * SUCCESS. Such a validator is an always-succeeds script regardless of what its
- * Aiken source says.
+ * Aiken source says. That is how ten validation-trace semantic resolvers were
+ * deployed after #592 gave them `field_preimage_certificate_policy_id`.
  *
- * This file measures, for every validation-trace semantic resolver, the arity
- * the blueprint declares against the arity the SDK deployment builder actually
- * applies, and pins the deployed script hash to the arity the builder used.
+ * WHAT THIS GATE MUST NOT BECOME. Pinning the deployed hashes would make it
+ * verify the deployment against itself — the shape `validation-resolver-applied-
+ * hashes` had, which pinned the UNDER-APPLIED hashes and greened on them (the
+ * program's sixth gate-that-cannot-fail). So this file pins NO hash. It asserts
+ * three things that stay falsifiable no matter what the builder does:
+ *
+ *   1. Every deployed semantic resolver equals the FULL application of its own
+ *      declared parameters, and equals NONE of its under-applied prefixes. The
+ *      prefixes are constructed here on purpose: they are the always-succeeds
+ *      scripts, and the assertion is that the deployment is not one of them.
+ *   2. No production source outside the sanctioned helper calls
+ *      `applyParamsToScript` directly — the helper is the only door, so the
+ *      guarantee cannot be routed around by a new call site.
+ *   3. The builder fails CLOSED, proven by driving the real public builder with
+ *      a doctored blueprint: a hand-written parameter list one shorter than
+ *      declared, one longer than declared, and a declared parameter name the
+ *      name-keyed semantic loop has no value for.
+ *
+ * Leg 1 is measured against the builder's real output, legs 2 and 3 are
+ * measured against production source and the real public builder, so none of
+ * the three can be satisfied by the fix that made them pass.
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES } from "@al-ft/midgard-sdk";
+import {
+  buildFaultProofContracts,
+  FAULT_PROOF_SHARED_TITLES,
+  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
+} from "@al-ft/midgard-sdk";
 import {
   applyParamsToScript,
+  Data,
+  mintingPolicyToId,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -42,6 +68,19 @@ const blueprint = JSON.parse(readFileSync(blueprintPath, "utf8")) as {
 
 const byTitle = new Map(blueprint.validators.map((v) => [v.title, v]));
 
+/** Absent `parameters` is the compiler's encoding of "declares none". */
+const declaredParameters = (
+  validator: BlueprintValidator,
+): readonly { readonly title: string }[] => validator.parameters ?? [];
+
+const requireValidator = (title: string): BlueprintValidator => {
+  const validator = byTitle.get(title);
+  if (validator === undefined) {
+    throw new Error(`blueprint is missing ${title}`);
+  }
+  return validator;
+};
+
 /**
  * The deployment loop in `contracts.ts` iterates
  * `Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics)`, so
@@ -56,77 +95,275 @@ const PREPARE_TITLES: readonly string[] = Object.values(
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares,
 );
 
-describe("zz605 validation-trace semantic resolver parameter arity", () => {
-  it("reports every semantic resolver whose declared arity exceeds the 2 the SDK applies", () => {
-    const rows: string[] = [];
-    const underApplied: string[] = [];
-    for (const [index, title] of SEMANTIC_TITLES.entries()) {
-      const validator = byTitle.get(title);
-      expect(validator, `blueprint is missing ${title}`).toBeDefined();
-      const declared = validator!.parameters?.length ?? 0;
-      // contracts.ts: every semantic resolver except global index 1 is built
-      // with `[award.spendingScriptHash, computationThread.policyId]`.
-      const applied = index === 1 ? 3 : 2;
-      const status = declared === applied ? "ok" : "UNDER-APPLIED";
-      if (declared !== applied) underApplied.push(`${String(index)} ${title}`);
-      rows.push(
-        `[${String(index).padStart(2, "0")}] declared=${String(declared)} applied=${String(applied)} ${status}  ${title.replace("fraud_proofs/validation_trace/", "")}`,
-      );
-    }
-    for (const [index, title] of PREPARE_TITLES.entries()) {
-      const validator = byTitle.get(title);
-      expect(validator, `blueprint is missing ${title}`).toBeDefined();
-      const declared = validator!.parameters?.length ?? 0;
-      // contracts.ts builds every prepare resolver with
-      // `[semanticResolverHashesData, computationThread.policyId]`.
-      const applied = 2;
-      if (declared !== applied) {
-        underApplied.push(`prepare/${String(index)} ${title}`);
+const scriptHashOf = (script: string): string =>
+  validatorToScriptHash({ type: "PlutusV3", script });
+
+/**
+ * The gate reads the raw `plutus.json` rather than routing through the SDK's
+ * own parser, so the declared-arity side of every comparison below stays
+ * independent of the code under test. Raw entries omit `parameters` entirely on
+ * nullary validators, which is exactly the shape the builder must read as
+ * "declares none" — so handing it the raw object is the contract being tested,
+ * and this cast is only bridging that optionality.
+ */
+type BuilderBlueprint = Parameters<
+  typeof buildFaultProofContracts
+>[0]["blueprint"];
+
+const buildContracts = async (
+  overrideBlueprint: typeof blueprint = blueprint,
+) =>
+  Effect.runPromise(
+    buildFaultProofContracts({
+      blueprint: overrideBlueprint as unknown as BuilderBlueprint,
+      network: "Preprod",
+      hubOraclePolicyId: "bb".repeat(28),
+      fraudProofCataloguePolicyId: "cc".repeat(28),
+    }),
+  );
+
+/** Building the whole fault-proof set applies hundreds of scripts. */
+const BUILD_TIMEOUT_MS = 180_000;
+
+/** A deep copy of the blueprint with one validator's declared parameters replaced. */
+const blueprintWithParameters = (
+  title: string,
+  parameters: readonly { readonly title: string }[],
+): typeof blueprint => {
+  const copy = JSON.parse(JSON.stringify(blueprint)) as {
+    validators: BlueprintValidator[];
+  };
+  const target = copy.validators.find((validator) => validator.title === title);
+  if (target === undefined) {
+    throw new Error(`blueprint is missing ${title}`);
+  }
+  (target as { parameters: readonly { readonly title: string }[] }).parameters =
+    parameters;
+  return copy;
+};
+
+describe("zz605/zz609 validation-trace resolver parameter arity", () => {
+  it(
+    "deploys every semantic resolver fully applied, and as none of its under-applied prefixes",
+    { timeout: BUILD_TIMEOUT_MS },
+    async () => {
+      const contracts = await buildContracts();
+      const dispute = contracts.validationTraceDispute;
+
+      /**
+       * Re-derived here from the BUILT contract set, independently of the
+       * builder's internal parameter table: if the builder silently changed which
+       * value it feeds a named parameter, these values still come from the
+       * deployed artifacts and the equality below would fail.
+       */
+      const parameterValues = new Map<string, Data>([
+        ["award_script_hash", dispute.award.spendingScriptHash],
+        ["computation_thread_policy_id", contracts.computationThread.policyId],
+        [
+          "field_preimage_certificate_policy_id",
+          // The §8.6 certificate mint declares no parameters, so its policy id is
+          // a pure function of the blueprint. Deriving it here rather than asking
+          // the builder for it keeps this side of the comparison independent.
+          mintingPolicyToId({
+            type: "PlutusV3",
+            script: requireValidator(
+              FAULT_PROOF_SHARED_TITLES.fieldPreimageCertificateMint,
+            ).compiledCode,
+          }),
+        ],
+        [
+          "source_binder_script_hash",
+          dispute.canonicalDecodeItemStages.source.spendingScriptHash,
+        ],
+        ["proof_item_script_hash", dispute.proofItem.spendingScriptHash],
+      ]);
+
+      const rows: string[] = [];
+      const underApplied: string[] = [];
+
+      for (const [index, title] of SEMANTIC_TITLES.entries()) {
+        const validator = requireValidator(title);
+        const declared = declaredParameters(validator);
+        const deployed = dispute.semanticResolvers[index]!.spendingScriptHash;
+
+        const values = declared.map((parameter) => {
+          const value = parameterValues.get(parameter.title);
+          expect(
+            value,
+            `${title} declares unknown parameter "${parameter.title}"`,
+          ).toBeDefined();
+          return value!;
+        });
+
+        const fullyApplied = scriptHashOf(
+          applyParamsToScript(validator.compiledCode, values),
+        );
+        if (deployed !== fullyApplied) {
+          underApplied.push(
+            `[${String(index)}] ${title} deployed=${deployed} fullyApplied=${fullyApplied}`,
+          );
+        }
+
+        // Every proper prefix is an always-succeeds script. The deployment must
+        // be none of them — this is the #605 exploit stated as an assertion.
+        for (let count = 0; count < declared.length; count += 1) {
+          const prefix = scriptHashOf(
+            applyParamsToScript(validator.compiledCode, values.slice(0, count)),
+          );
+          expect(
+            deployed,
+            `${title} is deployed under-applied with ${String(count)} of ` +
+              `${String(declared.length)} declared parameters — an always-succeeds script`,
+          ).not.toBe(prefix);
+        }
+
         rows.push(
-          `[prepare ${String(index)}] declared=${String(declared)} applied=${String(applied)} UNDER-APPLIED  ${title}`,
+          `[${String(index).padStart(2, "0")}] declared=${String(declared.length)} ` +
+            `${deployed === fullyApplied ? "ok" : "MISMATCH"}  ` +
+            `${title.replace("fraud_proofs/validation_trace/", "")}  ` +
+            `(${declared.map((p) => p.title).join(", ")})`,
         );
       }
+
+      console.log(
+        `\n#609 validation-trace semantic resolver arity (blueprint ${blueprintPath})\n` +
+          `semantic titles: ${String(SEMANTIC_TITLES.length)}\n${rows.join("\n")}\n`,
+      );
+
+      expect(underApplied, underApplied.join("\n")).toEqual([]);
+    },
+  );
+
+  it(
+    "deploys every prepare resolver fully applied, and not bare",
+    { timeout: BUILD_TIMEOUT_MS },
+    async () => {
+      const contracts = await buildContracts();
+      const dispute = contracts.validationTraceDispute;
+
+      for (const [index, title] of PREPARE_TITLES.entries()) {
+        const validator = requireValidator(title);
+        const declared = declaredParameters(validator);
+        expect(declared, `${title} declared arity`).toHaveLength(2);
+
+        const deployed = dispute.prepareResolvers[index]!.spendingScriptHash;
+        expect(
+          deployed,
+          `${title} is deployed with zero of its ${String(declared.length)} declared parameters`,
+        ).not.toBe(scriptHashOf(validator.compiledCode));
+      }
+    },
+  );
+
+  it("reports every certificate-parameter validator's declared arity", () => {
+    const rows = blueprint.validators
+      .filter((validator) =>
+        declaredParameters(validator).some((parameter) =>
+          parameter.title.includes("field_preimage_certificate"),
+        ),
+      )
+      .map(
+        (validator) =>
+          `  declared=${String(declaredParameters(validator).length)}  ${validator.title}\n` +
+          `      (${declaredParameters(validator)
+            .map((parameter) => parameter.title)
+            .join(", ")})`,
+      );
+
+    console.log(
+      `\n#609 certificate-parameter validators (${String(rows.length)} blueprint entries)\n` +
+        `${rows.join("\n")}\n`,
+    );
+    expect(rows.length).toBeGreaterThan(0);
+  });
+});
+
+describe("zz609 the arity check is the only door", () => {
+  /**
+   * The builder's guarantee is only as strong as its exclusivity: a new
+   * `applyParamsToScript` call added next to the helper would reopen the class
+   * silently. Production source may reach the raw function in exactly one
+   * place per package — the helper itself.
+   */
+  const productionSources = [
+    {
+      path: "demo/midgard-sdk/src/fraud-proof/contracts.ts",
+      allowed: 1,
+      helper: "applyBlueprintParams",
+    },
+    {
+      path: "demo/midgard-node/src/services/midgard-contracts.ts",
+      allowed: 1,
+      helper: "applyBlueprintDeclaredParams",
+    },
+  ] as const;
+
+  it("routes every production deployment through the arity-checking helper", () => {
+    for (const source of productionSources) {
+      const text = readFileSync(resolve(repoRoot, source.path), "utf8");
+      const calls = [...text.matchAll(/\bapplyParamsToScript\(/gu)].length;
+      expect(
+        calls,
+        `${source.path} calls applyParamsToScript directly ${String(calls)} time(s); ` +
+          `only ${String(source.allowed)} is allowed (inside ${source.helper}). ` +
+          "Route new deployments through the helper so the declared arity is checked (#609).",
+      ).toBe(source.allowed);
+      expect(text).toContain(source.helper);
     }
-     
-    console.log(
-      `\n#605 validation-trace resolver arity table (blueprint ${blueprintPath})\n` +
-        `semantic titles: ${String(SEMANTIC_TITLES.length)}   prepare titles: ${String(PREPARE_TITLES.length)}\n` +
-        `${rows.join("\n")}\n\nUNDER-APPLIED (${String(underApplied.length)}):\n${underApplied.join("\n")}\n`,
-    );
   });
 
-  it("shows the under-applied item resolver is a DIFFERENT script from the correctly-applied one", () => {
-    const validator = byTitle.get(
-      "fraud_proofs/validation_trace/input_sets_item_semantic_v1.main.spend",
-    );
-    expect(validator).toBeDefined();
-    expect(validator!.parameters?.length).toBe(3);
+  it(
+    "refuses a hand-written parameter list that is one SHORTER than the blueprint declares",
+    { timeout: BUILD_TIMEOUT_MS },
+    async () => {
+      // The prepare loop applies a fixed two-term list, so growing the declared
+      // arity to three is an under-application: exactly the #605 shape.
+      const doctored = blueprintWithParameters(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares.inputSets,
+        [
+          { title: "semantic_resolver_script_hashes" },
+          { title: "computation_thread_policy_id" },
+          { title: "field_preimage_certificate_policy_id" },
+        ],
+      );
+      await expect(buildContracts(doctored)).rejects.toThrow(
+        /declares 3 parameter\(s\).*but 2 were applied/su,
+      );
+    },
+  );
 
-    const award = "11".repeat(28);
-    const computationThread = "22".repeat(28);
-    const certificate = "33".repeat(28);
+  it(
+    "refuses a hand-written parameter list that is one LONGER than the blueprint declares",
+    { timeout: BUILD_TIMEOUT_MS },
+    async () => {
+      const doctored = blueprintWithParameters(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares.inputSets,
+        [{ title: "semantic_resolver_script_hashes" }],
+      );
+      await expect(buildContracts(doctored)).rejects.toThrow(
+        /declares 1 parameter\(s\).*but 2 were applied/su,
+      );
+    },
+  );
 
-    const twoParam = applyParamsToScript(validator!.compiledCode, [
-      award,
-      computationThread,
-    ]);
-    const threeParam = applyParamsToScript(validator!.compiledCode, [
-      award,
-      computationThread,
-      certificate,
-    ]);
-    const twoHash = validatorToScriptHash({
-      type: "PlutusV3",
-      script: twoParam,
-    });
-    const threeHash = validatorToScriptHash({
-      type: "PlutusV3",
-      script: threeParam,
-    });
-     
-    console.log(
-      `\n#605 input_sets_item_semantic_v1\n  2-param (what the SDK deploys) hash: ${twoHash}\n  3-param (what the source demands) hash: ${threeHash}\n  2-param script hex length: ${String(twoParam.length)}\n  3-param script hex length: ${String(threeParam.length)}\n`,
-    );
-    expect(twoHash).not.toBe(threeHash);
-  });
+  it(
+    "refuses a declared parameter the semantic loop has no value for",
+    { timeout: BUILD_TIMEOUT_MS },
+    async () => {
+      // The semantic loop resolves declared parameters BY NAME, so it adapts to
+      // a resolver that grows one. The fail-closed edge is a name it does not
+      // know: it must refuse rather than deploy something short.
+      const doctored = blueprintWithParameters(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics.inputSetsEmpty,
+        [
+          { title: "award_script_hash" },
+          { title: "computation_thread_policy_id" },
+          { title: "a_parameter_this_builder_has_never_heard_of" },
+        ],
+      );
+      await expect(buildContracts(doctored)).rejects.toThrow(
+        /has no value for/u,
+      );
+    },
+  );
 });

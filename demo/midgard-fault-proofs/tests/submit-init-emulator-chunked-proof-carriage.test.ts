@@ -40,17 +40,10 @@
 
 import { outRefLabel } from "@al-ft/midgard-core";
 import { MAXIMUM_CHUNK_PROOF_STEP_COUNT } from "@al-ft/midgard-sdk";
-import {
-  Emulator,
-  generateEmulatorAccount,
-  getAddressDetails,
-  Lucid,
-} from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   publishProofChunksV1,
-  resolveProverSigner,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import { MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES } from "../src/validation-dispute/submit.js";
@@ -83,29 +76,24 @@ import {
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  alwaysSucceedsBlueprintPath,
-  buildCatalogueDeploymentInfo,
-  buildMinimalFaultProofContracts,
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
-  EMULATOR_PROTOCOL_PARAMETERS,
+  expectProofFitV1,
   expectSingleUtxoWithUnit,
+  funderPaymentKeyHash,
+  makeFaultProofEmulatorHarnessV1,
   makeHeader,
   network,
+  printProofFitV1,
   publishRemovalReferenceScripts,
-  readBlueprint,
-  realBlueprintPath,
   registerChunkedVerifyRewardAccount,
-  registerPhasMembershipRewardAccount,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
 import {
   syntheticDeepMembershipProofV1,
   syntheticDeepSharedRootProofsV1,
 } from "./support/synthetic-deep-proof-v1.js";
-
-const EXECUTION_RESERVE_FRACTION = 20n;
 
 /**
  * The depth this file drives. 22 is past the envelope-exhaustion level of every
@@ -120,92 +108,17 @@ const ADVERSARY_BRANCH_LEVELS = 32;
 /** Both depths need this many publication UTxOs at 16 steps per chunk. */
 const EXPECTED_CHUNK_COUNT = 2;
 
-const expectProofFitV1 = ({
-  stage,
-  measurement,
-  maxTxExMem,
-  maxTxExSteps,
-}: {
-  readonly stage: string;
-  readonly measurement: CompleteSignedTransactionMeasurement;
-  readonly maxTxExMem: bigint;
-  readonly maxTxExSteps: bigint;
-}): void => {
-  expect(
-    measurement.l1ByteMargin,
-    `${stage} exceeds the 16,384-byte L1 envelope`,
-  ).toBeGreaterThanOrEqual(0);
-  const memoryCeiling =
-    (maxTxExMem * (100n - EXECUTION_RESERVE_FRACTION)) / 100n;
-  const stepCeiling =
-    (maxTxExSteps * (100n - EXECUTION_RESERVE_FRACTION)) / 100n;
-  expect(
-    measurement.executionMemory <= memoryCeiling,
-    `${stage} execution memory ${measurement.executionMemory.toString()} exceeds the 20%-reserve ceiling ${memoryCeiling.toString()}`,
-  ).toBe(true);
-  expect(
-    measurement.executionSteps <= stepCeiling,
-    `${stage} execution steps ${measurement.executionSteps.toString()} exceeds the 20%-reserve ceiling ${stepCeiling.toString()}`,
-  ).toBe(true);
-};
-
 const printCarriageFit = (
   label: string,
   proofFit: Record<string, CompleteSignedTransactionMeasurement>,
   extra: Record<string, unknown>,
-): void => {
-  if (process.env["MIDGARD_PRINT_PROOF_FIT"] !== "1") {
-    return;
-  }
-  console.log(
-    `${label} chunked carriage fit: ${JSON.stringify(
-      {
-        ...Object.fromEntries(
-          Object.entries(proofFit).map(([stage, measurement]) => [
-            stage,
-            {
-              bytes: measurement.completeSignedBytes,
-              l1ByteMargin: measurement.l1ByteMargin,
-              memory: measurement.executionMemory.toString(),
-              steps: measurement.executionSteps.toString(),
-              referenceInputs: measurement.referenceInputCount,
-            },
-          ]),
-        ),
-        ...extra,
-      },
-      null,
-      2,
-    )}`,
-  );
-};
-
-const newEmulatorParty = async () => {
-  const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
-  const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
-  const emulator = new Emulator([funder, prover], EMULATOR_PROTOCOL_PARAMETERS);
-  const funderLucid = await Lucid(emulator, "Custom");
-  const proverLucid = await Lucid(emulator, "Custom");
-  funderLucid.selectWallet.fromSeed(funder.seedPhrase);
-  proverLucid.selectWallet.fromSeed(prover.seedPhrase);
-  const proverSigner = resolveProverSigner({
-    network,
-    walletSeedPhrase: prover.seedPhrase,
+): void =>
+  printProofFitV1({
+    headline: `${label} chunked carriage fit`,
+    stages: proofFit,
+    extra,
+    includeReferenceInputs: true,
   });
-  return { emulator, funderLucid, proverLucid, proverSigner };
-};
-
-const funderPaymentKeyHash = async (
-  funderLucid: Awaited<ReturnType<typeof Lucid>>,
-): Promise<string> => {
-  const credential = getAddressDetails(
-    await funderLucid.wallet().address(),
-  ).paymentCredential;
-  if (credential === undefined || credential.type !== "Key") {
-    throw new Error("Expected funder wallet to expose a payment key hash");
-  }
-  return credential.hash;
-};
 
 /**
  * Re-commits a fixture's inclusion evidence at `branchLevels` forced branch
@@ -314,24 +227,19 @@ describe("fault-proof published-chunk proof carriage", () => {
     readonly chunkCount: number;
     readonly proofCborBytes: number;
   }> => {
-    const realBlueprint = readBlueprint(realBlueprintPath);
-    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-    const { emulator, funderLucid, proverLucid, proverSigner } =
-      await newEmulatorParty();
-
-    await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
-    await registerChunkedVerifyRewardAccount(funderLucid, realBlueprint);
-    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
-    if (nonceUtxo === undefined) {
-      throw new Error("Expected funder wallet to expose a nonce UTxO");
-    }
-    const contracts = await buildMinimalFaultProofContracts(
+    const {
       realBlueprint,
-      alwaysBlueprint,
+      emulator,
+      funderLucid,
+      proverLucid,
+      proverSigner,
       nonceUtxo,
-      { realZeroInput: true, alwaysFraudProofCatalogue: true },
-    );
-    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+      contracts,
+      catalogue,
+    } = await makeFaultProofEmulatorHarnessV1({
+      contractOptions: { realZeroInput: true, alwaysFraudProofCatalogue: true },
+      registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
+    });
     const removalReferenceScriptPublications =
       await publishRemovalReferenceScripts({ lucid: proverLucid, contracts });
     const fixture = await buildZeroInputTransactionInclusionFixture();
@@ -585,24 +493,19 @@ describe("fault-proof published-chunk proof carriage", () => {
   }, 900_000);
 
   it("carries an invalid-range membership proof past the direct route's envelope ceiling", async () => {
-    const realBlueprint = readBlueprint(realBlueprintPath);
-    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-    const { emulator, funderLucid, proverLucid, proverSigner } =
-      await newEmulatorParty();
-
-    await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
-    await registerChunkedVerifyRewardAccount(funderLucid, realBlueprint);
-    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
-    if (nonceUtxo === undefined) {
-      throw new Error("Expected funder wallet to expose a nonce UTxO");
-    }
-    const contracts = await buildMinimalFaultProofContracts(
+    const {
       realBlueprint,
-      alwaysBlueprint,
+      emulator,
+      funderLucid,
+      proverLucid,
+      proverSigner,
       nonceUtxo,
-      { realInvalidRange: true, alwaysFraudProofCatalogue: true },
-    );
-    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+      contracts,
+      catalogue,
+    } = await makeFaultProofEmulatorHarnessV1({
+      contractOptions: { realInvalidRange: true, alwaysFraudProofCatalogue: true },
+      registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
+    });
     const removalReferenceScriptPublications =
       await publishRemovalReferenceScripts({ lucid: proverLucid, contracts });
 
@@ -782,24 +685,19 @@ describe("fault-proof published-chunk proof carriage", () => {
    * carriage; they are measured because the claim is about the complete path.
    */
   it("carries both double-spend membership proofs past the direct route's envelope ceiling", async () => {
-    const realBlueprint = readBlueprint(realBlueprintPath);
-    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-    const { emulator, funderLucid, proverLucid, proverSigner } =
-      await newEmulatorParty();
-
-    await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
-    await registerChunkedVerifyRewardAccount(funderLucid, realBlueprint);
-    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
-    if (nonceUtxo === undefined) {
-      throw new Error("Expected funder wallet to expose a nonce UTxO");
-    }
-    const contracts = await buildMinimalFaultProofContracts(
+    const {
       realBlueprint,
-      alwaysBlueprint,
+      emulator,
+      funderLucid,
+      proverLucid,
+      proverSigner,
       nonceUtxo,
-      { alwaysFraudProofCatalogue: true },
-    );
-    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+      contracts,
+      catalogue,
+    } = await makeFaultProofEmulatorHarnessV1({
+      contractOptions: { alwaysFraudProofCatalogue: true },
+      registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
+    });
     const removalReferenceScriptPublications =
       await publishRemovalReferenceScripts({ lucid: proverLucid, contracts });
     const fixture = await buildTransactionInclusionFixture();
@@ -1087,25 +985,25 @@ describe("fault-proof published-chunk proof carriage", () => {
    * route: its proof is a constant with nothing for depth to grow.
    */
   it("carries a no-input membership and absence proof past the direct route's envelope ceiling", async () => {
-    const realBlueprint = readBlueprint(realBlueprintPath);
-    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-    const { emulator, funderLucid, proverLucid, proverSigner } =
-      await newEmulatorParty();
-
-    await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
-    await registerPexcludesExclusionRewardAccount(funderLucid, realBlueprint);
-    await registerChunkedVerifyRewardAccount(funderLucid, realBlueprint);
-    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
-    if (nonceUtxo === undefined) {
-      throw new Error("Expected funder wallet to expose a nonce UTxO");
-    }
-    const contracts = await buildMinimalFaultProofContracts(
+    const {
       realBlueprint,
-      alwaysBlueprint,
+      emulator,
+      funderLucid,
+      proverLucid,
+      proverSigner,
       nonceUtxo,
-      { realNonExistentInput: true, alwaysFraudProofCatalogue: true },
-    );
-    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+      contracts,
+      catalogue,
+    } = await makeFaultProofEmulatorHarnessV1({
+      contractOptions: {
+        realNonExistentInput: true,
+        alwaysFraudProofCatalogue: true,
+      },
+      registerAdditionalRewardAccounts: async (lucid, blueprint) => {
+        await registerPexcludesExclusionRewardAccount(lucid, blueprint);
+        await registerChunkedVerifyRewardAccount(lucid, blueprint);
+      },
+    });
     const removalReferenceScriptPublications =
       await publishRemovalReferenceScripts({ lucid: proverLucid, contracts });
     const fixture = await buildNonExistentInputFixture();

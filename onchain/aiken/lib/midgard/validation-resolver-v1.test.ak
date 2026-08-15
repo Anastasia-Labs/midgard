@@ -625,8 +625,8 @@ test cek_single_and_multi_reference_routes_verify_typed_material() {
 // live deployment.
 fn phase_a_script_precondition_resolvers() -> List<ScriptHash> {
   [
-    #"2d304a989cb1d912b280cff2e30d5447232d5f86d17ca4fed5d142fd",
-    #"6b17deb85136bef3bfc21a33d0101b3ea6af8cba19be97ef66bbe14a",
+    #"0e84efc0d0b455635ace2f09ee6c7eb83d32eb20cf9c9d45f0eae8f2",
+    #"34237f0e20fb798ca496060be202e9703cb1ca0b2d4bfaea055fbf35",
   ]
 }
 
@@ -636,12 +636,12 @@ fn input_sets_resolvers() -> List<ScriptHash> {
 
 fn script_source_resolvers() -> List<ScriptHash> {
   [
-    #"d0a3ff332b6479d74d8f3758e092571d244dbd609382456dcaffc1eb",
+    #"f95ce7aa58700c191c12b97e082f70902c3b2138dfb8e94f0ce20799",
     #"dbc5185f10bfd71ba6d0b0ae3198164fbbfbf9c8a7689710967dfbf5",
     #"cfea8848ff4fdd5e87019edb3646d055bc4a62909198984e189ae2f1",
     #"041552a027e42180cb14f848b989b1b9f207139d267a776b18205545",
     #"ebdcae5094b7733b6f535782fcb8a61912312b0cb25ac02151b5d921",
-    #"7791c91c2ad320ca2cb111a35a7ac98441b2b165cef0e6faa7aeb4aa",
+    #"59443faa6457e4013407ce03bb1f2100c31e5ef990b6f40b1f46c96c",
     #"b23f5ca224f9587ddf9d79880d0995c58dbed8c0d1284b2f4e84bcfc",
     #"ba604acdd10a0101a6a293f6237a411f03a1013d984f279156657d5d",
     #"8cc9c85b11695228483e63d0a59684a989d8236ca2ec654f8e8ec0c1",
@@ -651,7 +651,7 @@ fn script_source_resolvers() -> List<ScriptHash> {
     #"83f69ead57e624344f7c287fc3dbe46d7b236f358496aa3a09052309",
     #"1e48d46d39a29e6158d40da127654959b1b64fdb88700969db0b1f94",
     #"f8d67263a364bc343834b883576ec8a41e621fdf6cd8b9964e5ab88f",
-    #"9c086225d52c99211ca5be5dce3c0082018877338f7827f05712bf9e",
+    #"06513cb8bbb8577158d5a697cce015778915f576c14d6548203d6c02",
     #"3d0e2e530d0781721e5d1b8efab92eadf6100c36ce69fc61b3ce794c",
     #"f368cbf1834156f5bb91f32c1ffbddf23855dbc19c6daff168282b8c",
     #"cd74112e0e53e710bd27b5f0e3c0ca6b60bbf65b609ccec69c36a153",
@@ -661,7 +661,7 @@ fn script_source_resolvers() -> List<ScriptHash> {
     #"ed58027c3778f0527e5d6f2d268b1cbcfdda1014ea2de83933e2aff1",
     #"00d2cf824ca845f19880af8f9a32a0a1e6b93c74907735af96c93e50",
     #"b350f95cfaaf97c5bad1b1d82e5df8592782a12f7cdbbbf5b0285cf2",
-    #"abc6fcb7b5b00adf5b9d125fec483dbcb68a53f558e9fb8378af7ddb",
+    #"afe482c924c7debfc5b208dfe3d55138eb35f2b84ef64784b2ffa273",
     #"db564db81b42832371371c6896b7e33c19aa30607bf4c6a29d540161",
     #"7071250c2ce38abbf6d8a64e356d6117bf5d8f9a67b1389d844a280d",
     #"51858cd4f6422203d0968108084d1a6072bb30e9c8a0682aac172e90",

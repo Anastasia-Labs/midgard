@@ -130,6 +130,7 @@ import {
   credentialToAddress,
   Data,
   Emulator,
+  type EmulatorAccount,
   generateEmulatorAccount,
   getAddressDetails,
   Lucid,
@@ -3797,5 +3798,219 @@ export const runForcedValidationDisputeScenario = async (
       removalReferenceScriptPublications.measurements,
     challengerLucid: targetChallengerLucid,
     setup,
+  };
+};
+
+/**
+ * GOAL_SPEC.md 3.3 proof-fit thresholds, shared by every emulator suite that
+ * measures a complete correction path.
+ *
+ * 1. Byte fit: `l1ByteMargin` is computed against the real
+ *    `PROTOCOL_PARAMETERS_DEFAULT.maxTxSize` (16,384), not the emulator's
+ *    relaxed 65,536 ceiling, so a non-negative margin is exactly the 3.3
+ *    item-1 check.
+ * 2. Execution fit: memory and CPU are at or below the deployment's measured
+ *    limits with at least a 20% reserve. A path that fits the raw limit but
+ *    not the reserve is a FAILING result, not a smaller margin.
+ */
+export const EXECUTION_RESERVE_FRACTION = 20n;
+
+export const expectProofFitV1 = ({
+  stage,
+  measurement,
+  maxTxExMem,
+  maxTxExSteps,
+}: {
+  readonly stage: string;
+  readonly measurement: CompleteSignedTransactionMeasurement;
+  readonly maxTxExMem: bigint;
+  readonly maxTxExSteps: bigint;
+}): void => {
+  // 3.3 item 1 - byte fit against the real L1 envelope.
+  expect(
+    measurement.l1ByteMargin,
+    `${stage} exceeds the 16,384-byte L1 envelope`,
+  ).toBeGreaterThanOrEqual(0);
+  // 3.3 item 2 - execution fit with a 20% reserve.
+  const memoryCeiling =
+    (maxTxExMem * (100n - EXECUTION_RESERVE_FRACTION)) / 100n;
+  const stepCeiling =
+    (maxTxExSteps * (100n - EXECUTION_RESERVE_FRACTION)) / 100n;
+  expect(
+    measurement.executionMemory <= memoryCeiling,
+    `${stage} execution memory ${measurement.executionMemory.toString()} exceeds the 20%-reserve ceiling ${memoryCeiling.toString()}`,
+  ).toBe(true);
+  expect(
+    measurement.executionSteps <= stepCeiling,
+    `${stage} execution steps ${measurement.executionSteps.toString()} exceeds the 20%-reserve ceiling ${stepCeiling.toString()}`,
+  ).toBe(true);
+};
+
+/**
+ * Debug-only proof-fit dump, gated on `MIDGARD_PRINT_PROOF_FIT=1`. `headline`
+ * is the caller's own label text, so each suite prints exactly the line it
+ * printed before; `extra` is merged into the same object the stage map
+ * produces, and `includeReferenceInputs` adds the reference-input count the
+ * published-chunk carriage suite reports.
+ */
+export const printProofFitV1 = ({
+  headline,
+  stages,
+  extra,
+  includeReferenceInputs = false,
+}: {
+  readonly headline: string;
+  readonly stages: Record<string, CompleteSignedTransactionMeasurement>;
+  readonly extra?: Record<string, unknown>;
+  readonly includeReferenceInputs?: boolean;
+}): void => {
+  if (process.env["MIDGARD_PRINT_PROOF_FIT"] !== "1") {
+    return;
+  }
+  const stageEntries = Object.fromEntries(
+    Object.entries(stages).map(([stage, measurement]) => [
+      stage,
+      {
+        bytes: measurement.completeSignedBytes,
+        l1ByteMargin: measurement.l1ByteMargin,
+        memory: measurement.executionMemory.toString(),
+        steps: measurement.executionSteps.toString(),
+        ...(includeReferenceInputs
+          ? { referenceInputs: measurement.referenceInputCount }
+          : {}),
+      },
+    ]),
+  );
+  console.log(
+    `${headline}: ${JSON.stringify(
+      extra === undefined ? stageEntries : { ...stageEntries, ...extra },
+      null,
+      2,
+    )}`,
+  );
+};
+
+/**
+ * Two funded emulator wallets and their Lucid instances: the funder that
+ * publishes the fraudulent block and the prover that drives the correction
+ * path.
+ */
+export const newEmulatorParty = async () => {
+  const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
+  const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
+  const emulator = new Emulator([funder, prover], EMULATOR_PROTOCOL_PARAMETERS);
+  const funderLucid = await Lucid(emulator, "Custom");
+  const proverLucid = await Lucid(emulator, "Custom");
+  funderLucid.selectWallet.fromSeed(funder.seedPhrase);
+  proverLucid.selectWallet.fromSeed(prover.seedPhrase);
+  const proverSigner = resolveProverSigner({
+    network,
+    walletSeedPhrase: prover.seedPhrase,
+  });
+  return { emulator, funderLucid, proverLucid, proverSigner };
+};
+
+export const funderPaymentKeyHash = async (
+  funderLucid: Awaited<ReturnType<typeof Lucid>>,
+): Promise<string> => {
+  const credential = getAddressDetails(
+    await funderLucid.wallet().address(),
+  ).paymentCredential;
+  if (credential === undefined || credential.type !== "Key") {
+    throw new Error("Expected funder wallet to expose a payment key hash");
+  }
+  return credential.hash;
+};
+
+export type FaultProofEmulatorHarnessV1 = {
+  readonly realBlueprint: Blueprint;
+  readonly alwaysBlueprint: Blueprint;
+  readonly emulator: Emulator;
+  readonly funderLucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly proverLucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly proverSigner: ReturnType<typeof resolveProverSigner>;
+  readonly nonceUtxo: UTxO;
+  readonly contracts: Awaited<
+    ReturnType<typeof buildMinimalFaultProofContracts>
+  >;
+  readonly catalogue: Awaited<ReturnType<typeof buildCatalogueDeploymentInfo>>;
+};
+
+/**
+ * The journey preamble every fault-proof emulator suite opens with, in the
+ * exact order the suites performed it: read both blueprints, stand up the
+ * funder/prover party, register the PHAS membership reward account (then any
+ * family-specific reward accounts the caller registers, in the caller's own
+ * order), take the funder's first UTxO as the parameterizing nonce, build the
+ * minimal contract set for the family under test, then derive the catalogue
+ * deployment info.
+ *
+ * Reference-script publication is deliberately NOT part of this helper: the
+ * suites publish at different points in the timeline, and the emulator clock
+ * they sample afterwards is what their measured byte counts are anchored to.
+ */
+export const makeFaultProofEmulatorHarnessV1 = async ({
+  contractOptions = {},
+  accounts,
+  emulatorTimeMs,
+  registerAdditionalRewardAccounts,
+}: {
+  readonly contractOptions?: Parameters<
+    typeof buildMinimalFaultProofContracts
+  >[3];
+  readonly accounts?: {
+    readonly funder: EmulatorAccount;
+    readonly prover: EmulatorAccount;
+  };
+  readonly emulatorTimeMs?: number;
+  readonly registerAdditionalRewardAccounts?: (
+    funderLucid: Awaited<ReturnType<typeof Lucid>>,
+    realBlueprint: Blueprint,
+  ) => Promise<void>;
+} = {}): Promise<FaultProofEmulatorHarnessV1> => {
+  const realBlueprint = readBlueprint(realBlueprintPath);
+  const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+  const funder =
+    accounts?.funder ?? generateEmulatorAccount({ lovelace: 40_000_000_000n });
+  const prover =
+    accounts?.prover ?? generateEmulatorAccount({ lovelace: 20_000_000_000n });
+  const emulator = new Emulator([funder, prover], EMULATOR_PROTOCOL_PARAMETERS);
+  if (emulatorTimeMs !== undefined) {
+    emulator.time = emulatorTimeMs;
+  }
+  const funderLucid = await Lucid(emulator, "Custom");
+  const proverLucid = await Lucid(emulator, "Custom");
+  funderLucid.selectWallet.fromSeed(funder.seedPhrase);
+  proverLucid.selectWallet.fromSeed(prover.seedPhrase);
+  const proverSigner = resolveProverSigner({
+    network,
+    walletSeedPhrase: prover.seedPhrase,
+  });
+
+  await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
+  if (registerAdditionalRewardAccounts !== undefined) {
+    await registerAdditionalRewardAccounts(funderLucid, realBlueprint);
+  }
+  const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
+  if (nonceUtxo === undefined) {
+    throw new Error("Expected funder wallet to expose a nonce UTxO");
+  }
+  const contracts = await buildMinimalFaultProofContracts(
+    realBlueprint,
+    alwaysBlueprint,
+    nonceUtxo,
+    contractOptions,
+  );
+  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+  return {
+    realBlueprint,
+    alwaysBlueprint,
+    emulator,
+    funderLucid,
+    proverLucid,
+    proverSigner,
+    nonceUtxo,
+    contracts,
+    catalogue,
   };
 };

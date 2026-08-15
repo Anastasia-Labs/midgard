@@ -40,10 +40,8 @@ import {
   CML,
   coreToTxOutput,
   Data,
-  Emulator,
   type EmulatorAccount,
   getAddressDetails,
-  Lucid,
   PROTOCOL_PARAMETERS_DEFAULT,
   toUnit,
   walletFromSeed,
@@ -52,7 +50,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   midgardTxOutputFromCanonicalCborV1,
-  resolveProverSigner,
   submitInputNoIdxStep01,
   submitInputNoIdxStep02,
   submitInputNoIdxStep03,
@@ -65,26 +62,17 @@ import {
   submitInit,
 } from "./support/legacy-submit-emulator.js";
 import {
-  countedTransactionsRoot,
   expectStateQueueHeaderOrder,
+  setupFraudulentBlockV1 as setupFraudulentBlock,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  alwaysSucceedsBlueprintPath,
-  buildCatalogueDeploymentInfo,
-  buildMinimalFaultProofContracts,
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
-  EMULATOR_PROTOCOL_PARAMETERS,
   expectSingleUtxoWithUnit,
-  makeHeader,
+  makeFaultProofEmulatorHarnessV1,
   makeNativeTx,
   network,
   publishRemovalReferenceScripts,
-  readBlueprint,
-  realBlueprintPath,
-  registerPhasMembershipRewardAccount,
-  submitSetupTx,
   trieRootHex,
 } from "./support/submit-init-emulator-shared.js";
 
@@ -262,96 +250,15 @@ const buildInputNoIdxBlockFixture = async ({
   };
 };
 
-const makeEmulatorHarness = async () => {
-  const realBlueprint = readBlueprint(realBlueprintPath);
-  const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-  const funder = fixedBaseEmulatorAccount(
-    TEST_ONLY_FUNDER_SEED,
-    40_000_000_000n,
-  );
-  const prover = fixedBaseEmulatorAccount(
-    TEST_ONLY_PROVER_SEED,
-    20_000_000_000n,
-  );
-  const emulator = new Emulator([funder, prover], EMULATOR_PROTOCOL_PARAMETERS);
-  emulator.time = FIXED_EMULATOR_UNIX_MS;
-  const funderLucid = await Lucid(emulator, "Custom");
-  const proverLucid = await Lucid(emulator, "Custom");
-  funderLucid.selectWallet.fromSeed(funder.seedPhrase);
-  proverLucid.selectWallet.fromSeed(prover.seedPhrase);
-  const proverSigner = resolveProverSigner({
-    network,
-    walletSeedPhrase: prover.seedPhrase,
+const makeEmulatorHarness = async () =>
+  await makeFaultProofEmulatorHarnessV1({
+    contractOptions: { realInputNoIdx: true, alwaysFraudProofCatalogue: true },
+    accounts: {
+      funder: fixedBaseEmulatorAccount(TEST_ONLY_FUNDER_SEED, 40_000_000_000n),
+      prover: fixedBaseEmulatorAccount(TEST_ONLY_PROVER_SEED, 20_000_000_000n),
+    },
+    emulatorTimeMs: FIXED_EMULATOR_UNIX_MS,
   });
-
-  await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
-  const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
-  if (nonceUtxo === undefined) {
-    throw new Error("Expected funder wallet to expose a nonce UTxO");
-  }
-  const contracts = await buildMinimalFaultProofContracts(
-    realBlueprint,
-    alwaysBlueprint,
-    nonceUtxo,
-    { realInputNoIdx: true, alwaysFraudProofCatalogue: true },
-  );
-  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
-  return {
-    realBlueprint,
-    emulator,
-    funderLucid,
-    proverLucid,
-    proverSigner,
-    nonceUtxo,
-    contracts,
-    catalogue,
-  };
-};
-
-const setupFraudulentBlock = async ({
-  funderLucid,
-  emulator,
-  contracts,
-  catalogue,
-  fixture,
-}: {
-  readonly funderLucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly emulator: Emulator;
-  readonly contracts: Awaited<
-    ReturnType<typeof buildMinimalFaultProofContracts>
-  >;
-  readonly catalogue: Awaited<ReturnType<typeof buildCatalogueDeploymentInfo>>;
-  readonly fixture: InputNoIdxBlockFixture;
-}) => {
-  const funderPaymentCredential = getAddressDetails(
-    await funderLucid.wallet().address(),
-  ).paymentCredential;
-  if (
-    funderPaymentCredential === undefined ||
-    funderPaymentCredential.type !== "Key"
-  ) {
-    throw new Error("Expected funder wallet to expose a payment key hash");
-  }
-  const headerStartTime =
-    alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
-    1;
-  const fraudulentHeader = makeHeader(
-    funderPaymentCredential.hash,
-    headerStartTime,
-    await countedTransactionsRoot(
-      fixture.transactionsRoot,
-      fixture.l2TransactionCount,
-    ),
-    fixture.l2TransactionCount,
-  );
-  return await submitSetupTx({
-    lucid: funderLucid,
-    contracts,
-    nonceUtxo: (await funderLucid.wallet().getUtxos())[0]!,
-    catalogue,
-    header: fraudulentHeader,
-  });
-};
 
 const STEP02_RELEASE_MEMORY_LIMIT = 13_200_000n;
 const STEP02_RELEASE_CPU_LIMIT = 8_000_000_000n;

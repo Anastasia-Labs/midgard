@@ -74,15 +74,8 @@
 
 import { outRefLabel } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import {
-  Emulator,
-  generateEmulatorAccount,
-  getAddressDetails,
-  Lucid,
-} from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { resolveProverSigner } from "../src/index.js";
 import {
   neSubmitStep01,
   neSubmitStep02,
@@ -101,23 +94,21 @@ import {
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  alwaysSucceedsBlueprintPath,
-  buildCatalogueDeploymentInfo,
-  buildMinimalFaultProofContracts,
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
   EMULATOR_PROTOCOL_PARAMETERS,
+  EXECUTION_RESERVE_FRACTION,
+  expectProofFitV1,
   expectSingleUtxoWithUnit,
+  funderPaymentKeyHash,
+  makeFaultProofEmulatorHarnessV1,
   makeHeader,
   network,
-  readBlueprint,
-  realBlueprintPath,
-  registerPhasMembershipRewardAccount,
+  printProofFitV1,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
 
-const EXECUTION_RESERVE_FRACTION = 20n;
 const L1_MAX_TX_SIZE = 16_384;
 
 /**
@@ -149,88 +140,15 @@ const executionCeilings = () => ({
     100n,
 });
 
-const expectProofFitV1 = ({
-  stage,
-  measurement,
-  maxTxExMem,
-  maxTxExSteps,
-}: {
-  readonly stage: string;
-  readonly measurement: CompleteSignedTransactionMeasurement;
-  readonly maxTxExMem: bigint;
-  readonly maxTxExSteps: bigint;
-}): void => {
-  expect(
-    measurement.l1ByteMargin,
-    `${stage} exceeds the 16,384-byte L1 envelope`,
-  ).toBeGreaterThanOrEqual(0);
-  const memoryCeiling =
-    (maxTxExMem * (100n - EXECUTION_RESERVE_FRACTION)) / 100n;
-  const stepCeiling =
-    (maxTxExSteps * (100n - EXECUTION_RESERVE_FRACTION)) / 100n;
-  expect(
-    measurement.executionMemory <= memoryCeiling,
-    `${stage} execution memory ${measurement.executionMemory.toString()} exceeds the 20%-reserve ceiling ${memoryCeiling.toString()}`,
-  ).toBe(true);
-  expect(
-    measurement.executionSteps <= stepCeiling,
-    `${stage} execution steps ${measurement.executionSteps.toString()} exceeds the 20%-reserve ceiling ${stepCeiling.toString()}`,
-  ).toBe(true);
-};
-
 const printCardinalityFit = (
   label: string,
   cardinality: number,
   stages: Record<string, CompleteSignedTransactionMeasurement>,
-): void => {
-  if (process.env["MIDGARD_PRINT_PROOF_FIT"] !== "1") {
-    return;
-  }
-  console.log(
-    `${label} spend-input cardinality ${String(cardinality)}: ${JSON.stringify(
-      Object.fromEntries(
-        Object.entries(stages).map(([stage, measurement]) => [
-          stage,
-          {
-            bytes: measurement.completeSignedBytes,
-            l1ByteMargin: measurement.l1ByteMargin,
-            memory: measurement.executionMemory.toString(),
-            steps: measurement.executionSteps.toString(),
-          },
-        ]),
-      ),
-      null,
-      2,
-    )}`,
-  );
-};
-
-const newEmulatorParty = async () => {
-  const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
-  const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
-  const emulator = new Emulator([funder, prover], EMULATOR_PROTOCOL_PARAMETERS);
-  const funderLucid = await Lucid(emulator, "Custom");
-  const proverLucid = await Lucid(emulator, "Custom");
-  funderLucid.selectWallet.fromSeed(funder.seedPhrase);
-  proverLucid.selectWallet.fromSeed(prover.seedPhrase);
-  const proverSigner = resolveProverSigner({
-    network,
-    walletSeedPhrase: prover.seedPhrase,
+): void =>
+  printProofFitV1({
+    headline: `${label} spend-input cardinality ${String(cardinality)}`,
+    stages,
   });
-  return { emulator, funderLucid, proverLucid, proverSigner };
-};
-
-const funderPaymentKeyHash = async (
-  funderLucid: Awaited<ReturnType<typeof Lucid>>,
-): Promise<string> => {
-  const credential = getAddressDetails(
-    await funderLucid.wallet().address(),
-  ).paymentCredential;
-  if (credential === undefined || credential.type !== "Key") {
-    throw new Error("Expected funder wallet to expose a payment key hash");
-  }
-  return credential.hash;
-};
 
 /**
  * Q10's complete correction path with each conflicting transaction spending
@@ -242,22 +160,18 @@ const funderPaymentKeyHash = async (
 const runDoubleSpendCardinalityJourney = async (
   cardinality: number,
 ): Promise<Record<string, CompleteSignedTransactionMeasurement>> => {
-  const realBlueprint = readBlueprint(realBlueprintPath);
-  const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-  const { emulator, funderLucid, proverLucid, proverSigner } =
-    await newEmulatorParty();
-  await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
-  const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
-  if (nonceUtxo === undefined) {
-    throw new Error("Expected funder wallet to expose a nonce UTxO");
-  }
-  const contracts = await buildMinimalFaultProofContracts(
+  const {
     realBlueprint,
-    alwaysBlueprint,
+    emulator,
+    funderLucid,
+    proverLucid,
+    proverSigner,
     nonceUtxo,
-    { alwaysFraudProofCatalogue: true },
-  );
-  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    contracts,
+    catalogue,
+  } = await makeFaultProofEmulatorHarnessV1({
+    contractOptions: { alwaysFraudProofCatalogue: true },
+  });
   const fixture = await buildTransactionInclusionFixture({
     spendInputCardinality: cardinality,
   });
@@ -396,22 +310,21 @@ const runDoubleSpendCardinalityJourney = async (
 const runNoInputCardinalityJourney = async (
   cardinality: number,
 ): Promise<Record<string, CompleteSignedTransactionMeasurement>> => {
-  const realBlueprint = readBlueprint(realBlueprintPath);
-  const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-  const { emulator, funderLucid, proverLucid, proverSigner } =
-    await newEmulatorParty();
-  await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
-  const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
-  if (nonceUtxo === undefined) {
-    throw new Error("Expected funder wallet to expose a nonce UTxO");
-  }
-  const contracts = await buildMinimalFaultProofContracts(
+  const {
     realBlueprint,
-    alwaysBlueprint,
+    emulator,
+    funderLucid,
+    proverLucid,
+    proverSigner,
     nonceUtxo,
-    { realNonExistentInput: true, alwaysFraudProofCatalogue: true },
-  );
-  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    contracts,
+    catalogue,
+  } = await makeFaultProofEmulatorHarnessV1({
+    contractOptions: {
+      realNonExistentInput: true,
+      alwaysFraudProofCatalogue: true,
+    },
+  });
   const fixture = await buildNonExistentInputFixture({
     spendInputCardinality: cardinality,
   });

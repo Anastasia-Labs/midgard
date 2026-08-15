@@ -57,9 +57,10 @@ type BlueprintValidator = {
   compiledCode: string;
   /**
    * The compile-time parameters the blueprint declares for this validator, in
-   * order. Read only by {@link applyBlueprintDeclaredParams}, which is why it is
-   * optional: an older blueprint that omits the key is not a reason to fail, only
-   * a reason for that check to abstain and say so.
+   * order. Optional because the compiler OMITS the key for a validator that
+   * takes none — so absent means zero declared, never "unknown, skip the
+   * check". {@link applyBlueprintDeclaredParams} reads it that way (#609): an
+   * abstaining check is what let ten fraud-proof validators ship under-applied.
    */
   parameters?: readonly { title?: string }[];
 };
@@ -875,7 +876,7 @@ export const REAL_TX_ORDER_SCRIPT_TITLES = {
   // removed. Commit df53dc6a7 (#587) deleted `tx-field-preimage-v1.ak`,
   // `tx-field-receipt-v1.ak` and its spend twin in one change, so the
   // regenerated blueprint declares none of the three titles and
-  // `getCompiledScript` would fail on every one of them.
+  // `getBlueprintValidator` would fail on every one of them.
   fieldPreimageCertificateSpend:
     "field_preimage_certificate.field_preimage_certificate.spend",
   fieldPreimageCertificateMint:
@@ -983,50 +984,70 @@ const getBlueprintValidator = (
     return found;
   });
 
-const getCompiledScript = (
-  blueprint: Blueprint,
-  title: string,
-): Effect.Effect<string, Error> =>
-  Effect.map(
-    getBlueprintValidator(blueprint, title),
-    (validator) => validator.compiledCode,
-  );
-
 /**
- * `applyParamsToScript` with the blueprint's own declared arity asserted first.
+ * `applyParamsToScript` with the blueprint's own declared arity asserted first —
+ * the single door every deployment in this module goes through (#609).
  *
- * `applyParamsToScript` applies whatever list it is handed. Applying three terms
- * to a two-parameter validator does not fail there: it yields a well-formed script
- * with a wrong hash, so the mismatch surfaces as a policy id that matches nothing
- * on chain — days later and nowhere near this line.
+ * `applyParamsToScript` applies whatever list it is handed. Applying too MANY
+ * terms does not fail there: it yields a well-formed script with a wrong hash,
+ * so the mismatch surfaces as a policy id that matches nothing on chain — days
+ * later and nowhere near this line. Applying too FEW is worse and silent: the
+ * unapplied `validator main(...)` parameters remain lambdas, the ledger's single
+ * script-context application reduces to a lambda VALUE rather than running the
+ * body, and "no error" is read as SUCCESS. The validator becomes an
+ * unconditional always-succeeds script with its Aiken guards never executing.
+ * Ten fraud-proof semantic resolvers shipped exactly that way (#605/#609).
  *
- * That is not hypothetical here. The tx-order mint's source arity moved in #594
- * (three receipt-era parameters to `(hub_oracle,
- * field_preimage_certificate_policy_id)`) while `plutus.json` still declares the
- * old three, and the regeneration that closes the gap is #579's single event. This
- * check is what makes that regeneration a loud failure at the load site instead of
- * a silently wrong script hash — and it is applied at that one call site rather
- * than everywhere because that is the one site whose source has already moved out
- * from under the blueprint.
+ * It originally guarded one call site — the tx-order mint, whose source arity
+ * moved in #594 — and abstained when the blueprint omitted `parameters`.
+ * #609 removed both escapes: absent `parameters` is the compiler's encoding of
+ * "declares none" and is now read as zero, and every load site in this module
+ * applies through here.
  */
 const applyBlueprintDeclaredParams = (
   validator: BlueprintValidator,
-  params: readonly string[],
+  params: readonly Data[],
 ): Effect.Effect<string, Error> =>
   Effect.gen(function* () {
-    const declared = validator.parameters;
-    if (declared !== undefined && declared.length !== params.length) {
+    const declared = validator.parameters ?? [];
+    if (declared.length !== params.length) {
+      return yield* Effect.fail(
+        new Error(
+          `Blueprint validator "${validator.title}" declares ${declared.length.toString()} ` +
+            `parameter(s) (${
+              declared.length === 0
+                ? "none"
+                : declared.map((parameter) => parameter.title ?? "?").join(", ")
+            }) but ${params.length.toString()} were applied. ` +
+            "Under-application deploys an always-succeeds script and " +
+            "over-application deploys a wrong hash (#609).",
+        ),
+      );
+    }
+    return applyParamsToScript(validator.compiledCode, [...params]);
+  });
+
+/**
+ * The same fail-closed reading for a validator deployed with no parameters at
+ * all: a title that silently grows one must not keep being deployed bare.
+ */
+const unappliedBlueprintScript = (
+  validator: BlueprintValidator,
+): Effect.Effect<string, Error> =>
+  Effect.gen(function* () {
+    const declared = validator.parameters ?? [];
+    if (declared.length !== 0) {
       return yield* Effect.fail(
         new Error(
           `Blueprint validator "${validator.title}" declares ${declared.length.toString()} ` +
             `parameter(s) (${declared
               .map((parameter) => parameter.title ?? "?")
-              .join(", ")}) but ${params.length.toString()} were applied. ` +
-            "Regenerate the blueprint and update this load site together (#579).",
+              .join(", ")}) but is deployed with none applied, ` +
+            "which is an always-succeeds script (#609).",
         ),
       );
     }
-    return applyParamsToScript(validator.compiledCode, [...params]);
+    return validator.compiledCode;
   });
 
 const makeMintingPolicy = (mintingScriptCBOR: string): SDK.MintingValidator => {
@@ -1088,14 +1109,23 @@ const buildRealAuthenticatedValidator = (
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
-    const mintBase = yield* getCompiledScript(blueprint, titles.mint);
-    const spendBase = yield* getCompiledScript(blueprint, titles.spend);
-    const mintingScriptCBOR = applyParamsToScript(mintBase, mintParams);
+    const mintValidator = yield* getBlueprintValidator(blueprint, titles.mint);
+    const spendValidator = yield* getBlueprintValidator(
+      blueprint,
+      titles.spend,
+    );
+    const mintingScriptCBOR = yield* applyBlueprintDeclaredParams(
+      mintValidator,
+      mintParams,
+    );
     const { policyId } = makeMintingPolicy(mintingScriptCBOR);
     const spendingScriptCBOR =
       spendParams === undefined
-        ? spendBase
-        : applyParamsToScript(spendBase, spendParams(policyId));
+        ? yield* unappliedBlueprintScript(spendValidator)
+        : yield* applyBlueprintDeclaredParams(
+            spendValidator,
+            spendParams(policyId),
+          );
     return makeAuthenticatedValidator(
       network,
       mintingScriptCBOR,
@@ -1114,7 +1144,7 @@ const buildRealHubOracleValidator = (
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
-    const mintBase = yield* getCompiledScript(
+    const mintValidator = yield* getBlueprintValidator(
       blueprint,
       REAL_HUB_ORACLE_SCRIPT_TITLES.mint,
     );
@@ -1122,10 +1152,10 @@ const buildRealHubOracleValidator = (
       oneShotOutRef.txHash,
       BigInt(oneShotOutRef.outputIndex),
     ]);
-    const mintingScriptCBOR = applyParamsToScript(mintBase, [
-      initOutRef,
-      SDK.HUB_ORACLE_ASSET_NAME,
-    ]);
+    const mintingScriptCBOR = yield* applyBlueprintDeclaredParams(
+      mintValidator,
+      [initOutRef, SDK.HUB_ORACLE_ASSET_NAME],
+    );
     const mintingScript: MintingPolicy = {
       type: "PlutusV3",
       script: mintingScriptCBOR,
@@ -1162,12 +1192,12 @@ const buildRealComputationThreadValidator = (
 ): Effect.Effect<SDK.MintingValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
-    const mintBase = yield* getCompiledScript(
+    const mintValidator = yield* getBlueprintValidator(
       blueprint,
       REAL_COMPUTATION_THREAD_SCRIPT_TITLES.mint,
     );
     return makeMintingPolicy(
-      applyParamsToScript(mintBase, [
+      yield* applyBlueprintDeclaredParams(mintValidator, [
         contracts.fraudProofCatalogue.policyId,
         contracts.hubOracle.policyId,
       ]),
@@ -1712,17 +1742,23 @@ export const buildRealTxOrderContracts = (
 ): Effect.Effect<TxOrderContracts, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
-    const cekProgramMaterialBase = yield* getCompiledScript(
-      blueprint,
-      REAL_TX_ORDER_SCRIPT_TITLES.cekProgramMaterialSpend,
+    const cekProgramMaterialBase = yield* unappliedBlueprintScript(
+      yield* getBlueprintValidator(
+        blueprint,
+        REAL_TX_ORDER_SCRIPT_TITLES.cekProgramMaterialSpend,
+      ),
     );
-    const fieldPreimageCertificateSpendBase = yield* getCompiledScript(
-      blueprint,
-      REAL_TX_ORDER_SCRIPT_TITLES.fieldPreimageCertificateSpend,
+    const fieldPreimageCertificateSpendBase = yield* unappliedBlueprintScript(
+      yield* getBlueprintValidator(
+        blueprint,
+        REAL_TX_ORDER_SCRIPT_TITLES.fieldPreimageCertificateSpend,
+      ),
     );
-    const fieldPreimageCertificateMintBase = yield* getCompiledScript(
-      blueprint,
-      REAL_TX_ORDER_SCRIPT_TITLES.fieldPreimageCertificateMint,
+    const fieldPreimageCertificateMintBase = yield* unappliedBlueprintScript(
+      yield* getBlueprintValidator(
+        blueprint,
+        REAL_TX_ORDER_SCRIPT_TITLES.fieldPreimageCertificateMint,
+      ),
     );
     // No `applyParamsToScript`: the §8.6 certificate validator declares no
     // parameters, so the compiled script IS the deployed script and its policy
@@ -1741,7 +1777,7 @@ export const buildRealTxOrderContracts = (
       blueprint,
       REAL_TX_ORDER_SCRIPT_TITLES.mint,
     );
-    const txOrderSpendBase = yield* getCompiledScript(
+    const txOrderSpendValidator = yield* getBlueprintValidator(
       blueprint,
       REAL_TX_ORDER_SCRIPT_TITLES.spend,
     );
@@ -1762,7 +1798,9 @@ export const buildRealTxOrderContracts = (
         hubOraclePolicyId,
         fieldPreimageCertificate.policyId,
       ]),
-      applyParamsToScript(txOrderSpendBase, [hubOraclePolicyId]),
+      yield* applyBlueprintDeclaredParams(txOrderSpendValidator, [
+        hubOraclePolicyId,
+      ]),
     );
     return {
       txOrder,
@@ -1802,18 +1840,21 @@ const buildRealReserveValidator = (
 ): Effect.Effect<SDK.SpendingValidator & SDK.WithdrawalValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
-    const spendBase = yield* getCompiledScript(
+    const spendValidator = yield* getBlueprintValidator(
       blueprint,
       REAL_RESERVE_SCRIPT_TITLES.spend,
     );
-    const withdrawScriptCBOR = yield* getCompiledScript(
+    const withdrawValidator = yield* getBlueprintValidator(
       blueprint,
       REAL_RESERVE_SCRIPT_TITLES.withdraw,
     );
+    const withdrawScriptCBOR =
+      yield* unappliedBlueprintScript(withdrawValidator);
 
-    const spendingScriptCBOR = applyParamsToScript(spendBase, [
-      contracts.hubOracle.policyId,
-    ]);
+    const spendingScriptCBOR = yield* applyBlueprintDeclaredParams(
+      spendValidator,
+      [contracts.hubOracle.policyId],
+    );
 
     return {
       ...makeSpendingValidator(network, spendingScriptCBOR),

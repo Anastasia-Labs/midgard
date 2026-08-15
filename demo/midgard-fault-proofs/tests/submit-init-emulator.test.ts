@@ -27,20 +27,14 @@ import {
 } from "@al-ft/midgard-sdk";
 import {
   Data,
-  Emulator,
-  generateEmulatorAccount,
   getAddressDetails,
-  Lucid,
   type Script,
   toUnit,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  resolveProverSigner,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
+import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
   parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
@@ -67,97 +61,32 @@ import {
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  alwaysSucceedsBlueprintPath,
-  buildCatalogueDeploymentInfo,
-  buildMinimalFaultProofContracts,
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
   deploymentManifest,
-  EMULATOR_PROTOCOL_PARAMETERS,
+  expectProofFitV1,
   expectSingleUtxoWithUnit,
+  funderPaymentKeyHash,
+  makeFaultProofEmulatorHarnessV1,
   makeHeader,
   network,
   publishRemovalReferenceScripts,
-  readBlueprint,
-  realBlueprintPath,
-  registerPhasMembershipRewardAccount,
   type RemovalReferenceScriptName,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
 
-/**
- * GOAL_SPEC.md 3.3 proof-fit thresholds for the double-spend correction path.
- *
- * 1. Byte fit: `l1ByteMargin` is computed against the real
- *    `PROTOCOL_PARAMETERS_DEFAULT.maxTxSize` (16,384), not the emulator's
- *    relaxed 65,536 ceiling, so a non-negative margin is exactly the 3.3
- *    item-1 check.
- * 2. Execution fit: memory and CPU must leave at least a 20% reserve against
- *    the deployment's measured limits. Fitting the raw limit but not the
- *    reserve is a FAILING result.
- */
-const EXECUTION_RESERVE_FRACTION = 20n;
-
-const expectProofFitV1 = ({
-  stage,
-  measurement,
-  maxTxExMem,
-  maxTxExSteps,
-}: {
-  readonly stage: string;
-  readonly measurement: CompleteSignedTransactionMeasurement;
-  readonly maxTxExMem: bigint;
-  readonly maxTxExSteps: bigint;
-}): void => {
-  expect(
-    measurement.l1ByteMargin,
-    `${stage} exceeds the 16,384-byte L1 envelope`,
-  ).toBeGreaterThanOrEqual(0);
-  const memoryCeiling =
-    (maxTxExMem * (100n - EXECUTION_RESERVE_FRACTION)) / 100n;
-  const stepCeiling =
-    (maxTxExSteps * (100n - EXECUTION_RESERVE_FRACTION)) / 100n;
-  expect(
-    measurement.executionMemory <= memoryCeiling,
-    `${stage} execution memory ${measurement.executionMemory.toString()} exceeds the 20%-reserve ceiling ${memoryCeiling.toString()}`,
-  ).toBe(true);
-  expect(
-    measurement.executionSteps <= stepCeiling,
-    `${stage} execution steps ${measurement.executionSteps.toString()} exceeds the 20%-reserve ceiling ${stepCeiling.toString()}`,
-  ).toBe(true);
-};
-
 describe("fault-proof emulator integration", () => {
   it("proves and removes a non-tail double-spend block by pruning successors first", async () => {
-    const realBlueprint = readBlueprint(realBlueprintPath);
-    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-    const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
-    const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
-    const emulator = new Emulator(
-      [funder, prover],
-      EMULATOR_PROTOCOL_PARAMETERS,
-    );
-    const funderLucid = await Lucid(emulator, "Custom");
-    const proverLucid = await Lucid(emulator, "Custom");
-    funderLucid.selectWallet.fromSeed(funder.seedPhrase);
-    proverLucid.selectWallet.fromSeed(prover.seedPhrase);
-    const proverSigner = resolveProverSigner({
-      network,
-      walletSeedPhrase: prover.seedPhrase,
-    });
-
-    await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
-    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
-    if (nonceUtxo === undefined) {
-      throw new Error("Expected funder wallet to expose a nonce UTxO");
-    }
-
-    const contracts = await buildMinimalFaultProofContracts(
+    const {
       realBlueprint,
-      alwaysBlueprint,
+      emulator,
+      funderLucid,
+      proverLucid,
+      proverSigner,
       nonceUtxo,
-    );
-    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+      contracts,
+      catalogue,
+    } = await makeFaultProofEmulatorHarnessV1();
     const transactionInclusion = await buildTransactionInclusionFixture();
     // See `publishRemovalReferenceScripts`: removal must source these seven
     // validators from reference inputs to stay inside the 16,384-byte L1
@@ -172,17 +101,9 @@ describe("fault-proof emulator integration", () => {
         funderLucid,
         emulator.now() + 120_000,
       ) - 1;
-    const funderAddress = await funderLucid.wallet().address();
-    const funderPaymentCredential =
-      getAddressDetails(funderAddress).paymentCredential;
-    if (
-      funderPaymentCredential === undefined ||
-      funderPaymentCredential.type !== "Key"
-    ) {
-      throw new Error("Expected funder wallet to expose a payment key hash");
-    }
+    const funderKeyHash = await funderPaymentKeyHash(funderLucid);
     const fraudulentHeader = makeHeader(
-      funderPaymentCredential.hash,
+      funderKeyHash,
       headerStartTime,
       await countedTransactionsRoot(
         transactionInclusion.transactionsRoot,
@@ -204,7 +125,7 @@ describe("fault-proof emulator integration", () => {
       anchorBlockUnit: setup.stateQueueBlockUnit,
       header: {
         ...makeHeader(
-          funderPaymentCredential.hash,
+          funderKeyHash,
           Number(fraudulentHeader.endTime),
           EMPTY_MERKLE_TREE_ROOT,
         ),

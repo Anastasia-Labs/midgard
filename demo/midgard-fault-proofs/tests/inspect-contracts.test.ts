@@ -60,8 +60,20 @@ const Q13_APPLIED_STEP_HASHES = [
 // category being added, removed, or renumbered. Measured by this suite's own
 // derivation under blueprint b20c9a14… (398 validators, aiken v1.1.23+2a78108):
 // 32e29b6d… -> 173cabdb….
+// Re-pinned 2026-08-15 (#609): NO blueprint movement this time — b20c9a14… is
+// byte-identical before and after. The fold moved because the validation-trace
+// category's applied step-01 hash (the dispute opener) moved: ten semantic
+// resolvers were being deployed one parameter short of what they declare, which
+// under Plutus V3 made them always-succeeds scripts, and correcting the
+// application cascaded through their five prepare resolvers into
+// boundary -> game -> source -> dispute. `Q13_APPLIED_STEP_HASHES` above is
+// measured UNCHANGED (the input-no-idx family was never under-applied), so this
+// row is the only one that moves — checked independently rather than assumed,
+// because a stale pin hiding behind another failing pin is how #579 lost one.
+// Measured by this suite's own derivation, which agrees with the live catalogue
+// derivation on the preceding line: 173cabdb… -> 61f11db3….
 const Q13_CATALOGUE_ROOT =
-  "173cabdb279e82cda76d0a7ac4b5a50bfc50406aec97d442790ed2810c2114be";
+  "61f11db32d208c0f71ffc506e2a2ce1555a72e49f3180e1f92edad3c8a928cdf";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
