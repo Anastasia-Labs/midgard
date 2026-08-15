@@ -29,6 +29,7 @@ import {
   captureArchitectureGPhase1FormalBindingIdentity,
   captureArchitectureGRuntimeIdentity,
   discoverArchitectureGSourceFiles,
+  percentile,
   resolveArchitectureGGateConfig,
   validateArchitectureGCorpusPreparationV1,
   validateArchitectureGCorpusFundingV1,
@@ -562,10 +563,6 @@ const cgroupMemoryMax =
     ? "unavailable"
     : readFileSync(memoryMaxPath, "utf8").trim();
 
-const percentile = (values, quantile) => {
-  const sorted = [...values].sort((left, right) => left - right);
-  return sorted[Math.max(0, Math.ceil(sorted.length * quantile) - 1)];
-};
 const median = (values) => percentile(values, 0.5);
 const execute = (initialUtxos, fixturePath, index) => {
   const run = spawnSync(

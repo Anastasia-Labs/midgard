@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import {
   closeSync,
   linkSync,
@@ -21,6 +21,7 @@ import {
   positiveInteger,
   stringValue,
 } from "@/e2e/exact-artifact.js";
+import { sha256Hex } from "@/sha256.js";
 
 export const OWNED_PROCESS_GROUP_SCHEMA_VERSION =
   "midgard-owned-process-group-v1";
@@ -66,9 +67,7 @@ export type OwnedProcessGroupCleanupResult = {
   readonly ownershipValidation: OwnedProcessGroupValidation;
 };
 
-const sha256 = (value: string | Buffer): string =>
-  createHash("sha256").update(value).digest("hex");
-const EMPTY_CMDLINE_SHA256 = sha256(Buffer.alloc(0));
+const EMPTY_CMDLINE_SHA256 = sha256Hex(Buffer.alloc(0));
 
 export const ownedProcessCommandSha256 = ({
   command,
@@ -78,7 +77,7 @@ export const ownedProcessCommandSha256 = ({
   readonly command: string;
   readonly args: readonly string[];
   readonly cwd: string;
-}): string => sha256(JSON.stringify({ command, args, cwd }));
+}): string => sha256Hex(JSON.stringify({ command, args, cwd }));
 
 const assertRunToken = (runToken: string): void => {
   if (!/^[a-f0-9]{32,128}$/u.test(runToken)) {
@@ -236,7 +235,7 @@ const readProcIdentity = (
     procCmdlineSha256:
       state === "Z"
         ? ""
-        : sha256(readFileSync(`/proc/${pid.toString()}/cmdline`)),
+        : sha256Hex(readFileSync(`/proc/${pid.toString()}/cmdline`)),
     cwd: state === "Z" ? "" : readlinkSync(`/proc/${pid.toString()}/cwd`),
   };
 };

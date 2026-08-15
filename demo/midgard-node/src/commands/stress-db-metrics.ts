@@ -5,6 +5,10 @@ import {
   collectEnvironmentFingerprint,
   type EnvironmentFingerprint,
 } from "@/commands/stress-environment-fingerprint.js";
+import { percentileOfSorted } from "@/percentile.js";
+
+/** Nearest-rank percentile over an already-sorted sample set. */
+export const percentile = percentileOfSorted;
 
 export type StageWindowQuery = {
   readonly windowStart: string;
@@ -103,20 +107,6 @@ const isoFromEpochMs = (
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
-};
-
-export const percentile = (
-  sortedValues: readonly number[],
-  quantile: number,
-): number | null => {
-  if (sortedValues.length === 0) {
-    return null;
-  }
-  const index = Math.min(
-    sortedValues.length - 1,
-    Math.max(0, Math.ceil(sortedValues.length * quantile) - 1),
-  );
-  return sortedValues[index]!;
 };
 
 const percentiles = (values: readonly number[]): StagePercentiles => {

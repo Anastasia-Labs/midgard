@@ -27,6 +27,7 @@ import {
   type PidFileObservation,
   probeHttpEndpoint,
 } from "@/e2e/service-supervisor.js";
+import { sleep } from "@/sleep.js";
 
 export const E2E_MANAGED_SERVICE_SCHEMA_VERSION =
   "midgard-e2e-managed-service-v1";
@@ -106,9 +107,6 @@ export const parseManagedServiceSummaryV1 = (
   }
   return parsed;
 };
-
-const sleep = (milliseconds: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const processAlive = (pid: number): boolean => {
   try {

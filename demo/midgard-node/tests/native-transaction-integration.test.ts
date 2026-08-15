@@ -930,27 +930,42 @@ const expectPhaseAAcceptsAndPhaseBRejectsOne = (
   expectPhaseBRejectsOne(result.phaseB, code, detail);
 };
 
-const makeScriptSpendPreState = (opts: {
+type BaseLedgerOutRefs = {
   readonly inputOutRef: Buffer;
   readonly referenceInputOutRef: Buffer;
-  readonly scriptHash: CML.ScriptHash;
-  readonly datum?: CML.PlutusData;
-  readonly referenceOutput?: Buffer;
-}): Map<string, Buffer> =>
+};
+
+/**
+ * Builds the ledger map every single-spend scenario in this suite needs: the
+ * spend out-ref bound to `spendOutput`, plus the reference out-ref bound to
+ * `referenceOutput` (defaulting to a plain 2 ADA output at `TEST_ADDRESS`).
+ */
+const makeBaseLedger = (
+  outRefs: BaseLedgerOutRefs,
+  spendOutput: Buffer,
+  referenceOutput: Buffer = makeOutput(TEST_ADDRESS, 2_000_000n),
+): Map<string, Buffer> =>
   new Map<string, Buffer>([
-    [
-      opts.inputOutRef.toString("hex"),
-      makeScriptOutput(
-        opts.scriptHash,
-        3_000_000n,
-        opts.datum === undefined ? undefined : { datum: opts.datum },
-      ),
-    ],
-    [
-      opts.referenceInputOutRef.toString("hex"),
-      opts.referenceOutput ?? makeOutput(TEST_ADDRESS, 2_000_000n),
-    ],
+    [outRefs.inputOutRef.toString("hex"), spendOutput],
+    [outRefs.referenceInputOutRef.toString("hex"), referenceOutput],
   ]);
+
+const makeScriptSpendPreState = (
+  opts: BaseLedgerOutRefs & {
+    readonly scriptHash: CML.ScriptHash;
+    readonly datum?: CML.PlutusData;
+    readonly referenceOutput?: Buffer;
+  },
+): Map<string, Buffer> =>
+  makeBaseLedger(
+    opts,
+    makeScriptOutput(
+      opts.scriptHash,
+      3_000_000n,
+      opts.datum === undefined ? undefined : { datum: opts.datum },
+    ),
+    opts.referenceOutput,
+  );
 
 const runPlutusV3SpendScenario = async (opts: {
   readonly spendScript: CML.Script;
@@ -1350,16 +1365,10 @@ describe("native transaction integration", () => {
       witnessSignerPrivateKey: observerKey,
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyOutput(observerKey.to_public().hash(), 3_000_000n),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyOutput(observerKey.to_public().hash(), 3_000_000n),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
@@ -1403,16 +1412,10 @@ describe("native transaction integration", () => {
       outputCbors: [mintedOutput],
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
@@ -1448,16 +1451,10 @@ describe("native transaction integration", () => {
       ],
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
+    );
 
     expectBothPhasesAcceptOne(await runBothPhases(txId, txCbor, preState));
   });
@@ -1484,13 +1481,11 @@ describe("native transaction integration", () => {
         CML.Script.new_native(observerScript),
       ).to_cbor_bytes(),
     );
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyOutput(observerKey.to_public().hash(), 3_000_000n),
-      ],
-      [referenceInputOutRef.toString("hex"), referenceOutput],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyOutput(observerKey.to_public().hash(), 3_000_000n),
+      referenceOutput,
+    );
 
     expectBothPhasesAcceptOne(await runBothPhases(txId, txCbor, preState));
   });
@@ -1518,13 +1513,11 @@ describe("native transaction integration", () => {
         CML.Script.new_native(observerScript),
       ).to_cbor_bytes(),
     );
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyOutput(spendSignerKey.to_public().hash(), 3_000_000n),
-      ],
-      [referenceInputOutRef.toString("hex"), referenceOutput],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyOutput(spendSignerKey.to_public().hash(), 3_000_000n),
+      referenceOutput,
+    );
 
     expectPhaseAAcceptsAndPhaseBRejectsOne(
       await runBothPhases(txId, txCbor, preState),
@@ -1542,16 +1535,10 @@ describe("native transaction integration", () => {
       witnessSignerPrivateKey: signerKey,
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
+    );
 
     expectPhaseAAcceptsAndPhaseBRejectsOne(
       await runBothPhases(txId, txCbor, preState),
@@ -1573,16 +1560,10 @@ describe("native transaction integration", () => {
       witnessSignerPrivateKey: signerKey,
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
+    );
 
     expectPhaseAAcceptsAndPhaseBRejectsOne(
       await runBothPhases(txId, txCbor, preState),
@@ -1603,16 +1584,10 @@ describe("native transaction integration", () => {
       witnessSignerPrivateKey: signerKey,
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
+    );
 
     expectPhaseAAcceptsAndPhaseBRejectsOne(
       await runBothPhases(txId, txCbor, preState),
@@ -1645,16 +1620,10 @@ describe("native transaction integration", () => {
       outputCbors: [mintedOutput],
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
@@ -1701,13 +1670,11 @@ describe("native transaction integration", () => {
         CML.Script.new_native(mintScript),
       ).to_cbor_bytes(),
     );
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
-      ],
-      [referenceInputOutRef.toString("hex"), referenceOutput],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
+      referenceOutput,
+    );
 
     const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
@@ -1783,13 +1750,11 @@ describe("native transaction integration", () => {
         CML.Script.new_native(referenceScript),
       ).to_cbor_bytes(),
     );
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
-      ],
-      [referenceInputOutRef.toString("hex"), referenceOutput],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
+      referenceOutput,
+    );
 
     const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
@@ -1822,16 +1787,10 @@ describe("native transaction integration", () => {
       outputCbors: [mintedOutput],
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
@@ -1873,13 +1832,11 @@ describe("native transaction integration", () => {
         CML.Script.new_native(mintScript),
       ).to_cbor_bytes(),
     );
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyOutput(spendSignerKey.to_public().hash(), 3_000_000n),
-      ],
-      [referenceInputOutRef.toString("hex"), referenceOutput],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyOutput(spendSignerKey.to_public().hash(), 3_000_000n),
+      referenceOutput,
+    );
 
     const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
@@ -1986,16 +1943,10 @@ describe("native transaction integration", () => {
       outputCbors: [makeOutput(TEST_ADDRESS, 3_000_000n)],
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
@@ -2032,16 +1983,10 @@ describe("native transaction integration", () => {
       outputCbors: [makeOutput(TEST_ADDRESS, 3_000_000n)],
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyValueOutput(signerKey.to_public().hash(), inputValue),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyValueOutput(signerKey.to_public().hash(), inputValue),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
@@ -2081,16 +2026,10 @@ describe("native transaction integration", () => {
       outputCbors: [mintedOutput],
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(plutusScriptRef.hash(), 3_000_000n),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makeScriptOutput(plutusScriptRef.hash(), 3_000_000n),
+    );
 
     const { phaseA } = await runBothPhases(txId, txCbor, preState);
 
@@ -2147,16 +2086,10 @@ describe("native transaction integration", () => {
     const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
     const { inputOutRef, referenceInputOutRef } = withScriptDataHash;
 
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
@@ -2393,20 +2326,14 @@ describe("native transaction integration", () => {
     const { txId, txCbor, inputOutRef, referenceInputOutRef } =
       attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
 
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeDatumHashScriptOutput(
-          scriptHash,
-          3_000_000n,
-          CML.hash_plutus_data(datum),
-        ),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makeDatumHashScriptOutput(
+        scriptHash,
+        3_000_000n,
+        CML.hash_plutus_data(datum),
+      ),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
@@ -2439,16 +2366,10 @@ describe("native transaction integration", () => {
       scriptIntegrityHash: Buffer.from("92".repeat(32), "hex"),
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        base.inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        base.referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      base,
+      makeScriptOutput(scriptHash, 3_000_000n, { datum }),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(
       base.txId,
@@ -2501,16 +2422,10 @@ describe("native transaction integration", () => {
     const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
     const { inputOutRef, referenceInputOutRef } = withScriptDataHash;
 
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      { inputOutRef, referenceInputOutRef },
+      makeScriptOutput(scriptHash, 3_000_000n, { datum }),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
@@ -3105,18 +3020,12 @@ describe("native transaction integration", () => {
       scriptLanguages: ["MidgardV1"],
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        base.inputOutRef.toString("hex"),
-        makeScriptOutput(CML.ScriptHash.from_hex(scriptHash), 3_000_000n, {
-          datum: makePlutusIntegerData(1n),
-        }),
-      ],
-      [
-        base.referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      base,
+      makeScriptOutput(CML.ScriptHash.from_hex(scriptHash), 3_000_000n, {
+        datum: makePlutusIntegerData(1n),
+      }),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(
       base.txId,
@@ -3150,18 +3059,12 @@ describe("native transaction integration", () => {
       scriptLanguages: ["MidgardV1"],
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        base.inputOutRef.toString("hex"),
-        makeScriptOutput(CML.ScriptHash.from_hex(scriptHash), 3_000_000n, {
-          datum: makePlutusIntegerData(1n),
-        }),
-      ],
-      [
-        base.referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      base,
+      makeScriptOutput(CML.ScriptHash.from_hex(scriptHash), 3_000_000n, {
+        datum: makePlutusIntegerData(1n),
+      }),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(
       base.txId,
@@ -3202,16 +3105,10 @@ describe("native transaction integration", () => {
       ],
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        base.inputOutRef.toString("hex"),
-        makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
-      ],
-      [
-        base.referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      base,
+      makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(
       base.txId,
@@ -3247,16 +3144,10 @@ describe("native transaction integration", () => {
       ],
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        base.inputOutRef.toString("hex"),
-        makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
-      ],
-      [
-        base.referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      base,
+      makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(
       base.txId,
@@ -3291,20 +3182,14 @@ describe("native transaction integration", () => {
       scriptLanguages: ["MidgardV1"],
     });
 
-    const preState = new Map<string, Buffer>([
-      [
-        base.inputOutRef.toString("hex"),
-        makeDatumHashScriptOutput(
-          CML.ScriptHash.from_hex(scriptHash),
-          3_000_000n,
-          CML.hash_plutus_data(datum),
-        ),
-      ],
-      [
-        base.referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      base,
+      makeDatumHashScriptOutput(
+        CML.ScriptHash.from_hex(scriptHash),
+        3_000_000n,
+        CML.hash_plutus_data(datum),
+      ),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(
       base.txId,
@@ -3344,15 +3229,13 @@ describe("native transaction integration", () => {
       ).to_cbor_bytes(),
     );
 
-    const preState = new Map<string, Buffer>([
-      [
-        base.inputOutRef.toString("hex"),
-        makeScriptOutput(CML.ScriptHash.from_hex(scriptHash), 3_000_000n, {
-          datum: makePlutusIntegerData(1n),
-        }),
-      ],
-      [base.referenceInputOutRef.toString("hex"), referenceOutput],
-    ]);
+    const preState = makeBaseLedger(
+      base,
+      makeScriptOutput(CML.ScriptHash.from_hex(scriptHash), 3_000_000n, {
+        datum: makePlutusIntegerData(1n),
+      }),
+      referenceOutput,
+    );
 
     const { phaseA, phaseB } = await runBothPhases(
       base.txId,
@@ -3384,18 +3267,12 @@ describe("native transaction integration", () => {
       ]),
       scriptLanguages: ["MidgardV1"],
     });
-    const preState = new Map<string, Buffer>([
-      [
-        base.inputOutRef.toString("hex"),
-        makeScriptOutput(CML.ScriptHash.from_hex(scriptHash), 3_000_000n, {
-          datum: makePlutusIntegerData(1n),
-        }),
-      ],
-      [
-        base.referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      base,
+      makeScriptOutput(CML.ScriptHash.from_hex(scriptHash), 3_000_000n, {
+        datum: makePlutusIntegerData(1n),
+      }),
+    );
 
     const covered = await runBothPhases(base.txId, base.txCbor, preState, {
       enforceScriptBudget: true,
@@ -3564,18 +3441,12 @@ describe("native transaction integration", () => {
         ),
       ],
     });
-    const preState = new Map<string, Buffer>([
-      [
-        base.inputOutRef.toString("hex"),
-        makeScriptOutput(CML.ScriptHash.from_hex(spendHash), 3_000_000n, {
-          datum: makePlutusIntegerData(1n),
-        }),
-      ],
-      [
-        base.referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      base,
+      makeScriptOutput(CML.ScriptHash.from_hex(spendHash), 3_000_000n, {
+        datum: makePlutusIntegerData(1n),
+      }),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(
       base.txId,
@@ -3619,18 +3490,12 @@ describe("native transaction integration", () => {
         ),
       ],
     });
-    const preState = new Map<string, Buffer>([
-      [
-        base.inputOutRef.toString("hex"),
-        makeScriptOutput(spendScript.hash(), 3_000_000n, {
-          datum: makePlutusIntegerData(7n),
-        }),
-      ],
-      [
-        base.referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
+    const preState = makeBaseLedger(
+      base,
+      makeScriptOutput(spendScript.hash(), 3_000_000n, {
+        datum: makePlutusIntegerData(7n),
+      }),
+    );
 
     const { phaseA, phaseB } = await runBothPhases(
       base.txId,

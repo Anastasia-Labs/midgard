@@ -2,6 +2,7 @@ import { isMidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profi
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
+import { exactObjectKeys } from "@/exact-object-keys.js";
 import { writeTextFileAtomicNoReplace } from "@/files/atomic-write.js";
 import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
 import { commitExplicitBlockHeaderProgram } from "@/workers/commit-block-header.js";
@@ -29,16 +30,6 @@ const SHA256 = CARDANO_HASH;
 const SAFE_ATTEMPT_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/u;
 const CARDANO_OUT_REF = /^[a-f0-9]{64}#(?:0|[1-9][0-9]*)$/u;
 const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
-
-const exactObjectKeys = (
-  value: unknown,
-  expected: readonly string[],
-): value is Record<string, unknown> =>
-  typeof value === "object" &&
-  value !== null &&
-  !Array.isArray(value) &&
-  Object.keys(value).length === expected.length &&
-  expected.every((key) => Object.hasOwn(value, key));
 
 export const requireL2HeaderHash = (value: string, label: string): string => {
   if (!L2_HEADER_HASH.test(value)) {

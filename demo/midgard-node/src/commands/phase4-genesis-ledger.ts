@@ -16,6 +16,7 @@ import {
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
 import * as Ledger from "@/database/utils/ledger.js";
+import { exactObjectKeys } from "@/exact-object-keys.js";
 import { Database, NodeConfig, type NodeConfigDep } from "@/services/index.js";
 
 export const PHASE4_GENESIS_BOOTSTRAP_TOKEN =
@@ -65,16 +66,6 @@ export type Phase4GenesisLedgerReport = {
   readonly supplementalWalletRowCount: number;
   readonly minimumTransferLovelace: string;
 };
-
-const exactObjectKeys = (
-  value: unknown,
-  expected: readonly string[],
-): value is Record<string, unknown> =>
-  typeof value === "object" &&
-  value !== null &&
-  !Array.isArray(value) &&
-  Object.keys(value).length === expected.length &&
-  expected.every((key) => Object.hasOwn(value, key));
 
 const canonicalNatural = (value: unknown): value is string =>
   typeof value === "string" && /^(?:0|[1-9][0-9]*)$/u.test(value);

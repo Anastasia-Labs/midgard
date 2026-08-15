@@ -1,5 +1,4 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
@@ -23,6 +22,7 @@ import {
   publishDaPayloadInsert,
 } from "@/da/libp2p-producer.js";
 import { DaPayloadsDB } from "@/database/index.js";
+import { sha256Hex } from "@/sha256.js";
 
 import type {
   Libp2pDaPeerConfig,
@@ -401,8 +401,8 @@ describe("real separate-process canonical V1 DA publication", () => {
         transactionCount: TRANSACTION_COUNT,
         innerBytes: fixture.innerPayloadCbor.length,
         envelopeBytes: envelope.length,
-        innerSha256: sha256(fixture.innerPayloadCbor),
-        envelopeSha256: sha256(envelope),
+        innerSha256: sha256Hex(fixture.innerPayloadCbor),
+        envelopeSha256: sha256Hex(envelope),
         maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
         valid: {
           acceptedPeers: validPublication.acceptedPeers,
@@ -575,6 +575,3 @@ const reserveLoopbackPort = (): Promise<number> =>
       );
     });
   });
-
-const sha256 = (bytes: Uint8Array): string =>
-  createHash("sha256").update(bytes).digest("hex");

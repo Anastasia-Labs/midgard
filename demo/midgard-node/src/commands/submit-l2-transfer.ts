@@ -59,6 +59,7 @@ import {
   NodeConfig as NodeConfigService,
   WriteBehind,
 } from "@/services/index.js";
+import { sleep } from "@/sleep.js";
 import { compareOutRefs, outRefLabel } from "@/tx-context.js";
 
 export {
@@ -127,9 +128,6 @@ export const FANOUT_NATIVE_TRANSFER_SUBMIT_RETRY_POLICY = {
 } as const satisfies NativeTransferSubmitRetryPolicy;
 
 class RetryableNativeTransferSubmitError extends Error {}
-
-const sleep = (delayMs: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, delayMs));
 
 const isDurableAdmissionFailure = (status: number, body: string): boolean => {
   if (status !== 500) return false;

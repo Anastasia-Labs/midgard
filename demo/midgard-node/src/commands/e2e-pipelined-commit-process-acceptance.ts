@@ -61,6 +61,7 @@ import {
   type ServiceSupervisorSummary,
   superviseHostProcess,
 } from "@/e2e/service-supervisor.js";
+import { exactObjectKeys } from "@/exact-object-keys.js";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import { Database } from "@/services/database.js";
 
@@ -582,16 +583,6 @@ export const validatePhase4ProcessIsolationValues = (
     kupoPort,
   };
 };
-
-const exactObjectKeys = (
-  value: unknown,
-  expected: readonly string[],
-): value is Record<string, unknown> =>
-  typeof value === "object" &&
-  value !== null &&
-  !Array.isArray(value) &&
-  Object.keys(value).length === expected.length &&
-  expected.every((key) => Object.hasOwn(value, key));
 
 export const validatePhase4PhasRegistrationProof = (
   value: unknown,

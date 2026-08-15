@@ -29,6 +29,7 @@ import {
   superviseHostProcess,
 } from "@/e2e/service-supervisor.js";
 import { Database } from "@/services/database.js";
+import { sleep } from "@/sleep.js";
 import { breakDownTx } from "@/utils.js";
 
 const OPERATOR_TOKEN = "I_ACKNOWLEDGE_EXACT_KILLED_TX_OPERATOR_TEST";
@@ -36,9 +37,6 @@ const ISOLATED_DEPLOYMENT_ACK =
   "I_ACKNOWLEDGE_DESTRUCTIVE_ISOLATED_PHASE1_DEPLOYMENT";
 const operatorEnabled =
   process.env.PHASE1_EXACT_CRASH_OPERATOR_TOKEN === OPERATOR_TOKEN;
-
-const sleep = (milliseconds: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const waitFor = async <A>(
   label: string,

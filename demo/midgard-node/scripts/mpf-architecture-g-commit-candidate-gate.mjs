@@ -11,6 +11,7 @@ import {
   captureArchitectureGPhase1FormalBindingIdentity,
   captureArchitectureGRuntimeIdentity,
   discoverArchitectureGSourceFiles,
+  percentile,
   resolveArchitectureGGateConfig,
   validateArchitectureGCommitCandidateInputV1,
   validateArchitectureGCrossGateEvidenceIdentity,
@@ -211,10 +212,6 @@ const outPath = resolve(
   ),
 );
 
-const percentile = (values, quantile) => {
-  const sorted = [...values].sort((left, right) => left - right);
-  return sorted[Math.max(0, Math.ceil(sorted.length * quantile) - 1)];
-};
 const fixtureIdentity = async (path) => {
   const db = new Level(path, { valueEncoding: "json" });
   await db.open();

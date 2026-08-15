@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import {
   encodeMidgardCekProgramMaterialSidecarV1,
   type MidgardCekProgramEnvelopeV1,
@@ -26,6 +24,7 @@ import { emitPhase1AcceptCommitCheckpoint } from "@/e2e/phase1-accept-crash-chec
 import { NodeConfig } from "@/services/config.js";
 import { Database } from "@/services/database.js";
 import { WriteBehind } from "@/services/write-behind.js";
+import { sha256 } from "@/sha256.js";
 import { ProcessedTx } from "@/utils.js";
 
 export const tableName = "tx_admissions";
@@ -253,9 +252,6 @@ const normalizeClaimedLeaseEntry = (
   ...row,
   [Columns.ARRIVAL_SEQ]: toBigInt(row[Columns.ARRIVAL_SEQ]),
 });
-
-const sha256 = (bytes: Buffer): Buffer =>
-  createHash("sha256").update(bytes).digest();
 
 const verifyClaimedPayloadRows = (
   rows: readonly RawClaimedPayloadEntry[],

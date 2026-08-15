@@ -62,6 +62,8 @@ import {
   positiveInteger,
   stringArray,
 } from "@/e2e/exact-artifact.js";
+import { percentileOfUnsorted as percentile } from "@/percentile.js";
+import { sleep } from "@/sleep.js";
 
 export const E2E_L2_STRESS_CONFIG_SCHEMA_VERSION =
   "midgard-e2e-l2-stress-config-v1";
@@ -404,9 +406,6 @@ export const E2E_L2_STRESS_MEASUREMENT_POLICY: E2EL2StressMeasurementPolicy = {
   submissionWindowExcludesCommitDrain: true,
   fullFinalityRequiresDrainProof: true,
 };
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 const timestampForPath = (date = new Date()): string =>
   date
@@ -2586,18 +2585,6 @@ const runCanonicalEngineProcess = async ({
       });
     });
   });
-
-const percentile = (values: readonly number[], quantile: number): number => {
-  if (values.length === 0) {
-    return 0;
-  }
-  const sorted = [...values].sort((left, right) => left - right);
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil(sorted.length * quantile) - 1),
-  );
-  return sorted[index]!;
-};
 
 const formatMetricValue = (value: number | null): string =>
   value === null ? "-" : value.toString();

@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
@@ -13,8 +11,10 @@ import {
   deriveWalletInfo,
   type NodeUtxo,
 } from "@/commands/command-utils.js";
+import { requirePositiveSafeInteger } from "@/commands/stress-corpus/plan.js";
 import type { OpenLoopCorpusRow } from "@/commands/stress-open-loop.js";
 import { buildTransferTxWithMinFee } from "@/commands/transfer-build-core.js";
+import { sha256Hex } from "@/sha256.js";
 import { outRefLabel } from "@/tx-context.js";
 
 export type CorpusFundingUtxo = {
@@ -49,9 +49,6 @@ export type BuiltCorpusChain = {
   readonly terminalChangeLovelace: bigint;
 };
 
-const sha256Hex = (bytes: Uint8Array): string =>
-  createHash("sha256").update(bytes).digest("hex");
-
 // The §5.3 field-0/1 item encoding — `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`,
 // fixed 38 bytes — which is what on-chain `ledger_outref_key` derives through
 // `encode_midgard_tx_input`, not CML's minimal-index `TransactionInput` CBOR.
@@ -82,12 +79,6 @@ const outputUtxoFromBuiltTx = ({
     outref: outRefCborHex(txHash, outputIndex),
     outputCbor: outputCbor.toString("hex"),
   });
-
-const requirePositiveSafeInteger = (value: number, fieldName: string): void => {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`${fieldName} must be a positive safe integer.`);
-  }
-};
 
 export const buildCorpusChain = async (
   input: BuildCorpusChainInput,

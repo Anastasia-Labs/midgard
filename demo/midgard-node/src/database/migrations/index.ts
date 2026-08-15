@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "@/sha256.js";
 
 import initialSchemaSql from "./sql/0001_initial_schema.sql";
 
@@ -9,9 +9,6 @@ export type Migration = {
   readonly sql: string;
   readonly transactional: true;
 };
-
-const sha256Hex = (value: string): string =>
-  createHash("sha256").update(value, "utf8").digest("hex");
 
 export const MIGRATIONS: readonly Migration[] = [
   {

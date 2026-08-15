@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 
 import { encodeMidgardProofSubmissionV1 } from "@al-ft/midgard-core/cek-proof";
@@ -7,6 +6,9 @@ import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
+
+import { percentileOfUnsorted as percentile } from "@/percentile.js";
+import { sha256Hex } from "@/sha256.js";
 
 export type OpenLoopCorpusShape = "fanout" | "chain" | "mixed";
 
@@ -105,23 +107,8 @@ const CORPUS_ROW_KEYS = [
 
 const normalizeHex = (value: string): string => value.trim().toLowerCase();
 
-const sha256Hex = (bytes: Buffer): string =>
-  createHash("sha256").update(bytes).digest("hex");
-
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
-
-const percentile = (values: readonly number[], quantile: number): number => {
-  if (values.length === 0) {
-    return 0;
-  }
-  const sorted = [...values].sort((left, right) => left - right);
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil(sorted.length * quantile) - 1),
-  );
-  return sorted[index]!;
-};
 
 const parseStringField = (
   input: Record<string, unknown>,

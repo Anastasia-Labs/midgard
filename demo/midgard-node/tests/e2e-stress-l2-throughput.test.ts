@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
 import {
@@ -35,6 +34,7 @@ import {
   buildStressMetrics,
   computeMetricWindow,
 } from "@/commands/stress-stage-metrics.js";
+import { sha256Hex } from "@/sha256.js";
 
 import { createTrackedTempDirFactory } from "./helpers/temp-files.js";
 
@@ -60,9 +60,6 @@ const responseJson = (body: unknown, status = 200): Response =>
     text: async () => JSON.stringify(body),
     json: async () => body,
   }) as Response;
-
-const sha256Hex = (bytes: Buffer): string =>
-  createHash("sha256").update(bytes).digest("hex");
 
 const jsonClone = <Value>(value: Value): Value =>
   JSON.parse(JSON.stringify(value)) as Value;

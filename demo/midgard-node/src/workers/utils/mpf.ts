@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { dirname } from "node:path";
 
 import { Proof, Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
@@ -80,6 +79,7 @@ import {
   type NativeMpfGenerationHandle,
   type NativeMpfOwnerClient,
 } from "@/services/mpf-native-owner/index.js";
+import { sha256 } from "@/sha256.js";
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 
 import { keyValuePhasRoot, keyValuePhasRootWithCount } from "./mpf/phas.js";
@@ -125,9 +125,6 @@ export type { ParkedEventFlatOverlayV1 } from "./mpf-event-flat.js";
 const consumeMpfMutationProof = Trie.prototype.consumeMidgardMutationProof;
 const ROOT_KEY = "__root__";
 const JSON_LEVEL_ENCODING_OPTS = { valueEncoding: "json" as const };
-const sha256 = (bytes: Uint8Array): Buffer =>
-  createHash("sha256").update(bytes).digest();
-
 export const MPF_EMPTY_ROOT_HEX = SDK.EMPTY_MERKLE_TREE_ROOT;
 const MPF_EMPTY_ROOT = Buffer.from(MPF_EMPTY_ROOT_HEX, "hex");
 const MPF_INTERNAL_NULL_ROOT_HEX = "00".repeat(32);

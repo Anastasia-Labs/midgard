@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import { decodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
@@ -18,9 +16,11 @@ import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
+import { exactRecord } from "@/database/utils/exact-record.js";
 import * as TxTable from "@/database/utils/tx.js";
 import * as WithdrawalsDB from "@/database/withdrawals.js";
 import { Database } from "@/services/database.js";
+import { sha256 } from "@/sha256.js";
 
 export const tableName = "pending_block_finalizations";
 const depositsTableName = "pending_block_finalization_deposits";
@@ -408,29 +408,6 @@ export type PrepareInput = {
   readonly ledgerDelta: LedgerDeltaInput;
   readonly utxoPayloadAggregate?: UtxoPayloadSizeAggregate;
   readonly nativeMpfReplay?: NativeMpfReplayInput;
-};
-
-const exactRecord = (
-  value: unknown,
-  fields: readonly string[],
-  label: string,
-): globalThis.Record<string, unknown> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${label} must be a plain record`);
-  }
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) {
-    throw new Error(`${label} must be a plain record`);
-  }
-  const keys = Reflect.ownKeys(value);
-  if (
-    keys.length !== Object.keys(value).length ||
-    keys.length !== fields.length ||
-    keys.some((key) => typeof key !== "string" || !fields.includes(key))
-  ) {
-    throw new Error(`${label} must contain exactly ${fields.join(", ")}`);
-  }
-  return value as globalThis.Record<string, unknown>;
 };
 
 const exactBytes = (value: unknown, label: string, length?: number): Buffer => {
@@ -1049,9 +1026,6 @@ const pendingBlockFinalizationMetadataFromRow = (
     validationTraceCount: row[Columns.EXPECTED_VALIDATION_TRACE_COUNT],
   },
 });
-
-const sha256 = (payload: Buffer): Buffer =>
-  createHash("sha256").update(payload).digest();
 
 const assertSameIdSet = (
   table: string,

@@ -1,6 +1,7 @@
 import { isAbsolute, resolve } from "node:path";
 
 import {
+  percentile,
   validateArchitectureGCrossGateEvidenceIdentity,
   validateArchitectureGCrossGateSourceIdentity,
   validateArchitectureGPhase1FormalBindingIdentity,
@@ -35,11 +36,6 @@ const isCanonicalAbsolutePath = (value) =>
 
 const isPositiveSafeInteger = (value) =>
   Number.isSafeInteger(value) && value > 0;
-
-const percentile = (values, quantile) => {
-  const sorted = [...values].sort((left, right) => left - right);
-  return sorted[Math.max(0, Math.ceil(sorted.length * quantile) - 1)];
-};
 
 const validateRootGateIdentity = ({
   value,

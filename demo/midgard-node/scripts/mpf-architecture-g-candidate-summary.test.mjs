@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { validateArchitectureGCommitCandidateGateSummaryV1 } from "./mpf-architecture-g-candidate-summary.mjs";
+import { percentile } from "./mpf-architecture-g-gate-config.mjs";
 
 const hash = (byte) => byte.toString(16).padStart(2, "0").repeat(32);
 
@@ -132,11 +133,6 @@ const candidateResult = ({
     ownerBefore: ownerDiagnostics(fixtureRoot),
     ownerAfter: ownerDiagnostics(fixtureRoot),
   };
-};
-
-const percentile = (values, quantile) => {
-  const sorted = [...values].sort((left, right) => left - right);
-  return sorted[Math.max(0, Math.ceil(sorted.length * quantile) - 1)];
 };
 
 const candidateGroup = ({ fixtureSize, durations, transactions, rootSeed }) => {

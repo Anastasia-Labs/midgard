@@ -1,15 +1,8 @@
-import { execFile } from "node:child_process";
-import {
-  createHash,
-  generateKeyPairSync,
-  sign,
-  X509Certificate,
-} from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
 import { type Server } from "node:net";
 import { join } from "node:path";
-import { createServer as createTlsServer } from "node:tls";
-import { isDeepStrictEqual, promisify } from "node:util";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   ActiveOperatorMintRedeemer,
@@ -30,41 +23,11 @@ import {
   WithdrawalOrderDatum,
   WithdrawalSpendRedeemer,
 } from "@al-ft/midgard-sdk";
-import {
-  CML,
-  Constr,
-  Data,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+import { CML, Constr, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
-import {
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
-} from "../../midgard-core/src/consensus-profile-v1.js";
-import {
-  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
-} from "../../midgard-core/src/da-transport.js";
-import {
-  computeDeploymentManifestV1Id,
-  computeDeploymentManifestV1JsonDigest,
-  DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
-  DEPLOYMENT_MANIFEST_V1_STEP_NAMES,
-  makeDeploymentMarkerV1,
-} from "../../midgard-core/src/deployment-manifest-identity-v1.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../src/config.js";
-import {
-  makeWatcherDeploymentIdentitySignaturePayloadV1,
-  verifyWatcherDeploymentIdentityV1,
-  WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION,
-  WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION,
-  type WatcherDeploymentIdentityPolicyV1,
-} from "../src/deployment-identity.js";
 import {
   encodeWatcherDurableStoreV1,
   journalWatcherProtocolUtxoTransitionV1,
@@ -118,69 +81,28 @@ import {
   type WatcherSettlementTransitionKindV1,
   type WatcherSettlementTransitionV1,
 } from "../src/settlement-indexer.js";
-import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
+import {
+  h28,
+  h32,
+  makeDeploymentAuthority,
+  WATCHER_AUTHORITY_RELEASE_DIGEST_V1 as RELEASE_DIGEST,
+  WATCHER_AUTHORITY_RULE_BUNDLE_COMMITMENT_V1 as RULE_BUNDLE_COMMITMENT,
+} from "./support/deployment-authority-fixture.js";
+import { makeWatcherTlsTransportFixtureV1 } from "./support/tls-transport-fixture.js";
 
 type Mutable = Record<string, any>;
-const execFileAsync = promisify(execFile);
 const transportContexts: WatcherL1TransportAttestationContextV1[] = [];
 const tlsServers: Server[] = [];
 const tlsIdentityByProviderId = new Map<string, string>();
 const transportEndpointByProviderId = new Map<string, string>();
 let transportFixtureDirectory = "";
 
-const listen = async (server: Server, target: string | number): Promise<void> =>
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    const onListen = () => {
-      server.off("error", reject);
-      resolve();
-    };
-    if (typeof target === "string") {
-      server.listen(target, onListen);
-    } else {
-      server.listen(target, "127.0.0.1", onListen);
-    }
-  });
-
-const makeTlsTransportFixture = async (providerId: string) => {
-  const keyPath = join(transportFixtureDirectory, `${providerId}.key`);
-  const certificatePath = join(transportFixtureDirectory, `${providerId}.crt`);
-  await execFileAsync("openssl", [
-    "req",
-    "-x509",
-    "-newkey",
-    "rsa:2048",
-    "-nodes",
-    "-keyout",
-    keyPath,
-    "-out",
-    certificatePath,
-    "-days",
-    "1",
-    "-subj",
-    "/CN=localhost",
-    "-addext",
-    "subjectAltName=DNS:localhost",
-  ]);
-  const [key, certificate] = await Promise.all([
-    readFile(keyPath, "utf8"),
-    readFile(certificatePath, "utf8"),
-  ]);
-  const server = createTlsServer({ key, cert: certificate });
-  await listen(server, 0);
-  tlsServers.push(server);
-  const address = server.address();
-  if (address === null || typeof address === "string") {
-    throw new Error("TLS fixture did not bind a TCP port");
-  }
-  return {
-    certificate,
-    identitySha256: createHash("sha256")
-      .update(new X509Certificate(certificate).raw)
-      .digest("hex"),
-    port: address.port,
-  };
-};
+const makeTlsTransportFixture = async (providerId: string) =>
+  await makeWatcherTlsTransportFixtureV1(
+    transportFixtureDirectory,
+    tlsServers,
+    providerId,
+  );
 
 const transportFor = (
   authenticatedProvider: unknown,
@@ -291,259 +213,11 @@ const parseWatcherSettlementIndexerResultV1 = (
     transportAttestations: transportContexts,
   });
 
-const h28 = (byte: string): string => byte.repeat(28);
-const h32 = (byte: string): string => byte.repeat(32);
 const ROOT = "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
 const settlementAsset = "aa";
 const operator = h28("91");
 const HUB_REFERENCE_OUT_REF = `${h32("7a")}#0`;
 const SETTLEMENT_REFERENCE_OUT_REF = `${h32("7b")}#0`;
-const RELEASE_DIGEST = h32("22");
-const BLUEPRINT_HASH = h32("55");
-const RULE_BUNDLE_COMMITMENT = h32("44");
-const NATIVE_SCRIPT_CBOR = `8200581c${"00".repeat(28)}`;
-const NATIVE_SCRIPT_HASH =
-  "9dcfe5a661b6bc3af0999d06416d95842ba7c693dc0e246f5e0a5e33";
-const DA_SIGNERS_HASH =
-  "0395256ce5d90f07504b614b9e70e29a06fdd69cef6b01f6018615164125a5c5";
-const sha256 = (bytes: Uint8Array): string =>
-  createHash("sha256").update(bytes).digest("hex");
-
-const makeDeploymentAuthority = () => {
-  const referenceOutRefByContract = new Map<
-    string,
-    { txHash: string; outputIndex: number }
-  >(
-    Object.values(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
-      (contractName, outputIndex) => [
-        contractName,
-        { txHash: h32("12"), outputIndex },
-      ],
-    ),
-  );
-  const contracts = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName, index) => {
-      const native = contractName === "referenceScriptAuthMint";
-      const script = native
-        ? NATIVE_SCRIPT_CBOR
-        : (index + 1).toString(16).padStart(2, "0");
-      return [
-        contractName,
-        {
-          refScriptUTxO: referenceOutRefByContract.get(contractName) ?? null,
-          contract: { type: native ? "Native" : "PlutusV3", cborHex: script },
-          scriptHash: native
-            ? NATIVE_SCRIPT_HASH
-            : validatorToScriptHash({ type: "PlutusV3", script }),
-        },
-      ];
-    }),
-  ) as Mutable;
-  contracts.fraudProofCatalogueMint.fraudProofCatalogue =
-    canonicalFraudProofCatalogueFixture(contracts);
-  const referenceScripts = Object.fromEntries(
-    Object.entries(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-    ).map(([role, contractName]) => {
-      const outRef = referenceOutRefByContract.get(contractName)!;
-      const tokenName =
-        DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES[
-          role as keyof typeof DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES
-        ];
-      return [
-        role,
-        {
-          status: "confirmed",
-          roleUnit:
-            NATIVE_SCRIPT_HASH + Buffer.from(tokenName, "utf8").toString("hex"),
-          scriptHash: contracts[contractName].scriptHash,
-          outRef: `${outRef.txHash}#${outRef.outputIndex.toString()}`,
-        },
-      ];
-    }),
-  );
-  const parameters = {
-    maxTxSize: 16_384,
-    maxValueSize: 5_000,
-    maxTxExUnits: { memory: "16500000", steps: "10000000000" },
-  };
-  const identity: Mutable = {
-    schemaVersion: "midgard-deployment-manifest-v1",
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
-    network: "Preprod",
-    cardanoProtocolParameters: {
-      snapshot: parameters,
-      digest: computeDeploymentManifestV1JsonDigest(parameters),
-    },
-    genesis: {
-      headerHash: h28("00"),
-      utxoSetDigest: computeDeploymentManifestV1JsonDigest([]),
-    },
-    createdAt: "2026-07-28T00:00:00.000Z",
-    updatedAt: "2026-07-28T00:00:00.000Z",
-    referenceScriptDeployAddress: "addr_test1vcanonical",
-    hubOracleOneShot: {
-      txHash: h32("11"),
-      outputIndex: 0,
-      outRef: `${h32("11")}#0`,
-      status: "consumed_by_init",
-    },
-    referenceScriptAuthPolicy: {
-      policyId: NATIVE_SCRIPT_HASH,
-      nativeScript: {
-        type: "Native",
-        cborHex: NATIVE_SCRIPT_CBOR,
-        expiresAtSlot: 1,
-        expiresAtUnixTime: 1,
-        timelockDurationMs: 1,
-      },
-      tokenNames: DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
-      postTimelockAudit: {
-        required: true,
-        rule: "No authenticated reference-script output may change.",
-      },
-    },
-    contracts,
-    referenceScripts,
-    da: {
-      committeeVkeys: [h32("44")],
-      committeeSignersHash: DA_SIGNERS_HASH,
-      threshold: 1,
-      transportProfile: {
-        protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
-        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
-        envelopeEncoding: "identity",
-        zstdLevel: 3,
-        limits: DA_TRANSPORT_LIMITS_V1,
-        retentionDays: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
-      },
-    },
-    proofEvidence: {
-      digest: RELEASE_DIGEST,
-      blueprintHash: BLUEPRINT_HASH,
-    },
-    steps: Object.fromEntries(
-      DEPLOYMENT_MANIFEST_V1_STEP_NAMES.map((stepName) => [
-        stepName,
-        {
-          status:
-            stepName === "prepareHubOracleNonce" ||
-            stepName === "deployNodeRuntimeReferenceScripts" ||
-            stepName === "initProtocol"
-              ? "complete"
-              : "pending",
-        },
-      ]),
-    ),
-    validationDispute: {
-      version: MIDGARD_CONSENSUS_PROFILE_V1.validationDisputeVersion,
-      responseWindowMs:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.validationDisputeResponseWindowMs,
-      maxBisectionRounds:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
-      maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
-    },
-  };
-  const manifest: Mutable = {
-    ...identity,
-    manifestId: computeDeploymentManifestV1Id(identity),
-  };
-  const programCommitments = {
-    "validation-machine-v1": h32("88"),
-    "transition-order-v1": h32("99"),
-  };
-  const releaseBindings = {
-    schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION,
-    ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
-    programCommitments,
-    da: {
-      mode: "authenticated_committee_v1",
-      identityDigest: computeDeploymentManifestV1JsonDigest(manifest.da),
-    },
-    releaseEvidence: {
-      digest: RELEASE_DIGEST,
-      blueprintHash: BLUEPRINT_HASH,
-    },
-  };
-  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
-  const publicKeySpkiDerHex = publicKey
-    .export({ format: "der", type: "spki" })
-    .toString("hex");
-  const trustRootId = sha256(Buffer.from(publicKeySpkiDerHex, "hex"));
-  const signedIdentity: Mutable = {
-    schemaVersion: WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION,
-    manifest,
-    releaseBindings,
-    attestation: {
-      algorithm: "ed25519",
-      trustRootId,
-      signature: "",
-    },
-  };
-  signedIdentity.attestation.signature = sign(
-    null,
-    makeWatcherDeploymentIdentitySignaturePayloadV1(
-      manifest.manifestId,
-      releaseBindings,
-    ),
-    privateKey,
-  ).toString("hex");
-  const deploymentPolicy: WatcherDeploymentIdentityPolicyV1 = {
-    network: "Preprod",
-    hubOracleOneShotOutRef: manifest.hubOracleOneShot.outRef,
-    appliedScriptHashes: Object.fromEntries(
-      DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((name) => [
-        name,
-        contracts[name].scriptHash,
-      ]),
-    ),
-    referenceScripts: Object.fromEntries(
-      Object.keys(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
-        (role) => [
-          role,
-          {
-            scriptHash: manifest.referenceScripts[role].scriptHash,
-            outRef: manifest.referenceScripts[role].outRef,
-          },
-        ],
-      ),
-    ),
-    fraudProofCatalogue: {
-      root: contracts.fraudProofCatalogueMint.fraudProofCatalogue.root,
-      categories: Object.fromEntries(
-        Object.entries(
-          contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories,
-        ).map(([name, value]: [string, any]) => [
-          name,
-          { categoryId: value.categoryId, scriptHash: value.scriptHash },
-        ]),
-      ),
-    } as WatcherDeploymentIdentityPolicyV1["fraudProofCatalogue"],
-    ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
-    programCommitments,
-    daMode: "authenticated_committee_v1",
-    daIdentityDigest: releaseBindings.da.identityDigest,
-    releaseEvidenceDigest: RELEASE_DIGEST,
-    blueprintHash: BLUEPRINT_HASH,
-  };
-  const trustRoots = [{ trustRootId, publicKeySpkiDerHex }];
-  const marker = makeDeploymentMarkerV1(manifest.manifestId);
-  const result = verifyWatcherDeploymentIdentityV1({
-    signedIdentity,
-    policy: deploymentPolicy,
-    trustRoots,
-    durableMarker: marker,
-  });
-  return {
-    signedIdentity,
-    policy: deploymentPolicy,
-    trustRoots,
-    result,
-    marker,
-    contracts,
-  };
-};
 
 const deploymentAuthorityFixture = makeDeploymentAuthority();
 const applied = deploymentAuthorityFixture.policy.appliedScriptHashes;

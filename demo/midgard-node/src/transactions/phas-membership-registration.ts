@@ -10,6 +10,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { exactObjectKeys } from "@/exact-object-keys.js";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import {
   handleSignSubmit,
@@ -83,16 +84,6 @@ export type PhasMembershipRegistrationOptions = {
     capture: CapturedPhasMembershipRegistrationTransaction,
   ) => void;
 };
-
-const exactObjectKeys = (
-  value: unknown,
-  expected: readonly string[],
-): value is Record<string, unknown> =>
-  typeof value === "object" &&
-  value !== null &&
-  !Array.isArray(value) &&
-  Object.keys(value).length === expected.length &&
-  expected.every((key) => Object.hasOwn(value, key));
 
 export const decodePhasMembershipRegistrationTransactionBodyEvidenceV1 = (
   value: unknown,

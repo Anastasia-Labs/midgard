@@ -1,11 +1,10 @@
-import { createHash } from "node:crypto";
-
 import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
 import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { ForeignTipReconciliationsDB } from "@/database/index.js";
+import { sha256 } from "@/sha256.js";
 
 const EMPTY_ROOT = SDK.EMPTY_MERKLE_TREE_ROOT;
 const NONEMPTY_ROOT = "11".repeat(32);
@@ -15,9 +14,6 @@ const FOREIGN_HEADER_HASH = Buffer.alloc(28, 0x31);
 const REPLACED_HEADER_HASH = Buffer.alloc(28, 0x32);
 const PAYLOAD_A = Buffer.from("d8799f4101ff", "hex");
 const PAYLOAD_B = Buffer.from("d8799f4102ff", "hex");
-const sha256 = (value: Uint8Array): Buffer =>
-  createHash("sha256").update(value).digest();
-
 const pending = (): ForeignTipReconciliationsDB.ForeignTipReconciliationV1 => ({
   version: ForeignTipReconciliationsDB.FOREIGN_TIP_RECONCILIATION_V1_VERSION,
   deploymentMarker: MARKER,

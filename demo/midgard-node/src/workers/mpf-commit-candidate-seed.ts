@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { inspect } from "node:util";
 
@@ -16,6 +15,7 @@ import {
 } from "@/database/index.js";
 import * as Tx from "@/database/utils/tx.js";
 import { Database, NodeConfig } from "@/services/index.js";
+import { sha256Hex } from "@/sha256.js";
 import { batchProgram, breakDownTx } from "@/utils.js";
 import { decodeCanonicalProbeRow } from "@/workers/mpf-engine-probe-corpus.js";
 import {
@@ -30,9 +30,6 @@ const inputPath =
   process.argv[2]?.trim() ??
   "";
 const batchSize = 1_000;
-
-const sha256 = (bytes: Uint8Array): string =>
-  createHash("sha256").update(bytes).digest("hex");
 
 const outrefCbor = (label: string): Buffer => {
   const match = /^([0-9a-f]{64})#(0|[1-9]\d*)$/u.exec(label.toLowerCase());
@@ -59,10 +56,10 @@ const loadInput = async (): Promise<{
   );
   const corpusBytes = await readFile(input.corpusSlicePath);
   const fundingBytes = await readFile(input.fundingMapPath);
-  if (sha256(corpusBytes) !== input.corpusSliceSha256) {
+  if (sha256Hex(corpusBytes) !== input.corpusSliceSha256) {
     throw new Error("Candidate seed corpus slice SHA-256 mismatch");
   }
-  if (sha256(fundingBytes) !== input.fundingMapSha256) {
+  if (sha256Hex(fundingBytes) !== input.fundingMapSha256) {
     throw new Error("Candidate seed funding map SHA-256 mismatch");
   }
   const rows = corpusBytes

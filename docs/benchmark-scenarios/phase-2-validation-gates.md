@@ -5,8 +5,12 @@ revision/configuration is evidence that the gate passed.
 
 **Last reviewed:** 2026-07-22
 
-This runbook is the repeatable evidence surface for
-`docs/exec-plans/throughput/phase-2-parallel-validation.md`. Every asserted run
+This runbook is the repeatable evidence surface for throughput Phase 2
+(parallel validation, B1–B3). Its ExecPlan was removed in the 2026-08 docs
+cleanup and is preserved in git history as
+`docs/exec-plans/throughput/phase-2-parallel-validation.md` (last commit
+`c4e0ac9a7`); still-live items from the throughput ExecPlans were consolidated
+into `docs/exec-plans/archive-extracts-2026-08.md`. Every asserted run
 is fail-closed: the benchmark inspects the node and PostgreSQL containers, and
 `verify-phase2-benchmark-report.mjs` rejects topology drift, transaction loss,
 queue residue, latency/scaling regressions, or incomplete soak duration.

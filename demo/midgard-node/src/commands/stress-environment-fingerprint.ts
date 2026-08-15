@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { cpus, hostname, totalmem } from "node:os";
 import { join } from "node:path";
+
+import { sha256Hex } from "@/sha256.js";
 
 export type EnvironmentFingerprint = {
   readonly schemaVersion: 1;
@@ -48,9 +49,6 @@ const stableJson = (value: unknown): string => {
   }
   return JSON.stringify(value);
 };
-
-const sha256Hex = (value: string): string =>
-  createHash("sha256").update(value).digest("hex");
 
 const readGitShaFromDotGit = async (cwd: string): Promise<string | null> => {
   const head = (await readFile(join(cwd, ".git", "HEAD"), "utf8")).trim();

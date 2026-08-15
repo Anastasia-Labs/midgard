@@ -45,7 +45,7 @@ const requirePositiveFinite = (value: number, fieldName: string): number => {
   return value;
 };
 
-const requirePositiveSafeInteger = (
+export const requirePositiveSafeInteger = (
   value: number,
   fieldName: string,
 ): number => {

@@ -841,7 +841,7 @@ const validateArchitectureGRootGateResultShape = (result) => {
   return result;
 };
 
-const percentile = (values, quantile) => {
+export const percentile = (values, quantile) => {
   const sorted = [...values].sort((left, right) => left - right);
   return sorted[Math.max(0, Math.ceil(sorted.length * quantile) - 1)];
 };

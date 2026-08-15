@@ -37,6 +37,7 @@ import {
   writeTextFileAtomic,
   writeTextFileAtomicNoReplace,
 } from "@/files/atomic-write.js";
+import { sleep } from "@/sleep.js";
 
 export const STRESS_WALLET_RECORD_SCHEMA_VERSION = "midgard-stress-wallet-v1";
 export const STRESS_WALLET_CREATE_RESULT_SCHEMA_VERSION =
@@ -476,9 +477,6 @@ type ResolvedStressWallet = {
   readonly record: StressWalletRecord;
   readonly created: boolean;
 };
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 const fileExists = async (path: string): Promise<boolean> =>
   access(path).then(

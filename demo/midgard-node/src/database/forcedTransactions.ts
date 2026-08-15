@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import {
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
@@ -34,6 +32,7 @@ import {
 } from "@/database/utils/common.js";
 import * as ProjectedEvents from "@/database/utils/projected-events.js";
 import { Database } from "@/services/database.js";
+import { sha256 } from "@/sha256.js";
 
 export const tableName = "forced_transaction_utxos";
 const PROOF_MAX_CANONICAL_TRANSACTION_BYTES = 295_041;
@@ -232,9 +231,6 @@ export const decodeForcedTransactionJournalMemberV1 = (
   }
   return decoded;
 };
-
-const sha256 = (payload: Uint8Array): Buffer =>
-  createHash("sha256").update(payload).digest();
 
 const projectedEventsTable = {
   tableName,
