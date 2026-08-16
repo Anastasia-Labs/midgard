@@ -159,7 +159,8 @@
     "docs/fault-proofs/coverage-matrix.md": "Q13 `LOCAL_PASS`; live evidence remains Q57/QG3",
     "docs/fault-proofs/testing-status.md": "Q13 `input-no-idx` init → all steps",
     "docs/fault-proofs/execution-plan.md": "Completed native-V1 binding port.",
-    "docs/fault-proofs/offchain-builder-staleness-575.md": "**The validators take a new parameter.**"
+    "docs/fault-proofs/offchain-builder-staleness-575.md": "**The validators take a new parameter.**",
+    "docs/fault-proofs/parameter-application-audit-609.md": "zero additional under-applied validators were found"
   },
   "criticalFindings": [
     {

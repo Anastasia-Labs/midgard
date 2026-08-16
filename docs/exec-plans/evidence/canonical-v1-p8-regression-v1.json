@@ -1,0 +1,531 @@
+{
+  "schema": "midgard.canonical-v1-p8-regression.v1",
+  "version": 1,
+  "issue": 581,
+  "date": "2026-08-16",
+  "note": "Flat reversion Phase 8 — the terminal regression and gate re-derivation. Every result below was produced by running the named command at the tree named in `identity`, with the pinned compiler and the committed-tree testnet blueprint installed. #581's declared gate list — the §4.4 `journey`, the `gateStack` gates and the `suites` — uses four primary verdict values: PASS; PASS-modulo-#606 (the gate reaches its runner stage and fails solely on an owner-accepted red that rides #606); PASS-modulo-accepted-scaffold-reds (the same shape for the two documented #607/#571 scaffold reds, per orchestrator ruling E-5); and accepted-red-map-match (a suite whose red set equals the #580/#608 accepted map exactly). Rows outside that declared list are auxiliary and deliberately carry free-form recorded verdicts drawn from no fixed vocabulary — the manifest-quality self-test row, the `watcher` section's own verdict and its `verifiers[]` rows; `acceptanceCriteria` entries likewise use their own criterion-level vocabulary rather than this one. A gate in the declared list that fails for any reason outside the four values is recorded as BLOCKED and escalated, never re-pinned. This artifact records; the numbers live in the suites, verifiers and ledgers named per row. A second pass on 2026-08-16 carried the adjudicated rulings for escalations E-1 (orchestrator) and E-2/E-3/E-4 (owner) back into this report: it applied the one repair ruling E-1 authorised and re-measured the gate that repair unblocked, and otherwise changed only wording and disposition — no measured number in this report was re-taken or re-pinned by it.",
+
+  "identity": {
+    "tree": "colll78/canonical-v1-watcher-l1-source-checkpoint at 7b731f2c036eba202235a8e4b38dd4b02c317a50",
+    "workingTree": "clean — `git status --porcelain=v1` reports only the untracked `.claude/` directory, before and after every gate group in this measurement pass. Every number in this report was measured against that clean tree. The subsequent ruling pass (2026-08-16) adds exactly two entries beyond `.claude/`: this untracked report, and the one-anchor modification to docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json authorised by ruling E-1.",
+    "compiler": {
+      "version": "aiken v1.1.23+2a78108",
+      "binary": "/home/gumbo/playground/aiken/target/release/aiken",
+      "binaryMd5": "b3acfdf348235798cb6b921d0f87750a",
+      "role": "the sole identity compiler for fmt/build/check (#579 owner ruling A), exported as MIDGARD_AIKEN_BIN for every aiken-touching command in this pass",
+      "stockCompilerHazard": "a stock aiken v1.1.22+39d6b04 IS reachable on this machine's PATH at /home/gumbo/.aiken/bin/aiken. It was never used. This is the #580 anomaly (stock produces CPU-only exec-ledger drift with exact memory), and it is live here — every exec-ledger verifier in this pass ran with MIDGARD_AIKEN_BIN set to the fork."
+    },
+    "blueprint": {
+      "path": "onchain/aiken/plutus.json",
+      "md5": "b20c9a14a8fe445cdddbe5305b3857c1",
+      "sha256": "91861fac2d0bcafade6d8e1b4872e669cf9e7b52f5ed75d3b9729e4e02d6dd6b",
+      "validators": 398,
+      "gitignored": true,
+      "declaredConstruction": "aiken build --env testnet",
+      "reproductionVerified": true,
+      "reproductionMethod": "`git archive HEAD | tar -x -C /tmp/p8-bp` then `aiken build --env testnet` with the pinned fork in that pristine copy. The pristine build produced md5 b20c9a14a8fe445cdddbe5305b3857c1 / sha256 91861fac… / 398 validators and compared byte-identical (`cmp -s`) to the in-tree blueprint, so no install was needed and the in-tree file was never rewritten.",
+      "untouched": true
+    },
+    "toolchain": {
+      "node": "v22.22.2 (/home/gumbo/.nvm/versions/node/v22.22.2/bin/node) — the pinned interpreter, and the one every command of the measurement pass ran under. Exception, recorded rather than smoothed over: the E-1/E-5 ruling-pass runs of the fault-proof reconciliation verifier were executed under v24.13.1, off the pin; review independently reproduced them byte-equivalent under the pinned v22.22.2 (same ERR_FOCUSED_CHECK_FAILED, same throw sites :145 and :1674, exit 1), so no number recorded in this report depends on the unpinned interpreter.",
+      "pnpm": "9.15.4 inside demo/ — resolved through the standalone pnpm shim, which self-switches to the workspace's declared packageManager",
+      "pnpmHazard": "nvm's own pnpm (v11.18.0) is corepack-managed and HARD-ERRORS instead of switching to the declared 9.15.4. Any verifier that spawns a bare `pnpm` fails with 'Corepack invoked pnpm with this version, and pnpm does not switch versions when running under corepack' — demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs:176 is such a site. The first watcher run in this pass hit exactly that and was discarded and re-run; the verifiers that spawn `process.execPath` with a resolved vitest CLI (demo/scripts/lib/runner-reports.mjs:59) are immune.",
+      "postgres": "PostgreSQL 17.2 at 127.0.0.1:5433, user postgres — a fresh per-run database, never a shared one"
+    }
+  },
+
+  "journey": {
+    "goalSpecSection": "§4.4",
+    "gate": "deposit-flow-emulator — deposit → reserve absorption → withdrawal commitment → payout",
+    "command": "cd demo && POSTGRES_DB=midgard_p8_20260816T050629Z pnpm --config.verifyDepsBeforeRun=false --dir midgard-node exec vitest run tests/deposit-flow-emulator.test.ts -t 'runs deposit, reserve absorption, withdrawal commitment, and payout to conclusion' --pool=forks --no-file-parallelism --bail=0 --reporter=verbose",
+    "database": "midgard_p8_20260816T050629Z — created fresh for this run with createdb; never a shared database",
+    "observed": "1 passed | 13 skipped (14); 1 test file passed (1); duration 190.11 s; wall 191 s; exit code 0",
+    "expectedRuntime": "~205 s",
+    "collectedNonzero": true,
+    "verdict": "PASS",
+    "meaning": "the reversion is invisible at the top seam — the full deposit-to-payout journey runs to conclusion on the Phase-6 blueprint with no flat-format accommodation anywhere in the flow"
+  },
+
+  "gateStack": [
+    {
+      "gate": "manifest quality gate",
+      "command": "node demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs",
+      "observed": "goal:tasks:quality:verify: FAIL — tasks 186/186; unique IDs 186; first-queue IDs 119; defects 12; unresolvableFocusedModuleCitation 9 (C20-0..C20-8); watcherFocusedGateContractMismatch 3 (W25, W26, watcher-focused-gate). Exit 1.",
+      "acceptedDefectsArtifact": {
+        "path": "docs/exec-plans/evidence/canonical-v1-strict-manifest-quality-accepted-defects-v1.json",
+        "md5": "b13a7e37cdddc3c063e95b86361b76d0",
+        "byteIdenticalToHead": true,
+        "evidence": "`git diff --exit-code` on that path returned 0"
+      },
+      "verdict": "PASS",
+      "meaning": "exactly the 12 accepted defects, in exactly the two accepted categories, with exactly the accepted ids, and the accepted-defects artifact byte-identical. Exit 1 is this gate's documented semantics, not a crash: the artifact itself records `process.exit(summary.defects === 0 ? 0 : 1)` at verify-canonical-v1-goal-task-manifest-quality.mjs:1583 and states that the gate does not exit 0, under owner ruling B (2026-08-14, binding)."
+    },
+    {
+      "gate": "manifest quality gate — self-test",
+      "command": "node demo/scripts/verify-canonical-v1-goal-task-manifest-quality-self-test.mjs",
+      "observed": "AssertionError at verify-canonical-v1-goal-task-manifest-quality-self-test.mjs:73 — 'published manifest must pass: {…defects:12…}', 1 !== 0. Exit 1.",
+      "verdict": "FAILS-BY-CONSTRUCTION — recorded, not new signal",
+      "meaning": "the self-test's POSITIVE control asserts that the published manifest exits 0 with 0 defects. Owner ruling B accepted 12 standing defects, so this control is falsified by the accepted state itself — same root cause as the gate's own exit 1, not a second defect. Run here as extra diligence; it is not part of #581's declared gate list and it is the step CI never reaches (evidence-integrity-ci.yml stops at the gate on line 86 before the self-test on line 88)."
+    },
+    {
+      "gate": "Q1x proof-family verifier",
+      "command": "script -qec 'node demo/scripts/verify-canonical-v1-proof-family-q1x.mjs' /dev/null",
+      "ptyRequired": true,
+      "ptyReason": "a piped invocation falsely reports exit 0 — recorded in the p7 artifact. Run under a pty the process exits nonzero truthfully.",
+      "observed": "reached the runner stage at verify-canonical-v1-proof-family-q1x.mjs:811 and threw RunnerCheckError: ERR_FOCUSED_CHECK_FAILED — 'Q1x proof family demo/midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts: 1 of 4 collected tests failed — fault-proof emulator integration proves and removes a tail non-existent-input block end to end'. Exit 1.",
+      "verdict": "PASS-modulo-#606",
+      "meaning": "every structural assertion ahead of the runner stage passed; the gate failed SOLELY on the #608 owner-accepted liveness-gap red, which the 2026-08-15 owner ruling (option 2) placed in an accepted bucket riding #606. This is the #608 acceptance becoming visible on a second surface, exactly as #580's close predicted. No other failure mode appeared.",
+      "consequence": "the Q10/Q11 output-5 cells stay OPEN under the derived-cell rules; the verifier cannot complete — and so cannot re-pin — until #606 lands."
+    },
+    {
+      "gate": "fault-proof reconciliation verifier",
+      "command": "script -qec 'node demo/scripts/verify-canonical-v1-fault-proof-reconciliation.mjs' /dev/null",
+      "observedBeforeRepair": "DocumentationAnchorError at verify-canonical-v1-fault-proof-reconciliation.mjs:356 — ERR_DOC_ANCHOR_SCOPE_INCOMPLETE: 'documentationAnchors omits reconciled documentation and would silently drop its assertions: docs/fault-proofs/parameter-application-audit-609.md'. Exit 1.",
+      "repair": {
+        "authority": "orchestrator ruling E-1 (option 1, 2026-08-16) — the omission is a #609 landing defect and its registration is in scope for #581",
+        "cause": "#609 landed docs/fault-proofs/parameter-application-audit-609.md at ac54d01a without extending documentationAnchors, which was last updated at 988c6f9c (#579)",
+        "change": "one entry appended to `documentationAnchors` in docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json, in the established path→anchor-text shape the other nine entries use: \"docs/fault-proofs/parameter-application-audit-609.md\": \"zero additional under-applied validators were found\". The anchor is the audit's headline census result — the blueprint's 62 `field_preimage_certificate_*` entries are 31 distinct validators, the ten under-applied semantic resolvers were fixed, no eleventh under-application exists, and the arity helper is now the only door onto `applyParamsToScript` in both packages. Nothing else in that artifact changed.",
+        "effect": "ERR_DOC_ANCHOR_SCOPE_INCOMPLETE is gone. The anchor-scope closure (:340-:384) now accepts the map against the repository-derived ten-document scope, and the anchor-substring loop (:1301), the completed-task blocker scan (:1341) and the stale-pattern scan (:1960) all run over that scope. The gate proceeds roughly 1300 assertions further than it did before the repair, passing every one of them, and reaches its focused-check runner stage."
+      },
+      "observedAfterRepair": "FocusedCheckError raised at verify-canonical-v1-fault-proof-reconciliation.mjs:145 from the focused-check runner stage at :1674 — ERR_FOCUSED_CHECK_FAILED: 'family-scaffold-v1.test.ts strict scanner: 2 of 45 collected tests failed'. Exit 1.",
+      "focusedCheckMeasured": {
+        "what": "the gate spawns tests/family-scaffold-v1.test.ts through the package's own Vitest CLI (:68-:111) and admits no accepted-red allowance: any failed assertion throws",
+        "collected": 45,
+        "passed": 43,
+        "failed": 2,
+        "failures": [
+          "Q02 permissive-dispatch scanner produces no findings on any shipped fraud-proof artifact — AssertionError at family-scaffold-v1.test.ts:804, expected [ …(4) ] to deeply equal []",
+          "Q02 generated shape matches the deployed families mirrors the shipped zero-input step modules — AssertionError at family-scaffold-v1.test.ts:1234, expected 'use midgard/computation_thread as ct…' to contain 'use midgard/ledger_state.{MidgardInpu…'"
+        ],
+        "publishedClaim": "the reconciliation artifact publishes summary.focusedChecksTotal 45 and summary.focusedChecksPassed 45, and the gate asserts both against the runner at :1678-:1687",
+        "standaloneConfirmation": "`pnpm --dir midgard-fault-proofs exec vitest run tests/family-scaffold-v1.test.ts --pool=forks --no-file-parallelism --bail=0` reports '2 failed | 43 passed (45)' — identical, so the two reds are a tree fact at 7b731f2c and not an artefact of the E-1 repair",
+        "relationToTheAcceptedMap": "these are exactly the two tests already recorded in this report's `suites` accepted-red map under `scaffold_issues607_571`. They are not a new failure; what is new is that they are now visible on the reconciliation gate, which the anchor omission had been masking."
+      },
+      "shapeRecorded": {
+        "source": "the artifact's own published summary, read read-only — the verifier still aborts before its own summary line at :1981, now at the focused-check stage rather than the anchor-scope check",
+        "total": 70,
+        "coverageRows": 61,
+        "structuralRows": 9,
+        "locallyComplete": 8,
+        "structuralOrNA": 13,
+        "open": 49,
+        "preprodComplete": 0,
+        "focusedChecksPassed": "published 45/45; MEASURED 43/45",
+        "comparisonToPriorRecord": "the row shape is identical to the #580-era record of 70 rows / 49 open and has NOT changed. The focused-check pair is the one published number the runner now contradicts."
+      },
+      "verdict": "PASS-modulo-accepted-scaffold-reds (#607/#571)",
+      "meaning": "Two-stage history. STAGE 1 — the #609 anchor omission (E-1) is repaired and verified: the anchor-scope closure error is gone, the repair is the one anchor entry orchestrator ruling E-1 authorised, and every stage that repair unblocked runs green over the ten-document scope (scope closure, anchor-substring loop, completed-task blocker scan, stale-pattern scan) plus roughly 1300 further assertions. STAGE 2 — the gate's sole remaining failure is the focused-check assertion, and it fails on exactly the two owner-accepted scaffold reds: #607's Q02 generator shape and #571's Q02 permissive-dispatch scanner, both already in this report's accepted-red map under scaffold_issues607_571. This is a DOCUMENTED STANDING STATE, not new signal (orchestrator ruling E-5, 2026-08-16): the pair is carried in the accepted-red baseline through #604→#609→#580's close comments, and 620fa2c0's own verification message records 'the fault-proof reconciliation and CG4 gate failures reproduce identically at HEAD (pre-existing: the two #607 scaffold reds…)' — the gate has been red on this exact pair since before this iteration, and the E-1 anchor abort was masking it. The artifact's published 45/45 focused-check pin is deliberately NOT re-pinned to 43/45: pinning accepted reds as the expected state would normalize them, and the pin flips back to truth of its own accord when #607/#571 land their fixes. Same disposition shape as the Q1x PASS-modulo-#606 precedent from #580's close; resolution rides #607/#571."
+    },
+    {
+      "gate": "ABI-freeze verifier",
+      "command": "node demo/scripts/verify-canonical-v1-abi-freeze.mjs",
+      "observed": "Canonical V1 ABI freeze verified. freezeStatus BLOCKED; cross-package identities re-derived 7/7; derived relations 6, violations 0; catalogue categories 11; validator directories 18; blueprint 398 validators from v1.1.23+2a78108; bound gates 3; IG2 families 18, integrable 0, violations 11, status BLOCKED; drift findings 0; waivers 0. Exit 0.",
+      "artifactByteIdentical": "yes — `git diff --exit-code docs/exec-plans/evidence/canonical-v1-abi-freeze-v1.json` returned 0",
+      "verdict": "PASS",
+      "meaning": "7/7 identities, 0 violations, 0 drift, 0 waivers. freezeStatus BLOCKED is the standing IG2/B34 lane state and is NOT a failure — it reflects 18 IG2 families with 0 integrable, which is B34's own work."
+    },
+    {
+      "gate": "ABI-freeze verifier — self-test",
+      "command": "node demo/scripts/verify-canonical-v1-abi-freeze-self-test.mjs",
+      "observed": "abi-freeze:self-test: PASS — control runs accepted 2; hostile mutations rejected 23. Exit 0.",
+      "verdict": "PASS",
+      "meaning": "falsifiability demonstrated in both directions: the gate accepts the real tree and rejects all 23 seeded mutations, each with its specific diagnostic."
+    },
+    {
+      "gate": "exec-ledger verifiers (all seven, under the pinned fork)",
+      "command": "cd onchain/aiken && MIDGARD_AIKEN_BIN=<fork> node scripts/verify-{carriage,q1x,q21,q31,tx-order-mint,canonical-decodability,committed-field-shape}-exec-ledger-v1.mjs",
+      "observed": [
+        {
+          "verifier": "carriage",
+          "status": "pass",
+          "rows": 13,
+          "derived": 9,
+          "readBudget": {
+            "byMemory": 83.54,
+            "byCpu": 84.29,
+            "bindingAxis": "memory"
+          },
+          "exit": 0
+        },
+        {
+          "verifier": "q1x",
+          "status": "pass",
+          "rows": 16,
+          "derived": 8,
+          "exit": 0
+        },
+        { "verifier": "q21", "status": "pass", "rows": 2, "exit": 0 },
+        { "verifier": "q31", "status": "pass", "rows": 2, "exit": 0 },
+        { "verifier": "tx-order-mint", "status": "pass", "rows": 4, "exit": 0 },
+        {
+          "verifier": "canonical-decodability",
+          "status": "pass",
+          "rows": 6,
+          "exit": 0
+        },
+        {
+          "verifier": "committed-field-shape",
+          "status": "pass",
+          "rows": 6,
+          "exit": 0
+        }
+      ],
+      "verdict": "PASS",
+      "meaning": "7/7 PASS, zero drift, under aiken v1.1.23+2a78108. Any drift fails these verifiers closed, so `status: pass` is the zero-drift statement."
+    },
+    {
+      "gate": "WG1 watcher local gate",
+      "command": "node demo/scripts/verify-canonical-v1-wg1-watcher-local-gate.mjs",
+      "observed": "Canonical V1 WG1 watcher local gate verified. W44 bound: 17/17 cases, 0 failures. Exit 0.",
+      "verdict": "PASS"
+    }
+  ],
+
+  "watcher": {
+    "scope": "W24–W29 re-anchoring via the full watcher-verifier regression",
+    "packageSuite": {
+      "command": "cd demo && pnpm --config.verifyDepsBeforeRun=false --dir midgard-watcher exec vitest run --bail=0 --reporter=json --outputFile=<report>",
+      "observed": "1 failed | 618 passed (619); 1 test file failed | 19 passed (20); duration 40.77 s wall, 184.78 s test time",
+      "failure": {
+        "test": "tests/user-event-indexer.test.ts > canonical authenticated user-event indexer > promotes terminal finality independently and restores terminal consumption through W13 restart/reprocessing",
+        "diagnostic": "Error: Test timed out in 5000ms.",
+        "isolatedRerun": {
+          "command": "cd demo && pnpm --config.verifyDepsBeforeRun=false --dir midgard-watcher exec vitest run tests/user-event-indexer.test.ts -t 'promotes terminal finality independently and restores terminal consumption through W13 restart/reprocessing' --bail=0 --reporter=verbose",
+          "observed": "1 passed | 25 skipped (26); exit 0"
+        },
+        "classification": "documented standing environment item — the 5000 ms load-sensitive watcher timeout class (GOAL_PROGRESS.md records the same class for proof-thread-indexer: 'passes 24/24 in isolation'). Green on isolated re-run, as the standing item predicts. NOT escalated."
+      }
+    },
+    "pinSurfaces": [
+      {
+        "surface": 1,
+        "name": "focused-tests verifier pinnedByFile",
+        "location": "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs:125-146",
+        "declared": "20 files",
+        "measured": "20 files",
+        "result": "MATCH"
+      },
+      {
+        "surface": 2,
+        "name": "focused-tests verifier pinnedTotal",
+        "location": "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs:147",
+        "declared": 617,
+        "measured": 619,
+        "result": "DRIFT +2 — all of it in user-event-indexer.test.ts (26 collected against a pin of 24); the other 19 files match their pins exactly"
+      },
+      {
+        "surface": 3,
+        "name": "dependency-map JSON expectedFocusedTestCount",
+        "location": "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json — requiredWatcherPackage.*.expectedFocusedTestCount",
+        "declared": "20 files summing to 617 (userEventIndexer 24)",
+        "measured": 619,
+        "result": "DRIFT +2 — same single file"
+      },
+      {
+        "surface": 4,
+        "name": "dependency-map verifier literals",
+        "location": "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs:2688-2694",
+        "declared": "publicDaClient 102, canonicalBlockStore 46, headerRootReconstruction 59, phaseAVerifier 94 (301 of the published total)",
+        "measured": "102 / 46 / 59 / 94",
+        "result": "MATCH — these four literals are exactly the four files that did not drift"
+      },
+      {
+        "surface": 5,
+        "name": "quality-gate aggregate literal",
+        "location": "demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs:1173-1178 — `watcherFocusedGateAggregate !== 616`, 'expected exact 20/616'",
+        "declared": 616,
+        "measured": 619,
+        "result": "STANDING MISMATCH + DRIFT — the 616-vs-617 half is the accepted watcherFocusedGateContractMismatch defect (3 rows: W25, W26, watcher-focused-gate); the 617-vs-619 half is the new drift"
+      },
+      {
+        "surface": 6,
+        "name": "manifest aggregate claims",
+        "location": "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json — the '20 files, 616/616 passed' and '20-file/616-test' claims",
+        "declared": 616,
+        "measured": 619,
+        "result": "STANDING MISMATCH + DRIFT — as surface 5"
+      }
+    ],
+    "verifiers": [
+      {
+        "verifier": "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs",
+        "observed": "Error: Watcher focused-test verification failed: Vitest collected counts do not match the runner-measured pins: user-event-indexer.test.ts collected 26 against pin 24. Exit 1.",
+        "verdict": "red on the attributed drift (E-2) — owner-ruled 2026-08-16: not re-pinned here, not re-opened; the coordinated six-surface re-pin rides a follow-up ticket"
+      },
+      {
+        "verifier": "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs",
+        "observed": "Error: Watcher dependency map verification failed: requiredWatcherPackage.currentContents must exactly cover the package. Exit 1.",
+        "verdict": "red on the attributed drift (E-3) — owner-ruled 2026-08-16: not re-pinned here, not re-opened; same follow-up ticket as E-2"
+      },
+      {
+        "verifier": "demo/scripts/verify-canonical-v1-watcher-dependency-map-self-test.mjs",
+        "observed": "same diagnostic, raised from the same check inside the verifier it drives. Exit 1.",
+        "verdict": "same root cause as E-3, not an independent finding — carried by the same owner ruling"
+      },
+      {
+        "verifier": "demo/scripts/verify-canonical-v1-wg1-watcher-local-gate.mjs",
+        "observed": "verified; W44 bound 17/17 cases, 0 failures. Exit 0.",
+        "verdict": "PASS"
+      }
+    ],
+    "drifts": [
+      {
+        "id": "E-2",
+        "drift": "user-event-indexer.test.ts collects 26 focused tests against a pin of 24",
+        "attribution": "04aaae57 (#594, 'forced-order material carriage on the field-access door') added 2 it() tests to demo/midgard-watcher/tests/user-event-indexer.test.ts (21 → 23 it() lines, 24 → 26 collected). The pin surfaces were last updated at df53dc6a (#587) — both the focused-tests pin table and the dependency-map artifact.",
+        "preExisting": "yes — present at HEAD 7b731f2c with a clean tree; #581 changed nothing that could cause it",
+        "notRepinned": "no pin was touched. Owner ruling 2026-08-16 ('file follow-up, land'): this drift is NOT re-pinned in #581 and does NOT re-open W24–W29; the coordinated re-pin across all six surfaces rides a follow-up ticket the orchestrator files at landing."
+      },
+      {
+        "id": "E-3",
+        "drift": "requiredWatcherPackage.currentContents declares 53 files where the git index carries 56",
+        "missingEntries": [
+          "demo/midgard-watcher/tests/support/canonical-json.ts",
+          "demo/midgard-watcher/tests/support/deployment-authority-fixture.ts",
+          "demo/midgard-watcher/tests/support/tls-transport-fixture.ts"
+        ],
+        "staleEntries": [],
+        "attribution": "620fa2c0 ('2026-08 deslop — ledger pruning, exec-plan archival, shared-helper dedup') added all three test-support modules without extending currentContents. The check is index-bound: the verifier derives the actual set from `git ls-files -- demo/midgard-watcher` (verify-canonical-v1-watcher-dependency-map.mjs:1062-1079), and the tree is clean, so index equals HEAD.",
+        "preExisting": "yes — present at HEAD 7b731f2c",
+        "notRepinned": "no dependency map, verifier literal or aggregate was touched. Same owner ruling as E-2: not re-pinned, not re-opened, carried by the same follow-up ticket."
+      }
+    ],
+    "verdict": "re-anchored-modulo-two-attributed-drifts (owner ruling 2026-08-16: follow-up re-pin, no re-open)",
+    "verdictDetail": "W24–W29 is recorded as re-anchored modulo two attributed drifts. Measured: the watcher package suite is green at 618/619 with the single failure confirmed a documented load-sensitive 5000 ms timeout (green on isolated re-run), WG1 passes 17/17, and four of the six pin surfaces match exactly. The two that do not are pre-existing drifts attributed to specific commits — surface 2/3 (user-event-indexer 26 collected against a pin of 24) to 04aaae57 (#594), and the dependency-map currentContents (53 declared against 56 indexed) to 620fa2c0 — with surfaces 5 and 6 carrying the same +2 on top of the standing owner-accepted 616-vs-617 mismatch. Under the owner ruling of 2026-08-16 these two are neither re-pinned by this pass nor cause for re-opening W24–W29; the coordinated six-surface re-pin rides a follow-up ticket filed by the orchestrator at landing. No watcher pin file, dependency map, verifier literal or aggregate was modified by this pass."
+  },
+
+  "suites": [
+    {
+      "suite": "midgard-fault-proofs (full)",
+      "command": "cd demo && pnpm --config.verifyDepsBeforeRun=false --dir midgard-fault-proofs exec vitest run --pool=forks --no-file-parallelism --bail=0 --reporter=verbose",
+      "observed": "9 failed | 346 passed (355); 6 test files failed | 32 passed (38)",
+      "verdict": "accepted-red-map-match",
+      "redSetMapping": {
+        "ownerRuledLivenessGap_ridesIssue606": [
+          "submit-init-emulator-ledger-rules.test.ts > fault-proof emulator integration > proves and removes a tail non-existent-input block end to end",
+          "submit-init-emulator-chunked-proof-carriage.test.ts > fault-proof published-chunk proof carriage > carries a no-input membership and absence proof past the direct route's envelope ceiling",
+          "submit-init-emulator-max-proof-fit.test.ts > fault-proof maximum proof fit > fits a maximum-depth non-existent-input proof inside the L1 envelope"
+        ],
+        "validationDisputeAccepted": [
+          "submit-init-emulator-validation-dispute.test.ts > opens, bisects, resolves a fitting complete item by 'direct', and awards a validation dispute",
+          "submit-init-emulator-validation-dispute.test.ts > opens, bisects, resolves a fitting complete item by 'reference', and awards a validation dispute",
+          "validation-dispute-submit.test.ts > matches the exact prepare, direct, and award Aiken redeemer ABIs",
+          "validation-dispute-submit.test.ts > emits the deployed 5-field complete-item Verify redeemer with the item unwrapped"
+        ],
+        "scaffold_issues607_571": [
+          "family-scaffold-v1.test.ts > Q02 permissive-dispatch scanner > produces no findings on any shipped fraud-proof artifact",
+          "family-scaffold-v1.test.ts > Q02 generated shape matches the deployed families > mirrors the shipped zero-input step modules"
+        ]
+      },
+      "outsideTheMap": 0,
+      "meaning": "exactly the accepted-9 baseline #580 handed to #581 (346 passed / 9 failed), bucket for bucket. No new signal."
+    },
+    {
+      "suite": "midgard-sdk (full)",
+      "command": "cd demo && pnpm --config.verifyDepsBeforeRun=false --dir midgard-sdk exec vitest run --bail=0",
+      "observed": "308 passed (308); 34 test files passed (34); exit 0",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "demo typecheck",
+      "command": "cd demo && pnpm --config.verifyDepsBeforeRun=false run typecheck",
+      "observed": "exit 0",
+      "verdict": "PASS"
+    }
+  ],
+
+  "ciBaseline": {
+    "note": "#581's acceptance line reads 'CI fully green on the trunk'. This section records the measured pre-landing state of that trunk. A worker cannot verify a not-yet-pushed commit; what is verifiable — and what is recorded here — is the state of the branch as it stands at HEAD 7b731f2c, plus a local reproduction of each red so the reader can tell an environment artifact from a tree fact.",
+    "role": "THE ACCEPTED CI BASELINE. Under the owner ruling of 2026-08-16 (E-4) this enumeration is the durable definition of the accepted red set: the per-workflow rows below — name, conclusion, last-green date, attributed cause — are what 'accepted' means for #581 and for every pass that inherits this baseline. It is the CI-gate analogue of owner ruling B's accepted-defects artifact for the manifest gate.",
+    "ownerRuling": {
+      "id": "E-4",
+      "date": "2026-08-16",
+      "authority": "owner, delivered in-session ('accepted-baseline ruling')",
+      "ruling": "#581's 'CI fully green' acceptance line is satisfied modulo this enumerated accepted CI baseline, mirroring owner ruling B's structure for the manifest gate.",
+      "landingGate": "no new red relative to the 7b731f2c baseline enumerated below — NOT 'all green'",
+      "repairDisposition": "CI repair rides a follow-up ticket, filed by the orchestrator at landing; #581 repairs none of these workflows and its landing commit touches none of their inputs"
+    },
+    "branch": "colll78/canonical-v1-watcher-l1-source-checkpoint",
+    "pullRequest": 471,
+    "headShaCiRanOn": "7b731f2c036eba202235a8e4b38dd4b02c317a50 — the same commit this pass verified",
+    "state": "RED, and red continuously for at least 25 consecutive runs per workflow",
+    "workflows": [
+      {
+        "workflow": "Aiken CI",
+        "conclusion": "failure",
+        "lastGreenOnBranch": "2026-08-08 (ab97e571)",
+        "attributedCause": "committed trailing whitespace in .ak sources reads as an fmt diff: CI normalizes only the freshly formatted tree before diffing, so six fmt-idempotent files differ solely by the trailing space their committed source retains. Pre-dates #581.",
+        "failingStep": "Run normalized Aiken auto-formatter check",
+        "ciReported": "6 files differ after `git ls-files -z '*.ak' | xargs -0 aiken fmt` + trailing-space normalization: onchain/aiken/lib/midgard/native-tx-field-access-v1.test.ak, validation-machine-v1.ak, validation-machine-v1.test.ak, validation-resolver-v1.ak, and validators/fraud-proofs/validation-trace/canonical-decode-item-{observe,semantic}-v1.ak",
+        "localReproduction": "reproduced in a pristine `git archive HEAD` copy in /tmp (the repository working tree was never written). All six CI-flagged files are byte-identical after normalizing trailing whitespace on BOTH sides — i.e. they ARE fmt-idempotent modulo trailing space. What makes CI red is that their committed source retains trailing whitespace (validation-machine-v1.ak carries 54 such lines) while CI normalizes only the freshly formatted tree before diffing. This is the standing 'pre-existing trailing-space behavior after bare expect' item recorded in #580's close, surfacing as a CI red rather than a local inconvenience.",
+        "additionalLocalFinding": "the stricter local sweep found one genuinely non-idempotent file that CI does not flag: demo/midgard-node/blueprints/always-succeeds/validators/midgard.ak (real line-wrapping differences, not whitespace). It is a test blueprint fixture, not consensus code, and is untouched by this program."
+      },
+      {
+        "workflow": "Docs Site CI",
+        "conclusion": "failure",
+        "lastGreenOnBranch": "2026-08-04 (e642fad0)",
+        "attributedCause": "18 documented-fact drift items — commands and catalogue categories added by this program's earlier phases that the docs-site pages were never extended to match. Pre-dates #581.",
+        "failingStep": "Check documented facts against source (`pnpm --dir docs-site run check:facts`)",
+        "localReproduction": "reproduced exactly — 18 drift items, identical to CI: 11 undocumented fault-proof commands plus the 'The 44 commands' phrase, 1 undocumented node command (retention-check) plus 'The 67 commands', and 3 undocumented catalogue categories (noReferenceInput, referenceInputNoIdx, invalidSignature) plus 'The eleven deployed catalogue categories'. Exit 1.",
+        "relationToProgram": "the undocumented commands and categories are families this program's earlier phases added; the docs-site pages were never extended to match."
+      },
+      {
+        "workflow": "Evidence Integrity CI",
+        "conclusion": "failure",
+        "lastGreenOnBranch": "2026-08-04 (d12cb188)",
+        "attributedCause": "two independent causes: the `verify` job asserts zero manifest-quality defects against the 12 the owner accepted under ruling B (a gate with no exit-0 mode while that ruling stands), and the `goal-static` job's prettier format-check reports style issues in 13 files. Both pre-date #581.",
+        "failingJobs": [
+          {
+            "job": "verify",
+            "step": "Verify canonical V1 Goal task-manifest quality",
+            "observed": "goal:tasks:quality:verify: FAIL with exactly the 12 accepted defects",
+            "disposition": "OWNER-ACCEPTED, not a defect of this pass — owner ruling B (2026-08-14) accepted these 12 and the gate has no exit-0 mode. This CI job cannot be green while the ruling stands."
+          },
+          {
+            "job": "goal-static",
+            "step": "Run the Goal static verification phase → `pnpm --dir demo run format-check`",
+            "observed": "prettier reports code style issues in 13 files",
+            "localReproduction": "reproduced exactly — 13 files, exit 1"
+          }
+        ],
+        "passingJobs": ["header-v1-abi"]
+      },
+      {
+        "workflow": "Midgard Node CI",
+        "conclusion": "failure",
+        "lastGreenOnBranch": "2026-08-03 (923b735f)",
+        "attributedCause": "validation-machine.test.ts:2502 expects 2 incremental-CBOR-scanner consumers and measures 3 — lib/midgard/intra-item-bytes-v1.ak joins the two pinned consumers with no §3.2 necessity artifact of its own, added by 0bf29aed (#571). Pre-dates #581.",
+        "failingStep": "Build, typecheck, and test Midgard validation",
+        "observed": "midgard-validation: 1 failed | 280 passed (281) — tests/validation-machine.test.ts > deterministic validation machine > confines the incremental CBOR scanner to consumers carrying measured §3.2 necessity evidence",
+        "localReproduction": "reproduced exactly — AssertionError at validation-machine.test.ts:2502, expected 2 scanner consumers and measured 3: `lib/midgard/intra-item-bytes-v1.ak` joins ledger-output-scan-v1.ak and redeemer-item-proof-v1.ak with no §3.2 necessity artifact of its own (docs/exec-plans/evidence/necessity/ carries 7 artifacts, none for intra-item bytes).",
+        "attribution": "0bf29aed (#571, 'intra-item package — Value bookmark, Canonical-Data Acceptor, native-script pushdown') added intra-item-bytes-v1.ak as a third incremental-CBOR-scanner consumer without the necessity artifact the gate requires."
+      },
+      {
+        "workflow": "Latex CI",
+        "conclusion": "success",
+        "note": "green throughout the retrievable window"
+      }
+    ],
+    "conclusion": "Every one of the four red workflows is red for a cause that pre-dates #581 and lies outside its declared deliverable. Three of the four went red BEFORE the flat-reversion program began (2026-08-03 and 2026-08-04); Aiken CI went red 2026-08-08. None of them is caused by, or fixable within, #581 as scoped. Escalated as E-4 and RULED by the owner on 2026-08-16: the four rows above are the accepted CI baseline, the acceptance line is satisfied modulo that baseline, the landing gate is 'no new red vs 7b731f2c', and repair rides a follow-up ticket.",
+    "postPushCheckCommands": [
+      "gh run list --repo Anastasia-Labs/midgard --branch colll78/canonical-v1-watcher-l1-source-checkpoint --limit 10",
+      "gh pr checks 471 --repo Anastasia-Labs/midgard",
+      "gh run view <run-id> --repo Anastasia-Labs/midgard --log-failed"
+    ],
+    "postPushExpectation": "the landing commit adds only this report, so the four standing reds will reproduce unchanged; the correct post-push assertion is 'no NEW red appears relative to the 7b731f2c baseline recorded above', not 'all green'."
+  },
+
+  "escalations": [
+    {
+      "id": "E-1",
+      "subject": "fault-proof reconciliation verifier is BLOCKED by a missing documentation anchor introduced by #609",
+      "decision": "who repairs docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json, and when",
+      "whyEscalated": "the repair edits an evidence artifact outside #581's declared deliverables; #581 may create only this report",
+      "ruling": "ORCHESTRATOR, 2026-08-16, option 1 of the escalation: the missing anchor is a #609 landing omission and its registration is in scope for #581. Add the one anchor entry for docs/fault-proofs/parameter-application-audit-609.md in the established format; nothing else in that artifact changes; re-run the verifier under a pty.",
+      "disposition": "APPLIED. The anchor entry is registered and ERR_DOC_ANCHOR_SCOPE_INCOMPLETE is gone — see gateStack → fault-proof reconciliation verifier → repair. The ruling is discharged in full.",
+      "status": "closed — but the gate it unblocked did not reach completion; the residue is carried by E-5, not by E-1"
+    },
+    {
+      "id": "E-2",
+      "subject": "watcher focused-test count drift — user-event-indexer.test.ts collects 26 against a pin of 24, introduced by #594",
+      "decision": "re-open decision on the count discipline's pin surfaces",
+      "whyEscalated": "any watcher red outside the documented standing items is an orchestrator re-open decision, never a silent re-pin",
+      "ruling": "OWNER, 2026-08-16, delivered in-session ('file follow-up, land'): the drift is NOT re-pinned and W24–W29 is NOT re-opened. The coordinated six-surface re-pin rides a follow-up ticket the orchestrator files at landing.",
+      "disposition": "APPLIED as a recording change only. The watcher section states the per-surface results as measured, attributes the drift to 04aaae57 (#594), and carries the verdict 're-anchored-modulo-two-attributed-drifts'. No pin file, dependency map, verifier literal or aggregate was touched.",
+      "status": "closed"
+    },
+    {
+      "id": "E-3",
+      "subject": "watcher dependency-map currentContents drift — 53 declared against 56 indexed, introduced by 620fa2c0",
+      "decision": "as E-2",
+      "whyEscalated": "as E-2",
+      "ruling": "OWNER, 2026-08-16, same ruling as E-2 ('file follow-up, land'): not re-pinned, not re-opened, carried by the same follow-up ticket.",
+      "disposition": "APPLIED as a recording change only, alongside E-2. The three missing test-support entries stay unlisted and the drift is attributed to 620fa2c0.",
+      "status": "closed"
+    },
+    {
+      "id": "E-4",
+      "subject": "#581's 'CI fully green on the trunk' acceptance line against a branch that has been red since before the program began",
+      "decision": "how the acceptance line closes",
+      "whyEscalated": "an acceptance line conflicting with repository reality",
+      "ruling": "OWNER, 2026-08-16, delivered in-session ('accepted-baseline ruling'): the acceptance line is satisfied modulo an enumerated accepted CI baseline, mirroring owner ruling B's structure for the manifest gate. The landing gate becomes 'no new red relative to the 7b731f2c baseline'; CI repair rides a follow-up ticket the orchestrator files.",
+      "disposition": "APPLIED. The ciBaseline section is the durable enumeration — per workflow: name, conclusion, last-green date and attributed cause — and carries the ruling itself under ciBaseline.ownerRuling. The acceptanceCriteria entry for the CI line reads 'satisfied-modulo-accepted-baseline'.",
+      "status": "closed"
+    },
+    {
+      "id": "E-5",
+      "subject": "fault-proof reconciliation verifier is still BLOCKED after the E-1 repair, at its focused-check stage: the artifact publishes focusedChecksPassed 45 and the runner measures 43",
+      "raisedBy": "the E-1 repair itself — the anchor omission was masking this cause, which sits ~1300 assertions further into the gate",
+      "measured": "ERR_FOCUSED_CHECK_FAILED at :145 from the runner stage at :1674 — family-scaffold-v1.test.ts strict scanner, 2 of 45 collected tests failed. Confirmed identical standalone ('2 failed | 43 passed (45)'), so it is a tree fact at 7b731f2c, not an artefact of the repair.",
+      "decision": "how the reconciliation gate closes while its focused check carries two owner-accepted reds — the artifact's published 45/45 cannot be re-pinned to 43/45 by a worker, since that would pin an accepted red as the expected state",
+      "whyEscalated": "ruling E-1 named exactly this case: a genuine contradiction with the artifact's own claims is new signal, to be reported rather than absorbed. The two failures are already in this report's accepted-red map under scaffold_issues607_571 and ride #607/#571, both outside #581.",
+      "ruling": "ORCHESTRATOR, 2026-08-16: this is a DOCUMENTED STANDING STATE, not new signal. Both failing tests are the owner-accepted scaffold bucket (#607's Q02 generator, #571's Q02 permissive-dispatch scanner) carried in the accepted-red baseline through #604→#609→#580's close comments, and 620fa2c0's own verification message records that 'the fault-proof reconciliation and CG4 gate failures reproduce identically at HEAD (pre-existing: the two #607 scaffold reds…)' — the gate has been red on this exact pair since before this iteration and the E-1 anchor abort was masking it. The refusal to re-pin 45→43 is RATIFIED: pinning accepted reds as the expected state would normalize them, and the pin flips back to truth when #607/#571 land their fixes. Disposition mirrors the Q1x PASS-modulo-#606 precedent from #580's close.",
+      "disposition": "APPLIED as a recording change only. The reconciliation gate row now reads 'PASS-modulo-accepted-scaffold-reds (#607/#571)' and carries the two-stage history; the artifact's 45/45 focused-check pin is untouched, as are its rows, counts, findings and acceptance values. Resolution rides #607/#571.",
+      "status": "closed"
+    }
+  ],
+
+  "acceptanceCriteria": [
+    {
+      "criterion": "§4.4 journey green — the reversion is invisible at the top seam",
+      "verdict": "MET",
+      "evidence": "journey section — 1 passed, exit 0, 190.11 s, fresh database, committed-tree testnet blueprint at b20c9a14"
+    },
+    {
+      "criterion": "Full gate/verifier stack green against the Phase-6 blueprint",
+      "verdict": "MET-MODULO-ACCEPTED-REDS",
+      "evidence": "manifest quality gate PASS (exactly the 12 accepted defects, artifact byte-identical); ABI-freeze PASS 7/7 with 0 violations, 0 drift, 0 waivers, plus 23/23 hostile mutations rejected; all 7 exec-ledger verifiers PASS with zero drift; WG1 PASS. Two gates carry a modulo verdict, each failing solely on an owner-accepted red outside #581: Q1x PASS-modulo-#606, and the fault-proof reconciliation verifier PASS-modulo-accepted-scaffold-reds (#607/#571) — its #609 anchor omission repaired under ruling E-1, every stage that repair unblocked green, and its sole remaining failure the documented standing scaffold pair per ruling E-5. No gate failed for an unaccepted cause, and no pin was moved."
+    },
+    {
+      "criterion": "W24–W29 re-anchored via the full watcher-verifier regression; any red escalates, never a silent re-pin",
+      "verdict": "MET-MODULO-TWO-ATTRIBUTED-DRIFTS (owner ruling 2026-08-16)",
+      "evidence": "watcher section — package suite 618/619 with the one failure confirmed a documented timeout flake (green on isolated re-run); WG1 17/17; four of six pin surfaces match; two carry pre-existing drift attributed to 04aaae57 (#594) and 620fa2c0. Escalated as E-2/E-3 and ruled by the owner: follow-up re-pin, no re-open. No pin was touched."
+    },
+    {
+      "criterion": "B-series re-anchoring comments posted",
+      "verdict": "DRAFTED — for the orchestrator to post",
+      "evidence": "the per-class re-anchoring texts are drafted and deliberately not posted; workers do not post to GitHub."
+    },
+    {
+      "criterion": "CI fully green on the trunk",
+      "verdict": "satisfied-modulo-accepted-baseline",
+      "evidence": "accepted CI baseline per owner ruling 2026-08-16 (E-4); landing gate = no new red vs 7b731f2c. The four red workflows and their attributed causes are enumerated in ciBaseline, each red for a cause pre-dating #581 and outside its scope; Latex CI is green. Repair rides a follow-up ticket the orchestrator files."
+    }
+  ],
+
+  "filesChanged": [
+    "docs/exec-plans/evidence/canonical-v1-p8-regression-v1.json (this file)",
+    "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json (one added `documentationAnchors` entry, under orchestrator ruling E-1; no other key touched)"
+  ],
+
+  "parentSurfacesUntouched": {
+    "GOAL_PROGRESS.md": "not edited — worker surface rule; the orchestrator ledgers at landing",
+    "plutus.json": "byte-identical at b20c9a14a8fe445cdddbe5305b3857c1; never rewritten (the pristine reproduction built into /tmp)",
+    "cascadeSurfaces": "deployment manifests, catalogue roots, resolver pins and the ABI-freeze artifact all untouched; the ABI-freeze artifact was verified byte-identical after its gate ran",
+    "watcherPinSurfaces": "no watcher pin file, dependency map, verifier literal or aggregate was modified — the E-2/E-3 drifts are recorded, not re-pinned (owner ruling 2026-08-16)",
+    "otherEvidenceArtifacts": "one edited, under orchestrator ruling E-1: docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json gains exactly one `documentationAnchors` entry. No row, count, finding, summary or acceptance value in it changed."
+  },
+
+  "commandsRun": [
+    "git archive HEAD | tar -x -C /tmp/p8-bp && aiken build --env testnet   (blueprint identity reproduction)",
+    "md5sum <fork binary>; aiken --version   (compiler identity)",
+    "cd demo && pnpm --dir midgard-core run build; pnpm --dir midgard-sdk run build   (dists before consumer suites)",
+    "cd demo && POSTGRES_DB=<fresh> pnpm --dir midgard-node exec vitest run tests/deposit-flow-emulator.test.ts -t '<§4.4 journey>' --pool=forks --no-file-parallelism --bail=0",
+    "node demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs",
+    "node demo/scripts/verify-canonical-v1-goal-task-manifest-quality-self-test.mjs",
+    "script -qec 'node demo/scripts/verify-canonical-v1-proof-family-q1x.mjs' /dev/null",
+    "script -qec 'node demo/scripts/verify-canonical-v1-fault-proof-reconciliation.mjs' /dev/null",
+    "node demo/scripts/verify-canonical-v1-abi-freeze.mjs; node demo/scripts/verify-canonical-v1-abi-freeze-self-test.mjs",
+    "cd onchain/aiken && node scripts/verify-{carriage,q1x,q21,q31,tx-order-mint,canonical-decodability,committed-field-shape}-exec-ledger-v1.mjs",
+    "cd demo && pnpm --dir midgard-watcher exec vitest run --bail=0 --reporter=json --outputFile=<report>",
+    "cd demo && pnpm --dir midgard-watcher exec vitest run tests/user-event-indexer.test.ts -t '<the timed-out test>' --bail=0",
+    "node demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs",
+    "node demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs; node demo/scripts/verify-canonical-v1-watcher-dependency-map-self-test.mjs",
+    "node demo/scripts/verify-canonical-v1-wg1-watcher-local-gate.mjs",
+    "cd demo && pnpm --dir midgard-fault-proofs exec vitest run --pool=forks --no-file-parallelism --bail=0",
+    "cd demo && pnpm --dir midgard-sdk exec vitest run --bail=0",
+    "cd demo && pnpm run typecheck",
+    "gh run list / gh pr checks 471 / gh run view --log-failed   (CI baseline)",
+    "pnpm --dir docs-site run check:facts; pnpm --dir demo run format-check; pnpm --dir midgard-validation exec vitest run tests/validation-machine.test.ts -t '<scanner consumers>'   (local reproduction of the CI reds)"
+  ]
+}
