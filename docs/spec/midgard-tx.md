@@ -511,7 +511,7 @@ neighbours read against this table.
 | constant                            | value                               | status                                                                                                                                                                                     |
 | ----------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `K` (chunk size / tier-2 bound)     | ~~15,900 bytes~~ → **15,148 bytes** | **FALSIFIED, re-pinned and applied — erratum E1 below is normative for this row.** 15,148 is the measured reserve-clearing publication frontier, and both `chunk_bytes_k` and `MIDGARD_CHUNK_BYTES_K_V1` now read it. |
-| `maxTier1RedeemerPreimageBytes`     | **14,336 bytes**                    | **provisional** (not yet measured); E1 narrows its headroom                                                                                                                                |
+| `maxTier1RedeemerPreimageBytes`     | **14,336 bytes**                    | **measured at the evidence layer and not falsified** (#580, 2026-08-15): at the cap the one-step evidence is 15,848 B over a 14,336-B preimage — 1,512 B of step framing against the 2,048-B allowance, inside a 16,383-B envelope, leaving 536 B unspent. A complete **signed** tier-1 step transaction at the cap is still unmeasured, so #557's M2 is narrowed rather than closed. |
 | `maxTransactionAggregateFieldBytes` | 32,768 bytes                        | retained                                                                                                                                                                                   |
 | maximum tier-3 chunk count          | `⌈32,768 / K⌉ = 3`                  | derived; unchanged by the re-pin                                                                                                                                                           |
 
@@ -578,11 +578,29 @@ value are in E1 immediately after this list.
   (14,332, 14,396] are therefore publishable but **not inline-carriable** — a
   64-byte gap between the publication cap and tier-1 admissibility. It surfaced
   on 2026-08-14 when the publication-maximum case was corrected to select field 2
-  rather than field 0, and it is **#580's to re-measure**; nothing here settles
-  it. The case itself now runs as "carries one complete item at the applied
-  publication maximum through the tier-2 door" in
+  rather than field 0. The case itself now runs as "carries one complete item at
+  the applied publication maximum through the tier-2 door" in
   `demo/midgard-validation/tests/complete-item-carriage-tiers-emulator-v1.test.ts`,
   which is where a >tier-1 publication belongs.
+
+  **#580 disposition (2026-08-15): real, correct, and not a capability gap. The
+  assertion stays, unchanged, as an anti-conflation guard.** The two constants
+  answer different questions — 14,396 is the largest complete item *one
+  publication transaction* carries as an inline datum, 14,336 the largest field
+  preimage a *step redeemer* carries — and neither bounds the other. §8.4's
+  ladder is a partition, so nothing in the band is stranded: an item in
+  (14,332, 14,396] has a field preimage in (14,336, 14,400], which selects tier 2
+  `RawUtxo`, and the tier-2 door carries it end to end with every stage inside
+  `maxTxSize` — measured green at exactly 14,396 by the row named above. The
+  overhang is the tier-1/tier-2 split point sitting 64 bytes below the
+  tier-2/tier-3 one, which is the ladder working rather than a hole in it.
+  Keeping the assertion is still right, and its value is that **equating the two
+  constants would widen tier-1 acceptance onto a basis the deployed step route
+  does not match** — the same regression commit `92426384` refused when it
+  declined to move `maxReliableDirectCompleteItemBytes` from 8,273 to 13,282. No
+  policy-cap change is required and none is taken. One coverage residual is
+  recorded rather than closed: the band is measured at both endpoints and at no
+  point strictly inside it.
 
   Returning to the Phase-4 cross-check: K = 15,900 exceeds both complete-item
   publication frontiers above — `maxExactCompleteItemPublicationBytes` 15,570
@@ -841,6 +859,35 @@ transaction, not on a publication, and its measurement is #557's pending M2
 a step transaction, so nothing here falsifies or confirms 14,336; it remains
 provisional on its original footing. Two things measured here do bear on it, and
 neither was stated in the first revision of this erratum:
+
+> **#580 UPDATE (2026-08-15) — the allowance is now measured, and 14,336
+> stands.** The Phase-7 pass measured the step side that #574 could not, through
+> `demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts` (`keeps
+> stage-4 one-step evidence O(1) in output size at every admissible output`)
+> against the Phase-6 blueprint. At the cap, a 14,336-byte preimage produces a
+> **14,795-byte auxiliary** — confirming the 450-byte Plutus-Data chunking figure
+> below to within 9 bytes — inside a **15,848-byte one-step evidence** against a
+> 16,383-byte envelope. The step framing over the preimage is therefore **1,512
+> bytes** of the 2,048-byte allowance, leaving **536 bytes** unspent. The bound
+> **stands, not falsified**, and the paragraph below reasoned in the right
+> direction: the allowance really is materially tighter than it was set for.
+> 536 bytes is the whole remaining headroom, so this is the first figure to
+> re-take whenever step machinery grows. The same row shows the bound's other
+> half working: one byte past the cap the auxiliary collapses to **10–14 bytes**
+> (tier-2 `RawUtxo` at a 14,778-byte preimage, tier-3 `Certified` at 16,388),
+> because §8 carriage above tier 1 is reference indices rather than payload.
+>
+> **What this does NOT discharge.** The reading is of the one-step *evidence*
+> CBOR, which is what rides the redeemer — not of a complete signed step
+> transaction at the cap, which no suite in this tree builds. By the
+> by-reference series in this section a redeemer of 15,848 bytes sits in a
+> transaction of roughly 16,278 (redeemer + ~430 bytes of transaction framing),
+> inside `maxTxSize` but well short of the 512-byte reliability reserve the
+> publication side carries. #557's M2 is therefore **narrowed, not closed**: the
+> encoding half is measured, the signed-transaction half is not, and whether the
+> tier-1 bound should carry a reliability reserve of its own the way `K` does is
+> a parameter question for CG5's target-network binding rather than something
+> this pass settles.
 
 - **The 740-byte framing is not a floor.** It was published as "a lower bound on
   any transaction of this family", and the same measurement contradicts that:
@@ -3359,21 +3406,33 @@ splits the way the work does.
 - **The item term binds.** Measured against fixture-only controls at 250 and
   500 minimum-width items, the §5.1 walk costs **12,032.44 memory units and
   3,044,870.75 cpu units per item** over an intercept of 242,085 / 71,119,751.
-  The memory basis is reached at roughly **1,077 items**.
+- **The ceiling is measured, not fitted.** The single-transaction adjudication
+  ceiling for this family is **1,077 items**, and **1,078** is the first
+  cardinality over the basis. This was a fit — `(13,200,000 − 242,085) /
+  12,032.44` — until #580's re-measurement pass (2026-08-15) bisected the
+  crossing on the net memory axis and read it: at 1,077 items the rule's own
+  share is **13,196,153 memory / 3,348,891,473 cpu**, and at 1,078 it is
+  **13,208,177 memory / 3,351,931,565 cpu**. The fit named the same integer.
+  Memory binds at the crossing — cpu is 3.35G against the 8G basis — and the
+  marginal cost measured across the boundary pair, 12,024 memory units per
+  item, is within 0.07% of the figure the 250/500 pair fitted. The four
+  selectors that carry the reading sit beside the ledger's rows rather than
+  inside them, because a whole-test reading at this cardinality is about 24.2M
+  memory and a within-basis ledger admits only rows whose raw reading fits.
 - **The residual, named rather than mitigated.** The worst shape this family
   admits is §5.4's byte bound spent on minimum-width items. §5.1's narrowest
   item is the empty one, `40`, so that is a three-byte array header, 32,764
   one-byte items and one trailing byte — 32,768 bytes carrying 32,764 items —
-  which the fit above puts at roughly 394,430,000 memory units, **29.9× the
-  basis**. That reading is an extrapolation from the measured pair,
-  not a measurement, and it is recorded as such. Its consequence is exact: a
-  committed field carrying more than about a thousand items cannot be
-  adjudicated by this family in one transaction. The hatch that leaves is
-  narrower than the one this section closes — an operator would have to commit
-  bytes that are *also* a many-item envelope prefix — but it is a hatch, and
-  the repair is §10's resumable walk applied to the verdict rather than
-  anything in this section. It is recorded on #596 for #580's re-measurement
-  pass.
+  which the measured marginal cost above puts at roughly 394,200,000 memory
+  units, **29.9× the basis**. That figure is still an extrapolation rather
+  than a reading, and it is recorded as such; what #580 replaced with a
+  measurement is the ceiling it extrapolates past, not this shape. Its
+  consequence is exact: a committed field carrying more than **1,077** items
+  cannot be adjudicated by this family in one transaction. The hatch that
+  leaves is narrower than the one this section closes — an operator would have
+  to commit bytes that are *also* a many-item envelope prefix — but it is a
+  hatch, and the repair is §10's resumable walk applied to the verdict rather
+  than anything in this section. Raised on #596; measured on #580.
 
 #### Guard coverage
 
@@ -3691,21 +3750,32 @@ this section's own two questions are `O(1)` over a header read in three bytes.
 - **The item term binds.** Measured against fixture-only controls at 250 and
   500 minimum-width items, the walk-plus-verdict costs **12,040.88 memory
   units and 3,046,474.22 cpu units per item** over an intercept of 261,998 /
-  76,779,615. **This family's memory basis is reached at roughly 1,074
-  items**, and the memory axis binds — cpu at that cardinality is about 3.35G
-  against the 8G basis.
+  76,779,615.
+- **The ceiling is measured, not fitted, and it reconciles with §12.7's.**
+  This family's single-transaction ceiling is **1,075 items**, with **1,076**
+  the first over the basis: at 1,075 the rule's own share is **13,196,238
+  memory / 3,348,671,255 cpu**, and at 1,076 it is **13,208,262 memory /
+  3,351,711,347 cpu**. Memory binds — cpu at the crossing is about 3.35G
+  against the 8G basis. This was a fit at roughly 1,074 items, deliberately
+  unreconciled with the roughly 1,077 §12.7 fitted for its own fixtures, until
+  #580's re-measurement pass (2026-08-15) bisected both crossings on the net
+  memory axis. **Both are now readings**, and the reconciliation is that the
+  two families really do differ, by two items: §12.7 measures 1,077 and this
+  one 1,075, the gap being this family's higher intercept — the §7.4 stride
+  arithmetic it asks after the same walk. The fit was one item low. The four
+  selectors carrying the reading sit beside the ledger's rows rather than
+  inside them, because a whole-test reading at this cardinality is about 24.1M
+  memory and a within-basis ledger admits only rows whose raw reading fits.
 - **The residual, named rather than mitigated.** The worst shape this family
   admits is §5.4's byte bound spent on §5.1's narrowest item, `40`: a
   three-byte array header and 32,765 one-byte items is 32,768 bytes carrying
-  32,765 items, which the fit above puts at roughly 394,780,000 memory units,
-  **29.9× the basis**. That reading is an extrapolation from the measured
-  pair, not a measurement, and is recorded as such. Its consequence is exact:
-  a committed field carrying more than about a thousand items cannot be
-  adjudicated by this family in one transaction, and the repair is §10's
-  resumable walk applied to the verdict. The figure is this lane's own
-  arithmetic over this lane's own rows and is deliberately not reconciled
-  with the one §12.7 publishes for its fixtures; replacing both extrapolations
-  with readings is #580's re-measurement lane.
+  32,765 items, which the measured marginal cost puts at roughly 394,200,000
+  memory units, **29.9× the basis**. That figure is still an extrapolation
+  rather than a reading, and is recorded as such; what #580 replaced with a
+  measurement is the ceiling it extrapolates past, not this shape. Its
+  consequence is exact: a committed field carrying more than **1,075** items
+  cannot be adjudicated by this family in one transaction, and the repair is
+  §10's resumable walk applied to the verdict.
 
 #### Guard coverage
 

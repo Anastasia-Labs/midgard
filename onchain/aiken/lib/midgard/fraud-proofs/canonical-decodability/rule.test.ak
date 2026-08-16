@@ -482,6 +482,89 @@ test canonical_decodability_verdict_fixture_only_at_five_hundred_items() {
   }
 }
 
+/// The single-transaction adjudication ceiling, **measured** rather than fitted
+/// (#580, 2026-08-15).
+///
+/// §12.7 and this ledger's note published "roughly 1,077 items" as an
+/// extrapolation from the 250/500 pair — `(13,200,000 − 242,085) / 12,032.44` —
+/// and said so in terms. The four selectors below replace the fit with a
+/// reading: the same shape the two cardinality rows use, carried to the exact
+/// cardinality at which the rule's own share (row minus its fixture-only
+/// control, which is how both cost ledgers price this walk) crosses GOAL_SPEC
+/// §3.3's 13,200,000-memory basis. Bisected over the interval [1,000, 1,100] on
+/// the net memory axis with the pinned fork; the crossing is between these two
+/// cardinalities and nowhere else.
+///
+/// These are **not** ledger rows, and cannot be: a within-basis ledger records
+/// only rows whose *raw* reading fits the basis, and a whole-test reading here
+/// is the rule's share plus a fixture that costs about as much again — roughly
+/// 24.2M mem at this cardinality. What the ledger's note publishes is the net,
+/// which is arithmetic over rows rather than a number the gate checks; these
+/// selectors put the crossing on the same footing and pin the *shape* the
+/// reading was taken at, so a change that moves the shape goes red here before
+/// the published ceiling silently drifts.
+const measured_item_ceiling: Int = 1077
+
+const first_item_cardinality_over_the_basis: Int = 1078
+
+/// **Measured row.** The largest item cardinality this family adjudicates
+/// inside the §3.3 memory basis.
+test canonical_decodability_verdict_at_the_measured_item_ceiling() {
+  inline_verdict(minimum_width_trailing_preimage(measured_item_ceiling)) == verdict_trailing_bytes
+}
+
+/// **Measured control** for the row above, on the two cardinality rows' terms.
+test canonical_decodability_verdict_fixture_only_at_the_measured_item_ceiling() {
+  let preimage = minimum_width_trailing_preimage(measured_item_ceiling)
+  let block = committed_block(preimage)
+  and {
+    bytearray.length(preimage) == 3 + 2 * measured_item_ceiling + 1,
+    bytearray.length(block.compact_cbor) > 0,
+  }
+}
+
+/// **Measured row.** One item further, which is the first cardinality whose net
+/// exceeds the basis. The pair is what makes the ceiling a crossing rather than
+/// a bound.
+test canonical_decodability_verdict_at_the_first_item_over_the_basis() {
+  inline_verdict(
+    minimum_width_trailing_preimage(first_item_cardinality_over_the_basis),
+  ) == verdict_trailing_bytes
+}
+
+/// **Measured control** for the row above, on the same terms.
+test canonical_decodability_verdict_fixture_only_at_the_first_item_over_the_basis() {
+  let preimage = minimum_width_trailing_preimage(
+    first_item_cardinality_over_the_basis,
+  )
+  let block = committed_block(preimage)
+  and {
+    bytearray.length(preimage) == 3 + 2 * first_item_cardinality_over_the_basis + 1,
+    bytearray.length(block.compact_cbor) > 0,
+  }
+}
+
+/// **Ceiling shape guard.** The crossing is a reading of one shape, so the shape
+/// is asserted where changing it goes red before the published ceiling moves
+/// under an unchanged sentence: the two cardinalities are adjacent, both still
+/// fit tier 1 (so the reading is the walk and not carriage), and both carry the
+/// same trailing-byte ungrammaticality the 250/500 pair does — the one §5.1
+/// refusal that costs the whole walk before it fires.
+test canonical_decodability_measured_ceiling_shape_is_the_cardinality_rows_shape() {
+  let ceiling = minimum_width_trailing_preimage(measured_item_ceiling)
+  let over = minimum_width_trailing_preimage(
+    first_item_cardinality_over_the_basis,
+  )
+  and {
+    first_item_cardinality_over_the_basis == measured_item_ceiling + 1,
+    measured_item_ceiling > upper_item_cardinality,
+    bytearray.length(ceiling) < chunk_bytes_k,
+    bytearray.length(over) < chunk_bytes_k,
+    envelope_verdict_v1(ceiling) == verdict_trailing_bytes,
+    envelope_verdict_v1(over) == verdict_trailing_bytes,
+  }
+}
+
 /// **Ledger shape guard.** Every property a re-take could quietly shrink,
 /// asserted where shrinking it turns this selector red before a cheaper row is
 /// pinned: the bound row really sits at §5.4's byte bound, really needs tier 3,

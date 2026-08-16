@@ -422,10 +422,24 @@ describe("fault-proof maximum proof fit", () => {
         maxTxExSteps,
       });
     }
+    // **#580 re-take (2026-08-15), 20 -> 15.** Not a regression and not a
+    // remediation: the ceiling is derived from the LARGEST measured transaction
+    // of the correction path, and under the flat reversion the largest one grew.
+    // Q10's step-04 carries tx2's spend-input field preimage in its own redeemer
+    // (tier-1 carriage, §8.3) where the counted scheme published it separately
+    // and referenced it, so the bytes that used to sit in their own publication
+    // transaction now sit in the step. Baselines, labelled: counted-era
+    // step-04 at this fixture's cardinality measured under 15,000 complete
+    // signed bytes with a separate ~2 KB witness publication beside it; the
+    // flat-era step-04 measured here carries the preimage inline and no
+    // publication transaction exists at all (`captureEmulatorSubmission` returns
+    // one measurement per step, not two). Fewer branch levels fit the envelope
+    // because the envelope is fuller, and 4 * 15 = 60 is still far inside the
+    // 2^128 adversary reach the assertion below guards.
     const byteCeiling = expectMembershipDepthCeiling({
       label: "double-spend",
       proofFit,
-      expectedCeiling: 20,
+      expectedCeiling: 15,
     });
     printProofFit("double-spend", proofFit, {
       branchLevels: ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
@@ -994,10 +1008,20 @@ describe("fault-proof maximum proof fit", () => {
         maxTxExSteps,
       });
     }
+    // **#580 re-take (2026-08-15), 20 -> 19.** One level, and for the same
+    // reason as Q10's larger move at a smaller magnitude: Q14's challenged
+    // transaction spends nothing, so this family carries no spend-input field
+    // preimage and its largest step grew only by the flat step machinery, not by
+    // a whole field. Baseline, labelled: the counted-era largest step of this
+    // fixture sat one 276-byte branch level below the envelope; the flat-era one
+    // measured here sits inside the same level. The q1x evidence artifact
+    // already records 19 as `adversarialDepthBound.byteCeiling` and
+    // `summary.lowestEnvelopeExhaustionBranchLevel` — this row was the stale
+    // half of that pair, not the artifact.
     const byteCeiling = expectMembershipDepthCeiling({
       label: "zero-input",
       proofFit,
-      expectedCeiling: 20,
+      expectedCeiling: 19,
     });
     printProofFit("zero-input", proofFit, {
       branchLevels: ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,

@@ -48,6 +48,47 @@
   above is therefore current under `605c8b8d…` and the measurement tables
   below stay bound; the C21-AUDIT "fresh applied re-measurement owed before
   CG5" residual is discharged for these two identities.
+- **Re-pinned 2026-08-15 (issue #580, Phase-7 confirm-and-publish) — the
+  post-cascade identities. This bullet supersedes every pin above it; the
+  earlier ones are retained as provenance on this file's own superseded-pin
+  discipline.** The §3.2 hash binding fired exactly as designed across #579's
+  single blueprint regeneration and #609's applied-hash cascade, and the
+  movement was measured rather than inferred.
+
+  Current blueprint: `onchain/aiken/plutus.json` SHA-256
+  `91861fac2d0bcafade6d8e1b4872e669cf9e7b52f5ed75d3b9729e4e02d6dd6b`
+  (md5 `b20c9a14a8fe445cdddbe5305b3857c1`, **398 validators / 702
+  definitions**), built by the pinned fork **`aiken v1.1.23+2a78108`** (binary
+  md5 `b3acfdf348235798cb6b921d0f87750a`) under the declared construction
+  **`aiken build --env testnet`**. The env flag is load-bearing and was not
+  recorded before: a default-env build of the same tree differs in
+  `scheduler.spend` alone (`shift_duration` is the only env-divergent constant
+  any validator compiles) and does **not** reproduce this digest. Stock
+  `v1.1.22` is retired from every role (#579 owner ruling A), so every
+  `v1.1.22` figure above is a void stock value rather than a second opinion.
+
+  | bound identity | superseded | current |
+  | --- | --- | --- |
+  | blueprint SHA-256 | `605c8b8d…` (391 validators, stock v1.1.22) | `91861fac…` (398 validators, fork v1.1.23+2a78108) |
+  | `canonical_decode_item_semantic_v1` unapplied | `62501cfe…` | `a8d8f3ac58bce62636725d394cb5953767f927518d6db6de70144b67` |
+  | `canonical_decode_item_semantic_v1` applied (`hub_oracle=11…11`, `catalogue=22…22`) | `983051b4…` | `0a42b4c76739fa1a1a391c8a766fdadf58c2692b983e3c455cb5fdb6` |
+  | `proof_item_v1` | `22c9a103…` | `22c9a103…` — **unmoved**, still unparameterized |
+
+  Derived by producers on the deployment this file declares, not read off a
+  diff. `demo/midgard-core/scripts/measure-validation-proof-item-envelope.mjs`
+  applies `["11"×28, "22"×28, proof_item_script_hash]` to the blueprint's own
+  `canonical_decode_item_semantic_v1.main.spend` and reports the applied hash;
+  that three-argument application is exactly what #609's blueprint-arity guard
+  now requires, because the validator declares **3** parameters and did *not*
+  gain #592's `field_preimage_certificate_policy_id`. The gate named in the
+  bullet above — `pins the applied §3.2 necessity identities on the measurement
+  deployment` in
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts` —
+  re-derives both identities at runtime rather than hardcoding them, and is
+  **green against this blueprint** (suite 5/5, 2026-08-15), so it gates the new
+  values as it gated the old. Full record, commands and the
+  provisional-versus-confirmed ledger:
+  `docs/exec-plans/evidence/canonical-v1-p7-remeasurement-v1.json`.
 - Parameter snapshot digests: profile digest
   `181730d304796b764c8f657b0ae788b87c6aba9f4491dbfa9ce24d99932911b7`;
   capability floor per

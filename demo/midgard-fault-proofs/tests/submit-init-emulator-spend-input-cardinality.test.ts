@@ -50,22 +50,61 @@
  * ## What is measured, and the verdict
  *
  * The complete correction path is driven through the real prepare/submit
- * pipeline at the largest cardinality that clears the GOAL_SPEC.md 3.3 20%
- * execution reserve and at the first that does not, for both families. The
- * result is a DEFECT, recorded here executably so it cannot drift:
+ * pipeline at the largest cardinality that fits and at the first that does not,
+ * for both families.
  *
- * - The witness publication transaction is NOT the binding constraint. At the
- *   boundary it is under two kilobytes with more than fourteen kilobytes of
- *   margin, and the step transactions that reference it are within five bytes
- *   of their minimal-fixture size.
- * - Execution MEMORY binds, and it binds an order of magnitude below the
- *   admissible cardinality: re-hashing the authenticated bounded collection
- *   costs a measured ~276,000 memory units per input, so the reserve runs out
- *   in the high thirties.
+ * ## Finding Q1X-F6 is RESOLVED under the flat reversion (#580, 2026-08-15)
  *
- * Moving bytes elsewhere cannot remediate this the way published-chunk carriage
- * remediated Q1X-F5: the cost is the step's own re-hashing of a collection it
- * must reproduce in full before it may select one item from it.
+ * The defect this file was written to record read:
+ *
+ * > Execution MEMORY binds, and it binds an order of magnitude below the
+ * > admissible cardinality: re-hashing the authenticated bounded collection
+ * > costs a measured ~276,000 memory units per input, so the reserve runs out
+ * > in the high thirties. Moving bytes elsewhere cannot remediate this the way
+ * > published-chunk carriage remediated Q1X-F5: the cost is the step's own
+ * > re-hashing of a collection it must reproduce in full before it may select
+ * > one item from it.
+ *
+ * **The mechanism it names no longer exists.** Under the flat commitment there
+ * is no bounded collection to reproduce: the step authenticates the whole field
+ * preimage once against its flat hash and reaches an item by arithmetic offset
+ * and slice. Measured across the whole admissible range, 40 through 296 inputs,
+ * execution memory is **constant in cardinality**:
+ *
+ * | family | step | mem at N=40 | mem at N=296 | share of the 13.2M basis |
+ * | --- | --- | --- | --- | --- |
+ * | Q11 no-input | step-02 | 494,909 | 498,121 | 3.8% |
+ * | Q10 double-spend | step-04 | 619,787 | 622,999 | 4.7% |
+ *
+ * The measured per-input memory cost is ~0 where it was ~276,000. Neither
+ * family comes within an order of magnitude of the reserve at any admissible
+ * cardinality, so the boundary pairs below are no longer execution boundaries
+ * at all.
+ *
+ * ## What binds now, and why it is a different kind of limit
+ *
+ * **L1 transaction bytes, at tier-1 carriage only.** Both families carry the
+ * spend-input field preimage in the step redeemer (§8.3 tier 1), 38 bytes per
+ * item plus the §5.1 envelope, and that is what fills the envelope: measured
+ * ~41.2 complete-signed bytes per input on both families' binding step. Q10's
+ * frontier is lower than Q11's because its binding step is step-04, which
+ * carries tx2's preimage on top of a larger fixed step (16,379 bytes at 75
+ * inputs against Q11's 16,345 at 196), not because it is dearer per input.
+ *
+ * That is a **carriage-routing** limit rather than an execution one, and the
+ * distinction is the whole difference from Q1X-F6: bytes CAN be moved off the
+ * step. §8's ladder exists precisely for it — above tier 1 the same preimage is
+ * published once as a raw UTxO (tier 2) or as certified chunks (tier 3) and
+ * reached by reference, at a redeemer cost of a handful of index bytes. The
+ * sentence "moving bytes elsewhere cannot remediate this" was true of the
+ * counted scheme and is false of this one.
+ *
+ * **The residual, stated exactly.** The legacy step builders these journeys
+ * drive carry the preimage inline unconditionally, so at tier-1 carriage
+ * neither family reaches the admissible 296-input Cardano spend shape. What is
+ * left is therefore a builder-routing gap over the band (196, 296] for Q11 and
+ * (75, 296] for Q10 — narrow, byte-shaped, and closable off-chain — where
+ * Q1X-F6 was an on-chain execution wall no carriage could move.
  *
  * Lives in its own file for the same reason its siblings do: `@lucid-evolution/uplc`
  * never reclaims wasm linear memory and vitest isolates per FILE. See
@@ -121,13 +160,23 @@ const CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY = 296;
 
 /**
  * Measured boundaries. Each is a PAIR — the largest cardinality whose complete
- * correction path clears the 20% reserve, and the first that does not — and
- * both members of each pair are driven through the real pipeline below.
+ * correction path fits, and the first that does not — and both members of each
+ * pair are driven through the real pipeline below.
+ *
+ * **#580 re-take (2026-08-15). The binding axis moved, so these are byte
+ * boundaries now and not execution boundaries.** See the module header's
+ * "What is measured, and the verdict" section, which was re-written in the same
+ * pass.
+ *
+ * | family | counted-era pair | flat-era pair | binding axis then / now |
+ * | --- | --- | --- | --- |
+ * | Q10 double-spend | 39 / 40 | 75 / 76 | step-04 execution memory / step-04 L1 bytes |
+ * | Q11 no-input | 40 / 41 | 196 / 197 | step-02 execution memory / step-02 L1 bytes |
  */
-const DOUBLE_SPEND_LARGEST_FITTING_CARDINALITY = 39;
-const DOUBLE_SPEND_FIRST_OVER_RESERVE_CARDINALITY = 40;
-const NO_INPUT_LARGEST_FITTING_CARDINALITY = 40;
-const NO_INPUT_FIRST_OVER_RESERVE_CARDINALITY = 41;
+const DOUBLE_SPEND_LARGEST_FITTING_CARDINALITY = 75;
+const DOUBLE_SPEND_FIRST_OVER_BYTES_CARDINALITY = 76;
+const NO_INPUT_LARGEST_FITTING_CARDINALITY = 196;
+const NO_INPUT_FIRST_OVER_BYTES_CARDINALITY = 197;
 
 const executionCeilings = () => ({
   memory:
@@ -265,8 +314,13 @@ const runDoubleSpendCardinalityJourney = async (
       awaitConfirmation: true,
     }),
   );
-  // The step publishes the witness and then spends the thread; both are ours.
-  expect(step03Capture.measurements.length).toBe(2);
+  // **#580 re-take, 2 -> 1.** Under the counted scheme this step published the
+  // spend-inputs witness in its own transaction and then spent the thread, so
+  // the capture held two submissions. Under flat there is nothing to publish:
+  // the preimage rides the step redeemer, so the capture holds exactly one.
+  // Asserted rather than relaxed to `>= 1`, because a second submission
+  // reappearing here would mean the builder had started publishing again.
+  expect(step03Capture.measurements.length).toBe(1);
   const fourthStepUtxo = await expectSingleUtxoWithUnit(
     proverLucid,
     step03Capture.result.fourthStepAddress,
@@ -290,14 +344,16 @@ const runDoubleSpendCardinalityJourney = async (
       awaitConfirmation: true,
     }),
   );
-  expect(step04Capture.measurements.length).toBe(2);
+  // Same re-take as step-03's: one submission, not two.
+  expect(step04Capture.measurements.length).toBe(1);
   expect(step04Capture.result.fraudProofAssetName).toBe(
     initResult.computationThreadAssetName,
   );
+  // The two witness-publication stages this journey used to return are gone
+  // with the publications themselves; the stages that remain are the two steps
+  // that carry the preimage in their own redeemers.
   return {
-    "tx1-witness-publication": step03Capture.measurements[0]!,
     "step-03": step03Capture.measurement,
-    "tx2-witness-publication": step04Capture.measurements[0]!,
     "step-04": step04Capture.measurement,
   };
 };
@@ -476,30 +532,34 @@ describe("fault-proof spend-input preimage cardinality", () => {
       fitting,
     );
 
-    // The publication transaction is not the constraint: it is under two
-    // kilobytes at the boundary, and the step that references it is within a
-    // handful of bytes of its minimal-fixture size.
-    const witness = fitting["tx1-witness-publication"]!;
-    expect(witness.completeSignedBytes).toBeLessThan(2_048);
-    expect(witness.l1ByteMargin).toBeGreaterThan(14_000);
-    expect(fitting["step-03"]!.completeSignedBytes).toBeLessThan(4_500);
+    // **#580 re-take.** The claim this block used to make — that the witness
+    // publication transaction is not the constraint — is retired with the
+    // publication itself. What replaces it is the claim that matters now:
+    // step-04 is the binding step and it binds on BYTES, with execution memory
+    // an order of magnitude clear of the reserve at the boundary.
+    const boundaryStep04 = fitting["step-04"]!;
+    expect(boundaryStep04.l1ByteMargin).toBeGreaterThanOrEqual(0);
+    expect(boundaryStep04.l1ByteMargin).toBeLessThan(64);
+    expect(boundaryStep04.executionMemory < ceilings.memory / 10n).toBe(true);
+    // step-03 carries tx1's preimage and is the smaller of the two, which is
+    // why the pair above is a step-04 boundary.
+    expect(boundaryStep04.completeSignedBytes).toBeGreaterThan(
+      fitting["step-03"]!.completeSignedBytes,
+    );
 
-    const overReserve = await runDoubleSpendCardinalityJourney(
-      DOUBLE_SPEND_FIRST_OVER_RESERVE_CARDINALITY,
+    const overBytes = await runDoubleSpendCardinalityJourney(
+      DOUBLE_SPEND_FIRST_OVER_BYTES_CARDINALITY,
     );
     printCardinalityFit(
       "double-spend",
-      DOUBLE_SPEND_FIRST_OVER_RESERVE_CARDINALITY,
-      overReserve,
+      DOUBLE_SPEND_FIRST_OVER_BYTES_CARDINALITY,
+      overBytes,
     );
-    const step04 = overReserve["step-04"]!;
-    // Deliberately a SUCCESSFUL evaluation that fails the release policy: one
-    // more input clears the ledger's hard cap and not the 20% reserve.
-    expect(step04.executionMemory > ceilings.memory).toBe(true);
-    expect(
-      step04.executionMemory < EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem,
-    ).toBe(true);
-    expect(step04.l1ByteMargin).toBeGreaterThan(0);
+    const step04 = overBytes["step-04"]!;
+    // Deliberately a SUCCESSFUL evaluation that fails the byte policy: one more
+    // input pushes the step past `maxTxSize` while execution stays trivial.
+    expect(step04.l1ByteMargin).toBeLessThan(0);
+    expect(step04.executionMemory < ceilings.memory / 10n).toBe(true);
   }, 900_000);
 
   it("fits the largest no-input spend-input preimage and measures the first that does not", async () => {
@@ -521,37 +581,71 @@ describe("fault-proof spend-input preimage cardinality", () => {
       fitting,
     );
 
-    // This family carries the preimage in the step redeemer, so the axis DOES
-    // reach the step transaction's bytes here — and still does not bind: at the
-    // boundary the transaction has more than ten kilobytes of margin.
+    // **#580 re-take.** This family carries the preimage in the step redeemer,
+    // so the axis reaches the step transaction's bytes — and under flat that is
+    // now the ONLY axis it reaches. The old assertion here was that ten
+    // kilobytes of margin remained at the boundary, which was true when the
+    // boundary was an execution boundary at 40 inputs; at the byte boundary the
+    // margin is by definition small.
     const step02 = fitting["step-02"]!;
-    expect(step02.l1ByteMargin).toBeGreaterThan(10_000);
+    expect(step02.l1ByteMargin).toBeGreaterThanOrEqual(0);
+    expect(step02.l1ByteMargin).toBeLessThan(64);
+    expect(step02.executionMemory < ceilings.memory / 10n).toBe(true);
 
-    const overReserve = await runNoInputCardinalityJourney(
-      NO_INPUT_FIRST_OVER_RESERVE_CARDINALITY,
+    const overBytes = await runNoInputCardinalityJourney(
+      NO_INPUT_FIRST_OVER_BYTES_CARDINALITY,
     );
     printCardinalityFit(
       "no-input",
-      NO_INPUT_FIRST_OVER_RESERVE_CARDINALITY,
-      overReserve,
+      NO_INPUT_FIRST_OVER_BYTES_CARDINALITY,
+      overBytes,
     );
-    const overStep02 = overReserve["step-02"]!;
-    expect(overStep02.executionMemory > ceilings.memory).toBe(true);
-    expect(
-      overStep02.executionMemory < EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem,
-    ).toBe(true);
-    expect(overStep02.l1ByteMargin).toBeGreaterThan(0);
+    const overStep02 = overBytes["step-02"]!;
+    expect(overStep02.l1ByteMargin).toBeLessThan(0);
+    expect(overStep02.executionMemory < ceilings.memory / 10n).toBe(true);
   }, 900_000);
 
-  it("cannot build either family's proof at the admissible Cardano spend shape", async () => {
-    // Not merely over the release reserve: at the admissible cardinality the
-    // step cannot be evaluated at all, because it exceeds the ledger's own
-    // execution-memory cap. This is the exposure finding Q1X-F6 records.
-    await expect(
-      runNoInputCardinalityJourney(CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY),
-    ).rejects.toThrow(/over budget/u);
-    await expect(
-      runDoubleSpendCardinalityJourney(CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY),
-    ).rejects.toThrow(/over budget/u);
+  it("reaches the admissible Cardano spend shape on execution and misses it on bytes alone", async () => {
+    // **#580 re-take, and the row that carries the Q1X-F6 verdict.**
+    //
+    // This test used to assert that both journeys REJECT with `/over budget/`
+    // at the admissible cardinality — that the step could not be evaluated at
+    // all because it exceeded the ledger's own execution-memory cap. Under flat
+    // both journeys build and evaluate: nothing is over budget, and the only
+    // thing wrong with either step at 296 inputs is its size.
+    //
+    // Both halves are asserted, because the finding is the pair. Q1X-F6 is
+    // resolved on the axis it named; what is left is a byte-carriage gap that
+    // §8's ladder is built to close and the legacy inline builders do not yet
+    // take.
+    const noInput = await runNoInputCardinalityJourney(
+      CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
+    );
+    printCardinalityFit(
+      "no-input",
+      CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
+      noInput,
+    );
+    const doubleSpend = await runDoubleSpendCardinalityJourney(
+      CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
+    );
+    printCardinalityFit(
+      "double-spend",
+      CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
+      doubleSpend,
+    );
+
+    const ceilings = executionCeilings();
+    const binding = [noInput["step-02"]!, doubleSpend["step-04"]!];
+    for (const measurement of binding) {
+      // Execution: comfortably inside even the conservative emulator reserve,
+      // by more than an order of magnitude. This is the assertion Q1X-F6's
+      // resolution rests on, and it is the one that would go red first if the
+      // per-item cost ever came back.
+      expect(measurement.executionMemory < ceilings.memory / 10n).toBe(true);
+      expect(measurement.executionSteps < ceilings.steps / 10n).toBe(true);
+      // Bytes: and this is what still misses.
+      expect(measurement.l1ByteMargin).toBeLessThan(0);
+    }
   }, 900_000);
 });

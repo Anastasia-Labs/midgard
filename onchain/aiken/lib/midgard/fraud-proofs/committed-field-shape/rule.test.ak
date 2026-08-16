@@ -630,6 +630,83 @@ test committed_field_shape_verdict_fixture_only_at_five_hundred_items() {
   }
 }
 
+/// This family's single-transaction ceiling, **measured** rather than fitted
+/// (#580, 2026-08-15).
+///
+/// §12.8 and this ledger's note published "about 1,074 items" as this lane's
+/// own arithmetic — `(13,200,000 − 261,998) / 12,040.88` — and deliberately did
+/// not reconcile it with the ~1,077 §12.7 publishes for its fixtures, because
+/// reconciling two extrapolations is not a reconciliation. The four selectors
+/// below replace the fit with a reading, taken exactly as §12.7's twin is:
+/// same shape as the two cardinality rows, carried to the cardinality at which
+/// the rule's own share (row minus its fixture-only control) crosses GOAL_SPEC
+/// §3.3's 13,200,000-memory basis, bisected on the net memory axis with the
+/// pinned fork. **The reconciliation is now two readings rather than two fits:
+/// 1,075 here against §12.7's 1,077, and the two-item gap is this family's
+/// higher intercept — the §7.4 stride arithmetic it asks after the walk.**
+///
+/// They are **not** ledger rows, for the reason §12.7's twin states: a
+/// whole-test reading at this cardinality is about 24.1M mem, and a
+/// within-basis ledger records only rows whose raw reading fits the basis.
+const measured_item_ceiling: Int = 1075
+
+const first_item_cardinality_over_the_basis: Int = 1076
+
+/// **Measured row.** The largest item cardinality this family adjudicates
+/// inside the §3.3 memory basis.
+test committed_field_shape_verdict_at_the_measured_item_ceiling() {
+  inline_verdict(
+    spend_inputs_field_index,
+    minimum_width_preimage(measured_item_ceiling),
+  ) == shape_verdict_wrong_stride
+}
+
+/// **Measured control** for the row above, on the cardinality rows' terms.
+test committed_field_shape_verdict_fixture_only_at_the_measured_item_ceiling() {
+  let preimage = minimum_width_preimage(measured_item_ceiling)
+  let block = committed_block(spend_inputs_field_index, preimage)
+  and {
+    bytearray.length(preimage) == 3 + measured_item_ceiling,
+    bytearray.length(block.compact_cbor) > 0,
+  }
+}
+
+/// **Measured row.** One item further — the first cardinality whose net exceeds
+/// the basis, which is what makes the ceiling a crossing rather than a bound.
+test committed_field_shape_verdict_at_the_first_item_over_the_basis() {
+  inline_verdict(
+    spend_inputs_field_index,
+    minimum_width_preimage(first_item_cardinality_over_the_basis),
+  ) == shape_verdict_wrong_stride
+}
+
+/// **Measured control** for the row above, on the same terms.
+test committed_field_shape_verdict_fixture_only_at_the_first_item_over_the_basis() {
+  let preimage = minimum_width_preimage(first_item_cardinality_over_the_basis)
+  let block = committed_block(spend_inputs_field_index, preimage)
+  and {
+    bytearray.length(preimage) == 3 + first_item_cardinality_over_the_basis,
+    bytearray.length(block.compact_cbor) > 0,
+  }
+}
+
+/// **Ceiling shape guard**, on §12.7's twin's terms: the two cardinalities are
+/// adjacent, both still fit tier 1 so the reading is the walk and not carriage,
+/// and both are grammatical envelopes convicted on §7.4 — the shape this
+/// family's per-item term is priced at.
+test committed_field_shape_measured_ceiling_shape_is_the_cardinality_rows_shape() {
+  let ceiling = minimum_width_preimage(measured_item_ceiling)
+  let over = minimum_width_preimage(first_item_cardinality_over_the_basis)
+  and {
+    first_item_cardinality_over_the_basis == measured_item_ceiling + 1,
+    measured_item_ceiling > upper_item_cardinality,
+    bytearray.length(ceiling) < chunk_bytes_k,
+    bytearray.length(over) < chunk_bytes_k,
+    envelope_verdict_v1(ceiling) == verdict_grammatical,
+    envelope_verdict_v1(over) == verdict_grammatical,
+  }
+}
+
 /// **Ledger shape guard.** Every property a re-take could quietly shrink,
 /// asserted where shrinking it turns this selector red before a cheaper row is
 /// pinned: the bound row really sits at §5.4's byte bound, really needs tier 3,

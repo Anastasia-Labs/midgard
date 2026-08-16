@@ -55,6 +55,47 @@
   above is therefore current under `605c8b8d…` and the measurement tables
   below stay bound; the C21-AUDIT "fresh applied re-measurement owed before
   CG5" residual is discharged for these two identities.
+- **Re-pinned 2026-08-15 (issue #580, Phase-7 confirm-and-publish) — the
+  post-cascade identities. This bullet supersedes every pin above it; the
+  earlier ones are retained as provenance on this file's own superseded-pin
+  discipline.** The §3.2 hash binding fired exactly as designed across #579's
+  single blueprint regeneration and #609's applied-hash cascade, and the
+  movement was measured rather than inferred.
+
+  Current blueprint: `onchain/aiken/plutus.json` SHA-256
+  `91861fac2d0bcafade6d8e1b4872e669cf9e7b52f5ed75d3b9729e4e02d6dd6b`
+  (md5 `b20c9a14a8fe445cdddbe5305b3857c1`, **398 validators / 702
+  definitions**), built by the pinned fork **`aiken v1.1.23+2a78108`** (binary
+  md5 `b3acfdf348235798cb6b921d0f87750a`) under the declared construction
+  **`aiken build --env testnet`**. The env flag is load-bearing and was not
+  recorded before: a default-env build of the same tree differs in
+  `scheduler.spend` alone (`shift_duration` is the only env-divergent constant
+  any validator compiles) and does **not** reproduce this digest. Stock
+  `v1.1.22` is retired from every role (#579 owner ruling A), so every
+  `v1.1.22` figure above is a void stock value rather than a second opinion.
+
+  | bound identity | superseded | current |
+  | --- | --- | --- |
+  | blueprint SHA-256 | `605c8b8d…` (391 validators, stock v1.1.22) | `91861fac…` (398 validators, fork v1.1.23+2a78108) |
+  | `canonical_decode_item_semantic_v1` unapplied | `62501cfe…` | `a8d8f3ac58bce62636725d394cb5953767f927518d6db6de70144b67` |
+  | `canonical_decode_item_semantic_v1` applied (`hub_oracle=11…11`, `catalogue=22…22`) | `983051b4…` | `0a42b4c76739fa1a1a391c8a766fdadf58c2692b983e3c455cb5fdb6` |
+  | `proof_item_v1` | `22c9a103…` | `22c9a103…` — **unmoved**, still unparameterized |
+
+  Derived by producers on the deployment this file declares, not read off a
+  diff. `demo/midgard-core/scripts/measure-validation-proof-item-envelope.mjs`
+  applies `["11"×28, "22"×28, proof_item_script_hash]` to the blueprint's own
+  `canonical_decode_item_semantic_v1.main.spend` and reports the applied hash;
+  that three-argument application is exactly what #609's blueprint-arity guard
+  now requires, because the validator declares **3** parameters and did *not*
+  gain #592's `field_preimage_certificate_policy_id`. The gate named in the
+  bullet above — `pins the applied §3.2 necessity identities on the measurement
+  deployment` in
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts` —
+  re-derives both identities at runtime rather than hardcoding them, and is
+  **green against this blueprint** (suite 5/5, 2026-08-15), so it gates the new
+  values as it gated the old. Full record, commands and the
+  provisional-versus-confirmed ledger:
+  `docs/exec-plans/evidence/canonical-v1-p7-remeasurement-v1.json`.
 - Parameter snapshot digests: consensus profile
   `midgard-consensus-v1` digest
   `181730d304796b764c8f657b0ae788b87c6aba9f4491dbfa9ce24d99932911b7`;
@@ -271,3 +312,58 @@ Regenerating them requires re-running
 `complete-item-proof-fit-emulator-v1.test.ts`, and
 `demo/midgard-sdk/tests/tx-order-v1.test.ts`. They are left as recorded
 rather than replaced with numbers from a different construction.
+
+## Disposition of the thirteen, and the declared construction (#580, 2026-08-15)
+
+The Phase-7 confirm-and-publish pass settles both residuals the section above
+records — the three-construction basis mismatch and the thirteen
+carried-forward-unverified figures. Full record:
+`docs/exec-plans/evidence/canonical-v1-p7-remeasurement-v1.json`.
+
+**One declared construction, named.** Every byte figure this artifact publishes
+now comes from `demo/midgard-core/scripts/measure-validation-proof-item-envelope.mjs`
+— the tree's own measurement script, byte-identical in logic since `4a4bc660`,
+already the producer of the 2026-08-03 "fresh by-reference byte series" above.
+Its basis is stated once and applies to every row: each transaction is signed
+with one vkey witness and sources its validator from a reference input;
+collection proof shape 434 items / index 433 / 9 frontier peaks / 9 siblings;
+`maxTxBytes` 16,384, reliability reserve 512, `coinsPerUtxoByte` 4,310,
+`minFeeCoefficient` 44, `minFeeConstant` 155,381. Re-run against the Phase-6
+blueprint it reproduces the fresh series to the byte (complete-item publication
+exact maximum 14,892 item bytes → datum 16,130, min-Ada 70,412,470, fee 876,277,
+transaction 16,384; reliable 14,396 → 15,618 / 68,205,750 / 853,749 / 15,872;
+semantic-by-reference exact maximum 14,494 → redeemer 15,954 / 16,384, reliable
+13,998 → 15,442 / 15,872). **The ±368 / −616 basis mismatch is therefore closed
+by declaration rather than by reconciliation**: the recorded 15,256 / 18,290 /
+35,186 row was a third construction and is superseded, not adjusted.
+
+**The thirteen are regenerated-as-superseded, never migrated.** Every one of them
+prices the *counted* mechanism — the direct or reference carriage of a
+bounded-collection proof item, with a 434-item collection proof, per-item leaves
+and chunk trees. #560 dissolved that mechanism, so none of the thirteen names a
+quantity that still exists to be re-taken at the same value, and re-publishing
+any of them against a flat construction would be exactly the migration the
+evidence rule forbids. What replaces each:
+
+| carried-forward figure | superseded by |
+| --- | --- |
+| 15,256 / 18,290 / 35,186 (publication and proof transaction bytes) | the declared construction's boundary table above |
+| 974,576 / 826,821 / 376,690 (fees) | the same table's `fee` columns |
+| 65,576,650 (min-Ada at the publication cap) | 68,205,750 at 14,396 item bytes, same table |
+| 16,900 (counted proof transaction at the 16,384-byte item) | 17,220, `maxLedgerOutputPublicationTransactionBytes`, measured by `complete-item-proof-fit-v1.test.ts` |
+| 205,594 / 500,275,649 and 264,106 / 552,114,352 (execution pairs) | the applied direct-authentication row: 181,260 mem / 342,607,667 cpu at 8,273 reliable direct item bytes, 14,270 complete signed bytes, margin 2,114, judged at the 13,200,000 / 8,000,000,000 basis |
+| the CEK one-shot pair 45,154,331 / 14,905,078,582 | **not regenerated.** It belongs to `cek-program-material-v1.md`, which #560 ruled STAND (re-pin only); the owed work there is a #546-style identity re-pin against the Phase-6 blueprint, not a re-measurement. Carried forward, flagged, and recorded as a residual on #580. |
+
+**The §3.2 binding above has fired, and the headers are re-pinned.** Measured
+against the Phase-6 blueprint (`plutus.json` md5
+`b20c9a14a8fe445cdddbe5305b3857c1`, SHA-256 `91861fac…`, 398 validators, fork
+`aiken v1.1.23+2a78108`, built `--env testnet`), `proof_item_v1` is unmoved at
+`22c9a103…` while the applied semantic hash on this artifact's own measurement
+deployment is now `0a42b4c76739fa1a1a391c8a766fdadf58c2692b983e3c455cb5fdb6`,
+not the `983051b4…` bound above — the hash-binding invalidation working as
+designed across the regeneration and #609's applied-hash cascade. The **Binding**
+section of this file and of its four re-derived siblings carries a superseding
+`Re-pinned 2026-08-15 (issue #580)` bullet with the full old→new table;
+`cek-program-material-v1.md` carries the matching #546-style re-pin for the
+identities its STAND verdict binds. Earlier pins are retained above rather than
+rewritten, on the superseded-pin discipline this file already uses.

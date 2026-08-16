@@ -1,0 +1,416 @@
+{
+  "schema": "midgard.canonical-v1-p7-remeasurement.v1",
+  "version": 1,
+  "issue": 580,
+  "date": "2026-08-15",
+  "note": "Flat reversion Phase 7 — confirm-and-publish re-measurement. Every number here was taken on the Phase-6 blueprint at GOAL_SPEC §3.3's declared 13,200,000-memory basis, through a runner report (Vitest JSON report, or `aiken check`'s structured report via `onchain/aiken/scripts/run-focused-check.mjs`), never from test source and never from a pre-cascade blueprint. Provisional-versus-confirmed deltas are ledgered per row in `provisionalVersusConfirmed`. This artifact records; the numbers themselves live in the ledgers, suites and spec sections named per row, and this file is the index that says which run produced each.",
+
+  "measurementBasis": {
+    "source": "GOAL_SPEC.md §3.3, owner amendment 2026-08-08",
+    "memoryUnits": 13200000,
+    "cpuUnits": 8000000000,
+    "l1MaxTxBytes": 16384,
+    "carriedBy": "onchain/aiken/scripts/exec-ledger-within-basis-v1.mjs GOAL_SPEC_EXECUTION_BASIS_V1"
+  },
+
+  "identity": {
+    "tree": "colll78/canonical-v1-watcher-l1-source-checkpoint at ac54d01a",
+    "compiler": {
+      "version": "aiken v1.1.23+2a78108",
+      "binary": "/home/gumbo/playground/aiken/target/release/aiken",
+      "binaryMd5": "b3acfdf348235798cb6b921d0f87750a",
+      "role": "the sole identity compiler for fmt/build/check and the only reading source (#579 owner ruling A; stock v1.1.22 retired from all roles)"
+    },
+    "blueprint": {
+      "path": "onchain/aiken/plutus.json",
+      "md5": "b20c9a14a8fe445cdddbe5305b3857c1",
+      "validators": 398,
+      "definitions": 702,
+      "gitignored": true,
+      "declaredConstruction": "aiken build --env testnet",
+      "reproductionVerified": true,
+      "reproductionNote": "#580 preflight, 2026-08-15. The Phase-6 identity reproduces byte-identically ONLY under `--env testnet`; a default-env build of the same tree yields md5 09cd61e869a373c6c78553b6cde58108. The two differ in exactly one validator — `scheduler.spend` (`.spend` and `.else`, 8,768 B vs 8,762 B, hash a5d94032…8d161ec7d696305f vs 54d0fc8a…e79bef76a15a4955) — because `shift_duration` is 30 in env/default.ak and 3,600,000 in env/testnet.ak and `validators/scheduler.ak` is its only compiled consumer. Established rather than assumed: three independent scratch builds of the working tree agree with each other; pristine `git archive` builds of HEAD and of 988c6f9c (#579's landing) both produce the default-env digest, so the difference is env selection and not tree drift; `--env testnet` reproduces b20c9a14 exactly. Corroborated by the repository's own record — `docs/exec-plans/evidence/necessity/transaction-field-chunk-v1.md` records its 2026-08-06 re-verification as 'a fresh stock `aiken build --env testnet`'. Neither hash is pinned anywhere outside plutus.json itself (repo-wide grep: 1 file, 2 occurrences, both the blueprint's own entries), so no consumer surface depends on the distinction; it is recorded because a Phase-7 measurement basis that reproduces only under an undeclared flag is a basis nobody can check."
+    },
+    "pendingIdentityMovement": {
+      "state": "none on the measurement tree",
+      "ruling": "#608 close comment, owner ruling 2026-08-15 — the deferred pexcludes empty-sentinel repair is #606-class (rides the next regeneration at deployment parameter binding) and does NOT count as pending. Binding for this ticket's preflight."
+    }
+  },
+
+  "adjudicationCeiling": {
+    "obligation": "#580 body + the 2026-08-13 owner ruling on #580: replace the extrapolated ~1,077-item single-transaction adjudication ceiling with an actual reading from the exec-ledger machinery. #596 recorded the extrapolation; #601 recorded a second, unreconciled ~1,074 for its sibling family and excluded the ceiling from its own scope.",
+    "method": "The ceiling is the largest item cardinality N whose NET memory reading — the whole-test row minus its fixture-only control, which is how both cost ledgers already price this walk — is at or below the §3.3 basis. Readings are taken through `onchain/aiken/scripts/run-focused-check.mjs` (the same instrument the ledgers use, which refuses a report assembled from a different module or containing a failure) with the pinned fork. The crossing was located by bisection on the net memory axis over [1,000, 1,100] in a scratch copy of `onchain/aiken`, then the boundary pair was landed as permanent selectors in the measured modules and re-read in place with the ledgers' own control shape.",
+    "notLedgerRows": "The four selectors per family are deliberately NOT ledger rows. A within-basis ledger records only rows whose RAW reading fits the basis (`exec-ledger-within-basis-v1.mjs`), and a whole-test reading at these cardinalities is the rule's share plus a fixture that costs about as much again — ~24.2M and ~24.1M memory. What the ledgers publish is the net, which is arithmetic over rows rather than a number the gate checks; these selectors put the crossing on the same footing and additionally pin the SHAPE the reading was taken at, so a change that moves the shape goes red before a published ceiling drifts under an unchanged sentence.",
+    "families": {
+      "canonicalDecodability": {
+        "spec": "docs/spec/midgard-tx.md §12.7",
+        "module": "midgard/fraud_proofs/canonical_decodability/rule.test",
+        "shape": "§5.1 envelope over N minimum-width items with one byte appended — ungrammatical by trailing content, the only §5.1 refusal that costs the whole walk before it fires",
+        "measuredCeiling": 1077,
+        "firstOverBasis": 1078,
+        "ceilingRow": { "mem": 24213920, "cpu": 6727235071 },
+        "ceilingControl": { "mem": 11017767, "cpu": 3378343598 },
+        "ceilingNet": { "mem": 13196153, "cpu": 3348891473 },
+        "firstOverRow": { "mem": 24235461, "cpu": 6733005698 },
+        "firstOverControl": { "mem": 11027284, "cpu": 3381074133 },
+        "firstOverNet": { "mem": 13208177, "cpu": 3351931565 },
+        "bindingAxis": "memory",
+        "marginalCostAcrossTheBoundaryPair": { "memPerItem": 12024, "cpuPerItem": 3040092 },
+        "selectors": [
+          "canonical_decodability_verdict_at_the_measured_item_ceiling",
+          "canonical_decodability_verdict_fixture_only_at_the_measured_item_ceiling",
+          "canonical_decodability_verdict_at_the_first_item_over_the_basis",
+          "canonical_decodability_verdict_fixture_only_at_the_first_item_over_the_basis",
+          "canonical_decodability_measured_ceiling_shape_is_the_cardinality_rows_shape"
+        ]
+      },
+      "committedFieldShape": {
+        "spec": "docs/spec/midgard-tx.md §12.8",
+        "module": "midgard/fraud_proofs/committed_field_shape/rule.test",
+        "shape": "§5.1 envelope over N empty items, grammatical, committed at slot 0 where §7.4's `header_len + 40·N` convicts as `wrong_stride`",
+        "measuredCeiling": 1075,
+        "firstOverBasis": 1076,
+        "ceilingRow": { "mem": 24118281, "cpu": 6706616467 },
+        "ceilingControl": { "mem": 10922043, "cpu": 3357945212 },
+        "ceilingNet": { "mem": 13196238, "cpu": 3348671255 },
+        "firstOverRow": { "mem": 24139687, "cpu": 6712363739 },
+        "firstOverControl": { "mem": 10931425, "cpu": 3360652392 },
+        "firstOverNet": { "mem": 13208262, "cpu": 3351711347 },
+        "bindingAxis": "memory",
+        "selectors": [
+          "committed_field_shape_verdict_at_the_measured_item_ceiling",
+          "committed_field_shape_verdict_fixture_only_at_the_measured_item_ceiling",
+          "committed_field_shape_verdict_at_the_first_item_over_the_basis",
+          "committed_field_shape_verdict_fixture_only_at_the_first_item_over_the_basis",
+          "committed_field_shape_measured_ceiling_shape_is_the_cardinality_rows_shape"
+        ]
+      }
+    },
+    "reconciliation": "The two extrapolations are now two readings, and they genuinely differ: 1,077 for §12.7 against 1,075 for §12.8. The two-item gap is §12.8's higher intercept — the §7.4 stride arithmetic it asks after the same walk. §12.7's fit named the right integer; §12.8's was one item low.",
+    "residualStillExtrapolated": "The 29.9x over-basis figure for the worst admissible shape (32,764 / 32,765 minimum-width items at §5.4's byte bound) remains an extrapolation, now taken over the measured boundary pair rather than the 250/500 pair: ~394,200,000 mem for both families (§12.7 and §12.8), the measured marginal being 12,024 mem/item in each; only the fitted slopes separate them. What #580 replaced with a measurement is the ceiling the figure extrapolates past, not the 32,764-item shape itself. The repair on record is §10's resumable walk applied to the verdict.",
+    "reproduce": "cd onchain/aiken && MIDGARD_AIKEN_BIN=/home/gumbo/playground/aiken/target/release/aiken node scripts/run-focused-check.mjs midgard/fraud_proofs/canonical_decodability/rule.test canonical_decodability_verdict_at_the_measured_item_ceiling canonical_decodability_verdict_fixture_only_at_the_measured_item_ceiling canonical_decodability_verdict_at_the_first_item_over_the_basis canonical_decodability_verdict_fixture_only_at_the_first_item_over_the_basis canonical_decodability_measured_ceiling_shape_is_the_cardinality_rows_shape"
+  },
+
+  "phase4CarriageMeasurements": {
+    "suite": "demo/midgard-validation/tests/field-preimage-carriage-fit-emulator-v1.test.ts",
+    "command": "cd demo && pnpm --config.verifyDepsBeforeRun=false --dir midgard-validation exec vitest run tests/field-preimage-carriage-fit-emulator-v1.test.ts --pool=forks --no-file-parallelism --bail=0",
+    "result": "all three exit measurements re-taken green against the Phase-6 blueprint; every figure below reproduces its recorded value to the unit",
+    "tier2RawUtxoBound": {
+      "measurement": "tier2-raw-utxo-bound-v1",
+      "maxL1TxBytes": 16384,
+      "reliabilityReserveBytes": 512,
+      "exactFrontierPreimageBytes": 15644,
+      "exactFrontierTransactionBytes": 16384,
+      "firstUnpublishablePreimageBytes": 15645,
+      "firstUnpublishableTransactionBytes": 16385,
+      "reliableFrontierPreimageBytes": 15148,
+      "reliableFrontierTransactionBytes": 15872,
+      "framingBytesAtExactFrontier": 740,
+      "nonDatumFramingBytesAtExactFrontier": 248,
+      "countedEraExactFrontier": 15570,
+      "countedEraReliableFrontier": 15073,
+      "countedEraAppliedCap": 14396,
+      "verdict": "provisional K = 15,148 CONFIRMED, not falsified — the reliable frontier is 15,148 exactly, and `MIDGARD_CHUNK_BYTES_K_V1` is asserted equal to the cost model's derived frontier so the two halves cannot drift"
+    },
+    "certificateMinAda": {
+      "measurement": "certificate-min-ada-v1",
+      "coinsPerUtxoByte": "4310",
+      "certificateChunkDigests": 3,
+      "certificateDatumBytes": 176,
+      "certificateMinAdaLovelace": "1939500",
+      "fullChunkMinAdaLovelace": "68231610",
+      "raggedChunkMinAdaLovelace": "11869740",
+      "certifyRedeemerBytes": 531
+    },
+    "publicationPlusCertificationFit": {
+      "measurement": "publication-plus-certification-fit-v1",
+      "fullChunkPublicationBytes": 15872,
+      "combinedLowerBound": 16579,
+      "fitsOneTransaction": false,
+      "structuralReason": "reference inputs resolve against the pre-transaction UTxO set"
+    }
+  },
+
+  "publicationFrontiers": {
+    "obligation": "the 2026-08-14 owner correction (#579): 14,993→15,073 and 15,489→15,570, with the counted-versus-flat gain re-derived from +155/+155 to +74/+75",
+    "suite": "demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts, `pins the exact applied publication frontiers and reliability reserve` (printed under MIDGARD_PRINT_PROOF_FIT=1)",
+    "countedEra": {
+      "exact": { "itemBytes": 15570, "transactionBytes": 16384, "l1ByteMargin": 0, "datumBytes": 16136, "minAdaLovelace": "70438330", "fee": "876453" },
+      "exactPlusOne": { "itemBytes": 15571, "transactionBytes": 16385, "l1ByteMargin": -1 },
+      "reliable": { "itemBytes": 15073, "transactionBytes": 15872, "l1ByteMargin": 512, "datumBytes": 15624, "minAdaLovelace": "68231610", "fee": "853925" },
+      "reliablePlusOne": { "itemBytes": 15074, "transactionBytes": 15873, "l1ByteMargin": 511 }
+    },
+    "flatEra": { "exact": 15644, "reliable": 15148 },
+    "flatGainBytes": { "exact": 74, "reliable": 75 },
+    "verdict": "both corrected constants CONFIRMED to the byte, and the +74/+75 flat gain re-derives exactly"
+  },
+
+  "tier1Bound": {
+    "constant": "MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 / `max_tier1_redeemer_preimage_bytes` = 14,336",
+    "priorState": "declared PROVISIONAL and explicitly UNMEASURED in both halves — `maxTxSize` (16,384) minus a round 2,048-byte allowance for step machinery, which Phase 4 was to re-pin against the real step transaction and did not",
+    "measurement": {
+      "suite": "demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts, `keeps stage-4 one-step evidence O(1) in output size at every admissible output`",
+      "printed": "scriptSourcesStageFourCarriageEvidenceV1",
+      "largestTier1ItemBytes": 14332,
+      "atTier1Cap": { "preimageBytes": 14336, "auxiliaryBytes": 14795, "evidenceBytes": 15848, "tier": "Inline" },
+      "small": { "preimageBytes": 260, "auxiliaryBytes": 280, "evidenceBytes": 1333, "tier": "Inline" },
+      "aboveCap": [
+        { "preimageBytes": 14778, "auxiliaryBytes": 10, "evidenceBytes": 1063, "tier": "RawUtxo" },
+        { "preimageBytes": 16388, "auxiliaryBytes": 14, "evidenceBytes": 1067, "tier": "Certified" }
+      ],
+      "evidenceEnvelopeBytes": 16383
+    },
+    "verdict": "NOT FALSIFIED, and measured for the first time — but at the evidence layer only. At the cap the one-step evidence is 15,848 bytes over a 14,336-byte preimage — 1,512 bytes of step framing against the declared 2,048-byte allowance, leaving 536 bytes unspent inside a 16,383-byte envelope. Above the cap the auxiliary collapses to 10–14 bytes because §8 carriage becomes reference indices, which is the O(1) claim the same row asserts.",
+    "whatIsNotDischarged": "The reading is of the one-step evidence CBOR, not of a complete signed step transaction at the cap — no suite in this tree builds one. By this pass's own by-reference series a 15,848-byte redeemer sits in a ~16,278-byte transaction (redeemer + ~430 bytes of framing): inside maxTxSize, but well short of the 512-byte reliability reserve the publication side carries. #557's M2 is NARROWED, not closed. Whether the tier-1 bound should carry a reliability reserve of its own the way K does is a parameter question for CG5's target-network binding and is ESCALATED rather than decided here."
+  },
+
+  "sixtyFourByteOverhang": {
+    "obligation": "#579 owner ruling 2026-08-14 item 4 — the 64-byte overhang (publication cap 14,396 > tier-1 admissible 14,332) ASSERTED as a #580-inherited gate, 'fails if closed silently'. Asserted at demo/midgard-validation/tests/complete-item-carriage-tiers-emulator-v1.test.ts.",
+    "arithmeticConfirmed": {
+      "publicationCap": 14396,
+      "publicationCapSource": "MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes",
+      "tier1Ceiling": 14336,
+      "singleItemFieldEnvelopeBytes": 4,
+      "tier1AdmissibleItemBytes": 14332,
+      "overhang": 64
+    },
+    "disposition": "REAL, CORRECT, AND NOT A CAPABILITY GAP — the gate stays, unchanged, as an anti-conflation assertion.",
+    "reasoning": [
+      "The two constants answer different questions: 14,396 is the largest complete item ONE PUBLICATION TRANSACTION carries as an inline datum; 14,336 is the largest field preimage a STEP REDEEMER carries. Neither is a bound on the other.",
+      "§8.4's ladder is a partition, so nothing in the band is stranded. An item in (14,332, 14,396] has a field preimage in (14,336, 14,400], which selects tier 2 `RawUtxo` — measured green at exactly 14,396 by `carries one complete item at the applied publication maximum through the tier-2 door`, which drives the full authenticate/source/observe/proof journey with every stage inside `maxTxSize`.",
+      "The overhang is therefore the tier-1/tier-2 split point sitting 64 bytes below the tier-2/tier-3 split point. That is the ladder working, not a hole in it.",
+      "Keeping the assertion is still right, and its value is as an anti-conflation guard: equating the two constants would widen tier-1 acceptance onto a basis the deployed step route does not match — the same soundness-regression shape commit 92426384 refused when it declined to move `maxReliableDirectCompleteItemBytes` from 8,273 to 13,282."
+    ],
+    "policyCapChange": "NOT required and NOT taken. Per this ticket's brief a policy-cap change is parameter churn to be escalated rather than retargeted; no escalation is raised because no change is needed. Retargeting the tier-1 ceiling upward to close the overhang would be the widening 92426384 refused.",
+    "residual": "The 64-byte band is measured only at its upper endpoint (14,396, tier 2) and its lower one (14,332, tier 1). No row drives an item strictly inside the band. That is a coverage observation, not a gap in capability, and it is recorded rather than closed here."
+  },
+
+  "byteTables": {
+    "declaredConstruction": {
+      "producer": "demo/midgard-core/scripts/measure-validation-proof-item-envelope.mjs",
+      "command": "cd demo/midgard-core && node scripts/measure-validation-proof-item-envelope.mjs",
+      "basis": "every transaction is signed with one vkey witness and sources its validator from a reference input; collection proof shape 434 items / item index 433 / 9 frontier peaks / 9 siblings; parameters maxTxBytes 16,384, reliabilityReserve 512, coinsPerUtxoByte 4,310, minFeeCoefficient 44, minFeeConstant 155,381",
+      "whyThisOne": "It is the tree's own unchanged measurement script — byte-identical in logic since 4a4bc660 — and it is the construction `transaction-field-chunk-v1.md` already declared for its 2026-08-03 'fresh by-reference byte series'. Declaring it closes the three-construction basis mismatch that artifact recorded (±368 B at the family maxima, −616 B at the publication cap, and a third 'applied SDK publisher' basis for 15,256): ONE construction, named here, and every byte figure below is from it."
+    },
+    "appliedValidatorsMeasured": {
+      "proofItemScriptHash": "22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab",
+      "semanticScriptHash": "0a42b4c76739fa1a1a391c8a766fdadf58c2692b983e3c455cb5fdb6",
+      "note": "the semantic applied hash MOVED from the 983051b4… the necessity artifacts pin, which is the §3.2 hash-binding invalidation firing exactly as designed across the Phase-6 regeneration and #609's applied-hash cascade; the proof-item hash is unparameterized and unmoved"
+    },
+    "boundaries": {
+      "complete-item-publication": {
+        "exactMaximumItemBytes": 14892,
+        "exactMaximum": { "datumBytes": 16130, "minAda": "70412470", "fee": "876277", "transactionBytes": 16384 },
+        "firstOversized": { "datumBytes": 16131, "minAda": "70416780", "fee": "876321", "transactionBytes": 16385 },
+        "reliableItemBytes": 14396,
+        "reliable": { "datumBytes": 15618, "minAda": "68205750", "fee": "853749", "transactionBytes": 15872 }
+      },
+      "semantic-proof-validator-by-reference": {
+        "exactMaximumItemBytes": 14494,
+        "exactMaximum": { "route": "direct", "redeemerBytes": 15954, "referenceInputCount": 1, "fee": "876277", "transactionBytes": 16384 },
+        "firstOversized": { "route": "direct", "redeemerBytes": 15955, "referenceInputCount": 1, "fee": "876321", "transactionBytes": 16385 },
+        "reliableItemBytes": 13998,
+        "reliable": { "route": "direct", "redeemerBytes": 15442, "referenceInputCount": 1, "fee": "853749", "transactionBytes": 15872 }
+      },
+      "reference-proof-item-and-validator-by-reference": {
+        "itemBytesResolvedFromUtxo": 14000,
+        "route": "reference",
+        "redeemerBytes": 303,
+        "referenceInputCount": 2,
+        "fee": "189217",
+        "transactionBytes": 769
+      }
+    },
+    "oversizedPublicationOvershoot": {
+      "suite": "demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts, `measures that oversized items overflow every single-publication transaction, not just the item bound`",
+      "maxLedgerOutputPreimageBytes": 16384,
+      "maxLedgerOutputPublicationTransactionBytes": 17220,
+      "maxAggregateFieldItemBytes": 32768,
+      "maxAggregatePublicationTransactionBytes": 34116,
+      "thresholdItemBytes": 14396,
+      "thresholdPublicationTransactionBytes": 15169
+    }
+  },
+
+  "thirteenCarriedForwardNumbers": {
+    "source": "docs/exec-plans/evidence/necessity/transaction-field-chunk-v1.md, 'Not re-measurable in this pass — carried forward unverified'",
+    "listed": [15256, 18290, 35186, 16900, 205594, 500275649, 974576, 264106, 552114352, 826821, 376690, 65576650, "45154331 / 14905078582 (the CEK one-shot pair)"],
+    "disposition": "REGENERATED-AS-SUPERSEDED, not migrated. Every one of the thirteen is a counted-scheme figure: they price the direct/reference carriage of a bounded-collection proof item (`TransactionFieldChunkWitness`, a 434-item collection proof, per-item leaves and chunk trees). #560's resolution dissolves that mechanism, so none of the thirteen names a quantity that still exists to be re-taken at the same value — re-publishing any of them against a flat construction would be exactly the migration the evidence rule forbids. What replaces them is the single declared construction above plus the applied-validator emulator rows: `byteTables.boundaries` supersedes 15,256 / 18,290 / 35,186 / 65,576,650 and their fee figures 974,576 / 826,821 / 376,690; `appliedDirectAuthentication` below supersedes 205,594 / 500,275,649 / 264,106 / 552,114,352 as the applied direct-carriage execution pair; 16,900 was the counted proof-transaction figure at the 16,384-byte item and is superseded by `oversizedPublicationOvershoot.maxLedgerOutputPublicationTransactionBytes` 17,220.",
+    "cekOneShotPair": {
+      "value": "45,154,331 mem / 14,905,078,582 cpu",
+      "state": "NOT regenerated in this pass, and flagged. It is the one member of the thirteen whose successor is not produced by any command run here; `cek-program-material-v1.md` is the artifact that binds it and #560 ruled that artifact STAND (re-pin only). It is carried into the residuals below rather than silently dropped."
+    },
+    "appliedDirectAuthentication": {
+      "suite": "demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts, `measures applied direct authentication at the staged reliability boundary`",
+      "appliedSemanticScriptHash": "f492660e7977de3cc0d78695560e7b7c4d08ef1653c89b138ca8a29f",
+      "reliableDirectItemBytes": 8273,
+      "completeSignedBytes": 14270,
+      "l1ByteMargin": 2114,
+      "fee": "819170",
+      "executionMemory": "181260",
+      "executionSteps": "342607667",
+      "inputCount": 2,
+      "referenceInputCount": 0,
+      "outputCount": 2,
+      "redeemerCount": 1,
+      "judgedAt": { "memoryUnits": 13200000, "cpuUnits": 8000000000 }
+    }
+  },
+
+  "q1xLifecycleMargins": {
+    "finding": "Q1X-F6 — spend-input preimage cardinality",
+    "suite": "demo/midgard-fault-proofs/tests/submit-init-emulator-spend-input-cardinality.test.ts",
+    "verdict": "RESOLVED on the axis the finding named; the binding axis moved from execution memory to L1 transaction bytes at tier-1 carriage",
+    "executionMemoryIsConstantInCardinality": {
+      "q11NoInputStep02": { "atN40": 494909, "atN296": 498121, "shareOfBasis": "3.8%" },
+      "q10DoubleSpendStep04": { "atN40": 619787, "atN296": 622999, "shareOfBasis": "4.7%" },
+      "countedEraPerInputMemory": 276000,
+      "flatEraPerInputMemory": 0
+    },
+    "byteFrontiers": {
+      "q11NoInput": { "largestFitting": 196, "l1ByteMarginAtFitting": 39, "bytesAtFitting": 16345, "firstOver": 197, "l1ByteMarginAtFirstOver": -2, "bytesAtFirstOver": 16386, "bindingStep": "step-02" },
+      "q10DoubleSpend": { "largestFitting": 75, "l1ByteMarginAtFitting": 5, "bytesAtFitting": 16379, "firstOver": 76, "l1ByteMarginAtFirstOver": -37, "bytesAtFirstOver": 16421, "bindingStep": "step-04" },
+      "measuredBytesPerInput": 41.2
+    },
+    "admissibleShape": {
+      "cardinality": 296,
+      "source": "maximum_cardano_spend_redeemer_count, the smallest of the three protocol bounds",
+      "q11Step02": { "completeSignedBytes": 20472, "l1ByteMargin": -4088, "executionMemory": 498121, "executionSteps": 167496598 },
+      "q10Step04": { "completeSignedBytes": 25498, "l1ByteMargin": -9114, "executionMemory": 622999, "executionSteps": 211146381 },
+      "note": "both journeys BUILD and EVALUATE at 296 — the counted-era claim that the step 'cannot be evaluated at all' is falsified. Only the byte margin is negative."
+    },
+    "residual": "The legacy step builders carry the preimage inline unconditionally, so at tier-1 carriage neither family reaches 296. What is left is an off-chain builder-routing gap over (196, 296] for Q11 and (75, 296] for Q10 — closable in the builders by taking §8's tier-2/tier-3 route, with no validator change. That is categorically different from Q1X-F6, which was an on-chain execution wall no carriage could move."
+  },
+
+  "measurementMovementReds": {
+    "map": "#608 close comment, the authoritative accepted-red baseline superseding #609's",
+    "bucket": "#580 measurement movements — 5 of the 14 accepted fault-proofs reds; the other 9 (3 owner-ruled liveness gap, 4 validation-dispute, 2 scaffold) are not this ticket's",
+    "rows": [
+      {
+        "test": "submit-init-emulator-max-proof-fit.test.ts > fits a maximum-depth double-spend proof inside the L1 envelope",
+        "quantity": "membership-depth byte ceiling",
+        "provisional": 20,
+        "confirmed": 15,
+        "delta": -5,
+        "cause": "the ceiling derives from the LARGEST measured transaction of the correction path, and that transaction grew. Q10's step-04 now carries tx2's spend-input field preimage in its own redeemer (§8.3 tier 1) where the counted scheme published it separately and referenced it. Baselines labelled in the cause note at the assertion: counted-era step-04 under 15,000 complete signed bytes with a ~2 KB witness publication beside it; flat-era step-04 carries the preimage inline and no publication transaction exists at all.",
+        "state": "GREEN"
+      },
+      {
+        "test": "submit-init-emulator-max-proof-fit.test.ts > fits a maximum-depth zero-input proof inside the L1 envelope",
+        "quantity": "membership-depth byte ceiling",
+        "provisional": 20,
+        "confirmed": 19,
+        "delta": -1,
+        "cause": "Q14's challenged transaction spends nothing, so this family carries no spend-input field preimage and its largest step grew only by flat step machinery. The q1x evidence artifact already recorded 19 as `adversarialDepthBound.byteCeiling` and `summary.lowestEnvelopeExhaustionBranchLevel`; this assertion was the stale half of that pair.",
+        "state": "GREEN"
+      },
+      {
+        "test": "submit-init-emulator-spend-input-cardinality.test.ts > fits the largest double-spend spend-input preimage and measures the first that does not",
+        "quantity": "boundary pair + witness-publication stage count",
+        "provisional": "39 / 40 on execution memory; step-03 and step-04 each producing 2 submissions",
+        "confirmed": "75 / 76 on L1 bytes; 1 submission per step",
+        "delta": "+36 / +36 cardinality; -1 submission per step",
+        "cause": "flat carriage removed the witness publication entirely (the preimage rides the step redeemer) and removed the per-input memory cost entirely, so the pair is a byte boundary now. Both per-step amounts are stated in the module header table with the counted-era baseline labelled.",
+        "state": "GREEN"
+      },
+      {
+        "test": "submit-init-emulator-spend-input-cardinality.test.ts > fits the largest no-input spend-input preimage and measures the first that does not",
+        "quantity": "boundary pair + step-02 byte margin claim",
+        "provisional": "40 / 41 on execution memory, with >10,000 bytes of margin at the boundary",
+        "confirmed": "196 / 197 on L1 bytes, +39 bytes of margin at the boundary",
+        "delta": "+156 / +156 cardinality",
+        "cause": "the >10,000-byte margin claim was true when the boundary was an execution boundary at 40 inputs; at a byte boundary the margin is small by definition. Same mechanism as the row above.",
+        "state": "GREEN"
+      },
+      {
+        "test": "submit-init-emulator-spend-input-cardinality.test.ts > cannot build either family's proof at the admissible Cardano spend shape",
+        "quantity": "the Q1X-F6 exposure claim",
+        "provisional": "both journeys REJECT with /over budget/ at 296 inputs",
+        "confirmed": "both journeys BUILD and EVALUATE at 296 inputs; execution is more than an order of magnitude inside the reserve and only the byte margin is negative",
+        "delta": "claim inverted; the row is renamed `reaches the admissible Cardano spend shape on execution and misses it on bytes alone` and now asserts the pair",
+        "cause": "Q1X-F6's mechanism (per-input re-hashing of a bounded collection) does not exist under the flat commitment.",
+        "state": "GREEN"
+      }
+    ],
+    "causeNoteFormatDeviation": "This ticket's brief asks each cause note to state BOTH per-opening amounts, body versus witness, on #592's exemplar. That format does not apply to these five rows and the deviation is recorded rather than fabricated: neither journey opens a witness-set field. Q10 and Q11 open §2.5 body slot 0 (spend inputs) and nothing else, so there is no witness-side per-opening amount to state. What the notes state instead is the counted-era baseline and the flat-era measurement for each moved quantity, labelled, which is the substance the exemplar exists to carry."
+  },
+
+  "provisionalVersusConfirmed": [
+    { "row": "§12.7 adjudication ceiling", "provisional": "~1,077 items (extrapolated)", "confirmed": "1,077 items (measured)", "delta": 0, "cause": "the 250/500 fit named the right integer; the crossing is now a reading" },
+    { "row": "§12.8 adjudication ceiling", "provisional": "~1,074 items (extrapolated)", "confirmed": "1,075 items (measured)", "delta": 1, "cause": "the fit was one item low; the intercept is slightly higher than the 250/500 pair implied" },
+    { "row": "§12.7 / §12.8 ceiling reconciliation", "provisional": "deliberately unreconciled (two extrapolations)", "confirmed": "reconciled as a measured two-item gap, 1,077 vs 1,075", "delta": "n/a", "cause": "§12.8's §7.4 stride arithmetic after the same walk" },
+    { "row": "§8.3 K (chunk_bytes_k)", "provisional": "15,148 (provisional, E1 repair)", "confirmed": "15,148 (measured reliable publication frontier)", "delta": 0, "cause": "NOT FALSIFIED — a 15,148-byte chunk publishes as exactly 15,872 bytes, maxTxSize less the 512-byte reserve" },
+    { "row": "§8.3 tier-1 bound", "provisional": "14,336 (provisional AND unmeasured)", "confirmed": "14,336 holds, with 536 of the 2,048-byte step-machinery allowance unspent", "delta": 0, "cause": "NOT FALSIFIED — first measurement of the allowance: 1,512 bytes of step framing at the cap" },
+    { "row": "publication frontier, exact", "provisional": "15,570 (2026-08-14 owner correction of 15,489)", "confirmed": "15,570 (transaction 16,384, margin 0)", "delta": 0, "cause": "correction confirmed to the byte" },
+    { "row": "publication frontier, reliable", "provisional": "15,073 (2026-08-14 owner correction of 14,993)", "confirmed": "15,073 (transaction 15,872, margin 512)", "delta": 0, "cause": "correction confirmed to the byte" },
+    { "row": "counted-versus-flat publication gain", "provisional": "+74 / +75 (2026-08-14 re-derivation of the overstated +155/+155)", "confirmed": "+74 / +75", "delta": 0, "cause": "15,644−15,570 and 15,148−15,073, both measured in the same run" },
+    { "row": "64-byte overhang", "provisional": "asserted as an inherited gate, disposition owed", "confirmed": "64, and dispositioned as a correct ladder boundary rather than a gap", "delta": 0, "cause": "tier 2 carries the whole band; measured green at exactly 14,396" },
+    { "row": "Q10 membership-depth ceiling", "provisional": 20, "confirmed": 15, "delta": -5, "cause": "step-04 grew by the inlined tier-1 preimage" },
+    { "row": "Q14 membership-depth ceiling", "provisional": 20, "confirmed": 19, "delta": -1, "cause": "flat step machinery only; the q1x artifact already held 19" },
+    { "row": "Q10 spend-input cardinality", "provisional": "39 / 40 (execution memory)", "confirmed": "75 / 76 (L1 bytes)", "delta": "+36", "cause": "per-input memory cost eliminated; binding axis moved to bytes" },
+    { "row": "Q11 spend-input cardinality", "provisional": "40 / 41 (execution memory)", "confirmed": "196 / 197 (L1 bytes)", "delta": "+156", "cause": "same" },
+    { "row": "Q1X-F6 per-input memory", "provisional": "~276,000 memory units per input", "confirmed": "~0 — memory constant in cardinality", "delta": "-276,000", "cause": "no bounded collection to reproduce under a flat commitment" },
+    { "row": "Q1X-F6 exposure at 296 inputs", "provisional": "step cannot be evaluated at all (over budget)", "confirmed": "evaluates at 3.8% / 4.7% of the memory basis; misses on bytes alone", "delta": "claim inverted", "cause": "same" }
+  ],
+
+  "necessityArtifactRepin": {
+    "ruling": "orchestrator ruling 2(a)/(b), 2026-08-15 — the #560 re-derive list's second half is IN-SCOPE for #580 and completed now, not inherited. Stale pre-cascade pins in evidence artifacts are the debt class this ticket exists to clear.",
+    "method": "A superseding `Re-pinned 2026-08-15 (issue #580)` bullet appended to each artifact's Binding section, on the superseded-pin discipline those files already use. Nothing historical was rewritten or deleted (invariant 14). Every identity was derived by a producer on the deployment each file declares — never hand-computed and never read off a diff.",
+    "producers": [
+      "demo/midgard-core/scripts/measure-validation-proof-item-envelope.mjs — applies [\"11\"x28, \"22\"x28, proof_item_script_hash] to the blueprint's own canonical_decode_item_semantic_v1.main.spend and reports the applied hash",
+      "the SDK's buildFaultProofContracts on the same deployment, applying cek_v1's five declared parameters in the order demo/midgard-sdk/tests/validation-resolver-applied-hashes.test.ts asserts (that gate is green, SDK 308/308, and refuses both the 3- and 4-parameter always-succeeds prefixes)",
+      "demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts `pins the applied §3.2 necessity identities on the measurement deployment` — re-derives both identities at runtime rather than hardcoding them; green against this blueprint (5/5)"
+    ],
+    "oldToNew": [
+      { "identity": "blueprint SHA-256", "old": "605c8b8dca1f01e2cde5219138a1f81e69214f9a182c10b73c20341187ddc2dc (391 validators, stock v1.1.22+39d6b04)", "new": "91861fac2d0bcafade6d8e1b4872e669cf9e7b52f5ed75d3b9729e4e02d6dd6b (398 validators / 702 definitions, fork v1.1.23+2a78108, aiken build --env testnet)" },
+      { "identity": "canonical_decode_item_semantic_v1 unapplied", "old": "62501cfe7cf63485a493c902060cd422acdd88757c319345eadb8819", "new": "a8d8f3ac58bce62636725d394cb5953767f927518d6db6de70144b67", "declaredParameters": 3, "note": "did NOT gain #592's field_preimage_certificate_policy_id; the 3-argument application is what #609's arity guard requires" },
+      { "identity": "canonical_decode_item_semantic_v1 applied (hub_oracle=11…11, catalogue=22…22)", "old": "983051b4a0c3fe90057a599e77ed44c5ab694014036d49c86373a143", "new": "0a42b4c76739fa1a1a391c8a766fdadf58c2692b983e3c455cb5fdb6" },
+      { "identity": "proof_item_v1", "old": "22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab", "new": "22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab", "note": "UNMOVED — unparameterized" },
+      { "identity": "cek_v1 declared parameters", "old": 4, "new": 5, "note": "#592 rider 2 appended field_preimage_certificate_policy_id" },
+      { "identity": "cek_v1 unapplied", "old": "not separately pinned", "new": "85cf1f7f9002409cfd1485ab8ae7043a03de8ac40454f92a5969f314, 161,894 bytes" },
+      { "identity": "cek_v1 applied (hub_oracle=11…11, catalogue=22…22)", "old": "f5d6395c562f2c0e1dc76582e2b1f2ba3e287345ab4abcd8cceb6666, 156,467 bytes", "new": "58af06758942a49ad36d0870fe2fa40cffca8fd6990aaf78e32d2e23, 162,082 bytes", "delta": "+5,615 bytes" },
+      { "identity": "cek_program_material spend", "old": "not pinned in the header", "new": "288fea77a0f674c6080aadd8ed3ca42cd5a920bf1f00c0d3e63306e4, 94 bytes" },
+      { "identity": "§8.6 FieldPreimageCertificateV1 mint policy (cek_v1's new 5th parameter)", "old": "—", "new": "c3682abd66d94b999806a624346a517981febcc3a1c94cd73604b178" }
+    ],
+    "falsifiedExpectation": "#560's re-derive reasoning expected the machine rewrite to SHRINK cek_v1 (\"the P1 oversized-validator gate should be re-taken and may improve\"). It grew: applied 156,467 → 162,082 bytes, +5,615. Recorded rather than smoothed — the P1 oversized-validator gate is further from closing, and the reference-script publication margin moves against the resolver by at least that amount. The conclusion the receipt supports is unaffected in direction (the resolver was already unpublishable on the live target network by ~140 KB).",
+    "dissolvedArtifactsNotRepinned": "input-no-idx-spend-input-proof-v1.md and script-source-hash-block-v1.md are retired-in-place and keep their pre-reversion pins as historical provenance — re-pinning a retired artifact onto a live identity would assert a binding it no longer has, and deleting the pins would breach invariant 14. Both carry a RETIRED IN PLACE header stating in terms that nothing below is a live pin.",
+    "consistencyCheck": "Every re-pinned artifact carries all of the new markers (5 files × 8 markers, cek × 9). No stale token survives outside a bullet whose head declares it superseded or retained-as-provenance — verified line-by-line against the position of each file's #580 bullet, and the one genuine half-pin found by that check (the CEK reference-script receipt section still presenting 156,467 / f5d6395c as current) was repaired. No automated verifier reads docs/exec-plans/evidence/necessity/ (grep over demo/scripts, .github/workflows, onchain/aiken/scripts returns nothing), so the consistency check is the gate here.",
+    "rulingsRequiringNoTreeChange": {
+      "ruling1": "#557-M2 tier-1 escalation, option 2 — the spec language at docs/spec/midgard-tx.md:514 and the E1-erratum note were already written in exactly that posture (\"measured at the evidence layer and not falsified\", \"narrowed, not closed\"); nothing asserts the bound confirmed, and no reserve was added. No further change.",
+      "ruling2c": "q1x artifact Q1X-F6 body fields — restraint ratified; left untouched. Only proofFitThresholds.enforcedBy was changed, as the gate repair.",
+      "ruling2d": "cause-note format deviation — ratified; the notes already state counted-era baseline versus flat-era measurement per moved quantity. No further change."
+    }
+  },
+
+  "gateFindings": [
+    {
+      "gate": "demo/scripts/verify-canonical-v1-proof-family-q1x.mjs",
+      "class": "gate that cannot pass",
+      "foundAt": "ac54d01a, pre-existing — the file it complained about is untouched by this pass",
+      "symptom": "AssertionError at verify-canonical-v1-proof-family-q1x.mjs:123 — 'demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts no longer declares the proof-fit helper expectProofFitV1'. The verifier asserts each `proofFitThresholds.enforcedBy[].file` contains `const <helper> = ({`, and crashed before running a single measurement.",
+      "cause": "#609's shared-helper dedup (its orchestrator ruling 2) relocated `expectProofFitV1` and `EXECUTION_RESERVE_FRACTION` out of the two suites into demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts:3816-3818. The suites still CALL the helper (3 and 4 call sites); only the declaration moved, and the evidence artifact still named the old location.",
+      "repair": "the q1x artifact's two enforcement rows now name the declaring module in `file` and keep the driving suite in a new `usedIn`, with the reason recorded in `enforcedByNote`. No threshold changed; every marker the verifier requires is present in the shared module and is now checked there.",
+      "stateAfterRepair": "the declaration assertion passes and the verifier proceeds to its runner-report stage, where it now fails for a DIFFERENT and owner-ruled reason: `ERR_FOCUSED_CHECK_FAILED — submit-init-emulator-ledger-rules.test.ts: 1 of 4 collected tests failed — proves and removes a tail non-existent-input block end to end`. That is one of the three #608 liveness-gap reds the owner ruled stay red until #606 lands, so the gate is blocked by an accepted bucket rather than by anything in this pass. Real exit code 1, verified separately (the wrapper reported 0 through a pipe; the process exits nonzero).",
+      "consequenceForP581": "the q1x evidence gate cannot go green until #606 lands. It is not a #580 red and it is not a new defect; it is the #608 acceptance becoming visible on a second surface."
+    }
+  ],
+
+  "residuals": [
+    "The signed tier-1 step transaction at the cap is unmeasured, so #557's M2 is narrowed rather than closed (orchestrator ruling 1, option 2). Filed by the orchestrator as a non-blocking follow-up; deliberately NOT built in this iteration.",
+    "The CEK direct-resolver reference-script publication receipt (156,982 signed bytes, L1 margin −140,598) could not be re-taken: its producing selector is one of the four owner-accepted `submit-init-emulator-validation-dispute` reds. The direction is known and recorded in the artifact — the applied body grew by 5,615 bytes, so the true receipt is worse than −140,598. Owed once that red clears.",
+    "The CEK one-shot pair 45,154,331 mem / 14,905,078,582 cpu is carried forward under the STAND verdict rather than re-measured, which is what STAND means: it is an execution reading of the material route, not a counted-commitment figure, and no re-measurement was ordered.",
+    "The 64-byte band is measured only at its endpoints; no row drives an item strictly inside (14,332, 14,396).",
+    "docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json still records the counted-era Q1X-F6 cardinalities and stage vocabulary (`spendInputCardinalityLifecyclesExecuted`, the witness-publication stages). Its `adversarialDepthBound` block measures Q12, whose ceiling of 19 is unmoved, but `summary.lowestEnvelopeExhaustionBranchLevel` of 19 predates this pass's Q10 ceiling of 15 and is now one row too high. Only `proofFitThresholds.enforcedBy` was touched here — the gate repair — because the remaining fields are read by a verifier that cannot currently complete (see gateFindings), so a re-pin could not be proven correct in this pass and was not guessed at."
+  ],
+
+  "commandsRun": [
+    "aiken --version; md5sum <fork binary>",
+    "aiken build --env testnet (scratch copies; identity reproduction)",
+    "cd onchain/aiken && node scripts/run-focused-check.mjs <module> <selectors>  (adjudication ceiling, both families)",
+    "cd onchain/aiken && node scripts/verify-{carriage,q1x,q21,q31,canonical-decodability,committed-field-shape,tx-order-mint}-exec-ledger-v1.mjs",
+    "cd demo/midgard-core && node scripts/measure-validation-proof-item-envelope.mjs",
+    "cd demo && MIDGARD_PRINT_PROOF_FIT=1 pnpm --config.verifyDepsBeforeRun=false --dir midgard-validation exec vitest run tests/complete-item-proof-fit-v1.test.ts tests/complete-item-proof-fit-emulator-v1.test.ts --pool=forks --no-file-parallelism --bail=0",
+    "cd demo && pnpm --config.verifyDepsBeforeRun=false --dir midgard-validation exec vitest run tests/complete-item-proof-fit-emulator-v1.test.ts tests/complete-item-carriage-tiers-emulator-v1.test.ts tests/field-preimage-carriage-fit-emulator-v1.test.ts --pool=forks --no-file-parallelism --bail=0",
+    "cd demo && pnpm --config.verifyDepsBeforeRun=false --dir midgard-fault-proofs exec vitest run tests/submit-init-emulator-max-proof-fit.test.ts tests/submit-init-emulator-spend-input-cardinality.test.ts --pool=forks --no-file-parallelism --bail=0"
+  ]
+}

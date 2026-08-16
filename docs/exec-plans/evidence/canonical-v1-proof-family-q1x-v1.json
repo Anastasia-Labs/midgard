@@ -26,14 +26,17 @@
       "reservePercent": 20,
       "rule": "executionMemory <= maxTxExMem * 80 / 100 and executionSteps <= maxTxExSteps * 80 / 100; a path that fits the raw limit but not the reserve is a failing result, not a smaller margin"
     },
+    "enforcedByNote": "#580, 2026-08-15. `file` is the module that DECLARES the helper, which is what verify-canonical-v1-proof-family-q1x.mjs asserts against; `usedIn` retains the suite each family's proof-fit checks are actually driven from. The two were the same file until #609's shared-helper dedup (its orchestrator ruling 2) moved `expectProofFitV1` and `EXECUTION_RESERVE_FRACTION` into tests/support/submit-init-emulator-shared.ts. The verifier kept asserting the declaration in the suite, so it could not pass from ac54d01a until this re-point. The suites still call the helper (2 call sites in submit-init-emulator, 3 in submit-init-emulator-ledger-rules) and no threshold changed: this is a gate-that-cannot-pass repair, not a relaxation. Every marker the verifier requires — the declaration, the non-negative l1ByteMargin, `EXECUTION_RESERVE_FRACTION = 20n`, and both execution-axis ceiling comparisons — is present in the shared module and is now checked there.",
     "enforcedBy": [
       {
-        "file": "demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts",
+        "file": "demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts",
+        "usedIn": "demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts",
         "helper": "expectProofFitV1",
         "families": ["Q10"]
       },
       {
-        "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
+        "file": "demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts",
+        "usedIn": "demo/midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
         "helper": "expectProofFitV1",
         "families": ["Q12", "Q14", "Q11"]
       }

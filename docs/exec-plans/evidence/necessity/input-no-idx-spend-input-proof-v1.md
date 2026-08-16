@@ -1,3 +1,32 @@
+> # RETIRED IN PLACE — DISSOLVED BY THE FLAT FIELD-HASH REVERSION
+>
+> **Status:** dissolved. **Superseded by:** `docs/spec/midgard-tx.md` §5.1/§5.3
+> (the enveloped preimage grammar and the fixed 3-byte input index that makes
+> spend-input items 38 bytes and their access arithmetic) and §8's carriage
+> ladder. **Ruling:** #560's owner resolution, 2026-08-07 — *"Dissolve. The
+> 19-vs-296 fold limit was counted-commitment fold cost
+> (`bounded_collection_v1.from_items` authentication) … The `FoldStart`/`FoldNext`
+> machinery, the 19-input frontier, and the lifecycle evidence all bind deleted
+> machinery."* **Retired by:** #580, 2026-08-15 (the confirm-and-publish
+> re-measurement pass), under invariant 14 — retired, never deleted.
+>
+> **Nothing below is a live instruction, a live pin, or a live measurement.** The
+> blueprint digest, applied hashes, validator counts and compiler version it
+> binds are all pre-reversion and pre-Phase-6; the mechanism it measures does not
+> exist in the tree. It is kept whole as historical provenance, on the same
+> superseded-pin discipline the artifact itself uses for its own earlier pins.
+>
+> **Where the surviving argument went.** The 296-input admissibility derivation
+> is scheme-independent and was already re-homed in the Q1x evidence
+> (`docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json`). The cost
+> claim this artifact existed to support is superseded by #580's measurement of
+> the same axis under flat, recorded in
+> `docs/exec-plans/evidence/canonical-v1-p7-remeasurement-v1.json`
+> (`q1xLifecycleMargins`): execution memory is **constant in spend-input
+> cardinality** — 494,909 units at 40 inputs and 498,121 at 296 for Q11 — where
+> this artifact measured ~276,000 units *per input*. Finding Q1X-F6 is resolved
+> on the axis it named; see the #551 disposition.
+
 # §3.2 necessity artifact — Q13 `input-no-idx` spend-input proof
 
 ## Final build and source binding

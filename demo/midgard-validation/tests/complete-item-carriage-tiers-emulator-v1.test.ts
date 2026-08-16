@@ -1073,9 +1073,13 @@ const TIER3_PREIMAGE_BYTES = 16_388;
  * most **14,332** bytes once the 4-byte field-2 envelope is counted. The applied
  * publication cap therefore sits **64 bytes above** the largest item whose field
  * can be carried inline, so items in (14,332, 14,396] are publishable but not
- * inline-carriable. That is a real gap, not an artefact of this retarget, and it
- * is **#580's to re-measure** — it must not be read as settled just because this
- * row is green. Recorded in prose at §8.10 of `docs/spec/midgard-tx.md` too.
+ * inline-carriable. That is a real gap, not an artefact of this retarget, and
+ * **#580 has now measured and dispositioned it**: the band selects tier 2
+ * (`RawUtxo`) rather than failing, so the gap is a carriage-tier transition and
+ * not a hole — see §8.3 of `docs/spec/midgard-tx.md`. The assertion below is
+ * unchanged and stays as an anti-conflation guard, so a future change that
+ * silently equates the publication cap with the inline ceiling goes red.
+ * Recorded in prose at §8.10 of `docs/spec/midgard-tx.md` too.
  */
 const PUBLICATION_MAXIMUM_ITEM_BYTES =
   MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes;
@@ -1177,8 +1181,10 @@ describe("complete-item §8 carriage tiers 2 and 3 (emulator, applied validators
       PUBLICATION_MAXIMUM_PREIMAGE_BYTES,
     );
 
-    // The overhang, asserted rather than described, so #580 inherits a gate and
-    // not a comment. If a future change closes it, this row fails and says so.
+    // The overhang, asserted rather than described. #580 measured and
+    // dispositioned it — the band selects tier 2, it is not a hole — and this
+    // assertion stays as the anti-conflation guard: if a future change closes
+    // the overhang or equates the two ceilings, this row fails and says so.
     expect(PUBLICATION_MAXIMUM_ITEM_BYTES - TIER1_ADMISSIBLE_ITEM_BYTES).toBe(
       PUBLICATION_MAXIMUM_TIER1_OVERHANG_BYTES,
     );

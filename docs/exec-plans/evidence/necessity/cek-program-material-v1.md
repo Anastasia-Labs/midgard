@@ -58,8 +58,66 @@
   blueprint (SHA-256 `2b5973fe2832bac0…`, 393 validators). Nothing this
   artifact binds moved: the group's cardinality, the CEK direct resolver's
   four parameters, and the applied `cek_v1` identity are unchanged.
+- **Re-pinned 2026-08-15 (issue #580, Phase-7 confirm-and-publish) — the
+  post-cascade identities. This bullet supersedes every identity pin above and
+  below it; the earlier ones are retained as provenance on this file's own
+  superseded-pin discipline.** #560 ruled this artifact **STAND** — its
+  necessity core (content-addressed material DAG, the 67,108,418-byte /
+  1,597,819-node maxima, the permissionless publication validator, the route-5
+  finding) is commitment-scheme-independent and is **not** re-measured here.
+  What was owed was the #546-style identity re-pin, and this is it.
+
+  Current blueprint: `onchain/aiken/plutus.json` SHA-256
+  `91861fac2d0bcafade6d8e1b4872e669cf9e7b52f5ed75d3b9729e4e02d6dd6b`
+  (md5 `b20c9a14a8fe445cdddbe5305b3857c1`, **398 validators / 702
+  definitions**), built by the pinned fork **`aiken v1.1.23+2a78108`** (binary
+  md5 `b3acfdf348235798cb6b921d0f87750a`) under the declared construction
+  **`aiken build --env testnet`**; the env flag is load-bearing and was not
+  recorded before. Stock `v1.1.22` is retired from every role (#579 owner
+  ruling A), so the "identical bytes under the released and the patched
+  compiler" claim in the source-revision bullet above is now moot rather than
+  contradicted: there is only one compiler.
+
+  | bound identity | superseded | current |
+  | --- | --- | --- |
+  | blueprint SHA-256 | `605c8b8d…` (391 validators, stock v1.1.22) | `91861fac…` (398 validators, fork v1.1.23+2a78108) |
+  | `cek_v1` declared parameters | **4** | **5** — #592 rider 2 appended `field_preimage_certificate_policy_id` after the four this file names |
+  | `cek_v1` unapplied | not separately pinned | `85cf1f7f9002409cfd1485ab8ae7043a03de8ac40454f92a5969f314`, 161,894 bytes |
+  | `cek_v1` applied (`hub_oracle=11…11`, `catalogue=22…22`) | `f5d6395c…`, 156,467 bytes | `58af06758942a49ad36d0870fe2fa40cffca8fd6990aaf78e32d2e23`, **162,082 bytes** |
+  | `cek_program_material` spend | not pinned in this header | `288fea77a0f674c6080aadd8ed3ca42cd5a920bf1f00c0d3e63306e4`, 94 bytes |
+  | §8.6 `FieldPreimageCertificateV1` mint policy (the new 5th parameter) | — | `c3682abd66d94b999806a624346a517981febcc3a1c94cd73604b178` |
+
+  Derived by the SDK's own `buildFaultProofContracts` on the deployment this
+  file declares, applying the five parameters in the order
+  `demo/midgard-sdk/tests/validation-resolver-applied-hashes.test.ts` asserts
+  (`computation_thread_policy_id, fraud_proof_policy_id, fraud_proof_address,
+  cek_program_material_script_hash, field_preimage_certificate_policy_id`) —
+  the same order #592's round-4 correction fixed and #609's arity guard now
+  enforces. That gate is **green** (SDK 308/308, 2026-08-15) and refuses both
+  the 3- and 4-parameter prefixes as the always-succeeds scripts they are under
+  Plutus V3, so the applied identity is gated rather than asserted.
+
+  **The machine rewrite did not shrink `cek_v1`; it grew.** The applied body is
+  162,082 bytes against 156,467 — **+5,615**, on top of a validator that was
+  already the program's largest. #560's expectation that the flat rewrite
+  "should *shrink* `cek_v1`" is therefore **falsified**, and the consequence is
+  recorded rather than smoothed: the P1 oversized-validator gate is further
+  from closing, not nearer, and the reference-script publication margin below
+  moves against the resolver by the same order. That margin is **not**
+  re-measured here — its producing selector is one of the four accepted
+  `submit-init-emulator-validation-dispute` reds, so a fresh receipt could not
+  be taken this pass; it is recorded on
+  `docs/exec-plans/evidence/canonical-v1-p7-remeasurement-v1.json` as owed.
+
+  The **CEK one-shot pair 45,154,331 mem / 14,905,078,582 cpu** — the
+  thirteenth of `transaction-field-chunk-v1.md`'s carried-forward-unverified
+  figures — is carried forward under this re-pin rather than re-measured, which
+  is what a STAND verdict means: it is an execution reading of the material
+  route, not a counted-commitment figure, and no re-measurement was ordered.
+
 - Applied direct-resolver identities on the measurement deployment
-  (`hub_oracle=11…11`, `catalogue=22…22`):
+  (`hub_oracle=11…11`, `catalogue=22…22`) — **superseded by the #580 bullet
+  above; retained as provenance**:
   current-tree applied `cek_v1` is 156,467 bytes with hash
   `f5d6395c562f2c0e1dc76582e2b1f2ba3e287345ab4abcd8cceb6666` — both
   re-measured unchanged on 2026-08-06 under blueprint `605c8b8d…` by the
@@ -183,7 +241,8 @@ multi-transaction verification is missing. Per the repository tradeoff order
 (correctness, safety, liveness, performance, convenience) a route that
 verifies nothing is strictly worse than a route that rejects, so the closure
 is the correct interim state. It sits alongside the already-recorded
-oversized-validator limit below: `cek_v1` itself is 156,467 applied bytes and
+oversized-validator limit below: `cek_v1` itself is 156,467 applied bytes
+(superseded 2026-08-15, #580 re-pin: now 162,082 B / `58af0675…`) and
 is likewise not live-network deployable yet.
 
 **Owed to the follow-up lease** (not C28): the authenticated
@@ -223,7 +282,8 @@ pre-fix failure is that assertion and nothing else.
 
 The CEK direct resolver (direct resolver 0, phase 11 `Cek`) can never travel
 inside the 16,384-byte L1 proof envelope: its applied body alone is 156,467
-bytes. C28 therefore registers and consumes it as an authenticated
+bytes (superseded 2026-08-15, #580 re-pin: now 162,082 B / `58af0675…`).
+C28 therefore registers and consumes it as an authenticated
 reference-script deployment role:
 
 - Role `V1 validation-trace CEK direct resolver` → token
@@ -233,9 +293,29 @@ reference-script deployment role:
   resolves and verifies the UTxO (exact script hash, exactly one role token)
   and consumes it via `readFrom`, never attaching the resolver body
   (`requireValidationCekDirectResolverReferenceScriptUtxo`).
+- **#580 (2026-08-15): every receipt in this bullet is SUPERSEDED-AND-NOT-YET-
+  RE-TAKEN, and the direction is known.** The applied `cek_v1` body it calls
+  "unchanged at 156,467 bytes / `f5d6395c…`" is now
+  `58af0675…` at **162,082 bytes** (+5,615) under blueprint `91861fac…` — see
+  the re-pin bullet in *Binding and source identities*. Every signed-byte and
+  L1-margin figure below therefore moves against the resolver by at least that
+  amount, so the true current receipt is **worse than −140,598**, not better.
+  A fresh receipt could **not** be taken this pass: its producing selector
+  (`publishes and verifies the authenticated generated-blueprint CEK
+  direct-resolver reference script`) lives in
+  `demo/midgard-fault-proofs/tests/submit-init-emulator-validation-dispute.test.ts`,
+  which is one of the four owner-accepted `validation-dispute` reds in #608's
+  authoritative red map. The figures below are retained as provenance and are
+  **not current-tree claims**; the owed re-take is recorded in
+  `docs/exec-plans/evidence/canonical-v1-p7-remeasurement-v1.json`. The
+  conclusion this bullet supports is unaffected in direction — the resolver was
+  already unpublishable on the live target network by ~140 KB and is now
+  further from publishable, which strengthens rather than weakens the P1
+  oversized-validator finding it feeds.
 - Measured authenticated publication receipts (real signed emulator
   transactions through the production publication program,
-  `completeReferenceScriptPublicationTxProgram`): current-tree blueprint
+  `completeReferenceScriptPublicationTxProgram`) — **superseded, see the #580
+  note directly above**: current-tree blueprint
   156,982 signed bytes (L1 margin −140,598), re-measured 2026-08-06 (#546)
   under blueprint `605c8b8d…` by the producing selector `publishes and
   verifies the authenticated generated-blueprint CEK direct-resolver

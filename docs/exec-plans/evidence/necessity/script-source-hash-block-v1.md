@@ -1,3 +1,40 @@
+> # RETIRED IN PLACE — DISSOLVED BY THE FLAT FIELD-HASH REVERSION
+>
+> **Status:** dissolved. **Superseded by:** `docs/spec/midgard-tx.md` §8's
+> authenticate-once carriage ladder (§8.3 `K`, §8.4's partition, §8.6's certified
+> digest-manifest), which puts the whole source in view of one step. **Ruling:**
+> #560's owner resolution, 2026-08-07 — *"The staged manual Blake2b compression
+> (`Blake2b256TraceControlV1`, one 128-byte-block run per step) was forced by
+> one-chunk-per-step carriage under the counted scheme … Under flat
+> authenticate-once carriage all chunks are referencable in one step and concat +
+> one builtin `blake2b_256` over a ~16 KB preimage measured 1,341 mem / 17.4M CPU
+> — there is nothing left to stage."* **Retired by:** #580, 2026-08-15 (the
+> confirm-and-publish re-measurement pass), under invariant 14 — retired, never
+> deleted.
+>
+> **Nothing below is a live instruction, a live pin, or a live measurement.** The
+> blueprint digests, applied hashes and compiler version it binds are
+> pre-reversion and pre-Phase-6, and the `ScriptSourceHashBlockWitness` /
+> `chunk_proof` machinery it measures does not exist in the tree. Kept whole as
+> historical provenance, on the same superseded-pin discipline the artifact uses
+> for its own earlier pins.
+>
+> **The provisional verdict is now settled.** #560 recorded this dissolution as
+> *provisional on the 3×K number*, to flip back to "re-derives" if one step
+> referencing three chunks could not close the case. #580 measured that step:
+> against §5.4's 32,768-byte per-field bound carried on §8.4's chunked route at
+> §8.3's `max_tier3_chunk_count` of three, the rule's own share — three-chunk
+> materialisation and the whole-preimage `blake2b_256` included — is **703,198
+> memory units, 5.3% of the §3.3 basis** (`docs/spec/midgard-tx.md` §12.7 cost
+> claims; pinned by
+> `onchain/aiken/scripts/canonical-decodability-exec-ledger-v1.json` and re-taken
+> green in this pass). The byte term is not the binding axis, so the verdict does
+> not flip. **Dissolution confirmed.**
+>
+> The byte-fit half of the old argument — sources above the publication cap
+> cannot ride one transaction — was always an instance of the general carriage
+> problem and lives with `transaction-field-chunk-v1.md` and §8, not here.
+
 # §3.2 Necessity artifact — script-source hash-block traversal
 
 ## Binding
