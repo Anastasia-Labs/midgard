@@ -60,11 +60,11 @@ import {
   MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
   MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT_V1,
   MIDGARD_SPEND_INPUT_ITEM_BYTES_V1,
+  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
   midgardExpectedChunkCountV1,
   midgardFieldCommitmentFromItemsV1,
   midgardFieldCommitmentV1,
   midgardFieldItemExtentV1,
-  midgardFieldPreimageCertificateAssetNameV1,
   midgardFieldStrideV1,
   buildMidgardWholeFieldViewV1,
   splitMidgardFieldPreimageIntoChunksV1,
@@ -205,7 +205,7 @@ const CHUNK_COUNT_TOTAL_LENGTHS = [
   MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
 ];
 
-/** §8.6. One fixed transaction id across all nine field indices. */
+/** §8.6. A fixed transaction id for the tier-3 certificate vector. */
 const CERTIFICATE_TX_ID = filler(32, 42);
 
 /**
@@ -327,26 +327,19 @@ const buildGolden = () => {
       preimageBlockHex: hex(TIER3_PREIMAGE_BLOCK),
       chunkLengths: tier3Chunks.map((chunk) => chunk.length),
       chunkDigestsHex: tier3Certificate.chunkDigests.map(hex),
-      assetNameHex: hex(
-        midgardFieldPreimageCertificateAssetNameV1({
-          txId: tier3Certificate.txId,
-          fieldIndex: tier3Certificate.fieldIndex,
-        }),
-      ),
+      // The mint-welded datum commitment (#606) — the datum-shape identity
+      // that replaced the retired per-(tx_id, field_index) asset-name class.
+      // Recomputed on the Aiken side from the rebuilt payload.
+      fieldHashHex: hex(tier3Certificate.fieldHash),
     },
-    certificateAssetNames: Array.from(
-      { length: MIDGARD_FIELD_COUNT_V1 },
-      (_, fieldIndex) => ({
-        fieldIndex,
-        txIdHex: hex(CERTIFICATE_TX_ID),
-        assetNameHex: hex(
-          midgardFieldPreimageCertificateAssetNameV1({
-            txId: CERTIFICATE_TX_ID,
-            fieldIndex,
-          }),
-        ),
-      }),
-    ),
+    // #606 (owner ruling 2026-08-16): one constant asset name for every
+    // certificate of the policy; the retired blake2b_256(field_index ‖ tx_id)
+    // vector class is replaced by this constant plus the datum-shape vectors.
+    certificateAssetName: {
+      assetNameHex: hex(MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1),
+      byteLength: MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.length,
+      ascii: MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.toString("ascii"),
+    },
   };
 };
 
@@ -402,8 +395,6 @@ const renderAiken = (golden) => {
     "",
     ...section("Generated constants"),
     `const golden_empty_field_commitment = ${aikenBytes(golden.emptyFieldCommitmentHex)}`,
-    "",
-    `const golden_certificate_tx_id = ${aikenBytes(golden.certificateAssetNames[0].txIdHex)}`,
     "",
     ...golden.itemWrappers.flatMap((entry) => [
       `const golden_filler_${entry.payloadLength} = ${aikenBytes(fillerOf(entry.payloadLength))}`,
@@ -575,26 +566,31 @@ const renderAiken = (golden) => {
     "  }",
     "}",
     "",
-    ...section("§8.6 certificate asset name — blake2b_256(field_index ‖ tx_id)"),
-    "test golden_certificate_asset_names_match_typescript() {",
-    "  and {",
-    ...golden.certificateAssetNames.map(
-      (entry) =>
-        `    field_preimage_certificate_asset_name(golden_certificate_tx_id, ${entry.fieldIndex}) == ${aikenBytes(entry.assetNameHex)},`,
+    ...section(
+      "§8.6 certificate asset name — one constant for every certificate (#606)",
     ),
+    "// The retired blake2b_256(field_index ‖ tx_id) derivation's vector class is",
+    "// replaced by this constant plus the welded datum-shape vector below and the",
+    "// wire vectors in `native_tx_carriage_wire_v1_golden.test`.",
+    "",
+    "test golden_certificate_asset_name_matches_typescript() {",
+    "  and {",
+    `    field_preimage_certificate_asset_name == ${aikenBytes(golden.certificateAssetName.assetNameHex)},`,
+    `    bytearray.length(field_preimage_certificate_asset_name) == ${golden.certificateAssetName.byteLength},`,
     "  }",
     "}",
     "",
     "/// The tier-3 manifest a TypeScript publisher derives for a preimage of",
     `/// ${golden.tier3Certificate.totalLength} bytes: chunk lengths ${golden.tier3Certificate.chunkLengths.join(" + ")}, one`,
-    "/// digest per chunk, and the §8.6 token name. This test pins the manifest's",
-    "/// shape; the digest *values* are recomputed from the rebuilt payload by",
-    "/// `golden_tier3_chunk_digests_match_typescript` above.",
+    "/// digest per chunk, and the mint-welded datum commitment (#606). The",
+    "/// `field_hash` equality is the datum-shape identity pin: the Aiken side",
+    "/// recomputes §4's commitment over the rebuilt payload and it must equal the",
+    "/// value the TypeScript producer welded into the datum.",
     "test golden_tier3_certificate_shape_matches_typescript() {",
     "  and {",
     `    expected_chunk_count(${golden.tier3Certificate.totalLength}) == ${golden.tier3Certificate.chunkLengths.length},`,
     `    list.length(golden_tier3_chunk_digests) == ${golden.tier3Certificate.chunkLengths.length},`,
-    `    field_preimage_certificate_asset_name(golden_certificate_tx_id, ${golden.tier3Certificate.fieldIndex}) == ${aikenBytes(golden.tier3Certificate.assetNameHex)},`,
+    `    field_commitment(golden_tier3_preimage()) == ${aikenBytes(golden.tier3Certificate.fieldHashHex)},`,
     "  }",
     "}",
     "",

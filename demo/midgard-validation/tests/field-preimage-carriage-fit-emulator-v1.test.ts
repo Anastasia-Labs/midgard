@@ -1374,8 +1374,11 @@ describe("§8.6 Phase-4 exit measurement — certificate min-Ada and the one-tra
     // it feeds is the deliverable.
     expect(coinsPerUtxoByte).toBe(4_310n);
     expect(certification.chunkCount).toBe(3);
-    expect(certification.datumCbor.length / 2).toBe(176);
-    expect(certificateMinAda).toBe(1_939_500n);
+    // 210 bytes since #606: the datum gained the 32-byte mint-welded
+    // `field_hash` (plus its 2-byte CBOR head), 176 → 210, and the manifest's
+    // min-Ada moved with it (1.9395 → 2.0645 ADA).
+    expect(certification.datumCbor.length / 2).toBe(210);
+    expect(certificateMinAda).toBe(2_064_490n);
     expect(chunkMinAda).toBe(68_231_610n);
     expect(raggedMinAda).toBe(11_869_740n);
 
@@ -1542,6 +1545,7 @@ const resolveCertificateFromLedger = (
       owner: Buffer.from(decoded.owner, "hex"),
       txId: Buffer.from(decoded.tx_id, "hex"),
       fieldIndex: Number(decoded.field_index),
+      fieldHash: Buffer.from(decoded.field_hash, "hex"),
       totalLength: Number(decoded.total_length),
       chunkDigests: decoded.chunk_digests.map((digest) =>
         Buffer.from(digest, "hex"),

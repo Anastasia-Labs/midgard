@@ -65,12 +65,12 @@ import {
   deriveMidgardFieldPreimageCertificateV1,
   exactMidgardFieldIndexV1,
   MIDGARD_CHUNK_BYTES_K_V1,
+  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
   MIDGARD_MAX_TIER3_CHUNK_COUNT_V1,
   MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
   type MidgardFieldCarriageV1,
   midgardFieldCommitmentV1,
-  midgardFieldPreimageCertificateAssetNameV1,
   type MidgardFieldPreimageCertificateV1,
   type ResolvedCarriageReferenceInputV1,
   selectMidgardFieldCarriageTierV1,
@@ -138,7 +138,10 @@ export type MidgardFieldCarriagePlanV1 = {
   readonly publications: readonly MidgardFieldPublicationV1[];
   /** §8.6. Present under tier 3 only — the only tier that certifies. */
   readonly certificate: MidgardFieldPreimageCertificateV1 | null;
-  /** §8.6's content-addressed token name. Present under tier 3 only. */
+  /**
+   * §8.6's constant token name (#606) — the same for every certificate of the
+   * policy; identity lives in the datum. Present under tier 3 only.
+   */
   readonly certificateAssetName: Buffer | null;
 };
 
@@ -191,11 +194,10 @@ export const planMidgardFieldCarriageV1 = ({
     );
   }
   // Both bounds are enforced on **every** tier, not only where a certificate
-  // would enforce them for us. §8.6's asset-name derivation is what bounds
-  // `field_index` to 0..8 and `tx_id` to 32 bytes, and only tier 3 derives one;
-  // a tier-1 or tier-2 plan naming field 42 would otherwise be constructible
-  // here and refused much later, at the door, in a caller that had already
-  // built a transaction around it.
+  // datum would enforce them for us (only tier 3 builds one); a tier-1 or
+  // tier-2 plan naming field 42 would otherwise be constructible here and
+  // refused much later, at the door, in a caller that had already built a
+  // transaction around it.
   const exactFieldIndex = exactMidgardFieldIndexV1(fieldIndex);
   const exactTxId = Buffer.from(txId);
   if (exactTxId.length !== 32) {
@@ -263,10 +265,9 @@ export const planMidgardFieldCarriageV1 = ({
       return { chunkIndex, bytes: chunk, digest };
     }),
     certificate,
-    certificateAssetName: midgardFieldPreimageCertificateAssetNameV1({
-      txId: certificate.txId,
-      fieldIndex: certificate.fieldIndex,
-    }),
+    certificateAssetName: Buffer.from(
+      MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
+    ),
   };
 };
 
@@ -314,11 +315,13 @@ export const healMidgardFieldCarriageV1 = ({
  *
  * Interchangeable means: same tier, same field, same transaction, same total
  * length, same commitment, byte-identical publications in the same order, and
- * — under tier 3 — the same digest vector and the same content-addressed token
- * name. It deliberately does **not** compare `certificate.owner`: the owner is
- * the min-Ada reclaim authority, it differs by construction when a second
- * identity heals, and no consuming step reads it. Two interchangeable plans
- * mean either party's certificate verifies against either party's chunks.
+ * — under tier 3 — the same digest vector and the same mint-welded
+ * `fieldHash` (#606: the token name is one constant, so the datum is where
+ * certificate identity lives). It deliberately does **not** compare
+ * `certificate.owner`: the owner is the min-Ada reclaim authority, it differs
+ * by construction when a second identity heals, and no consuming step reads
+ * it. Two interchangeable plans mean either party's certificate verifies
+ * against either party's chunks.
  */
 export const midgardFieldCarriagePlansAreInterchangeableV1 = (
   left: MidgardFieldCarriagePlanV1,
@@ -368,6 +371,7 @@ export const midgardFieldCarriagePlansAreInterchangeableV1 = (
   return (
     digestsAgree &&
     leftCertificate.totalLength === rightCertificate.totalLength &&
+    leftCertificate.fieldHash.equals(rightCertificate.fieldHash) &&
     left.certificateAssetName !== null &&
     right.certificateAssetName !== null &&
     left.certificateAssetName.equals(right.certificateAssetName)

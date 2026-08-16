@@ -267,24 +267,16 @@ export const nativeTxAnchorV1ForField = ({
  * it were the transaction's) and a witness opening read at a body index (where
  * it would be silently ignored).
  *
- * **Tier 3 is refused for fields 6–8** (`docs/spec/midgard-tx.md` §8.3 erratum
- * E2 limit 3). A §8.6 certificate is minted against a `witness_set_hash` taken
- * off the tail of the *minter's own* redeemer, and §3's id preimage does not
- * reach that tail, so for a witness-set field the certificate binds the preimage
- * to nothing the disputing thread anchored.
- * `field_opening_v1.carriage_reaches_the_anchor` refuses it on-chain,
- * unconditionally.
- *
- * **This refusal is hardening, not the repair.** It constrains honest builders
- * and does nothing whatever to an adversary, who does not build transactions
- * through this module. The repair is to fold the field commitment into the §8.6
- * asset name so a certificate token cannot be borrowed for a preimage the named
- * transaction never committed; that changes a frozen wire format and a landed
- * minting policy, and it is
- * [#606](https://github.com/Anastasia-Labs/midgard/issues/606)'s (deferred there
- * from #604 by owner ruling, 2026-08-14, because the change is a blueprint
- * regeneration and #579's single regeneration was spent). Nothing here may be
- * cited as closing E2 limit 3.
+ * **Tier 3 is admissible at every field, including 6–8**, since
+ * [#606](https://github.com/Anastasia-Labs/midgard/issues/606)'s repair (owner
+ * ruling 2026-08-16, resolving §8.3 erratum E2 limit 3). The §8.6 certificate
+ * datum carries a mint-welded `field_hash`, and the on-chain door requires it
+ * to equal the commitment derived from the **anchored** structures — for a
+ * witness-set field, the chain that reaches the anchored `witness_set_hash` —
+ * so a certificate minted against a fabricated witness set fails at the door.
+ * The former builder-side refusal here (the #604 hardening that duplicated
+ * `carriage_reaches_the_anchor`) lifted with the repair, keeping door parity:
+ * this module emits exactly what the door accepts.
  */
 export const fieldOpeningV1ForField = ({
   fieldIndex,
@@ -302,12 +294,6 @@ export const fieldOpeningV1ForField = ({
     if (witnessSet === undefined) {
       throw new MidgardFieldOpeningError(
         "a witness-set field (§2.5 6–8) opens on `WitnessFieldOpening`, which carries the transaction's `NativeTxWitnessSetCompact`",
-        `field_index=${field}`,
-      );
-    }
-    if ("Certified" in carriage) {
-      throw new MidgardFieldOpeningError(
-        "§8.3 erratum E2 limit 3: a witness-set field may not be carried under tier 3 — the §8.6 certificate binds it to nothing the thread anchored, and `carriage_reaches_the_anchor` refuses it on-chain",
         `field_index=${field}`,
       );
     }

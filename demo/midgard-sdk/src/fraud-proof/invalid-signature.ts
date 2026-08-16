@@ -349,10 +349,12 @@ export const InvalidSignatureStep02Datum =
  * Mirrors `midgard/fraud_proofs/invalid_signature/step_02.Args`.
  *
  * `addr_tx_wits_opening` must be the `WitnessFieldOpening` arm — it carries the
- * transaction's `NativeTxWitnessSetCompact` alongside the compact bytes, and the
- * door refuses a body opening at field 7. It also may **not** name tier 3
- * (§8.3 erratum E2 limit 3); `fieldOpeningV1ForField` refuses that off-chain and
- * `carriage_reaches_the_anchor` refuses it on-chain.
+ * transaction's `NativeTxWitnessSetCompact` alongside the compact bytes, and
+ * the door refuses a body opening at field 7. Tier 3 is admissible here since
+ * #606's repair (the certificate's mint-welded `field_hash` must equal the
+ * commitment reached through the anchored `witness_set_hash`, so a fabricated
+ * certificate fails at the door); §8.3 erratum E2's disposition records the
+ * resolution.
  */
 export const InvalidSignatureStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),

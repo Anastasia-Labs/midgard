@@ -11,7 +11,7 @@ import {
   FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_V1_CONSTRUCTOR_INDEXES,
   FIELD_VIEW_V1_CONSTRUCTOR_INDEXES,
   FieldCarriageV1,
-  fieldPreimageCertificateAssetNameHexV1,
+  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1,
   FieldPreimageCertificateMintRedeemerV1,
   FieldPreimageCertificateV1,
   FieldViewV1,
@@ -193,6 +193,7 @@ describe("§8.6 FieldPreimageCertificateV1 datum", () => {
       "owner",
       "tx_id",
       "field_index",
+      "field_hash",
       "total_length",
       "chunk_digests",
     ]);
@@ -203,6 +204,7 @@ describe("§8.6 FieldPreimageCertificateV1 datum", () => {
       owner: h28("11"),
       tx_id: h32("22"),
       field_index: 5n,
+      field_hash: h32("66"),
       total_length: 16_417n,
       chunk_digests: [h32("33"), h32("44")],
     };
@@ -321,23 +323,16 @@ describe("§4/§8.6 values a builder must reproduce", () => {
     expect(EMPTY_SPEND_INPUTS_HASH).toBe(EMPTY_FIELD_COMMITMENT_HEX_V1);
   });
 
-  it("derives the certificate token name from (tx_id, field_index)", () => {
-    const txId = h32("22");
-    const names = Array.from({ length: 9 }, (_, fieldIndex) =>
-      fieldPreimageCertificateAssetNameHexV1({ txId, fieldIndex }),
+  it("pins the constant certificate token name (#606)", () => {
+    // One constant for every certificate of the policy — ASCII
+    // "MIDGARD_FIELD_PREIMAGE_CERT", 27 bytes. The identity the retired
+    // per-(tx_id, field_index) derivation carried lives in the datum, which
+    // now also welds the §4 commitment (`field_hash`).
+    expect(FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1).toBe(
+      Buffer.from("MIDGARD_FIELD_PREIMAGE_CERT", "ascii").toString("hex"),
     );
-    expect(new Set(names).size).toBe(9);
-    for (const name of names) {
-      expect(name).toMatch(/^[0-9a-f]{64}$/u);
-    }
-    expect(() =>
-      fieldPreimageCertificateAssetNameHexV1({ txId, fieldIndex: 9 }),
-    ).toThrow();
-    expect(() =>
-      fieldPreimageCertificateAssetNameHexV1({
-        txId: "22".repeat(31),
-        fieldIndex: 0,
-      }),
-    ).toThrow();
+    expect(FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1).toMatch(
+      /^[0-9a-f]{54}$/u,
+    );
   });
 });

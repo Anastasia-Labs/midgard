@@ -370,29 +370,38 @@ describe("the §2.5 pairing is derived, not chosen", () => {
   });
 });
 
-describe("§8.3 erratum E2 limit 3 — tier 3 is refused for fields 6–8", () => {
+describe("#606 — tier 3 is admissible at every field (E2 limit 3 resolved)", () => {
   const certified = {
     Certified: { cert_ref_input_index: 0n, chunk_ref_input_indices: [1n, 2n] },
   };
 
-  it("refuses a certified carriage on every witness-set field", () => {
+  /**
+   * The former builder-side refusal (the #604 hardening that duplicated
+   * `carriage_reaches_the_anchor`) lifted with #606's welded-hash repair, and
+   * door parity is the property that has to survive: this module emits
+   * exactly what the on-chain door accepts, which now includes tier-3
+   * carriage of a witness-set field.
+   */
+  it("emits a certified carriage on every witness-set field", () => {
     for (const fieldIndex of [6, 7, 8]) {
-      expect(() =>
+      expect(
         fieldOpeningV1ForField({
           fieldIndex,
           nativeTxCompactCbor: COMPACT_CBOR,
           carriage: certified,
           witnessSet: WITNESS_SET,
         }),
-      ).toThrow(/erratum E2 limit 3/u);
+      ).toEqual({
+        WitnessFieldOpening: {
+          native_tx_compact_cbor: COMPACT_CBOR,
+          witness_set: WITNESS_SET,
+          carriage: certified,
+        },
+      });
     }
   });
 
-  /**
-   * The control. Widening the refusal into a ban on tier 3 would be just as
-   * wrong as removing it — tier 3 is how a body field above the §8.3 tier-2
-   * bound travels at all — so the body direction is pinned from the other side.
-   */
+  /** The body direction, pinned from the other side exactly as before. */
   it("still admits a certified carriage on every body field", () => {
     for (const fieldIndex of [0, 1, 2, 3, 4, 5]) {
       expect(
@@ -411,18 +420,25 @@ describe("§8.3 erratum E2 limit 3 — tier 3 is refused for fields 6–8", () =
   });
 
   /**
-   * The refusal above is hardening, not the repair, and this is where that is
-   * asserted rather than only commented: the on-chain door refuses tier-3
-   * witness carriage on its own, and it is what actually stands between an
-   * adversary and a forged witness-set fault. If this ever stops matching, the
-   * off-chain refusal has become the only one — which is the state E2's
-   * disposition says must not be reached silently.
+   * Door parity's other half, asserted rather than only commented: what
+   * actually stands between an adversary and a forged witness-set fault is
+   * the on-chain door's welded-hash equality (#606), and lifting the
+   * builder-side refusal is only sound while that equality is there. If this
+   * ever stops matching, the door has lost the E2 closure — which is the
+   * state E2's disposition says must not be reached silently.
    */
-  it("mirrors an on-chain refusal that is still there", () => {
-    const aiken = readRepositoryFile(AIKEN_MODULE);
-    expect(aiken).toMatch(
+  it("mirrors the on-chain welded-hash equality that closed E2", () => {
+    const accessModule = readRepositoryFile(
+      "onchain/aiken/lib/midgard/native-tx-field-access-v1.ak",
+    );
+    expect(accessModule).toMatch(
+      /expect certificate\.field_hash == expected_hash/u,
+    );
+    expect(accessModule).toContain("#606");
+    // And the old refusal is gone rather than duplicated somewhere new.
+    const opening = readRepositoryFile(AIKEN_MODULE);
+    expect(opening).not.toMatch(
       /Certified \{ \.\. \} -> field_index < first_witness_set_field_index/u,
     );
-    expect(aiken).toContain("#606");
   });
 });

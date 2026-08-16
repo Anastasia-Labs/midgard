@@ -850,6 +850,7 @@ export const resolveCarriageReferenceInputV1 = (
         owner: Buffer.from(certificate.owner, "hex"),
         txId: Buffer.from(certificate.tx_id, "hex"),
         fieldIndex: Number(certificate.field_index),
+        fieldHash: Buffer.from(certificate.field_hash, "hex"),
         totalLength: Number(certificate.total_length),
         chunkDigests: certificate.chunk_digests.map((digest) =>
           Buffer.from(digest, "hex"),

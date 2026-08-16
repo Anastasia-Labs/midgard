@@ -30,7 +30,7 @@ import {
   midgardFieldCommitmentV1,
   midgardFieldItemAtV1,
   midgardFieldItemExtentV1,
-  midgardFieldPreimageCertificateAssetNameV1,
+  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
   midgardFieldStrideV1,
   splitMidgardFieldPreimageIntoChunksV1,
 } from "../src/codec/native-tx-field-access-v1.js";
@@ -255,26 +255,19 @@ describe("native-tx field-access V1 cross-language goldens", () => {
     }
   });
 
-  it("reproduces the §8.6 certificate asset names for all nine fields", () => {
-    expect(golden.certificateAssetNames).toHaveLength(MIDGARD_FIELD_COUNT_V1);
-    for (const entry of golden.certificateAssetNames) {
-      expect(
-        hex(
-          midgardFieldPreimageCertificateAssetNameV1({
-            txId: bytes(entry.txIdHex),
-            fieldIndex: entry.fieldIndex,
-          }),
-        ),
-      ).toBe(entry.assetNameHex);
-    }
-    // Domain separation: nine field indices, nine distinct names.
-    expect(
-      new Set(golden.certificateAssetNames.map((entry) => entry.assetNameHex))
-        .size,
-    ).toBe(MIDGARD_FIELD_COUNT_V1);
+  it("reproduces the §8.6 constant certificate asset name (#606)", () => {
+    expect(golden.certificateAssetName.assetNameHex).toBe(
+      hex(MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1),
+    );
+    expect(golden.certificateAssetName.byteLength).toBe(
+      MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.length,
+    );
+    expect(golden.certificateAssetName.ascii).toBe(
+      MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.toString("ascii"),
+    );
   });
 
-  it("reproduces the tier-3 manifest shape", () => {
+  it("reproduces the tier-3 manifest shape and its welded datum commitment", () => {
     const certificate = golden.tier3Certificate;
     expect(certificate.chunkLengths.reduce((a, b) => a + b, 0)).toBe(
       certificate.totalLength,
@@ -286,12 +279,17 @@ describe("native-tx field-access V1 cross-language goldens", () => {
       certificate.chunkLengths.length,
     );
     expect(certificate.totalLength).toBeGreaterThan(MIDGARD_CHUNK_BYTES_K_V1);
-    expect(certificate.assetNameHex).toBe(
+    // The datum-shape identity that replaced the retired asset-name class
+    // (#606): the welded `field_hash` is §4's commitment over the rebuilt
+    // payload.
+    expect(certificate.fieldHashHex).toBe(
       hex(
-        midgardFieldPreimageCertificateAssetNameV1({
-          txId: bytes(certificate.txIdHex),
-          fieldIndex: certificate.fieldIndex,
-        }),
+        midgardFieldCommitmentV1(
+          repeatToLength(
+            bytes(certificate.preimageBlockHex),
+            certificate.totalLength,
+          ),
+        ),
       ),
     );
   });

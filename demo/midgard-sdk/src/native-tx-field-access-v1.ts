@@ -1,8 +1,8 @@
 import {
   MIDGARD_EMPTY_FIELD_COMMITMENT_V1,
   MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS_V1,
+  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
   MIDGARD_FIELD_VIEW_CONSTRUCTORS_V1,
-  midgardFieldPreimageCertificateAssetNameV1,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -134,6 +134,11 @@ export const FieldPreimageCertificateV1Schema = Data.Object({
   owner: VerificationKeyHashSchema,
   tx_id: H32Schema,
   field_index: Data.Integer(),
+  // The mint-welded §4 field commitment (#606, owner ruling 2026-08-16): the
+  // policy checks `hash(concat(chunks))` against exactly this value, and the
+  // door refuses a certificate whose welded hash is not the anchored
+  // commitment.
+  field_hash: H32Schema,
   total_length: Data.Integer(),
   chunk_digests: Data.Array(H32Schema),
 });
@@ -231,18 +236,11 @@ export const EMPTY_FIELD_COMMITMENT_HEX_V1: string =
   MIDGARD_EMPTY_FIELD_COMMITMENT_V1.toString("hex");
 
 /**
- * §8.6's deterministic certificate asset name, `blake2b_256(field_index ‖
- * tx_id)`, as the hex string a `Assets` key needs. Both bounds — `field_index`
- * in 0..8 and a 32-byte `tx_id` — are enforced by the core derivation.
+ * §8.6's constant certificate asset name (#606, owner ruling 2026-08-16), as
+ * the hex string an `Assets` key needs. One constant for every certificate of
+ * the policy — the retired `blake2b_256(field_index ‖ tx_id)` derivation's
+ * information lives in the datum, and discovery is by enumerating the single
+ * certificate address and filtering by datum.
  */
-export const fieldPreimageCertificateAssetNameHexV1 = ({
-  txId,
-  fieldIndex,
-}: {
-  readonly txId: string;
-  readonly fieldIndex: number;
-}): string =>
-  midgardFieldPreimageCertificateAssetNameV1({
-    txId: Buffer.from(txId, "hex"),
-    fieldIndex,
-  }).toString("hex");
+export const FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1: string =
+  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.toString("hex");

@@ -142,6 +142,11 @@ const digestB = repeatedByte(0x44, 32);
 const digestC = repeatedByte(0x55, 32);
 const certificateOwner = repeatedByte(0x11, 28);
 const certificateTxId = repeatedByte(0x22, 32);
+// The #606 mint-welded datum commitment slot. A distinct repeated byte, not a
+// recomputed hash: what this channel pins is the *wire* shape — field order
+// and encoding — and the semantic weld (`field_hash == hash(concat(chunks))`)
+// is pinned by the field-access golden channel and the .ak selectors instead.
+const certificateFieldHash = repeatedByte(0x66, 32);
 
 /**
  * Each vector carries three things that have to stay in step: the value the
@@ -242,6 +247,7 @@ const vectors = [
       owner: hex(certificateOwner),
       tx_id: hex(certificateTxId),
       field_index: 5n,
+      field_hash: hex(certificateFieldHash),
       total_length: 32_763n,
       chunk_digests: [hex(digestA), hex(digestB), hex(digestC)],
     },
@@ -250,6 +256,7 @@ const vectors = [
       `  owner: ${aikenBytes(hex(certificateOwner))},`,
       `  tx_id: ${aikenBytes(hex(certificateTxId))},`,
       "  field_index: 5,",
+      `  field_hash: ${aikenBytes(hex(certificateFieldHash))},`,
       "  total_length: 32763,",
       `  chunk_digests: [${aikenBytes(hex(digestA))}, ${aikenBytes(hex(digestB))}, ${aikenBytes(hex(digestC))}],`,
       "}",
@@ -448,11 +455,28 @@ const negativeVectors = [
         hex(certificateOwner),
         hex(certificateTxId),
         5n,
+        hex(certificateFieldHash),
         32_763n,
       ]),
     ),
     reason:
-      "the certificate record has 5 fields; dropping `chunk_digests` is the shape that would let a manifest certify nothing",
+      "the certificate record has 6 fields; dropping `chunk_digests` is the shape that would let a manifest certify nothing",
+    rejectedBy: { aiken: "data-cast", typescript: "throws" },
+  },
+  {
+    label: "certificate_missing_field_hash",
+    aikenType: "FieldPreimageCertificateV1",
+    cborHex: Data.to(
+      new Constr(0, [
+        hex(certificateOwner),
+        hex(certificateTxId),
+        5n,
+        32_763n,
+        [hex(digestA), hex(digestB), hex(digestC)],
+      ]),
+    ),
+    reason:
+      "the pre-#606 5-field shape — a datum without the mint-welded `field_hash` is a certificate the door has no anchored equality to hold, and the frozen wire format refuses it at decode",
     rejectedBy: { aiken: "data-cast", typescript: "throws" },
   },
   {
@@ -463,6 +487,7 @@ const negativeVectors = [
         hex(certificateOwner),
         hex(certificateTxId),
         "05",
+        hex(certificateFieldHash),
         32_763n,
         [hex(digestA), hex(digestB), hex(digestC)],
       ]),

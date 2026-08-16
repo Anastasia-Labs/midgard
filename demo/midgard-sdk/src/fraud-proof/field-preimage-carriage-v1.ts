@@ -23,7 +23,7 @@ import {
 import { Effect } from "effect";
 
 import {
-  fieldPreimageCertificateAssetNameHexV1,
+  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1,
   FieldPreimageCertificateMintRedeemerV1,
   FieldPreimageCertificateV1,
 } from "@/native-tx-field-access-v1.js";
@@ -322,6 +322,7 @@ const certificateDatumCbor = (
       owner: certificate.owner.toString("hex"),
       tx_id: certificate.txId.toString("hex"),
       field_index: BigInt(certificate.fieldIndex),
+      field_hash: certificate.fieldHash.toString("hex"),
       total_length: BigInt(certificate.totalLength),
       chunk_digests: certificate.chunkDigests.map((digest) =>
         digest.toString("hex"),
@@ -356,10 +357,9 @@ export const deriveFieldPreimageCertificationV1 = (
   }
   return {
     datumCbor: certificateDatumCbor(certificate),
-    assetNameHex: fieldPreimageCertificateAssetNameHexV1({
-      txId: certificate.txId.toString("hex"),
-      fieldIndex: certificate.fieldIndex,
-    }),
+    // #606: one constant name for every certificate of the policy; the datum
+    // (including the mint-welded `field_hash`) is where identity lives.
+    assetNameHex: FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1,
     chunkCount: certificate.chunkDigests.length,
   };
 };
@@ -498,36 +498,62 @@ export const resolveChunkReferenceIndicesV1 = ({
 
 /**
  * Locates a tier-3 certificate in a resolved reference-input set by its
- * **content-addressed token**, never by `OutputReference` (§8.7).
+ * **datum**, never by `OutputReference` (§8.7) and — since #606's constant
+ * asset name — never by token alone.
  *
- * The token is the binding the door itself checks: `certified_chunks` requires
- * the named reference input to hold one unit of the certificate policy under
- * §8.6's `blake2b_256(field_index ‖ tx_id)` name, so matching on that token here
- * is matching on exactly what the validator will look for. Two certificates for
- * the same `(tx_id, field_index)` are interchangeable by construction — that is
- * §8.7's healing property — so the first match is as good as any.
+ * The token names the policy and nothing else: every certificate of the
+ * policy carries the same constant name, so two certificates for different
+ * fields (or different transactions) are same-name tokens and the datum is
+ * where identity lives. This resolver matches exactly what the door checks —
+ * one unit of the policy's constant-name token, over a datum whose
+ * `(tx_id, field_index, field_hash)` triple is the plan's — so a transaction
+ * carrying several certificates resolves each field to its own manifest. Two
+ * certificates matching the triple are interchangeable by construction (§8.7
+ * healing; they differ at most in `owner`), so the first match is as good as
+ * any.
  */
 export const resolveCertificateReferenceIndexV1 = ({
   certificatePolicyId,
-  certificateAssetName,
+  txIdHex,
+  fieldIndex,
+  fieldHashHex,
   referenceInputs,
   label,
 }: {
   readonly certificatePolicyId: string;
-  readonly certificateAssetName: Uint8Array;
+  readonly txIdHex: string;
+  readonly fieldIndex: number;
+  readonly fieldHashHex: string;
   readonly referenceInputs: readonly UTxO[];
   readonly label: string;
 }): number => {
-  const unit = `${certificatePolicyId}${Buffer.from(certificateAssetName).toString("hex")}`;
+  const unit = `${certificatePolicyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1}`;
+  const matchesDatum = (datum: string | null | undefined): boolean => {
+    if (datum === null || datum === undefined) {
+      return false;
+    }
+    try {
+      const certificate = Data.from(datum, FieldPreimageCertificateV1);
+      return (
+        certificate.tx_id === txIdHex &&
+        certificate.field_index === BigInt(fieldIndex) &&
+        certificate.field_hash === fieldHashHex
+      );
+    } catch {
+      return false;
+    }
+  };
   // Canonical `(txHash, outputIndex)` order, for the same reason
   // `resolveChunkReferenceIndicesV1` sorts: positional indices are indices into
   // the ledger's reference-input list, not into the order a builder collected.
   const index = [...referenceInputs]
     .sort(compareOutRefs)
-    .findIndex((utxo) => (utxo.assets[unit] ?? 0n) === 1n);
+    .findIndex(
+      (utxo) => (utxo.assets[unit] ?? 0n) === 1n && matchesDatum(utxo.datum),
+    );
   if (index === -1) {
     throw new Error(
-      `${label} §8.6 certificate ${unit} is not among the transaction's reference inputs`,
+      `${label} §8.6 certificate (policy ${certificatePolicyId}, tx ${txIdHex}, field ${fieldIndex.toString()}) is not among the transaction's reference inputs`,
     );
   }
   return index;
@@ -586,7 +612,7 @@ export const resolveMidgardFieldCarriageAgainstReferenceInputsV1 = ({
       `tier-3 carriage for field ${plan.fieldIndex.toString()} requires the §8.6 certificate policy id`,
     );
   }
-  if (plan.certificateAssetName === null) {
+  if (plan.certificate === null) {
     throw new Error(
       `tier-3 plan for field ${plan.fieldIndex.toString()} carries no certificate`,
     );
@@ -595,7 +621,9 @@ export const resolveMidgardFieldCarriageAgainstReferenceInputsV1 = ({
     carriage: "Certified",
     certRefInputIndex: resolveCertificateReferenceIndexV1({
       certificatePolicyId,
-      certificateAssetName: plan.certificateAssetName,
+      txIdHex: plan.txId.toString("hex"),
+      fieldIndex: plan.fieldIndex,
+      fieldHashHex: plan.commitment.toString("hex"),
       referenceInputs,
       label: `field ${plan.fieldIndex.toString()}`,
     }),

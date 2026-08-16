@@ -578,6 +578,13 @@ export type MidgardFieldPreimageCertificateV1 = {
   readonly txId: Buffer;
   /** 0..8. */
   readonly fieldIndex: number;
+  /**
+   * The §4 flat field commitment of the whole preimage — mint-welded to
+   * `chunkDigests` (#606, owner ruling 2026-08-16): the policy checks
+   * `hash(concat(chunks))` against this exact value, so a consumer comparing
+   * it to a commitment it authenticated itself is talking about these bytes.
+   */
+  readonly fieldHash: Buffer;
   /** Preimage byte length — ragged-last plus offset math. */
   readonly totalLength: number;
   /** `blake2b_256` per chunk, in order; length = `ceil(totalLength / K)`. */
@@ -596,31 +603,24 @@ const exactBytes = (
 };
 
 /**
- * §8.6's deterministic certificate asset name, derived from
- * `(tx_id, field_index)` so indexers can find a certificate and so a consumer
- * can name the exact token it requires without trusting the redeemer:
+ * §8.6's certificate asset name — one constant for every certificate of the
+ * policy (#606, owner ruling 2026-08-16; supersedes the retired
+ * `blake2b_256(field_index_byte ‖ tx_id)` derivation). The name is branding,
+ * not identity: everything the derived name encoded is in the mint-verified
+ * datum, which since #606 also carries the welded `fieldHash`. The mint still
+ * pins the constant, so a token of the policy is always this name over a
+ * datum the mint proved. Discovery is by enumerating the single certificate
+ * address and filtering by datum; same-name tokens are disambiguated by
+ * datum, never by token alone.
  *
- * ```
- * asset_name = blake2b_256(field_index_byte ‖ tx_id)
- * ```
- *
- * The single-byte prefix is domain separation, not a length header: with
- * `field_index` bounded to 0..8 and `tx_id` fixed at 32 bytes the 33-byte
- * preimage is unambiguous. Both bounds are enforced, not assumed.
+ * ASCII "MIDGARD_FIELD_PREIMAGE_CERT", 27 bytes — the twin of
+ * `field_preimage_certificate_asset_name` in
+ * `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak`, pinned by the
+ * cross-language golden channel.
  */
-export const midgardFieldPreimageCertificateAssetNameV1 = ({
-  txId,
-  fieldIndex,
-}: {
-  readonly txId: Uint8Array;
-  readonly fieldIndex: number;
-}): Buffer =>
-  midgardFieldCommitmentV1(
-    Buffer.concat([
-      Buffer.from([exactMidgardFieldIndexV1(fieldIndex)]),
-      exactBytes(txId, 32, "certificate tx_id"),
-    ]),
-  );
+export const MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1: Buffer =
+  Buffer.from("MIDGARD_FIELD_PREIMAGE_CERT", "ascii");
+
 
 /**
  * Builds the §8.6 certificate an off-chain publisher mints for a tier-3
@@ -651,6 +651,9 @@ export const deriveMidgardFieldPreimageCertificateV1 = ({
     owner: exactBytes(owner, 28, "certificate owner"),
     txId: exactBytes(txId, 32, "certificate tx_id"),
     fieldIndex: exactMidgardFieldIndexV1(fieldIndex),
+    // The mint weld (#606): the §4 commitment of the bytes themselves, the
+    // same value the policy checks `hash(concat(chunks))` against.
+    fieldHash: midgardFieldCommitmentV1(preimage),
     totalLength: preimage.length,
     chunkDigests: chunks.map(midgardFieldCommitmentV1),
   };
@@ -928,11 +931,11 @@ const countFromTotalLength = (stride: number, totalLength: number): number => {
  * `totalLength` and the digest vector arrive as authenticated data and
  * `certified_view` never re-hashes anything. Off-chain a
  * `MidgardFieldPreimageCertificateV1` is just a record the caller handed over;
- * no policy stands behind it, and the §8.6 asset name a door can check is
- * derivable by anyone from `(txId, fieldIndex)`. Authentication therefore has
- * to happen here or nowhere, and §4 commits the *whole* preimage under one flat
- * `blake2b_256` with no Merkle structure to open a single chunk against — so
- * authenticating any byte of a tier-3 field means hashing all of them.
+ * no policy stands behind it, and the §8.6 constant asset name a door can
+ * check names the policy, never the content (#606). Authentication therefore
+ * has to happen here or nowhere, and §4 commits the *whole* preimage under one
+ * flat `blake2b_256` with no Merkle structure to open a single chunk against —
+ * so authenticating any byte of a tier-3 field means hashing all of them.
  *
  * That is the trade this function makes: one `blake2b_256` over at most 32,768
  * bytes (§5.4) at construction, in exchange for a view whose bytes are the
@@ -999,6 +1002,17 @@ export const buildMidgardChunkedFieldViewV1 = ({
     return failField(
       "certificate field_index does not match the requested field",
       `certificate=${certificate.fieldIndex},requested=${exactField}`,
+    );
+  }
+  // The load-bearing E2 equality (#606), mirrored from the on-chain door: the
+  // certificate's mint-welded `field_hash` must be the commitment the caller
+  // authenticated. Off-chain the reconstruction below re-establishes the
+  // commitment anyway, but a manifest welded to some other hash is a manifest
+  // the on-chain door would refuse, and this twin must refuse it in step.
+  if (!certificate.fieldHash.equals(Buffer.from(expectedCommitment))) {
+    return failField(
+      "certificate field_hash does not match the anchored commitment (#606)",
+      `certificate=${certificate.fieldHash.toString("hex")}`,
     );
   }
   const totalLength = exactCount(certificate.totalLength, "certificate total");
@@ -1109,14 +1123,15 @@ export type ResolvedCarriageReferenceInputV1 = {
   readonly certificate?: MidgardFieldPreimageCertificateV1;
   /**
    * The certificate token's asset name as observed at that UTxO, checked
-   * against the §8.6 derivation when supplied.
+   * against the §8.6 constant when supplied (#606: every certificate token
+   * carries the one constant name; identity lives in the datum).
    *
-   * This is an *identity* check, not an authentication: the derivation is a
-   * public function of `(txId, fieldIndex)`, so anyone can produce a matching
-   * name for a manifest over any bytes at all. It catches a carriage pointing
-   * at the wrong manifest; what proves the bytes are the field's is the §4
-   * commitment check in {@link buildMidgardChunkedFieldViewV1}, which does not
-   * depend on this field being supplied.
+   * This is an *identity* check, not an authentication: it catches a carriage
+   * pointing at a token that is not the certificate policy's at all. What
+   * proves the bytes are the field's is the §4 commitment check in
+   * {@link buildMidgardChunkedFieldViewV1} together with the welded
+   * `fieldHash` equality, neither of which depends on this field being
+   * supplied.
    */
   readonly certificateAssetName?: Uint8Array;
 };
@@ -1212,17 +1227,15 @@ export const authenticatedMidgardFieldViewV1 = ({
           `ref_input_index=${carriage.certRefInputIndex}`,
         );
       }
-      const expectedAssetName = midgardFieldPreimageCertificateAssetNameV1({
-        txId,
-        fieldIndex: exactField,
-      });
       if (
         certInput.certificateAssetName !== undefined &&
-        !expectedAssetName.equals(Buffer.from(certInput.certificateAssetName))
+        !MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.equals(
+          Buffer.from(certInput.certificateAssetName),
+        )
       ) {
         return failField(
-          "certificate token is not the §8.6 (tx_id, field_index) name",
-          `expected=${expectedAssetName.toString("hex")}`,
+          "certificate token is not the §8.6 constant name (#606)",
+          `expected=${MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.toString("hex")}`,
         );
       }
       return buildMidgardChunkedFieldViewV1({

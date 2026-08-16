@@ -24,9 +24,9 @@
  *     perfectly well-formed value;
  *   * a witness-set field (§2.5 6–8) carries the transaction's own compact
  *     witness set, whose hash is the anchored `witness_set_hash`;
- *   * the §2.5 half and the §8 tier pair with the field
- *     (`field_pairs_with`/`carriage_reaches_the_anchor`, applied by the SDK's
- *     `fieldOpeningV1ForField`).
+ *   * the §2.5 half pairs with the field (`field_pairs_with`, applied by the
+ *     SDK's `fieldOpeningV1ForField`; the former fields-6–8 tier-3 refusal
+ *     lifted with #606's welded-hash repair).
  *
  * **The tier is never a caller's argument.** §8.4 partitions on the preimage's
  * own length, and `planMidgardFieldCarriageV1` is the only thing here that
@@ -385,7 +385,7 @@ export const faultProofFieldCarriageV1 = ({
     }
     return { RawUtxo: { ref_input_index: BigInt(refInputIndex) } };
   }
-  if (plan.certificateAssetName === null) {
+  if (plan.certificate === null) {
     throw new Error(`${label} tier-3 plan carries no §8.6 certificate.`);
   }
   if (certificatePolicyId === undefined) {
@@ -398,7 +398,9 @@ export const faultProofFieldCarriageV1 = ({
       cert_ref_input_index: BigInt(
         resolveCertificateReferenceIndexV1({
           certificatePolicyId,
-          certificateAssetName: plan.certificateAssetName,
+          txIdHex: plan.txId.toString("hex"),
+          fieldIndex: plan.fieldIndex,
+          fieldHashHex: plan.commitment.toString("hex"),
           referenceInputs,
           label,
         }),

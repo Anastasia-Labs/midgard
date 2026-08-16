@@ -21,7 +21,7 @@ import {
   MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
   midgardFieldCommitmentV1,
   midgardFieldItemAtV1,
-  midgardFieldPreimageCertificateAssetNameV1,
+  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
   splitMidgardFieldPreimageIntoChunksV1,
 } from "../src/codec/native-tx-field-access-v1.js";
 
@@ -138,11 +138,11 @@ describe("§8 carriage plan — the tier is a total function of length", () => {
       expect(entry.digest).toEqual(midgardFieldCommitmentV1(entry.bytes));
     }
     expect(corner.certificateAssetName).toEqual(
-      midgardFieldPreimageCertificateAssetNameV1({
-        txId: TX_ID,
-        fieldIndex: FIELD_INDEX,
-      }),
+      MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
     );
+    // The welded datum commitment (#606): the certificate's `fieldHash` is
+    // the plan's own §4 commitment.
+    expect(corner.certificate?.fieldHash).toEqual(corner.commitment);
   });
 
   it("is fail-closed on inputs no tier would catch for it", () => {

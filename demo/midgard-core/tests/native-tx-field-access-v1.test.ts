@@ -27,7 +27,7 @@ import {
   midgardFieldItemAtV1,
   midgardFieldItemCountV1,
   midgardFieldItemExtentV1,
-  midgardFieldPreimageCertificateAssetNameV1,
+  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
   midgardFieldReadRangeV1,
   midgardFieldStrideV1,
   midgardFieldTotalLengthV1,
@@ -348,31 +348,43 @@ describe("§8 carriage ladder", () => {
     ).toBe(MIDGARD_MAX_TIER3_CHUNK_COUNT_V1);
   });
 
-  it("derives the §8.6 certificate asset name and enforces both bounds", () => {
-    const txId = filler(32, 42);
-    const assetName = midgardFieldPreimageCertificateAssetNameV1({
-      txId,
+  it("pins the §8.6 constant certificate asset name (#606)", () => {
+    // One constant for every certificate of the policy; identity lives in the
+    // datum. Pinned as bytes so the on-chain constant and this producer
+    // cannot drift apart (the .ak golden channel pins the same value).
+    expect(MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.toString("ascii")).toBe(
+      "MIDGARD_FIELD_PREIMAGE_CERT",
+    );
+    expect(MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.length).toBe(27);
+  });
+
+  it("welds the §4 commitment into the certificate datum (#606)", () => {
+    const preimage = filler(MIDGARD_CHUNK_BYTES_K_V1 + 1, 7);
+    const certificate = deriveMidgardFieldPreimageCertificateV1({
+      owner: filler(28, 1),
+      txId: filler(32, 42),
       fieldIndex: 5,
+      preimage,
     });
-    expect(hex(assetName)).toBe(
-      hex(
-        midgardFieldCommitmentV1(Buffer.concat([Buffer.from([5]), txId])),
-      ),
+    expect(hex(certificate.fieldHash)).toBe(
+      hex(midgardFieldCommitmentV1(preimage)),
     );
     expect(() =>
-      midgardFieldPreimageCertificateAssetNameV1({ txId, fieldIndex: 9 }),
+      deriveMidgardFieldPreimageCertificateV1({
+        owner: filler(28, 1),
+        txId: filler(32, 42),
+        fieldIndex: 9,
+        preimage,
+      }),
     ).toThrow(MidgardTxCodecError);
     expect(() =>
-      midgardFieldPreimageCertificateAssetNameV1({
+      deriveMidgardFieldPreimageCertificateV1({
+        owner: filler(28, 1),
         txId: filler(31, 1),
         fieldIndex: 0,
+        preimage,
       }),
     ).toThrow(/32 bytes/u);
-    // Field index is domain separation, so a name is field-specific even though
-    // the commitment is not.
-    expect(
-      hex(midgardFieldPreimageCertificateAssetNameV1({ txId, fieldIndex: 4 })),
-    ).not.toBe(hex(assetName));
   });
 
   it("refuses to certify a preimage that fits tier 1 or tier 2 (§8.4)", () => {
@@ -425,16 +437,33 @@ describe("§8.4 tier-3 view — straddle-aware, lazy chunk verify", () => {
     expect(midgardFieldTotalLengthV1(view)).toBe(preimage.length);
   });
 
-  it("refuses chunks that do not hash to the committed field hash", () => {
-    // Off-chain there is no minting policy to have checked the chunks against
-    // the field hash, so the tier-3 builder discharges that obligation itself.
-    // Every structural check below still passes: the certificate is honest
-    // about *these* bytes, only the commitment names different ones.
+  it("refuses a manifest whose welded field_hash is not the anchored commitment (#606)", () => {
+    // The certificate is honest about *these* bytes — its welded `fieldHash`
+    // is their commitment — but the caller's anchored commitment names
+    // different ones, which is exactly the forged-certificate shape the
+    // on-chain door refuses.
     expect(() =>
       buildMidgardChunkedFieldViewV1({
         fieldIndex,
         txId,
         certificate,
+        chunks,
+        expectedCommitment: Buffer.alloc(32),
+      }),
+    ).toThrow(/field_hash does not match the anchored commitment/u);
+  });
+
+  it("refuses chunks that do not hash to the committed field hash", () => {
+    // Off-chain there is no minting policy to have checked the chunks against
+    // the field hash, so the tier-3 builder discharges that obligation itself.
+    // The certificate here *lies about its own weld* — its `fieldHash` states
+    // the caller's commitment while its chunks are something else — so the
+    // welded equality passes and the §4 reconstruction is what refuses.
+    expect(() =>
+      buildMidgardChunkedFieldViewV1({
+        fieldIndex,
+        txId,
+        certificate: { ...certificate, fieldHash: Buffer.alloc(32) },
         chunks,
         expectedCommitment: Buffer.alloc(32),
       }),
@@ -613,10 +642,7 @@ describe("the off-chain door", () => {
   const tier3ReferenceInputs = [
     {
       certificate: bigCertificate,
-      certificateAssetName: midgardFieldPreimageCertificateAssetNameV1({
-        txId,
-        fieldIndex,
-      }),
+      certificateAssetName: MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
     },
     { inlineDatumBytes: bigChunks[0] },
     { inlineDatumBytes: bigChunks[1] },
@@ -640,18 +666,12 @@ describe("the off-chain door", () => {
   });
 
   it("refuses a tier-3 carriage over bytes the field never committed to", () => {
-    // The counterexample the tier-3 door has to answer. Every structural check
-    // passes — the certificate is internally consistent, bound to this `txId`
-    // and this field, its chunk lengths follow §8.4's split, and its token name
-    // is the §8.6 derivation — and the bytes are still not the field's. On
-    // chain the certificate policy is what forbids this: the mint proved the
-    // chunks against the field hash before the token existed. Off chain there
-    // is no policy, the asset name is a public function of public inputs, and
-    // so the door has to re-establish §4 itself.
-    //
-    // `commitment` here is the honest commitment of the two-item preimage this
-    // block opens with; `bigChunks` carry a 600-item preimage. Nothing may come
-    // back — not a short read, not a count.
+    // The counterexample the tier-3 door has to answer. `commitment` here is
+    // the honest commitment of the two-item preimage this block opens with;
+    // `bigChunks` carry a 600-item preimage. Nothing may come back — not a
+    // short read, not a count. The honest manifest wears its own (foreign)
+    // commitment and fails the welded-hash equality (#606) — the same check
+    // the on-chain door runs.
     expect(() =>
       authenticatedMidgardFieldViewV1({
         fieldIndex,
@@ -659,6 +679,25 @@ describe("the off-chain door", () => {
         expectedCommitment: commitment,
         carriage: tier3Carriage,
         referenceInputs: tier3ReferenceInputs,
+      }),
+    ).toThrow(/field_hash does not match the anchored commitment/u);
+    // And a manifest that lies about its own weld is caught one check later,
+    // by the §4 reconstruction the off-chain door runs for itself (on-chain
+    // this is the certificate policy's mint-time proof).
+    expect(() =>
+      authenticatedMidgardFieldViewV1({
+        fieldIndex,
+        txId,
+        expectedCommitment: commitment,
+        carriage: tier3Carriage,
+        referenceInputs: [
+          {
+            ...tier3ReferenceInputs[0],
+            certificate: { ...bigCertificate, fieldHash: commitment },
+          },
+          tier3ReferenceInputs[1],
+          tier3ReferenceInputs[2],
+        ],
       }),
     ).toThrow(/does not match the committed field hash/u);
     expect(() =>
@@ -675,6 +714,8 @@ describe("the off-chain door", () => {
   it("rejects the same commitment mismatch at every tier", () => {
     // Tiers 1 and 2 already refused this; tier 3 refusing it too is what makes
     // carriage an encoding detail rather than a choice of how hard to check.
+    // (Under tier 3 the refusal happens one check earlier since #606 — at the
+    // welded-hash equality — hence the two-message alternation.)
     for (const carriage of [
       { carriage: "Inline", preimage: bigPreimage } as const,
       { carriage: "RawUtxo", refInputIndex: 3 } as const,
@@ -691,11 +732,13 @@ describe("the off-chain door", () => {
             { inlineDatumBytes: bigPreimage },
           ],
         }),
-      ).toThrow(/does not match the committed field hash/u);
+      ).toThrow(
+        /does not match the (committed field hash|anchored commitment)/u,
+      );
     }
   });
 
-  it("requires the §8.6 token name at the tier-3 manifest input", () => {
+  it("requires the §8.6 constant token name at the tier-3 manifest input", () => {
     expect(() =>
       authenticatedMidgardFieldViewV1({
         fieldIndex,
@@ -708,6 +751,6 @@ describe("the off-chain door", () => {
           tier3ReferenceInputs[2],
         ],
       }),
-    ).toThrow(/§8.6 \(tx_id, field_index\) name/u);
+    ).toThrow(/§8.6 constant name/u);
   });
 });

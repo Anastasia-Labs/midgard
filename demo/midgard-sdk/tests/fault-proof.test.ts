@@ -547,8 +547,9 @@ describe("fault-proof ABI", () => {
       input_index: 0n,
       output_index: 0n,
       // Field 7 is a witness-set field, so the opening is the `WitnessFieldOpening`
-      // arm and carries the transaction's compact witness set. Tier 3 is refused
-      // for this arm (§8.3 erratum E2 limit 3), which is asserted below.
+      // arm and carries the transaction's compact witness set. Tier 3 is
+      // admissible for this arm since #606's welded-hash repair, which is
+      // asserted below.
       addr_tx_wits_opening: {
         WitnessFieldOpening: {
           native_tx_compact_cbor: "a1b2c3",
@@ -570,9 +571,10 @@ describe("fault-proof ABI", () => {
       ),
     ).toEqual({ Continue: [step02Args] });
 
-    // The witness-set family is where E2 limit 3 actually bites, so the refusal
-    // is asserted at the family rather than only in the shared module's tests.
-    expect(() =>
+    // The witness-set family is where E2 limit 3 used to bite, so the lifted
+    // refusal (#606) is asserted at the family rather than only in the shared
+    // module's tests: a tier-3 opening of field 7 is emitted, not thrown.
+    expect(
       SDK.fieldOpeningV1ForField({
         fieldIndex: SDK.MIDGARD_FIELD_INDEX_V1.addressWitnesses,
         nativeTxCompactCbor: "a1b2c3",
@@ -588,7 +590,22 @@ describe("fault-proof ABI", () => {
           redeemer_tx_wits_hash: h32,
         },
       }),
-    ).toThrow(/erratum E2 limit 3/u);
+    ).toEqual({
+      WitnessFieldOpening: {
+        native_tx_compact_cbor: "a1b2c3",
+        witness_set: {
+          addr_tx_wits_hash: h32,
+          script_tx_wits_hash: h32b,
+          redeemer_tx_wits_hash: h32,
+        },
+        carriage: {
+          Certified: {
+            cert_ref_input_index: 0n,
+            chunk_ref_input_indices: [1n],
+          },
+        },
+      },
+    });
   });
 
   it("round-trips zero-input step datums and redeemers", () => {

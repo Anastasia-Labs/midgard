@@ -422,17 +422,15 @@ test golden_tier3_chunk_digests_match_typescript() {
 }
 
 // ---------------------------------------------------------------------------
-// §8.6 certificate asset name — one constant for every certificate (#606,
-// owner ruling 2026-08-16; the blake2b_256(field_index ‖ tx_id) derivation
-// and its per-(tx_id, field_index) vector class are retired — datum-shape
-// vectors in `native_tx_carriage_wire_v1_golden.test` carry the identity the
-// names used to)
+// §8.6 certificate asset name — one constant for every certificate (#606)
 // ---------------------------------------------------------------------------
+
+// The retired blake2b_256(field_index ‖ tx_id) derivation's vector class is
+// replaced by this constant plus the welded datum-shape vector below and the
+// wire vectors in `native_tx_carriage_wire_v1_golden.test`.
 
 test golden_certificate_asset_name_matches_typescript() {
   and {
-    // "MIDGARD_FIELD_PREIMAGE_CERT", pinned as bytes so the TypeScript
-    // producer's hex spelling and this constant cannot drift apart.
     field_preimage_certificate_asset_name == #"4d4944474152445f4649454c445f505245494d4147455f43455254",
     bytearray.length(field_preimage_certificate_asset_name) == 27,
   }
@@ -440,14 +438,15 @@ test golden_certificate_asset_name_matches_typescript() {
 
 /// The tier-3 manifest a TypeScript publisher derives for a preimage of
 /// 15665 bytes: chunk lengths 15148 + 517, one
-/// digest per chunk, and the §8.6 constant token name. This test pins the
-/// manifest's shape; the digest *values* are recomputed from the rebuilt
-/// payload by `golden_tier3_chunk_digests_match_typescript` above.
+/// digest per chunk, and the mint-welded datum commitment (#606). The
+/// `field_hash` equality is the datum-shape identity pin: the Aiken side
+/// recomputes §4's commitment over the rebuilt payload and it must equal the
+/// value the TypeScript producer welded into the datum.
 test golden_tier3_certificate_shape_matches_typescript() {
   and {
     expected_chunk_count(15665) == 2,
     list.length(golden_tier3_chunk_digests) == 2,
-    bytearray.length(field_preimage_certificate_asset_name) == 27,
+    field_commitment(golden_tier3_preimage()) == #"45e6ca4f8a5676fba50a9a43b6d8757b1c683a7796531ccf89331adb46003683",
   }
 }
 

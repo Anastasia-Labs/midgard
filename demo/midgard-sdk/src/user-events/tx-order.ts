@@ -676,15 +676,14 @@ const carriageIsResolvableV1 = (
     if (field.plan.tier !== "Certified") {
       return true;
     }
-    if (
-      certificatePolicyId === undefined ||
-      field.plan.certificateAssetName === null
-    ) {
+    if (certificatePolicyId === undefined || field.plan.certificate === null) {
       return false;
     }
     resolveCertificateReferenceIndexV1({
       certificatePolicyId,
-      certificateAssetName: field.plan.certificateAssetName,
+      txIdHex: field.plan.txId.toString("hex"),
+      fieldIndex: field.plan.fieldIndex,
+      fieldHashHex: field.plan.commitment.toString("hex"),
       referenceInputs,
       label: field.fieldName,
     });
@@ -721,11 +720,11 @@ export const txOrderMaterialCarriageVectorV1 = ({
    * tx-order mint takes as its second parameter.
    *
    * Optional because only tier-3 fields consult it, and **absent is refused
-   * rather than defaulted**: a tier-3 entry names its manifest by the
-   * `(policy id, asset name)` pair the door looks for, so an empty or otherwise
-   * stand-in policy id would emit a redeemer that names a token nobody can hold.
-   * The refusal is here, at the one place that needs the value, rather than at a
-   * caller that might forget it.
+   * rather than defaulted**: a tier-3 entry locates its manifest by the
+   * policy's constant-name token over the plan's datum identity (#606), so an
+   * empty or otherwise stand-in policy id would emit a redeemer that names a
+   * token nobody can hold. The refusal is here, at the one place that needs
+   * the value, rather than at a caller that might forget it.
    */
   readonly certificatePolicyId?: string;
   readonly referenceInputs: readonly UTxO[];
@@ -747,10 +746,9 @@ export const txOrderMaterialCarriageVectorV1 = ({
       }
       return { RawUtxo: { ref_input_index: BigInt(refInputIndex) } };
     }
-    const certificateAssetName = field.plan.certificateAssetName;
-    if (certificateAssetName === null) {
+    if (field.plan.certificate === null) {
       throw new Error(
-        `${field.fieldName} tier-3 carriage has no §8.6 certificate token name`,
+        `${field.fieldName} tier-3 carriage has no §8.6 certificate`,
       );
     }
     if (certificatePolicyId === undefined) {
@@ -761,7 +759,9 @@ export const txOrderMaterialCarriageVectorV1 = ({
     }
     const certificateIndex = resolveCertificateReferenceIndexV1({
       certificatePolicyId,
-      certificateAssetName,
+      txIdHex: field.plan.txId.toString("hex"),
+      fieldIndex: field.plan.fieldIndex,
+      fieldHashHex: field.plan.commitment.toString("hex"),
       referenceInputs,
       label: field.fieldName,
     });
