@@ -142,8 +142,11 @@ fn disputed_tx_id() -> ByteArray {
   )
 }
 
+/// §8.6's constant asset name (#606) — one name for every certificate of the
+/// policy. Kept as a helper so every test names the token the same way the
+/// handlers do.
 fn certificate_asset_name() -> ByteArray {
-  field_preimage_certificate_asset_name(disputed_tx_id(), disputed_field)
+  field_preimage_certificate_asset_name
 }
 
 fn certificate_for(owner: ByteArray) -> FieldPreimageCertificateV1 {
@@ -309,15 +312,15 @@ test field_preimage_certificate_handler_mint_rejects_a_certificate_output_withou
   )
 }
 
-/// §8.6's name is derived from `(tx_id, field_index)` so that a consuming step
-/// can require the exact token for the field it is disputing. A token minted
-/// under any other name is a certificate nobody can ask for by name — and one
-/// that would answer to a name whose content was never checked.
-test field_preimage_certificate_handler_mint_rejects_an_asset_name_that_is_not_the_content_address() fail {
-  let foreign_name = field_preimage_certificate_asset_name(
-    disputed_tx_id(),
-    disputed_field + 1,
-  )
+/// §8.6's name is one constant for every certificate (#606), and the mint
+/// still pins it: the single-pair check requires exactly the constant name at
+/// quantity 1, so a token of this policy is always the constant name over a
+/// datum the mint proved. The name is branding, not identity — but an
+/// unpinned name would let a certification bring an arbitrary-named token of
+/// the policy into existence, and anything that trusts "a token of the
+/// certificate policy" would read it.
+test field_preimage_certificate_handler_mint_rejects_an_asset_name_that_is_not_the_constant() fail {
+  let foreign_name = #"deadbeef"
   run_certify(
     certification_tx(
       [
@@ -327,6 +330,28 @@ test field_preimage_certificate_handler_mint_rejects_an_asset_name_that_is_not_t
         ),
       ],
       assets.from_asset(certificate_script_hash, foreign_name, 1),
+      chunk_inputs(publisher_hash, carriage_utxo_id),
+    ),
+  )
+}
+
+/// The mint weld at the transaction seam (#606): the named output's datum is
+/// what the content check verifies, so a datum whose `field_hash` is not the
+/// commitment the chunks reconstruct is refused even when every byte of
+/// carriage is honest.
+test field_preimage_certificate_handler_mint_rejects_a_datum_with_a_foreign_field_hash() fail {
+  run_certify(
+    certification_tx(
+      [
+        certificate_output(
+          FieldPreimageCertificateV1 {
+            ..certificate_for(publisher_hash),
+            field_hash: zero_hash32,
+          },
+          certificate_value(certificate_asset_name(), 1),
+        ),
+      ],
+      assets.from_asset(certificate_script_hash, certificate_asset_name(), 1),
       chunk_inputs(publisher_hash, carriage_utxo_id),
     ),
   )
@@ -493,15 +518,18 @@ test field_preimage_certificate_handler_mint_rejects_a_chunk_without_an_inline_d
 /// The permissionless claim, as a transaction. An unrelated party republishes
 /// the same content from the preimage bytes — their own key address, their own
 /// UTxOs, their own min-Ada reclaim authority — and certifies. The policy asks
-/// nothing about who they are, and the token they get carries the same
-/// content-addressed name the yanked one had, so every consuming step that
-/// named the old certificate finds the new one.
+/// nothing about who they are, and the certificate they get is byte-identical
+/// modulo `owner` (#606: same bytes ⇒ same datum, under the one constant
+/// name), so every consuming step that matched the yanked certificate's datum
+/// matches the new one.
 test field_preimage_certificate_handler_mint_heals_a_yanked_publication_from_an_unrelated_party() {
   let healed = certificate_for(healer_hash)
   let original = certificate_for(publisher_hash)
   and {
-    // Same content address, different publisher and different reclaim owner.
+    // Same content, same welded commitment; different publisher and different
+    // reclaim owner.
     healed.chunk_digests == original.chunk_digests,
+    healed.field_hash == original.field_hash,
     healed.owner != original.owner,
     run_mint(
       certify_redeemer([0, 1], 1),
@@ -610,6 +638,29 @@ test field_preimage_certificate_handler_spend_rejects_a_surviving_certificate_to
       [
         certificate_output(
           certificate_for(publisher_hash),
+          certificate_value(certificate_asset_name(), 1),
+        ),
+      ],
+      [publisher_hash],
+    ),
+  )
+}
+
+/// The same guard, at the corner #606's constant name makes reachable: every
+/// certificate token is now the same asset, so "the token survives" and "the
+/// token migrates onto a fresh datum" are one move. The owner spends their own
+/// certificate and tries to send the constant-name token out on an output
+/// wearing a *different* datum — a certificate the minting policy never saw.
+/// "No output carries the name" refuses it per-token and order-independently
+/// (invariant a of the 2026-08-16 ruling).
+test field_preimage_certificate_handler_spend_rejects_the_token_migrating_onto_a_fresh_datum() fail {
+  run_spend(
+    Some(certificate_for(publisher_hash)),
+    burn_tx(
+      assets.zero,
+      [
+        certificate_output(
+          certificate_for(healer_hash),
           certificate_value(certificate_asset_name(), 1),
         ),
       ],
@@ -766,10 +817,7 @@ fn corner_certify_redeemer() -> FieldPreimageCertificateMintRedeemerV1 {
 }
 
 fn corner_certification_tx() -> Transaction {
-  let name = field_preimage_certificate_asset_name(
-    corner_tx_id(),
-    disputed_field,
-  )
+  let name = field_preimage_certificate_asset_name
   certification_tx(
     [certificate_output(corner_certificate(), certificate_value(name, 1))],
     assets.from_asset(certificate_script_hash, name, 1),
@@ -837,9 +885,8 @@ test certificate_spend_fixture_only() {
 }
 
 /// Row 12 — one retirement. Size-independent by construction: the spend handler
-/// reads the datum's `(tx_id, field_index)`, derives the name, and checks the
-/// token does not survive — it never touches carriage, so there is one figure
-/// rather than one per size.
+/// names the constant token (#606) and checks it does not survive — it never
+/// touches carriage, so there is one figure rather than one per size.
 test certificate_spend_cost() {
   run_spend(Some(certificate_for(publisher_hash)), honest_burn_tx())
 }
@@ -859,10 +906,7 @@ test certificate_mint_rejects_a_tampered_corner_chunk() fail {
   expect bytearray.length(tampered_tail) == bytearray.length(chunk_2)
   expect tampered_tail != chunk_2
   let tampered_inputs = carriage_inputs([chunk_0, chunk_1, tampered_tail])
-  let name = field_preimage_certificate_asset_name(
-    corner_tx_id(),
-    disputed_field,
-  )
+  let name = field_preimage_certificate_asset_name
   run_mint(
     corner_certify_redeemer(),
     certification_tx(

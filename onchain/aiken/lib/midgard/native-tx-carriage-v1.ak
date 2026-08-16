@@ -34,10 +34,11 @@
 //// wire consequence is `native_tx_field_access_v1`'s and is imported rather
 //// than restated: `FieldPreimageCertificateV1`, `chunk_bytes_k`,
 //// `max_tier3_chunk_count`, `max_transaction_aggregate_field_bytes`,
-//// `expected_chunk_count`, `field_commitment` and
-//// `field_preimage_certificate_asset_name`. A producer and a consumer who
-//// disagreed about any of those would disagree about what a certificate *is*,
-//// and that class of drift is closed by construction.
+//// `expected_chunk_count` and `field_commitment`. A producer and a consumer
+//// who disagreed about any of those would disagree about what a certificate
+//// *is*, and that class of drift is closed by construction. (The §8.6 asset
+//// name is a shared constant of the same module since #606 retired its
+//// per-certificate derivation; only the transaction-shape wrapper reads it.)
 ////
 //// Four pieces of logic are nonetheless written twice, once here and once
 //// behind the door, and each is a deliberate copy rather than an oversight:
@@ -94,7 +95,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/native_tx_field_access_v1.{
   FieldPreimageCertificateV1, chunk_bytes_k, expected_chunk_count,
-  field_commitment, field_preimage_certificate_asset_name, max_tier3_chunk_count,
+  field_commitment, max_tier3_chunk_count,
   max_transaction_aggregate_field_bytes,
 }
 
@@ -206,16 +207,17 @@ pub fn field_preimage_certificate_v1(
   let total_length = bytearray.length(preimage)
   expect total_length > chunk_bytes_k
   expect bytearray.length(owner) == 28
-  // Bound-forcing, not decoration: the asset-name derivation is what enforces
-  // `field_index` in 0..8 and a 32-byte `tx_id`, and Aiken drops a `let` whose
-  // binding is unused, so the call is bound by an `expect` that consumes its
-  // result.
-  expect
-    bytearray.length(field_preimage_certificate_asset_name(tx_id, field_index)) == 32
+  // The retired asset-name derivation used to force these two bounds as a
+  // side effect (#606 made the name a constant); they are what §8.6 requires
+  // of the datum, so they are enforced here directly.
+  expect field_index >= 0
+  expect field_index < 9
+  expect bytearray.length(tx_id) == 32
   FieldPreimageCertificateV1 {
     owner,
     tx_id,
     field_index,
+    field_hash: field_commitment(preimage),
     total_length,
     chunk_digests: field_preimage_chunk_digests(preimage),
   }
@@ -309,6 +311,7 @@ pub fn verify_field_preimage_certificate_v1(
   let FieldPreimageCertificateV1 { owner, tx_id, field_index, .. } = certificate
   let total_length = certificate.total_length
   let chunk_digests = certificate.chunk_digests
+  let certified_field_hash = certificate.field_hash
   // The minter sets the min-Ada reclaim authority (§8.6) and nothing checks who
   // that is, but it has to be a spendable key hash or the output is dead.
   expect bytearray.length(owner) == 28
@@ -331,6 +334,13 @@ pub fn verify_field_preimage_certificate_v1(
     witness_set_compact_cbor,
   )
   let expected_hash = field_commitment_at(body, witness_set, field_index)
+  // The E2 weld (#606, owner ruling 2026-08-16): the datum's `field_hash` is
+  // the same commitment the chunk concatenation is checked against below, so
+  // `field_hash ↔ chunk_digests` is welded inside the mint-verified datum.
+  // Where the hash "came from" is irrelevant; that the chunks were verified
+  // against it is everything — a door can then compare `field_hash` to a
+  // commitment it authenticated itself and be talking about these bytes.
+  expect certified_field_hash == expected_hash
 
   // §8.4's tier boundary, enforced at both ends of the ladder.
   expect total_length > chunk_bytes_k

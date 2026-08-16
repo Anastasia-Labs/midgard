@@ -58,7 +58,7 @@ use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash, blake2b_256}
 use aiken/primitive/bytearray
-use cardano/assets.{PolicyId}
+use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{InlineDatum, Input}
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
 use midgard/fraud_proofs/native_tx/compact.{
@@ -195,38 +195,35 @@ pub type FieldViewV1 {
 
 /// §8.6. The tier-3 digest manifest, minted by the permissionless
 /// multi-handler certificate validator and consumed here.
+///
+/// `field_hash` is the §4 flat field commitment the certified chunks
+/// concatenate to — the same value the minting policy checks
+/// `hash(concat(chunks))` against, restated in the mint-verified datum so a
+/// consumer can compare it to a commitment it authenticated itself (#606,
+/// owner ruling 2026-08-16). That weld is what closes §8.3 erratum E2: a
+/// certificate minted over a fabricated witness set wears the fabricated
+/// hash here and fails the door's equality against the anchored commitment.
 pub type FieldPreimageCertificateV1 {
   owner: VerificationKeyHash,
   tx_id: ByteArray,
   field_index: Int,
+  field_hash: ByteArray,
   total_length: Int,
   chunk_digests: List<ByteArray>,
 }
 
-/// §8.6's deterministic certificate asset name, derived from
-/// `(tx_id, field_index)` so indexers can find a certificate and so a consumer
-/// can name the exact token it requires without trusting the redeemer. Fixed
-/// here because both sides of the tier-3 handshake — the minting policy that
-/// certifies and the door that consumes — must agree on one derivation.
-///
-/// The derivation is exactly
-/// `blake2b_256(field_index_byte ‖ tx_id)` — a 33-byte preimage whose leading
-/// byte is the 0..8 field index and whose remaining 32 are the tx-id, giving a
-/// 32-byte name. The single-byte prefix is domain separation, not a length
-/// header: with `field_index` bounded to 0..8 and `tx_id` fixed at 32 bytes,
-/// the preimage is unambiguous. §8.6 of `docs/spec/midgard-tx.md` carries this
-/// as a normative erratum so the off-chain minter has one derivation to match
-/// rather than a description to guess at.
-pub fn field_preimage_certificate_asset_name(
-  tx_id: ByteArray,
-  field_index: Int,
-) -> ByteArray {
-  expect _field_index = expect_field_index(field_index)
-  // Both bounds are what make the 33-byte preimage unambiguous, so both are
-  // enforced rather than assumed of the caller.
-  expect bytearray.length(tx_id) == 32
-  blake2b_256(bytearray.push(tx_id, field_index))
-}
+/// §8.6's certificate asset name — one constant for every certificate of the
+/// policy (#606, owner ruling 2026-08-16; supersedes the retired
+/// `blake2b_256(field_index_byte ‖ tx_id)` derivation). The name is branding,
+/// not identity: everything the derived name encoded is in the mint-verified
+/// datum, and once the datum carries `field_hash` the name carries no
+/// security weight. The mint still pins it — its single-pair check requires
+/// exactly this name at quantity 1 — so a token of the policy is always this
+/// name over a datum the mint proved. Discovery is by enumerating the single
+/// certificate address (§8.5) and filtering by datum; consumers disambiguate
+/// same-name tokens by datum, never by token alone.
+pub const field_preimage_certificate_asset_name: AssetName =
+  "MIDGARD_FIELD_PREIMAGE_CERT"
 
 // ---------------------------------------------------------------------------
 // §5.1 envelope grammar
@@ -425,8 +422,10 @@ fn field_commitment_at(
 /// (§8.6). It is consulted only on tier 3, where a flat hash cannot
 /// authenticate a chunk on its own and the certificate is therefore the
 /// binding: the door requires the named reference input to actually hold that
-/// policy's `(tx_id, field_index)` token, so a look-alike UTxO at any address
-/// cannot pass its datum off as a manifest.
+/// policy's constant-name token, so a look-alike UTxO at any address cannot
+/// pass its datum off as a manifest; the datum's `(tx_id, field_index)` and
+/// mint-welded `field_hash` are then matched against authenticated values
+/// (#606).
 pub fn authenticated_field_view(
   verified: VerifiedMidgardNativeTxCompact,
   witness_set: NativeTxWitnessSetCompact,
@@ -452,6 +451,7 @@ pub fn authenticated_field_view(
       certified_view(
         verified.tx_id,
         field_index,
+        expected_hash,
         stride,
         reference_inputs,
         cert_ref_input_index,
@@ -554,6 +554,7 @@ fn whole_view(
 fn certified_view(
   tx_id: ByteArray,
   field_index: Int,
+  expected_hash: ByteArray,
   stride: Int,
   reference_inputs: List<Input>,
   cert_ref_input_index: Int,
@@ -563,6 +564,7 @@ fn certified_view(
   let CertifiedChunksV1 { chunks, chunk_digests, total_length } = certified_chunks(
     tx_id,
     field_index,
+    expected_hash,
     reference_inputs,
     cert_ref_input_index,
     chunk_ref_input_indices,
@@ -607,6 +609,7 @@ type CertifiedChunksV1 {
 fn certified_chunks(
   tx_id: ByteArray,
   field_index: Int,
+  expected_hash: ByteArray,
   reference_inputs: List<Input>,
   cert_ref_input_index: Int,
   chunk_ref_input_indices: List<Int>,
@@ -618,12 +621,19 @@ fn certified_chunks(
     assets.quantity_of(
       cert_input.output.value,
       certificate_policy_id,
-      field_preimage_certificate_asset_name(tx_id, field_index),
+      field_preimage_certificate_asset_name,
     ) == 1
   expect InlineDatum(cert_datum) = cert_input.output.datum
   expect certificate: FieldPreimageCertificateV1 = cert_datum
   expect certificate.tx_id == tx_id
   expect certificate.field_index == field_index
+  // The load-bearing E2 equality (#606): the certificate's mint-welded
+  // `field_hash` must equal the commitment the door's caller authenticated —
+  // for the witness-set fields, the chain that reaches the anchored
+  // `witness_set_hash`. A certificate minted against a fabricated witness set
+  // wears the fabricated hash in its datum and fails here, which is what
+  // makes tier 3 admissible at every field including 6–8.
+  expect certificate.field_hash == expected_hash
   let total_length = certificate.total_length
   // §8.4 defines tier 3 as the `preimage_len > K` case. Enforcing that lower
   // bound is what makes the ladder a partition rather than a preference: a
@@ -703,6 +713,7 @@ pub fn authenticated_whole_field_view(
       let CertifiedChunksV1 { chunks, .. } = certified_chunks(
         verified.tx_id,
         field_index,
+        expected_hash,
         reference_inputs,
         cert_ref_input_index,
         chunk_ref_input_indices,
@@ -752,10 +763,11 @@ pub fn authenticated_whole_field_view(
 /// `authenticated_whole_field_view` gives: the chunks are materialised and
 /// hashed once against the positionally-extracted commitment, so the manifest
 /// authenticates nothing about content and a substituted chunk changes the
-/// concatenation and therefore the hash. `field_opening_v1`'s
-/// `carriage_reaches_the_anchor` refuses tier 3 at fields 6–8 because the
-/// *lazy* door never re-hashes the whole preimage and the certificate is the
-/// only binding there; that argument does not reach this path.
+/// concatenation and therefore the hash. (The *lazy* door reaches the same
+/// admissibility since #606 through the certificate's mint-welded
+/// `field_hash`, which `certified_chunks` checks against the derived
+/// commitment on every path — the former fields-6–8 refusal in
+/// `field_opening_v1` lifted with that weld.)
 ///
 /// **A caller that goes on to read an item out of these bytes is using the
 /// wrong door.** Nothing here establishes an item count, an item boundary, or
@@ -784,6 +796,7 @@ pub fn authenticated_committed_preimage(
       let CertifiedChunksV1 { chunks, .. } = certified_chunks(
         verified.tx_id,
         field_index,
+        expected_hash,
         reference_inputs,
         cert_ref_input_index,
         chunk_ref_input_indices,

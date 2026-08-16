@@ -351,6 +351,7 @@ fn certificate_publication(
   index: Int,
   tx: MidgardTransaction,
   field_index: Int,
+  field_hash: ByteArray,
   total_length: Int,
   chunk_digests: List<ByteArray>,
 ) -> Input {
@@ -364,7 +365,7 @@ fn certificate_publication(
       value: assets.from_lovelace(2_000_000)
         |> assets.add(
             certificate_policy_id,
-            field_preimage_certificate_asset_name(tx_id(tx), field_index),
+            field_preimage_certificate_asset_name,
             1,
           ),
       datum: InlineDatum(
@@ -372,6 +373,7 @@ fn certificate_publication(
           owner: creator_key,
           tx_id: tx_id(tx),
           field_index,
+          field_hash,
           total_length,
           chunk_digests,
         },
@@ -691,6 +693,7 @@ fn tier3_reference_inputs(chunks: List<ByteArray>) -> List<Input> {
       0,
       tier3_transaction(),
       3,
+      field_commitment(bytearray.concat(chunk_0, chunk_1)),
       bytearray.length(chunk_0) + bytearray.length(chunk_1),
       list.map(tier3_chunks(), blake2b_256),
     ),
@@ -727,6 +730,7 @@ test certified_carriage_with_wrong_chunk_bytes_is_refused() fail {
         0,
         tier3_transaction(),
         3,
+        field_commitment(bytearray.concat(chunk_0, chunk_1)),
         bytearray.length(chunk_0) + bytearray.length(chunk_1),
         list.map(tier3_chunks(), blake2b_256),
       ),
@@ -750,6 +754,7 @@ test certified_carriage_below_the_tier_three_boundary_is_refused() fail {
         0,
         sample_v1_transaction(False),
         0,
+        field_commitment(preimage),
         bytearray.length(preimage),
         [blake2b_256(preimage)],
       ),
@@ -759,14 +764,15 @@ test certified_carriage_below_the_tier_three_boundary_is_refused() fail {
 }
 
 /// The manifest is authenticated by its token, not by its shape: an inline datum
-/// of the right type at the right address without the policy's
-/// `(tx_id, field_index)` token is not a certificate.
+/// of the right type at the right address without the policy's constant-name
+/// token (#606) is not a certificate.
 test certified_carriage_without_the_policy_token_is_refused() fail {
   expect [chunk_0, chunk_1] = tier3_chunks()
   let certificate = certificate_publication(
     0,
     tier3_transaction(),
     3,
+    field_commitment(bytearray.concat(chunk_0, chunk_1)),
     bytearray.length(chunk_0) + bytearray.length(chunk_1),
     list.map(tier3_chunks(), blake2b_256),
   )
@@ -1168,7 +1174,7 @@ fn order_shape_certificate(
       value: assets.from_lovelace(2_000_000)
         |> assets.add(
             certificate_policy_id,
-            field_preimage_certificate_asset_name(tx_id, field_index),
+            field_preimage_certificate_asset_name,
             1,
           ),
       datum: InlineDatum(
@@ -1176,6 +1182,13 @@ fn order_shape_certificate(
           owner: creator_key,
           tx_id,
           field_index,
+          field_hash: field_commitment(
+            list.foldl(
+              chunks,
+              #"",
+              fn(chunk, joined) { bytearray.concat(joined, chunk) },
+            ),
+          ),
           total_length: list.foldl(
             chunks,
             0,

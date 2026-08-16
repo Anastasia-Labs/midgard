@@ -582,12 +582,14 @@ pub fn inline_witness_opening(
 // A §8.6 certificate is the *only* thing binding a tier-3 preimage to the
 // disputed transaction — the door has no preimage to hash, which is what tier 3
 // is for. These builders produce a certificate that is honest in every
-// mechanical respect: real byte length, real per-chunk digests, minted under
-// the policy the selector parameterises its validator with, named for the
-// committed transaction's own `(tx_id, field_index)`. Whether the *field* it
-// certifies is the one that transaction committed is a separate question, and
-// for fields 6–8 it is a question nothing on chain can answer — see
-// `field_opening_v1.carriage_reaches_the_anchor` and §8.3 erratum E2 limit 3.
+// mechanical respect: real byte length, real per-chunk digests, the mint-welded
+// `field_hash` of the preimage's own bytes (#606), minted under the policy the
+// selector parameterises its validator with, carrying the constant §8.6 asset
+// name over a datum naming the committed transaction's `(tx_id, field_index)`.
+// Whether the *field* it certifies is the one that transaction committed is
+// the door's question since #606: the datum's `field_hash` must equal the
+// commitment the door derives from the anchored structures, so a certificate
+// over bytes the transaction never committed is refused at the door.
 
 const carriage_holder_script_hash =
   #"91919191919191919191919191919191919191919191919191919191"
@@ -630,10 +632,7 @@ pub fn certified_reference_inputs_v1(
       value: assets.from_lovelace(2_000_000)
         |> assets.add(
             test_certificate_policy_id,
-            field_access.field_preimage_certificate_asset_name(
-              tx_id,
-              field_index,
-            ),
+            field_access.field_preimage_certificate_asset_name,
             1,
           ),
       datum: InlineDatum(certificate),

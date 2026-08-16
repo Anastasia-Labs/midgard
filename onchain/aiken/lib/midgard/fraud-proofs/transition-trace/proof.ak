@@ -1143,15 +1143,16 @@ fn validate_valid_deposit_transition(
 ///
 /// It goes through `midgard/fraud_proofs/field_opening_v1` rather than reaching
 /// `authenticated_field_view` directly, and the reason is the part that is easy
-/// to skip: that module owns the §2.5 body/witness pairing *and*
-/// `carriage_reaches_the_anchor`. Building the door's arguments here instead
-/// would mean spelling the unread witness set out locally — a second copy of
-/// the one value #575 deliberately made unreachable from a redeemer — and
-/// standing outside the tier check that refuses a §8.4 certificate for a field
-/// the thread's anchor cannot reach. Both fields this family opens are body
-/// fields, so neither guard has anything to refuse today; routing through the
-/// bridge is what keeps that true of a later edit to this file rather than a
-/// property of the two call sites below.
+/// to skip: that module owns the §2.5 body/witness pairing. Building the
+/// door's arguments here instead would mean spelling the unread witness set
+/// out locally — a second copy of the one value #575 deliberately made
+/// unreachable from a redeemer. Both fields this family opens are body fields,
+/// so the guard has nothing to refuse today; routing through the bridge is
+/// what keeps that true of a later edit to this file rather than a property of
+/// the two call sites below. (Until #606 the bridge also carried the
+/// fields-6–8 tier-3 refusal, `carriage_reaches_the_anchor`; the repair's
+/// welded-hash equality lives behind the door itself, so every entry point
+/// inherits it.)
 ///
 /// The anchor arrives **already paid for**, as an `AnchoredNativeTxV1` the
 /// caller built once from `BodyAnchor { tx_id }` over the MPF-committed

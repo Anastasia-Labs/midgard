@@ -243,6 +243,7 @@ fn certificate_for(
     owner: owner_hash,
     tx_id: sample_tx_id,
     field_index,
+    field_hash: field_commitment(preimage),
     total_length: bytearray.length(preimage),
     chunk_digests: list.map(chunks, blake2b_256),
   }
@@ -256,7 +257,7 @@ fn certificate_for(
       value: assets.from_lovelace(2000000)
         |> assets.add(
             certificate_policy_id,
-            field_preimage_certificate_asset_name(sample_tx_id, field_index),
+            field_preimage_certificate_asset_name,
             1,
           ),
       datum: InlineDatum(datum),

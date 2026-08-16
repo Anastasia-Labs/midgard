@@ -16,19 +16,22 @@
 //// loud, so it is asserted here as a positive test before the guard that
 //// depends on it is asserted as a negative one.
 ////
-//// The **carriage-tier** split at the end of the file is the same argument one
+//// The **carriage-tier** block at the end of the file is the same argument one
 //// level out. §2.5's anchor closes the inline forgery; tier 3 reopened it,
 //// because a certificate is minted against a `witness_set_hash` its own
-//// redeemer supplied and §3's id does not cover that value. Those vectors state
-//// the premise executably in both directions — the §8.6 minting predicate
-//// accepts the fabrication on a witness field and refuses it on a body field —
-//// before asserting the refusal that follows from it.
+//// redeemer supplied and §3's id does not cover that value. Those vectors
+//// state the premise executably in both directions — the §8.6 minting
+//// predicate accepts the fabrication on a witness field and refuses it on a
+//// body field — and then assert the closure #606 put at the door (owner
+//// ruling 2026-08-16): the certificate's mint-welded `field_hash` must equal
+//// the commitment derived from the **anchored** structures, so the fabricated
+//// certificate is refused at every witness-set field while the same carriage
+//// opens wherever its welded hash is the committed one.
 ////
 //// The positive rows are here for the same reason a negative test needs a
 //// twin: without them a module that refused *everything* would pass the `fail`
-//// tests. `certified_carriage_still_opens_on_a_body_field` is that twin for the
-//// tier-3 refusal specifically, and it is the row that goes red if the refusal
-//// is ever widened into a ban.
+//// tests. The welded-hash positives at fields 5–8 are those twins — they are
+//// the rows that go red if the weld is ever widened into a ban on tier 3.
 
 use aiken/collection/list
 use aiken/primitive/bytearray
@@ -55,7 +58,7 @@ use midgard/native_tx_carriage_v1.{
 }
 use midgard/native_tx_field_access_v1.{
   FieldCarriageV1, FieldViewV1, Inline, chunk_bytes_k, encode_field_preimage,
-  field_item_at, field_item_count,
+  field_commitment, field_item_at, field_item_count,
 }
 
 fn block() -> fixture.NativeBlockFixtureV1 {
@@ -377,24 +380,27 @@ test fold_opened_field_visits_every_item_in_order() {
 // The §2.5 anchor split above closes the *inline* forgery: a prover cannot
 // rewrite the compact structure's trailing `witness_set_hash` and authenticate
 // its own witness set against it, because the hash the door checks is the
-// thread's. Tier 3 reopened the same hole one level out, and these vectors are
-// the argument for `carriage_reaches_the_anchor`.
+// thread's. Tier 3 reopened the same hole one level out; these vectors state
+// the hole and pin the closure #606 put at the door.
 //
 // Under tiers 1–2 the door hashes the whole preimage against
 // `field_commitment_at(body, witness_set, field_index)`, so the *content* is
 // bound to structures this module pinned. Under tier 3 there is no preimage to
 // hash — that is what tier 3 is for — and the binding is delegated to the §8.6
-// certificate, whose authority is a token named `(tx_id, field_index)`. The
-// minting policy behind that name derives its own `expected_hash` from the
+// certificate. The minting policy derives its own `expected_hash` from the
 // `witness_set_hash` on the tail of *its* redeemer's `native_tx_compact_cbor`,
 // and §3's id preimage is the body alone, so for fields 6–8 that tail is the
 // certifier's to choose. The first two vectors below are the premise, stated
 // executably in both directions: the minting predicate **accepts** a
-// certificate binding the committed transaction's field 7 to a preimage it
-// never committed, and **refuses** the same fabrication at a body field, where
-// the id-committed body is the whole of `expected_hash`. The defect is
-// therefore exactly the witness-set fields, and the refusal is scoped exactly
-// to them.
+// certificate over a field-7 preimage the committed transaction never carried,
+// and **refuses** the same fabrication at a body field, where the id-committed
+// body is the whole of `expected_hash`. What the mint *does* pin — for every
+// field — is the weld: the datum's `field_hash` is the very commitment the
+// chunks were verified against. The door (`certified_chunks`) then requires
+// that welded hash to equal the commitment it derives from the **anchored**
+// structures, so the fabricated certificate wears its fabricated hash into the
+// dispute and is refused there, at every witness-set field, while the same
+// carriage opens wherever its welded hash is the committed one.
 //
 // The fabricated preimage is 256 canonical address witnesses against a
 // transaction that committed one. The same bytes are re-used at fields 6 and 8:
@@ -426,10 +432,6 @@ fn certified_witness_opening(preimage: ByteArray) -> FieldOpeningV1 {
     block().witness_set_compact,
     preimage,
   )
-}
-
-fn certified_body_opening(preimage: ByteArray) -> FieldOpeningV1 {
-  fixture.certified_body_opening(block().compact_cbor, preimage)
 }
 
 fn certified_reference_inputs(
@@ -470,14 +472,17 @@ test tier_three_forgery_vector_is_admissible_carriage() {
 }
 
 /// **The premise, witness side.** The §8.6 minting predicate certifies a
-/// fabricated field-7 preimage under the *committed* transaction's name.
+/// fabricated field-7 preimage for the *committed* transaction's `tx_id`.
 ///
-/// The certifier supplies the genuine body — so the id it re-derives, and hence
-/// the token's `(tx_id, field_index)` name, is the committed transaction's —
-/// followed by the `witness_set_hash` of a witness set of its own construction.
-/// Everything the minter checks is satisfied. The certificate that comes out is
-/// a valid §8.6 certificate that says the committed transaction's field 7 is
-/// 256 signatures it never carried.
+/// The certifier supplies the genuine body — so the id it re-derives, and
+/// hence the datum's `tx_id`, is the committed transaction's — followed by the
+/// `witness_set_hash` of a witness set of its own construction. Everything the
+/// minter checks is satisfied: nothing at the mint can know which witness set
+/// the thread anchored. What the mint *does* pin is the weld (#606): the
+/// certificate that comes out wears the **fabricated** commitment in its
+/// `field_hash`, a value different from the committed transaction's own slot-7
+/// commitment — which is exactly what the door's anchored equality refuses in
+/// the `fail` rows below.
 test tier_three_certificate_over_a_witness_field_binds_to_nothing_committed() {
   let honest = block()
   let preimage = forged_witness_preimage()
@@ -487,33 +492,39 @@ test tier_three_certificate_over_a_witness_field_binds_to_nothing_committed() {
     [],
   )
   let forged = fixture.forged_witness_set_block_v1(honest, forged_witness_set)
+  let certificate = field_preimage_certificate_v1(
+    certificate_owner(),
+    honest.tx_id,
+    address_witnesses_field_index,
+    preimage,
+  )
   and {
-    // The token still gets the committed transaction's name …
+    // The datum still gets the committed transaction's id …
     verify_native_tx_compact_cbor_v1(honest.tx_id, forged.compact_cbor).tx_id == honest.tx_id,
     // … and the minting predicate signs off on the fabrication under it.
     verify_field_preimage_certificate_v1(
-      field_preimage_certificate_v1(
-        certificate_owner(),
-        honest.tx_id,
-        address_witnesses_field_index,
-        preimage,
-      ),
+      certificate,
       forged.compact_cbor,
       encode_native_tx_witness_set_compact(forged_witness_set),
       split_field_preimage(preimage),
     ),
+    // The weld is what survives for the door: the certificate carries the
+    // fabricated commitment, not the committed transaction's slot-7 value.
+    certificate.field_hash == field_commitment(preimage),
+    certificate.field_hash != honest.witness_set_compact.addr_tx_wits_hash,
   }
 }
 
-/// **The premise, body side — and the reason the refusal is scoped rather than
-/// total.** The same fabrication offered as a *body* field's certificate is
-/// refused by the same minting predicate, because there `expected_hash` is
-/// derived from the body alone and the body is exactly what §3's transaction id
-/// commits. Tier 3 over fields 0–5 is bound; tier 3 over 6–8 is not.
-test tier_three_certificate_over_a_body_field_is_bound_by_the_tx_id() {
+/// **The premise, body side.** The same fabrication offered as a *body*
+/// field's certificate is refused by the same minting predicate, because there
+/// `expected_hash` is derived from the body alone and the body is exactly what
+/// §3's transaction id commits — the welded `field_hash` is the fabrication's
+/// and the mint's own weld expect aborts on it. Tier 3 over fields 0–5 was
+/// always bound at the mint; 6–8 are bound at the door since #606.
+test tier_three_certificate_over_a_body_field_is_bound_by_the_tx_id() fail {
   let honest = block()
   let preimage = forged_witness_preimage()
-  !verify_field_preimage_certificate_v1(
+  verify_field_preimage_certificate_v1(
     field_preimage_certificate_v1(
       certificate_owner(),
       honest.tx_id,
@@ -526,14 +537,18 @@ test tier_three_certificate_over_a_body_field_is_bound_by_the_tx_id() {
   )
 }
 
-/// **The guard, field 7.** Honest compact structure, honest witness set, honest
-/// `WitnessAnchor` — every §2.5 check above passes — and the door is still
-/// refused, because tier 3 cannot reach the anchor for a witness-set field.
+/// **The guard, field 7 — the forged-certificate rejection (#606).** Honest
+/// compact structure, honest witness set, honest `WitnessAnchor` — every §2.5
+/// check above passes — and the door still refuses, because the fabricated
+/// certificate's mint-welded `field_hash` is the fabrication's commitment and
+/// the door requires it to equal the commitment reached through the anchored
+/// `witness_set_hash`.
 ///
-/// Neutralise `carriage_reaches_the_anchor` in `field_pairs_with` and this test
-/// passes with `field_item_count == 256`: an invalid-signature or
-/// missing-signature fault becomes provable against a transaction whose field 7
-/// the prover wrote itself.
+/// Remove the `certificate.field_hash == expected_hash` expect in
+/// `native_tx_field_access_v1.certified_chunks` and this test passes with
+/// `field_item_count == 256`: an invalid-signature or missing-signature fault
+/// becomes provable against a transaction whose field 7 the prover wrote
+/// itself — the E2 forgery, reopened.
 test certified_carriage_is_refused_at_the_address_witness_field() fail {
   let preimage = forged_witness_preimage()
   field_item_count(
@@ -548,8 +563,8 @@ test certified_carriage_is_refused_at_the_address_witness_field() fail {
 
 /// **The guard, field 6.** Field 6 is variable-width, so `field_item_count`
 /// would abort under tier 3 in any case (§8.3 E2 limit 2) — which is why the
-/// read, not the count, is what this asserts. Without the refusal the door
-/// serves an item out of a preimage the transaction never committed.
+/// read, not the count, is what this asserts. Without the welded-hash equality
+/// the door serves an item out of a preimage the transaction never committed.
 test certified_carriage_is_refused_at_the_script_witness_field() fail {
   let preimage = forged_witness_preimage()
   field_item_at(
@@ -564,8 +579,8 @@ test certified_carriage_is_refused_at_the_script_witness_field() fail {
 }
 
 /// **The guard, field 8.** The third witness-set field, closed by the same
-/// clause; enumerated rather than assumed, because the boundary is an
-/// inequality and an inequality is exactly what an off-by-one hides in.
+/// equality; enumerated rather than assumed, so each witness-set slot's
+/// rejection is its own row rather than an inference from its neighbours'.
 test certified_carriage_is_refused_at_the_redeemer_field() fail {
   let preimage = forged_witness_preimage()
   field_item_at(
@@ -579,10 +594,10 @@ test certified_carriage_is_refused_at_the_redeemer_field() fail {
   ) == encode_midgard_address_witness(fixture.sample_address_witness())
 }
 
-/// The walk entry point resolves its sources through the same private path, so
-/// the refusal reaches `opened_field_walk` too. Asserted rather than assumed:
-/// a family that opens a witness field as a walk is the exact shape §10's
-/// resumable work will add more of.
+/// The walk entry point resolves its sources through the same door, so the
+/// forged-certificate rejection reaches `opened_field_walk` too. Asserted
+/// rather than assumed: a family that opens a witness field as a walk is the
+/// exact shape §10's resumable work will add more of.
 test opened_field_walk_refuses_certified_carriage_on_a_witness_field() fail {
   let preimage = forged_witness_preimage()
   let Pair(view, _checkpoint) = opened_field_walk(
@@ -595,25 +610,137 @@ test opened_field_walk_refuses_certified_carriage_on_a_witness_field() fail {
   field_item_count(view) == forged_witness_count
 }
 
-/// **The neutralisation twin.** The refusal is scoped to fields 6–8, not a ban
-/// on tier 3: the identical carriage, certificate and chunks open on a body
-/// field through the same call.
-///
-/// This is what stops the guards above from passing for the wrong reason. A
-/// `field_pairs_with` that refused every `Certified` carriage would satisfy all
-/// four `fail` tests and break tier 3 for the six fields it is sound for; this
-/// row goes red the moment that happens. The certificate here could not in fact
-/// be minted — the row above proves the minting predicate refuses it — because
-/// what is being pinned is the *door's* scope, and the door defers a tier-3
-/// field's content binding to §8.6 for every field it accepts.
-test certified_carriage_still_opens_on_a_body_field() {
+// ## The welded-hash positives (#606)
+//
+// The four `fail` rows above must fail for the one reason the weld supplies,
+// not because tier 3 stopped working. These rows open the identical carriage,
+// certificate shape and chunks — successfully — against transactions that
+// genuinely commit the preimage at the disputed slot, so the certificate's
+// mint-welded `field_hash` equals the commitment the door derives from the
+// anchored structures. Fields 6–8 are the E2 happy path the repair bought:
+// tier-3 carriage of a witness-set field, verified end to end against the
+// chain that reaches the anchored `witness_set_hash`. Field 5 is the body-side
+// control. Any of these goes red the moment the weld is widened into a ban.
+
+/// A block whose committed transaction commits exactly the 26,371-byte vector
+/// at slot `field_index`, so the fixture certificate's welded hash is the
+/// committed slot value and every door check holds.
+fn welded_preimage_block(field_index: Int) -> fixture.NativeBlockFixtureV1 {
+  fixture.committed_field_preimage_block_fixture_v1(
+    block(),
+    field_index,
+    forged_witness_preimage(),
+  )
+}
+
+fn welded_witness_anchor(
+  committed: fixture.NativeBlockFixtureV1,
+) -> NativeTxAnchorV1 {
+  WitnessAnchor {
+    tx_id: committed.tx_id,
+    witness_set_hash: committed.compact.witness_set_hash,
+  }
+}
+
+/// **The happy path, field 7.** The anchored witness set commits the 256-item
+/// field, the certificate wears that commitment, and the fixed-stride count
+/// derives from the mint-verified `total_length` with no chunk hash spent.
+test certified_carriage_opens_the_address_witness_field_with_the_welded_hash() {
   let preimage = forged_witness_preimage()
+  let committed = welded_preimage_block(address_witnesses_field_index)
+  field_item_count(
+    open_with_references(
+      fixture.certified_witness_opening(
+        committed.compact_cbor,
+        committed.witness_set_compact,
+        preimage,
+      ),
+      welded_witness_anchor(committed),
+      address_witnesses_field_index,
+      certified_reference_inputs(address_witnesses_field_index, preimage),
+    ),
+  ) == forged_witness_count
+}
+
+/// **The happy path, field 6.** Variable-width, so the read rather than the
+/// count (§8.3 E2 limit 2 stands — it is a budget limit, not the soundness
+/// one this block is about).
+test certified_carriage_opens_the_script_witness_field_with_the_welded_hash() {
+  let preimage = forged_witness_preimage()
+  let committed = welded_preimage_block(script_witnesses_field_index)
   field_item_at(
     open_with_references(
-      certified_body_opening(preimage),
-      body_anchor(),
+      fixture.certified_witness_opening(
+        committed.compact_cbor,
+        committed.witness_set_compact,
+        preimage,
+      ),
+      welded_witness_anchor(committed),
+      script_witnesses_field_index,
+      certified_reference_inputs(script_witnesses_field_index, preimage),
+    ),
+    0,
+  ) == encode_midgard_address_witness(fixture.sample_address_witness())
+}
+
+/// **The happy path, field 8.** The third witness-set slot, enumerated for the
+/// same reason its rejection row is.
+test certified_carriage_opens_the_redeemer_field_with_the_welded_hash() {
+  let preimage = forged_witness_preimage()
+  let committed = welded_preimage_block(redeemers_field_index)
+  field_item_at(
+    open_with_references(
+      fixture.certified_witness_opening(
+        committed.compact_cbor,
+        committed.witness_set_compact,
+        preimage,
+      ),
+      welded_witness_anchor(committed),
+      redeemers_field_index,
+      certified_reference_inputs(redeemers_field_index, preimage),
+    ),
+    0,
+  ) == encode_midgard_address_witness(fixture.sample_address_witness())
+}
+
+/// The walk entry point serves the welded witness field too — the absence-rule
+/// shape §10's resumable work will build on, now reachable above the tier-2
+/// bound for a fixed-stride witness field.
+test certified_carriage_walks_the_address_witness_field_with_the_welded_hash() {
+  let preimage = forged_witness_preimage()
+  let committed = welded_preimage_block(address_witnesses_field_index)
+  let Pair(view, _checkpoint) = opened_field_walk(
+    fixture.certified_witness_opening(
+      committed.compact_cbor,
+      committed.witness_set_compact,
+      preimage,
+    ),
+    welded_witness_anchor(committed),
+    address_witnesses_field_index,
+    certified_reference_inputs(address_witnesses_field_index, preimage),
+    fixture.test_certificate_policy_id,
+  )
+  field_item_count(view) == forged_witness_count
+}
+
+/// **The body-side control.** The identical carriage and certificate shape
+/// opens a body field whose transaction commits the preimage at slot 5 — the
+/// row that goes red if the weld is widened into a ban on tier 3. The body
+/// moved, so the id moved with it; the anchor and the reference inputs are the
+/// committed block's own.
+test certified_carriage_still_opens_on_a_body_field() {
+  let preimage = forged_witness_preimage()
+  let committed = welded_preimage_block(mint_field_index)
+  field_item_at(
+    open_with_references(
+      fixture.certified_body_opening(committed.compact_cbor, preimage),
+      BodyAnchor { tx_id: committed.tx_id },
       mint_field_index,
-      certified_reference_inputs(mint_field_index, preimage),
+      fixture.certified_reference_inputs_v1(
+        committed.tx_id,
+        mint_field_index,
+        preimage,
+      ),
     ),
     0,
   ) == encode_midgard_address_witness(fixture.sample_address_witness())
@@ -671,11 +798,12 @@ fn anchored_view_with_references(
 /// **The guard, second opening, view entry point.** Field 7 opens under tier-1
 /// carriage of the committed items — so the handle is demonstrably live — and the
 /// very next opening of that same live handle is refused when it carries the
-/// tier-3 fabrication.
+/// tier-3 fabrication, because the fabricated certificate's welded `field_hash`
+/// fails the door's equality against the handle's anchored commitment (#606).
 ///
-/// Neutralise `carriage_reaches_the_anchor` in `field_pairs_with`, or hoist that
-/// call out of `anchored_field_view` into `anchored_native_tx`, and this test
-/// passes with `field_item_count == 256`.
+/// Remove the `certificate.field_hash == expected_hash` expect in
+/// `native_tx_field_access_v1.certified_chunks` and this test passes with
+/// `field_item_count == 256`.
 test one_anchor_refuses_certified_carriage_at_a_witness_field_on_the_second_open() fail {
   let anchored = anchored_witness_tx()
   let honest = address_witness_items()
@@ -696,8 +824,8 @@ test one_anchor_refuses_certified_carriage_at_a_witness_field_on_the_second_open
 
 /// The same, through the walk entry point, which is the one the transition-trace
 /// family opens its fields through and the one §10's resumable work will add more
-/// callers of. `anchored_field_walk` has its own `field_pairs_with` call, so this
-/// is a second guard rather than the same guard reached twice.
+/// callers of. The walk resolves its sources through the same door, so the
+/// welded-hash equality guards the second opening here too.
 test one_anchor_walk_refuses_certified_carriage_at_a_witness_field_on_the_second_open() fail {
   let anchored = anchored_witness_tx()
   let honest = address_witness_items()
@@ -716,17 +844,22 @@ test one_anchor_walk_refuses_certified_carriage_at_a_witness_field_on_the_second
   field_item_count(view) == forged_witness_count
 }
 
-/// **The neutralisation twin for the handle path.** The refusal is scoped to
-/// fields 6–8 here too, not a ban on tier 3 for anything a handle serves: a body
-/// handle opens field 0 under tier-1 carriage and then field 5 under the identical
-/// tier-3 carriage and certificate the two rows above are refused for.
+/// **The neutralisation twin for the handle path.** The weld refuses forged
+/// certificates, not tier 3: a body handle over a block that genuinely commits
+/// the preimage at slot 5 opens field 0 under tier-1 carriage and then field 5
+/// under the identical tier-3 carriage shape the two rows above are refused
+/// for — successfully, because here the welded hash is the committed one.
 ///
 /// Without this row an `anchored_field_view` that rejected every `Certified`
 /// carriage outright would satisfy both `fail` tests above and silently break
-/// tier 3 for the six fields it is sound for.
+/// tier 3 everywhere.
 test one_anchor_still_opens_certified_carriage_on_a_body_field_second() {
-  let anchored = anchored_body_tx()
   let preimage = forged_witness_preimage()
+  let committed = welded_preimage_block(mint_field_index)
+  let anchored = anchored_native_tx(
+    BodyTxOpening { native_tx_compact_cbor: committed.compact_cbor },
+    BodyAnchor { tx_id: committed.tx_id },
+  )
   expect [spend_item] = spend_input_items()
   and {
     field_item_at(
@@ -738,7 +871,11 @@ test one_anchor_still_opens_certified_carriage_on_a_body_field_second() {
         anchored,
         mint_field_index,
         fixture.certified_carriage_v1(preimage),
-        certified_reference_inputs(mint_field_index, preimage),
+        fixture.certified_reference_inputs_v1(
+          committed.tx_id,
+          mint_field_index,
+          preimage,
+        ),
       ),
       0,
     ) == encode_midgard_address_witness(fixture.sample_address_witness()),

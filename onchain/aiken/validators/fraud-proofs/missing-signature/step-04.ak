@@ -383,15 +383,17 @@ fn tier_three_decoy_preimage() -> ByteArray {
 /// own* redeemer, and §3's transaction id does not commit those bytes, so a
 /// certifier can name this very transaction while certifying a field 7 it never
 /// had. The 256 decoys below do not contain the fixture's required signer, so
-/// the fold reports absence and this step finalizes a slashing proof against an
-/// honest operator.
+/// absent a guard the fold would report absence and this step would finalize a
+/// slashing proof against an honest operator.
 ///
-/// `field_opening_v1.carriage_reaches_the_anchor` refuses tier-3 carriage of a
-/// witness-set field, and that is the only thing standing here. Neutralise it
-/// and this test passes — which is how the exposure was reproduced in the first
-/// place. §8.3 erratum E2 limit 3 records the cost; #606 owns the repair
-/// (re-pointed from #579 via #604 by owner ruling, 2026-08-14 — see E2's
-/// disposition paragraph for why the repair is a regeneration event).
+/// What stands here since #606's repair (owner ruling 2026-08-16) is the
+/// door's welded-hash equality: the decoy certificate wears the decoy vector's
+/// commitment in its mint-welded `field_hash`, and `certified_chunks` requires
+/// that value to equal the commitment reached through the **anchored**
+/// `witness_set_hash` — which is the committed witness set's, not the decoys'.
+/// Remove that expect and this test passes — the E2 exposure, reopened at a
+/// real step. E2's disposition in `docs/spec/midgard-tx.md` §8.3 records the
+/// repair.
 test missing_signature_step_04_rejects_certified_carriage() fail {
   let block = challenged_block()
   let preimage = tier_three_decoy_preimage()

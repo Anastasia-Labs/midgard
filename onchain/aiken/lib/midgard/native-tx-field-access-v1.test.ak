@@ -726,21 +726,7 @@ test noncanonical_item_wrapper_is_refused_under_tier_three() fail {
         corrupted,
         Certified { cert_ref_input_index: 0, chunk_ref_input_indices: [1, 2] },
         [
-          Input {
-            ..certificate_input(0, chunks),
-            output: Output {
-              ..certificate_input(0, chunks).output,
-              datum: InlineDatum(
-                FieldPreimageCertificateV1 {
-                  owner: h28(3),
-                  tx_id: sample_tx_id,
-                  field_index: 3,
-                  total_length: bytearray.length(corrupted),
-                  chunk_digests: list.map(chunks, blake2b_256),
-                },
-              ),
-            },
-          },
+          certificate_for(0, 3, corrupted, chunks),
           input_of(1, key_output(builtin.b_data(chunk_0))),
           input_of(2, key_output(builtin.b_data(chunk_1))),
         ],
@@ -862,22 +848,36 @@ fn straddle_chunks() -> List<ByteArray> {
 }
 
 /// An honest §8.6 manifest for `preimage` carried as `chunks`: it states the
-/// real byte length and the real per-chunk digests. Only the §5.1 header
-/// inside the bytes ever lies in the vectors below, which is what makes them
-/// tests of the door's structural checks rather than of its hash checks.
+/// real byte length, the real per-chunk digests, and the mint-welded
+/// commitment of the bytes themselves (#606). Only the §5.1 header inside the
+/// bytes ever lies in the vectors below, which is what makes them tests of the
+/// door's structural checks rather than of its hash checks.
 fn certificate_for(
   index: Int,
   field_index: Int,
   preimage: ByteArray,
   chunks: List<ByteArray>,
 ) -> Input {
-  let datum: Data = FieldPreimageCertificateV1 {
-    owner: h28(3),
-    tx_id: sample_tx_id,
-    field_index,
-    total_length: bytearray.length(preimage),
-    chunk_digests: list.map(chunks, blake2b_256),
-  }
+  certificate_of_datum(
+    index,
+    FieldPreimageCertificateV1 {
+      owner: h28(3),
+      tx_id: sample_tx_id,
+      field_index,
+      field_hash: field_commitment(preimage),
+      total_length: bytearray.length(preimage),
+      chunk_digests: list.map(chunks, blake2b_256),
+    },
+  )
+}
+
+/// The same reference-input shape over a caller-chosen datum, for the vectors
+/// whose whole point is a datum the mint would have refused.
+fn certificate_of_datum(
+  index: Int,
+  certificate: FieldPreimageCertificateV1,
+) -> Input {
+  let datum: Data = certificate
   Input {
     output_reference: OutputReference {
       transaction_id: h32(300 + index),
@@ -888,7 +888,7 @@ fn certificate_for(
       value: assets.from_lovelace(2000000)
         |> assets.add(
             certificate_policy_id,
-            field_preimage_certificate_asset_name(sample_tx_id, field_index),
+            field_preimage_certificate_asset_name,
             1,
           ),
       datum: InlineDatum(datum),
@@ -973,23 +973,13 @@ test tier_three_corrupt_chunk_is_refused_on_touch() fail {
   ) >= 0
 }
 
-/// A certificate for a different `(tx_id, field_index)` cannot be borrowed:
-/// the token name the door demands is derived from the authenticated pair.
+/// A certificate for a different field cannot be borrowed. Selection is by
+/// datum under #606's constant asset name, so what refuses the borrowed
+/// manifest is the door's `certificate.field_index == field_index` — checked
+/// against the authenticated index, never the redeemer's say-so.
 test tier_three_certificate_for_another_field_is_refused() fail {
   let chunks = straddle_chunks()
   expect [chunk_0, chunk_1] = chunks
-  let stolen = Input {
-    ..certificate_input(0, chunks),
-    output: Output {
-      ..key_output(builtin.b_data(#"00")),
-      value: assets.from_lovelace(2000000)
-        |> assets.add(
-            certificate_policy_id,
-            field_preimage_certificate_asset_name(sample_tx_id, 4),
-            1,
-          ),
-    },
-  }
   bytearray.length(
     field_item_at(
       view_of(
@@ -997,7 +987,75 @@ test tier_three_certificate_for_another_field_is_refused() fail {
         straddle_preimage(),
         Certified { cert_ref_input_index: 0, chunk_ref_input_indices: [1, 2] },
         [
-          stolen,
+          certificate_for(0, 4, straddle_preimage(), chunks),
+          input_of(1, key_output(builtin.b_data(chunk_0))),
+          input_of(2, key_output(builtin.b_data(chunk_1))),
+        ],
+      ),
+      0,
+    ),
+  ) >= 0
+}
+
+/// Nor a certificate for a different transaction: same-name tokens are
+/// disambiguated by datum (#606), and the door's `certificate.tx_id == tx_id`
+/// is the check that a manifest minted for another transaction fails.
+test tier_three_certificate_for_another_tx_is_refused() fail {
+  let chunks = straddle_chunks()
+  expect [chunk_0, chunk_1] = chunks
+  bytearray.length(
+    field_item_at(
+      view_of(
+        3,
+        straddle_preimage(),
+        Certified { cert_ref_input_index: 0, chunk_ref_input_indices: [1, 2] },
+        [
+          certificate_of_datum(
+            0,
+            FieldPreimageCertificateV1 {
+              owner: h28(3),
+              tx_id: h32(77),
+              field_index: 3,
+              field_hash: field_commitment(straddle_preimage()),
+              total_length: bytearray.length(straddle_preimage()),
+              chunk_digests: list.map(chunks, blake2b_256),
+            },
+          ),
+          input_of(1, key_output(builtin.b_data(chunk_0))),
+          input_of(2, key_output(builtin.b_data(chunk_1))),
+        ],
+      ),
+      0,
+    ),
+  ) >= 0
+}
+
+/// The load-bearing E2 equality at the door (#606): a manifest whose welded
+/// `field_hash` is not the commitment derived from the authenticated
+/// structures is refused before any chunk is touched — everything else about
+/// this certificate is honest, so this expect is the only one that can refuse
+/// it.
+test tier_three_certificate_with_a_foreign_field_hash_is_refused() fail {
+  let chunks = straddle_chunks()
+  expect [chunk_0, chunk_1] = chunks
+  bytearray.length(
+    field_item_at(
+      view_of(
+        3,
+        straddle_preimage(),
+        Certified { cert_ref_input_index: 0, chunk_ref_input_indices: [1, 2] },
+        [
+          certificate_of_datum(
+            0,
+            FieldPreimageCertificateV1 {
+              owner: h28(3),
+              tx_id: sample_tx_id,
+              field_index: 3,
+              field_hash: h32(66),
+              total_length: bytearray.length(straddle_preimage()),
+              chunk_digests: list.map(chunks, blake2b_256),
+            },
+          ),
           input_of(1, key_output(builtin.b_data(chunk_0))),
           input_of(2, key_output(builtin.b_data(chunk_1))),
         ],
@@ -1013,21 +1071,17 @@ test tier_three_certificate_for_another_field_is_refused() fail {
 test tier_three_total_length_inconsistency_is_refused() fail {
   let chunks = straddle_chunks()
   expect [chunk_0, chunk_1] = chunks
-  let bad_certificate = Input {
-    ..certificate_input(0, chunks),
-    output: Output {
-      ..certificate_input(0, chunks).output,
-      datum: InlineDatum(
-        FieldPreimageCertificateV1 {
-          owner: h28(3),
-          tx_id: sample_tx_id,
-          field_index: 3,
-          total_length: bytearray.length(straddle_preimage()) - 1,
-          chunk_digests: list.map(chunks, blake2b_256),
-        },
-      ),
+  let bad_certificate = certificate_of_datum(
+    0,
+    FieldPreimageCertificateV1 {
+      owner: h28(3),
+      tx_id: sample_tx_id,
+      field_index: 3,
+      field_hash: field_commitment(straddle_preimage()),
+      total_length: bytearray.length(straddle_preimage()) - 1,
+      chunk_digests: list.map(chunks, blake2b_256),
     },
-  }
+  )
   field_item_count(
     view_of(
       3,

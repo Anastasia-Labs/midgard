@@ -34,13 +34,16 @@
 ////     field 1 — which matters precisely because §4 removed the domain
 ////     separation that used to make that impossible.
 ////   * the carriage tier is the prover's choice among §8's three, and the door
-////     verifies whichever is named — except that a **witness-set** field may
-////     not name tier 3. The certificate that stands in for the door's own hash
-////     check under tier 3 is minted against a `witness_set_hash` the minter's
-////     redeemer supplied, and §3's id preimage does not cover that value, so
-////     for fields 6–8 the certificate binds the preimage to nothing this
-////     thread anchored. `carriage_reaches_the_anchor` refuses it; §8.3
-////     erratum E2 limit 3 records the cost and #606 owns the repair.
+////     verifies whichever is named — for every field, including 6–8 under
+////     tier 3 since #606's repair (owner ruling 2026-08-16). The §8.6
+////     certificate datum carries a mint-welded `field_hash`, and the door
+////     requires it to equal the commitment reached from the **anchored**
+////     structures — for a witness-set field, the chain that reaches the
+////     anchored `witness_set_hash` — so a certificate minted against a
+////     fabricated witness set wears the fabricated hash and fails at the
+////     door. The former fields-6–8 tier-3 refusal
+////     (`carriage_reaches_the_anchor`, §8.3 erratum E2 limit 3) lifted with
+////     that weld.
 ////
 //// A step that opens **more than one field** of the same transaction says so
 //// once. `anchored_native_tx` verifies the anchor and hands back an
@@ -81,8 +84,7 @@ use midgard/fraud_proofs/native_tx/types.{
   NativeTxWitnessSetCompact, VerifiedMidgardNativeTxCompact,
 }
 use midgard/native_tx_field_access_v1.{
-  Certified, FieldCarriageV1, FieldViewV1, Inline, RawUtxo,
-  authenticated_field_view, field_item_count,
+  FieldCarriageV1, FieldViewV1, authenticated_field_view, field_item_count,
 }
 use midgard/native_tx_machine_walk_v1.{
   FieldWalkCheckpointV1, open_field_walk, walk_fold, walk_is_complete,
@@ -248,10 +250,9 @@ pub opaque type AnchoredNativeTxV1 {
 /// A step opening two fields through the single-field entry points paid it
 /// twice, and paid it a third time if it also needed the compact structure for
 /// itself. The saving is not available by reaching `authenticated_field_view`
-/// directly: that route leaves the caller outside `carriage_reaches_the_anchor`
-/// and the §2.5 pairing, which is the guard #575 closed a reproduced forgery
-/// with. So the opening that pays once lives here, where both guards still
-/// apply to every field it opens.
+/// directly: that route leaves the caller outside the §2.5 pairing, which is
+/// the guard #575 closed a reproduced forgery with. So the opening that pays
+/// once lives here, where the guard still applies to every field it opens.
 pub fn anchored_native_tx(
   opening: NativeTxOpeningV1,
   anchor: NativeTxAnchorV1,
@@ -351,9 +352,8 @@ pub fn unanchored_validity_code_of(anchored: AnchoredNativeTxV1) -> Int {
 ///
 /// Every guard the single-field `opened_field_view` applies is applied here, and
 /// applied **per field**: the §2.5 body/witness pairing against the half the
-/// handle was opened under, and `carriage_reaches_the_anchor` against the tier
-/// this particular field names. Opening a second field re-runs both; only the
-/// anchor is shared.
+/// handle was opened under. Opening a second field re-runs it; only the anchor
+/// is shared.
 ///
 /// §7.1 authenticate-once is the caller's to exploit exactly as it is through
 /// the door itself: open once per field per step, read the view many times.
@@ -364,11 +364,10 @@ pub fn anchored_field_view(
   reference_inputs: List<Input>,
   certificate_policy_id: PolicyId,
 ) -> FieldViewV1 {
-  // 1. The two per-field guards, re-run on every opening this handle serves:
-  //    the §2.5 half the anchor was paid under against the half `field_index`
-  //    lives in, and the carriage tier against `field_index`.
-  //    `field_pairs_with` asserts them one at a time, so a refusal says which.
-  expect field_pairs_with(anchored, field_index, carriage)
+  // 1. The per-field guard, re-run on every opening this handle serves: the
+  //    §2.5 half the anchor was paid under against the half `field_index`
+  //    lives in.
+  expect field_pairs_with(anchored, field_index)
   authenticated_field_view(
     anchored.verified,
     anchored.witness_set,
@@ -393,9 +392,9 @@ pub fn anchored_field_walk(
   reference_inputs: List<Input>,
   certificate_policy_id: PolicyId,
 ) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {
-  // 1. The same two per-field guards `anchored_field_view` applies, for the same
-  //    reason: the walk shares the anchor, not the pairing or the tier check.
-  expect field_pairs_with(anchored, field_index, carriage)
+  // 1. The same per-field guard `anchored_field_view` applies, for the same
+  //    reason: the walk shares the anchor, not the pairing.
+  expect field_pairs_with(anchored, field_index)
   open_field_walk(
     anchored.verified,
     anchored.witness_set,
@@ -458,33 +457,26 @@ pub fn opened_field_walk(
   )
 }
 
-/// Asserts that this field, carried this way, may be opened against this handle.
+/// Asserts that this field may be opened against this handle.
 ///
-/// Two things pair up, and both are per-field rather than per-anchor, which is
-/// why neither can live in `anchored_native_tx`. They are asserted **one at a
-/// time** rather than folded into a single `and {}`: both refusals are forgery
-/// attempts of different shapes, and a trace that says only "the field did not
-/// pair" tells the reader neither which shape it was nor which guard held.
-fn field_pairs_with(
-  anchored: AnchoredNativeTxV1,
-  field_index: Int,
-  carriage: FieldCarriageV1,
-) -> Bool {
-  // 1. The **carriage tier** reaches the thread's anchor for this field, and it
-  //    is the guard a reader would not predict. Tiers 1–2 are authenticated by
-  //    the door itself, but tier 3's binding is a §8.6 certificate minted
-  //    against a `witness_set_hash` its own redeemer supplied — a value §3's
-  //    transaction id does not cover — so a tier-3 carriage of a witness-set
-  //    field reaches no anchor at all. `carriage_reaches_the_anchor` carries
-  //    that argument in full.
-  expect carriage_reaches_the_anchor(carriage, field_index)
-  // 2. The **§2.5 half** the handle was opened under is the half this field
-  //    lives in. An opening that carries no witness set may not be read at a
-  //    witness-set index — the door would otherwise be handed this module's
-  //    internal placeholder as if it were the transaction's real witness set —
-  //    and an opening that carries one may not be read at a body index, where it
-  //    would be silently ignored. Neither direction is reachable from an honest
-  //    family, which is exactly why both are asserted rather than assumed.
+/// One thing pairs up, and it is per-field rather than per-anchor, which is
+/// why it cannot live in `anchored_native_tx`: the **§2.5 half** the handle
+/// was opened under is the half this field lives in. An opening that carries
+/// no witness set may not be read at a witness-set index — the door would
+/// otherwise be handed this module's internal placeholder as if it were the
+/// transaction's real witness set — and an opening that carries one may not be
+/// read at a body index, where it would be silently ignored. Neither direction
+/// is reachable from an honest family, which is exactly why it is asserted
+/// rather than assumed.
+///
+/// Until #606 (owner ruling 2026-08-16) a second per-field guard lived here:
+/// `carriage_reaches_the_anchor`, the §8.3-erratum-E2-limit-3 refusal of
+/// tier-3 carriage at fields 6–8. It lifted with the repair — the §8.6
+/// certificate datum now carries a mint-welded `field_hash` and the door
+/// itself requires it to equal the commitment derived from the anchored
+/// structures, so every tier reaches the anchor for every field and the
+/// refusal had nothing left to refuse.
+fn field_pairs_with(anchored: AnchoredNativeTxV1, field_index: Int) -> Bool {
   expect
     anchored.opens_witness_set_fields == (
       field_index >= first_witness_set_field_index
@@ -502,68 +494,20 @@ fn tx_opening_of(opening: FieldOpeningV1) -> NativeTxOpeningV1 {
   }
 }
 
-/// Whether `carriage` can be authenticated back to the thread's anchor for
-/// `field_index`. True for tiers 1–2 always; for tier 3 only on a **body**
-/// field.
-///
-/// **Why tier 3 does not reach the anchor for fields 6–8.** Tiers 1 and 2 hand
-/// the door the whole preimage, and the door hashes it against
-/// `field_commitment_at(body, witness_set, field_index)` — a value derived from
-/// structures this module has already pinned to thread state, so the content is
-/// bound to the disputed transaction by the door itself. Tier 3 cannot do that:
-/// §8.4 exists precisely because the preimage is too large to hold, so the door
-/// never hashes it and the *certificate* is the binding instead. The
-/// certificate's authority is a §8.6 token named `(tx_id, field_index)`, and
-/// what stands behind that name is the minting policy's own check —
-/// `native_tx_carriage_v1.verify_field_preimage_certificate_v1` — that the
-/// chunks hash to `field_commitment_at(body, witness_set, field_index)` for the
-/// transaction it re-derived.
-///
-/// That check is sound for fields 0–5 and unsound for 6–8, for the same reason
-/// `NativeTxAnchorV1` has two arms. The minter re-derives the transaction id
-/// from *its own redeemer's* `native_tx_compact_cbor` and takes the
-/// `witness_set_hash` off the tail of those same bytes — and §3's id preimage
-/// is the body alone, so that tail is the minter's caller's to choose. A
-/// certifier may therefore present the genuine body (which re-derives to the
-/// committed id, so the token gets the committed transaction's name) followed
-/// by the `witness_set_hash` of any witness set it likes, and certify a field-6,
-/// -7 or -8 preimage that transaction never committed. The token then names the
-/// honest transaction while the digest manifest under it describes a fabricated
-/// field, and the door — which discards its own `expected_hash` on the Certified
-/// arm — has nothing left to catch it with. The useful forgeries are both
-/// directions of the §2.5 absence rules: an empty field 7 makes
-/// "the required signature is absent" true of every transaction, and a
-/// fabricated 256-item field 7 makes an "invalid signature" fault provable
-/// against a signature the transaction never carried.
-///
-/// So a witness-set field is refused tier 3 here, at the one place every family
-/// step reaches the door through. This is a **limit, not a repair**: it costs
-/// fields 6–8 the ability to be carried above the §8.3 tier-2 bound, which is
-/// recorded as limit 3 of `docs/spec/midgard-tx.md` §8.3 erratum E2. The repair
-/// is to fold the field commitment into the §8.6 asset name so the token cannot
-/// be borrowed for a preimage the transaction did not commit; that is a change
-/// to a frozen wire format and to a landed minting policy, and it is assigned
-/// to [#606](https://github.com/Anastasia-Labs/midgard/issues/606) — see E2.
-/// (Assigned to #579 when this was written, and re-pointed at #604 with the rest
-/// of the #575 off-chain remediation; #604 measured the repair to be an on-chain
-/// identity move, which #579's single regeneration had already spent, so the
-/// owner deferred it to #606 to ride the next natural regeneration event —
-/// 2026-08-14, in-session, recorded on #606. The refusal below is unaffected:
-/// it holds until the asset name changes.)
-///
-/// The abort is unconditional. Nothing here falls back to tier 1 or 2 on the
-/// prover's behalf: a step handed an inadmissible carriage fails, which is
-/// §7.3's abort-never-clamp rule applied to the tier ladder.
-fn carriage_reaches_the_anchor(
-  carriage: FieldCarriageV1,
-  field_index: Int,
-) -> Bool {
-  when carriage is {
-    Inline { .. } -> True
-    RawUtxo { .. } -> True
-    Certified { .. } -> field_index < first_witness_set_field_index
-  }
-}
+// `carriage_reaches_the_anchor` — the §8.3-erratum-E2-limit-3 refusal of
+// tier-3 carriage at the witness-set fields — lived here until #606's repair
+// (owner ruling 2026-08-16) and was deleted with it rather than left as a
+// guard that cannot fail. Its argument was that the §8.6 certificate's
+// authority was a token named `(tx_id, field_index)`, minted against a
+// `witness_set_hash` the minter's own redeemer supplied — a value §3's id
+// preimage does not cover — so for fields 6–8 the certificate bound the
+// preimage to nothing the thread anchored. The repair moved the binding into
+// the datum: the mint welds `field_hash` to the verified chunk vector, and
+// the door refuses a certificate whose `field_hash` differs from the
+// commitment it derived from the anchored structures. A certificate minted
+// against a fabricated witness set wears the fabricated hash and fails that
+// equality, so every tier now reaches the anchor for every field. E2's
+// disposition in `docs/spec/midgard-tx.md` §8.3 records the resolution.
 
 fn carriage_of(opening: FieldOpeningV1) -> FieldCarriageV1 {
   when opening is {

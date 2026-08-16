@@ -102,14 +102,13 @@ validator main(
         //    count is the §5.1 header's self-assertion and
         //    `field_item_count` aborts rather than return it. A prover whose
         //    field-6 preimage does not fit tier-2 carriage therefore cannot
-        //    finalize this family at all. Since #575's round-2 review that is
-        //    over-determined: a witness-set field is refused tier-3 carriage
-        //    outright at `field_opening_v1.carriage_reaches_the_anchor`,
-        //    because a §8.6 certificate cannot be bound to a transaction id
-        //    that does not commit the witness set. These are *known, loud*
-        //    limitations, not silent clamps: both aborts are unconditional and
-        //    both are recorded in `docs/spec/midgard-tx.md` §8.3 erratum E2, as
-        //    limits 2 and 3. Lifting them is #565/#579's, not this step's.
+        //    finalize this family at all. (Until #606 this was over-determined
+        //    by E2 limit 3's outright tier-3 refusal at the witness-set
+        //    fields; that refusal lifted with #606's welded-hash repair, so
+        //    limit 2 is what remains and it is this family's own.) The abort
+        //    is a *known, loud* limitation, not a silent clamp — unconditional
+        //    and recorded in `docs/spec/midgard-tx.md` §8.3 erratum E2 as
+        //    limit 2. Lifting it is #565/#579's, not this step's.
         let script_tx_wits_walk = opened_field_walk(
           script_tx_wits_opening,
           WitnessAnchor {

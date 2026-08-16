@@ -436,6 +436,7 @@ test certification_rejects_a_reordered_chunk_vector() fail {
       owner: owner_hash,
       tx_id: tx_id_of(body),
       field_index: 0,
+      field_hash: field_commitment(preimage),
       total_length: 2 * chunk_bytes_k,
       chunk_digests: [blake2b_256(chunk_1), blake2b_256(chunk_0)],
     },
@@ -467,6 +468,41 @@ test certification_rejects_a_tampered_chunk_digest() fail {
     compact_cbor,
     witness_set_compact_cbor,
     split_field_preimage(preimage),
+  )
+}
+
+/// The E2 weld (#606, owner ruling 2026-08-16): `field_hash` is mint-verified
+/// against the same commitment the chunk concatenation is reconstructed
+/// against, so a datum stating any other hash is refused even when the chunks,
+/// digests and length are all honest. The door's load-bearing
+/// `certificate.field_hash == <anchored commitment>` equality stands on this
+/// refusal: without it a minter could publish honest chunks under a datum
+/// naming a commitment the transaction never carried.
+test certification_rejects_a_mismatched_field_hash() fail {
+  let (tx_id, compact_cbor, witness_set_compact_cbor) = nine_field_fixture()
+  let preimage = field_preimage(0)
+  let certificate = field_preimage_certificate_v1(
+    owner_hash,
+    tx_id,
+    0,
+    preimage,
+  )
+  verify_field_preimage_certificate_v1(
+    FieldPreimageCertificateV1 { ..certificate, field_hash: zero_hash32 },
+    compact_cbor,
+    witness_set_compact_cbor,
+    split_field_preimage(preimage),
+  )
+}
+
+/// The producer twin sets the welded hash from the bytes themselves, so the
+/// two ends of §8.6 agree on what the datum's `field_hash` is: exactly the §4
+/// flat commitment of the preimage the certificate describes.
+test producer_welds_the_field_commitment() {
+  let (tx_id, _compact_cbor, _witness_set_compact_cbor) = nine_field_fixture()
+  let preimage = field_preimage(0)
+  field_preimage_certificate_v1(owner_hash, tx_id, 0, preimage).field_hash == field_commitment(
+    preimage,
   )
 }
 
@@ -517,6 +553,7 @@ test certification_rejects_a_preimage_that_fits_tier_two() fail {
       owner: owner_hash,
       tx_id: tx_id_of(body),
       field_index: 0,
+      field_hash: field_commitment(preimage),
       total_length: chunk_bytes_k,
       chunk_digests: [blake2b_256(preimage)],
     },
@@ -556,6 +593,7 @@ test certification_rejects_a_lopsided_split() fail {
       owner: owner_hash,
       tx_id,
       field_index: 0,
+      field_hash: field_commitment(preimage),
       total_length: smallest_tier3_bytes,
       chunk_digests: [blake2b_256(head), blake2b_256(tail)],
     },
@@ -625,6 +663,7 @@ test certification_rejects_a_total_length_above_the_aggregate_cap() fail {
       owner: owner_hash,
       tx_id: tx_id_of(body),
       field_index: 0,
+      field_hash: field_commitment(oversized),
       total_length: max_transaction_aggregate_field_bytes + 1,
       chunk_digests: list.map(chunks, blake2b_256),
     },
@@ -722,12 +761,13 @@ test republished_carriage_is_byte_identical_and_certifies() {
   and {
     original.chunk_digests == healed.chunk_digests,
     original.total_length == healed.total_length,
-    // Same content address, so the same asset name: a healed certificate is
-    // discoverable exactly where the yanked one was.
-    field_preimage_certificate_asset_name(original.tx_id, original.field_index) == field_preimage_certificate_asset_name(
-      healed.tx_id,
-      healed.field_index,
-    ),
+    // Same content, so the same datum modulo `owner` (#606): a healed
+    // certificate is discoverable exactly where the yanked one was — the one
+    // certificate address, filtered by datum — and interchangeable at
+    // consumption because the mint-welded commitment is byte-equal.
+    original.field_hash == healed.field_hash,
+    original.tx_id == healed.tx_id,
+    original.field_index == healed.field_index,
     verify_field_preimage_certificate_v1(
       original,
       compact_cbor,
@@ -808,7 +848,7 @@ test certified_carriage_opens_through_the_access_door() {
         value: assets.from_lovelace(2000000)
           |> assets.add(
               certificate_policy_id,
-              field_preimage_certificate_asset_name(tx_id, 1),
+              field_preimage_certificate_asset_name,
               1,
             ),
         datum: InlineDatum(certificate_datum),
@@ -915,7 +955,7 @@ fn corner_reference_inputs(tx_id: ByteArray) -> List<Input> {
         value: assets.from_lovelace(2000000)
           |> assets.add(
               certificate_policy_id,
-              field_preimage_certificate_asset_name(tx_id, 1),
+              field_preimage_certificate_asset_name,
               1,
             ),
         datum: InlineDatum(certificate_datum),

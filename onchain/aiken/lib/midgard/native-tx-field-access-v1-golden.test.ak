@@ -33,9 +33,6 @@ use midgard/native_tx_field_access_v1.{
 const golden_empty_field_commitment =
   #"45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0"
 
-const golden_certificate_tx_id =
-  #"1920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2"
-
 const golden_filler_0 = #""
 
 const golden_filler_1 = #"22"
@@ -425,33 +422,32 @@ test golden_tier3_chunk_digests_match_typescript() {
 }
 
 // ---------------------------------------------------------------------------
-// §8.6 certificate asset name — blake2b_256(field_index ‖ tx_id)
+// §8.6 certificate asset name — one constant for every certificate (#606,
+// owner ruling 2026-08-16; the blake2b_256(field_index ‖ tx_id) derivation
+// and its per-(tx_id, field_index) vector class are retired — datum-shape
+// vectors in `native_tx_carriage_wire_v1_golden.test` carry the identity the
+// names used to)
 // ---------------------------------------------------------------------------
 
-test golden_certificate_asset_names_match_typescript() {
+test golden_certificate_asset_name_matches_typescript() {
   and {
-    field_preimage_certificate_asset_name(golden_certificate_tx_id, 0) == #"7df7bbbe2ab0d3756058cf13f94dc275c78dfbd057eb33687a7eb64206e7f170",
-    field_preimage_certificate_asset_name(golden_certificate_tx_id, 1) == #"3ff0bc572fec1f90b658fdab128993e808c96a42265f2a7b86da5eac63bd9abb",
-    field_preimage_certificate_asset_name(golden_certificate_tx_id, 2) == #"3a71c99091cec28b2cad280faa69795803cf130389440088958d634139d9d3ea",
-    field_preimage_certificate_asset_name(golden_certificate_tx_id, 3) == #"73be379009d9471e07389ecf7bf5404604e8ba58f976a06f17e923d259b9c823",
-    field_preimage_certificate_asset_name(golden_certificate_tx_id, 4) == #"48103981c2ff91dd4167c8cd21d7b64bd67c38573104a1dbc72e3472962c5510",
-    field_preimage_certificate_asset_name(golden_certificate_tx_id, 5) == #"e80980b7a92b8bf56f467fed395348354f50982695dc48393236ddfe961a7b53",
-    field_preimage_certificate_asset_name(golden_certificate_tx_id, 6) == #"d147537e4f5c52949346ef1de32ff8458f1f9c243d3484ea140cb42361afb451",
-    field_preimage_certificate_asset_name(golden_certificate_tx_id, 7) == #"e4a72ac556e7c0b406a28b899d801d47bdfa4c5507afe561cf9753dced5f1c5e",
-    field_preimage_certificate_asset_name(golden_certificate_tx_id, 8) == #"fad6ed39a10e33fa1b9fbcab5da89cf7ddf4b5dcf188d3f2d7768126c5a0d798",
+    // "MIDGARD_FIELD_PREIMAGE_CERT", pinned as bytes so the TypeScript
+    // producer's hex spelling and this constant cannot drift apart.
+    field_preimage_certificate_asset_name == #"4d4944474152445f4649454c445f505245494d4147455f43455254",
+    bytearray.length(field_preimage_certificate_asset_name) == 27,
   }
 }
 
 /// The tier-3 manifest a TypeScript publisher derives for a preimage of
 /// 15665 bytes: chunk lengths 15148 + 517, one
-/// digest per chunk, and the §8.6 token name. This test pins the manifest's
-/// shape; the digest *values* are recomputed from the rebuilt payload by
-/// `golden_tier3_chunk_digests_match_typescript` above.
+/// digest per chunk, and the §8.6 constant token name. This test pins the
+/// manifest's shape; the digest *values* are recomputed from the rebuilt
+/// payload by `golden_tier3_chunk_digests_match_typescript` above.
 test golden_tier3_certificate_shape_matches_typescript() {
   and {
     expected_chunk_count(15665) == 2,
     list.length(golden_tier3_chunk_digests) == 2,
-    field_preimage_certificate_asset_name(golden_certificate_tx_id, 0) == #"7df7bbbe2ab0d3756058cf13f94dc275c78dfbd057eb33687a7eb64206e7f170",
+    bytearray.length(field_preimage_certificate_asset_name) == 27,
   }
 }
 
