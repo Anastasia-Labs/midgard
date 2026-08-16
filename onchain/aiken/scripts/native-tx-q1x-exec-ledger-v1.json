@@ -25,64 +25,64 @@
           "cpu": 343861267
         },
         "q1x_f6_no_input_step_02_at_one_spend_input": {
-          "mem": 1256558,
-          "cpu": 493246684
+          "mem": 1253991,
+          "cpu": 492475770
         },
         "q1x_f6_no_input_step_02_control_at_the_admissible_maximum": {
           "mem": 16815183,
           "cpu": 6914531939
         },
         "q1x_f6_no_input_step_02_at_the_admissible_maximum": {
-          "mem": 17180074,
-          "cpu": 7058969998
+          "mem": 17177507,
+          "cpu": 7058199084
         },
         "q1x_f6_double_spend_step_04_control_at_one_spend_input": {
           "mem": 782194,
           "cpu": 344034414
         },
         "q1x_f6_double_spend_step_04_at_one_spend_input": {
-          "mem": 1270132,
-          "cpu": 498606758
+          "mem": 1268065,
+          "cpu": 497915844
         },
         "q1x_f6_double_spend_step_04_control_at_the_admissible_maximum": {
           "mem": 16817791,
           "cpu": 6914705086
         },
         "q1x_f6_double_spend_step_04_at_the_admissible_maximum": {
-          "mem": 17193648,
-          "cpu": 7064330072
+          "mem": 17191581,
+          "cpu": 7063639158
         },
         "q1x_f6_missing_native_script_tx_step_06_control_at_one_script_witness": {
           "mem": 787321,
           "cpu": 347041284
         },
         "q1x_f6_missing_native_script_tx_step_06_at_one_script_witness": {
-          "mem": 1412131,
-          "cpu": 550547914
+          "mem": 1414764,
+          "cpu": 550609000
         },
         "q1x_f6_missing_native_script_tx_step_06_control_at_the_admissible_maximum": {
           "mem": 17916149,
           "cpu": 8337646886
         },
         "q1x_f6_missing_native_script_tx_step_06_at_the_admissible_maximum": {
-          "mem": 53497633,
-          "cpu": 20229699120
+          "mem": 53500266,
+          "cpu": 20229760206
         },
         "q1x_f6_missing_signature_step_04_control_at_one_address_witness": {
           "mem": 789276,
           "cpu": 345456371
         },
         "q1x_f6_missing_signature_step_04_at_one_address_witness": {
-          "mem": 1376981,
-          "cpu": 535419931
+          "mem": 1374614,
+          "cpu": 534681017
         },
         "q1x_f6_missing_signature_step_04_control_at_the_admissible_maximum": {
           "mem": 32112833,
           "cpu": 12746769250
         },
         "q1x_f6_missing_signature_step_04_at_the_admissible_maximum": {
-          "mem": 72353013,
-          "cpu": 25589344884
+          "mem": 72350646,
+          "cpu": 25588605970
         }
       }
     }
@@ -92,40 +92,40 @@
       "claim": "Q11 no-input step-02 at 1 spend input",
       "minus": "q1x_f6_no_input_step_02_control_at_one_spend_input",
       "from": "q1x_f6_no_input_step_02_at_one_spend_input",
-      "mem": 476972,
-      "cpu": 149385417,
+      "mem": 474405,
+      "cpu": 148614503,
       "basisFit": "fits"
     },
     {
       "claim": "Q11 no-input step-02 at 296 spend inputs",
       "minus": "q1x_f6_no_input_step_02_control_at_the_admissible_maximum",
       "from": "q1x_f6_no_input_step_02_at_the_admissible_maximum",
-      "mem": 364891,
-      "cpu": 144438059,
+      "mem": 362324,
+      "cpu": 143667145,
       "basisFit": "fits"
     },
     {
       "claim": "Q10 double-spend step-04 at 1 spend input",
       "minus": "q1x_f6_double_spend_step_04_control_at_one_spend_input",
       "from": "q1x_f6_double_spend_step_04_at_one_spend_input",
-      "mem": 487938,
-      "cpu": 154572344,
+      "mem": 485871,
+      "cpu": 153881430,
       "basisFit": "fits"
     },
     {
       "claim": "Q10 double-spend step-04 at 296 spend inputs",
       "minus": "q1x_f6_double_spend_step_04_control_at_the_admissible_maximum",
       "from": "q1x_f6_double_spend_step_04_at_the_admissible_maximum",
-      "mem": 375857,
-      "cpu": 149624986,
+      "mem": 373790,
+      "cpu": 148934072,
       "basisFit": "fits"
     },
     {
       "claim": "Q17 missing-native-script-tx step-06 at 1 script witness",
       "minus": "q1x_f6_missing_native_script_tx_step_06_control_at_one_script_witness",
       "from": "q1x_f6_missing_native_script_tx_step_06_at_one_script_witness",
-      "mem": 624810,
-      "cpu": 203506630,
+      "mem": 627443,
+      "cpu": 203567716,
       "basisFit": "fits",
       "infeasibility": "Field 6 is variable-width and the rule is an absence claim, so step-06's `fold_opened_field` walks every script witness: the cost is O(N) by construction, not flat like the Q10/Q11 reads above. At C20.6's 224-witness Cardano envelope the walk is ~2.7x the GOAL_SPEC 3.3 memory basis and ~1.5x the cpu basis, so a missing-native-script fault over a transaction with that many native script witnesses cannot be finalized on L1 in one transaction. Memory is the binding axis: from the two readings the marginal cost is ~156,800 mem and ~52,400,000 cpu per witness, so the walk fits 13,200,000 mem at roughly 81 witnesses and 8,000,000,000 cpu at roughly 150. UNMEASURED COMPARISON, STATED AS SUCH: the retired counted idiom reproduced and re-hashed the whole collection inside the step and needed the same item count, so there is no reason to think it was cheaper - but no counted-era step-06 row exists, this ledger contains no measurement of it, and nothing here should be read as one. What IS measured is this row. The limit is not remediable by carriage, because the cost is execution, and doubly not by tier 3, which docs/spec/midgard-tx.md 8.3 erratum E2 limit 3 refuses outright for witness-set fields. Resolution is #565's resumable-walk work with a checkpoint in thread state (docs/spec/midgard-tx.md 10) and #579's; this ledger's job is to stop it being unmeasured. Separately measured at the pre-round-3 code state, the 6.1 canonicality re-encode restored in step-06 accounts for ~7% of the figure: 33,192,807 mem without it against 35,566,087 with, so removing the check would not bring the walk near the basis."
     },
@@ -133,8 +133,8 @@
       "claim": "Q17 missing-native-script-tx step-06 at 224 script witnesses",
       "minus": "q1x_f6_missing_native_script_tx_step_06_control_at_the_admissible_maximum",
       "from": "q1x_f6_missing_native_script_tx_step_06_at_the_admissible_maximum",
-      "mem": 35581484,
-      "cpu": 11892052234,
+      "mem": 35584117,
+      "cpu": 11892113320,
       "basisFit": "exceeds",
       "infeasibility": "Field 6 is variable-width and the rule is an absence claim, so step-06's `fold_opened_field` walks every script witness: the cost is O(N) by construction, not flat like the Q10/Q11 reads above. At C20.6's 224-witness Cardano envelope the walk is ~2.7x the GOAL_SPEC 3.3 memory basis and ~1.5x the cpu basis, so a missing-native-script fault over a transaction with that many native script witnesses cannot be finalized on L1 in one transaction. Memory is the binding axis: from the two readings the marginal cost is ~156,800 mem and ~52,400,000 cpu per witness, so the walk fits 13,200,000 mem at roughly 81 witnesses and 8,000,000,000 cpu at roughly 150. UNMEASURED COMPARISON, STATED AS SUCH: the retired counted idiom reproduced and re-hashed the whole collection inside the step and needed the same item count, so there is no reason to think it was cheaper - but no counted-era step-06 row exists, this ledger contains no measurement of it, and nothing here should be read as one. What IS measured is this row. The limit is not remediable by carriage, because the cost is execution, and doubly not by tier 3, which docs/spec/midgard-tx.md 8.3 erratum E2 limit 3 refuses outright for witness-set fields. Resolution is #565's resumable-walk work with a checkpoint in thread state (docs/spec/midgard-tx.md 10) and #579's; this ledger's job is to stop it being unmeasured. Separately measured at the pre-round-3 code state, the 6.1 canonicality re-encode restored in step-06 accounts for ~7% of the figure: 33,192,807 mem without it against 35,566,087 with, so removing the check would not bring the walk near the basis.",
       "errata": "docs/spec/midgard-tx.md §8.3 erratum E2 — limit 1 (execution), the field-6 half"
@@ -143,16 +143,16 @@
       "claim": "Q16 missing-signature step-04 at 1 address witness",
       "minus": "q1x_f6_missing_signature_step_04_control_at_one_address_witness",
       "from": "q1x_f6_missing_signature_step_04_at_one_address_witness",
-      "mem": 587705,
-      "cpu": 189963560,
+      "mem": 585338,
+      "cpu": 189224646,
       "basisFit": "fits"
     },
     {
       "claim": "Q16 missing-signature step-04 at 318 address witnesses",
       "minus": "q1x_f6_missing_signature_step_04_control_at_the_admissible_maximum",
       "from": "q1x_f6_missing_signature_step_04_at_the_admissible_maximum",
-      "mem": 40240180,
-      "cpu": 12842575634,
+      "mem": 40237813,
+      "cpu": 12841836720,
       "basisFit": "exceeds",
       "infeasibility": "The wave's second unbounded walk, added at the #575 round-2 review's request. Field 7 is fixed-stride, so unlike field 6 the walk pays no per-item envelope decode - and it is still O(N), because the rule is an absence claim and `fold_opened_field` must visit every item to assert it. That isolates the cost to the walk itself rather than to variable-width decoding. At 318 address witnesses (the widest field 7 the 5.4 aggregate cap admits at the 5.3 stride of 103) the step is ~3.0x the GOAL_SPEC 3.3 memory basis and ~1.6x the cpu basis. From the two readings the marginal cost is ~125,100 mem and ~39,900,000 cpu per witness, so the walk fits 13,200,000 mem at roughly 101 witnesses and 8,000,000,000 cpu at roughly 196; memory is the binding axis. Above ~101 address witnesses a missing-signature fault cannot be finalized in one L1 transaction. Not remediable by carriage - the cost is execution - and doubly not by tier 3, which 8.3 erratum E2 limit 3 refuses outright for witness-set fields. Resolution is #565's resumable walk with a checkpoint in thread state (docs/spec/midgard-tx.md 10), with the deployed-identity half in #579. Carriage interaction, stated rather than glossed: 318 witnesses is a 32,757-byte field 7, over the 8.3 tier-1 redeemer bound and over K, so on L1 those bytes would have to travel under tier 3 - which 8.3 erratum E2 limit 3 now refuses for a witness-set field. This row is therefore taken under tier-1 carriage in the harness at a width tier 1 could not carry, and it is published as a walk-cost reading rather than as a reachable configuration; the neutralisation selector `q1x_f6_address_witness_fixture_sits_at_the_admissible_cardinality` asserts that the preimage exceeds the tier-1 bound so the fact cannot go unnoticed. Execution binds first regardless: the widest field 7 tier-2 carriage delivers is ~154 witnesses and the walk leaves the memory basis at ~101.",
       "errata": "docs/spec/midgard-tx.md §8.3 erratum E2 — limit 1 (execution), the field-7 half"
@@ -168,8 +168,8 @@
     "maxCpuGrowth": 100000000,
     "memoryGrowth": -112081,
     "cpuGrowth": -4947358,
-    "memoryHeadroom": 12824143,
-    "cpuHeadroom": 7850375014,
+    "memoryHeadroom": 12826210,
+    "cpuHeadroom": 7851065928,
     "toleranceRationale": "The door pays one blake2b_256 over a preimage that does grow with cardinality - 43 bytes at one input, 11,843 at 296 - so the honest growth is the hash of ~11.8 KB more and nothing else, measured at ~4,600 mem. The band has to hold that plus the control-subtraction artifact described in `deltaAttribution` (|112,081| mem, |4,947,358| cpu), and has to sit far below any per-item regression. Both were measured rather than assumed: a step regressed to walk the whole 296-item collection costs +25,127,050 mem / +8,363,297,421 cpu against the same control, and one regressed to walk only half of it +12,129,016 mem / +4,062,287,469 cpu. The bands below are therefore ~2.2x the observed artifact and ~48x (mem) and ~40x (cpu) below the cheapest regression measured, so neither a half-collection walk nor anything dearer can hide inside them. cpu is carried as its own two-sided band because it is the axis a walk regression moves proportionally hardest against its own tolerance.",
     "minMemoryGrowth": -250000,
     "minCpuGrowth": -100000000,

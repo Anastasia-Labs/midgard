@@ -17,8 +17,8 @@
       ],
       "rows": {
         "reference_input_no_idx_step_02_forwards_the_committed_out_of_range_input": {
-          "mem": 1860355,
-          "cpu": 781797639,
+          "mem": 1858588,
+          "cpu": 781154725,
           "basisFit": "within"
         }
       }
@@ -31,8 +31,8 @@
       ],
       "rows": {
         "reference_input_no_idx_step_04_accepts_out_of_range_index": {
-          "mem": 1841619,
-          "cpu": 778626324,
+          "mem": 1849252,
+          "cpu": 779487410,
           "basisFit": "within"
         }
       }
