@@ -37,11 +37,17 @@ const placeholderZeroInput = "03".repeat(28);
 // the blueprint itself. Both move the applied hashes. Derived by running this
 // suite's own producer with `MIDGARD_PRINT_PROOF_FIT=1` (the
 // `q13AppliedIdentities.stepHashes` line), not read off an assertion diff.
+// Re-pinned 2026-08-16 (#606): the E2 repair regeneration
+// (`onchain/aiken/plutus.json` md5 5e38d7c6ccb7987d0aca710307dcaea7, 398
+// validators, same fork) moved the certificate policy id
+// (c3682abd… -> f030476f…), which is the applied trailing parameter of every
+// field-opening step — so all four applied hashes move even where a step's
+// compiled code did not. Same derivation route as #579's re-pin.
 const Q13_APPLIED_STEP_HASHES = [
-  "2389abf7a2f8702b97317bb0c5d12b914f75378488fe07c78ebfc1cf",
-  "55c27cdb1df929d382df955006c00af8e51ba8adc5e4c7c13159836f",
-  "a966c6bef59c676ac30cbce990230928f4b4ce3c3c47d7beb677b5ed",
-  "b2685117b180e1ddbe7f2c25a447d5ac374837bb6040b1f7d45d5183",
+  "063831d17f9f26542608df346319a333917f14345d2c2df876f593af",
+  "5438e14789271ca13e0ec1cebe00b9d7c28e64a9d2e54d6d9f54013f",
+  "f88c7a7937df342a37eee3132139110d0a7689b037ab99b512937c30",
+  "393aeccc152ae74b067ede8670274e3994bc9577ef0bbd8bdc60f77c",
 ] as const;
 // Re-pinned 2026-08-05 (#544): the original-epoch root d88f9829…bcca394
 // (blueprint f5ae651e…, 380 validators) moved with the #521 renames — the
@@ -72,8 +78,14 @@ const Q13_APPLIED_STEP_HASHES = [
 // because a stale pin hiding behind another failing pin is how #579 lost one.
 // Measured by this suite's own derivation, which agrees with the live catalogue
 // derivation on the preceding line: 173cabdb… -> 61f11db3….
+// Re-pinned 2026-08-16 (#606): the root folds every category's applied
+// step-01 hash and the certificate policy id is an applied parameter of every
+// field-opening step-01, so the moved policy (c3682abd… -> f030476f…) moves
+// every folded leaf and the root with it: 61f11db3… -> 53f5fc3a…. Derived by
+// this suite's own producer with `MIDGARD_PRINT_PROOF_FIT=1`
+// (`q13AppliedIdentities.catalogueRoot`).
 const Q13_CATALOGUE_ROOT =
-  "61f11db32d208c0f71ffc506e2a2ce1555a72e49f3180e1f92edad3c8a928cdf";
+  "53f5fc3aab9ddd758ad82a4d27321c2b3c8213312e71bbe5636dfec22de21c52";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,

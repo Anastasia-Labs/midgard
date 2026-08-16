@@ -856,15 +856,20 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
   // semantic resolver, and #594 gave it a trailing
   // `field_preimage_certificate_policy_id` parameter that the SDK applies from
   // the blueprint, so its applied hash moves: 983051b4… -> f492660e….
-  // The resolver COUNT (76) and the proof-item hash below are measured
-  // unchanged — the movement is confined to the one recompiled resolver.
+  // Re-pinned 2026-08-16 (#606): the E2 repair regeneration
+  // (`onchain/aiken/plutus.json` md5 5e38d7c6ccb7987d0aca710307dcaea7, 398
+  // validators, same fork) moved the certificate policy id
+  // (c3682abd… -> f030476f…) and recompiled the canonical-decode resolver
+  // against the welded-`field_hash` door, so the applied hash moves again:
+  // f492660e… -> 69fd502b…. The resolver COUNT (76) and the proof-item hash
+  // below are measured unchanged.
   // Measured by `loadContracts()` here, the same producer this row asserts on.
   it("pins the applied §3.2 necessity identities on the measurement deployment", async () => {
     const contracts = await loadContracts();
     expect(contracts.validationTraceDispute.semanticResolvers).toHaveLength(76);
     expect(
       contracts.validationTraceDispute.semanticResolvers[1]!.spendingScriptHash,
-    ).toBe("f492660e7977de3cc0d78695560e7b7c4d08ef1653c89b138ca8a29f");
+    ).toBe("69fd502baf0a512c3275671515da07aaa6c049cec2fd430e55d61cc9");
     expect(contracts.validationTraceDispute.proofItem.spendingScriptHash).toBe(
       "22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab",
     );

@@ -649,10 +649,20 @@ describe("fault-proof maximum proof fit", () => {
         maxTxExSteps,
       });
     }
+    // **#606 re-take (2026-08-16), 20 -> 17 — the first genuine measurement
+    // of this leg.** The 20 predates the pexcludes empty-sentinel repair:
+    // until #606 this family's step-03 crashed on the first-block empty
+    // ledger (#608's liveness gap), the leg was an owner-ruled accepted red,
+    // and #580's re-measurement explicitly excluded it, so the pin was the
+    // pre-measurement analysis figure, never a measured one. With the
+    // sentinel translated the whole correction path measures end to end for
+    // the first time, and the ceiling lands at 17 — derived, as everywhere in
+    // this file, from the largest measured stage's headroom at 276 bytes per
+    // forced branch level.
     const byteCeiling = expectMembershipDepthCeiling({
       label: "non-existent-input",
       proofFit,
-      expectedCeiling: 20,
+      expectedCeiling: 17,
     });
     printProofFit("non-existent-input", proofFit, {
       branchLevels: ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
@@ -1018,10 +1028,19 @@ describe("fault-proof maximum proof fit", () => {
     // already records 19 as `adversarialDepthBound.byteCeiling` and
     // `summary.lowestEnvelopeExhaustionBranchLevel` — this row was the stale
     // half of that pair, not the artifact.
+    //
+    // **#606 re-take (2026-08-16), 19 -> 18.** One level again, and the same
+    // tight-margin mechanism the #580 note describes: this family's largest
+    // stage sat just inside a 276-byte branch level, and the #606
+    // regeneration (every field-door-consuming step validator recompiled;
+    // reference-script and datum identities moved with the cascade) shifted
+    // the largest measured stage across that boundary. The per-level marginal
+    // cost is measured unchanged (139 CBOR / 276 complete-signed bytes), so
+    // the derivation moves by exactly one level.
     const byteCeiling = expectMembershipDepthCeiling({
       label: "zero-input",
       proofFit,
-      expectedCeiling: 19,
+      expectedCeiling: 18,
     });
     printProofFit("zero-input", proofFit, {
       branchLevels: ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
