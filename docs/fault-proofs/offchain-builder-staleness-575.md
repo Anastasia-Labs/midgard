@@ -162,36 +162,31 @@ handed. The old `..._preimage: List<...>` redeemer argument is gone from every
 rebound step, so an off-chain builder that still fills one is producing a
 redeemer with a constructor arity the validator will not decode.
 
-One restriction on that choice is worth carrying off-chain, because a builder
-that ignores it will produce a redeemer the validator refuses at run time rather
-than one TypeScript can catch. A field in the **witness set** — §2.5 fields 6, 7
-and 8 — may not be carried under tier 3. A §8.6 certificate is minted against a
-`witness_set_hash` taken from the minter's own redeemer, and §3's transaction id
-does not commit that value, so for those three fields the certificate binds the
-preimage to nothing the disputing thread anchored. `carriage_reaches_the_anchor`
-in `field-opening-v1.ak` refuses it, and `docs/spec/midgard-tx.md` §8.3 erratum
-E2 records the limit.
+One restriction on that choice existed when this document was written, and its
+record is kept because the assignment history ran through it. A field in the
+**witness set** — §2.5 fields 6, 7 and 8 — could not be carried under tier 3:
+a §8.6 certificate is minted against a `witness_set_hash` taken from the
+minter's own redeemer, and §3's transaction id does not commit that value, so
+for those three fields the certificate bound the preimage to nothing the
+disputing thread anchored. `carriage_reaches_the_anchor` in
+`field-opening-v1.ak` refused it, and `docs/spec/midgard-tx.md` §8.3 erratum
+E2 recorded the limit (limit 3).
 
-**The repair is #606's** (owner ruling, 2026-08-14, in-session, recorded on
-#606). It was assigned to #579 when this was written and re-pointed at #604 on
-2026-08-13; #604 then measured what it costs. Folding the field commitment into
-the §8.6 asset name changes `field_preimage_certificate_asset_name`, which both
-the minting policy and the door compile against, so it moves the certificate
-policy id — a validator *parameter* at the twelve applied sites #579 swept — and
-with it every field-opening step's applied script hash. That is a blueprint
-regeneration, and #579's single regeneration was spent. One hypothesis is
-recorded falsified so it is not re-tried: carrying `witness_set_hash` in the
-thread anchor does **not** repair limit 3. The anchor already carries it; that
-closes the tiers-1/2 forgery, because there the door hashes the preimage itself.
-Under tier 3 the door never hashes it, the certificate is the binding, and the
-certificate's token name is `(tx_id, field_index)` alone — there is nothing in
-the token for a step to check the anchored hash against.
-
-What #604 *did* land here is off-chain hardening: `fieldOpeningV1ForField`
-refuses to emit tier-3 carriage for fields 6–8, duplicating the door's refusal at
-the point a transaction is built. It constrains honest builders and does nothing
-to an adversary, who does not use them, so it is explicitly not a substitute for
-the repair.
+**The repair landed as #606's** (deferred there via #604 by owner ruling
+2026-08-14; repair shape amended by owner ruling 2026-08-16; E2 limit 3 is
+RESOLVED). Rather than folding the commitment into the asset name, the §8.6
+datum gained a mint-welded `field_hash` — the §4 commitment the chunk
+concatenation is verified against — and the door requires it to equal the
+commitment derived from the anchored structures; the asset name became one
+constant (`"MIDGARD_FIELD_PREIMAGE_CERT"`). `carriage_reaches_the_anchor` was
+deleted with the repair, and #604's builder-side duplication of the refusal in
+`fieldOpeningV1ForField` lifted with it, keeping door parity. One hypothesis
+remains recorded falsified so it is not re-tried: carrying `witness_set_hash`
+in the thread anchor alone does **not** repair the hole — the anchor already
+carries it, which closes the tiers-1/2 forgery where the door hashes the
+preimage itself; under tier 3 the binding had to move into something the door
+can compare against the anchor, which is what the datum's welded `field_hash`
+is.
 
 **A fourth divergence, found by #604 and not in the three above.** #575
 (`2fec6b0fb`) also *deleted* `invalid_signature/step_01.Args`'s

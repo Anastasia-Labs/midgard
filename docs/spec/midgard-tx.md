@@ -35,14 +35,16 @@
   `maxTier1RedeemerPreimageBytes` remains provisional and unmeasured, though E1
   narrows the headroom it was reasoned from.
 - **Errata:** §8.3 erratum E1 — `K` re-pinned by Phase-4 measurement; §8.3
-  erratum E2 — three limits on faulting the witness-set fields (§2.5 fields
-  6–8): field 6 is not faultable at C20.6's admissible script-witness
-  cardinality, on execution and on carriage, and **no** witness-set field may be
-  carried under tier 3 at all, because a §8.6 certificate cannot be bound to a
-  transaction id that does not commit the witness set. Raised by the Phase-5 Q1x
-  rebind ([#575](https://github.com/Anastasia-Labs/midgard/issues/575)); the
-  tier-3 repair is assigned to
-  [#579](https://github.com/Anastasia-Labs/midgard/issues/579).
+  erratum E2 — limits on faulting the witness-set fields (§2.5 fields 6–8):
+  field 6 is not faultable at C20.6's admissible script-witness cardinality,
+  on execution and on carriage (limits 1 and 2, which stand). Limit 3 — the
+  outright tier-3 refusal at every witness-set field — is **RESOLVED** by
+  [#606](https://github.com/Anastasia-Labs/midgard/issues/606) (owner ruling
+  2026-08-16): the §8.6 certificate datum carries a mint-welded `field_hash`
+  and the door requires it to equal the commitment derived from the anchored
+  structures, so tier 3 is admissible at every field. Raised by the Phase-5
+  Q1x rebind ([#575](https://github.com/Anastasia-Labs/midgard/issues/575));
+  see E2's disposition for the assignment history.
 
 ## 1. Scope and notation
 
@@ -908,13 +910,16 @@ neither was stated in the first revision of this erratum:
   be taken with it in view. It is a caution, not a re-pin: no step transaction
   has been measured, and this erratum does not measure one.
 
-#### Erratum E2 — limits on faulting the witness-set fields (2026-08-09)
+#### Erratum E2 — limits on faulting the witness-set fields (2026-08-09; limit 3 resolved 2026-08-16)
 
 **Amendment-level erratum**, raised by
 [#575](https://github.com/Anastasia-Labs/midgard/issues/575) under the
 _Provisional values_ clause. It re-pins nothing; it records three limits that a
 reader of §8 and §10 would otherwise have to discover by running out of budget —
-or, for limit 3, by being slashed.
+or, for limit 3 while it stood, by being slashed. Limits 1 and 2 stand; limit 3
+is **RESOLVED** by [#606](https://github.com/Anastasia-Labs/midgard/issues/606)
+(owner ruling 2026-08-16 — the welded-`field_hash` repair, recorded in full at
+limit 3 below).
 
 Two family steps prove an **absence** over a witness-set field:
 `missing-native-script-tx` step-06 over field 6 — "the required native script is
@@ -925,9 +930,9 @@ each means a walk (`fold_opened_field`) over the whole field.
 Limit 1 is theirs and it is about **budget**: both walks pass the GOAL_SPEC §3.3
 basis before their field's admissible cardinality is reached. Limit 2 is about
 field 6 in particular, where being variable-width costs it its authenticated
-item count under tier-3 carriage. Limit 3 is neither: it applies to all three
-witness-set fields whether or not anything walks them, and it is a **soundness**
-limit rather than a budget one.
+item count under tier-3 carriage. Limit 3 was neither: it applied to all three
+witness-set fields whether or not anything walks them, and it was a
+**soundness** limit rather than a budget one.
 
 **Limit 1 — execution.** Both of the wave's unbounded walks are measured
 through the real step at both ends of their admissible range and pinned in
@@ -937,11 +942,16 @@ high-cardinality row is recorded as `basisFit: "exceeds"` with an
 
 | reading                          | memory         | cpu                |
 | -------------------------------- | -------------- | ------------------ |
-| step-06 at 1 script witness      | 615,106        | 200,166,521        |
-| step-06 at 224 script witnesses  | **35,571,780** | **11,888,712,125** |
-| step-04 at 1 address witness     | 578,001        | 186,623,451        |
-| step-04 at 318 address witnesses | **40,230,476** | **12,839,235,525** |
+| step-06 at 1 script witness      | 627,443        | 203,567,716        |
+| step-06 at 224 script witnesses  | **35,584,117** | **11,892,113,320** |
+| step-04 at 1 address witness     | 585,338        | 189,224,646        |
+| step-04 at 318 address witnesses | **40,237,813** | **12,841,836,720** |
 | GOAL_SPEC §3.3 basis             | 13,200,000     | 8,000,000,000      |
+
+(Rows re-taken 2026-08-16 with the #606 regeneration — the compiled step
+validators moved with the repair, so the ledger rows moved by fractions of a
+percent; every derived figure below — the marginal costs, the ≈81/≈101 fit
+points and the binding axis — survives the re-take unchanged.)
 
 `missing-native-script-tx` step-06 walks field 6 at C20.6's 224-witness Cardano
 envelope: ≈ 2.7× the memory basis and ≈ 1.5× the cpu basis. From the two
@@ -965,10 +975,11 @@ cannot avoid, not the decoding — which is why carriage cannot remedy it and
 
 **Where the field-7 row sits relative to carriage, stated plainly.** 318 address
 witnesses is a 32,757-byte field 7, which is over the §8.3 tier-1 redeemer bound
-and over `K`, so on L1 that preimage would have to travel under tier 3 — which
-limit 3 below now refuses for a witness-set field. The row is therefore taken
-under tier-1 carriage in the harness at a width tier 1 could not carry, and it
-is published as a *walk-cost* reading rather than as a reachable configuration;
+and over `K`, so on L1 that preimage travels under tier 3 (admissible for a
+witness-set field since #606 resolved limit 3 below). The row is nonetheless
+taken under tier-1 carriage in the harness at a width tier 1 could not carry,
+and it is published as a *walk-cost* reading rather than as a reachable
+configuration;
 `q1x_f6_address_witness_fixture_sits_at_the_admissible_cardinality` asserts
 exactly that, so the fact cannot go unnoticed. It does not soften the limit,
 because execution binds first and by a wide margin: the widest field 7 tier-2
@@ -983,107 +994,109 @@ assertion, so `field_item_count` aborts rather than return it. A field-6
 preimage too large for tier-2 carriage therefore cannot be walked at all — the
 step aborts, loudly and unconditionally, rather than clamping.
 
-**Limit 3 — a witness-set field may not be carried under tier 3 at all.** This
-one is not about budget. It is a **soundness** limit, found by the #575 round-2
-review, and the refusal that enforces it is part of #575.
+**Limit 3 — RESOLVED (#606, owner ruling 2026-08-16): a witness-set field may
+be carried under tier 3.** As found by the #575 round-2 review this was a
+**soundness** limit, not a budget one, and until #606 landed it was enforced
+as an outright refusal. The finding, its interim enforcement and its
+resolution are all recorded here, because part of what an erratum records is
+where the earlier analysis went wrong and what closed it.
 
-Tiers 1 and 2 put the whole preimage in the consumer's hands, so the §8.8 door
-hashes it against `field_commitment_at(body, witness_set, field_index)` and the
-content is bound to structures the disputing thread already anchored. Tier 3
-exists precisely because the preimage is too large to hold, so the door never
-hashes it: the §8.6 certificate is the binding instead, and the certificate's
-authority is a token named `(tx_id, field_index)`.
+The hole, as found. Tiers 1 and 2 put the whole preimage in the consumer's
+hands, so the §8.8 door hashes it against
+`field_commitment_at(body, witness_set, field_index)` and the content is bound
+to structures the disputing thread already anchored. Tier 3 exists precisely
+because the preimage is too large to hold, so the door never hashes it: the
+§8.6 certificate is the binding instead — and at the time, the certificate's
+authority was a token named `(tx_id, field_index)` and nothing more.
 
-For fields 0–5 that name is enough. The minting policy re-derives the
+For fields 0–5 that name was enough. The minting policy re-derives the
 transaction id from the body it was handed and takes `expected_hash` off that
 same body, and §3's id preimage **is** the body — so a certificate can only be
 minted for the field the named transaction actually committed.
 
-For fields 6–8 it is not enough, for the same reason §2.5's anchor has two arms.
-The minter reads `witness_set_hash` off the *tail* of its own redeemer's
+For fields 6–8 it was not enough, for the same reason §2.5's anchor has two
+arms. The minter reads `witness_set_hash` off the *tail* of its own redeemer's
 `native_tx_compact_cbor`, and §3's id preimage does not reach that tail. A
-certifier may therefore present the committed transaction's genuine body — so
-the token is minted under the committed transaction's own name — followed by the
-`witness_set_hash` of any witness set it chooses, and certify a field 6, 7 or 8
-preimage that transaction never committed. Both directions of the §2.5 absence
-rules follow: an empty field 7 makes "the required signature is absent" true of
-every transaction, and a fabricated field 7 makes an invalid-signature fault
-provable against a signature that was never carried. Both slash an honest
-operator.
+certifier could therefore present the committed transaction's genuine body —
+so the token was minted under the committed transaction's own name — followed
+by the `witness_set_hash` of any witness set it chose, and certify a field 6,
+7 or 8 preimage that transaction never committed. Both directions of the §2.5
+absence rules followed: an empty field 7 makes "the required signature is
+absent" true of every transaction, and a fabricated field 7 makes an
+invalid-signature fault provable against a signature that was never carried.
+Both slash an honest operator. Until the repair, a witness-set field was
+therefore **refused tier-3 carriage** outright at
+`fraud_proofs/field_opening_v1.carriage_reaches_the_anchor`.
 
-Until the wire format changes, a witness-set field is therefore **refused tier-3
-carriage** at `fraud_proofs/field_opening_v1.carriage_reaches_the_anchor`, the
-one seam every family step reaches the door through. The cost is that fields 6–8
-cannot be carried above the §8.3 tier-2 bound, so a fault over a witness-set
-field whose preimage exceeds that bound cannot be proved at all. The abort is
-unconditional and loud, in keeping with §7.3.
+**The repair (#606, owner ruling 2026-08-16, superseding the asset-name shape
+the 2026-08-14 deferral described).** The §8.6 datum gained `field_hash` —
+the §4 flat commitment of the certified preimage — and the mint welds it:
+`certificate.field_hash` must equal the same commitment the chunk
+concatenation is verified against, so `field_hash ↔ chunk_digests` is one
+mint-verified statement. The asset name became a single constant
+(`"MIDGARD_FIELD_PREIMAGE_CERT"`); the derivation was retired, because with
+the commitment in the datum the name carries no security weight. The door's
+certificate selection then requires the datum's `field_hash` to equal the
+commitment it derives from the **anchored** structures — for a witness-set
+field, the chain that reaches the anchored `witness_set_hash`. A certificate
+minted over a fabricated witness set wears the fabricated hash in its datum
+and fails that equality; the mint-level acceptance of the fabrication is
+unchanged and harmless, because the forged object can no longer be spent at
+any door. `carriage_reaches_the_anchor` was deleted with the repair rather
+than left as a guard that cannot fail. The assignment history: written
+against #579, moved to #604 with the #575 off-chain remediation (owner ruling
+2026-08-13), deferred from #604 to #606 as an on-chain identity move once
+#604 measured the cost (owner ruling 2026-08-14), delivered by #606 with the
+2026-08-16 amendment; the interim exposure the 2026-08-14 deferral accepted
+never reached a live system.
 
-**The assigned resolution is to fold the field commitment into the §8.6 asset
-name**, so that a certificate token cannot be borrowed for a preimage the named
-transaction did not commit and the door's own `expected_hash` becomes checkable
-against the name. That is a change to a frozen wire format (§8.6) and to a
-landed minting policy, so it is **assigned to
-[#606](https://github.com/Anastasia-Labs/midgard/issues/606)**, not to #575.
+One hypothesis remains recorded as **falsified** so it is not re-tried:
+carrying `witness_set_hash` in the thread anchor alone does *not* repair the
+hole. The anchor already carried it — `WitnessAnchor { tx_id,
+witness_set_hash }`, checked in `anchored_native_tx` — and that is what closes
+the tiers-1/2 forgery, because under those tiers the door hashes the preimage
+itself. Under tier 3 the door never hashes the preimage, and there was
+nothing in the *token* for a step to check the anchored `witness_set_hash`
+against — which is precisely why the repair had to put the commitment where
+the door can compare it: the mint-verified datum.
 
-**Disposition (owner ruling, 2026-08-14, in-session, recorded on #606).** The
-assignment has moved twice and this is where it rests. It was written against
-#579, moved to #604 with the rest of the #575 off-chain remediation by owner
-ruling on #579 (2026-08-13), and deferred from #604 to #606 once #604 measured
-what the repair actually costs: folding the field commitment into the asset name
-changes `field_preimage_certificate_asset_name`, which both the §8.6 minting
-policy and the §8.8 door compile against, so it moves the certificate policy id
-— a validator *parameter* at the twelve applied sites #579 swept — and therefore
-every field-opening step's applied script hash. That is a blueprint regeneration
-and a full identity cascade, and #579's single regeneration was already spent.
-#606 carries it on the next natural regeneration event, as a **pre-launch
-obligation**; the interim exposure is owner-accepted and bounded by the refusal
-below, which stays live and pinned from both sides until the asset name changes.
-
-One hypothesis is recorded as **falsified** so it is not re-tried: carrying
-`witness_set_hash` in the thread anchor does *not* repair limit 3. The anchor
-already carries it — `WitnessAnchor { tx_id, witness_set_hash }`, checked in
-`anchored_native_tx` — and that is what closes the tiers-1/2 forgery, because
-under those tiers the door hashes the preimage itself. Under tier 3 the door
-never hashes the preimage; the certificate is the binding, and the certificate's
-token name is `(tx_id, field_index)` alone. There is nothing in the token for a
-step to check the anchored `witness_set_hash` against, which is precisely why the
-repair has to be in the asset name.
-
-Off-chain builders additionally decline to *emit* tier-3 carriage for fields 6–8,
-which duplicates the door's refusal at the point a transaction is built rather
-than at the point it is submitted. That is ordinary hardening and is **not** the
-repair: it constrains honest builders and does nothing to an adversary, who does
-not use them.
+The off-chain builders' matching refusal (the #604 hardening that duplicated
+the door's) lifted with the repair, keeping door parity: builders emit tier-3
+carriage for fields 6–8 exactly as the door now accepts it.
 
 Vectors: `field_opening_v1.test`'s tier-3 block states the premise in both
 directions — the minting predicate accepts the fabrication on a witness field
-and refuses it on a body field — and
-`missing_signature_step_04_rejects_certified_carriage` asserts the refusal at a
-real step.
+(wearing the fabricated `field_hash`) and refuses it on a body field — then
+pins the closure from both sides: the forged certificate is refused at all
+three witness-set fields, the view, walk and second-open entry points
+(`certified_carriage_is_refused_at_the_address_witness_field` and its
+siblings), and the welded-hash positives open fields 5–8 against transactions
+that genuinely commit the preimage.
+`missing_signature_step_04_rejects_certified_carriage` asserts the
+forged-certificate rejection at a real step. Disabling the weld expect flips
+exactly the vectors that stand on it (mutation-verified at the #606 landing).
 
 **What these are not.** Limits 1 and 2 are not introduced by the #575 rebind:
 the retired idiom needed the same item count, and it reproduced and re-hashed
 the whole script-witness collection inside the step, so it is not credible that
 it was cheaper — but that comparison has **not been measured**, no counted-era
 step-06 row exists, and nothing here should be read as a measured claim about
-the retired idiom's cost. What is measured is the row above. Limit 3 is likewise
-not introduced by the rebind — the tier-3 ladder and the §8.6 certificate are
-#573/#574 surfaces and the gap is in the wire format, not in the rebind — but it
-was **found** by #575's review and closed by #575's refusal.
+the retired idiom's cost. What is measured is the row above. Limit 3 was
+likewise not introduced by the rebind — the tier-3 ladder and the §8.6
+certificate are #573/#574 surfaces and the gap was in the wire format, not in
+the rebind — but it was **found** by #575's review, held shut by #575's
+refusal, and closed by #606's weld.
 
-Nor is any of the three remediable by carriage choice: limit 1 is execution, not
-wire size, and limits 2 and 3 are precisely statements about carriage. The
-resolution for limits 1 and 2 is §10's resumable walk — a checkpoint in thread
-state and a fault spread over several transactions — which is
+Nor is either surviving limit remediable by carriage choice: limit 1 is
+execution, not wire size, and limit 2 is precisely a statement about carriage.
+The resolution for limits 1 and 2 is §10's resumable walk — a checkpoint in
+thread state and a fault spread over several transactions — which is
 [#565](https://github.com/Anastasia-Labs/midgard/issues/565)'s work, with the
 deployed-identity half in
-[#579](https://github.com/Anastasia-Labs/midgard/issues/579); the resolution for
-limit 3 is the §8.6 asset-name change above, which is #606's. What #575 owed and
-has delivered is that the limits are **measured and asserted** rather than
+[#579](https://github.com/Anastasia-Labs/midgard/issues/579). What #575 owed
+and has delivered is that the limits are **measured and asserted** rather than
 latent: the ledger row above goes red if the figure moves in either direction,
-including if the step ever starts fitting, and limit 3's refusal is pinned from
-both sides — neutralise it and the forgery selectors flip; widen it into a ban
-on tier 3 and the body-field control flips.
+including if the step ever starts fitting.
 
 ### 8.4 Tier 3 — chunked + certified digest-manifest
 
@@ -1130,11 +1143,20 @@ FieldPreimageCertificateV1 {
   owner: VerificationKeyHash,        -- min-Ada reclaim authority, set by minter
   tx_id: ByteArray,                  -- the L2 tx's id (32 B)
   field_index: Int,                  -- 0..8
+  field_hash: ByteArray,             -- the §4 flat field commitment (32 B),
+                                     --   mint-welded to chunk_digests (#606)
   total_length: Int,                 -- preimage byte length (ragged-last + offset math)
   chunk_digests: List<ByteArray>,    -- blake2b-256 per chunk, in order;
                                      --   length = ceil(total_length / K)
 }
 ```
+
+`field_hash` was added by [#606](https://github.com/Anastasia-Labs/midgard/issues/606)
+(owner ruling 2026-08-16, resolving erratum E2 limit 3): it is the same
+commitment the mint checks the chunk concatenation against, restated in the
+mint-verified datum so a consumer can compare it to a commitment it
+authenticated itself. Where the hash "came from" is irrelevant; that the
+chunks were verified against it is everything.
 
 **Mint (certification).** The certification redeemer carries `compact_cbor`
 (and `witness_set_compact_cbor`). The policy re-derives the tx-id through
@@ -1142,10 +1164,12 @@ the unchanged §3 derivation, extracts the expected field hash positionally
 from the supplied structures (satisfying §4 via the
 transitively-committed-by-tx-id clause), verifies
 `blake2b_256(chunk_0 ‖ … ‖ chunk_{n-1})` over the redeemer-ordered
-referenced raw chunks against that hash, and checks `total_length` and every
-per-chunk digest against the actual bytes. Order is supplied by the
-redeemer's reference-input indices and verified in one shot; per-chunk
-authentication at certification time is unnecessary.
+referenced raw chunks against that hash, requires the datum's `field_hash`
+to equal that same hash (the #606 weld: `field_hash ↔ chunk_digests` inside
+one mint-verified datum), and checks `total_length` and every per-chunk
+digest against the actual bytes. Order is supplied by the redeemer's
+reference-input indices and verified in one shot; per-chunk authentication
+at certification time is unnecessary.
 
 The redeemer is consensus wire format on the same footing as §8.8's carriage
 types — **constructor order is frozen** (Constr tags 0/1), because an
@@ -1167,43 +1191,49 @@ pub type FieldPreimageCertificateMintRedeemerV1 {
 permissionless (§8.7), so the policy checks content and never who supplied it.
 The certificate itself is read from the named output's inline datum rather than
 from the redeemer, so every field a consumer relies on is proved rather than
-asserted: `tx_id` against the §3 re-derivation, `field_index` and `tx_id`
-against the asset-name derivation's bounds, `total_length` and every
-`chunk_digests` entry against the referenced bytes. `owner` is the exception
-and is only length-checked (28 bytes), because it is the minter's own choice of
-min-Ada reclaim authority and no consuming step reads it — it has to be a
-spendable key hash or the output is dead, and that is the whole of the
-requirement. `witness_set_compact_cbor` is required for all nine fields, not
-only 6–8, because certification happens once per field and one unconditional
-code path is worth more than one saved hash.
+asserted: `tx_id` against the §3 re-derivation (32 bytes by construction),
+`field_index` against the positional §2.5 extraction (which refuses an index
+outside 0..8), `field_hash` against the reconstruction's own expected hash,
+`total_length` and every `chunk_digests` entry against the referenced bytes.
+`owner` is the exception and is only length-checked (28 bytes), because it is
+the minter's own choice of min-Ada reclaim authority and no consuming step
+reads it — it has to be a spendable key hash or the output is dead, and that
+is the whole of the requirement. `witness_set_compact_cbor` is required for
+all nine fields, not only 6–8, because certification happens once per field
+and one unconditional code path is worth more than one saved hash.
 
 **Certificate output shape.** The output the redeemer names carries the
 certificate as an inline datum, no reference script, and exactly one asset of
-the certificate policy — the `(tx_id, field_index)` name at quantity 1, stated
-as the whole per-policy asset list, because the design requires that no second
-name of the policy ride in alongside the proved one. Its address is the
-certificate script's own payment credential with **no stake credential**, so
-certificates live at one enumerable address and the design requires the
-deposit's staking rights to stay unassigned rather than being pointed elsewhere
-on the way past.
+the certificate policy — the constant name at quantity 1, stated as the whole
+per-policy asset list, because the design requires that no second name of the
+policy ride in alongside the proved one. Its address is the certificate
+script's own payment credential with **no stake credential**, so certificates
+live at one enumerable address and the design requires the deposit's staking
+rights to stay unassigned rather than being pointed elsewhere on the way past.
 
-**Token.** Quantity 1; deterministic asset name derived from
-`(tx_id, field_index)` for indexer discovery. Duplicate certificates are
-permitted and harmless — each is independently sound.
+**Token.** Quantity 1; one **constant asset name** for every certificate of
+the policy ([#606](https://github.com/Anastasia-Labs/midgard/issues/606),
+owner ruling 2026-08-16, superseding the retired
+`blake2b_256(field_index_byte ‖ tx_id)` derivation). Duplicate certificates
+are permitted and harmless — each is independently sound; two certificates
+for the same `(tx_id, field_index)` (or even the same content) may coexist as
+same-name tokens, and consumers disambiguate by **datum**, never by token
+alone.
 
-The derivation is normative, because the minting policy and every consuming
-step have to name the same token and an off-chain minter has to reproduce it:
+The constant is normative, because the minting policy pins it and an
+off-chain minter has to reproduce it:
 
 ```
-asset_name = blake2b_256(field_index_byte ‖ tx_id)
+asset_name = "MIDGARD_FIELD_PREIMAGE_CERT"     -- ASCII, 27 bytes
 ```
 
-— a 33-byte preimage whose first byte is `field_index` (0..8) and whose
-remaining 32 are `tx_id`, yielding a 32-byte name. The leading byte is domain
-separation, not a length header; with `field_index` bounded to 0..8 and
-`tx_id` fixed at 32 bytes the preimage is unambiguous, and both bounds are
-enforced rather than assumed. Implementations MUST reject a `field_index`
-outside 0..8 and a `tx_id` that is not 32 bytes.
+The name is branding, not identity: everything the retired derivation encoded
+is in the mint-verified datum, and with `field_hash` in the datum the name
+carries no security weight — but the mint's single-pair check still requires
+exactly this name at quantity 1, so a token of the policy is always the
+constant name over a datum the mint proved. Discovery moves with it: an
+indexer enumerates the single certificate address (§8.5 pins it to one shape)
+and filters by datum, rather than looking a derived name up.
 
 **One multi-handler validator.** The same script carries the `mint` and
 `spend` handlers, so the policy id and the spend credential are one script
@@ -1212,13 +1242,18 @@ signature. No external reference-script bootstrap, no cyclic dependency.
 
 **Consumption.** A certificate serves any step, thread, or game disputing
 the same transaction, indefinitely; it is game-, block-, and
-source-agnostic. A consuming step matches the certificate's
+source-agnostic. A consuming step selects a certificate by the policy's
+constant-name token on a reference input, then matches the datum's
 `(tx_id, field_index)` only against **authenticated** sources (the thread's
 already-authenticated disputed transaction) — never redeemer-supplied
-identity. Post-certification single-chunk access authenticates at O(one
-chunk hash) against the digest vector (worst case two chunk hashes on a
-straddling item); for a fixed-stride field `count` derives from the
-mint-verified `total_length` with no chunk hash spent.
+identity — and requires the datum's `field_hash` to equal the commitment it
+derived from those authenticated structures (#606; for a witness-set field,
+the chain that reaches the anchored `witness_set_hash`). A certificate
+minted over a fabricated witness set wears the fabricated hash in its datum
+and fails that equality at the door. Post-certification single-chunk access
+authenticates at O(one chunk hash) against the digest vector (worst case two
+chunk hashes on a straddling item); for a fixed-stride field `count` derives
+from the mint-verified `total_length` with no chunk hash spent.
 
 **Wiring constraint (normative, for whoever wires a consumer).** The
 `certificate_policy_id` that the access door checks the manifest UTxO's token
@@ -1338,16 +1373,16 @@ exactly as §12.5 found — subtracts out.
 
 | #   | seam test                             | what it adds                  | memory  | CPU         |
 | --- | ------------------------------------- | ----------------------------- | ------- | ----------- |
-| 0   | `tier3_corner_fixture_only`           | fixture only, door unopened     | 406,217 | 195,100,192 |
-| 1   | `tier3_corner_open_only`              | + the door                      | 645,430 | 266,889,706 |
-| 2   | `tier3_corner_one_read`               | + one item in chunk 0           | 800,572 | 360,948,687 |
-| 3   | `tier3_corner_two_reads`              | + a second item in chunk 0      | 957,318 | 455,439,016 |
-| 4   | `tier3_corner_straddling_read`        | one item across chunks 0/1      | 838,225 | 387,891,432 |
-| 5   | `tier3_corner_second_straddling_read` | one item across chunks 1/2      | 861,170 | 381,783,736 |
-| 6   | `tier3_corner_last_chunk_read`        | one item in the 2,467-byte tail | 833,279 | 331,129,453 |
+| 0   | `tier3_corner_fixture_only`           | fixture only, door unopened     | 401,937 | 227,660,288 |
+| 1   | `tier3_corner_open_only`              | + the door                      | 640,675 | 299,793,903 |
+| 2   | `tier3_corner_one_read`               | + one item in chunk 0           | 795,817 | 393,852,884 |
+| 3   | `tier3_corner_two_reads`              | + a second item in chunk 0      | 952,563 | 488,343,213 |
+| 4   | `tier3_corner_straddling_read`        | one item across chunks 0/1      | 833,470 | 420,795,629 |
+| 5   | `tier3_corner_second_straddling_read` | one item across chunks 1/2      | 856,415 | 414,687,933 |
+| 6   | `tier3_corner_last_chunk_read`        | one item in the 2,467-byte tail | 828,524 | 364,033,650 |
 
 **Rows 1–6 re-taken under #592, by one fixed per-view amount, and row 0 did not
-move.** Every measured row above rose by exactly **+5,944 mem / +1,838,206 cpu**.
+move then.** Every measured row rose by exactly **+5,944 mem / +1,838,206 cpu**.
 The cause is that tier 3 is now read two ways: `certified_view` keeps the lazy,
 chunk-by-chunk form these rows measure, and `authenticated_whole_field_view` —
 which the validation machine needs, because its phases consume §5.2's item count
@@ -1357,11 +1392,16 @@ those moved into one `certified_chunks` returning a `CertifiedChunksV1` record,
 and a tier-3 view construction now pays one record construction and destructure
 more than it did. The shift is **per view**, not per read, and the measurements
 say so: it is the same figure on the open-only row and on every read row, so it
-cancels out of readings 2, 3 and 4 below, which are unchanged to the unit. Only
-reading 1 — the cost of opening the corner, which is row 1 minus row 0 — moves.
-Row 0 never opens a door and did not move at all. +5,944 is 0.045 % of the §3.3
-memory basis and +1,838,206 is 0.023 % of the CPU basis; no `basisFit` and no
-budget conclusion turns on it.
+cancels out of readings 2, 3 and 4 below, which #592 left unchanged to the unit.
+
+**All rows re-taken again under #606 (2026-08-16), including row 0.** The
+repair welds the §4 commitment into the certificate datum, so the fixture's
+producer now hashes the whole 32,763-byte preimage once at certificate
+construction — that is the CPU rise every row shares, and it subtracts out of
+every published difference. The door's own movement (the constant-name token
+check plus the welded-hash equality replacing the derived-name check and its
+33-byte hash) nets to −475 mem / +344,101 cpu on the open cost; readings 2–4
+are unchanged to the unit.
 
 Absolute units, not rounded figures, because the readings are **differences** and
 a difference of rounded numbers is not a measurement. Every row is the
@@ -1399,10 +1439,11 @@ not reads that would have returned something for any bytes at all.
 
 Four readings.
 
-1. **Opening the corner costs 239,213 mem / 71.79 M CPU and no chunk hash**
+1. **Opening the corner costs 238,738 mem / 72.13 M CPU and no chunk hash**
    (row 1 − row 0). That is 1.81 % of the memory basis and 0.90 % of the CPU
-   basis, for four reference inputs resolved, the certificate's token and
-   `(tx_id, field_index)` matched, the split shape checked and the count derived.
+   basis, for four reference inputs resolved, the certificate's constant-name
+   token found and its datum's `(tx_id, field_index, field_hash)` matched
+   (#606), the split shape checked and the count derived.
    §8.6's "no chunk hash spent" for a fixed-stride count is not a figure of
    speech: three chunks — two of 15,148 bytes and one of 2,467 — sit in the view
    unhashed.
@@ -1419,7 +1460,7 @@ Four readings.
    reading wholly inside that ragged tail **saves** 29.82 M CPU. This is the
    property tier 3 is sold on, and it is now measured rather than argued. The
    saving is on the CPU axis only, and the two axes disagree: row 6 costs 32,707
-   memory units *more* than row 2 (833,279 against 800,572) while costing 29.82 M
+   memory units *more* than row 2 (828,524 against 795,817) while costing 29.82 M
    CPU less, because the read still allocates a view over three chunks and only
    the hashing shrinks. Quoting the CPU saving without the memory rise would be
    quoting half a measurement — the tail read is cheaper on the axis that is
@@ -1434,8 +1475,8 @@ Four readings.
    touched — is unchanged and is what the two figures agree on.
 
 **The per-step read budget at the corner is ≈ 83 items**, and the two axes agree
-almost exactly: `(13,200,000 − 239,213) / 155,142 = 83.5` by memory and
-`(8,000,000,000 − 71,789,514) / 94,058,981 = 84.3` by CPU. **Memory is the
+almost exactly: `(13,200,000 − 238,738) / 155,142 = 83.5` by memory and
+`(8,000,000,000 − 72,133,615) / 94,058,981 = 84.3` by CPU. **Memory is the
 binding axis** — 83.5 is the smaller of the two, so the ≈ 83 figure is the memory
 one and a budget taken from the CPU axis alone would be optimistic by most of a
 read. The margin between the axes is thin (0.9 %) and **the binding axis has
@@ -1468,30 +1509,42 @@ re-pin.
 
 | handler          | size               | control mem | measured mem | control CPU | measured CPU | **handler cost**                  | % of basis      |
 | ---------------- | ------------------ | ----------- | ------------ | ----------- | ------------ | --------------------------------- | --------------- |
-| `mint` (Certify) | `K + 1`, 2 chunks  | 688,584     | 1,331,511    | 294,556,041 | 556,549,259  | **642,927 mem / 261,993,218 CPU** | 4.87 % / 3.27 % |
-| `mint` (Certify) | 32,763 B, 3 chunks | 642,305     | 1,381,246    | 331,915,700 | 689,887,125  | **738,941 mem / 357,971,425 CPU** | 5.60 % / 4.47 % |
-| `spend` (retire) | any                | 519,960     | 756,635      | 254,230,706 | 367,169,723  | **236,675 mem / 112,939,017 CPU** | 1.79 % / 1.41 % |
+| `mint` (Certify) | `K + 1`, 2 chunks  | 428,459     | 1,068,325    | 174,578,313 | 435,662,448  | **639,866 mem / 261,084,135 CPU** | 4.85 % / 3.26 % |
+| `mint` (Certify) | 32,763 B, 3 chunks | 461,145     | 1,199,026    | 252,874,606 | 610,309,281  | **737,881 mem / 357,434,675 CPU** | 5.59 % / 4.47 % |
+| `spend` (retire) | any                | 258,535     | 486,878      | 134,044,978 | 259,766,844  | **228,343 mem / 125,721,866 CPU** | 1.73 % / 1.57 % |
+
+(Rows re-taken 2026-08-16 with #606: the controls fell because the fixture's
+retired asset-name derivations went with the constant name, the mint's handler
+cost is all but unmoved — the weld expect is one 32-byte equality against a
+commitment the reconstruction already computed — and the spend handler traded
+the name derivation's hash for a larger datum to decode: −8,332 mem /
++12.78 M CPU, still the smallest row in the table by memory.)
 
 Both axes carry their control and their measured reading, so every published
 cost is a subtraction the reader can perform. The earlier revision of this table
 published the CPU deltas alone, which made them un-recomputable and therefore
 un-checkable — the one thing a controlled measurement is for.
 
-Certification at the corner is 5.60 % of the memory basis and 4.47 % of the CPU
+Certification at the corner is 5.59 % of the memory basis and 4.47 % of the CPU
 basis, so it fits its transaction with an order of magnitude to spare, and the
-step from two chunks to three costs 96,014 mem — one more chunk digest and one
-more full chunk of reconstruction hash. Retirement is size-independent by construction: the
-spend handler reads the datum, derives the name and checks the token does not
-survive, and never touches carriage.
+step from two chunks to three costs 98,015 mem — one more chunk digest and one
+more full chunk of reconstruction hash. Retirement is size-independent by
+construction: the spend handler reads the datum's `owner`, names the constant
+token (#606) and checks it does not survive, and never touches carriage.
 
 **Min-Ada, at mainnet `coinsPerUtxoByte` = 4,310.** From
 `§8.6 Phase-4 exit measurement — certificate min-Ada and the one-transaction question`:
 
 | output                                          | payload  | inline datum | min-Ada (lovelace) | min-Ada         |
 | ----------------------------------------------- | -------- | ------------ | ------------------ | --------------- |
-| certificate manifest (3 digests)                | —        | 176 B        | 1,939,500          | **1.9395 ADA**  |
+| certificate manifest (3 digests)                | —        | 210 B        | 2,064,490          | **2.0645 ADA**  |
 | full chunk (`K` bytes, repaired `K` = 15,148)   | 15,148 B | 15,624 B     | 68,231,610         | **68.2316 ADA** |
 | ragged tail chunk                               | 2,467 B  | 2,547 B      | 11,869,740         | **11.8697 ADA** |
+
+(The manifest row moved with #606: the datum gained the 32-byte mint-welded
+`field_hash` plus its 2-byte CBOR head, 176 → 210 bytes, and the deposit
+followed at `coinsPerUtxoByte` = 4,310. The chunk rows are datum-only bytes
+and did not move.)
 
 The payload and datum columns are separate on purpose: min-Ada is charged on the
 serialised output, so it is the **datum** column it is proportional to, and the
@@ -1507,7 +1560,7 @@ The asymmetry is the point of tier 3: certifying is nearly free, and the deposit
 that is actually large sits on raw carriage the publisher reclaims by an ordinary
 key spend (§8.5). A three-chunk corner ties up ≈ 150 ADA in reclaimable deposits
 for the life of the dispute — **derived**, as the sum of the measured rows above
-(2 × 68.2316 + 11.8697 + 1.9395 = 150.2724), and stated to the ADA because that
+(2 × 68.2316 + 11.8697 + 2.0645 = 150.3974), and stated to the ADA because that
 is the resolution the claim is made at. (The total is all but unmoved by erratum
 E1's repair of `K`, and that is arithmetic rather than luck: the deposit tracks
 the serialised bytes, and re-cutting the same 32,763-byte preimage moves bytes
@@ -1523,12 +1576,13 @@ parameters. A second and independent reason is measured: a signed full-`K`
 publication is already 15,872 bytes on its own — the whole reserve-clearing
 budget (erratum E1) — and adding the
 §8.6 redeemer (531 B over a 400-byte compact structure and a 100-byte witness
-set) and the manifest output (176 B) puts a lower bound of 16,579 bytes on the
-combination against a
+set) and the manifest output (210 B since #606's welded `field_hash`) puts a
+lower bound of 16,613 bytes on the combination against a
 16,384-byte limit — over budget even before the minting-policy witness. (At the
 superseded `K` the publication alone was 16,648 bytes and the bound was 17,355;
-E1's repair brings the publication to 15,872 and the bound to 16,579, which is
-still over.) **A
+E1's repair brought the publication to 15,872 and the bound to 16,579, and
+#606's larger manifest raises it to 16,613 — still over, in the same
+direction.) **A
 tier-3 publication is therefore always `n + 1` transactions**, and builders
 must not be written expecting otherwise.
 
@@ -3374,16 +3428,18 @@ Five further conditions are normative:
   fields 0/1 and 3/4 commit identically for identical content — does not
   weaken this, because aliased slots commit the *same bytes* and a
   non-envelope convicted under either index is a non-envelope under both.
-- **All three §8 tiers are admissible, at all nine fields.** Tier 3 is
-  admissible for the witness-set fields here even though
-  `carriage_reaches_the_anchor` refuses it for them at the lazy door, and the
-  distinction is the same one §8.11 draws for the tx-order mint: this path
-  materialises the chunks and hashes the concatenation once against the
-  committed commitment, so the §8.6 manifest authenticates nothing about
-  content and a substituted chunk changes the hash. The manifest still buys
-  §8.4's partition and the `(tx_id, field_index)` token binding. Restricting
-  the family to tier 1 would cap the fault kind at what fits one redeemer,
-  leaving a smaller escape hatch open rather than none.
+- **All three §8 tiers are admissible, at all nine fields.** Tier 3 was
+  admissible for the witness-set fields here even while erratum E2's limit-3
+  refusal held them shut at the lazy door (a distinction the #606 repair has
+  since dissolved — the lazy door now admits them too, through the welded
+  `field_hash` equality), and the reason is the same one §8.11 gives for the
+  tx-order mint: this path materialises the chunks and hashes the
+  concatenation once against the committed commitment, so the §8.6 manifest
+  authenticates nothing about content and a substituted chunk changes the
+  hash. The manifest still buys §8.4's partition and the datum's
+  `(tx_id, field_index, field_hash)` binding under the policy's constant-name
+  token. Restricting the family to tier 1 would cap the fault kind at what
+  fits one redeemer, leaving a smaller escape hatch open rather than none.
 - **An honest block is bound but never convicted.** Step 01 accepts a
   challenge against a well-formed field and forwards `verdict = 0`; step 02
   refuses it. That asymmetry is the family's whole safety property against a
@@ -3708,7 +3764,9 @@ committed commitment, so a §8.6 manifest authenticates nothing about content
 and a substituted chunk changes the hash. That argument is inherited rather
 than re-derived — this family reuses §12.7's door entry point unchanged, and
 its own tier-3 vector is taken at a body field, so the witness-set half of the
-claim rests on §12.7's reasoning and on §8.3 erratum E2's carve-out for it.
+claim rests on §12.7's reasoning (the carve-out §8.3 erratum E2 used to make
+for this path is moot since #606 resolved limit 3 — every door admits the
+witness-set fields under tier 3 now).
 
 **The §5.4 shape has a rule and, above the bound, no carriage.** This is
 recorded rather than mitigated, exactly as §12.7 recorded the residue this
