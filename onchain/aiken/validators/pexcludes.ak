@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/merkle_patricia_forestry as mpf
 use cardano/address.{Credential}
 use cardano/transaction.{Transaction}
+use env
 
 /// Merkelized validator backing `midgard/common/utils.plutarch_pexcludes` and
 /// `plutarch_pexcludes_raw`.
@@ -12,6 +13,17 @@ use cardano/transaction.{Transaction}
 /// failing if the key is already present or the proof is invalid. The resulting
 /// root is irrelevant — a successful insert is itself the non-membership
 /// witness, so the inserted value is left empty.
+///
+/// The root is translated through the Midgard empty-trie sentinel before it
+/// reaches the MPF library (#606, from #608's classification). Midgard commits
+/// `env.empty_merkle_tree_root = blake2b_256("")` for every empty MPF —
+/// `state-queue.ak` forces a first block over a genesis confirmed state to
+/// carry exactly that value as `prev_utxos_root` — while the library
+/// reconstructs its empty trie as its own `null_hash` (32 zero bytes). Without
+/// the translation every non-membership claim against an empty ledger is
+/// unsatisfiable and the validator crashes instead of answering; the same
+/// adapter already guards the transition-trace path
+/// (`transition-trace/proof.ak`, `ledger_trie`).
 validator exclusion {
   withdraw(redeemer: Data, _own_credential: Credential, _tx: Transaction) {
     expect [root_data, key_data, proof_data] = builtin.un_list_data(redeemer)
@@ -19,7 +31,13 @@ validator exclusion {
     expect key: ByteArray = key_data
     expect proof: mpf.Proof = proof_data
 
-    expect _excluded = mpf.insert(mpf.from_root(root), key, "", proof)
+    let trie =
+      if root == env.empty_merkle_tree_root {
+        mpf.empty
+      } else {
+        mpf.from_root(root)
+      }
+    expect _excluded = mpf.insert(trie, key, "", proof)
 
     True
   }
@@ -65,10 +83,14 @@ fn run(redeemer: Data) -> Bool {
   )
 }
 
-/// Honest acceptance: the key is genuinely absent from the empty trie, and the
-/// empty proof is the witness to that. Guards the fix against over-rejecting.
+/// Honest acceptance, stated against the root a Midgard header actually
+/// carries: `env.empty_merkle_tree_root` is the canonical empty-trie sentinel
+/// (`blake2b_256("")`), forced onto a first block over a genesis confirmed
+/// state by `state-queue.ak`, and the empty proof is the only witness an empty
+/// ledger can produce. This is the first-block empty-ledger path #608 found
+/// dead; it also guards the sentinel translation against over-rejecting.
 test exclusion_accepts_genuine_non_membership() {
-  run(redeemer_of(mpf.root(mpf.empty), test_key, []))
+  run(redeemer_of(env.empty_merkle_tree_root, test_key, []))
 }
 
 /// Regression for the discarded-binding defect. A well-shaped redeemer whose
