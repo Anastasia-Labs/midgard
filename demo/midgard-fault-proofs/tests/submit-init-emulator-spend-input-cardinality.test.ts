@@ -172,11 +172,22 @@ const CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY = 296;
  * | --- | --- | --- | --- |
  * | Q10 double-spend | 39 / 40 | 75 / 76 | step-04 execution memory / step-04 L1 bytes |
  * | Q11 no-input | 40 / 41 | 196 / 197 | step-02 execution memory / step-02 L1 bytes |
+ *
+ * **#606 re-take (2026-08-16), 75/76 -> 74/75 and 196/197 -> 195/196.** One
+ * input each, on the same byte axis: the legacy journeys attach the step
+ * scripts the transaction runs, and the #606 regeneration grew every
+ * field-door-consuming step validator (the welded-`field_hash` selection
+ * replacing the derived-name check), so the largest fitting transaction
+ * crossed the envelope — step-04 by 35 bytes at 75 double-spend inputs,
+ * step-02 by 3 bytes at 196 no-input inputs. The binding axis is unchanged
+ * (bytes), both members of each pair are still driven through the real
+ * pipeline, and the builder-routing-gap band the module header records widens
+ * by exactly one input at its lower edge.
  */
-const DOUBLE_SPEND_LARGEST_FITTING_CARDINALITY = 75;
-const DOUBLE_SPEND_FIRST_OVER_BYTES_CARDINALITY = 76;
-const NO_INPUT_LARGEST_FITTING_CARDINALITY = 196;
-const NO_INPUT_FIRST_OVER_BYTES_CARDINALITY = 197;
+const DOUBLE_SPEND_LARGEST_FITTING_CARDINALITY = 74;
+const DOUBLE_SPEND_FIRST_OVER_BYTES_CARDINALITY = 75;
+const NO_INPUT_LARGEST_FITTING_CARDINALITY = 195;
+const NO_INPUT_FIRST_OVER_BYTES_CARDINALITY = 196;
 
 const executionCeilings = () => ({
   memory:
