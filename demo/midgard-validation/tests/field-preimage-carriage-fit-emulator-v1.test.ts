@@ -1375,10 +1375,24 @@ describe("§8.6 Phase-4 exit measurement — certificate min-Ada and the one-tra
     expect(coinsPerUtxoByte).toBe(4_310n);
     expect(certification.chunkCount).toBe(3);
     // 210 bytes since #606: the datum gained the 32-byte mint-welded
-    // `field_hash` (plus its 2-byte CBOR head), 176 → 210, and the manifest's
-    // min-Ada moved with it (1.9395 → 2.0645 ADA).
+    // `field_hash` plus its 2-byte CBOR head, 176 → 210.
+    //
+    // The min-Ada movement is **not** those 34 bytes, and the difference is
+    // worth stating because the naive attribution is off by the one thing #606
+    // changed twice. min-Ada is charged on the whole serialised output, and the
+    // output carries the asset name as well as the datum: the name shrank from
+    // a 32-byte `blake2b_256(field_index ‖ tx_id)` digest to the 27-byte
+    // constant `MIDGARD_FIELD_PREIMAGE_CERT`. So the net is +34 − 5 = +29 bytes,
+    // and at 4,310 lovelace/byte that is 124,990 lovelace — exactly the
+    // 1.9395 → 2.0645 ADA the pin below records (1,939,500 → 2,064,490). The
+    // 5-byte half is measured, not asserted from the constant's length: minting
+    // the same manifest under a 32-byte name costs 2,086,040, which is 21,550 =
+    // 5 × 4,310 more than this line pins.
     expect(certification.datumCbor.length / 2).toBe(210);
+    // The other half of the arithmetic above, so neither term is prose.
+    expect(certification.assetNameHex.length / 2).toBe(27);
     expect(certificateMinAda).toBe(2_064_490n);
+    expect(certificateMinAda - 1_939_500n).toBe(29n * coinsPerUtxoByte);
     expect(chunkMinAda).toBe(68_231_610n);
     expect(raggedMinAda).toBe(11_869_740n);
 
@@ -1658,15 +1672,70 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
     // §8.7's recertify half: a second identity mints an interchangeable
     // certificate over the same chunks. Only the `owner` differs, and no
     // consuming step reads it.
+    //
+    // **Healing is pinned on the datum, not the token (#606).** Under the
+    // retired derivation the token name was `blake2b_256(field_index ‖ tx_id)`
+    // and "same name" was the healing property. Since the owner ruling of
+    // 2026-08-16 `deriveFieldPreimageCertificationV1` returns a module-level
+    // constant unconditionally, so an assertion that two plans agree on
+    // `assetNameHex` holds for *any* two plans in the repo and says nothing
+    // about healing. What the ruling actually promises is "same bytes ⇒ same
+    // datum (modulo `owner`)", and that is what these rows check.
     const healedPlan = healMidgardFieldCarriageV1({
       healer: keyHash(HEALER_KEY),
       txId: TX_ID,
       fieldIndex: FIELD_INDEX,
       preimage,
     });
-    expect(deriveFieldPreimageCertificationV1(healedPlan).assetNameHex).toBe(
+    const originalCertificate = plan.certificate;
+    const healedCertificate = healedPlan.certificate;
+    if (originalCertificate === null || healedCertificate === null) {
+      throw new Error("a tier-3 plan must carry a certificate");
+    }
+    // The mint-welded commitment — the value the §8.8 door now holds against
+    // the commitment it anchored itself — is the same bytes' hash either way.
+    expect(healedCertificate.fieldHash).toEqual(originalCertificate.fieldHash);
+    expect(healedCertificate.fieldHash).toEqual(plan.commitment);
+    // And so is every other content-bound field; `owner` is the only
+    // difference, which is exactly what "interchangeable at consumption" means.
+    expect(healedCertificate.owner).not.toEqual(originalCertificate.owner);
+    expect({
+      ...healedCertificate,
+      owner: originalCertificate.owner,
+    }).toEqual(originalCertificate);
+    // At the wire level: the healed manifest's datum differs from the
+    // original's only because the reclaim authority does, and the two become
+    // byte-identical the moment the owners agree.
+    expect(deriveFieldPreimageCertificationV1(healedPlan).datumCbor).not.toBe(
+      deriveFieldPreimageCertificationV1(plan).datumCbor,
+    );
+    expect(
+      deriveFieldPreimageCertificationV1({
+        ...healedPlan,
+        certificate: { ...healedCertificate, owner: originalCertificate.owner },
+      }).datumCbor,
+    ).toBe(deriveFieldPreimageCertificationV1(plan).datumCbor);
+    // The guard that keeps the rows above from going vacuous a second time: a
+    // certificate over *different* bytes of a *different* transaction is the
+    // same token name and a different manifest. If the token ever discriminated
+    // this pair, the constant name would have come back.
+    const unrelatedPreimage = Buffer.from(preimage);
+    unrelatedPreimage[unrelatedPreimage.length - 1] ^= 0xff;
+    const unrelatedPlan = planMidgardFieldCarriageV1({
+      owner: keyHash(PUBLISHER_KEY),
+      txId: Buffer.alloc(32, 0x5e),
+      fieldIndex: FIELD_INDEX,
+      preimage: unrelatedPreimage,
+    });
+    expect(deriveFieldPreimageCertificationV1(unrelatedPlan).assetNameHex).toBe(
       deriveFieldPreimageCertificationV1(plan).assetNameHex,
     );
+    expect(unrelatedPlan.certificate?.fieldHash).not.toEqual(
+      originalCertificate.fieldHash,
+    );
+    expect(
+      deriveFieldPreimageCertificationV1(unrelatedPlan).datumCbor,
+    ).not.toBe(deriveFieldPreimageCertificationV1(plan).datumCbor);
 
     // The burn half of §8.7's yank mode is **not** exercised here and cannot
     // be: retirement spends the certificate output, and that needs the compiled
