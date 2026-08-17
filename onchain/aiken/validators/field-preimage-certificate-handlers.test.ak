@@ -11,7 +11,13 @@
 ////
 //// Fixture convention follows `validators/settlement-handlers.test.ak`: one
 //// honest builder per handler, and one `fail` test per guard whose body is the
-//// honest fixture with a single field mutated, so exactly one conjunct flips.
+//// honest fixture mutated so that **exactly one conjunct flips**. The
+//// invariant is the conjunct, not the edit: a vector may touch more than one
+//// field when the extra edits are what keep the *other* conjuncts satisfied
+//// (`..._mint_rejects_two_certificates_in_one_transaction` adds the second
+//// output precisely so step 8 and the content proof still pass), but a vector
+//// whose extra edit trips a second guard is misnamed and refuses for the
+//// wrong reason.
 ////
 //// The healing test is the one that is not a guard. §8.7 says a failed or
 //// malicious publication is healable by anyone, and that claim is only real if
@@ -205,6 +211,22 @@ fn honest_certificate_output() -> Output {
   )
 }
 
+/// A second output at the certificate's own script address, carrying a token
+/// of the constant name over a datum no content check ever saw: a `field_hash`
+/// the chunks do not reconstruct, and an unrelated reclaim authority. Under
+/// §8.6's constant name this is what the second unit of an over-minted
+/// certification becomes, so it is what `expect minted_quantity == 1` refuses.
+fn forged_certificate_output() -> Output {
+  certificate_output(
+    FieldPreimageCertificateV1 {
+      ..certificate_for(publisher_hash),
+      owner: healer_hash,
+      field_hash: zero_hash32,
+    },
+    certificate_value(certificate_asset_name(), 1),
+  )
+}
+
 fn certify_redeemer(
   chunk_ref_input_indices: List<Int>,
   output_index: Int,
@@ -319,16 +341,17 @@ test field_preimage_certificate_handler_mint_rejects_a_certificate_output_withou
 /// unpinned name would let a certification bring an arbitrary-named token of
 /// the policy into existence, and anything that trusts "a token of the
 /// certificate policy" would read it.
+///
+/// Only `tx.mint` is mutated. The certificate output is the honest one, so
+/// step 8's `carried_tokens == [Pair(asset_name, 1)]` still holds and step 7's
+/// `minted_name == asset_name` is the single conjunct that flips — which is
+/// the point, since a vector that also mutates the output would be refused by
+/// step 8 whether or not step 7 existed.
 test field_preimage_certificate_handler_mint_rejects_an_asset_name_that_is_not_the_constant() fail {
   let foreign_name = #"deadbeef"
   run_certify(
     certification_tx(
-      [
-        certificate_output(
-          certificate_for(publisher_hash),
-          certificate_value(foreign_name, 1),
-        ),
-      ],
+      [honest_certificate_output()],
       assets.from_asset(certificate_script_hash, foreign_name, 1),
       chunk_inputs(publisher_hash, carriage_utxo_id),
     ),
@@ -359,15 +382,47 @@ test field_preimage_certificate_handler_mint_rejects_a_datum_with_a_foreign_fiel
 
 /// Quantity 1 (§8.6). A second unit of the same name is a certificate that can
 /// be split away from the output whose datum was proved.
+///
+/// Only `tx.mint` is mutated. The certificate output is the honest one, so
+/// step 8's `carried_tokens == [Pair(asset_name, 1)]` still holds and step 7's
+/// `minted_quantity == 1` is the single conjunct that flips. (The transaction
+/// does not balance — two minted, one carried — which is a ledger rule, not a
+/// script rule; the balanced shape of the same refusal is the two-output
+/// vector below, and it is the one that matters for forgery.)
 test field_preimage_certificate_handler_mint_rejects_a_quantity_other_than_one() fail {
   run_certify(
     certification_tx(
-      [
-        certificate_output(
-          certificate_for(publisher_hash),
-          certificate_value(certificate_asset_name(), 2),
-        ),
-      ],
+      [honest_certificate_output()],
+      assets.from_asset(certificate_script_hash, certificate_asset_name(), 2),
+      chunk_inputs(publisher_hash, carriage_utxo_id),
+    ),
+  )
+}
+
+/// A second, fabricated certificate riding out of an honest certification —
+/// the shape #606's constant name made reachable, and the reason
+/// `expect minted_quantity == 1` may never be relaxed.
+///
+/// Under the retired derived name two certificates were two asset names and
+/// therefore two pairs in `tx.mint`, refused by the single-pair destructuring.
+/// Under the constant name they are the same asset: `tx.mint` aggregates them
+/// into one pair at quantity 2 and the destructuring sees nothing wrong. This
+/// transaction is balanced (two minted, two carried) and every other conjunct
+/// holds — `output_index` names the honest certificate at index 0, so steps
+/// 1–6 read the honest datum, step 8 sees exactly one token in that output,
+/// and step 10's content proof passes against the real carriage. The second
+/// unit lands at index 1, at this same script address, on a datum whose
+/// `field_hash` and `owner` the policy never examined; nothing but the
+/// quantity check refuses it.
+///
+/// Mutation-proved: with `expect minted_quantity == 1` deleted from
+/// `validators/field-preimage-certificate.ak` this vector passes the handler
+/// (i.e. the `fail` test fails) and every other test in this module stays
+/// green — so it is the only vector that isolates that guard.
+test field_preimage_certificate_handler_mint_rejects_two_certificates_in_one_transaction() fail {
+  run_certify(
+    certification_tx(
+      [honest_certificate_output(), forged_certificate_output()],
       assets.from_asset(certificate_script_hash, certificate_asset_name(), 2),
       chunk_inputs(publisher_hash, carriage_utxo_id),
     ),
