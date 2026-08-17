@@ -91,6 +91,52 @@
   values as it gated the old. Full record, commands and the
   provisional-versus-confirmed ledger:
   `docs/exec-plans/evidence/canonical-v1-p7-remeasurement-v1.json`.
+- **Re-pinned 2026-08-16 (issue #606, the E2 certificate repair carrying the
+  #608 empty-sentinel rider) — the post-#606 identities. This bullet supersedes
+  every pin above it, the #580 bullet included; the earlier ones are retained as
+  provenance on this file's own superseded-pin discipline.** #606 moved the
+  blueprint again, so the digest pinned above stopped being a current-tree claim
+  the moment that batch landed: the §8.6 repair rewrote
+  `lib/midgard/native-tx-field-access-v1.ak` and
+  `validators/field-preimage-certificate.ak` (constant asset name, `field_hash`
+  welded into the mint-verified datum, the new door equality), and the rider
+  rewrote `validators/pexcludes.ak` and re-pointed
+  `env.plutarch_pexcludes_validator_hash` in both env files
+  (`a9ec251d…` → `03adaadf…`) with its four embedding step validators behind
+  it.
+
+  Current blueprint: `onchain/aiken/plutus.json` SHA-256
+  `f49cae224f24cfab577f1ed10b5340384b75e541851eb7b77b507a79cb7d5e00`
+  (md5 `5e38d7c6ccb7987d0aca710307dcaea7`, **398 validators / 702
+  definitions**), built by the same pinned fork **`aiken v1.1.23+2a78108`**
+  (binary md5 `b3acfdf348235798cb6b921d0f87750a`) under the same declared
+  construction **`aiken build --env testnet`** — the env flag is load-bearing
+  exactly as the bullet above records — and verified byte-reproducible by a
+  fresh build of this tree.
+
+  | bound identity | superseded (#580) | current (#606) |
+  | --- | --- | --- |
+  | blueprint SHA-256 | `91861fac…` (md5 `b20c9a14…`, 398 validators) | `f49cae22…` (md5 `5e38d7c6…`, 398 validators / 702 definitions) |
+  | `canonical_decode_item_semantic_v1` unapplied | `a8d8f3ac…` | `a8d8f3ac58bce62636725d394cb5953767f927518d6db6de70144b67` — **unmoved** |
+  | `canonical_decode_item_semantic_v1` applied (`hub_oracle=11…11`, `catalogue=22…22`) | `0a42b4c7…` | `0a42b4c76739fa1a1a391c8a766fdadf58c2692b983e3c455cb5fdb6` — **unmoved** |
+  | `proof_item_v1` | `22c9a103…` | `22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab` — **unmoved**, still unparameterized |
+
+  **The blueprint digest moved; this artifact's own bound identities did not.**
+  That is the measured outcome, not an assumption: neither of #606's two
+  repairs reaches `canonical_decode_item_semantic_v1` or `proof_item_v1`, and
+  the resolver still declares **3** parameters — it did not gain
+  `field_preimage_certificate_policy_id`, so the three-argument application
+  #609's arity guard requires is unchanged in shape *and* in value. Re-derived
+  by the same producer the bullet above names,
+  `demo/midgard-core/scripts/measure-validation-proof-item-envelope.mjs`, run
+  against this tree: it reports `proofItemScriptHash`
+  `22c9a103…` and `semanticScriptHash` `0a42b4c7…`, reproducing both pins
+  exactly. The §3.2 hash binding therefore did **not** fire for this artifact
+  this pass, and every measurement table below stays bound. Only the two
+  identities #606 did move — the §8.6 `FieldPreimageCertificateV1` mint policy
+  (`c3682abd…` → `f030476f9cddff41d15bdaa7951a9726252c6867901992e2a5f8427e`)
+  and, through it and the rewritten field-access door, `cek_v1` — are re-pinned,
+  on `cek-program-material-v1.md`.
 - Parameter snapshot digests: profile digest
   `181730d304796b764c8f657b0ae788b87c6aba9f4491dbfa9ce24d99932911b7`;
   capability floor per
