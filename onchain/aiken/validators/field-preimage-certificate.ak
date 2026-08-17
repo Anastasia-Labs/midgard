@@ -100,23 +100,48 @@ validator field_preimage_certificate {
         //    refuses a `field_index` outside 0..8.
         let asset_name = field_preimage_certificate_asset_name
         // 7. Exactly one token of this policy in the whole transaction, and it
-        //    is the constant name — the mint pins the name even though nothing
-        //    derives from it. Without the single-pair check a second,
-        //    unexamined asset name of this policy could ride along on a valid
-        //    certification and land wherever its minter liked.
+        //    is the constant name at quantity 1. Three lines, enforcing two
+        //    different properties — worth separating, because #606's constant
+        //    name moved the work from one to the other.
         //
-        //    The consequence is intended and worth stating: one pair means one
-        //    certificate per transaction, and no batching — neither two fields
-        //    certified together, nor a certify paired with a retire of another
-        //    name, because a burn is a second pair of this policy in `tx.mint`.
-        //    That is the deliberate trade. Every extra name admitted here would
-        //    have to be proved here too, and the proof is per-certificate: its
-        //    own tx-id re-derivation, its own witness set, its own chunk vector
-        //    resolved from its own reference inputs. A batching form would
-        //    carry a list of those and fail whole, while certification is a
-        //    once-per-field operation on a permissionless, healable object
-        //    (§8.7) — so the saving would be one transaction's overhead,
-        //    against a policy whose single-pair shape is checkable by reading
+        //    **The pair pins the name.** The single-pair destructuring plus
+        //    `minted_name == asset_name` say there is *no other* asset name of
+        //    this policy in the transaction, not merely that this one is
+        //    right. Nothing derives from the name any more, but an unpinned
+        //    name would let a valid certification carry a second, unexamined
+        //    name of this policy along with it, to land wherever its minter
+        //    liked — and anything that trusts "a token of the certificate
+        //    policy" without asking which one would read it.
+        //
+        //    **The quantity pins one-certificate-per-transaction, and since
+        //    #606 it is the only thing that does.** Under the retired derived
+        //    name two certificates were two names and therefore two pairs,
+        //    refused by the destructuring. Under the constant name they are
+        //    the same asset: `tx.mint` aggregates them into a *single* pair at
+        //    quantity 2, and the destructuring sees nothing wrong. Steps 1–8
+        //    examine one output — the one `output_index` names — and step 10
+        //    proves one content claim, so the second unit could ride out to a
+        //    second output at this same script address carrying a datum this
+        //    policy never examined. `expect minted_quantity == 1` is the only
+        //    conjunct standing in front of that, which is why it must never be
+        //    relaxed and why it has an isolating negative vector of its own
+        //    (`..._mint_rejects_two_certificates_in_one_transaction` in
+        //    `field-preimage-certificate-handlers.test.ak`).
+        //
+        //    Batching a certify with a retire is refused by the same line, not
+        //    by a second pair: the burn is the same asset, so it nets against
+        //    the mint rather than adding a pair, and a net that is not exactly
+        //    1 is refused — by the quantity check, or by the destructuring
+        //    when the net is zero and the policy leaves `tx.mint` entirely.
+        //
+        //    The no-batching consequence is intended. Every extra certificate
+        //    admitted here would have to be proved here too, and the proof is
+        //    per-certificate: its own tx-id re-derivation, its own witness set,
+        //    its own chunk vector resolved from its own reference inputs. A
+        //    batching form would carry a list of those and fail whole, while
+        //    certification is a once-per-field operation on a permissionless,
+        //    healable object (§8.7) — so the saving would be one transaction's
+        //    overhead, against a policy whose shape is checkable by reading
         //    four lines. Retirement loses nothing either: `Retire` is a
         //    separate redeemer and burns batch freely under it.
         expect [Pair(minted_name, minted_quantity)] = tx.mint

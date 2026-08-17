@@ -835,8 +835,13 @@ test q1x_f6_step_04_at_the_admissible_maximum_refuses_a_present_signature() fail
 /// The field-7 fixture is genuinely at the format's widest admissible
 /// cardinality, and its preimage is the width §5.1 and §5.3 predict — inside
 /// §5.4's aggregate cap by construction, and (unlike field 0's) *outside* the
-/// §8.3 tier-1 redeemer bound, which is exactly the case §8.3 erratum E2
-/// limit 3 now refuses tier-3 carriage for.
+/// §8.3 tier-1 redeemer bound and over `K`, so on L1 that preimage travels
+/// under tier 3 — admissible for a witness-set field since #606 resolved §8.3
+/// erratum E2 limit 3 (owner ruling 2026-08-16). The row is nonetheless taken
+/// under tier-1 carriage in the harness, at a width tier 1 could not carry, and
+/// is published as a walk-cost reading rather than as a reachable
+/// configuration; this selector is what §8.3 cites by name so that fact cannot
+/// go unnoticed.
 test q1x_f6_address_witness_fixture_sits_at_the_admissible_cardinality() {
   let block = address_cardinality_block(admissible_address_witness_count)
   let preimage_bytes = built_witness_preimage_bytes(

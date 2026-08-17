@@ -49,13 +49,15 @@
 //// once. `anchored_native_tx` verifies the anchor and hands back an
 //// `AnchoredNativeTxV1`; `anchored_field_view` and `anchored_field_walk` then
 //// open each field against it, one carriage per field, with the §2.5 pairing
-//// and the tier check re-run every time. The single-field `opened_field_view`
-//// and `opened_field_walk` below are exactly that sequence with one field in
+//// re-run every time — the one per-field guard this module owns, since #606's
+//// repair deleted the second (`carriage_reaches_the_anchor`; see
+//// `field_pairs_with`). The single-field `opened_field_view` and
+//// `opened_field_walk` below are exactly that sequence with one field in
 //// it. Why the split is worth a type: re-deriving the transaction id costs
 //// roughly 211k memory units, and a two-field step through the single-field
 //// entry points paid it twice over — while the obvious cheap fix, reaching
 //// `authenticated_field_view` directly with one pre-verified structure, buys
-//// the saving by stepping outside both guards.
+//// the saving by stepping outside that guard.
 ////
 //// The `Body`/`Witness` split is §2.5's field table made structural. Fields
 //// 0–5 are committed by the transaction body and the door reads them without
