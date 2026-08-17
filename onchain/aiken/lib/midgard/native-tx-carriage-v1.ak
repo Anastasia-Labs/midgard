@@ -34,11 +34,12 @@
 //// wire consequence is `native_tx_field_access_v1`'s and is imported rather
 //// than restated: `FieldPreimageCertificateV1`, `chunk_bytes_k`,
 //// `max_tier3_chunk_count`, `max_transaction_aggregate_field_bytes`,
-//// `expected_chunk_count` and `field_commitment`. A producer and a consumer
-//// who disagreed about any of those would disagree about what a certificate
-//// *is*, and that class of drift is closed by construction. (The §8.6 asset
-//// name is a shared constant of the same module since #606 retired its
-//// per-certificate derivation; only the transaction-shape wrapper reads it.)
+//// `expected_chunk_count`, `field_count` and `field_commitment`. A producer
+//// and a consumer who disagreed about any of those would disagree about what
+//// a certificate *is*, and that class of drift is closed by construction.
+//// (The §8.6 asset name is a shared constant of the same module since #606
+//// retired its per-certificate derivation; only the transaction-shape wrapper
+//// reads it.)
 ////
 //// Four pieces of logic are nonetheless written twice, once here and once
 //// behind the door, and each is a deliberate copy rather than an oversight:
@@ -94,7 +95,7 @@ use midgard/fraud_proofs/native_tx/types.{
   NativeTxBodyCompact, NativeTxCompact, NativeTxWitnessSetCompact,
 }
 use midgard/native_tx_field_access_v1.{
-  FieldPreimageCertificateV1, chunk_bytes_k, expected_chunk_count,
+  FieldPreimageCertificateV1, chunk_bytes_k, expected_chunk_count, field_count,
   field_commitment, max_tier3_chunk_count,
   max_transaction_aggregate_field_bytes,
 }
@@ -209,9 +210,14 @@ pub fn field_preimage_certificate_v1(
   expect bytearray.length(owner) == 28
   // The retired asset-name derivation used to force these two bounds as a
   // side effect (#606 made the name a constant); they are what §8.6 requires
-  // of the datum, so they are enforced here directly.
+  // of the datum, so they are enforced here directly. The upper bound reads
+  // §2.5's field count from its single definition
+  // (`native_tx_field_access_v1.field_count`) rather than restating the
+  // literal, so a producer and the door cannot drift apart about how many
+  // fields exist — the same discipline the module header records for every
+  // other bound shared with the door.
   expect field_index >= 0
-  expect field_index < 9
+  expect field_index < field_count
   expect bytearray.length(tx_id) == 32
   FieldPreimageCertificateV1 {
     owner,
