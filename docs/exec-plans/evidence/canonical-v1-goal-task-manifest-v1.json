@@ -10287,13 +10287,13 @@
         ".github/workflows/**",
         "demo/midgard-watcher/tests/scaffold.test.ts (it is the trust-boundary gate: it concatenates every src/*.ts and asserts the source never matches /da-committee-node/, /midgard-node/, /(?:^|[/.-])(?:admin|database|postgres)(?:[/.-]|$)/, or /export\\s+\\*\\s+from/, and asserts package.json dependencies with toEqual against exactly {@al-ft/midgard-core, @al-ft/midgard-sdk, @lucid-evolution/lucid})",
         "demo/midgard-watcher/package.json (a dependency change breaks the scaffold.test.ts toEqual assertion; needs an explicit parent decision)",
-        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/616-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
+        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/619-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
         "demo/midgard-node/**, demo/da-committee-node/** (server-side DA; read-only reference)"
       ],
       "sourceAnchors": [
         "GOAL_SPEC.md \u00a710.3 W20 (line 1030) and the \u00a710.3 note at line 1041 (`W20-W23 can proceed in parallel with proof-family work`)",
         "ALREADY SUBSTANTIALLY EXISTS \u2014 demo/midgard-watcher/src/public-da-client.ts (1,079 lines, 12 exports): `WatcherPublicDaClientV1` with `fetchPayloadByHeader`, `fetchProofBundleByHeader`, `fetchTraceStepByIndex`, `fetchEventToStepByEvent`; private `fetchAcrossPeers`, `negotiate`, `fetchPayloadChunks`, `withPermit`; plus `interface WatcherPublicDaLibp2pTransportV1` (single `request(req): Promise<Uint8Array>` method)",
-        "demo/midgard-watcher/tests/public-da-client.test.ts (2,080 lines, 10 describes: construction, request validation, capability negotiation, inline payload verification, bounds enforcement, chunked payload retrieval, peer failover, deadline and permit control, auxiliary DA surfaces, WatcherPublicDaLibp2pTransport) \u2014 102 resolved tests PASSING at this revision and ALREADY registered in the focused-test gate (`requiredWatcherPackage.publicDaClient.expectedFocusedTestCount` = 102, part of the current 20-file / 616-test total). The 99/1,936-line/9-describe figures previously recorded here were stale prose that never matched the dependency map's 102; #519 finding V-4 flagged the drift and #527 re-derived 102 from a package-local Vitest 3.0.7 JSON report and pinned it in both watcher verifiers. The `no test file exists` claim in the GOAL_PROGRESS.md W20 row (line 296) is stale.",
+        "demo/midgard-watcher/tests/public-da-client.test.ts (2,080 lines, 10 describes: construction, request validation, capability negotiation, inline payload verification, bounds enforcement, chunked payload retrieval, peer failover, deadline and permit control, auxiliary DA surfaces, WatcherPublicDaLibp2pTransport) \u2014 102 resolved tests PASSING at this revision and ALREADY registered in the focused-test gate (`requiredWatcherPackage.publicDaClient.expectedFocusedTestCount` = 102, part of the current 20-file / 619-test total). The 99/1,936-line/9-describe figures previously recorded here were stale prose that never matched the dependency map's 102; #519 finding V-4 flagged the drift and #527 re-derived 102 from a package-local Vitest 3.0.7 JSON report and pinned it in both watcher verifiers. The `no test file exists` claim in the GOAL_PROGRESS.md W20 row (line 296) is stale.",
         "GAP 1 \u2014 the module is NOT exported: demo/midgard-watcher/src/index.ts has 12 named-export blocks covering every src module except cli.ts and public-da-client.ts, so the client is absent from `dist/` (build bundles only src/index.ts and src/cli.ts) and no production caller reaches it",
         "GAP 2 \u2014 no implementation of `WatcherPublicDaLibp2pTransportV1` exists anywhere in the repo; the client is transport-less. The server mirror to implement against is demo/da-committee-node/src/da/libp2p/payload-protocols.ts (`DaLibp2pPayloadProtocolHandlers`) plus the length-prefixed framing in demo/midgard-node/src/da/libp2p-producer.ts (`encodeLengthPrefixedDaFrameForTest`/`decodeLengthPrefixedDaFrameForTest`) \u2014 both are in packages whose names are forbidden substrings in watcher src, so the wire contract must be consumed through `@al-ft/midgard-core/da-transport` (encode/decode pairs, `daRequestResponseProtocolId`, `DA_TRANSPORT_LIMITS_V1`) and the framing ported, never imported",
         "GAP 3 \u2014 nothing in demo/midgard-watcher routes a fetched record through the Q03 admission API; `admitEvidenceProvenanceV1` / `assertSecurityGradeEvidenceV1` / `admitAuthenticatedL1ObservationV1` are exported from `@al-ft/midgard-sdk`, which is ALREADY a declared watcher dependency, so this wiring needs no package.json change",
@@ -10314,12 +10314,12 @@
         "pnpm --dir demo/midgard-watcher exec tsc --noEmit",
         "pnpm --dir demo/midgard-watcher exec eslint . --max-warnings=0"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: public-da-client.test.ts, scaffold.test.ts, verify-canonical-v1-watcher-focused-tests.mjs. public-da-client.test.ts collects exactly 102 tests, 0 failures (102 measured from a package-local Vitest 3.0.7 JSON report under #527, superseding the stale 99); scaffold.test.ts collects exactly 5; verify-canonical-v1-watcher-focused-tests.mjs prints `20 files, 616/616 passed` before any count change, and any count change requires the parent to update both the pinned count table in demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs and requiredWatcherPackage.publicDaClient.expectedFocusedTestCount in the dependency map in the same integration.",
+      "expectedNonzeroCounts": "Counted focused selectors: public-da-client.test.ts, scaffold.test.ts, verify-canonical-v1-watcher-focused-tests.mjs. public-da-client.test.ts collects exactly 102 tests, 0 failures (102 measured from a package-local Vitest 3.0.7 JSON report under #527, superseding the stale 99); scaffold.test.ts collects exactly 5; verify-canonical-v1-watcher-focused-tests.mjs prints `20 files, 619/619 passed` before any count change, and any count change requires the parent to update both the pinned count table in demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs and requiredWatcherPackage.publicDaClient.expectedFocusedTestCount in the dependency map in the same integration.",
       "invalidationTriggers": [
         "any DA wire-format change in demo/midgard-core/src/da-transport.ts (protocol ids, DA_TRANSPORT_LIMITS_V1, any encode/decode pair) re-runs the whole client suite",
         "a `DaPayloadV1` version or envelope change (demo/midgard-sdk/src/da-payload.ts, demo/midgard-core/src/da-payload-envelope.ts)",
         "a deployment-fingerprint or manifest-identity change (demo/midgard-core/src/deployment-manifest-identity-v1.ts) re-verifies the deployment binding",
-        "adding, removing, or renaming a watcher test file invalidates the exact 20-file/616-test focused gate until the parent updates dependency-map counts, the Map, aggregate total, and `expectedByFile.size !== 20` literal (line 94) together",
+        "adding, removing, or renaming a watcher test file invalidates the exact 20-file/619-test focused gate until the parent updates dependency-map counts, the Map, aggregate total, and `expectedByFile.size !== 20` literal (line 94) together",
         "a Q03 admission-API signature change re-runs the provenance routing tests"
       ],
       "detailStatus": "DETAILED",
@@ -10349,7 +10349,7 @@
         ".github/workflows/**",
         "demo/midgard-watcher/tests/scaffold.test.ts (forbidden-substring and dependency gate)",
         "demo/midgard-watcher/src/durable-store.ts (W03-owned; W21 consumes `WatcherDaProofInputV1` and the atomic-snapshot CAS helpers, it does not rewrite them)",
-        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/616-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
+        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/619-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
         "demo/da-committee-node/** (its store is the reference design, not an importable dependency)"
       ],
       "sourceAnchors": [
@@ -10371,7 +10371,7 @@
         "node demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs",
         "pnpm --dir demo/midgard-watcher exec tsc --noEmit"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: canonical-block-store.test.ts, scaffold.test.ts, durable-store.test.ts, verify-canonical-v1-watcher-focused-tests.mjs. canonical-block-store.test.ts collects exactly 46 tests with 0 failures and covers every acceptance clause (hash-addressed, immutable, retention-aware, restart-safe, persist-before-verify); scaffold.test.ts stays at exactly 5 and durable-store.test.ts at exactly 12; the current focused-test gate is exactly 20 files and 616/616 tests passed.",
+      "expectedNonzeroCounts": "Counted focused selectors: canonical-block-store.test.ts, scaffold.test.ts, durable-store.test.ts, verify-canonical-v1-watcher-focused-tests.mjs. canonical-block-store.test.ts collects exactly 46 tests with 0 failures and covers every acceptance clause (hash-addressed, immutable, retention-aware, restart-safe, persist-before-verify); scaffold.test.ts stays at exactly 5 and durable-store.test.ts at exactly 12; the current focused-test gate is exactly 20 files and 619/619 tests passed.",
       "invalidationTriggers": [
         "a Q54 retention-window or deployment-identity change re-derives the pruning boundary",
         "a durable-store schema or migration change (demo/midgard-watcher/src/durable-store.ts) re-runs the store suite",
@@ -10404,7 +10404,7 @@
         ".github/workflows/**",
         "demo/midgard-watcher/tests/scaffold.test.ts",
         "demo/midgard-watcher/src/state-queue-indexer.ts (W14-owned; W22 consumes `WatcherStateQueueHeaderV1`)",
-        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/616-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
+        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/619-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
         "demo/midgard-fault-proofs/**, demo/da-committee-node/** (reference implementations, not importable from watcher src)"
       ],
       "sourceAnchors": [
@@ -10458,7 +10458,7 @@
         ".github/workflows/**",
         "demo/midgard-watcher/tests/scaffold.test.ts (trust-boundary gate: forbids the substrings `da-committee-node`, `midgard-node`, admin/database/postgres path segments, and `export * from` anywhere in src/*.ts, and pins package.json dependencies with toEqual to exactly {@al-ft/midgard-core, @al-ft/midgard-sdk, @lucid-evolution/lucid})",
         "demo/midgard-watcher/src/deployment-identity.ts (W02-owned authority surface this bundle loads from)",
-        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/616-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)"
+        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/619-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)"
       ],
       "sourceAnchors": [
         "GOAL_SPEC.md \u00a710.3 W23 (line 1033)",
@@ -10476,7 +10476,7 @@
         "pnpm --dir demo/midgard-watcher exec vitest run tests/rule-bundle-v1.test.ts",
         "node demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: rule-bundle-v1.test.ts, verify-canonical-v1-watcher-focused-tests.mjs. rule-bundle-v1.test.ts collects exactly 9 tests with 0 failures; exactly 8 of 8 live catalogue categories remain deployment-bound routing inputs, and the focused-test gate prints exactly 20 files with 616/616 passed.",
+      "expectedNonzeroCounts": "Counted focused selectors: rule-bundle-v1.test.ts, verify-canonical-v1-watcher-focused-tests.mjs. rule-bundle-v1.test.ts collects exactly 9 tests with 0 failures; exactly 8 of 8 live catalogue categories remain deployment-bound routing inputs, and the focused-test gate prints exactly 20 files with 619/619 passed.",
       "invalidationTriggers": [
         "a canonical V1 feature-set, transition-order, or program-commitment change in the deployment manifest re-runs the bundle suite",
         "a `ValidationPhase`/`phase_code` change in onchain/aiken/lib/midgard/validation-trace-v1.ak invalidates the derived phase priority",
@@ -10508,7 +10508,7 @@
         "demo/pnpm-lock.yaml",
         ".github/workflows/**",
         "demo/midgard-watcher/tests/scaffold.test.ts (trust-boundary gate: forbids the substrings `da-committee-node`, `midgard-node`, admin/database/postgres path segments, and `export * from` anywhere in src/*.ts, and pins package.json dependencies with toEqual to exactly {@al-ft/midgard-core, @al-ft/midgard-sdk, @lucid-evolution/lucid})",
-        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/616-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
+        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/619-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
         "demo/midgard-validation/** (canonical semantics authority; adding it as a watcher dependency breaks the scaffold.test.ts toEqual assertion and needs an explicit parent decision)",
         "onchain/aiken/** (canonical semantics are consumed, never redefined here)"
       ],
@@ -10565,7 +10565,7 @@
         "demo/pnpm-lock.yaml",
         ".github/workflows/**",
         "demo/midgard-watcher/tests/scaffold.test.ts (trust-boundary gate: forbids the substrings `da-committee-node`, `midgard-node`, admin/database/postgres path segments, and `export * from` anywhere in src/*.ts, and pins package.json dependencies with toEqual to exactly {@al-ft/midgard-core, @al-ft/midgard-sdk, @lucid-evolution/lucid})",
-        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/616-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
+        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/619-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
         "demo/midgard-watcher/src/state-queue-indexer.ts, src/user-event-indexer.ts, src/settlement-indexer.ts (W14-W16-owned inputs)",
         "demo/midgard-validation/** (reference implementation; not a watcher dependency)"
       ],
@@ -10589,7 +10589,7 @@
         "node demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs",
         "pnpm --dir demo/midgard-watcher exec tsc --noEmit"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: block-replay.test.ts, scaffold.test.ts, state-queue-indexer.test.ts, user-event-indexer.test.ts, settlement-indexer.test.ts, verify-canonical-v1-watcher-focused-tests.mjs. Measured W25 PASS evidence is exactly 21/21 focused tests (20/20 at 8ba22251 plus the #517 unrun-binding acceptance control), and the completed W26 seam authority records exactly 20 aggregate watcher files with 616/616 tests, exactly 29/29 affected node tests, and exactly 8/8 dependency-map checks, each with 0 failures. The watcher dependency map carries no review-record field for W25 or W26, so their evidence is exactly these runner-measured counts and no audit string.",
+      "expectedNonzeroCounts": "Counted focused selectors: block-replay.test.ts, scaffold.test.ts, state-queue-indexer.test.ts, user-event-indexer.test.ts, settlement-indexer.test.ts, verify-canonical-v1-watcher-focused-tests.mjs. Measured W25 PASS evidence is exactly 21/21 focused tests (20/20 at 8ba22251 plus the #517 unrun-binding acceptance control), and the completed W26 seam authority records exactly 20 aggregate watcher files with 619/619 tests, exactly 29/29 affected node tests, and exactly 8/8 dependency-map checks, each with 0 failures. The watcher dependency map carries no review-record field for W25 or W26, so their evidence is exactly these runner-measured counts and no audit string.",
       "invalidationTriggers": [
         "any ledger-delta or intermediate-root semantics change (onchain/aiken/lib/midgard/validation-machine-v1.ak `LedgerDeltaControlV1`, demo/midgard-validation/src/validation-machine.ts)",
         "a W22 root-reconstruction change",
@@ -10597,7 +10597,7 @@
       ],
       "detailStatus": "DETAILED",
       "schedulingNote": "Measured PASS at committed revision 8ba22251 plus the completed W26 seam at 10f7e4b2 under the W24-W26 CG3 waiver conditions. W25 claims exactly 12 rejection codes, W24 claims exactly 27, and exactly 10 remain unclaimed; the genuine W15 to W25 to W26 authority is complete, while no downstream readiness is inferred.",
-      "readyBecause": "W25 is committed PASS at 8ba22251 plus its completed classification seam and the #517 acceptance-binding closure, with focused 21/21, final aggregate watcher authority of 20 files and 616/616 tests, affected node 29/29, and dependency-map verifier 8/8; neither W25 nor W26 carries a dependency-map review record, so no audit string is cited for either. W26 is separately committed PASS at 10f7e4b2; W27 remains NOT_STARTED and blocked only on the fresh unwaived CG3 recheck."
+      "readyBecause": "W25 is committed PASS at 8ba22251 plus its completed classification seam and the #517 acceptance-binding closure, with focused 21/21, final aggregate watcher authority of 20 files and 619/619 tests, affected node 29/29, and dependency-map verifier 8/8; neither W25 nor W26 carries a dependency-map review record, so no audit string is cited for either. W26 is separately committed PASS at 10f7e4b2; W27 remains NOT_STARTED and blocked only on the fresh unwaived CG3 recheck."
     },
     {
       "id": "W26",
@@ -10622,7 +10622,7 @@
         "demo/pnpm-lock.yaml",
         ".github/workflows/**",
         "demo/midgard-watcher/tests/scaffold.test.ts (trust-boundary gate: forbids the substrings `da-committee-node`, `midgard-node`, admin/database/postgres path segments, and `export * from` anywhere in src/*.ts, and pins package.json dependencies with toEqual to exactly {@al-ft/midgard-core, @al-ft/midgard-sdk, @lucid-evolution/lucid})",
-        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/616-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
+        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/619-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
         "demo/midgard-watcher/src/user-event-indexer.ts, src/settlement-indexer.ts (W15/W16-owned)",
         "demo/midgard-fault-proofs/** (its witness builders are the reference; not a watcher dependency)"
       ],
@@ -10644,7 +10644,7 @@
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/transition_trace/proof.test accepts_omitted_due_deposit_fault accepts_out_of_window_deposit_fault accepts_duplicate_trace_event_fault accepts_forced_transaction_classified_as_normal_fault accepts_normal_transaction_classified_as_forced_fault",
         "node demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: event-classification-verifier.test.ts, scaffold.test.ts, user-event-indexer.test.ts, settlement-indexer.test.ts, midgard/fraud_proofs/transition_trace/proof.test, verify-canonical-v1-watcher-focused-tests.mjs. Measured W26 PASS evidence at 10f7e4b2 is exactly 15/15 watcher cases: 12 event/classification/prerequisite controls plus 3 genuine-authority control classes covering repeat-isolated W15/W25 forced authority, omission/substitution/duplication/tampering of genuine forced evidence, and W16 withdrawal initialize/refund authority with tamper rejection; the guarded Aiken gate is exactly 5/5 requested selectors, and the genuine W15 to W25 to W26 authority closes at exactly 20 aggregate watcher files with 616/616 tests.",
+      "expectedNonzeroCounts": "Counted focused selectors: event-classification-verifier.test.ts, scaffold.test.ts, user-event-indexer.test.ts, settlement-indexer.test.ts, midgard/fraud_proofs/transition_trace/proof.test, verify-canonical-v1-watcher-focused-tests.mjs. Measured W26 PASS evidence at 10f7e4b2 is exactly 15/15 watcher cases: 12 event/classification/prerequisite controls plus 3 genuine-authority control classes covering repeat-isolated W15/W25 forced authority, omission/substitution/duplication/tampering of genuine forced evidence, and W16 withdrawal initialize/refund authority with tamper rejection; the guarded Aiken gate is exactly 5/5 requested selectors, and the genuine W15 to W25 to W26 authority closes at exactly 20 aggregate watcher files with 619/619 tests.",
       "invalidationTriggers": [
         "any change to event due-ness windows or `end_time` bounds (Q60) re-runs the boundary cases",
         "a transition-trace fault-kind or event-key change (demo/midgard-fault-proofs/src/transition-trace/detect.ts, onchain transition-trace modules)",
@@ -10653,7 +10653,7 @@
       "detailStatus": "DETAILED",
       "schedulingNote": "W26 is committed PASS at 10f7e4b2 after W25 committed PASS at 8ba22251 plus the integrated seam. The D1 CG3 waiver ends with W26; W27 remains NOT_STARTED and requires the fresh unwaived CG3 recheck before assignment.",
       "blockedOn": [],
-      "blockedBecause": "No current blocker: W26 is authoritative PASS at 10f7e4b2 with the genuine W15 to W25 to W26 classification authority, measured 15/15 watcher cases, 5/5 guarded Aiken selectors, and aggregate 20 files with 616/616 watcher tests. This PASS does not authorize downstream work; W27 remains NOT_STARTED behind the fresh CG3 recheck."
+      "blockedBecause": "No current blocker: W26 is authoritative PASS at 10f7e4b2 with the genuine W15 to W25 to W26 classification authority, measured 15/15 watcher cases, 5/5 guarded Aiken selectors, and aggregate 20 files with 619/619 watcher tests. This PASS does not authorize downstream work; W27 remains NOT_STARTED behind the fresh CG3 recheck."
     },
     {
       "id": "W27",
@@ -10678,7 +10678,7 @@
         "demo/pnpm-lock.yaml",
         ".github/workflows/**",
         "demo/midgard-watcher/tests/scaffold.test.ts (trust-boundary gate: forbids the substrings `da-committee-node`, `midgard-node`, admin/database/postgres path segments, and `export * from` anywhere in src/*.ts, and pins package.json dependencies with toEqual to exactly {@al-ft/midgard-core, @al-ft/midgard-sdk, @lucid-evolution/lucid})",
-        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/616-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
+        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/619-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
         "docs/exec-plans/evidence/necessity/** (parent-owned \u00a73.2 necessity artifacts; a chunked fallback needs one, authored under the template, not invented here)",
         "demo/midgard-fault-proofs/** (proof builders are the reference; not a watcher dependency)"
       ],
@@ -10737,7 +10737,7 @@
         "demo/pnpm-lock.yaml",
         ".github/workflows/**",
         "demo/midgard-watcher/tests/scaffold.test.ts (trust-boundary gate: forbids the substrings `da-committee-node`, `midgard-node`, admin/database/postgres path segments, and `export * from` anywhere in src/*.ts, and pins package.json dependencies with toEqual to exactly {@al-ft/midgard-core, @al-ft/midgard-sdk, @lucid-evolution/lucid})",
-        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/616-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
+        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/619-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
         "docs/fault-proofs/coverage-matrix.md, docs/fault-proofs/catalogue-status.md (parent-owned; the Q55 table is read, not written)",
         "demo/midgard-fault-proofs/** (its detector is the reference; not a watcher dependency)"
       ],
@@ -10792,7 +10792,7 @@
         "demo/pnpm-lock.yaml",
         ".github/workflows/**",
         "demo/midgard-watcher/tests/scaffold.test.ts (trust-boundary gate: forbids the substrings `da-committee-node`, `midgard-node`, admin/database/postgres path segments, and `export * from` anywhere in src/*.ts, and pins package.json dependencies with toEqual to exactly {@al-ft/midgard-core, @al-ft/midgard-sdk, @lucid-evolution/lucid})",
-        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/616-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
+        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (parent-owned: the expectedByFile Map and the `expectedByFile.size !== 20` literal at line 94 define the exact 20-file/619-test gate; any watcher test change requires the parent to update dependency-map counts, Map cardinality, aggregate total, and literal together)",
         "demo/midgard-watcher/src/durable-store.ts (W03-owned; `WATCHER_BLOCK_DECISIONS_V1` and `WatcherBlockDecisionV1` are consumed, not redefined)"
       ],
       "sourceAnchors": [

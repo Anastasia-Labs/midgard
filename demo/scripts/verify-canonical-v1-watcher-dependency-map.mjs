@@ -2181,7 +2181,7 @@ if (
     "exact_W13_pre_and_post_finality_internally_derived_sparse_block_cut_journal_restoration_suffix_rewind_restart_replacement_path_replay_and_reinclusion" ||
   userEventIndexer.unknownBehavior !== "fail_closed" ||
   userEventIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  userEventIndexer.expectedFocusedTestCount !== 24
+  userEventIndexer.expectedFocusedTestCount !== 26
 ) {
   fail("W15 user-event-indexer evidence is incomplete or stale");
 }

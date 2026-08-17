@@ -72,6 +72,9 @@
       "demo/midgard-watcher/tests/scaffold.test.ts",
       "demo/midgard-watcher/tests/settlement-indexer.test.ts",
       "demo/midgard-watcher/tests/state-queue-indexer.test.ts",
+      "demo/midgard-watcher/tests/support/canonical-json.ts",
+      "demo/midgard-watcher/tests/support/deployment-authority-fixture.ts",
+      "demo/midgard-watcher/tests/support/tls-transport-fixture.ts",
       "demo/midgard-watcher/tests/support/w15-authority-scenarios.ts",
       "demo/midgard-watcher/tests/support/w16-authority-scenarios.ts",
       "demo/midgard-watcher/tests/support/w25-authority-fixtures.ts",
@@ -291,7 +294,7 @@
       "rollbackPolicy": "exact_W13_pre_and_post_finality_internally_derived_sparse_block_cut_journal_restoration_suffix_rewind_restart_replacement_path_replay_and_reinclusion",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "expectedFocusedTestCount": 24
+      "expectedFocusedTestCount": 26
     },
     "settlementIndexer": {
       "status": "PASS",

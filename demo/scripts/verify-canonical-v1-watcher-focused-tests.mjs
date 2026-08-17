@@ -131,7 +131,7 @@ const pinnedByFile = new Map([
   ["finality-engine.test.ts", 25],
   ["rollback-engine.test.ts", 26],
   ["state-queue-indexer.test.ts", 19],
-  ["user-event-indexer.test.ts", 24],
+  ["user-event-indexer.test.ts", 26],
   ["settlement-indexer.test.ts", 25],
   ["proof-thread-indexer.test.ts", 17],
   ["rule-bundle-v1.test.ts", 9],
@@ -144,7 +144,7 @@ const pinnedByFile = new Map([
   ["scaffold.test.ts", 5],
   ["crash-rollback-matrix.test.ts", 17],
 ]);
-const pinnedTotal = 617;
+const pinnedTotal = 619;
 const sumCounts = (counts) => counts.reduce((sum, count) => sum + count, 0);
 if (
   pinnedByFile.size !== expectedByFile.size ||

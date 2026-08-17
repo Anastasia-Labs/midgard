@@ -1,9 +1,7 @@
 {
   "schema": "midgard.canonical-v1-strict-manifest-quality-accepted-defects.v1",
   "version": 1,
-  "goalIds": [
-    "F20"
-  ],
+  "goalIds": ["F20"],
   "issue": 579,
   "claim": "#579 AC3 \u2014 'F20 recaptured; strict manifest quality gate green'",
   "verdict": "GREEN_MODULO_ENUMERATED_PREEXISTING_DEFECTS",
@@ -68,11 +66,7 @@
     {
       "category": "watcherFocusedGateContractMismatch",
       "count": 3,
-      "ids": [
-        "W25",
-        "W26",
-        "watcher-focused-gate"
-      ],
+      "ids": ["W25", "W26", "watcher-focused-gate"],
       "emittedDetail": [
         {
           "id": "W25",
@@ -96,9 +90,45 @@
       "preExisting": true,
       "insideThisBatchesCascade": false,
       "outsideCascadeBecause": "Closing this drift means moving the pinned 616 to 617 in the manifest rows and in demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs together \u2014 the manifest itself records that those must move in one integration, and both are parent-owned. #579 regenerates the blueprint; it does not add, remove, or rename a watcher test, so nothing in this batch moved the count that drifted.",
-      "disposition": "RECORDED_AND_ACCEPTED"
+      "disposition": "RETIRED_BY_613_REPIN_2026_08_17",
+      "retirement": {
+        "issue": 613,
+        "date": "2026-08-17",
+        "authorizedBy": "#581 E-2/E-3 owner ruling (2026-08-16: 'file follow-up, land'), executed as the #613 coordinated six-surface re-pin.",
+        "arithmetic": "This class was recorded as a 616-claim-vs-617-requirement offset. Before it was retired the true measured aggregate had moved again: commit 04aaae57 (#594) added two it() blocks to demo/midgard-watcher/tests/user-event-indexer.test.ts after the pins were last updated at df53dc6a (#587), so the suite collects 26 there against the pinned 24 (measured this re-pin: 'Vitest collected counts do not match the runner-measured pins: user-event-indexer.test.ts collected 26 against pin 24'). The re-pin therefore moved userEventIndexer.expectedFocusedTestCount 24 -> 26 (map aggregate 617 -> 619), the focused-gate pin table 24 -> 26 with pinnedTotal 617 -> 619, the quality gate's aggregate literal 616 -> 619, and every manifest aggregate claim 616 -> 619 (7 '616/616' and 12 '616-test' occurrences), in one commit. The predicted 616 -> 617 retirement in ac3Closure.howToRetireLater was written before #594 landed; 619 is the measured total it became.",
+        "reMeasuredAfterRetirement": {
+          "command": "cd demo && node scripts/verify-canonical-v1-goal-task-manifest-quality.mjs --json",
+          "exitCode": 1,
+          "defects": 9,
+          "categories": {
+            "unresolvableFocusedModuleCitation": 9
+          },
+          "watcherFocusedGateContractMismatch": "absent \u2014 all three ids (W25, W26, watcher-focused-gate) no longer emitted",
+          "tasks": "186/186"
+        }
+      }
     }
   ],
+  "acceptedDefectsAfter613Repin": {
+    "date": "2026-08-17",
+    "issue": 613,
+    "note": "Standing enumeration for gates built after the #613 re-pin (e.g. the #614 CI allowlist): the accepted defect set is now exactly the 9 unresolvableFocusedModuleCitation defects at C20-0..C20-8. The 3 watcherFocusedGateContractMismatch defects recorded above were retired by the #613 six-surface re-pin and are preserved above only as the measured history of ruling B's original 12.",
+    "defects": 9,
+    "categories": {
+      "unresolvableFocusedModuleCitation": 9
+    },
+    "ids": [
+      "C20-0",
+      "C20-1",
+      "C20-2",
+      "C20-3",
+      "C20-4",
+      "C20-5",
+      "C20-6",
+      "C20-7",
+      "C20-8"
+    ]
+  },
   "ac3Closure": {
     "f20Recaptured": true,
     "strictGateGreenModuloAcceptedDefects": true,
