@@ -1,14 +1,11 @@
-use aiken/builtin
 use aiken/crypto.{ScriptHash, blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
-use aiken/merkle_patricia_forestry/helpers.{combine, nibble, suffix}
-use cardano/address.{Script}
+use aiken/merkle_patricia_forestry/helpers.{nibble}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
-  Input, OutputReference, Redeemer, ScriptPurpose, Transaction, Withdraw,
+  Input, OutputReference, Redeemer, ScriptPurpose, Transaction,
 }
 use env
-use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/chunked_inclusion_v1.{PublishedProofCarriage}
 use midgard/fraud_proofs/common.{
@@ -116,44 +113,27 @@ validator main(
 // delegated `pexcludes` claim is bound to the exact authenticated root and to
 // the canonical `MidgardTxInput` CBOR key of the forwarded input, so neither the
 // root nor the key can be swapped for a convenient one.
+//
+// The carried claims are witness-faithful (#582): every `[root, key, proof]`
+// triple a selector attaches is one the merkelized `exclusion` validator
+// itself accepts, which the selectors in `validators/pexcludes.ak` execute
+// against the same fixture builders. The initial-ledger roots are therefore
+// provable ones — the empty-trie sentinel a genesis block carries, or the
+// shared single-leaf `fixture.absence_witness()` trie — never an arbitrary
+// placeholder no absence proof can exist for.
 
-/// The block whose header authenticated the challenged transaction at step-01.
-/// Both roots this step consumes are the block's real values, so the delegated
-/// non-membership claim is bound to genuine roots rather than placeholders.
+/// The block whose header authenticated the challenged transaction at step-01;
+/// its authenticated raw transactions root is what this step threads forward.
 fn challenged_block() -> fixture.NativeBlockFixtureV1 {
   fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-}
-
-fn prev_utxos_root() -> ByteArray {
-  challenged_block().header.prev_utxos_root
 }
 
 fn transactions_root() -> ByteArray {
   challenged_block().transactions_phas_root
 }
 
-fn pexcludes_withdraw_redeemer_entry(
-  merkle_root: ByteArray,
-  key_bytes: ByteArray,
-) -> Pair<ScriptPurpose, Redeemer> {
-  let non_membership_proof: Proof = []
-  let proof_data: Data = non_membership_proof
-  let payload: List<Data> = [
-    builtin.b_data(merkle_root),
-    builtin.b_data(key_bytes),
-    proof_data,
-  ]
-  Pair(
-    Withdraw(Script(env.plutarch_pexcludes_validator_hash)),
-    builtin.list_data(payload),
-  )
-}
-
 fn challenged_input() -> MidgardTxInput {
-  MidgardTxInput {
-    tx_id: #"3131313131313131313131313131313131313131313131313131313131313131",
-    output_index: 3,
-  }
+  fixture.absent_midgard_tx_input()
 }
 
 fn run_step_03_with(
@@ -204,17 +184,25 @@ fn run_step_03_with(
 
 fn run_step_03(
   missing_input: MidgardTxInput,
+  blocks_prev_utxos_root: ByteArray,
   claimed_root: ByteArray,
   claimed_key: ByteArray,
+  non_membership_proof: mpf.Proof,
 ) -> Bool {
   run_step_03_with(
     missing_input,
-    prev_utxos_root(),
+    blocks_prev_utxos_root,
     RedeemerCarriedNonMembership {
-      non_membership_proof: [],
+      non_membership_proof,
       non_membership_proof_script_redeemer_index: 0,
     },
-    [pexcludes_withdraw_redeemer_entry(claimed_root, claimed_key)],
+    [
+      fixture.pexcludes_withdraw_redeemer_entry(
+        claimed_root,
+        claimed_key,
+        non_membership_proof,
+      ),
+    ],
     [],
   )
 }
@@ -222,25 +210,8 @@ fn run_step_03(
 // ## Published-chunk carriage (issue #545)
 //
 // On the chunked route the absence witness is verified here rather than
-// delegated, so these selectors build a real one: a canonical divergent
+// delegated, so these selectors use the shared real one: a canonical divergent
 // terminal leaf, and the initial-ledger root that leaf reconstructs.
-
-const absence_witness_value_hash =
-  #"6666666666666666666666666666666666666666666666666666666666666666"
-
-fn absence_witness_leaf_path() -> ByteArray {
-  blake2b_256(#"a15e17")
-}
-
-/// The canonical absence witness for any key whose path diverges from
-/// `absence_witness_leaf_path` at the first nibble, and the root it proves.
-fn absence_witness() -> (ByteArray, mpf.Proof) {
-  let leaf_path = absence_witness_leaf_path()
-  (
-    combine(suffix(leaf_path, 0), absence_witness_value_hash),
-    [mpf.Leaf { skip: 0, key: leaf_path, value: absence_witness_value_hash }],
-  )
-}
 
 /// The absence claim a published-chunk step must find in the merkelized
 /// verifier's redeemer.
@@ -299,16 +270,44 @@ fn run_step_03_published(
   )
 }
 
-/// Positive selector: the delegated non-membership claim is made against the
-/// authenticated `prev_utxos_root` under the canonical `MidgardTxInput` CBOR key
-/// of the forwarded input, so the transaction id reaches step-04.
-test no_input_step_03_excludes_the_input_from_the_initial_ledger() {
+/// Positive selector, genesis initial ledger: a first block over a genesis
+/// confirmed state carries `env.empty_merkle_tree_root` as `prev_utxos_root`
+/// (`state-queue.ak` forces it), and the empty proof is the only — and a
+/// genuine — absence witness an empty ledger can produce. The claim is bound
+/// to the canonical `MidgardTxInput` CBOR key of the forwarded input, so the
+/// transaction id reaches step-04.
+test no_input_step_03_excludes_the_input_from_a_genesis_initial_ledger() {
   let missing_input = challenged_input()
   run_step_03(
     missing_input,
-    prev_utxos_root(),
+    env.empty_merkle_tree_root,
+    env.empty_merkle_tree_root,
     encode_midgard_tx_input(missing_input),
+    [],
   )
+}
+
+/// Positive selector, populated initial ledger: the same delegated claim
+/// against a non-empty root, carrying the real single-leaf absence witness
+/// that reconstructs it — the arm every block after the first takes.
+test no_input_step_03_excludes_the_input_from_a_populated_initial_ledger() {
+  let missing_input = challenged_input()
+  let (root, witness) = fixture.absence_witness()
+  and {
+    // The witness really is a divergence at the first nibble of the
+    // forwarded input's canonical key.
+    nibble(blake2b_256(encode_midgard_tx_input(missing_input)), 0) != nibble(
+      fixture.absence_witness_leaf_path(),
+      0,
+    ),
+    run_step_03(
+      missing_input,
+      root,
+      root,
+      encode_midgard_tx_input(missing_input),
+      witness,
+    ),
+  }
 }
 
 /// Valid-block negative selector: in a valid block the spent input really is in
@@ -320,7 +319,13 @@ test no_input_step_03_rejects_a_non_membership_claim_for_another_key() fail {
   let other_key = encode_midgard_tx_input(
     MidgardTxInput { ..missing_input, output_index: 4 },
   )
-  run_step_03(missing_input, prev_utxos_root(), other_key)
+  run_step_03(
+    missing_input,
+    env.empty_merkle_tree_root,
+    env.empty_merkle_tree_root,
+    other_key,
+    [],
+  )
 }
 
 /// Positive selector, published-chunk carriage: the very same absence claim,
@@ -328,12 +333,12 @@ test no_input_step_03_rejects_a_non_membership_claim_for_another_key() fail {
 /// reaching the step redeemer. Nothing else about the step changes.
 test no_input_step_03_excludes_the_input_through_published_chunks() {
   let missing_input = challenged_input()
-  let (root, witness) = absence_witness()
+  let (root, witness) = fixture.absence_witness()
   and {
     // The witness really is a divergence at the first nibble of the
     // forwarded input's canonical key.
     nibble(blake2b_256(encode_midgard_tx_input(missing_input)), 0) != nibble(
-      absence_witness_leaf_path(),
+      fixture.absence_witness_leaf_path(),
       0,
     ),
     run_step_03_published(missing_input, root, [0], witness),
@@ -343,14 +348,14 @@ test no_input_step_03_excludes_the_input_through_published_chunks() {
 /// The step is bound to the exact claim its redeemer named: a verifier invoked
 /// on a different chunk order proves something this step did not ask for.
 test no_input_step_03_rejects_a_claim_the_redeemer_did_not_name() fail {
-  let (root, witness) = absence_witness()
+  let (root, witness) = fixture.absence_witness()
   run_step_03_published_with_claim(challenged_input(), root, [0], [], witness)
 }
 
 /// A published-chunk step that never invokes the merkelized verifier proves
 /// nothing at all.
 test no_input_step_03_rejects_a_missing_verifier_invocation() fail {
-  let (root, witness) = absence_witness()
+  let (root, witness) = fixture.absence_witness()
   run_step_03_with(
     challenged_input(),
     root,

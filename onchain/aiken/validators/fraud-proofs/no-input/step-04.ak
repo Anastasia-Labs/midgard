@@ -1,15 +1,12 @@
-use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
-use aiken/merkle_patricia_forestry/helpers.{combine, nibble, suffix}
-use cardano/address.{Address, Script}
+use aiken/merkle_patricia_forestry/helpers.{nibble}
+use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
-  Input, OutputReference, Redeemer, ScriptPurpose, Transaction, Withdraw,
+  Input, OutputReference, Redeemer, ScriptPurpose, Transaction,
 }
-use env
-use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/chunked_inclusion_v1.{PublishedProofCarriage}
 use midgard/fraud_proofs/common.{
@@ -104,6 +101,12 @@ validator main(
 // block's initial ledger (step-03) and no transaction of the same block produced
 // it. The delegated `pexcludes` claim is bound to the authenticated raw
 // transactions root and to the raw 32-byte native transaction id.
+//
+// The carried claims are witness-faithful (#582): the fixture block's raw
+// transactions root is a genuine single-leaf MPF, so the positive selector
+// carries the real absence witness that leaf reconstructs, and the selectors
+// in `validators/pexcludes.ak` execute the very same claim bytes through the
+// merkelized `exclusion` validator.
 
 /// The block whose header authenticated the challenged transaction at step-01;
 /// its authenticated raw transactions root is what step-03 threads forward.
@@ -115,25 +118,7 @@ fn transactions_root() -> ByteArray {
   challenged_block().transactions_phas_root
 }
 
-const missing_input_tx_id =
-  #"3131313131313131313131313131313131313131313131313131313131313131"
-
-fn pexcludes_withdraw_redeemer_entry(
-  merkle_root: ByteArray,
-  key_bytes: ByteArray,
-) -> Pair<ScriptPurpose, Redeemer> {
-  let non_membership_proof: Proof = []
-  let proof_data: Data = non_membership_proof
-  let payload: List<Data> = [
-    builtin.b_data(merkle_root),
-    builtin.b_data(key_bytes),
-    proof_data,
-  ]
-  Pair(
-    Withdraw(Script(env.plutarch_pexcludes_validator_hash)),
-    builtin.list_data(payload),
-  )
-}
+const missing_input_tx_id = fixture.absent_native_tx_id
 
 fn run_finalize_with(
   blocks_transactions_root: ByteArray,
@@ -171,36 +156,29 @@ fn run_finalize_with(
   )
 }
 
-fn run_finalize(claimed_root: ByteArray, claimed_key: ByteArray) -> Bool {
+fn run_finalize(
+  claimed_root: ByteArray,
+  claimed_key: ByteArray,
+  non_membership_proof: mpf.Proof,
+) -> Bool {
   run_finalize_with(
     transactions_root(),
     RedeemerCarriedNonMembership {
-      non_membership_proof: [],
+      non_membership_proof,
       non_membership_proof_script_redeemer_index: 1,
     },
-    [pexcludes_withdraw_redeemer_entry(claimed_root, claimed_key)],
+    [
+      fixture.pexcludes_withdraw_redeemer_entry(
+        claimed_root,
+        claimed_key,
+        non_membership_proof,
+      ),
+    ],
     [],
   )
 }
 
 // ## Published-chunk carriage (issue #545)
-
-const absence_witness_value_hash =
-  #"6666666666666666666666666666666666666666666666666666666666666666"
-
-fn absence_witness_leaf_path() -> ByteArray {
-  blake2b_256(#"a15e17")
-}
-
-/// The canonical absence witness for any key whose path diverges from
-/// `absence_witness_leaf_path` at the first nibble, and the root it proves.
-fn absence_witness() -> (ByteArray, mpf.Proof) {
-  let leaf_path = absence_witness_leaf_path()
-  (
-    combine(suffix(leaf_path, 0), absence_witness_value_hash),
-    [mpf.Leaf { skip: 0, key: leaf_path, value: absence_witness_value_hash }],
-  )
-}
 
 /// The absence claim a published-chunk step must find in the merkelized
 /// verifier's redeemer.
@@ -257,9 +235,24 @@ fn run_finalize_published(
 
 /// Positive selector: the producing transaction of the challenged input is
 /// excluded from the block's authenticated raw transactions root, so the
-/// non-existence proof finalizes into a permanent fraud-proof token.
+/// non-existence proof finalizes into a permanent fraud-proof token. The
+/// carried witness is the block's real committed leaf, so the claim is one
+/// the merkelized `exclusion` validator itself accepts.
 test no_input_step_04_excludes_the_producing_transaction() {
-  run_finalize(transactions_root(), missing_input_tx_id)
+  let block = challenged_block()
+  and {
+    // The absent id's path really diverges from the committed leaf's at the
+    // first nibble, which is what the single-leaf witness attests.
+    nibble(blake2b_256(missing_input_tx_id), 0) != nibble(
+      blake2b_256(block.tx_id),
+      0,
+    ),
+    run_finalize(
+      block.transactions_phas_root,
+      missing_input_tx_id,
+      fixture.transactions_phas_absence_witness(block),
+    ),
+  }
 }
 
 /// Valid-block negative selector: the non-membership claim must be made against
@@ -269,16 +262,20 @@ test no_input_step_04_excludes_the_producing_transaction() {
 /// — is rejected here.
 test no_input_step_04_rejects_valid_block_challenge() fail {
   let unrelated_root = #"4040404040404040404040404040404040404040404040404040404040404040"
-  run_finalize(unrelated_root, missing_input_tx_id)
+  run_finalize(
+    unrelated_root,
+    missing_input_tx_id,
+    fixture.transactions_phas_absence_witness(challenged_block()),
+  )
 }
 
 /// Positive selector, published-chunk carriage: the same absence claim
 /// finalizes with the witness in a referenced publication UTxO.
 test no_input_step_04_excludes_the_producing_transaction_through_published_chunks() {
-  let (root, witness) = absence_witness()
+  let (root, witness) = fixture.absence_witness()
   and {
     nibble(blake2b_256(missing_input_tx_id), 0) != nibble(
-      absence_witness_leaf_path(),
+      fixture.absence_witness_leaf_path(),
       0,
     ),
     run_finalize_published(root, [0], witness),
@@ -287,6 +284,6 @@ test no_input_step_04_excludes_the_producing_transaction_through_published_chunk
 
 /// The step is bound to the exact claim its redeemer named.
 test no_input_step_04_rejects_a_claim_the_redeemer_did_not_name() fail {
-  let (root, witness) = absence_witness()
+  let (root, witness) = fixture.absence_witness()
   run_finalize_published_with_claim(root, [0], [0, 0], witness)
 }

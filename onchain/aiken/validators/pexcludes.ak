@@ -1,8 +1,12 @@
 use aiken/builtin
+use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
+use aiken/merkle_patricia_forestry/helpers.{nibble}
 use cardano/address.{Credential}
 use cardano/transaction.{Transaction}
 use env
+use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 
 /// Merkelized validator backing `midgard/common/utils.plutarch_pexcludes` and
 /// `plutarch_pexcludes_raw`.
@@ -163,4 +167,81 @@ test exclusion_accepts_non_membership_over_a_populated_trie() {
 /// away and this returned `True` — non-membership was never proven.
 test exclusion_rejects_unproven_root() fail {
   run(redeemer_of(unproven_root, test_key, []))
+}
+
+// ## No-input fixture witnesses (#582)
+//
+// The no-input step-03/step-04 selectors attach delegated `pexcludes` claims
+// but never execute this validator — the blind spot that let the original
+// dead non-membership check survive. These selectors close it: each one runs
+// the withdraw handler on the *exact* redeemer entry the shared fixture
+// builder produces for a step selector, so a fixture drifting into a witness
+// shape production would refuse turns a test red here.
+
+fn run_entry(
+  entry: Pair<transaction.ScriptPurpose, transaction.Redeemer>,
+) -> Bool {
+  let Pair(_, redeemer) = entry
+  run(redeemer)
+}
+
+/// The step-04 positive claim: the fixture block's genuine single-leaf raw
+/// transactions root, the absent native tx id, and the real committed-leaf
+/// absence witness. Accepted, so the fixture is witness-faithful.
+test exclusion_accepts_the_no_input_step_04_fixture_claim() {
+  let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
+  and {
+    nibble(blake2b_256(fixture.absent_native_tx_id), 0) != nibble(
+      blake2b_256(block.tx_id),
+      0,
+    ),
+    run_entry(
+      fixture.pexcludes_withdraw_redeemer_entry(
+        block.transactions_phas_root,
+        fixture.absent_native_tx_id,
+        fixture.transactions_phas_absence_witness(block),
+      ),
+    ),
+  }
+}
+
+/// The step-03 genesis-arm claim: the empty-trie sentinel root under the
+/// canonical `MidgardTxInput` CBOR key, witnessed by the empty proof.
+test exclusion_accepts_the_no_input_step_03_genesis_claim() {
+  run_entry(
+    fixture.pexcludes_withdraw_redeemer_entry(
+      env.empty_merkle_tree_root,
+      encode_midgard_tx_input(fixture.absent_midgard_tx_input()),
+      [],
+    ),
+  )
+}
+
+/// The step-03 populated-arm claim: the shared single-leaf initial-ledger
+/// trie with the real absence witness that reconstructs it.
+test exclusion_accepts_the_no_input_step_03_populated_claim() {
+  let key = encode_midgard_tx_input(fixture.absent_midgard_tx_input())
+  let (root, witness) = fixture.absence_witness()
+  and {
+    nibble(blake2b_256(key), 0) != nibble(
+      fixture.absence_witness_leaf_path(),
+      0,
+    ),
+    run_entry(fixture.pexcludes_withdraw_redeemer_entry(root, key, witness)),
+  }
+}
+
+/// The retired fixture shape (#582): an empty proof against a non-empty root
+/// is not a non-membership witness, and the step fixtures carried exactly
+/// this before the re-pin. It must stay rejected, so the suite catches a
+/// regression in either direction.
+test exclusion_rejects_the_retired_empty_proof_fixture_shape() fail {
+  let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
+  run_entry(
+    fixture.pexcludes_withdraw_redeemer_entry(
+      block.transactions_phas_root,
+      fixture.absent_native_tx_id,
+      [],
+    ),
+  )
 }

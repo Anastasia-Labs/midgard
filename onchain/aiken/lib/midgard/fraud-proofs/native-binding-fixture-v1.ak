@@ -946,6 +946,76 @@ pub fn chunked_verify_withdraw_redeemer_entry(
   Pair(Withdraw(Script(env.mpf_chunked_verify_validator_hash)), claim_data)
 }
 
+/// Withdraw redeemer entry mirroring the merkelized `pexcludes` invocation for
+/// one delegated non-membership claim (#582). The step fixtures attach this
+/// exact entry and the `exclusion` selectors in `validators/pexcludes.ak`
+/// execute its payload, so a fixture cannot drift into a witness shape the
+/// production validator would refuse without a selector going red.
+pub fn pexcludes_withdraw_redeemer_entry(
+  merkle_root: ByteArray,
+  key_bytes: ByteArray,
+  non_membership_proof: mpf.Proof,
+) -> Pair<ScriptPurpose, Redeemer> {
+  let proof_data: Data = non_membership_proof
+  let payload: List<Data> = [
+    builtin.b_data(merkle_root),
+    builtin.b_data(key_bytes),
+    proof_data,
+  ]
+  Pair(
+    Withdraw(Script(env.plutarch_pexcludes_validator_hash)),
+    builtin.list_data(payload),
+  )
+}
+
+/// The absent native transaction id the no-input family fixtures agree on:
+/// step-04 proves no transaction of the block carries it, and the `exclusion`
+/// selectors execute the very same claim bytes.
+pub const absent_native_tx_id =
+  #"3131313131313131313131313131313131313131313131313131313131313131"
+
+/// The challenged input of the no-input family fixtures: an out-ref under
+/// `absent_native_tx_id`, absent from the block's initial ledger.
+pub fn absent_midgard_tx_input() -> native_types.MidgardTxInput {
+  native_types.MidgardTxInput { tx_id: absent_native_tx_id, output_index: 3 }
+}
+
+/// Genuine single-leaf absence witness against the fixture block's raw
+/// transactions root. The trie holds exactly `(tx_id, compact_cbor)`, so for
+/// any key whose path diverges from `blake2b_256(tx_id)` at the first nibble
+/// the committed leaf alone witnesses non-membership — callers must assert
+/// that divergence alongside the walk.
+pub fn transactions_phas_absence_witness(
+  fixture: NativeBlockFixtureV1,
+) -> mpf.Proof {
+  [
+    mpf.Leaf {
+      skip: 0,
+      key: blake2b_256(fixture.tx_id),
+      value: blake2b_256(fixture.compact_cbor),
+    },
+  ]
+}
+
+const absence_witness_value_hash =
+  #"6666666666666666666666666666666666666666666666666666666666666666"
+
+/// The path of the only leaf `absence_witness` commits.
+pub fn absence_witness_leaf_path() -> ByteArray {
+  blake2b_256(#"a15e17")
+}
+
+/// The canonical absence witness for any key whose path diverges from
+/// `absence_witness_leaf_path` at the first nibble, and the root it proves:
+/// a single-leaf trie standing in for a populated initial ledger.
+pub fn absence_witness() -> (ByteArray, mpf.Proof) {
+  let leaf_path = absence_witness_leaf_path()
+  (
+    combine(suffix(leaf_path, 0), absence_witness_value_hash),
+    [mpf.Leaf { skip: 0, key: leaf_path, value: absence_witness_value_hash }],
+  )
+}
+
 /// The membership claim a published-chunk step must find in the merkelized
 /// verifier's redeemer: the block's authenticated raw root, the committed
 /// transaction's id and value digest, and the chunk order the step named.
