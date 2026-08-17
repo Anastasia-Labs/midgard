@@ -506,9 +506,71 @@ for (const family of evidence.families) {
     largestStageBytes,
     `${where} maximum largestStageBytes disagrees with its own stage list`,
   );
+  // The maximum fixture must bite, and it must bite where the depth axis
+  // actually reaches. Until the #580 flat reversion the whole-fixture worst
+  // margin was a sound proxy for that, because the proof-carrying step was
+  // also the largest stage of every family's path. It no longer is: under flat
+  // the field preimage rides the step redeemer, so Q10's step-04 and Q14's
+  // step-02 are now the widest stages of their paths and the membership proof
+  // never reaches either of them. Their whole-fixture worst margins are
+  // therefore IDENTICAL in the two fixtures, which a strict `<` would read as
+  // the fixture having stopped working.
+  //
+  // So the claim is checked where it is falsifiable rather than where it used
+  // to be convenient: the maximum fixture may never be LOOSER anywhere, and
+  // the stage the axis does reach must be strictly tighter, by at least what
+  // the pinned per-level cost says the forced levels are worth. That is a
+  // narrower target than the old assertion, not a weaker one — a fixture built
+  // at the wrong depth, or a family quietly re-pinned onto its minimal-fixture
+  // numbers, fails it, and the old form would have stopped noticing either the
+  // moment the worst stage drifted off the proof-carrying step.
   assert.ok(
-    maximum.worstByteMargin < fit.worstByteMargin,
-    `${where} the maximum fixture must be tighter than the minimal one; ${String(maximum.worstByteMargin)} is not below ${String(fit.worstByteMargin)}`,
+    maximum.worstByteMargin <= fit.worstByteMargin,
+    `${where} the maximum fixture is LOOSER than the minimal one; ${String(maximum.worstByteMargin)} is above ${String(fit.worstByteMargin)}`,
+  );
+  const minimalStageMargin = fit.stages.find(
+    (entry) => entry.stage === maximum.depthReachedStage,
+  );
+  const maximumStageMargin = maximum.stages.find(
+    (entry) => entry.stage === maximum.depthReachedStage,
+  );
+  assert.ok(
+    minimalStageMargin !== undefined && maximumStageMargin !== undefined,
+    `${where} names depth-reached stage ${String(maximum.depthReachedStage)}, which is not a stage of both fixtures`,
+  );
+  assert.equal(
+    maximum.depthReachedStageMinimalL1ByteMargin,
+    minimalStageMargin.l1ByteMargin,
+    `${where} the recorded minimal margin for depth-reached stage ${String(maximum.depthReachedStage)} disagrees with the minimal stage list`,
+  );
+  assert.equal(
+    maximum.depthReachedStageMaximumL1ByteMargin,
+    maximumStageMargin.l1ByteMargin,
+    `${where} the recorded maximum margin for depth-reached stage ${String(maximum.depthReachedStage)} disagrees with the maximum stage list`,
+  );
+  const depthReachedTightening =
+    maximum.depthReachedStageMinimalL1ByteMargin -
+    maximum.depthReachedStageMaximumL1ByteMargin;
+  assert.ok(
+    depthReachedTightening > 0,
+    `${where} the maximum fixture does not tighten ${String(maximum.depthReachedStage)}, the stage the membership proof reaches, so the forced depth is not reaching the transaction it is meant to`,
+  );
+  // Each forced level costs a pinned 276 bytes, so the levels this fixture
+  // forces beyond the shallow measurement cannot have cost less than that.
+  // Without this floor a fixture built at depth 1 would pass as adversarial.
+  assert.ok(
+    depthReachedTightening >=
+      (maximum.branchLevels - bound.shallowBranchLevels) *
+        bound.proofTransactionBranchLevelBytes,
+    `${where} ${String(maximum.depthReachedStage)} tightened by only ${String(depthReachedTightening)} bytes across ${String(maximum.branchLevels)} forced levels, below the pinned per-level cost`,
+  );
+  // Whether the family's WORST stage is the one the axis reaches is itself a
+  // measured fact, recorded rather than assumed, because it decides whether
+  // the ceiling derived below is exact or conservative.
+  assert.equal(
+    maximum.worstStageIsDepthReached,
+    maximum.worstByteMarginStage === maximum.depthReachedStage,
+    `${where} worstStageIsDepthReached disagrees with its own stage list`,
   );
   const derivedCeiling =
     maximum.branchLevels +
@@ -696,11 +758,36 @@ assert.ok(
   cardinality.executionMemoryCap < cardinality.consensusProfileMemoryFloor,
   "the ceiling the boundary is measured against must be the conservative one; measuring against a cap above the consensus profile's capability floor would overstate what fits",
 );
+// The binding envelope moved at the #580 flat reversion and this block is
+// re-pinned onto the measured one at #606. It is not enough to rename it: the
+// name is cross-checked below against the measurements it claims to describe,
+// on every family, at every cardinality this block records. A block that named
+// "bytes" while its own numbers showed an execution crossing would fail here.
 assert.equal(
   cardinality.bindingEnvelope,
-  "executionMemory",
+  "bytes",
   "the binding envelope of this axis must be named explicitly",
 );
+assert.equal(
+  cardinality.l1ByteEnvelope,
+  L1_MAX_TX_SIZE,
+  "the byte envelope this axis is judged against drifted from 16,384",
+);
+assert.equal(
+  cardinality.executionStepReserveCeiling,
+  (cardinality.executionStepCap *
+    (100 - evidence.proofFitThresholds.executionFit.reservePercent)) /
+    100,
+  "the step reserve ceiling is not the 20% reserve applied to the ledger's own step cap",
+);
+// The headroom factor is what makes "execution does not bind" falsifiable
+// rather than rhetorical, so it may not be weakened to nothing.
+assert.ok(
+  Number.isInteger(cardinality.executionHeadroomFactorAsserted) &&
+    cardinality.executionHeadroomFactorAsserted >= 10,
+  "the execution-headroom factor asserted for this axis must be at least the 10x the suite itself asserts",
+);
+const headroom = cardinality.executionHeadroomFactorAsserted;
 let cardinalityFamilyChecks = 0;
 let largestFittingCardinality = 0;
 for (const goalId of cardinality.affectsGoalIds) {
@@ -710,40 +797,124 @@ for (const goalId of cardinality.affectsGoalIds) {
     `${goalId} is named as affected by the cardinality axis but records no measurement`,
   );
   assert.equal(
-    measured.firstOverReserveCardinality,
+    measured.firstOverEnvelopeCardinality,
     measured.largestFittingCardinality + 1,
-    `${goalId} must measure the boundary as an adjacent PAIR; ${String(measured.firstOverReserveCardinality)} does not follow ${String(measured.largestFittingCardinality)}`,
+    `${goalId} must measure the boundary as an adjacent PAIR; ${String(measured.firstOverEnvelopeCardinality)} does not follow ${String(measured.largestFittingCardinality)}`,
+  );
+  // The boundary must be a real BYTE crossing: inside the envelope on one
+  // side, outside it on the other, with both margins recomputed from the
+  // measured transaction rather than taken on trust.
+  assert.equal(
+    measured.largestFittingL1ByteMargin,
+    L1_MAX_TX_SIZE - measured.largestFittingStepBytes,
+    `${goalId} fitting margin does not equal 16384 - ${String(measured.largestFittingStepBytes)}`,
   );
   assert.ok(
-    measured.largestFittingExecutionMemory <=
-      cardinality.executionMemoryReserveCeiling,
-    `${goalId} claims ${String(measured.largestFittingCardinality)} inputs fit, but its measured memory exceeds the reserve ceiling`,
+    measured.largestFittingL1ByteMargin >= 0,
+    `${goalId} claims ${String(measured.largestFittingCardinality)} inputs fit, but its measured binding step is outside the L1 envelope`,
+  );
+  assert.equal(
+    measured.firstOverEnvelopeL1ByteMargin,
+    L1_MAX_TX_SIZE - measured.firstOverEnvelopeStepBytes,
+    `${goalId} first-over margin does not equal 16384 - ${String(measured.firstOverEnvelopeStepBytes)}`,
   );
   assert.ok(
-    measured.firstOverReserveExecutionMemory >
-      cardinality.executionMemoryReserveCeiling,
-    `${goalId} claims ${String(measured.firstOverReserveCardinality)} inputs exceed the reserve, but its measured memory does not`,
+    measured.firstOverEnvelopeL1ByteMargin < 0,
+    `${goalId} claims ${String(measured.firstOverEnvelopeCardinality)} inputs cross the envelope, but its measured binding step still fits`,
   );
-  // The adjacent case must be a real evaluation that fails the RELEASE policy,
-  // not one the ledger rejected outright: an over-cap number here would prove
-  // nothing about the 20% reserve.
+  // One more input costs at least one preimage item. A boundary pair whose two
+  // members differed by less than that would not be a cardinality boundary.
+  assert.equal(
+    measured.bytesPerInputAtTheBoundary,
+    measured.firstOverEnvelopeStepBytes - measured.largestFittingStepBytes,
+    `${goalId} per-input byte cost disagrees with its own boundary pair`,
+  );
   assert.ok(
-    measured.firstOverReserveExecutionMemory < cardinality.executionMemoryCap,
-    `${goalId}'s first over-reserve measurement is above the ledger's own cap, so it does not isolate the 20% reserve`,
+    measured.bytesPerInputAtTheBoundary >= cardinality.preimageBytesPerInput,
+    `${goalId} charges ${String(measured.bytesPerInputAtTheBoundary)} bytes per further input, below the ${String(cardinality.preimageBytesPerInput)}-byte canonical preimage item it must carry`,
   );
-  if (measured.witnessPublicationBytes !== undefined) {
-    assert.equal(
-      measured.witnessPublicationL1ByteMargin,
-      L1_MAX_TX_SIZE - measured.witnessPublicationBytes,
-      `${goalId} witness publication margin does not equal 16384 - ${String(measured.witnessPublicationBytes)}`,
-    );
-    // The correction issue #482's expectation needed: publication is not the
-    // constraint, so it must be recorded as comfortably inside the envelope.
+  // Execution must be measured NOT to bind, at every cardinality recorded,
+  // including the admissible shape. This is the assertion that goes red first
+  // if the counted-era per-item cost ever comes back, and it is why the
+  // finding may be published as a byte-carriage gap rather than a wall.
+  for (const [label, memory, steps] of [
+    [
+      "largest fitting",
+      measured.largestFittingExecutionMemory,
+      measured.largestFittingExecutionSteps,
+    ],
+    [
+      "first over envelope",
+      measured.firstOverEnvelopeExecutionMemory,
+      measured.firstOverEnvelopeExecutionSteps,
+    ],
+    [
+      "admissible shape",
+      measured.atAdmissibleCardinalityExecutionMemory,
+      measured.atAdmissibleCardinalityExecutionSteps,
+    ],
+  ]) {
     assert.ok(
-      measured.witnessPublicationL1ByteMargin > 0,
-      `${goalId} publishes its spend-inputs witness outside the L1 envelope, which would make the publication the binding constraint after all`,
+      memory * headroom <= cardinality.executionMemoryReserveCeiling,
+      `${goalId} at the ${label} cardinality measures ${String(memory)} memory units, not the ${String(headroom)}x headroom inside ${String(cardinality.executionMemoryReserveCeiling)} that "bytes bind" claims`,
+    );
+    assert.ok(
+      steps * headroom <= cardinality.executionStepReserveCeiling,
+      `${goalId} at the ${label} cardinality measures ${String(steps)} execution steps, not the ${String(headroom)}x headroom inside ${String(cardinality.executionStepReserveCeiling)} that "bytes bind" claims`,
     );
   }
+  // The admissible shape: it must be measured to EVALUATE (inside the ledger's
+  // own caps, which is what falsifies the retired "cannot be evaluated at all"
+  // claim) and measured to MISS on bytes, which is the residual.
+  assert.ok(
+    measured.atAdmissibleCardinalityExecutionMemory <
+      cardinality.executionMemoryCap &&
+      measured.atAdmissibleCardinalityExecutionSteps <
+        cardinality.executionStepCap,
+    `${goalId} at the admissible cardinality is outside the ledger's own execution caps, so it cannot be published as evaluating there`,
+  );
+  assert.equal(
+    measured.atAdmissibleCardinalityL1ByteMargin,
+    L1_MAX_TX_SIZE - measured.atAdmissibleCardinalityStepBytes,
+    `${goalId} admissible-shape margin does not equal 16384 - ${String(measured.atAdmissibleCardinalityStepBytes)}`,
+  );
+  assert.ok(
+    measured.atAdmissibleCardinalityL1ByteMargin < 0,
+    `${goalId} fits the admissible shape on bytes, so the residual this block records no longer exists and must be retired with a measurement rather than left standing`,
+  );
+  // Memory near-constancy across the band, stated as a comparison against the
+  // counted-era per-input figure the finding retracts. A return of anything
+  // within two orders of magnitude of the old cost fails here.
+  assert.equal(
+    measured.cardinalityDeltaToAdmissible,
+    cardinality.admissibleCardinality - measured.largestFittingCardinality,
+    `${goalId} records a cardinality band that is not the distance from its own ceiling to the admissible shape`,
+  );
+  assert.equal(
+    measured.executionMemoryDeltaToAdmissible,
+    measured.atAdmissibleCardinalityExecutionMemory -
+      measured.largestFittingExecutionMemory,
+    `${goalId} records a memory delta that is not the difference between its own two measurements`,
+  );
+  assert.ok(
+    measured.executionMemoryDeltaToAdmissible * 100 <
+      cardinality.countedEraExecutionMemoryPerInput *
+        measured.cardinalityDeltaToAdmissible,
+    `${goalId} still pays a per-input execution-memory cost within two orders of magnitude of the counted-era ${String(cardinality.countedEraExecutionMemoryPerInput)}; the mechanism finding Q1X-F6 retracts has not in fact gone away`,
+  );
+  // The publication this axis used to be expected to bind on does not exist
+  // under flat carriage. Recording one again would mean a builder had started
+  // publishing, which must be re-measured rather than silently carried.
+  assert.equal(
+    measured.witnessPublicationBytes,
+    undefined,
+    `${goalId} records a spend-inputs witness publication, which the flat commitment retired; the axis must be re-measured before such a stage is published again`,
+  );
+  assert.equal(
+    measured.preimageCarriage,
+    "step redeemer",
+    `${goalId} records ${String(measured.preimageCarriage)} carriage; the measured tier-1 shape this block bounds carries the preimage in the step redeemer`,
+  );
   largestFittingCardinality = Math.max(
     largestFittingCardinality,
     measured.largestFittingCardinality,
@@ -760,21 +931,43 @@ assert.equal(
   "the cardinality verdict disagrees with the numbers it is drawn from",
 );
 // A fit claim would have to be a fit MEASUREMENT: if the admissible shape ever
-// becomes buildable, this artifact must say so with a measurement rather than
-// by deleting the finding.
+// starts fitting, this artifact must say so with a measurement rather than by
+// deleting the finding. Evaluating there and FITTING there are now different
+// claims, so both are recorded and each is derived from its own numbers.
 assert.equal(
-  cardinality.buildsAtAdmissibleCardinality,
+  cardinality.fitsAtAdmissibleCardinality,
   !cardinality.admissibleCardinalityExceedsMeasuredCeiling,
-  "buildsAtAdmissibleCardinality disagrees with the measured ceiling",
+  "fitsAtAdmissibleCardinality disagrees with the measured ceiling",
 );
 assert.equal(
-  cardinality.remediableByCarriage,
+  cardinality.evaluatesAtAdmissibleCardinality,
+  true,
+  "the admissible shape is measured to evaluate for every affected family above; recording otherwise would contradict those measurements",
+);
+// Unchanged in force from the block this replaces: a carriage remediation of
+// this axis would have to be recorded as a remediation block, measured end to
+// end, exactly as chunkedProofCarriage is for Q1X-F5. What is new is that the
+// artifact must also say whether the residual is even carriage-shaped, and who
+// owns it — the retired body claimed it was NOT, on a mechanism that no longer
+// exists.
+assert.equal(
+  cardinality.remediatedByCarriage,
   false,
   "a carriage remediation of this axis would have to be recorded as a remediation block, exactly as chunkedProofCarriage is for Q1X-F5",
 );
+assert.equal(
+  typeof cardinality.byteShapedAndCarriageAddressable,
+  "boolean",
+  "whether this residual is carriage-addressable at all must be stated, not left to prose",
+);
+assert.ok(
+  typeof cardinality.remediationOwner === "string" &&
+    cardinality.remediationOwner.length > 0,
+  "an unremediated residual must name the issue that owns its remediation",
+);
 assert.ok(
   cardinality.titles.includes(cardinality.derivationTitle) &&
-    cardinality.titles.includes(cardinality.buildsAtAdmissibleCardinalityTitle),
+    cardinality.titles.includes(cardinality.admissibleShapeTitle),
   "the cardinality suite must declare both the derivation and the admissible-shape lifecycle it is cited for",
 );
 declareVitest(cardinality.suite, cardinality.titles);
@@ -1086,7 +1279,7 @@ for (const number of [
     (goalId) => cardinality.measured[goalId].largestFittingCardinality,
   ),
   ...cardinality.affectsGoalIds.map(
-    (goalId) => cardinality.measured[goalId].firstOverReserveCardinality,
+    (goalId) => cardinality.measured[goalId].firstOverEnvelopeCardinality,
   ),
 ]) {
   assert.ok(
