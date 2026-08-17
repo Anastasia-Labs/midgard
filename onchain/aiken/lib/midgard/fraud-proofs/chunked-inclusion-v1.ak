@@ -34,9 +34,39 @@
 ////
 //// Small proofs — every non-adversarial block — are cheaper carried in the
 //// redeemer than published: the direct route needs one transaction where this
-//// one needs two. Both routes end in the same verified opening against the
-//// same authenticated root, so which one a prover takes is the prover's
+//// one needs two. Both routes end in a verified opening against the same
+//// authenticated root, so which one a prover takes is normally the prover's
 //// business and neither weakens the other.
+////
+//// ## Where the two routes are **not** interchangeable today (#606/#608)
+////
+//// Stated here rather than left implied, because the parity claim above used
+//// to be unqualified and is not:
+////
+//// **Non-membership over an empty Midgard trie is provable on the direct
+//// route and not on this one.** Midgard commits `env.empty_merkle_tree_root =
+//// blake2b_256("")` for an empty MPF, while the library reconstructs its empty
+//// trie as `merkling.null_hash` (32 zero bytes), so the sentinel has to be
+//// translated before the reconstructed root is compared. #606's rider (owner
+//// ruling on #608, 2026-08-15) authorised that translation at exactly one
+//// placement — `validators/pexcludes.ak`, the merkelized verifier the *direct*
+//// route withdraws through. The published-chunk route terminates instead in
+//// `midgard/mpf_proof_v1.does_not_have` (`lib/midgard/mpf-proof-v1.ak:328-344`,
+//// reached from `delegated_chunk_non_membership` below and from
+//// `validators/mpf-chunked-verify.ak`), which still compares
+//// `do_excluding(path, 0, proof)` against the caller's root with no sentinel
+//// branch — so for `root == env.empty_merkle_tree_root` it returns `False` for
+//// the empty proof, which is the only witness an empty ledger can produce.
+////
+//// Consequence, liveness only and narrow: a `no-input` or
+//// `no-reference-input` step-03 whose `prev_utxos_root` is the empty sentinel
+//// — i.e. a first block over a genesis confirmed state — cannot be proved
+//// through published-chunk carriage. Nothing false is accepted either way.
+//// The residual is **unrepaired and out of #606's authorised scope**: this is
+//// a library used by validators, so translating it here would move
+//// `plutus.json` and the applied-identity cascade beyond the five-validator
+//// movement the rider authorised. It is recorded for a follow-up ticket, and
+//// `#582`'s witness-faithful fixtures are the natural place to gate it.
 
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, blake2b_256}

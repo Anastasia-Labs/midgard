@@ -325,6 +325,29 @@ pub fn has_value_hash(
 /// Total, fail-closed non-membership verification. This deliberately exposes
 /// the MPF `excluding` check as a Boolean instead of using `insert`, whose
 /// invalid-proof branch aborts script evaluation.
+///
+/// **Known residual — the Midgard empty-trie sentinel is not translated here
+/// (#606/#608, unrepaired).** `do_excluding` reconstructs the empty trie as the
+/// library's `merkling.null_hash` (32 zero bytes), while Midgard commits
+/// `env.empty_merkle_tree_root = blake2b_256("")` for an empty MPF. So for
+/// `root == env.empty_merkle_tree_root` this answers `False` for the empty
+/// proof — the only witness an empty trie can produce — and non-membership over
+/// an empty Midgard trie is unprovable through every caller of this function:
+/// `mpf_chunked_proof_v1`/`chunked_inclusion_v1`'s published-chunk carriage,
+/// `validators/mpf-chunked-verify.ak`, `insert_root` below, and
+/// `validation_machine_v1.resolve_non_membership_step` against an empty
+/// `prior_ledger_root`. It is liveness-only: nothing false is accepted.
+///
+/// The repair is the same one-line adapter #606 landed in
+/// `validators/pexcludes.ak` for the redeemer-carried route
+/// (`if root == env.empty_merkle_tree_root { mpf.empty } else { … }`, the
+/// pattern at `transition-trace/proof.ak:644-650`). It is **not** applied here
+/// because #606's scope rider (owner ruling on #608, 2026-08-15) authorised
+/// placement (a) — `pexcludes.ak` — and nothing else; this module is imported
+/// by validators, so translating it moves `plutus.json` and the applied-identity
+/// cascade past the five-validator movement that ruling costed. Awaiting a
+/// follow-up ticket; `chunked-inclusion-v1.ak`'s module header records the
+/// user-visible consequence.
 pub fn does_not_have(root: ByteArray, key: ByteArray, proof: mpf.Proof) -> Bool {
   let path = blake2b_256(key)
   let well_formed = and {
