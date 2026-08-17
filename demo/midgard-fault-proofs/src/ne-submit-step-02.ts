@@ -36,6 +36,7 @@ import {
   faultProofFieldOpeningV1,
   parseNativeTxCompactCborV1,
   planFaultProofFieldOpeningV1,
+  publishFaultProofFieldCarriageV1,
 } from "./field-opening-v1.js";
 import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import {
@@ -50,6 +51,7 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
+import { excludeUtxo } from "./spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
@@ -100,6 +102,8 @@ export type NeSubmitStep02Result = {
   readonly missingInput: MidgardTxInput;
   /** The door's authenticated item count for field 0. */
   readonly spendInputsItemCount: number;
+  /** Which §8 tier field 0's preimage travelled under. */
+  readonly spendInputsCarriageTier: string;
   readonly badInputIndex: number;
   readonly inputIndex: number;
   readonly outputIndex: number;
@@ -142,6 +146,7 @@ export const neSubmitStep02 = async ({
   inputsPreimage,
   nativeTxCompactCbor,
   badInputIndex,
+  publishCarriage = false,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -154,6 +159,16 @@ export const neSubmitStep02 = async ({
   /** The disputed transaction's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
   readonly badInputIndex: bigint;
+  /**
+   * Force §8 tier 2 for field 0's preimage: publish the bytes as raw
+   * carriage and reference them, instead of carrying them in this step's own
+   * redeemer. Programmatic only, mirroring `submitInputNoIdxStep02` — it is
+   * the one demotion §8 leaves open, and it changes which transaction pays,
+   * never what the door authenticates. Below the tier-1 bound the ladder
+   * picks `Inline` on its own, which is what capped this family's admissible
+   * spend-input cardinality at the L1 byte frontier (#612).
+   */
+  readonly publishCarriage?: boolean;
   readonly awaitConfirmation?: boolean;
 }): Promise<NeSubmitStep02Result> => {
   const { nonExistentInputCategory, contracts } =
@@ -199,15 +214,34 @@ export const neSubmitStep02 = async ({
     nativeTxCompactCbor,
     itemCbors: midgardInputs.map(encodeMidgardTxInputCanonicalV1),
     owner: signer.paymentKeyHash,
-    label: "Non-existent-input step 02 spend-inputs",
-  });
-  const spendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
-    planned,
+    publish: publishCarriage,
     label: "Non-existent-input step 02 spend-inputs",
   });
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  // §8's ladder decides whether anything has to exist on-chain before this
+  // transaction can reference it. Tier 1 publishes nothing and the list is
+  // empty; tiers 2–3 publish raw carriage located by content (§8.7), reusing
+  // a chunk that already exists at this address rather than republishing.
+  const carriageUtxos = await publishFaultProofFieldCarriageV1({
+    lucid,
+    signer,
+    planned,
+    publisherAddress: signer.address,
+    label: "Non-existent-input step 02 spend-inputs",
+  });
+  const spendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+    planned,
+    referenceInputs: carriageUtxos,
+    label: "Non-existent-input step 02 spend-inputs",
+  });
+  const walletUtxos = await lucid.wallet().getUtxos();
+  const feeInput = selectFeeInput(
+    carriageUtxos.reduce<readonly UTxO[]>(
+      (candidates, utxo) => excludeUtxo(candidates, utxo),
+      walletUtxos,
+    ),
+  );
   const step03Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -259,18 +293,38 @@ export const neSubmitStep02 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const unsigned = await lucid
+  const txWithInputs = lucid
     .newTx()
     .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer)
-    .pay.ToContract(
+    .collectFrom([threadUtxo], redeemer);
+  // Tier 1 references nothing, and `readFrom([])` is an error rather than a
+  // no-op, so the branch is on whether §8 produced carriage at all.
+  const unsigned = await (
+    carriageUtxos.length === 0
+      ? txWithInputs
+      : txWithInputs.readFrom([...carriageUtxos])
+  ).pay
+    .ToContract(
       steps[2].spendingScriptAddress,
       { kind: "inline", value: step03Datum },
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
     .attach.SpendingValidator(steps[1].spendingScript)
-    .complete({ localUPLCEval: true });
+    .complete({
+      localUPLCEval: true,
+      // With carriage published at the prover's own address, balancing must
+      // not pick those UTxOs back up as wallet inputs while the redeemer
+      // references them — same guard as `submitInputNoIdxStep02`.
+      ...(carriageUtxos.length === 0
+        ? {}
+        : {
+            presetWalletInputs: carriageUtxos.reduce<readonly UTxO[]>(
+              (candidates, utxo) => excludeUtxo(candidates, utxo),
+              walletUtxos,
+            ) as UTxO[],
+          }),
+    });
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve non-existent-input step 02 layout.",
@@ -295,6 +349,7 @@ export const neSubmitStep02 = async ({
     thirdStepAddress: steps[2].spendingScriptAddress,
     missingInput,
     spendInputsItemCount: planned.itemCount,
+    spendInputsCarriageTier: planned.plan.tier,
     badInputIndex: Number(badInputIndex),
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),

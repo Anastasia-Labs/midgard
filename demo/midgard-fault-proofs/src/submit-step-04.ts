@@ -294,6 +294,7 @@ export const submitStep04 = async ({
   tx2SpendInputCbors,
   nativeTxCompactCbor,
   doubleSpentInputIndex,
+  publishCarriage = false,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -306,6 +307,13 @@ export const submitStep04 = async ({
   /** tx2's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
   readonly doubleSpentInputIndex: bigint;
+  /**
+   * Force §8 tier 2 for tx2's field-0 preimage; see `submitStep03`'s
+   * same-named option. Programmatic only — the retired CLI route never
+   * sets it, and below the tier-1 bound the ladder would otherwise carry
+   * the preimage inline in this step's redeemer (#612).
+   */
+  readonly publishCarriage?: boolean;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep04Result> => {
   const { doubleSpendCategory, contracts } =
@@ -345,6 +353,7 @@ export const submitStep04 = async ({
       Buffer.from(inputCbor, "hex"),
     ),
     owner: signer.paymentKeyHash,
+    publish: publishCarriage,
     label: "Double-spend step 04 tx2 spend-inputs",
   });
   const tx2SpendInputsHash = planned.commitment;
@@ -381,10 +390,11 @@ export const submitStep04 = async ({
     label: "Double-spend step 04 tx2 spend-inputs",
   });
   const referenceInputs = [...carriageUtxos];
+  const walletUtxos = await lucid.wallet().getUtxos();
   const feeInput = selectFeeInput(
     carriageUtxos.reduce<readonly UTxO[]>(
       (candidates, utxo) => excludeUtxo(candidates, utxo),
-      await lucid.wallet().getUtxos(),
+      walletUtxos,
     ),
   );
   const tx2SpendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
@@ -462,7 +472,20 @@ export const submitStep04 = async ({
       .attach.MintingPolicy(contracts.fraudProof.mintingScript);
   };
 
-  const unsigned = await makeStep04Tx().complete({ localUPLCEval: true });
+  const unsigned = await makeStep04Tx().complete({
+    localUPLCEval: true,
+    // With carriage published at the prover's own address, balancing must not
+    // pick those UTxOs back up as wallet inputs while the redeemer references
+    // them — same guard as `submitInputNoIdxStep02`.
+    ...(referenceInputs.length === 0
+      ? {}
+      : {
+          presetWalletInputs: referenceInputs.reduce<readonly UTxO[]>(
+            (candidates, utxo) => excludeUtxo(candidates, utxo),
+            walletUtxos,
+          ) as UTxO[],
+        }),
+  });
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined

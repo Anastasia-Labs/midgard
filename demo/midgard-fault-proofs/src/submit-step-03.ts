@@ -169,6 +169,7 @@ export const submitStep03 = async ({
   tx1SpendInputCbors,
   nativeTxCompactCbor,
   doubleSpentInputIndex,
+  publishCarriage = false,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -181,6 +182,16 @@ export const submitStep03 = async ({
   /** tx1's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
   readonly doubleSpentInputIndex: bigint;
+  /**
+   * Force §8 tier 2 for tx1's field-0 preimage: publish the bytes as raw
+   * carriage and reference them, instead of carrying them in this step's own
+   * redeemer. Programmatic only, mirroring `submitInputNoIdxStep02` — it is
+   * the one demotion §8 leaves open, and it changes which transaction pays,
+   * never what the door authenticates. Below the tier-1 bound the ladder
+   * picks `Inline` on its own, which is what capped this family's admissible
+   * spend-input cardinality at the L1 byte frontier (#612).
+   */
+  readonly publishCarriage?: boolean;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep03Result> => {
   const { doubleSpendCategory, contracts } =
@@ -221,6 +232,7 @@ export const submitStep03 = async ({
       Buffer.from(inputCbor, "hex"),
     ),
     owner: signer.paymentKeyHash,
+    publish: publishCarriage,
     label: "Double-spend step 03 tx1 spend-inputs",
   });
   const tx1SpendInputsHash = planned.commitment;
@@ -332,7 +344,20 @@ export const submitStep03 = async ({
     .addSignerKey(signer.paymentKeyHash)
     .attach.SpendingValidator(contracts.doubleSpend.steps[2].spendingScript);
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await tx.complete({
+    localUPLCEval: true,
+    // With carriage published at the prover's own address, balancing must not
+    // pick those UTxOs back up as wallet inputs while the redeemer references
+    // them — same guard as `submitInputNoIdxStep02`.
+    ...(referenceInputs.length === 0
+      ? {}
+      : {
+          presetWalletInputs: referenceInputs.reduce<readonly UTxO[]>(
+            (candidates, utxo) => excludeUtxo(candidates, utxo),
+            walletUtxos,
+          ) as UTxO[],
+        }),
+  });
   if (resolvedLayout === undefined) {
     throw new Error("BuildTxWithRedeemer did not resolve step 03 layout.");
   }

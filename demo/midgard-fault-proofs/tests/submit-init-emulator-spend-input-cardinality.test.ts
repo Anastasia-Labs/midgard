@@ -116,6 +116,18 @@
  * Q1X-F6 was an on-chain execution wall no carriage could move. (Both bands
  * widened by one input at their lower edge in the #606 re-take noted above.)
  *
+ * **#612 (2026-08-17) — the routing gap is closed, and the closure is driven
+ * below.** All three legacy submitters (`submitStep03`, `submitStep04`,
+ * `neSubmitStep02`) now expose the same programmatic `publishCarriage` option
+ * `submitInputNoIdxStep02` shipped with: `publish` demotes the ladder's
+ * `Inline` pick to tier 2, the preimage publishes once as raw carriage (§8.7)
+ * and the step references it for a handful of index bytes. The routed row at
+ * the bottom of this file drives BOTH families through the full admissible
+ * 296-input Cardano spend shape and fits — publications included. The inline
+ * pins above it are unchanged, deliberately: they remain the measured
+ * frontiers of the tier the builders take when no caller forces publication,
+ * which is what makes the demotion worth asking for.
+ *
  * Lives in its own file for the same reason its siblings do: `@lucid-evolution/uplc`
  * never reclaims wasm linear memory and vitest isolates per FILE. See
  * tests/support/uplc-heap-guard.ts.
@@ -229,7 +241,11 @@ const printCardinalityFit = (
  */
 const runDoubleSpendCardinalityJourney = async (
   cardinality: number,
-): Promise<Record<string, CompleteSignedTransactionMeasurement>> => {
+  { publishCarriage = false }: { readonly publishCarriage?: boolean } = {},
+): Promise<{
+  readonly stages: Record<string, CompleteSignedTransactionMeasurement>;
+  readonly carriageTiers: Record<string, string>;
+}> => {
   const {
     realBlueprint,
     emulator,
@@ -332,16 +348,19 @@ const runDoubleSpendCardinalityJourney = async (
       nativeTxCompactCbor: parseSubmitStep01TxInclusion(fixture.tx1.inclusion)
         .nativeTxCompactCbor,
       doubleSpentInputIndex: selectedIndex,
+      publishCarriage,
       awaitConfirmation: true,
     }),
   );
   // **#580 re-take, 2 -> 1.** Under the counted scheme this step published the
   // spend-inputs witness in its own transaction and then spent the thread, so
-  // the capture held two submissions. Under flat there is nothing to publish:
-  // the preimage rides the step redeemer, so the capture holds exactly one.
-  // Asserted rather than relaxed to `>= 1`, because a second submission
-  // reappearing here would mean the builder had started publishing again.
-  expect(step03Capture.measurements.length).toBe(1);
+  // the capture held two submissions. Under flat there is nothing to publish
+  // unless the caller forces the §8 tier-2 demotion (#612): inline, the
+  // preimage rides the step redeemer and the capture holds exactly one;
+  // routed, the §8.7 publication precedes the step and it holds exactly two.
+  // Asserted rather than relaxed to `>= 1`, because an unexpected extra
+  // submission would mean the builder had started publishing on its own.
+  expect(step03Capture.measurements.length).toBe(publishCarriage ? 2 : 1);
   const fourthStepUtxo = await expectSingleUtxoWithUnit(
     proverLucid,
     step03Capture.result.fourthStepAddress,
@@ -362,20 +381,33 @@ const runDoubleSpendCardinalityJourney = async (
       nativeTxCompactCbor: parseSubmitStep01TxInclusion(fixture.tx2.inclusion)
         .nativeTxCompactCbor,
       doubleSpentInputIndex: selectedIndex,
+      publishCarriage,
       awaitConfirmation: true,
     }),
   );
-  // Same re-take as step-03's: one submission, not two.
-  expect(step04Capture.measurements.length).toBe(1);
+  // Same shape as step-03's: one submission inline, two when routed.
+  expect(step04Capture.measurements.length).toBe(publishCarriage ? 2 : 1);
   expect(step04Capture.result.fraudProofAssetName).toBe(
     initResult.computationThreadAssetName,
   );
-  // The two witness-publication stages this journey used to return are gone
-  // with the publications themselves; the stages that remain are the two steps
-  // that carry the preimage in their own redeemers.
+  // Inline, the stages are the two steps that carry the preimage in their own
+  // redeemers; routed, each step's §8.7 carriage publication is a stage of its
+  // own, because it is a transaction the envelope must also admit.
   return {
-    "step-03": step03Capture.measurement,
-    "step-04": step04Capture.measurement,
+    stages: {
+      ...(publishCarriage
+        ? {
+            "step-03-carriage": step03Capture.measurements[0]!,
+            "step-04-carriage": step04Capture.measurements[0]!,
+          }
+        : {}),
+      "step-03": step03Capture.measurement,
+      "step-04": step04Capture.measurement,
+    },
+    carriageTiers: {
+      "step-03": step03Capture.result.tx1SpendInputsCarriageTier,
+      "step-04": step04Capture.result.tx2SpendInputsCarriageTier,
+    },
   };
 };
 
@@ -386,7 +418,11 @@ const runDoubleSpendCardinalityJourney = async (
  */
 const runNoInputCardinalityJourney = async (
   cardinality: number,
-): Promise<Record<string, CompleteSignedTransactionMeasurement>> => {
+  { publishCarriage = false }: { readonly publishCarriage?: boolean } = {},
+): Promise<{
+  readonly stages: Record<string, CompleteSignedTransactionMeasurement>;
+  readonly carriageTiers: Record<string, string>;
+}> => {
   const {
     realBlueprint,
     emulator,
@@ -473,12 +509,24 @@ const runNoInputCardinalityJourney = async (
       inputsPreimage: fixture.inputsPreimage,
       nativeTxCompactCbor: fixture.inclusion.nativeTxCompactCbor,
       badInputIndex: fixture.badInputIndex,
+      publishCarriage,
       awaitConfirmation: true,
     }),
   );
+  // Inline, step-02 is one submission; routed, its §8.7 carriage publication
+  // precedes it and is a stage of its own (#612).
+  expect(step02Capture.measurements.length).toBe(publishCarriage ? 2 : 1);
   return {
-    "step-01": step01Capture.measurement,
-    "step-02": step02Capture.measurement,
+    stages: {
+      "step-01": step01Capture.measurement,
+      ...(publishCarriage
+        ? { "step-02-carriage": step02Capture.measurements[0]! }
+        : {}),
+      "step-02": step02Capture.measurement,
+    },
+    carriageTiers: {
+      "step-02": step02Capture.result.spendInputsCarriageTier,
+    },
   };
 };
 
@@ -536,7 +584,7 @@ describe("fault-proof spend-input preimage cardinality", () => {
 
   it("fits the largest double-spend spend-input preimage and measures the first that does not", async () => {
     const ceilings = executionCeilings();
-    const fitting = await runDoubleSpendCardinalityJourney(
+    const { stages: fitting } = await runDoubleSpendCardinalityJourney(
       DOUBLE_SPEND_LARGEST_FITTING_CARDINALITY,
     );
     for (const [stage, measurement] of Object.entries(fitting)) {
@@ -568,7 +616,7 @@ describe("fault-proof spend-input preimage cardinality", () => {
       fitting["step-03"]!.completeSignedBytes,
     );
 
-    const overBytes = await runDoubleSpendCardinalityJourney(
+    const { stages: overBytes } = await runDoubleSpendCardinalityJourney(
       DOUBLE_SPEND_FIRST_OVER_BYTES_CARDINALITY,
     );
     printCardinalityFit(
@@ -585,7 +633,7 @@ describe("fault-proof spend-input preimage cardinality", () => {
 
   it("fits the largest no-input spend-input preimage and measures the first that does not", async () => {
     const ceilings = executionCeilings();
-    const fitting = await runNoInputCardinalityJourney(
+    const { stages: fitting } = await runNoInputCardinalityJourney(
       NO_INPUT_LARGEST_FITTING_CARDINALITY,
     );
     for (const [stage, measurement] of Object.entries(fitting)) {
@@ -613,7 +661,7 @@ describe("fault-proof spend-input preimage cardinality", () => {
     expect(step02.l1ByteMargin).toBeLessThan(64);
     expect(step02.executionMemory < ceilings.memory / 10n).toBe(true);
 
-    const overBytes = await runNoInputCardinalityJourney(
+    const { stages: overBytes } = await runNoInputCardinalityJourney(
       NO_INPUT_FIRST_OVER_BYTES_CARDINALITY,
     );
     printCardinalityFit(
@@ -639,7 +687,7 @@ describe("fault-proof spend-input preimage cardinality", () => {
     // resolved on the axis it named; what is left is a byte-carriage gap that
     // §8's ladder is built to close and the legacy inline builders do not yet
     // take.
-    const noInput = await runNoInputCardinalityJourney(
+    const { stages: noInput } = await runNoInputCardinalityJourney(
       CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
     );
     printCardinalityFit(
@@ -647,7 +695,7 @@ describe("fault-proof spend-input preimage cardinality", () => {
       CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
       noInput,
     );
-    const doubleSpend = await runDoubleSpendCardinalityJourney(
+    const { stages: doubleSpend } = await runDoubleSpendCardinalityJourney(
       CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
     );
     printCardinalityFit(
@@ -665,8 +713,65 @@ describe("fault-proof spend-input preimage cardinality", () => {
       // per-item cost ever came back.
       expect(measurement.executionMemory < ceilings.memory / 10n).toBe(true);
       expect(measurement.executionSteps < ceilings.steps / 10n).toBe(true);
-      // Bytes: and this is what still misses.
+      // Bytes: and this is what still misses — at tier-1 inline carriage. The
+      // routed row below is the same shape carried the way §8 routes it.
       expect(measurement.l1ByteMargin).toBeLessThan(0);
+    }
+  }, 900_000);
+
+  it("routes both families through §8 tier-2 carriage to the admissible Cardano spend shape", async () => {
+    // **#612 — the closure row.** The rows above measure the tier-1 inline
+    // frontiers and the miss at 296; this one drives the same journeys with
+    // `publishCarriage` set — the option the legacy builders lacked and
+    // `input-no-idx` already shipped — so the preimage publishes once as raw
+    // carriage (§8.7) and the binding step references it. Every transaction
+    // in each journey must fit the envelope: the routed steps AND the
+    // publications that carry the bytes instead.
+    const ceilings = executionCeilings();
+    const noInput = await runNoInputCardinalityJourney(
+      CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
+      { publishCarriage: true },
+    );
+    const doubleSpend = await runDoubleSpendCardinalityJourney(
+      CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
+      { publishCarriage: true },
+    );
+
+    // The ladder's own pick at 296 inputs is `Inline` — 11,251 preimage bytes
+    // is well under the tier-1 bound — and `publish` demotes exactly one
+    // rung, so the recorded tier must be `RawUtxo`: tier selection happened,
+    // and it is the one demotion §8 leaves open.
+    expect(noInput.carriageTiers["step-02"]).toBe("RawUtxo");
+    expect(doubleSpend.carriageTiers["step-03"]).toBe("RawUtxo");
+    expect(doubleSpend.carriageTiers["step-04"]).toBe("RawUtxo");
+
+    for (const [family, journey] of [
+      ["no-input", noInput],
+      ["double-spend", doubleSpend],
+    ] as const) {
+      printProofFitV1({
+        headline: `${family} routed spend-input cardinality ${String(CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY)}`,
+        stages: journey.stages,
+        extra: { carriageTiers: journey.carriageTiers },
+      });
+      for (const [stage, measurement] of Object.entries(journey.stages)) {
+        expectProofFitV1({
+          stage: `${family} routed cardinality ${String(CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY)} ${stage}`,
+          measurement,
+          maxTxExMem: EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem,
+          maxTxExSteps: EMULATOR_PROTOCOL_PARAMETERS.maxTxExSteps,
+        });
+      }
+    }
+
+    // Execution stays an order of magnitude clear on the binding steps, same
+    // as the inline rows — routing moved bytes, not computation.
+    for (const measurement of [
+      noInput.stages["step-02"]!,
+      doubleSpend.stages["step-04"]!,
+    ]) {
+      expect(measurement.executionMemory < ceilings.memory / 10n).toBe(true);
+      expect(measurement.executionSteps < ceilings.steps / 10n).toBe(true);
     }
   }, 900_000);
 });
