@@ -280,7 +280,6 @@ describe("canonical V1 spend-inputs Cardano boundary", () => {
       postWorkRootHex: inputField.terminalFoldVector.postWorkRootHex,
     });
 
-
     const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);
 

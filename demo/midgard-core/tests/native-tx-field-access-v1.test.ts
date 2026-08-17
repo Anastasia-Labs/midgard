@@ -80,9 +80,9 @@ describe("§5.1 enveloped preimage grammar", () => {
     expect(hex(encodeMidgardDefiniteBytesV1(Buffer.alloc(24)))).toBe(
       `5818${"00".repeat(24)}`,
     );
-    expect(hex(encodeMidgardDefiniteBytesV1(Buffer.alloc(256))).slice(0, 6)).toBe(
-      "590100",
-    );
+    expect(
+      hex(encodeMidgardDefiniteBytesV1(Buffer.alloc(256))).slice(0, 6),
+    ).toBe("590100");
   });
 
   it("rejects the non-minimal and out-of-grammar array heads §5.1 excludes", () => {
@@ -126,9 +126,9 @@ describe("§5.1 enveloped preimage grammar", () => {
       /trailing bytes/u,
     );
     // A non-minimal item wrapper: `58 01` where `41` is the one spelling.
-    expect(() =>
-      decodeMidgardFieldPreimageV1(bytes("8158010f")),
-    ).toThrow(/non-minimal/u);
+    expect(() => decodeMidgardFieldPreimageV1(bytes("8158010f"))).toThrow(
+      /non-minimal/u,
+    );
   });
 });
 
@@ -268,7 +268,10 @@ describe("§7 access invariants over a Whole view", () => {
     const view = wholeView(2, variable);
     expect(midgardFieldItemCountV1(view)).toBe(3);
     expect(midgardFieldItemExtentV1(view, 0)).toEqual({ offset: 2, length: 1 });
-    expect(midgardFieldItemExtentV1(view, 1)).toEqual({ offset: 5, length: 24 });
+    expect(midgardFieldItemExtentV1(view, 1)).toEqual({
+      offset: 5,
+      length: 24,
+    });
     expect(midgardFieldItemExtentV1(view, 2)).toEqual({
       offset: 32,
       length: 300,
@@ -352,9 +355,9 @@ describe("§8 carriage ladder", () => {
     // One constant for every certificate of the policy; identity lives in the
     // datum. Pinned as bytes so the on-chain constant and this producer
     // cannot drift apart (the .ak golden channel pins the same value).
-    expect(MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.toString("ascii")).toBe(
-      "MIDGARD_FIELD_PREIMAGE_CERT",
-    );
+    expect(
+      MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.toString("ascii"),
+    ).toBe("MIDGARD_FIELD_PREIMAGE_CERT");
     expect(MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.length).toBe(27);
   });
 
@@ -746,7 +749,10 @@ describe("the off-chain door", () => {
         expectedCommitment: bigCommitment,
         carriage: tier3Carriage,
         referenceInputs: [
-          { ...tier3ReferenceInputs[0], certificateAssetName: Buffer.alloc(32) },
+          {
+            ...tier3ReferenceInputs[0],
+            certificateAssetName: Buffer.alloc(32),
+          },
           tier3ReferenceInputs[1],
           tier3ReferenceInputs[2],
         ],

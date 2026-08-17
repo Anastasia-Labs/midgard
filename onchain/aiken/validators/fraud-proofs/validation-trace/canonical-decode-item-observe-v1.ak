@@ -164,7 +164,7 @@ fn proof_item_from_reference(
   reference_input_index: Int,
   reference_inputs: List<Input>,
 ) -> ValidationAuxiliaryWitnessV1 {
-  expect  
+  expect
       Some(Input {
         output: Output {
           address,

@@ -369,7 +369,6 @@ describe("canonical V1 mint Cardano boundary", () => {
       postWorkRootHex: mintField.terminalFoldVector.postWorkRootHex,
     });
 
-
     const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);
 

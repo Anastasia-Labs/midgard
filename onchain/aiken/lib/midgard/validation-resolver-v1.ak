@@ -166,7 +166,7 @@ fn verify_single_publication_route_v1(
     )
   is {
     Some(datum_data) -> {
-      expect  
+      expect
           CekSinglePublicationDatumV1 {
             version,
             program_envelope_hash,

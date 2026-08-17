@@ -39,7 +39,9 @@ describe("ordinary native golden fixture", () => {
 
     expect(rebuilt.producer).toBe(ORDINARY_PRODUCER);
     expect(rebuilt.sizes.fee).toBe(ORDINARY_PARAMETERS.fee.toString(10));
-    expect(rebuilt.sizes.fullTxCborBytes).toBe(rebuilt.fullTxCborHex.length / 2);
+    expect(rebuilt.sizes.fullTxCborBytes).toBe(
+      rebuilt.fullTxCborHex.length / 2,
+    );
     // The six empty fields are the `80` sentinel, and they are the same byte in
     // the body and in the witness set — the property the Aiken module leans on
     // when it points every empty-field assertion at one constant.

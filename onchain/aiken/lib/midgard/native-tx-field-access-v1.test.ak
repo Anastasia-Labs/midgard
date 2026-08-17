@@ -1107,7 +1107,7 @@ test watcher_recomputes_every_commitment_from_bytes_alone() {
   let recomputes = fn(field_index: Int) -> Bool {
     let preimage = field_preimage(field_index)
     let Pair(verified, witness_set) = source(field_index, preimage)
-    let  
+    let
         NativeTxBodyCompact {
           spend_inputs_hash,
           reference_inputs_hash,

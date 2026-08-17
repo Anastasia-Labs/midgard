@@ -208,10 +208,14 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
     // Published after the assertions above, so the generator can only ever see a
     // vector this suite has already accepted.
     publishAikenVectorV1("output-boundary-v1", {
-      fieldIndex: midgardMeasurement.terminalFoldVector.collectionProof.fieldIndex,
-      itemCount: midgardMeasurement.terminalFoldVector.collectionProof.itemCount,
-      itemIndex: midgardMeasurement.terminalFoldVector.collectionProof.itemIndex,
-      terminalChunkIndex: midgardMeasurement.terminalFoldVector.chunkProof.chunkIndex,
+      fieldIndex:
+        midgardMeasurement.terminalFoldVector.collectionProof.fieldIndex,
+      itemCount:
+        midgardMeasurement.terminalFoldVector.collectionProof.itemCount,
+      itemIndex:
+        midgardMeasurement.terminalFoldVector.collectionProof.itemIndex,
+      terminalChunkIndex:
+        midgardMeasurement.terminalFoldVector.chunkProof.chunkIndex,
       encodedLengthBeforeItem:
         midgardMeasurement.terminalFoldVector.encodedLengthBeforeItem,
       // §8.1's tier-1 carriage: the field's whole §5.1 preimage, which the door
@@ -231,7 +235,6 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
       preWorkRootHex: midgardMeasurement.terminalFoldVector.preWorkRootHex,
       postWorkRootHex: midgardMeasurement.terminalFoldVector.postWorkRootHex,
     });
-
 
     const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);

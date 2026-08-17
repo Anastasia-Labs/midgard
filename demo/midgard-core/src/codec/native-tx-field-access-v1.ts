@@ -203,7 +203,10 @@ const failHash = (message: string, detail?: string): never =>
 
 const exactCount = (value: number, label: string): number => {
   if (!Number.isSafeInteger(value) || value < 0) {
-    return failField(`${label} must be a non-negative safe integer`, `${value}`);
+    return failField(
+      `${label} must be a non-negative safe integer`,
+      `${value}`,
+    );
   }
   return value;
 };
@@ -389,7 +392,10 @@ export const decodeMidgardFieldArrayHeaderV1At = (
   }
   const count = byteAt(bytes, offset + 1) * 256 + byteAt(bytes, offset + 2);
   if (count <= 0xff) {
-    return failGrammar("non-minimal §5.1 array header", `tag=99,count=${count}`);
+    return failGrammar(
+      "non-minimal §5.1 array header",
+      `tag=99,count=${count}`,
+    );
   }
   return { nextOffset: offset + 3, count };
 };
@@ -620,7 +626,6 @@ const exactBytes = (
  */
 export const MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1: Buffer =
   Buffer.from("MIDGARD_FIELD_PREIMAGE_CERT", "ascii");
-
 
 /**
  * Builds the §8.6 certificate an off-chain publisher mints for a tier-3

@@ -4759,7 +4759,7 @@ test script_sources_commits_unique_supported_redeemers() {
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  expect  
+  expect
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
         control: tail_control,
       })
@@ -4910,7 +4910,7 @@ test script_sources_stage_one_redeemer_family_guard() {
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  expect  
+  expect
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
         control: tail_control,
       })
@@ -5374,7 +5374,7 @@ fn verify_maximum_input_schedule_terminal_vector(
     ..malformed_terminal_cursor_control,
     stage: 4,
   }
-  let  
+  let
       Pair(malformed_terminal_cursor,
       malformed_terminal_cursor_work_witness_cbor)
     = resolution_schedule_terminal_state(malformed_terminal_cursor_control, 13)
@@ -5394,7 +5394,7 @@ fn verify_maximum_input_schedule_terminal_vector(
     ..malformed_terminal_accumulator_control,
     stage: 4,
   }
-  let  
+  let
       Pair(malformed_terminal_accumulator,
       malformed_terminal_accumulator_work_witness_cbor)
     = resolution_schedule_terminal_state(
@@ -7654,7 +7654,7 @@ test script_sources_discovers_an_exact_non_native_execution() {
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  expect  
+  expect
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
         control: tail_control,
       })
@@ -7895,7 +7895,7 @@ test script_sources_stage_ten_redeemer_family_guards() {
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  expect  
+  expect
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
         control: tail_control,
       })
@@ -8639,7 +8639,7 @@ test script_sources_stage_twelve_redeemer_family_guard() {
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  expect  
+  expect
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
         control: tail_control,
       })
@@ -9848,7 +9848,7 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  expect  
+  expect
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
         control: tail_control,
       })

@@ -503,7 +503,10 @@ describe("fault-proof published-chunk proof carriage", () => {
       contracts,
       catalogue,
     } = await makeFaultProofEmulatorHarnessV1({
-      contractOptions: { realInvalidRange: true, alwaysFraudProofCatalogue: true },
+      contractOptions: {
+        realInvalidRange: true,
+        alwaysFraudProofCatalogue: true,
+      },
       registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
     });
     const removalReferenceScriptPublications =

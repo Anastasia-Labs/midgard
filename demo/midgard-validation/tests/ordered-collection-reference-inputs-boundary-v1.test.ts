@@ -324,10 +324,14 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
     // Published after the assertions above, so the generator can only ever see a
     // vector this suite has already accepted.
     publishAikenVectorV1("reference-inputs-boundary-v1", {
-      fieldIndex: referenceInputField.terminalFoldVector.collectionProof.fieldIndex,
-      itemCount: referenceInputField.terminalFoldVector.collectionProof.itemCount,
-      itemIndex: referenceInputField.terminalFoldVector.collectionProof.itemIndex,
-      terminalChunkIndex: referenceInputField.terminalFoldVector.chunkProof.chunkIndex,
+      fieldIndex:
+        referenceInputField.terminalFoldVector.collectionProof.fieldIndex,
+      itemCount:
+        referenceInputField.terminalFoldVector.collectionProof.itemCount,
+      itemIndex:
+        referenceInputField.terminalFoldVector.collectionProof.itemIndex,
+      terminalChunkIndex:
+        referenceInputField.terminalFoldVector.chunkProof.chunkIndex,
       encodedLengthBeforeItem:
         referenceInputField.terminalFoldVector.encodedLengthBeforeItem,
       // §8.1's tier-1 carriage: the field's whole §5.1 preimage, which the door
@@ -347,7 +351,6 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
       preWorkRootHex: referenceInputField.terminalFoldVector.preWorkRootHex,
       postWorkRootHex: referenceInputField.terminalFoldVector.postWorkRootHex,
     });
-
 
     const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);

@@ -31,12 +31,11 @@ validator exclusion {
     expect key: ByteArray = key_data
     expect proof: mpf.Proof = proof_data
 
-    let trie =
-      if root == env.empty_merkle_tree_root {
-        mpf.empty
-      } else {
-        mpf.from_root(root)
-      }
+    let trie = if root == env.empty_merkle_tree_root {
+      mpf.empty
+    } else {
+      mpf.from_root(root)
+    }
     expect _excluded = mpf.insert(trie, key, "", proof)
 
     True

@@ -283,7 +283,8 @@ describe("§8.6 certificate selection under the constant asset name V1", () => {
       ...certificateUtxoFor(plan, "a1".repeat(32)),
       assets: {
         lovelace: 5_000_000n,
-        [`${FOREIGN_POLICY_ID}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1}`]: 1n,
+        [`${FOREIGN_POLICY_ID}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1}`]:
+          1n,
       },
     };
     expect(() =>

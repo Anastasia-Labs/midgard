@@ -689,7 +689,10 @@ describe("fault-proof maximum proof fit", () => {
       contracts,
       catalogue,
     } = await makeFaultProofEmulatorHarnessV1({
-      contractOptions: { realInvalidRange: true, alwaysFraudProofCatalogue: true },
+      contractOptions: {
+        realInvalidRange: true,
+        alwaysFraudProofCatalogue: true,
+      },
     });
     const removalReferenceScriptPublications =
       await publishRemovalReferenceScripts({ lucid: proverLucid, contracts });

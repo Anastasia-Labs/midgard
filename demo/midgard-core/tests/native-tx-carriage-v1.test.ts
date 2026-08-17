@@ -343,9 +343,9 @@ describe("§8.3 erratum E1 — the publishable frontier", () => {
   it("splits a publication into fixed framing, the datum head and the payload's own encoding", () => {
     for (const payloadBytes of [1_000, 8_000, 14_336, 15_148, 15_644, 15_900]) {
       const datumBytes = midgardCarriageDataByteStringBytesV1(payloadBytes);
-      expect(
-        midgardCarriagePublicationBytesV1(payloadBytes) - datumBytes,
-      ).toBe(midgardCarriagePublicationFramingBytesV1(datumBytes));
+      expect(midgardCarriagePublicationBytesV1(payloadBytes) - datumBytes).toBe(
+        midgardCarriagePublicationFramingBytesV1(datumBytes),
+      );
       // Across the whole ladder the datum sits in [256, 65_536) and the framing
       // is the flat 248 §8.3 E1 publishes.
       expect(midgardCarriagePublicationFramingBytesV1(datumBytes)).toBe(248);
@@ -501,9 +501,7 @@ describe("§8.3 erratum E1 — the publishable frontier", () => {
     // Tier 1 publishes nothing, so there is nothing to be unpublishable.
     const inline = plan(preimageUnder(4_000));
     expect(inline.tier).toBe("Inline");
-    expect(
-      midgardFieldCarriagePublishabilityV1({ plan: inline }),
-    ).toEqual({
+    expect(midgardFieldCarriagePublishabilityV1({ plan: inline })).toEqual({
       publishable: true,
       budgetBytes: 16_384 - MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES_V1,
       unpublishableChunks: [],

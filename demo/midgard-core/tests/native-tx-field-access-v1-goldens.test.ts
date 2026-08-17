@@ -307,9 +307,9 @@ describe("native-tx field-access V1 cross-language goldens", () => {
     expect(chunks.map((chunk) => chunk.length)).toEqual([
       ...certificate.chunkLengths,
     ]);
-    expect(chunks.map((chunk) => hex(midgardFieldCommitmentV1(chunk)))).toEqual([
-      ...certificate.chunkDigestsHex,
-    ]);
+    expect(chunks.map((chunk) => hex(midgardFieldCommitmentV1(chunk)))).toEqual(
+      [...certificate.chunkDigestsHex],
+    );
 
     // …and the same digests out of the publisher-facing derivation, so the
     // pinned manifest is what a real tier-3 publisher would mint.

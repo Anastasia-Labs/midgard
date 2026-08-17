@@ -95,8 +95,8 @@ use midgard/fraud_proofs/native_tx/types.{
   NativeTxBodyCompact, NativeTxCompact, NativeTxWitnessSetCompact,
 }
 use midgard/native_tx_field_access_v1.{
-  FieldPreimageCertificateV1, chunk_bytes_k, expected_chunk_count, field_count,
-  field_commitment, max_tier3_chunk_count,
+  FieldPreimageCertificateV1, chunk_bytes_k, expected_chunk_count,
+  field_commitment, field_count, max_tier3_chunk_count,
   max_transaction_aggregate_field_bytes,
 }
 

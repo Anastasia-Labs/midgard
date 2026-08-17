@@ -910,7 +910,7 @@ fn resolve_input_output_proof_from_cbor(
   pending_cbor: ByteArray,
 ) -> ResolveInputOutputProofV1 {
   expect Some(data) = cbor.deserialise(pending_cbor)
-  expect  
+  expect
       [
         source_kind_data, key_data, next_schedule_hash_data,
         descriptor_cbor_data, output_proof_cbor_data,
@@ -1396,7 +1396,7 @@ fn canonical_decode_control_from_witness(
   witness_cbor: ByteArray,
 ) -> CanonicalDecodeControlV1 {
   expect Some(data) = cbor.deserialise(witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data, field_index_data,
@@ -2059,7 +2059,7 @@ fn verify_compact_binding(
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect  
+  expect
       [
         transaction_id_data, commitment_data, compact_cbor_data,
         witness_set_compact_cbor_data, field_preimage_lengths_cbor_data,
@@ -2134,7 +2134,7 @@ pub type ValidationContextV1 {
 
 fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1 {
   expect Some(data) = cbor.deserialise(context_cbor)
-  expect  
+  expect
       [
         version_data, profile_id_data, block_end_time_data,
         expected_network_id_data, min_fee_a_data, min_fee_b_data,
@@ -2262,7 +2262,7 @@ fn input_sets_control_from_witness(
   witness_cbor: ByteArray,
 ) -> InputSetsControlV1 {
   expect Some(data) = cbor.deserialise(witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data, spend_count_data,
@@ -2684,7 +2684,7 @@ fn verify_static_rules(
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -2797,7 +2797,7 @@ fn signatures_control_from_witness(
   witness_cbor: ByteArray,
 ) -> SignaturesControlV1 {
   expect Some(data) = cbor.deserialise(witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -3454,7 +3454,7 @@ fn phase_a_native_control_from_witness(
   witness_cbor: ByteArray,
 ) -> PhaseANativeScriptsControlV1 {
   expect Some(data) = cbor.deserialise(witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -5812,7 +5812,7 @@ fn phase_a_script_preconditions_control_from_witness(
   witness_cbor: ByteArray,
 ) -> PhaseAScriptPreconditionsControlV1 {
   expect Some(data) = cbor.deserialise(witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -6093,7 +6093,7 @@ fn resolve_inputs_control_from_witness(
   witness_cbor: ByteArray,
 ) -> ResolveInputsControlV1 {
   expect Some(data) = cbor.deserialise(witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data, cursor_data,
@@ -7118,7 +7118,7 @@ fn script_discovery_control_from_cbor(
   discovery_cbor: ByteArray,
 ) -> ScriptDiscoveryControlV1 {
   expect Some(data) = cbor.deserialise(discovery_cbor)
-  expect  
+  expect
       [
         purpose_cursor_data, source_cursor_data, redeemer_cursor_data,
         current_purpose_kind_data, current_purpose_index_data,
@@ -7184,7 +7184,7 @@ fn split_last_data(items: List<Data>) -> Pair<List<Data>, Data> {
 }
 
 fn mint_fold_control_from_data(data: Data) -> MintFoldControlV1 {
-  expect  
+  expect
       [
         policy_count_data, policy_cursor_data, previous_policy_data,
         active_policy_data, item_length_data, item_commitment_data,
@@ -7213,7 +7213,7 @@ fn script_sources_control_from_data_items(
   discovery: ScriptDiscoveryControlV1,
   output_proof: Option<ledger_output_proof_v1.LedgerOutputProofControlV1>,
 ) -> ScriptSourcesControlV1 {
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -7229,13 +7229,13 @@ fn script_sources_control_from_data_items(
         observer_scan_data, mint_fold_data, resolution_schedule_hash_data,
       ]
     = items
-  expect  
+  expect
       [
         observer_total_count_data, observer_previous_hash_data,
         observer_seen_data,
       ]
     = builtin.un_list_data(observer_scan_data)
-  expect  
+  expect
       [
         receive_source_count_data, receive_source_peaks_data, receive_count_data,
         receive_previous_hash_data, receive_candidate_hash_data,
@@ -7400,7 +7400,7 @@ fn inline_source_hash_control_from_cbor(
   control_cbor: ByteArray,
 ) -> InlineSourceHashControlV1 {
   expect Some(data) = cbor.deserialise(control_cbor)
-  expect  
+  expect
       [
         version_data, source_index_data, source_total_count_data,
         language_tag_data, payload_offset_data, payload_length_data,
@@ -8588,7 +8588,7 @@ fn script_sources_stage_one_raw_common_control_is_initial(
   receive_scan_data: Data,
   source_total_count_data: Data,
 ) -> Bool {
-  expect  
+  expect
       [
         receive_source_count_data, receive_source_peaks_data, receive_count_data,
         receive_previous_hash_data, receive_candidate_hash_data,
@@ -8619,7 +8619,7 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
   expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, _, _, _, _, _,
@@ -8809,7 +8809,7 @@ fn script_sources_stage_one(
       ),
     }
   } else {
-    expect  
+    expect
         RedeemerItemStepWitness {
           redeemer_control: None,
           control: item_control,
@@ -9919,7 +9919,7 @@ fn script_sources_receive_scan_item(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  expect  
+  expect
       ScriptPurposeScanWitness {
         purpose_kind,
         purpose_index,
@@ -10629,7 +10629,7 @@ fn script_sources_stage_eight(
       ),
     }
   } else {
-    expect  
+    expect
         ScriptPurposeScanWitness {
           purpose_kind,
           purpose_index,
@@ -10874,7 +10874,7 @@ fn script_sources_stage_nine(
       ),
     }
   } else {
-    expect  
+    expect
         ScriptSourceScanWitness {
           source_index,
           origin_kind,
@@ -11342,7 +11342,7 @@ fn script_sources_stage_ten(
       ),
     }
   } else if discovery.redeemer_item_control_hash == #"" {
-    expect  
+    expect
         RedeemerScanBeginWitness {
           item_index,
           item_count,
@@ -11388,7 +11388,7 @@ fn script_sources_stage_ten(
       ),
     }
   } else {
-    expect  
+    expect
         RedeemerItemStepWitness {
           redeemer_control: None,
           control: item_control,
@@ -11665,7 +11665,7 @@ fn script_sources_stage_eleven(
       ),
     }
   } else {
-    expect  
+    expect
         ScriptSourceScanWitness {
           source_index,
           origin_kind,
@@ -11893,7 +11893,7 @@ fn script_sources_stage_twelve(
       ),
     }
   } else if discovery.redeemer_item_control_hash == #"" {
-    expect  
+    expect
         RedeemerScanBeginWitness {
           item_index,
           item_count,
@@ -11939,7 +11939,7 @@ fn script_sources_stage_twelve(
       ),
     }
   } else {
-    expect  
+    expect
         RedeemerItemStepWitness {
           redeemer_control: None,
           control: item_control,
@@ -13120,7 +13120,7 @@ fn native_scripts_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> NativeScriptsControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -13379,7 +13379,7 @@ fn verify_native_execution_descriptor_step(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: NativeScriptsControlV1,
 ) -> Bool {
-  expect  
+  expect
       NativeExecutionDescriptorWitness {
         execution_index,
         language_tag,
@@ -13775,7 +13775,7 @@ pub fn encode_cek_context_control_v1(control: CekContextControlV1) -> ByteArray 
 
 fn cek_context_control_from_cbor(control_cbor: ByteArray) -> CekContextControlV1 {
   expect Some(data) = cbor.deserialise(control_cbor)
-  expect  
+  expect
       [
         stage_data, language_tag_data, program_term_root_data,
         program_envelope_hash_data, purpose_kind_data, purpose_index_data,
@@ -14322,7 +14322,7 @@ fn value_accumulator_from_cbor(
   accumulator_cbor: ByteArray,
 ) -> ValueAccumulatorV1 {
   expect Some(data) = cbor.deserialise(accumulator_cbor)
-  expect  
+  expect
       [
         lovelace_data, asset_root_data, seen_asset_count_data,
         nonzero_asset_count_data,
@@ -14494,7 +14494,7 @@ fn value_and_mint_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> ValueAndMintControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
-  expect  
+  expect
       [
         native_control_cbor_data, stage_data, replay_schedule_hash_data,
         replay_cursor_data, replay_asset_cursor_data, replay_value_hash_data,
@@ -14612,7 +14612,7 @@ fn ledger_delta_proof_descriptor_from_cbor(
   descriptor_cbor: ByteArray,
 ) -> mpf_proof_fold_v1.ProofDescriptorV1 {
   expect Some(data) = cbor.deserialise(descriptor_cbor)
-  expect  
+  expect
       [
         version_data, frame_count_data, terminal_cursor_data,
         operation_peaks_data,
@@ -14659,7 +14659,7 @@ fn ledger_delta_pending_mutation_from_cbor(
   pending_cbor: ByteArray,
 ) -> LedgerDeltaPendingMutationV1 {
   expect Some(data) = cbor.deserialise(pending_cbor)
-  expect  
+  expect
       [
         version_data, authorization_stage_data, operation_kind_data, key_data,
         value_data, descriptor_cbor_data, next_frame_index_data,
@@ -14730,7 +14730,7 @@ fn ledger_delta_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> LedgerDeltaControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
-  expect  
+  expect
       [
         resolved_input_count_data, resolved_inputs_accumulator_data,
         output_count_data, output_descriptor_peaks_data, stage_data,
@@ -14876,7 +14876,7 @@ fn verify_script_integrity_witness_set(
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect  
+  expect
       [
         native_control_cbor_data, stage_data, script_integrity_hash_data,
         witness_set_hash_data,
@@ -14921,7 +14921,7 @@ fn verify_script_integrity_finalize(
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect  
+  expect
       [
         native_control_cbor_data, stage_data, script_integrity_hash_data,
         redeemer_tx_wits_hash_data,
@@ -15279,7 +15279,7 @@ pub fn verify_cek_execution_selection(
   completed_cpu: Int,
   completed_memory: Int,
 ) -> Bool {
-  expect  
+  expect
       NativeExecutionScanWitness {
         execution_index,
         language_tag,
@@ -15443,7 +15443,7 @@ fn verify_cek_redeemer_selection(
   completed_memory: Int,
 ) -> Bool {
   if context_control.redeemer_context_control_hash == #"" {
-    expect  
+    expect
         RedeemerScanBeginWitness {
           item_index,
           item_count,
@@ -15492,7 +15492,7 @@ fn verify_cek_redeemer_selection(
       ),
     }
   } else {
-    expect  
+    expect
         RedeemerItemStepWitness {
           redeemer_control: None,
           control: item_control,
@@ -15588,7 +15588,7 @@ pub fn verify_cek_reference_context_step(
       ),
     }
   } else {
-    expect  
+    expect
         CekResolvedContextItemWitness {
           source_kind,
           item_index,
@@ -15648,7 +15648,7 @@ pub fn verify_cek_spend_context_step(
       ),
     }
   } else {
-    expect  
+    expect
         CekResolvedContextItemWitness {
           source_kind,
           item_index,
@@ -15708,7 +15708,7 @@ pub fn verify_cek_output_context_step(
       ),
     }
   } else {
-    expect  
+    expect
         CekOutputContextItemWitness { output_index, descriptor_cbor, siblings }
       = auxiliary
     expect Some(next_items) = script_context_v1.prepend_output_descriptor_v1(
@@ -15756,7 +15756,7 @@ fn verify_cek_signer_context_step(
       ),
     }
   } else {
-    expect  
+    expect
         CekSignerContextItemWitness {
           peaks,
           signer_index,
@@ -16049,7 +16049,7 @@ fn verify_cek_mint_context_item(
       ),
     }
   } else {
-    expect  
+    expect
         CekMintContextItemWitness {
           mint_index,
           policy_id,
@@ -16497,7 +16497,7 @@ pub fn verify_cek_context_finalize(
     !midgard_encoding,
     context_control.purpose_kind == 0,
   } {
-    expect  
+    expect
         CekContextFinalizeSpendWitness {
           redeemer_control,
           item_index,
@@ -16866,7 +16866,7 @@ fn verify_cek(
   door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect  
+  expect
       [
         native_control_cbor_data, context_control_cbor_data,
         execution_cursor_data, completed_cpu_data, completed_memory_data,
@@ -17098,7 +17098,7 @@ fn value_and_mint_stage_two(
       ),
     }
   } else if control.replay_asset_cursor == 0 {
-    expect  
+    expect
         ResolvedInputReplayWitness {
           source_kind,
           key,
@@ -17145,7 +17145,7 @@ fn value_and_mint_stage_two(
       False
     }
   } else {
-    expect  
+    expect
         ValueInputAssetWitness {
           source_kind,
           key,
@@ -17239,7 +17239,7 @@ fn value_and_mint_stage_three(
       ),
     }
   } else if control.output_asset_cursor == 0 {
-    expect  
+    expect
         ValueOutputDescriptorWitness { output_index, descriptor_cbor, siblings }
       = auxiliary
     if and {
@@ -17279,7 +17279,7 @@ fn value_and_mint_stage_three(
       False
     }
   } else {
-    expect  
+    expect
         ValueOutputAssetWitness {
           output_index,
           descriptor_cbor,
@@ -17367,7 +17367,7 @@ fn value_and_mint_stage_four(
       ),
     }
   } else {
-    expect  
+    expect
         ValueMintAssetWitness {
           mint_index,
           policy_id,
@@ -17597,7 +17597,7 @@ fn ledger_delta_operation_step(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: LedgerDeltaControlV1,
 ) -> Bool {
-  expect  
+  expect
       LedgerDeltaOperationWitness {
         operation_kind,
         key,
@@ -17746,7 +17746,7 @@ fn ledger_delta_replay_step(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: LedgerDeltaControlV1,
 ) -> Bool {
-  expect  
+  expect
       LedgerDeltaReplayWitness { source_kind, key, next_schedule_hash, value }
     = auxiliary
   let descriptor = ledger_output_commitment_v1.decode(value)

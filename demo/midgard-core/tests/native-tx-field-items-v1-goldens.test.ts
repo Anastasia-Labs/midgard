@@ -143,7 +143,10 @@ type Golden = {
 const golden = JSON.parse(
   readFileSync(
     fileURLToPath(
-      new URL("./fixtures/native-tx-field-items-v1.generated.json", import.meta.url),
+      new URL(
+        "./fixtures/native-tx-field-items-v1.generated.json",
+        import.meta.url,
+      ),
     ),
     "utf8",
   ),
@@ -331,9 +334,9 @@ describe("§5.3 fixed-width item assertions", () => {
   });
 
   it("pins the §5.3 fixed output index at every boundary value", () => {
-    expect(
-      golden.fixedOutputIndexes.map((entry) => entry.outputIndex),
-    ).toEqual(vectors.FIXED_INDEX_BOUNDARIES);
+    expect(golden.fixedOutputIndexes.map((entry) => entry.outputIndex)).toEqual(
+      vectors.FIXED_INDEX_BOUNDARIES,
+    );
     for (const entry of golden.fixedOutputIndexes) {
       expect(hex(encodeMidgardFixedOutputIndexV1(entry.outputIndex))).toBe(
         entry.encodedHex,
@@ -381,7 +384,10 @@ describe("§5.3 fixed-width item assertions", () => {
     expect(() => encodeMidgardHash28ItemV1(vectors.filler(27, 1))).toThrow();
     expect(() => encodeMidgardHash28ItemV1(vectors.filler(29, 1))).toThrow();
     expect(() =>
-      encodeMidgardSpendInputItemV1({ txId: vectors.filler(31, 1), outputIndex: 0 }),
+      encodeMidgardSpendInputItemV1({
+        txId: vectors.filler(31, 1),
+        outputIndex: 0,
+      }),
     ).toThrow();
     expect(() =>
       encodeMidgardAddressWitnessItemV1({
@@ -451,7 +457,10 @@ describe("§5.6 mint ordering is enforced, not assumed", () => {
       encodeMidgardFieldPreimageForFieldV1({ fieldIndex: 5, items: ascending }),
     ).not.toThrow();
     expect(() =>
-      encodeMidgardFieldPreimageForFieldV1({ fieldIndex: 5, items: descending }),
+      encodeMidgardFieldPreimageForFieldV1({
+        fieldIndex: 5,
+        items: descending,
+      }),
     ).toThrow();
     expect(() =>
       encodeMidgardFieldPreimageForFieldV1({
@@ -476,9 +485,7 @@ describe("§5.3 the two value sets", () => {
       expect(hex(encodeMidgardVersionedScript(script!))).toBe(entry.itemHex);
     }
     // 128 is the only tag that is not a single byte: `18 80`.
-    const midgard = golden.languageTags.find(
-      (entry) => entry.tag === 128,
-    );
+    const midgard = golden.languageTags.find((entry) => entry.tag === 128);
     expect(midgard?.itemHex.slice(2, 6)).toBe("1880");
   });
 
@@ -517,9 +524,9 @@ describe("§5.3 the two value sets", () => {
 
 describe("§6.2 datum canonicity boundaries", () => {
   it("carries the bignum and high-alternative constructor forms as bytes", () => {
-    expect(golden.datumCanonicityBoundaries.map((entry) => entry.label)).toEqual(
-      vectors.DATUM_CANONICITY_BOUNDARIES.map(([label]) => label),
-    );
+    expect(
+      golden.datumCanonicityBoundaries.map((entry) => entry.label),
+    ).toEqual(vectors.DATUM_CANONICITY_BOUNDARIES.map(([label]) => label));
     // The point of the vector: these are *canonical* under §6.2's re-pin, and
     // they reach the committed bytes through an output's opaque `datum_cbor`.
     // Canonicity and materialisability are different predicates — nothing here
@@ -578,9 +585,9 @@ describe("§2.4 field-preimage lengths keep the wire-order transposition", () =>
 
 describe("§8 carriage tiers", () => {
   it("partitions preimage lengths across the three tiers", () => {
-    expect(
-      golden.carriageTiers.map((entry) => entry.preimageLength),
-    ).toEqual(vectors.CARRIAGE_BOUNDARY_LENGTHS);
+    expect(golden.carriageTiers.map((entry) => entry.preimageLength)).toEqual(
+      vectors.CARRIAGE_BOUNDARY_LENGTHS,
+    );
     for (const entry of golden.carriageTiers) {
       expect(selectMidgardFieldCarriageTierV1(entry.preimageLength)).toBe(
         entry.tier,
@@ -682,18 +689,19 @@ describe("§8.4 tier-3 straddle at the stride fields 0/1 share", () => {
         offset: read.offset,
         length: read.length,
       });
-      expect(hex(midgardFieldItemAtV1(view, read.itemIndex))).toBe(read.itemHex);
+      expect(hex(midgardFieldItemAtV1(view, read.itemIndex))).toBe(
+        read.itemHex,
+      );
       const crosses =
         Math.floor(read.offset / MIDGARD_CHUNK_BYTES_K_V1) !==
-        Math.floor(
-          (read.offset + read.length - 1) / MIDGARD_CHUNK_BYTES_K_V1,
-        );
+        Math.floor((read.offset + read.length - 1) / MIDGARD_CHUNK_BYTES_K_V1);
       expect(crosses).toBe(read.straddles);
     }
     const straddling = straddle.reads.find((read) => read.straddles);
     expect(straddling?.itemHex).not.toBe(
-      straddle.reads.find((read) => read.itemIndex === straddling!.itemIndex - 1)
-        ?.itemHex,
+      straddle.reads.find(
+        (read) => read.itemIndex === straddling!.itemIndex - 1,
+      )?.itemHex,
     );
 
     // §7.3 again, on the chunked branch.

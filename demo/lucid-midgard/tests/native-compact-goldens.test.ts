@@ -63,10 +63,7 @@ const copyGeneratorMirror = (root: string): string => {
   // too — without it the generator dies on an unresolved import, and this test
   // would be asserting a module-resolution failure while claiming to assert the
   // staleness refusal.
-  const modulesDestination = path.join(
-    root,
-    "demo/lucid-midgard/node_modules",
-  );
+  const modulesDestination = path.join(root, "demo/lucid-midgard/node_modules");
   mkdirSync(path.dirname(modulesDestination), { recursive: true });
   symlinkSync(
     path.join(packageRoot, "node_modules"),
