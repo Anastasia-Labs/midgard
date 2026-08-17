@@ -16,6 +16,7 @@ import {
   MIDGARD_EMPTY_FIELD_COMMITMENT_V1,
   MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS_V1,
   MIDGARD_FIELD_COUNT_V1,
+  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
   MIDGARD_FIELD_VIEW_CONSTRUCTORS_V1,
   MIDGARD_HASH28_ITEM_BYTES_V1,
   MIDGARD_MAX_FIELD_ITEM_COUNT_V1,
@@ -30,7 +31,6 @@ import {
   midgardFieldCommitmentV1,
   midgardFieldItemAtV1,
   midgardFieldItemExtentV1,
-  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
   midgardFieldStrideV1,
   splitMidgardFieldPreimageIntoChunksV1,
 } from "../src/codec/native-tx-field-access-v1.js";

@@ -17,11 +17,11 @@ import {
 import {
   authenticatedMidgardFieldViewV1,
   MIDGARD_CHUNK_BYTES_K_V1,
+  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
   MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
   midgardFieldCommitmentV1,
   midgardFieldItemAtV1,
-  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
   splitMidgardFieldPreimageIntoChunksV1,
 } from "../src/codec/native-tx-field-access-v1.js";
 
