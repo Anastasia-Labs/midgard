@@ -62,6 +62,15 @@ targets another environment.
   changes, and keep patches scoped to the request.
 - Before finalizing changes, run the narrow checks that prove the touched
   behavior and report exactly what ran.
+- Install the repository hooks once per clone: `bash .githooks/install` (or
+  `pnpm --dir demo run hooks:install`). The pre-commit hook formats and lints
+  exactly what you staged — Prettier and ESLint over `demo/**/*.{ts,tsx,md}`,
+  the pinned fork's `aiken fmt` plus CI's trailing-whitespace normalization
+  over `*.ak` — so `static-demo-format`, `static-demo-lint`, `watcher-format`,
+  `watcher-lint` and the CI Aiken formatter check cannot go red on formatting
+  alone. It re-stages only the paths it touched, skips files that are only
+  partially staged rather than committing the unstaged half, and preserves any
+  hook already installed as `<hook>.local`. `MIDGARD_SKIP_HOOKS=1` bypasses it.
 
 ## Observed Pitfalls
 
