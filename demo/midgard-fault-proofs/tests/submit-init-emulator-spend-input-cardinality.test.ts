@@ -88,8 +88,17 @@
  * item plus the §5.1 envelope, and that is what fills the envelope: measured
  * ~41.2 complete-signed bytes per input on both families' binding step. Q10's
  * frontier is lower than Q11's because its binding step is step-04, which
- * carries tx2's preimage on top of a larger fixed step (16,379 bytes at 75
- * inputs against Q11's 16,345 at 196), not because it is dearer per input.
+ * carries tx2's preimage on top of a larger fixed step (16,378 bytes at 74
+ * inputs against Q11's 16,345 at 195), not because it is dearer per input.
+ *
+ * Those two figures are the **#606 re-take of 2026-08-16**, and they are quoted
+ * at the cardinalities the pinned pairs below now name. They read 16,379 at 75
+ * and 16,345 at 196 until that re-take: the regeneration grew every
+ * field-door-consuming step validator, the legacy journeys attach those scripts
+ * to the transactions they measure, and one input's worth of room went with it
+ * on each family. Left alone this paragraph would have asserted as measured
+ * fact that 75 and 196 fit, at the same time as the pairs below pin them as the
+ * first cardinalities that do not.
  *
  * That is a **carriage-routing** limit rather than an execution one, and the
  * distinction is the whole difference from Q1X-F6: bytes CAN be moved off the
@@ -102,9 +111,10 @@
  * **The residual, stated exactly.** The legacy step builders these journeys
  * drive carry the preimage inline unconditionally, so at tier-1 carriage
  * neither family reaches the admissible 296-input Cardano spend shape. What is
- * left is therefore a builder-routing gap over the band (196, 296] for Q11 and
- * (75, 296] for Q10 — narrow, byte-shaped, and closable off-chain — where
- * Q1X-F6 was an on-chain execution wall no carriage could move.
+ * left is therefore a builder-routing gap over the band (195, 296] for Q11 and
+ * (74, 296] for Q10 — narrow, byte-shaped, and closable off-chain — where
+ * Q1X-F6 was an on-chain execution wall no carriage could move. (Both bands
+ * widened by one input at their lower edge in the #606 re-take noted above.)
  *
  * Lives in its own file for the same reason its siblings do: `@lucid-evolution/uplc`
  * never reclaims wasm linear memory and vitest isolates per FILE. See
