@@ -7,6 +7,8 @@ import { MessageChannel, type MessagePort } from "node:worker_threads";
 
 import { Level } from "level";
 
+import { positiveSafeInteger } from "@/artifact-schema.js";
+
 import {
   createEventFlatDigest,
   prepareEventFlatDigest,
@@ -137,11 +139,6 @@ const normalizeOwnerOptions = (
   const requestTimeoutMs =
     options.requestTimeoutMs ?? NATIVE_MPF_OWNER_DEFAULT_CAPS.loadTimeoutMs;
   const restartLimit = options.restartLimit ?? 3;
-  const positiveSafeInteger = (value: number, field: string): void => {
-    if (!Number.isSafeInteger(value) || value <= 0) {
-      throw new Error(`${field} must be a positive safe integer`);
-    }
-  };
   positiveSafeInteger(maxFrameBytes, "maxFrameBytes");
   positiveSafeInteger(maxChunkBytes, "maxChunkBytes");
   positiveSafeInteger(requestTimeoutMs, "requestTimeoutMs");

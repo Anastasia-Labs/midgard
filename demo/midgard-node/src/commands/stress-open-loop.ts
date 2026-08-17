@@ -7,6 +7,7 @@ import {
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 
+import { nonEmptyString } from "@/artifact-schema.js";
 import { percentileOfUnsorted as percentile } from "@/percentile.js";
 import { sha256Hex } from "@/sha256.js";
 
@@ -114,10 +115,7 @@ const parseStringField = (
   input: Record<string, unknown>,
   name: string,
 ): string => {
-  const value = input[name];
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error(`corpus row ${name} must be a non-empty string`);
-  }
+  const value = nonEmptyString(input[name], `corpus row ${name}`);
   if (value !== value.trim()) {
     throw new Error(`corpus row ${name} must be an exact non-empty string`);
   }

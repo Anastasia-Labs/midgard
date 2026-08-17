@@ -4,6 +4,14 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
 
+import {
+  arrayOf,
+  booleanValue,
+  exactRecord,
+  nonEmptyString,
+  oneOf,
+  openRecord,
+} from "@/artifact-schema.js";
 import { parseEventId } from "@/commands/command-utils.js";
 import { resolveTxStatus } from "@/commands/tx-status.js";
 import {
@@ -20,14 +28,6 @@ import {
   TxRejectionsDB,
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import {
-  arrayOf,
-  booleanValue,
-  exactRecord,
-  nonEmptyString,
-  oneOf,
-  openRecord,
-} from "@/e2e/exact-artifact.js";
 import { reconcileVisibleDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
 import { mergeAction } from "@/fibers/merge.js";
 import { projectDepositsToMempoolLedger } from "@/fibers/project-deposits-to-mempool-ledger.js";

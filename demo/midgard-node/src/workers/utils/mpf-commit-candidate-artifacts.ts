@@ -1,7 +1,17 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
 
+import {
+  boundedNonEmptyString,
+  canonicalAbsolutePath,
+  canonicalUtcTimestamp,
+  exactKeysRecord,
+  nonNegativeFiniteNumber,
+  nonNegativeSafeInteger,
+  positiveFiniteNumber,
+  positiveSafeInteger,
+  sha256Digest,
+} from "@/artifact-schema.js";
 import {
   ogmiosEndpointIdentitySha256,
   type ShelleyGenesisSlotEvidence,
@@ -237,68 +247,6 @@ const architectureGOwnerDiagnosticKeys = [
   "childRestarts",
 ] as const;
 
-const exactRecord = (
-  value: unknown,
-  keys: readonly string[],
-  label: string,
-): JsonRecord => {
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    Array.isArray(value) ||
-    JSON.stringify(Object.keys(value).sort()) !==
-      JSON.stringify([...keys].sort())
-  ) {
-    throw new Error(`${label} must contain exactly: ${keys.join(", ")}`);
-  }
-  return value as JsonRecord;
-};
-
-const nonEmptyString = (
-  value: unknown,
-  label: string,
-  maxLength = 4096,
-): string => {
-  if (
-    typeof value !== "string" ||
-    value.trim().length === 0 ||
-    value.length > maxLength ||
-    value.includes("\0")
-  ) {
-    throw new Error(`${label} must be a bounded nonempty string`);
-  }
-  return value;
-};
-
-const hash = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || !/^[0-9a-f]{64}$/u.test(value)) {
-    throw new Error(`${label} must be a lowercase SHA-256 digest`);
-  }
-  return value;
-};
-
-const absolutePath = (value: unknown, label: string): string => {
-  const path = nonEmptyString(value, label);
-  if (!isAbsolute(path) || resolve(path) !== path) {
-    throw new Error(`${label} must be a canonical absolute path`);
-  }
-  return path;
-};
-
-const positiveSafeInteger = (value: unknown, label: string): number => {
-  if (!Number.isSafeInteger(value) || (value as number) <= 0) {
-    throw new Error(`${label} must be a positive safe integer`);
-  }
-  return value as number;
-};
-
-const nonNegativeSafeInteger = (value: unknown, label: string): number => {
-  if (!Number.isSafeInteger(value) || (value as number) < 0) {
-    throw new Error(`${label} must be a nonnegative safe integer`);
-  }
-  return value as number;
-};
-
 /** Converts a database count for a JSON artifact without truncation. */
 export const toJsonSafeCount = (count: bigint, label: string): number => {
   const maximum = BigInt(Number.MAX_SAFE_INTEGER);
@@ -310,34 +258,6 @@ export const toJsonSafeCount = (count: bigint, label: string): number => {
   return Number(count);
 };
 
-const positiveFiniteNumber = (value: unknown, label: string): number => {
-  if (!Number.isFinite(value) || (value as number) <= 0) {
-    throw new Error(`${label} must be a positive finite number`);
-  }
-  return value as number;
-};
-
-const nonNegativeFiniteNumber = (value: unknown, label: string): number => {
-  if (!Number.isFinite(value) || (value as number) < 0) {
-    throw new Error(`${label} must be a nonnegative finite number`);
-  }
-  return value as number;
-};
-
-const canonicalTimestamp = (value: unknown, label: string): string => {
-  const parsed = typeof value === "string" ? new Date(value) : null;
-  if (
-    typeof value !== "string" ||
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value) ||
-    parsed === null ||
-    !Number.isFinite(parsed.getTime()) ||
-    parsed.toISOString() !== value
-  ) {
-    throw new Error(`${label} must be a canonical UTC timestamp`);
-  }
-  return value;
-};
-
 const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
@@ -345,12 +265,11 @@ const decodeArchitectureGOwnerDiagnostics = (
   value: unknown,
   label: string,
 ): JsonRecord => {
-  const owner = exactRecord(value, architectureGOwnerDiagnosticKeys, label);
-  const ownerEpoch = exactRecord(
-    owner.ownerEpoch,
-    ["type", "data"],
-    `${label}.ownerEpoch`,
-  );
+  const owner = exactKeysRecord(value, label, architectureGOwnerDiagnosticKeys);
+  const ownerEpoch = exactKeysRecord(owner.ownerEpoch, `${label}.ownerEpoch`, [
+    "type",
+    "data",
+  ]);
   if (
     ownerEpoch.type !== "Buffer" ||
     !Array.isArray(ownerEpoch.data) ||
@@ -361,7 +280,7 @@ const decodeArchitectureGOwnerDiagnostics = (
   ) {
     throw new Error(`${label}.ownerEpoch is invalid`);
   }
-  hash(owner.durableRoot, `${label}.durableRoot`);
+  sha256Digest(owner.durableRoot, `${label}.durableRoot`);
   for (const field of architectureGOwnerDiagnosticKeys.slice(2)) {
     nonNegativeSafeInteger(owner[field], `${label}.${field}`);
   }
@@ -371,8 +290,9 @@ const decodeArchitectureGOwnerDiagnostics = (
 const decodePhase1FormalBindingIdentity = (
   value: unknown,
 ): ArchitectureGPhase1FormalBindingIdentityV1 => {
-  const identity = exactRecord(
+  const identity = exactKeysRecord(
     value,
+    "Architecture G Phase 1 formal-binding identity",
     [
       "schemaVersion",
       "path",
@@ -386,10 +306,10 @@ const decodePhase1FormalBindingIdentity = (
       "generationResult",
       "harness",
     ],
-    "Architecture G Phase 1 formal-binding identity",
   );
-  const corpus = exactRecord(
+  const corpus = exactKeysRecord(
     identity.corpus,
+    "Architecture G Phase 1 corpus identity",
     [
       "path",
       "indexPath",
@@ -399,17 +319,16 @@ const decodePhase1FormalBindingIdentity = (
       "indexSha256",
       "manifestSha256",
     ],
-    "Architecture G Phase 1 corpus identity",
   );
-  const generationResult = exactRecord(
+  const generationResult = exactKeysRecord(
     identity.generationResult,
-    ["path", "sha256", "schemaVersion"],
     "Architecture G Phase 1 generation-result identity",
+    ["path", "sha256", "schemaVersion"],
   );
-  const harness = exactRecord(
+  const harness = exactKeysRecord(
     identity.harness,
-    ["scenarioId", "engineId"],
     "Architecture G Phase 1 harness identity",
+    ["scenarioId", "engineId"],
   );
   if (
     identity.schemaVersion !==
@@ -418,52 +337,66 @@ const decodePhase1FormalBindingIdentity = (
   ) {
     throw new Error("Unsupported Architecture G Phase 1 identity");
   }
-  absolutePath(identity.path, "formalBinding.path");
-  hash(identity.sha256, "formalBinding.sha256");
-  nonEmptyString(
+  canonicalAbsolutePath(identity.path, "formalBinding.path");
+  sha256Digest(identity.sha256, "formalBinding.sha256");
+  boundedNonEmptyString(
     identity.deploymentManifestId,
     "formalBinding.deploymentManifestId",
   );
-  nonEmptyString(identity.nodeImageId, "formalBinding.nodeImageId");
-  nonEmptyString(identity.nodeContainerId, "formalBinding.nodeContainerId");
-  hash(identity.walletSetSha256, "formalBinding.walletSetSha256");
-  hash(identity.fundingSetSha256, "formalBinding.fundingSetSha256");
-  absolutePath(corpus.path, "formalBinding.corpus.path");
-  absolutePath(corpus.indexPath, "formalBinding.corpus.indexPath");
-  absolutePath(corpus.manifestPath, "formalBinding.corpus.manifestPath");
-  nonEmptyString(corpus.sliceId, "formalBinding.corpus.sliceId");
-  hash(corpus.corpusSha256, "formalBinding.corpus.corpusSha256");
-  hash(corpus.indexSha256, "formalBinding.corpus.indexSha256");
-  hash(corpus.manifestSha256, "formalBinding.corpus.manifestSha256");
-  absolutePath(generationResult.path, "formalBinding.generationResult.path");
-  hash(generationResult.sha256, "formalBinding.generationResult.sha256");
-  hash(harness.scenarioId, "formalBinding.harness.scenarioId");
-  hash(harness.engineId, "formalBinding.harness.engineId");
+  boundedNonEmptyString(identity.nodeImageId, "formalBinding.nodeImageId");
+  boundedNonEmptyString(
+    identity.nodeContainerId,
+    "formalBinding.nodeContainerId",
+  );
+  sha256Digest(identity.walletSetSha256, "formalBinding.walletSetSha256");
+  sha256Digest(identity.fundingSetSha256, "formalBinding.fundingSetSha256");
+  canonicalAbsolutePath(corpus.path, "formalBinding.corpus.path");
+  canonicalAbsolutePath(corpus.indexPath, "formalBinding.corpus.indexPath");
+  canonicalAbsolutePath(
+    corpus.manifestPath,
+    "formalBinding.corpus.manifestPath",
+  );
+  boundedNonEmptyString(corpus.sliceId, "formalBinding.corpus.sliceId");
+  sha256Digest(corpus.corpusSha256, "formalBinding.corpus.corpusSha256");
+  sha256Digest(corpus.indexSha256, "formalBinding.corpus.indexSha256");
+  sha256Digest(corpus.manifestSha256, "formalBinding.corpus.manifestSha256");
+  canonicalAbsolutePath(
+    generationResult.path,
+    "formalBinding.generationResult.path",
+  );
+  sha256Digest(
+    generationResult.sha256,
+    "formalBinding.generationResult.sha256",
+  );
+  sha256Digest(harness.scenarioId, "formalBinding.harness.scenarioId");
+  sha256Digest(harness.engineId, "formalBinding.harness.engineId");
   return identity as ArchitectureGPhase1FormalBindingIdentityV1;
 };
 
 const decodeRuntimeIdentity = (
   value: unknown,
 ): ArchitectureGRuntimeIdentityV1 => {
-  const identity = exactRecord(
-    value,
-    ["schemaVersion", "version", "execPath", "executableSha256"],
-    "Architecture G runtime identity",
-  );
+  const identity = exactKeysRecord(value, "Architecture G runtime identity", [
+    "schemaVersion",
+    "version",
+    "execPath",
+    "executableSha256",
+  ]);
   if (identity.schemaVersion !== "midgard-architecture-g-runtime-identity-v1") {
     throw new Error("Unsupported Architecture G runtime identity");
   }
-  nonEmptyString(identity.version, "runtimeIdentity.version");
-  absolutePath(identity.execPath, "runtimeIdentity.execPath");
-  hash(identity.executableSha256, "runtimeIdentity.executableSha256");
+  boundedNonEmptyString(identity.version, "runtimeIdentity.version");
+  canonicalAbsolutePath(identity.execPath, "runtimeIdentity.execPath");
+  sha256Digest(identity.executableSha256, "runtimeIdentity.executableSha256");
   return identity as ArchitectureGRuntimeIdentityV1;
 };
 
 export const decodeArchitectureGCommitCandidateSeedInputV1 = (
   value: unknown,
 ): ArchitectureGCommitCandidateSeedInputV1 => {
-  const input = exactRecord(
+  const input = exactKeysRecord(
     value,
+    "Architecture G commit-candidate seed input",
     [
       "schemaVersion",
       "phase1FormalBinding",
@@ -475,7 +408,6 @@ export const decodeArchitectureGCommitCandidateSeedInputV1 = (
       "expectedTransactionCount",
       "firstTimestampIso",
     ],
-    "Architecture G commit-candidate seed input",
   );
   if (
     input.schemaVersion !== "midgard-architecture-g-commit-candidate-seed-v1"
@@ -484,23 +416,24 @@ export const decodeArchitectureGCommitCandidateSeedInputV1 = (
   }
   decodePhase1FormalBindingIdentity(input.phase1FormalBinding);
   decodeRuntimeIdentity(input.runtimeIdentity);
-  absolutePath(input.corpusSlicePath, "seedInput.corpusSlicePath");
-  hash(input.corpusSliceSha256, "seedInput.corpusSliceSha256");
-  absolutePath(input.fundingMapPath, "seedInput.fundingMapPath");
-  hash(input.fundingMapSha256, "seedInput.fundingMapSha256");
+  canonicalAbsolutePath(input.corpusSlicePath, "seedInput.corpusSlicePath");
+  sha256Digest(input.corpusSliceSha256, "seedInput.corpusSliceSha256");
+  canonicalAbsolutePath(input.fundingMapPath, "seedInput.fundingMapPath");
+  sha256Digest(input.fundingMapSha256, "seedInput.fundingMapSha256");
   positiveSafeInteger(
     input.expectedTransactionCount,
     "seedInput.expectedTransactionCount",
   );
-  canonicalTimestamp(input.firstTimestampIso, "seedInput.firstTimestampIso");
+  canonicalUtcTimestamp(input.firstTimestampIso, "seedInput.firstTimestampIso");
   return input as ArchitectureGCommitCandidateSeedInputV1;
 };
 
 export const decodeArchitectureGCommitCandidateInputV1 = (
   value: unknown,
 ): ArchitectureGCommitCandidateInputV1 => {
-  const input = exactRecord(
+  const input = exactKeysRecord(
     value,
+    "Architecture G commit-candidate input",
     [
       "schemaVersion",
       "phase1FormalBinding",
@@ -520,27 +453,26 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
       "forcedValidationSlotConfigArtifact",
       "workerInput",
     ],
-    "Architecture G commit-candidate input",
   );
   const phase1FormalBinding = decodePhase1FormalBindingIdentity(
     input.phase1FormalBinding,
   );
   decodeRuntimeIdentity(input.runtimeIdentity);
-  const aggregate = exactRecord(
+  const aggregate = exactKeysRecord(
     input.baseUtxoPayloadAggregate,
-    ["entryCount", "encodedTupleBytes"],
     "Architecture G candidate base UTxO aggregate",
+    ["entryCount", "encodedTupleBytes"],
   );
-  const slotConfigArtifact = exactRecord(
+  const slotConfigArtifact = exactKeysRecord(
     input.forcedValidationSlotConfigArtifact,
-    ["path", "sha256", "document"],
     "Architecture G candidate slot-config artifact binding",
+    ["path", "sha256", "document"],
   );
-  const slotConfigArtifactPath = absolutePath(
+  const slotConfigArtifactPath = canonicalAbsolutePath(
     slotConfigArtifact.path,
     "candidateInput.forcedValidationSlotConfigArtifact.path",
   );
-  const slotConfigArtifactSha256 = hash(
+  const slotConfigArtifactSha256 = sha256Digest(
     slotConfigArtifact.sha256,
     "candidateInput.forcedValidationSlotConfigArtifact.sha256",
   );
@@ -551,41 +483,41 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
   ) {
     throw new Error("Node slot-config evidence SHA-256 mismatch");
   }
-  const slotConfigDocument = exactRecord(
+  const slotConfigDocument = exactKeysRecord(
     slotConfigArtifact.document,
-    ["schemaVersion", "capturedAtIso", "network", "source", "slotConfig"],
     "Architecture G candidate slot-config artifact document",
+    ["schemaVersion", "capturedAtIso", "network", "source", "slotConfig"],
   );
   if (
     slotConfigDocument.schemaVersion !== "midgard-node-slot-config-evidence-v1"
   ) {
     throw new Error("Unsupported node slot-config evidence schema");
   }
-  canonicalTimestamp(
+  canonicalUtcTimestamp(
     slotConfigDocument.capturedAtIso,
     "candidateInput.forcedValidationSlotConfigArtifact.capturedAtIso",
   );
   const slotConfigSource =
     slotConfigDocument.network === "Custom"
-      ? exactRecord(
+      ? exactKeysRecord(
           slotConfigDocument.source,
-          ["kind", "endpointIdentitySha256", "configurationSha256"],
           "Custom slot-config source",
+          ["kind", "endpointIdentitySha256", "configurationSha256"],
         )
-      : exactRecord(
+      : exactKeysRecord(
           slotConfigDocument.source,
-          ["kind", "lucidVersion"],
           "Static slot-config source",
+          ["kind", "lucidVersion"],
         );
   if (slotConfigDocument.network === "Custom") {
     if (slotConfigSource.kind !== "local_ogmios_genesis") {
       throw new Error("Custom slot-config source is invalid");
     }
-    hash(
+    sha256Digest(
       slotConfigSource.endpointIdentitySha256,
       "candidateInput.forcedValidationSlotConfigArtifact.source.endpointIdentitySha256",
     );
-    hash(
+    sha256Digest(
       slotConfigSource.configurationSha256,
       "candidateInput.forcedValidationSlotConfigArtifact.source.configurationSha256",
     );
@@ -598,10 +530,10 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
   ) {
     throw new Error("Static slot-config source is invalid");
   }
-  const artifactSlotConfig = exactRecord(
+  const artifactSlotConfig = exactKeysRecord(
     slotConfigDocument.slotConfig,
-    ["zeroTime", "zeroSlot", "slotLength"],
     "Architecture G candidate artifact slot configuration",
+    ["zeroTime", "zeroSlot", "slotLength"],
   );
   if (
     JSON.stringify(
@@ -640,13 +572,14 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
       "Static slot configuration does not match the pinned Lucid network table",
     );
   }
-  const workerInput = exactRecord(
+  const workerInput = exactKeysRecord(
     input.workerInput,
-    ["data"],
     "Architecture G candidate worker input",
+    ["data"],
   );
-  const data = exactRecord(
+  const data = exactKeysRecord(
     workerInput.data,
+    "Architecture G candidate worker data",
     [
       "availableConfirmedBlock",
       "availableLocalFinalizationBlock",
@@ -660,10 +593,10 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
       "stateQueueHasUnmergedTail",
       "speculativeBuild",
     ],
-    "Architecture G candidate worker data",
   );
-  const speculativeBuild = exactRecord(
+  const speculativeBuild = exactKeysRecord(
     data.speculativeBuild,
+    "Architecture G candidate speculative build",
     [
       "base",
       "watermarks",
@@ -672,22 +605,21 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
       "excludedForcedTransactionEventIds",
       "excludedWithdrawalEventIds",
     ],
-    "Architecture G candidate speculative build",
   );
-  const base = exactRecord(
+  const base = exactKeysRecord(
     speculativeBuild.base,
-    ["headerHash", "utxosRoot", "blockEndTimeMs", "submittedTxHash"],
     "Architecture G candidate speculative base",
+    ["headerHash", "utxosRoot", "blockEndTimeMs", "submittedTxHash"],
   );
-  const watermarks = exactRecord(
+  const watermarks = exactKeysRecord(
     speculativeBuild.watermarks,
-    ["depositMs", "withdrawalMs", "txOrderMs", "refreshedAtMs"],
     "Architecture G candidate barrier watermarks",
+    ["depositMs", "withdrawalMs", "txOrderMs", "refreshedAtMs"],
   );
-  const forcedValidationSlotConfig = exactRecord(
+  const forcedValidationSlotConfig = exactKeysRecord(
     data.forcedValidationSlotConfig,
-    ["zeroTime", "zeroSlot", "slotLength"],
     "Architecture G candidate forced-validation slot configuration",
+    ["zeroTime", "zeroSlot", "slotLength"],
   );
   if (
     input.schemaVersion !== "midgard-architecture-g-commit-candidate-input-v1"
@@ -700,7 +632,7 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
     [input.sidecarPath, "candidateInput.sidecarPath"],
     [input.fixtureCreationPath, "candidateInput.fixtureCreationPath"],
   ] as const) {
-    absolutePath(pathValue, label);
+    canonicalAbsolutePath(pathValue, label);
   }
   for (const [hashValue, label] of [
     [input.binarySha256, "candidateInput.binarySha256"],
@@ -709,7 +641,7 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
     [input.fundingMapSha256, "candidateInput.fundingMapSha256"],
     [input.fixtureCreationSha256, "candidateInput.fixtureCreationSha256"],
   ] as const) {
-    hash(hashValue, label);
+    sha256Digest(hashValue, label);
   }
   positiveSafeInteger(
     input.expectedTransactionCount,
@@ -770,11 +702,14 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
       "Architecture G candidate block time is outside its forced-validation slot configuration",
     );
   }
-  const submittedTxHash = hash(
+  const submittedTxHash = sha256Digest(
     base.submittedTxHash,
     "candidateInput.speculativeBuild.base.submittedTxHash",
   );
-  hash(base.utxosRoot, "candidateInput.speculativeBuild.base.utxosRoot");
+  sha256Digest(
+    base.utxosRoot,
+    "candidateInput.speculativeBuild.base.utxosRoot",
+  );
   if (
     typeof base.headerHash !== "string" ||
     !/^[0-9a-f]{56}$/u.test(base.headerHash) ||
@@ -873,8 +808,9 @@ export const decodeArchitectureGFixtureCreationV1 = ({
   };
   readonly expectedFundingMapSha256: string | null;
 }): ArchitectureGFixtureCreationV1 => {
-  const artifact = exactRecord(
+  const artifact = exactKeysRecord(
     value,
+    "Architecture G fixture-creation artifact",
     [
       "fixtureCreated",
       "fixturePath",
@@ -885,17 +821,16 @@ export const decodeArchitectureGFixtureCreationV1 = ({
       "utxoPayloadAggregate",
       "canonicalFunding",
     ],
-    "Architecture G fixture-creation artifact",
   );
-  const aggregate = exactRecord(
+  const aggregate = exactKeysRecord(
     artifact.utxoPayloadAggregate,
-    ["entryCount", "encodedTupleBytes"],
     "Architecture G fixture payload aggregate",
+    ["entryCount", "encodedTupleBytes"],
   );
-  const diagnostics = exactRecord(
+  const diagnostics = exactKeysRecord(
     artifact.diagnostics,
-    architectureGFixtureDiagnosticKeys,
     "Architecture G fixture diagnostics",
+    architectureGFixtureDiagnosticKeys,
   );
   for (const field of architectureGFixtureDiagnosticKeys) {
     if (field.endsWith("Ms")) {
@@ -910,13 +845,16 @@ export const decodeArchitectureGFixtureCreationV1 = ({
       );
     }
   }
-  const fixturePath = absolutePath(
+  const fixturePath = canonicalAbsolutePath(
     artifact.fixturePath,
     "fixtureCreation.fixturePath",
   );
-  const expectedPath = absolutePath(expectedFixturePath, "expectedFixturePath");
-  const marker = hash(artifact.marker, "fixtureCreation.marker");
-  const expectedRoot = hash(expectedMarker, "expectedMarker");
+  const expectedPath = canonicalAbsolutePath(
+    expectedFixturePath,
+    "expectedFixturePath",
+  );
+  const marker = sha256Digest(artifact.marker, "fixtureCreation.marker");
+  const expectedRoot = sha256Digest(expectedMarker, "expectedMarker");
   const initialUtxoCount = positiveSafeInteger(
     artifact.initialUtxoCount,
     "fixtureCreation.initialUtxoCount",
@@ -947,20 +885,20 @@ export const decodeArchitectureGFixtureCreationV1 = ({
       );
     }
   } else {
-    const fundingMapSha256 = hash(
+    const fundingMapSha256 = sha256Digest(
       expectedFundingMapSha256,
       "expectedFundingMapSha256",
     );
-    const canonicalFunding = exactRecord(
+    const canonicalFunding = exactKeysRecord(
       artifact.canonicalFunding,
-      ["path", "sha256", "entryCount"],
       "Architecture G fixture canonical-funding identity",
+      ["path", "sha256", "entryCount"],
     );
-    absolutePath(
+    canonicalAbsolutePath(
       canonicalFunding.path,
       "fixtureCreation.canonicalFunding.path",
     );
-    canonicalFundingSha256 = hash(
+    canonicalFundingSha256 = sha256Digest(
       canonicalFunding.sha256,
       "fixtureCreation.canonicalFunding.sha256",
     );
@@ -1004,13 +942,14 @@ export const decodeArchitectureGCorpusFundingV1 = ({
     readonly outref: string;
   }[];
 }): ArchitectureGCorpusFundingV1 => {
-  hash(expectedCorpusSha256, "expectedCorpusSha256");
-  hash(expectedSliceSha256, "expectedSliceSha256");
-  const funding = exactRecord(
-    value,
-    ["schemaVersion", "corpusSha256", "sliceSha256", "entries"],
-    "Architecture G corpus funding",
-  );
+  sha256Digest(expectedCorpusSha256, "expectedCorpusSha256");
+  sha256Digest(expectedSliceSha256, "expectedSliceSha256");
+  const funding = exactKeysRecord(value, "Architecture G corpus funding", [
+    "schemaVersion",
+    "corpusSha256",
+    "sliceSha256",
+    "entries",
+  ]);
   if (
     funding.schemaVersion !== "midgard-architecture-g-corpus-funding-v1" ||
     funding.corpusSha256 !== expectedCorpusSha256 ||
@@ -1025,20 +964,20 @@ export const decodeArchitectureGCorpusFundingV1 = ({
   const identities: { readonly walletId: string; readonly outref: string }[] =
     [];
   for (const [index, value] of funding.entries.entries()) {
-    const entry = exactRecord(
+    const entry = exactKeysRecord(
       value,
-      ["walletId", "outref", "outputCbor"],
       `Architecture G funding entry ${index.toString()}`,
+      ["walletId", "outref", "outputCbor"],
     );
-    const walletId = nonEmptyString(
+    const walletId = boundedNonEmptyString(
       entry.walletId,
       `funding.entries[${index.toString()}].walletId`,
     );
-    const outref = nonEmptyString(
+    const outref = boundedNonEmptyString(
       entry.outref,
       `funding.entries[${index.toString()}].outref`,
     );
-    const outputCbor = nonEmptyString(
+    const outputCbor = boundedNonEmptyString(
       entry.outputCbor,
       `funding.entries[${index.toString()}].outputCbor`,
       1_048_576,
@@ -1072,12 +1011,12 @@ export const decodeArchitectureGCorpusFundingV1 = ({
       );
     }
     for (const [index, value] of expectedFundingRoots.entries()) {
-      const expected = exactRecord(
+      const expected = exactKeysRecord(
         value,
-        ["walletId", "outref"],
         `Expected Architecture G funding root ${index.toString()}`,
+        ["walletId", "outref"],
       );
-      nonEmptyString(
+      boundedNonEmptyString(
         expected.walletId,
         `expectedFundingRoots[${index.toString()}].walletId`,
       );
@@ -1112,8 +1051,9 @@ export const validateArchitectureGCommitCandidateProbeResultV1 = ({
   readonly expectedCpuAffinity: string;
 }): JsonRecord => {
   const input = decodeArchitectureGCommitCandidateInputV1(expectedInput);
-  const result = exactRecord(
+  const result = exactKeysRecord(
     JSON.parse(JSON.stringify(value)) as unknown,
+    "Architecture G commit-candidate probe result",
     [
       "schemaVersion",
       "probePath",
@@ -1140,15 +1080,15 @@ export const validateArchitectureGCommitCandidateProbeResultV1 = ({
       "ownerBefore",
       "ownerAfter",
     ],
-    "Architecture G commit-candidate probe result",
   );
-  const aggregate = exactRecord(
+  const aggregate = exactKeysRecord(
     result.baseUtxoPayloadAggregate,
-    ["entryCount", "encodedTupleBytes"],
     "Commit-candidate base UTxO payload aggregate",
+    ["entryCount", "encodedTupleBytes"],
   );
-  const config = exactRecord(
+  const config = exactKeysRecord(
     result.candidateConfig,
+    "Commit-candidate configuration evidence",
     [
       "mpfEngine",
       "scratchBuild",
@@ -1160,10 +1100,10 @@ export const validateArchitectureGCommitCandidateProbeResultV1 = ({
       "maxLedgerOpCount",
       "maxTransitionStepCount",
     ],
-    "Commit-candidate configuration evidence",
   );
-  const candidate = exactRecord(
+  const candidate = exactKeysRecord(
     result.candidate,
+    "Commit-candidate summary",
     [
       "candidateId",
       "baseHeaderHash",
@@ -1176,17 +1116,16 @@ export const validateArchitectureGCommitCandidateProbeResultV1 = ({
       "expectedL2TransactionCount",
       "roots",
     ],
-    "Commit-candidate summary",
   );
-  const watermarks = exactRecord(
+  const watermarks = exactKeysRecord(
     candidate.watermarks,
-    ["depositMs", "withdrawalMs", "txOrderMs", "refreshedAtMs"],
     "Commit-candidate barrier watermarks",
+    ["depositMs", "withdrawalMs", "txOrderMs", "refreshedAtMs"],
   );
-  const expectedUserEventCounts = exactRecord(
+  const expectedUserEventCounts = exactKeysRecord(
     candidate.expectedUserEventCounts,
-    ["deposits", "forcedTransactions", "withdrawals"],
     "Commit-candidate expected user-event counts",
+    ["deposits", "forcedTransactions", "withdrawals"],
   );
   const rootKeys = [
     "utxos",
@@ -1198,10 +1137,10 @@ export const validateArchitectureGCommitCandidateProbeResultV1 = ({
     "transitionTrace",
     "eventToStep",
   ] as const;
-  const roots = exactRecord(
+  const roots = exactKeysRecord(
     candidate.roots,
-    rootKeys,
     "Commit-candidate roots",
+    rootKeys,
   );
   const ownerBefore = decodeArchitectureGOwnerDiagnostics(
     result.ownerBefore,
@@ -1211,11 +1150,17 @@ export const validateArchitectureGCommitCandidateProbeResultV1 = ({
     result.ownerAfter,
     "Commit-candidate owner-after diagnostics",
   );
-  const inputPath = absolutePath(expectedInputPath, "expectedInputPath");
-  const probePath = absolutePath(expectedProbePath, "expectedProbePath");
-  const inputSha256 = hash(expectedInputSha256, "expectedInputSha256");
-  const probeSha256 = hash(expectedProbeSha256, "expectedProbeSha256");
-  const cpuAffinity = nonEmptyString(
+  const inputPath = canonicalAbsolutePath(
+    expectedInputPath,
+    "expectedInputPath",
+  );
+  const probePath = canonicalAbsolutePath(
+    expectedProbePath,
+    "expectedProbePath",
+  );
+  const inputSha256 = sha256Digest(expectedInputSha256, "expectedInputSha256");
+  const probeSha256 = sha256Digest(expectedProbeSha256, "expectedProbeSha256");
+  const cpuAffinity = boundedNonEmptyString(
     expectedCpuAffinity,
     "expectedCpuAffinity",
   );
@@ -1299,7 +1244,7 @@ export const validateArchitectureGCommitCandidateProbeResultV1 = ({
     throw new Error("Commit-candidate identity or barrier evidence is invalid");
   }
   for (const field of rootKeys) {
-    hash(roots[field], `candidate.roots.${field}`);
+    sha256Digest(roots[field], `candidate.roots.${field}`);
   }
   if (
     ownerBefore.durableRoot !==
@@ -1326,8 +1271,9 @@ export const validateArchitectureGRootProbeResultV1 = ({
   readonly expectedProbePath: string;
   readonly expectedProbeSha256: string;
 }): JsonRecord => {
-  const result = exactRecord(
+  const result = exactKeysRecord(
     JSON.parse(JSON.stringify(value)) as unknown,
+    "Architecture G root-probe result",
     [
       "engine",
       "transactionCount",
@@ -1361,20 +1307,20 @@ export const validateArchitectureGRootProbeResultV1 = ({
       "probePath",
       "probeSha256",
     ],
-    "Architecture G root-probe result",
   );
-  const phaseMs = exactRecord(
+  const phaseMs = exactKeysRecord(
     result.phaseMs,
+    "Architecture G root-probe phase timings",
     [
       "transactionSourceRoot",
       "transitionTraceBuild",
       "transactionMpfApply",
       "auxiliaryRoots",
     ],
-    "Architecture G root-probe phase timings",
   );
-  const nativePhaseMs = exactRecord(
+  const nativePhaseMs = exactKeysRecord(
     result.nativePhaseMs,
+    "Architecture G root-probe native phase timings",
     [
       "validation",
       "eventLogEncode",
@@ -1384,7 +1330,6 @@ export const validateArchitectureGRootProbeResultV1 = ({
       "memberAssembly",
       "retainedRoots",
     ],
-    "Architecture G root-probe native phase timings",
   );
   const hydrationKeys = [
     "prefetchMs",
@@ -1409,10 +1354,10 @@ export const validateArchitectureGRootProbeResultV1 = ({
     "collapsedNodes",
     "peakDecodedNodes",
   ] as const;
-  const pathHydration = exactRecord(
+  const pathHydration = exactKeysRecord(
     result.pathHydration,
-    hydrationKeys,
     "Architecture G root-probe path-hydration diagnostics",
+    hydrationKeys,
   );
   const transactionCount = positiveSafeInteger(
     expectedTransactionCount,
@@ -1422,8 +1367,11 @@ export const validateArchitectureGRootProbeResultV1 = ({
     expectedInitialUtxoCount,
     "expectedInitialUtxoCount",
   );
-  const probePath = absolutePath(expectedProbePath, "expectedProbePath");
-  const probeSha256 = hash(expectedProbeSha256, "expectedProbeSha256");
+  const probePath = canonicalAbsolutePath(
+    expectedProbePath,
+    "expectedProbePath",
+  );
+  const probeSha256 = sha256Digest(expectedProbeSha256, "expectedProbeSha256");
   if (
     result.engine !== "architecture_g" ||
     result.transactionCount !== transactionCount ||
@@ -1436,9 +1384,9 @@ export const validateArchitectureGRootProbeResultV1 = ({
   ) {
     throw new Error("Architecture G root-probe boundary identity is invalid");
   }
-  hash(result.workloadSha256, "rootProbe.workloadSha256");
-  hash(result.binarySha256, "rootProbe.binarySha256");
-  nonEmptyString(result.cpuAffinity, "rootProbe.cpuAffinity");
+  sha256Digest(result.workloadSha256, "rootProbe.workloadSha256");
+  sha256Digest(result.binarySha256, "rootProbe.binarySha256");
+  boundedNonEmptyString(result.cpuAffinity, "rootProbe.cpuAffinity");
   positiveSafeInteger(result.ledgerOpCount, "rootProbe.ledgerOpCount");
   nonNegativeFiniteNumber(result.startupMs, "rootProbe.startupMs");
   const durationMs = positiveFiniteNumber(
@@ -1478,7 +1426,7 @@ export const validateArchitectureGRootProbeResultV1 = ({
     "withdrawalsRoot",
     "forcedTransactionsRoot",
   ] as const) {
-    hash(result[field], `rootProbe.${field}`);
+    sha256Digest(result[field], `rootProbe.${field}`);
   }
   if (
     result.canonicalCorpusSlice === null ||
@@ -1493,25 +1441,34 @@ export const validateArchitectureGRootProbeResultV1 = ({
       );
     }
   } else {
-    const canonicalSlice = exactRecord(
+    const canonicalSlice = exactKeysRecord(
       result.canonicalCorpusSlice,
-      ["path", "sha256", "rowCount"],
       "Architecture G root-probe corpus slice",
+      ["path", "sha256", "rowCount"],
     );
-    const canonicalFunding = exactRecord(
+    const canonicalFunding = exactKeysRecord(
       result.canonicalFunding,
-      ["path", "sha256", "entryCount"],
       "Architecture G root-probe canonical funding",
+      ["path", "sha256", "entryCount"],
     );
-    absolutePath(canonicalSlice.path, "rootProbe.canonicalCorpusSlice.path");
-    hash(canonicalSlice.sha256, "rootProbe.canonicalCorpusSlice.sha256");
+    canonicalAbsolutePath(
+      canonicalSlice.path,
+      "rootProbe.canonicalCorpusSlice.path",
+    );
+    sha256Digest(
+      canonicalSlice.sha256,
+      "rootProbe.canonicalCorpusSlice.sha256",
+    );
     if (canonicalSlice.rowCount !== transactionCount) {
       throw new Error(
         "Architecture G root-probe corpus row count does not match the workload",
       );
     }
-    absolutePath(canonicalFunding.path, "rootProbe.canonicalFunding.path");
-    hash(canonicalFunding.sha256, "rootProbe.canonicalFunding.sha256");
+    canonicalAbsolutePath(
+      canonicalFunding.path,
+      "rootProbe.canonicalFunding.path",
+    );
+    sha256Digest(canonicalFunding.sha256, "rootProbe.canonicalFunding.sha256");
     positiveSafeInteger(
       canonicalFunding.entryCount,
       "rootProbe.canonicalFunding.entryCount",
@@ -1526,13 +1483,13 @@ export const validateArchitectureGRootProbeResultV1 = ({
     );
   }
   const transitions = result.transitionRoots.map((value, index) => {
-    const transition = exactRecord(
+    const transition = exactKeysRecord(
       value,
-      ["pre", "post"],
       `Architecture G transition-root pair ${index.toString()}`,
+      ["pre", "post"],
     );
-    hash(transition.pre, `transitionRoots[${index.toString()}].pre`);
-    hash(transition.post, `transitionRoots[${index.toString()}].post`);
+    sha256Digest(transition.pre, `transitionRoots[${index.toString()}].pre`);
+    sha256Digest(transition.post, `transitionRoots[${index.toString()}].post`);
     return transition;
   });
   const ownerBefore = decodeArchitectureGOwnerDiagnostics(
@@ -1573,8 +1530,9 @@ export const validateArchitectureGCommitCandidateSeedResultV1 = ({
   readonly expectedCorpusSliceSha256: string;
   readonly expectedTransactionCount: number;
 }): ArchitectureGCommitCandidateSeedResultV1 => {
-  const result = exactRecord(
+  const result = exactKeysRecord(
     value,
+    "Architecture G commit-candidate seed result",
     [
       "schemaVersion",
       "databaseName",
@@ -1584,7 +1542,6 @@ export const validateArchitectureGCommitCandidateSeedResultV1 = ({
       "terminalLedgerCount",
       "deltaCount",
     ],
-    "Architecture G commit-candidate seed result",
   );
   const expectedCount = positiveSafeInteger(
     expectedTransactionCount,
@@ -1605,7 +1562,7 @@ export const validateArchitectureGCommitCandidateSeedResultV1 = ({
     !/^midgard_phase3_arch_g_[a-z0-9_]+$/u.test(expectedDatabaseName) ||
     result.databaseName !== expectedDatabaseName ||
     result.corpusSliceSha256 !==
-      hash(expectedCorpusSliceSha256, "expectedCorpusSliceSha256") ||
+      sha256Digest(expectedCorpusSliceSha256, "expectedCorpusSliceSha256") ||
     result.mempoolTxCount !== expectedCount ||
     result.deltaCount !== expectedCount ||
     result.fundingCount !== fundingCount ||

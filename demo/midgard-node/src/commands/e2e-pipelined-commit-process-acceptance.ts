@@ -21,6 +21,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { positiveSafeInteger } from "@/artifact-schema.js";
 import {
   decodePhase4GenesisLedgerReportV1,
   PHASE4_GENESIS_BOOTSTRAP_ENV,
@@ -454,13 +455,8 @@ const requiredValue = (
   return value;
 };
 
-const positiveInteger = (raw: string, label: string): number => {
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`${label} must be a positive safe integer`);
-  }
-  return value;
-};
+const positiveInteger = (raw: string, label: string): number =>
+  positiveSafeInteger(Number(raw), label);
 
 const isolatedEndpointPort = (
   raw: string,
@@ -1282,11 +1278,7 @@ const loadPhase4ProcessIsolation = async (
 const positiveIntegerEnv = (name: string, fallback: number): number => {
   const raw = process.env[name];
   if (raw === undefined || raw.trim().length === 0) return fallback;
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`${name} must be a positive safe integer`);
-  }
-  return value;
+  return positiveSafeInteger(Number(raw), name);
 };
 
 const processAcceptanceTimeoutMs = (): number =>

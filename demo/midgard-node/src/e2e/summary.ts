@@ -12,7 +12,7 @@ import {
   positiveInteger,
   stringArray,
   stringValue,
-} from "@/e2e/exact-artifact.js";
+} from "@/artifact-schema.js";
 import {
   parseE2EStepV1,
   parseTxObservationV1,

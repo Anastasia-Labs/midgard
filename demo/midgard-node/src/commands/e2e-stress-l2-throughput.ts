@@ -8,6 +8,22 @@ import { isDeepStrictEqual } from "node:util";
 import { type Network, walletFromSeed } from "@lucid-evolution/lucid";
 
 import {
+  arrayOf,
+  booleanValue,
+  exactLiteral,
+  exactRecord,
+  finiteNumber,
+  isoTimestamp,
+  nonEmptyString,
+  nonNegativeInteger,
+  nonNegativeNumber,
+  nullableNonEmptyString,
+  nullableNonNegativeNumber,
+  oneOf,
+  positiveInteger,
+  stringArray,
+} from "@/artifact-schema.js";
+import {
   DEFAULT_WALLET_SEED_ENV,
   defaultMidgardNodeEndpoint,
   fetchNodeUtxosByAddress,
@@ -46,22 +62,6 @@ import {
   type SubmitL2TransferConfig,
   type SubmitL2TransferResult,
 } from "@/commands/submit-l2-transfer.js";
-import {
-  arrayOf,
-  booleanValue,
-  exactLiteral,
-  exactRecord,
-  finiteNumber,
-  isoTimestamp,
-  nonEmptyString,
-  nonNegativeInteger,
-  nonNegativeNumber,
-  nullableNonEmptyString,
-  nullableNonNegativeNumber,
-  oneOf,
-  positiveInteger,
-  stringArray,
-} from "@/e2e/exact-artifact.js";
 import { percentileOfUnsorted as percentile } from "@/percentile.js";
 import { sleep } from "@/sleep.js";
 

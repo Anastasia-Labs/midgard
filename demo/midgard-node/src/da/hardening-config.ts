@@ -1,5 +1,7 @@
 import type { DaPayloadEmissionMode } from "@al-ft/midgard-core/da-payload-sizing";
 
+import { positiveSafeInteger } from "@/artifact-schema.js";
+
 export type DaPayloadEnvelopeMode = DaPayloadEmissionMode;
 
 export type DaHardeningConfig = {
@@ -19,11 +21,7 @@ const positiveInteger = (
   if (value === undefined || value.trim().length === 0) {
     return fallback;
   }
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error(`${name} must be a positive safe integer`);
-  }
-  return parsed;
+  return positiveSafeInteger(Number(value), name);
 };
 
 export const readDaHardeningConfig = (

@@ -54,6 +54,7 @@ import { Data, Effect, Fiber, Metric, Option } from "effect";
 import * as FS from "fs";
 import { Level } from "level";
 
+import { positiveSafeInteger } from "@/artifact-schema.js";
 import * as CekProgramMaterialDB from "@/database/cekProgramMaterial.js";
 import * as ConfirmedLedgerDB from "@/database/confirmedLedger.js";
 import * as DepositsDB from "@/database/deposits.js";
@@ -351,9 +352,7 @@ export const getMpfPathHydrationConfig = (): MpfPathHydrationConfig => ({
 
 export const configureMpfArenaLimits = (limits: MpfArenaLimits): void => {
   for (const [name, value] of Object.entries(limits)) {
-    if (!Number.isSafeInteger(value) || value <= 0) {
-      throw new Error(`${name} must be a positive safe integer`);
-    }
+    positiveSafeInteger(value, name);
   }
   configuredMpfArenaLimits = { ...limits };
 };

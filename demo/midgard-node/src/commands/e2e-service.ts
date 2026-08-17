@@ -4,15 +4,15 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import {
+  exactRecord,
+  nonEmptyString,
+  positiveInteger,
+} from "@/artifact-schema.js";
+import {
   buildE2EProcessEnv,
   type E2EEnvInheritance,
   type E2EEnvProvenance,
 } from "@/e2e/env.js";
-import {
-  exactRecord,
-  nonEmptyString,
-  positiveInteger,
-} from "@/e2e/exact-artifact.js";
 import {
   parseRedactedCommandV1,
   redactArg,

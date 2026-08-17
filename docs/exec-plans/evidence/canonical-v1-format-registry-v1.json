@@ -15462,7 +15462,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/e2e/exact-artifact.ts",
+          "path": "demo/midgard-node/src/artifact-schema.ts",
           "symbols": ["exactRecord", "isPlainRecord"]
         },
         {
@@ -15571,7 +15571,7 @@
               ]
             },
             {
-              "path": "demo/midgard-node/src/e2e/exact-artifact.ts",
+              "path": "demo/midgard-node/src/artifact-schema.ts",
               "symbols": ["exactRecord"]
             },
             {
@@ -15655,7 +15655,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/e2e/exact-artifact.ts",
+          "path": "demo/midgard-node/src/artifact-schema.ts",
           "symbols": [
             "exactRecord",
             "isoTimestamp",
@@ -15768,7 +15768,7 @@
               ]
             },
             {
-              "path": "demo/midgard-node/src/e2e/exact-artifact.ts",
+              "path": "demo/midgard-node/src/artifact-schema.ts",
               "symbols": [
                 "exactRecord",
                 "isoTimestamp",
@@ -15864,7 +15864,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/e2e/exact-artifact.ts",
+          "path": "demo/midgard-node/src/artifact-schema.ts",
           "symbols": ["exactRecord", "openRecord", "isoTimestamp"]
         },
         {
@@ -15989,7 +15989,7 @@
               "symbols": ["parseE2EStepV1", "parseTxObservationV1"]
             },
             {
-              "path": "demo/midgard-node/src/e2e/exact-artifact.ts",
+              "path": "demo/midgard-node/src/artifact-schema.ts",
               "symbols": [
                 "exactRecord",
                 "openRecord",
@@ -16080,7 +16080,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/e2e/exact-artifact.ts",
+          "path": "demo/midgard-node/src/artifact-schema.ts",
           "symbols": [
             "exactRecord",
             "isoTimestamp",
@@ -16267,7 +16267,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/e2e/exact-artifact.ts",
+          "path": "demo/midgard-node/src/artifact-schema.ts",
           "symbols": [
             "exactRecord",
             "exactLiteral",
@@ -16799,7 +16799,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/e2e/exact-artifact.ts",
+          "path": "demo/midgard-node/src/artifact-schema.ts",
           "symbols": [
             "exactRecord",
             "openRecord",
@@ -16862,7 +16862,7 @@
               ]
             },
             {
-              "path": "demo/midgard-node/src/e2e/exact-artifact.ts",
+              "path": "demo/midgard-node/src/artifact-schema.ts",
               "symbols": ["openRecord", "assertJsonValue"]
             }
           ]
@@ -20054,7 +20054,7 @@
         {
           "path": "demo/midgard-node/src/workers/utils/mpf-commit-candidate-artifacts.ts",
           "symbols": [
-            "exactRecord",
+            "exactKeysRecord",
             "decodePhase1FormalBindingIdentity",
             "decodeRuntimeIdentity",
             "decodeArchitectureGCommitCandidateSeedInputV1",
@@ -20136,7 +20136,7 @@
               "symbols": [
                 "decodePhase1FormalBindingIdentity",
                 "ArchitectureGPhase1FormalBindingIdentityV1",
-                "exactRecord"
+                "exactKeysRecord"
               ]
             }
           ]
@@ -20480,7 +20480,7 @@
               "symbols": [
                 "validateArchitectureGCommitCandidateSeedResultV1",
                 "ArchitectureGCommitCandidateSeedResultV1",
-                "exactRecord"
+                "exactKeysRecord"
               ]
             }
           ]
@@ -20602,7 +20602,7 @@
               "symbols": [
                 "validateArchitectureGCommitCandidateProbeResultV1",
                 "decodeArchitectureGOwnerDiagnostics",
-                "exactRecord"
+                "exactKeysRecord"
               ]
             },
             {

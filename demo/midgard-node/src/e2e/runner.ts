@@ -1,10 +1,4 @@
 import {
-  buildE2EProcessEnv,
-  type E2EEnvFileProvenance,
-  type E2EEnvInheritance,
-  type E2EEnvProvenance,
-} from "@/e2e/env.js";
-import {
   arrayOf,
   booleanValue,
   exactLiteral,
@@ -20,7 +14,13 @@ import {
   oneOf,
   positiveInteger,
   stringArray,
-} from "@/e2e/exact-artifact.js";
+} from "@/artifact-schema.js";
+import {
+  buildE2EProcessEnv,
+  type E2EEnvFileProvenance,
+  type E2EEnvInheritance,
+  type E2EEnvProvenance,
+} from "@/e2e/env.js";
 import { runLoggedChildProcessAttempt } from "@/e2e/logged-child-process.js";
 import type { ChildProcessCleanupResult } from "@/e2e/process-cleanup.js";
 

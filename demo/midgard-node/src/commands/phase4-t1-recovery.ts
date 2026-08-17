@@ -2,6 +2,7 @@ import { isMidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profi
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
+import { positiveSafeInteger } from "@/artifact-schema.js";
 import { exactObjectKeys } from "@/exact-object-keys.js";
 import { writeTextFileAtomicNoReplace } from "@/files/atomic-write.js";
 import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
@@ -795,12 +796,7 @@ export const phase4T1AdvanceProgram = (
       options.abandonedHeaderHash,
       "abandoned header hash",
     );
-    if (
-      !Number.isSafeInteger(options.minimumEndTimeMs) ||
-      options.minimumEndTimeMs <= 0
-    ) {
-      throw new Error("minimumEndTimeMs must be a positive safe integer");
-    }
+    positiveSafeInteger(options.minimumEndTimeMs, "minimumEndTimeMs");
     const before = yield* phase4T1ProbeProgram({
       ...options,
       expectedTipHeaderHash: expectedBaseHeaderHash,

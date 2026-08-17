@@ -1,4 +1,33 @@
+/**
+ * Artifact-schema core: the single home for label-threaded JSON validation
+ * primitives (`(value, label) => parsed`) used by evidence artifacts, run
+ * state, gate summaries, and worker payloads.
+ *
+ * Error-message text is part of this module's interface: gates and tests
+ * assert on exact strings, so combinators that differ only in wording are
+ * deliberately distinct exports rather than unified. Two dialects live here:
+ *
+ * - The canonical dialect (`exactRecord`, `nonEmptyString`, …): open to
+ *   optional keys, trims strings, messages like "<label> must be a
+ *   non-empty string".
+ * - The strict dialect (`exactKeysRecord`, `boundedNonEmptyString`, …),
+ *   originally from the MPF commit-candidate artifacts: exact key-set
+ *   equality, bounded NUL-free strings, messages like "<label> must be a
+ *   bounded nonempty string". Stricter semantics, not just different words.
+ *
+ * Module-local dialects that intentionally stay outside this file:
+ * `deployment-manifest-v1.ts` ("Deployment manifest <field> …", accepts
+ * whitespace-only strings), `l1-tx-order-carriage-v1.ts` (domain parsers,
+ * "is not a …"), and `database/utils/exact-record.ts` (the DB-adapter
+ * record contract).
+ */
+
+import { isAbsolute, resolve } from "node:path";
+
 export type ExactArtifactRecord = Readonly<Record<string, unknown>>;
+
+/** A label-threaded parser: validates `value` and returns the typed result. */
+export type ArtifactParser<Value> = (value: unknown, label: string) => Value;
 
 const describeKeys = (keys: readonly string[]): string =>
   keys.map((key) => JSON.stringify(key)).join(", ");
@@ -261,3 +290,171 @@ export const NODE_SIGNAL_NAMES = [
 
 export const nodeSignal = (value: unknown, label: string): NodeJS.Signals =>
   oneOf(value, label, NODE_SIGNAL_NAMES);
+
+// ---------------------------------------------------------------------------
+// Strict dialect (originally the MPF commit-candidate artifact primitives).
+// Exact key-set equality, bounded strings, canonical paths/digests. Messages
+// and acceptance are pinned by artifact tests; do not fold into the canonical
+// combinators above.
+// ---------------------------------------------------------------------------
+
+export const exactKeysRecord = (
+  value: unknown,
+  label: string,
+  keys: readonly string[],
+): Record<string, unknown> => {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    JSON.stringify(Object.keys(value).sort()) !==
+      JSON.stringify([...keys].sort())
+  ) {
+    throw new Error(`${label} must contain exactly: ${keys.join(", ")}`);
+  }
+  return value as Record<string, unknown>;
+};
+
+export const boundedNonEmptyString = (
+  value: unknown,
+  label: string,
+  maxLength = 4096,
+): string => {
+  if (
+    typeof value !== "string" ||
+    value.trim().length === 0 ||
+    value.length > maxLength ||
+    value.includes("\0")
+  ) {
+    throw new Error(`${label} must be a bounded nonempty string`);
+  }
+  return value;
+};
+
+export const sha256Digest = (value: unknown, label: string): string => {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/u.test(value)) {
+    throw new Error(`${label} must be a lowercase SHA-256 digest`);
+  }
+  return value;
+};
+
+export const canonicalAbsolutePath = (
+  value: unknown,
+  label: string,
+): string => {
+  const path = boundedNonEmptyString(value, label);
+  if (!isAbsolute(path) || resolve(path) !== path) {
+    throw new Error(`${label} must be a canonical absolute path`);
+  }
+  return path;
+};
+
+export const positiveSafeInteger = (value: unknown, label: string): number => {
+  if (!Number.isSafeInteger(value) || (value as number) <= 0) {
+    throw new Error(`${label} must be a positive safe integer`);
+  }
+  return value as number;
+};
+
+export const nonNegativeSafeInteger = (
+  value: unknown,
+  label: string,
+): number => {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new Error(`${label} must be a nonnegative safe integer`);
+  }
+  return value as number;
+};
+
+export const canonicalUtcTimestamp = (
+  value: unknown,
+  label: string,
+): string => {
+  const parsed = typeof value === "string" ? new Date(value) : null;
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value) ||
+    parsed === null ||
+    !Number.isFinite(parsed.getTime()) ||
+    parsed.toISOString() !== value
+  ) {
+    throw new Error(`${label} must be a canonical UTC timestamp`);
+  }
+  return value;
+};
+
+export const positiveFiniteNumber = (value: unknown, label: string): number => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${label} must be a positive finite number`);
+  }
+  return value;
+};
+
+export const nonNegativeFiniteNumber = (
+  value: unknown,
+  label: string,
+): number => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be a nonnegative finite number`);
+  }
+  return value;
+};
+
+// ---------------------------------------------------------------------------
+// Declarative layer: an exact record described as a table of field parsers.
+// Field labels thread as `<label>.<key>`, identical to the imperative
+// convention, so adopting this layer never changes an error message. Only
+// canonical-dialect artifacts (and new artifacts) should use it; families
+// with prose per-field labels keep their imperative decode bodies.
+// ---------------------------------------------------------------------------
+
+type ParsedShape<Fields extends Record<string, ArtifactParser<unknown>>> = {
+  -readonly [Key in keyof Fields]: Fields[Key] extends ArtifactParser<
+    infer Value
+  >
+    ? Value
+    : never;
+};
+
+export const objectOf =
+  <
+    Required extends Record<string, ArtifactParser<unknown>>,
+    Optional extends Record<string, ArtifactParser<unknown>> = Record<
+      never,
+      never
+    >,
+  >(
+    requiredFields: Required,
+    optionalFields?: Optional,
+  ): ArtifactParser<ParsedShape<Required> & Partial<ParsedShape<Optional>>> =>
+  (value, label) => {
+    const record = exactRecord(
+      value,
+      label,
+      Object.keys(requiredFields),
+      Object.keys(optionalFields ?? {}),
+    );
+    const result: Record<string, unknown> = {};
+    for (const [key, parseField] of Object.entries(requiredFields)) {
+      result[key] = parseField(record[key], `${label}.${key}`);
+    }
+    for (const [key, parseField] of Object.entries(optionalFields ?? {})) {
+      if (record[key] !== undefined) {
+        result[key] = parseField(record[key], `${label}.${key}`);
+      }
+    }
+    return result as ParsedShape<Required> & Partial<ParsedShape<Optional>>;
+  };
+
+export const strictObjectOf =
+  <Fields extends Record<string, ArtifactParser<unknown>>>(
+    fields: Fields,
+  ): ArtifactParser<ParsedShape<Fields>> =>
+  (value, label) => {
+    const record = exactKeysRecord(value, label, Object.keys(fields));
+    const result: Record<string, unknown> = {};
+    for (const [key, parseField] of Object.entries(fields)) {
+      result[key] = parseField(record[key], `${label}.${key}`);
+    }
+    return result as ParsedShape<Fields>;
+  };

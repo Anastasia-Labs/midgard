@@ -16,6 +16,8 @@ import {
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import type { Network } from "@lucid-evolution/lucid";
 
+import { positiveSafeInteger } from "@/artifact-schema.js";
+
 export const PROTOCOL_INFO_API_VERSION = MIDGARD_PROTOCOL_INFO_V1_API_VERSION;
 
 type ProtocolInfoConfig = {
@@ -71,13 +73,6 @@ const stringifyCurrentSlot = (slot: number | bigint): string => {
   return slot.toString(10);
 };
 
-const asPositiveSafeInteger = (value: number, fieldName: string): number => {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`${fieldName} must be a positive safe integer`);
-  }
-  return value;
-};
-
 export const encodeProtocolInfo = ({
   nodeConfig,
   currentSlot,
@@ -92,7 +87,7 @@ export const encodeProtocolInfo = ({
   if (!isMidgardConsensusProfileV1(consensusProfile)) {
     throw new Error("Unsupported consensus profile");
   }
-  const configuredMax = asPositiveSafeInteger(
+  const configuredMax = positiveSafeInteger(
     nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
     "MAX_SUBMIT_TX_CBOR_BYTES",
   );

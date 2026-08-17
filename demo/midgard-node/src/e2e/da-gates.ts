@@ -1,9 +1,4 @@
 import {
-  type DaProducerPeerResult,
-  type DaProducerPublicationReport,
-  publicationSatisfied,
-} from "@/da/libp2p-producer.js";
-import {
   arrayOf,
   booleanValue,
   exactRecord,
@@ -14,7 +9,12 @@ import {
   nullableNonEmptyString,
   oneOf,
   positiveInteger,
-} from "@/e2e/exact-artifact.js";
+} from "@/artifact-schema.js";
+import {
+  type DaProducerPeerResult,
+  type DaProducerPublicationReport,
+  publicationSatisfied,
+} from "@/da/libp2p-producer.js";
 
 export const E2E_DA_GATE_SCHEMA_VERSION = "midgard-e2e-da-gate-v1";
 

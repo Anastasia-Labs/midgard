@@ -8,7 +8,7 @@ import {
   parseDeploymentMarkerV1,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 
-import { exactRecord } from "@/e2e/exact-artifact.js";
+import { exactRecord } from "@/artifact-schema.js";
 import { writeJsonFileAtomic } from "@/files/atomic-write.js";
 
 export const DEPLOYMENT_RUN_STATE_SCHEMA_VERSION =

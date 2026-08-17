@@ -20,7 +20,7 @@ import {
   nonEmptyString,
   positiveInteger,
   stringValue,
-} from "@/e2e/exact-artifact.js";
+} from "@/artifact-schema.js";
 import { sha256Hex } from "@/sha256.js";
 
 export const OWNED_PROCESS_GROUP_SCHEMA_VERSION =

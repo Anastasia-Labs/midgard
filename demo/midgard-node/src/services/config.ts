@@ -13,6 +13,10 @@ import {
 import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
 import { Config, Context, Data, Effect, Layer, Option } from "effect";
 
+import {
+  positiveFiniteNumber,
+  positiveSafeInteger,
+} from "@/artifact-schema.js";
 import { readDaHardeningConfig } from "@/da/hardening-config.js";
 import {
   isStrictlyAscending,
@@ -269,23 +273,13 @@ export type NodeConfigDep = {
 const positiveSafeIntegerConfig = (name: string, defaultValue: number) =>
   Config.integer(name).pipe(
     Config.withDefault(defaultValue),
-    Config.mapAttempt((value) => {
-      if (!Number.isSafeInteger(value) || value <= 0) {
-        throw new Error(`${name} must be a positive safe integer`);
-      }
-      return value;
-    }),
+    Config.mapAttempt((value) => positiveSafeInteger(value, name)),
   );
 
 const positiveFiniteNumberConfig = (name: string, defaultValue: number) =>
   Config.number(name).pipe(
     Config.withDefault(defaultValue),
-    Config.mapAttempt((value) => {
-      if (!Number.isFinite(value) || value <= 0) {
-        throw new Error(`${name} must be a positive finite number`);
-      }
-      return value;
-    }),
+    Config.mapAttempt((value) => positiveFiniteNumber(value, name)),
   );
 
 /**

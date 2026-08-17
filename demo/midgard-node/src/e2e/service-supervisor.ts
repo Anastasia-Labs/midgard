@@ -2,12 +2,6 @@ import { readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 
 import {
-  buildE2EProcessEnv,
-  type BuiltE2EProcessEnv,
-  type E2EEnvInheritance,
-  type E2EEnvProvenance,
-} from "@/e2e/env.js";
-import {
   arrayOf,
   booleanValue,
   exactRecord,
@@ -21,7 +15,13 @@ import {
   nullableNonEmptyString,
   oneOf,
   positiveInteger,
-} from "@/e2e/exact-artifact.js";
+} from "@/artifact-schema.js";
+import {
+  buildE2EProcessEnv,
+  type BuiltE2EProcessEnv,
+  type E2EEnvInheritance,
+  type E2EEnvProvenance,
+} from "@/e2e/env.js";
 import type {
   FileTerminationObservation,
   FileTerminationSpec,
