@@ -483,7 +483,8 @@ test canonical_decodability_verdict_fixture_only_at_five_hundred_items() {
 }
 
 /// The single-transaction adjudication ceiling, **measured** rather than fitted
-/// (#580, 2026-08-15).
+/// (#580, 2026-08-15; re-measured and moved down one item by #606,
+/// 2026-08-16).
 ///
 /// §12.7 and this ledger's note published "roughly 1,077 items" as an
 /// extrapolation from the 250/500 pair — `(13,200,000 − 242,085) / 12,032.44` —
@@ -495,6 +496,21 @@ test canonical_decodability_verdict_fixture_only_at_five_hundred_items() {
 /// the net memory axis with the pinned fork; the crossing is between these two
 /// cardinalities and nowhere else.
 ///
+/// **#606 re-measurement, 2026-08-16 — the ceiling moved down to 1,076.** The
+/// E2 certificate repair welds `field_hash` into the mint-verified datum, and
+/// the door equality it adds costs this family's own net a **constant +9,200
+/// memory / +1,472,000 cpu**, independent of cardinality: both ledger
+/// cardinality rows moved by exactly that and their fixture-only controls did
+/// not move at all, so the walk's marginal is untouched (12,024 mem/item across
+/// this boundary pair, the same integer #580 measured) and only the intercept
+/// rose. #580's margin at 1,077 was 3,847 memory units, which a constant +9,200
+/// consumes: re-read under the repaired tree, 1,077 nets **13,205,353** mem and
+/// is over the basis. The crossing is re-bisected here — 1,076 nets
+/// **13,193,329** mem (margin 6,671) and 1,077 is the first over. The
+/// downward correction is the point of keeping these as selectors rather than
+/// prose: the shape guard below held, so what moved is the cost of the rule and
+/// not the fixture it is read against.
+///
 /// These are **not** ledger rows, and cannot be: a within-basis ledger records
 /// only rows whose *raw* reading fits the basis, and a whole-test reading here
 /// is the rule's share plus a fixture that costs about as much again — roughly
@@ -503,9 +519,9 @@ test canonical_decodability_verdict_fixture_only_at_five_hundred_items() {
 /// selectors put the crossing on the same footing and pin the *shape* the
 /// reading was taken at, so a change that moves the shape goes red here before
 /// the published ceiling silently drifts.
-const measured_item_ceiling: Int = 1077
+const measured_item_ceiling: Int = 1076
 
-const first_item_cardinality_over_the_basis: Int = 1078
+const first_item_cardinality_over_the_basis: Int = 1077
 
 /// **Measured row.** The largest item cardinality this family adjudicates
 /// inside the §3.3 memory basis.

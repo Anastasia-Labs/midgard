@@ -642,15 +642,27 @@ test committed_field_shape_verdict_fixture_only_at_five_hundred_items() {
 /// the rule's own share (row minus its fixture-only control) crosses GOAL_SPEC
 /// §3.3's 13,200,000-memory basis, bisected on the net memory axis with the
 /// pinned fork. **The reconciliation is now two readings rather than two fits:
-/// 1,075 here against §12.7's 1,077, and the two-item gap is this family's
+/// 1,074 here against §12.7's 1,076, and the two-item gap is this family's
 /// higher intercept — the §7.4 stride arithmetic it asks after the walk.**
 ///
 /// They are **not** ledger rows, for the reason §12.7's twin states: a
 /// whole-test reading at this cardinality is about 24.1M mem, and a
 /// within-basis ledger records only rows whose raw reading fits the basis.
-const measured_item_ceiling: Int = 1075
+///
+/// **#606 re-measurement, 2026-08-16 — the ceiling moved down to 1,074.**
+/// Identically to §12.7's twin, and by the same constant: the E2 certificate
+/// repair's welded `field_hash` and its new door equality add **+9,200 memory /
+/// +1,472,000 cpu** to this family's own net at every cardinality — both ledger
+/// cardinality rows moved by exactly that with their fixture-only controls
+/// unmoved, so the marginal is untouched (12,024 mem/item across this boundary
+/// pair) and only the intercept rose. #580's margin at 1,075 was 3,762 memory
+/// units, which the constant consumes: 1,075 now nets **13,205,438** mem and is
+/// over the basis, while 1,074 nets **13,193,414** (margin 6,586). The
+/// two-item gap against §12.7 survives the move, which is what a constant
+/// common to both families predicts.
+const measured_item_ceiling: Int = 1074
 
-const first_item_cardinality_over_the_basis: Int = 1076
+const first_item_cardinality_over_the_basis: Int = 1075
 
 /// **Measured row.** The largest item cardinality this family adjudicates
 /// inside the §3.3 memory basis.
