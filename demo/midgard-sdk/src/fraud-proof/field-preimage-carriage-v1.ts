@@ -510,7 +510,15 @@ export const resolveChunkReferenceIndicesV1 = ({
  * carrying several certificates resolves each field to its own manifest. Two
  * certificates matching the triple are interchangeable by construction (§8.7
  * healing; they differ at most in `owner`), so the first match is as good as
- * any.
+ * any — but it is the canonically-first, not the first the caller collected,
+ * which is why the sort happens before the search rather than after it.
+ *
+ * The discrimination is pinned by
+ * `demo/midgard-sdk/tests/field-preimage-certificate-selection-v1.test.ts`,
+ * which is the only place in the repo that puts **two** same-name certificates
+ * in one reference-input set. Every other certificate fixture carries exactly
+ * one, and against a single candidate a token-only resolver and this one are
+ * indistinguishable.
  */
 export const resolveCertificateReferenceIndexV1 = ({
   certificatePolicyId,
@@ -722,9 +730,19 @@ export const assertMidgardFieldCarriageResolvesAtDoorV1 = ({
 };
 
 /**
- * Certifies a tier-3 plan: one mint of the content-addressed token, one
+ * Certifies a tier-3 plan: one mint of the policy's constant-name token, one
  * certificate output at the validator's own address carrying the manifest as an
  * inline datum, and the plan's chunks as reference inputs.
+ *
+ * **The token is not content-addressed (#606, owner ruling 2026-08-16).** It
+ * used to be — its name was `blake2b_256(field_index ‖ tx_id)` — and the
+ * derivation is retired: every certificate of the policy now wears the same
+ * fixed name, which carries no content and no security weight. What is
+ * content-bound is the *datum*, whose `field_hash` the mint welds to the
+ * verified `chunk_digests` and which the §8.8 door then holds against the
+ * commitment it anchored itself. So a consumer of a certificate reads the
+ * datum; the token only says which policy minted it (see
+ * {@link resolveCertificateReferenceIndexV1}).
  *
  * The chunk UTxOs must already exist. That is not a builder limitation but a
  * ledger one, and it is worth stating because it is the reason last-chunk
