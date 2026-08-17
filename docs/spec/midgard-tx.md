@@ -1737,12 +1737,27 @@ through the field-access door:
   more bytes.
 - For the four **variable-width** fields (2, 5, 6, 8) it additionally pays §5.1's
   `walk_to_end`, one item head per item. Measured at ≈21,062 memory units per
-  item, which reaches §3.3's execution basis near **537 items** while §5.4's byte
+  item, which reaches §3.3's execution basis near **536 items** while §5.4's byte
   bound admits 16,382 minimum-width items in one such field. On those slots the
   item count, not the byte count, is the operative bound; the worst shape this
   mint admits at §5.4's bound measures 344,075,442 memory units, 26× the basis.
   Pinned by `onchain/aiken/scripts/tx-order-mint-exec-ledger-v1.json`; the
   over-basis shape and its erratum are recorded on #594 for #580.
+
+  **#606 re-take (2026-08-16).** The E2 certificate repair cost this lane a
+  **constant**: both variable-width rows rose by the same +6,500 memory /
+  +1,040,000 cpu, so the per-item price is unchanged to the unit
+  (21,062.03 memory / 6,275,214 cpu) and only the intercept moved,
+  1,885,921 → 1,892,421 memory — which is enough to take the published ceiling
+  from 537 to **536**. Cpu at the crossing is about 4.02G against the 8G basis,
+  so memory still binds. Unlike §12.7 and §12.8 this figure remains an
+  **extrapolation from the two rows rather than a bisected reading** — this
+  lane has no boundary-pair selectors pinning its crossing, and adding them was
+  not part of the re-take. The aggregate-bound row's own share rose with it,
+  from about 1.51M to about 1.53M memory, 11% of the §3.3 basis to 12%. The
+  344,075,442 reading above is **pre-#606 and deliberately not re-taken** (no
+  selector pins it); extrapolating the re-measured pair puts that shape within
+  0.05% of it, so its 26× judgement is unaffected.
 - **The bound the mint enforces is per-field, not aggregate.** `whole_view`
   checks `total_length ≤ max_transaction_aggregate_field_bytes` at each opening
   and nothing in the walk sums the nine, so nine fields at 32,768 bytes each are
@@ -3474,24 +3489,30 @@ splits the way the work does.
   bound of 32,768 committed bytes carried as a single item on §8.4's chunked
   route at §8.3's `max_tier3_chunk_count` of three — the largest committed
   preimage any admissible carriage reaches — the rule's own share is about
-  **703,198 memory units**, 5.3% of the basis, three-chunk materialisation and
+  **697,743 memory units**, 5.3% of the basis, three-chunk materialisation and
   the whole-preimage `blake2b_256` included.
 - **The item term binds.** Measured against fixture-only controls at 250 and
   500 minimum-width items, the §5.1 walk costs **12,032.44 memory units and
-  3,044,870.75 cpu units per item** over an intercept of 242,085 / 71,119,751.
+  3,044,870.75 cpu units per item** over an intercept of 251,285 / 72,591,751.
 - **The ceiling is measured, not fitted.** The single-transaction adjudication
-  ceiling for this family is **1,077 items**, and **1,078** is the first
-  cardinality over the basis. This was a fit — `(13,200,000 − 242,085) /
+  ceiling for this family is **1,076 items**, and **1,077** is the first
+  cardinality over the basis. This was a fit — `(13,200,000 − 251,285) /
   12,032.44` — until #580's re-measurement pass (2026-08-15) bisected the
-  crossing on the net memory axis and read it: at 1,077 items the rule's own
-  share is **13,196,153 memory / 3,348,891,473 cpu**, and at 1,078 it is
-  **13,208,177 memory / 3,351,931,565 cpu**. The fit named the same integer.
+  crossing on the net memory axis and read it; #606's E2 certificate repair
+  (2026-08-16) then **falsified that reading and moved it down one item**, and
+  it was re-bisected through #580's own net-memory method rather than
+  re-fitted. At 1,076 items the rule's own share is **13,193,329 memory /
+  3,347,323,381 cpu** — a margin of 6,671 under the basis — and at 1,077 it is
+  **13,205,353 memory**, over it. The re-derived fit names the same integer.
   Memory binds at the crossing — cpu is 3.35G against the 8G basis — and the
   marginal cost measured across the boundary pair, 12,024 memory units per
-  item, is within 0.07% of the figure the 250/500 pair fitted. The four
-  selectors that carry the reading sit beside the ledger's rows rather than
-  inside them, because a whole-test reading at this cardinality is about 24.2M
-  memory and a within-basis ledger admits only rows whose raw reading fits.
+  item, is within 0.07% of the figure the 250/500 pair fitted and is **unmoved
+  by the repair**: what #606 costs this family is a constant, so the intercept
+  rose (242,085 → 251,285 memory, 71,119,751 → 72,591,751 cpu) and the per-item
+  price did not. The four selectors that carry the reading sit beside the
+  ledger's rows rather than inside them, because a whole-test reading at this
+  cardinality is about 24.2M memory and a within-basis ledger admits only rows
+  whose raw reading fits.
 - **The residual, named rather than mitigated.** The worst shape this family
   admits is §5.4's byte bound spent on minimum-width items. §5.1's narrowest
   item is the empty one, `40`, so that is a three-byte array header, 32,764
@@ -3500,7 +3521,7 @@ splits the way the work does.
   units, **29.9× the basis**. That figure is still an extrapolation rather
   than a reading, and it is recorded as such; what #580 replaced with a
   measurement is the ceiling it extrapolates past, not this shape. Its
-  consequence is exact: a committed field carrying more than **1,077** items
+  consequence is exact: a committed field carrying more than **1,076** items
   cannot be adjudicated by this family in one transaction. The hatch that
   leaves is narrower than the one this section closes — an operator would have
   to commit bytes that are *also* a many-item envelope prefix — but it is a
@@ -3820,27 +3841,32 @@ this section's own two questions are `O(1)` over a header read in three bytes.
 - **The byte term.** At §5.4's per-field bound of 32,768 committed bytes
   carried as a single item on §8.4's chunked route at §8.3's
   `max_tier3_chunk_count` of three, the rule's own share against a
-  fixture-only control is about **721,613 memory units**, 5.5% of the basis,
+  fixture-only control is about **716,158 memory units**, 5.4% of the basis,
   three-chunk materialisation and the whole-preimage `blake2b_256` included.
 - **The item term binds.** Measured against fixture-only controls at 250 and
   500 minimum-width items, the walk-plus-verdict costs **12,040.88 memory
-  units and 3,046,474.22 cpu units per item** over an intercept of 261,998 /
-  76,779,615.
+  units and 3,046,474.22 cpu units per item** over an intercept of 271,198 /
+  78,251,615.
 - **The ceiling is measured, not fitted, and it reconciles with §12.7's.**
-  This family's single-transaction ceiling is **1,075 items**, with **1,076**
-  the first over the basis: at 1,075 the rule's own share is **13,196,238
-  memory / 3,348,671,255 cpu**, and at 1,076 it is **13,208,262 memory /
-  3,351,711,347 cpu**. Memory binds — cpu at the crossing is about 3.35G
-  against the 8G basis. This was a fit at roughly 1,074 items, deliberately
-  unreconciled with the roughly 1,077 §12.7 fitted for its own fixtures, until
-  #580's re-measurement pass (2026-08-15) bisected both crossings on the net
-  memory axis. **Both are now readings**, and the reconciliation is that the
-  two families really do differ, by two items: §12.7 measures 1,077 and this
-  one 1,075, the gap being this family's higher intercept — the §7.4 stride
-  arithmetic it asks after the same walk. The fit was one item low. The four
-  selectors carrying the reading sit beside the ledger's rows rather than
-  inside them, because a whole-test reading at this cardinality is about 24.1M
-  memory and a within-basis ledger admits only rows whose raw reading fits.
+  This family's single-transaction ceiling is **1,074 items**, with **1,075**
+  the first over the basis: at 1,074 the rule's own share is **13,193,414
+  memory / 3,347,103,163 cpu**, and at 1,075 it is **13,205,438 memory**, over
+  it. Memory binds — cpu at the crossing is about 3.35G against the 8G basis.
+  This was a fit, deliberately unreconciled with §12.7's own fit, until #580's
+  re-measurement pass (2026-08-15) bisected both crossings on the net memory
+  axis; #606's E2 certificate repair (2026-08-16) then **falsified both
+  readings and moved each down one item**, and both were re-bisected by the
+  same method. **Both are still readings**, and the reconciliation survives the
+  move intact: the two families really do differ, by two items — §12.7 measures
+  1,076 and this one 1,074 — the gap being this family's higher intercept, the
+  §7.4 stride arithmetic it asks after the same walk. The fit is again one item
+  low (roughly 1,073 against the measured 1,074), exactly as it was before the
+  repair. #606's cost here is a constant too: the intercept rose (261,998 →
+  271,198 memory, 76,779,615 → 78,251,615 cpu) and the per-item price is
+  unchanged to the unit. The four selectors carrying the reading sit beside the
+  ledger's rows rather than inside them, because a whole-test reading at this
+  cardinality is about 24.1M memory and a within-basis ledger admits only rows
+  whose raw reading fits.
 - **The residual, named rather than mitigated.** The worst shape this family
   admits is §5.4's byte bound spent on §5.1's narrowest item, `40`: a
   three-byte array header and 32,765 one-byte items is 32,768 bytes carrying
@@ -3848,7 +3874,7 @@ this section's own two questions are `O(1)` over a header read in three bytes.
   memory units, **29.9× the basis**. That figure is still an extrapolation
   rather than a reading, and is recorded as such; what #580 replaced with a
   measurement is the ceiling it extrapolates past, not this shape. Its
-  consequence is exact: a committed field carrying more than **1,075** items
+  consequence is exact: a committed field carrying more than **1,074** items
   cannot be adjudicated by this family in one transaction, and the repair is
   §10's resumable walk applied to the verdict.
 
