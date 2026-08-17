@@ -18,6 +18,12 @@ Measured against `onchain/aiken/plutus.json` md5
 compiled or unapplied identity moved. Everything that moves below is off-chain
 applied-hash derivation.
 
+> **Epoch marker (2026-08-16, #606).** That blueprint is superseded. Every
+> applied hash printed below is bound to the #609 epoch and is **not** a
+> current-tree claim; the audit's finding, rule and antidote are unaffected.
+> The current values are tabulated in *Superseded by #606* near the end of this
+> file. Nothing above that section has been rewritten or removed.
+
 ## The defect, stated once
 
 `applyParamsToScript` applies whatever list it is handed and never consults the
@@ -228,13 +234,118 @@ so the movement propagates once through four more validators.
 `Q13_APPLIED_STEP_HASHES` (the input-no-idx family's four applied step hashes)
 was re-measured **unchanged** — that family was never under-applied. It was
 checked rather than assumed, because a stale pin hiding behind another failing
-pin is how #579 lost one.
+pin is how #579 lost one. (**#606, 2026-08-16:** those four *did* move under the
+next batch, for a different reason — the certificate policy id is the applied
+trailing parameter of every field-opening step. New values in *Superseded by
+#606*.)
 
 A repository-wide scan for all nineteen old hashes (excluding `.git`,
 `node_modules`, `dist` and log directories) finds them **nowhere except this
 report's own old→new movement table above** — documentation of the movement,
 not live pins — with **zero occurrences in any test, source, or pin surface**,
 so no stale pin survives this movement.
+
+## Superseded by #606 (2026-08-16) — the values moved, the finding did not
+
+This file is the record of a defect and its fix, and that part stands: ten
+validators were deployed one parameter short of their declared arity, the
+`declared !== applied` rule in both builders now refuses it, and
+`zz605-semantic-resolver-arity.test.ts` still pins no hash on purpose. None of
+that is touched here. What is epoch-bound is the identity **values**, and #606
+moved them. Every row above keeps its text and gains this marker rather than
+being rewritten.
+
+#606 — the E2 §8.6 certificate repair (owner ruling 2026-08-16) carrying the
+#608 empty-sentinel rider — regenerated the blueprint: `onchain/aiken/plutus.json`
+md5 `b20c9a14a8fe445cdddbe5305b3857c1` → `5e38d7c6ccb7987d0aca710307dcaea7`
+(SHA-256 `f49cae224f24cfab577f1ed10b5340384b75e541851eb7b77b507a79cb7d5e00`,
+still **398 validators / 702 definitions**, same fork `aiken v1.1.23+2a78108`,
+same `aiken build --env testnet`). Two consequences reach this file:
+
+1. **The certificate minting policy moved**,
+   `c3682abd66d94b999806a624346a517981febcc3a1c94cd73604b178` →
+   `f030476f9cddff41d15bdaa7951a9726252c6867901992e2a5f8427e`. That policy id
+   is the declared third parameter of *exactly the ten resolvers this audit is
+   about*, so **all ten applied hashes move on its value alone** — including
+   semantics 5, 7, 8 and 11, whose compiled bodies #606 never touched and which
+   no Aiken fixture pins. This is the audit's own thesis holding: applied
+   identity is a function of the parameter values, not only of the script body.
+2. **The §8.6 door rewrite changed resolver bodies**, so the six fixtured
+   resolvers move for both reasons at once.
+
+Derived on the same deployment the tables above use — the production builder
+(`buildFaultProofContracts`) over this tree's blueprint with
+`hubOraclePolicyId = "bb"×28` and `fraudProofCataloguePolicyId = "cc"×28` —
+never read off a diff. Six of the ten are independently gated as well: they are
+the six entries #606 re-pinned in
+`onchain/aiken/lib/midgard/validation-resolver-v1.test.ak`
+(`phase_a_script_precondition_resolvers`, both entries; `script_source_resolvers`,
+4 of 29), and the cross-language SDK gate binds that fixture to this same
+builder. The other four (5, 7, 8, 11) are fixture-free — `input_sets_resolvers`
+carries synthetic prepare/award hashes, not real semantic identities — so they
+are derived here and gated only by the arity rule.
+
+### Semantic resolvers — #609's "New (correct)" column is superseded
+
+| # | Identity | #609 (superseded) | #606 (current) |
+| --- | --- | --- | --- |
+| semantic 5 | `input_sets_item_semantic_v1` | `eeb66875…` | `b5c8539e576f3c2b92af76f13e7d08398c823d14eb8fcbae27d08905` |
+| semantic 7 | `signatures_address_item_semantic_v1` | `9cc93e72…` | `cead1152d04e9f8547d136295a1a1d135294af1b07ba959cc871210e` |
+| semantic 8 | `signatures_required_item_semantic_v1` | `84b8412d…` | `f9e9d168cf5611aeb7571f357f8edc4716239953b17b973736784a0e` |
+| semantic 11 | `phase_a_native_scripts_item_semantic_v1` | `c61d6306…` | `0e542d958d4ad05698045ab4ef3594ac9ccb366df2ccd1918f80b0b8` |
+| semantic 24 | `phase_a_script_preconditions_semantic_v1` | `0e84efc0…` | `2abd6e89a6b1a3d03d450ed89337cfd2558d1f583b893e7c57288283` (fixture-gated) |
+| semantic 25 | `phase_a_script_preconditions_item_semantic_v1` | `34237f0e…` | `77a54ab5a403ded1a52c70e40782c0a387aafe4f0a351a0622f10b7d` (fixture-gated) |
+| semantic 32 | `script_sources_non_output_semantic_v1` | `f95ce7aa…` | `3c2d20d1e0fa53c9243e75f1126b9993544140b66ab65b386d4d0e29` (fixture-gated) |
+| semantic 37 | `script_sources_stage_zero_begin_semantic_v1` | `59443faa…` | `d5faf4cd0c81c8285a7d64c6f35f60f29cfe7233184b6016be8291a0` (fixture-gated) |
+| semantic 47 | `script_sources_stage_one_redeemer_semantic_v1` | `06513cb8…` | `1907255d1fb58d35027633f3e8d883b57c6f097fe5dd4f1921f57bbe` (fixture-gated) |
+| semantic 57 | `script_sources_stage_seven_observer_semantic_v1` | `afe482c9…` | `20362cad6dabb9756ac9ced8ab1caab6d6edcc05b2a00058d912c339` (fixture-gated) |
+
+The remaining 66 slots of the 76-entry resolver set declare **no** certificate
+parameter, so cause (1) cannot reach them: measured from this tree's blueprint,
+exactly **10 of the 75** `*_semantic_v1` spend entries carry
+`field_preimage_certificate_policy_id`, and they are exactly the ten tabulated
+above. Twenty-five of the remainder are additionally proven unmoved in the tree
+— they are the untouched entries of `script_source_resolvers`, of which #606
+re-pinned four and left the other twenty-five byte-identical.
+
+### Prepare resolvers and the validation-trace family chain
+
+Same causal ladder as the tables above: each layer embeds the layer below it.
+
+| Identity | #609 (superseded) | #606 (current) |
+| --- | --- | --- |
+| prepare 3 `input_sets_v1` | `ea33e266…` | `32613795bfb0c9660661c1e13869487afc76e1eaea10e4a0682cd258` |
+| prepare 4 `signatures_v1` | `7948ae85…` | `e54ef83202cc6ecf56d9cf74a28e884da995b46d182e058e0f15ff4e` |
+| prepare 5 `phase_a_native_scripts_v1` | `c162fa34…` | `0559066d691af5d244c9cf7cb90a4e3e75dcff0a896456b43bf129d1` |
+| prepare 6 `phase_a_script_preconditions_v1` | `2d57481f…` | `a4f2959170850ca17ae5ccbd16c7b07f85f8aa98805fa2257a3c9a39` |
+| prepare 8 `script_sources_v1` | `6903f4e8…` | `b54b7a3e672a9f1af1b823b8b5dc2cc2be7718cebdfa6f635846d3ca` |
+| `boundary` | `ff734f28…` | `4d60d31fcfa05bbb8bd7f23f97e43a25f859b04c819154209e6e4746` |
+| `game` | `95d4904a…` | `306a68cdde4b094b3223127fbbac66a9226319e7828f574281ca6526` |
+| `source` | `50afe9aa…` | `2b7d51d069fd03b513ede625856a675e299c127042479b0db6812de4` |
+| `dispute` (applied step-01 / catalogue opener) | `9f3fa57d…` | `2248ef11a8ec2e5350c4fb8dad329cffa37ee56847fda2e8811889b4` |
+
+### Derived identities that move with them
+
+Re-pinned in the tree by #606 itself, and quoted here so this file does not
+present a second unmarked value for the same identity. Both were produced by
+`demo/midgard-fault-proofs/tests/inspect-contracts.test.ts`'s own producer
+(`MIDGARD_PRINT_PROOF_FIT=1`, the `q13AppliedIdentities` line) on that suite's
+placeholder deployment, which is the deployment the #609 rows for these two
+identities were taken on.
+
+| Identity | #609 (superseded) | #606 (current) |
+| --- | --- | --- |
+| Q13 fraud-proof catalogue root | `61f11db32d208c0f71ffc506e2a2ce1555a72e49f3180e1f92edad3c8a928cdf` | `53f5fc3aab9ddd758ad82a4d27321c2b3c8213312e71bbe5636dfec22de21c52` |
+| `Q13_APPLIED_STEP_HASHES` 1 of 4 | `2389abf7…` (unmoved under #609) | `063831d17f9f26542608df346319a333917f14345d2c2df876f593af` |
+| `Q13_APPLIED_STEP_HASHES` 2 of 4 | `55c27cdb…` (unmoved under #609) | `5438e14789271ca13e0ec1cebe00b9d7c28e64a9d2e54d6d9f54013f` |
+| `Q13_APPLIED_STEP_HASHES` 3 of 4 | `a966c6be…` (unmoved under #609) | `f88c7a7937df342a37eee3132139110d0a7689b037ab99b512937c30` |
+| `Q13_APPLIED_STEP_HASHES` 4 of 4 | `b2685117…` (unmoved under #609) | `393aeccc152ae74b067ede8670274e3994bc9577ef0bbd8bdc60f77c` |
+
+The five ABI digests and the deployment-manifest id in the next section are
+digests over NAMES and over a synthetic placeholder hash, so they are unmoved by
+#606 for the same reason they were unmoved by #609. The nineteen
+under-applied hashes this file records remain absent from every pin surface;
+#606 changed nothing about that scan.
 
 ## Identities that were expected to move and are measured NOT to
 
@@ -249,7 +360,7 @@ honest answer is that the applied-hash layer does not reach them.
 | ABI-04 reference-script auth token names (37) | `691f1a606c9c20d82c755ea8e5ea2297e670fc32cecdf1538c8adcdfcfdc2c6e` | digest over token names |
 | ABI-07 required transaction-order contracts (9) | `2dc93dc63e0f1fef3bca7050271475c9955f426b19b14216a028567bf0079fae` | digest over contract names |
 | Deployment manifest id | `d9c811abd62e8acc619181d1836b749e3fb2e295e0a309f9cf09b03d996813ef` | derived from the manifest SHAPE over a synthetic `CONTRACT_SCRIPT_CBOR = "01"` placeholder hash, not from real applied hashes |
-| `onchain/aiken/plutus.json` | `b20c9a14a8fe445cdddbe5305b3857c1`, 398 validators | no product `.ak` source changed; the compiled and unapplied identities are correct and untouched |
+| `onchain/aiken/plutus.json` | `b20c9a14a8fe445cdddbe5305b3857c1`, 398 validators | no product `.ak` source changed; the compiled and unapplied identities are correct and untouched — **#606 (2026-08-16) moved it to md5 `5e38d7c6ccb7987d0aca710307dcaea7`; that is a #606 regeneration, not a #609 movement** |
 
 `docs/exec-plans/evidence/canonical-v1-abi-freeze-v1.json` and
 `docs/exec-plans/evidence/canonical-v1-tx-order-receipt-identity-removal-v1.json`
