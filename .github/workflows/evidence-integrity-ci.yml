@@ -93,8 +93,12 @@ jobs:
           --accepted-defects=docs/exec-plans/evidence/canonical-v1-strict-manifest-quality-accepted-defects-v1.json
       - name: Self-test the task-manifest blocked-on reconciliation
         run: node demo/scripts/verify-canonical-v1-goal-task-manifest-quality-self-test.mjs
+      # Scripts must run here (matching midgard-node-ci's install): the
+      # @aiken-lang/merkle-patricia-forestry git dependency only gains its
+      # dist/ (and type declarations) from its prepare script, and
+      # midgard-validation's DTS build fails without them.
       - name: Install evidence-verifier dependencies
-        run: pnpm --dir demo install --frozen-lockfile --ignore-scripts
+        run: pnpm --dir demo install --frozen-lockfile
       # Dependency order: core -> sdk -> validation -> fault-proofs. The
       # watcher suite imports @al-ft/midgard-validation and
       # @al-ft/midgard-fault-proofs directly (block-replay, phase-a-verifier,
