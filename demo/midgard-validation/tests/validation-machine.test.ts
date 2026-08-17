@@ -2481,13 +2481,21 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(aikenSources.length).toBeGreaterThan(0);
 
     // Every on-chain module that performs an incremental canonical-CBOR scan.
+    // Consumption means importing the module: an Aiken source cannot call the
+    // scanner without a top-level `use midgard/canonical_cbor_scan_v1` line.
+    // The earlier bare-substring predicate also fired on doc-comment
+    // cross-references (intra-item-bytes-v1.ak names the scanner only to
+    // explain how the two readers divide §11), which is not consumption and
+    // must not demand a §3.2 necessity artifact.
+    const importsScanner = (source: string): boolean =>
+      /^\s*use\s+midgard\/canonical_cbor_scan_v1\b/mu.test(source);
     const scannerConsumers = aikenSources
       .filter((path) => {
         const relative = path.slice(aikenRoot.length + 1);
         if (relative === "lib/midgard/canonical-cbor-scan-v1.ak") {
           return false;
         }
-        return readFileSync(path, "utf8").includes("canonical_cbor_scan_v1");
+        return importsScanner(readFileSync(path, "utf8"));
       })
       .map((path) => path.slice(aikenRoot.length + 1))
       .sort();
@@ -2554,13 +2562,22 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       expect(contents).toContain("canonical_decode_item_staging_v1");
     }
 
-    // Hostile negative control: the consumer predicate fires on a source that
-    // takes the scanner, so an unbacked new consumer reopens this row.
-    const takesScanner = (source: string): boolean =>
-      source.includes("canonical_cbor_scan_v1");
-    expect(takesScanner(stagingSource)).toBe(false);
+    // Hostile negative controls: the consumer predicate fires on a source
+    // that imports the scanner (plain, aliased, or with unqualified names),
+    // so an unbacked new consumer reopens this row — while a doc-comment
+    // mention alone stays outside it.
+    expect(importsScanner(stagingSource)).toBe(false);
     expect(
-      takesScanner(`${stagingSource}\nuse midgard/canonical_cbor_scan_v1\n`),
+      importsScanner(`${stagingSource}\nuse midgard/canonical_cbor_scan_v1\n`),
     ).toBe(true);
+    expect(importsScanner("use midgard/canonical_cbor_scan_v1 as scan\n")).toBe(
+      true,
+    );
+    expect(
+      importsScanner("use midgard/canonical_cbor_scan_v1.{scan_head}\n"),
+    ).toBe(true);
+    expect(
+      importsScanner("//// see `midgard/canonical_cbor_scan_v1` for scans\n"),
+    ).toBe(false);
   });
 });
