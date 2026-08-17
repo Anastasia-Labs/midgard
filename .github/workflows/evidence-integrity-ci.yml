@@ -95,10 +95,18 @@ jobs:
         run: node demo/scripts/verify-canonical-v1-goal-task-manifest-quality-self-test.mjs
       - name: Install evidence-verifier dependencies
         run: pnpm --dir demo install --frozen-lockfile --ignore-scripts
+      # Dependency order: core -> sdk -> validation -> fault-proofs. The
+      # watcher suite imports @al-ft/midgard-validation and
+      # @al-ft/midgard-fault-proofs directly (block-replay, phase-a-verifier,
+      # header-root-reconstruction, event-classification-verifier), so their
+      # dist/ entries must exist or Vite fails entry resolution at collect
+      # time.
       - name: Build focused-test workspace dependencies
         run: >-
           pnpm --dir demo/midgard-core run build &&
-          pnpm --dir demo/midgard-sdk run build
+          pnpm --dir demo/midgard-sdk run build &&
+          pnpm --dir demo/midgard-validation run build &&
+          pnpm --dir demo/midgard-fault-proofs run build
       # Deliberately NOT part of `goal:verify:static`. The verification plan
       # forbids `--allow-incomplete` in any plan command, and the registry's
       # strict run is the `evidence` phase's `evidence-format-registry-strict`
