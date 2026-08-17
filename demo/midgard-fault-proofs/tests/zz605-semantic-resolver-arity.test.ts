@@ -33,7 +33,7 @@
  * measured against production source and the real public builder, so none of
  * the three can be satisfied by the fix that made them pass.
  */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -310,6 +310,51 @@ describe("zz609 the arity check is the only door", () => {
       ).toBe(source.allowed);
       expect(text).toContain(source.helper);
     }
+  });
+
+  it("confines bare compiledCode reads to the allowlisted loaders (#610)", () => {
+    // The call-site count above only sees `applyParamsToScript` calls, which
+    // a loader evades by never applying anything: deploying `compiledCode`
+    // bare is invisible to it, and a validator title that later grows a
+    // declared parameter would keep being deployed under-applied — the #605
+    // always-succeeds shape with no failing gate. So every production source
+    // that touches `compiledCode` must be one of the known doors.
+    const scanRoots = ["demo/midgard-sdk/src", "demo/midgard-node/src"];
+    const allowedReaders = [
+      // The two arity-checking helpers' homes, already pinned above.
+      "demo/midgard-node/src/services/midgard-contracts.ts",
+      "demo/midgard-sdk/src/fraud-proof/contracts.ts",
+      // Deploys bare behind a zero-declared-parameters assertion (#610).
+      "demo/midgard-sdk/src/phas-membership.ts",
+      // Devnet-only convenience loader: an intentional, explicit exception.
+      "demo/midgard-node/src/services/always-succeeds.ts",
+    ].sort();
+    const collectTypescriptSources = (directory: string): readonly string[] =>
+      readdirSync(resolve(repoRoot, directory), {
+        withFileTypes: true,
+      }).flatMap((entry) =>
+        entry.isDirectory()
+          ? collectTypescriptSources(`${directory}/${entry.name}`)
+          : entry.name.endsWith(".ts")
+            ? [`${directory}/${entry.name}`]
+            : [],
+      );
+    const bareReaders = scanRoots
+      .flatMap(collectTypescriptSources)
+      .filter((path) =>
+        /\bcompiledCode\b/u.test(readFileSync(resolve(repoRoot, path), "utf8")),
+      )
+      .sort();
+    expect(bareReaders).toEqual(allowedReaders);
+    // The phas-membership allowlisting is only sound while its zero-arity
+    // door stands: the loader must refuse a declared parameter at load time.
+    const phasSource = readFileSync(
+      resolve(repoRoot, "demo/midgard-sdk/src/phas-membership.ts"),
+      "utf8",
+    );
+    expect(phasSource).toMatch(
+      /declares \$\{declaredParameters\.length\} parameter\(s\) but this loader deploys compiledCode bare/u,
+    );
   });
 
   it(

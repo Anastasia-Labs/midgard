@@ -99,6 +99,51 @@ describe("PHAS membership SDK boundary", () => {
     ).toThrow("Expected exactly one");
   });
 
+  it("refuses to deploy the withdrawal script bare once it declares a parameter", () => {
+    // #610: this loader has no applyParamsToScript route, so a declared
+    // parameter deployed from compiledCode would be the #605 under-application
+    // shape. The zero-arity door must fail closed at load time.
+    expect(() =>
+      parsePhasMembershipBlueprint({
+        validators: [
+          {
+            title: PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE,
+            compiledCode: "5900",
+            parameters: "not-an-array",
+          },
+        ],
+      }),
+    ).toThrow("validators[0].parameters must be an array when present");
+    expect(() =>
+      phasMembershipWithdrawalScriptFromBlueprint(
+        parsePhasMembershipBlueprint({
+          validators: [
+            {
+              title: PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE,
+              compiledCode: "5900",
+              parameters: [{ title: "membership_policy_id" }],
+            },
+          ],
+        }),
+      ),
+    ).toThrow(/declares 1 parameter\(s\).*deploys compiledCode bare/su);
+    // An explicit empty declaration is the same as no declaration: the door
+    // stays open for the zero-arity validator the blueprint publishes today.
+    expect(
+      phasMembershipWithdrawalScriptFromBlueprint(
+        parsePhasMembershipBlueprint({
+          validators: [
+            {
+              title: PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE,
+              compiledCode: "5900",
+              parameters: [],
+            },
+          ],
+        }),
+      ).script,
+    ).toBe("5900");
+  });
+
   it("derives the canonical PHAS membership reward identity", () => {
     const identity = phasMembershipIdentity(
       "Preprod",
