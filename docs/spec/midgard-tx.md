@@ -1195,6 +1195,18 @@ asserted: `tx_id` against the §3 re-derivation (32 bytes by construction),
 `field_index` against the positional §2.5 extraction (which refuses an index
 outside 0..8), `field_hash` against the reconstruction's own expected hash,
 `total_length` and every `chunk_digests` entry against the referenced bytes.
+
+**Implementations MUST reject a `field_index` outside 0..8 and a `tx_id` that
+is not 32 bytes.** This is a requirement on any conforming §8.6 producer, not
+a report of what this mint happens to do. It was previously carried by the
+retired asset-name derivation — the two bounds were what made that 33-byte
+preimage unambiguous — and #606's constant name removed the derivation, not
+the requirement. Both remain enforced on the certification path (the §3
+re-derivation yields 32 bytes by construction; the positional extraction has
+no slot outside 0..8), and `field_hash` joins them under the weld: it MUST be
+the 32-byte §4 commitment of the certified preimage, which the mint's equality
+against the reconstruction is what enforces.
+
 `owner` is the exception and is only length-checked (28 bytes), because it is
 the minter's own choice of min-Ada reclaim authority and no consuming step
 reads it — it has to be a spendable key hash or the output is dead, and that
@@ -1811,8 +1823,10 @@ both readers.
    shape can reach that width carries a crossing vector.
    `FieldPreimageCertificateV1` is the sole exception and is one structurally,
    not by omission: each of its fields is fixed-width and at most 32 bytes
-   (owner 28, tx-id 32, each digest 32), so no value of that type can carry a
-   byte string wide enough to chunk.
+   (owner 28, tx-id 32, `field_hash` 32 since #606, each digest 32), so no
+   value of that type can carry a byte string wide enough to chunk. The
+   conclusion survives #606's addition of `field_hash` for the same structural
+   reason it held before it — a 32-byte hash cannot reach 64.
 2. Decoders are fail-closed everywhere: non-minimal heads (outside the
    pinned fixed-width index), wrapper/length mismatches, count/length
    inconsistency, trailing bytes, non-canonical datum/redeemer payloads,
@@ -1833,8 +1847,11 @@ both readers.
    off-chain decode path and is not carried by the vector set alone.
 3. Negative-vector suites cover the §7 invariants: out-of-range index,
    straddling-item reads, short/empty-slice equality attempts, certificate
-   `(tx_id, field_index)` mismatch, count/total_length inconsistency, and
-   wrong-field carriage.
+   `(tx_id, field_index)` mismatch, certificate **`field_hash` mismatch**
+   against the commitment the consumer derived from its own authenticated
+   structures — #606's door equality, and since #606 the load-bearing one, so
+   a suite that covers the identity pair and not the hash covers the weaker
+   half — count/total_length inconsistency, and wrong-field carriage.
 4. The §10 walk is proved at its seam, not at its mechanics: interrupt-and-
    resume equals the uninterrupted walk; the checkpoint wire form is
    `field_walk_checkpoint_bytes` long at every position of every field; two
