@@ -19,6 +19,14 @@ const manifestArgument = args.find((argument) =>
 const templatesArgument = args.find((argument) =>
   argument.startsWith("--templates-under-test="),
 );
+// #614, under the owner's ruling B (2026-08-14) as re-pinned by #613: an
+// invocation may name the recorded-and-accepted defect enumeration, in which
+// case only defects OUTSIDE it fail the gate. The accepted ones are still
+// computed, still printed and still counted — acceptance is a reconciliation
+// with the ruling, not a suppression of the measurement.
+const acceptedArgument = args.find((argument) =>
+  argument.startsWith("--accepted-defects="),
+);
 const manifestPath =
   manifestArgument === undefined
     ? resolve(
@@ -71,16 +79,74 @@ if (
     (argument) =>
       argument !== "--json" &&
       argument !== manifestArgument &&
-      argument !== templatesArgument,
+      argument !== templatesArgument &&
+      argument !== acceptedArgument,
   ) ||
   (manifestArgument === undefined) !== (templatesArgument === undefined)
 ) {
   process.stderr.write(
-    "usage: verify-canonical-v1-goal-task-manifest-quality.mjs [--json] [--manifest-under-test=<absolute-path> --templates-under-test=<absolute-directory>]\n",
+    "usage: verify-canonical-v1-goal-task-manifest-quality.mjs [--json] [--accepted-defects=<path>] [--manifest-under-test=<absolute-path> --templates-under-test=<absolute-directory>]\n",
   );
   process.exit(2);
 }
 const asJson = args.includes("--json");
+
+// Fail closed on every malformed-allowlist shape: a gate that silently ran
+// strict (or silently accepted everything) when its allowlist could not be
+// read would be a gate that cannot fail in exactly the way #523/#534 name.
+const loadAcceptedDefects = () => {
+  if (acceptedArgument === undefined) return undefined;
+  const acceptedPath = resolve(
+    acceptedArgument.slice("--accepted-defects=".length),
+  );
+  let record;
+  try {
+    record = JSON.parse(readFileSync(acceptedPath, "utf8"));
+  } catch (error) {
+    process.stderr.write(
+      `--accepted-defects: cannot read ${acceptedPath}: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    process.exit(2);
+  }
+  // The standing enumeration is the #613 re-pin, not ruling B's original 12:
+  // the artifact's own addendum says so ("Standing enumeration for gates
+  // built after the #613 re-pin (e.g. the #614 CI allowlist)").
+  const standing = record.acceptedDefectsAfter613Repin;
+  if (
+    standing === undefined ||
+    !Array.isArray(standing.ids) ||
+    standing.ids.length === 0 ||
+    typeof standing.categories !== "object"
+  ) {
+    process.stderr.write(
+      "--accepted-defects: the record carries no acceptedDefectsAfter613Repin standing enumeration\n",
+    );
+    process.exit(2);
+  }
+  // Accepted keys are (category, id, detail) triples: the detail is taken
+  // from the record's own defectClasses measurement, so a NEW defect that
+  // happens to land on an accepted id and category still fails the gate.
+  const detailByCategory = new Map(
+    (Array.isArray(record.defectClasses) ? record.defectClasses : [])
+      .filter((entry) => typeof entry.emittedDetail === "string")
+      .map((entry) => [entry.category, entry.emittedDetail]),
+  );
+  const keys = new Set();
+  for (const category of Object.keys(standing.categories)) {
+    const detail = detailByCategory.get(category);
+    if (detail === undefined) {
+      process.stderr.write(
+        `--accepted-defects: standing category ${category} has no uniform emittedDetail in defectClasses\n`,
+      );
+      process.exit(2);
+    }
+    for (const id of standing.ids) {
+      keys.add(`${category}\u0000${id}\u0000${detail}`);
+    }
+  }
+  return { path: acceptedPath, keys };
+};
+const acceptedDefects = loadAcceptedDefects();
 
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 const tasks = Array.isArray(manifest.tasks) ? manifest.tasks : [];
@@ -1541,6 +1607,30 @@ const sortedFindings = Object.fromEntries(
     ),
   ]),
 );
+const partition = (entries, category) => {
+  if (acceptedDefects === undefined) {
+    return { accepted: [], unaccepted: entries };
+  }
+  const accepted = [];
+  const unaccepted = [];
+  for (const entry of entries) {
+    const key = `${category}\u0000${entry.id}\u0000${entry.detail}`;
+    (acceptedDefects.keys.has(key) ? accepted : unaccepted).push(entry);
+  }
+  return { accepted, unaccepted };
+};
+let acceptedTotal = 0;
+let unacceptedTotal = 0;
+const unacceptedByCategory = {};
+for (const [category, entries] of Object.entries(sortedFindings)) {
+  const { accepted, unaccepted } = partition(entries, category);
+  acceptedTotal += accepted.length;
+  unacceptedTotal += unaccepted.length;
+  if (unaccepted.length > 0) {
+    unacceptedByCategory[category] = unaccepted;
+  }
+}
+
 const summary = {
   gate: "goal:tasks:quality:verify",
   expectedTasks: EXPECTED_TASKS,
@@ -1557,7 +1647,15 @@ const summary = {
       entries.length,
     ]),
   ),
+  ...(acceptedDefects === undefined
+    ? {}
+    : {
+        acceptedDefects: acceptedTotal,
+        unacceptedDefects: unacceptedTotal,
+      }),
 };
+const failing =
+  acceptedDefects === undefined ? summary.defects : unacceptedTotal;
 
 if (asJson) {
   process.stdout.write(
@@ -1566,7 +1664,11 @@ if (asJson) {
 } else {
   process.stdout.write(
     [
-      `goal:tasks:quality:verify: ${summary.defects === 0 ? "PASS" : "FAIL"}`,
+      `goal:tasks:quality:verify: ${failing === 0 ? "PASS" : "FAIL"}${
+        acceptedDefects === undefined
+          ? ""
+          : ` (${String(acceptedTotal)} recorded-and-accepted under ruling B via ${acceptedDefects.path})`
+      }`,
       `tasks: ${summary.manifestTasks}/${summary.expectedTasks}; unique IDs: ${summary.uniqueTaskIds}; first-queue IDs: ${summary.ledgerTaskIds}`,
       `defects: ${summary.defects}`,
       ...categories.map(
@@ -1577,7 +1679,19 @@ if (asJson) {
             .map(({ id }) => id)
             .join(", ")}`,
       ),
+      ...(acceptedDefects !== undefined && unacceptedTotal > 0
+        ? [
+            `unaccepted: ${String(unacceptedTotal)} ${Object.entries(
+              unacceptedByCategory,
+            )
+              .map(
+                ([category, entries]) =>
+                  `${category}(${entries.map(({ id }) => id).join(", ")})`,
+              )
+              .join("; ")}`,
+          ]
+        : []),
     ].join("\n") + "\n",
   );
 }
-process.exit(summary.defects === 0 ? 0 : 1);
+process.exit(failing === 0 ? 0 : 1);

@@ -82,8 +82,15 @@ jobs:
       # `pull_request` trigger means every change to the manifest, its
       # templates, or the GOAL_PROGRESS.md queue it is reconciled against is
       # gated here.
+      # The gate runs against the ruling-B accepted-defect enumeration
+      # (owner-accepted 2026-08-14, re-pinned by #613): the strict measurement
+      # still reports every defect, but only defects OUTSIDE the standing
+      # enumeration fail CI. The gate fails closed (exit 2) if the artifact is
+      # missing or carries no standing enumeration (#614).
       - name: Verify canonical V1 Goal task-manifest quality
-        run: node demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs
+        run: >-
+          node demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs
+          --accepted-defects=docs/exec-plans/evidence/canonical-v1-strict-manifest-quality-accepted-defects-v1.json
       - name: Self-test the task-manifest blocked-on reconciliation
         run: node demo/scripts/verify-canonical-v1-goal-task-manifest-quality-self-test.mjs
       - name: Install evidence-verifier dependencies

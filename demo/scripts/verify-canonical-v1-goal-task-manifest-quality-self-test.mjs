@@ -34,6 +34,18 @@ const manifestPath = resolve(
 );
 const templatesPath = resolve(repoRoot, "docs/exec-plans/templates");
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+// The self-test exercises the gate the way CI invokes it (#614): with the
+// ruling-B/#613 standing enumeration supplied, so the recorded-and-accepted
+// defects reconcile and everything seeded below still fails. The C61 seed is
+// the allowlist-tightness negative — same category as the accepted C20s,
+// different id, and the gate must still reject it.
+const acceptedDefectsPath = resolve(
+  repoRoot,
+  "docs/exec-plans/evidence/canonical-v1-strict-manifest-quality-accepted-defects-v1.json",
+);
+const acceptedDefectsRecord = JSON.parse(
+  readFileSync(acceptedDefectsPath, "utf8"),
+);
 const clone = (value) => structuredClone(value);
 const rowOf = (candidate, id) => {
   const row = candidate.tasks.find((task) => task.id === id);
@@ -56,6 +68,7 @@ const runGate = (candidate) => {
     [
       gatePath,
       "--json",
+      `--accepted-defects=${acceptedDefectsPath}`,
       `--manifest-under-test=${candidateManifestPath}`,
       `--templates-under-test=${candidateTemplatesPath}`,
     ],
@@ -68,14 +81,22 @@ const runGate = (candidate) => {
   return { status: result.status, report: JSON.parse(result.stdout) };
 };
 
-// Positive control: the manifest as published must be accepted.
+// Positive control: the manifest as published must be accepted. Under the
+// #614 allowlist the recorded-and-accepted defects (ruling B, #613 re-pin)
+// are still measured and reported — what must be zero is the UNACCEPTED
+// remainder, and the count of accepted findings must exactly match the
+// standing enumeration (no silent growth inside an accepted category).
 const control = runGate(clone(manifest));
 assert.equal(
   control.status,
   0,
   `published manifest must pass: ${JSON.stringify(control.report.summary)}`,
 );
-assert.equal(control.report.summary.defects, 0);
+assert.equal(control.report.summary.unacceptedDefects, 0);
+assert.equal(
+  control.report.summary.acceptedDefects,
+  acceptedDefectsRecord.acceptedDefectsAfter613Repin.defects,
+);
 
 let rejectedMutations = 0;
 const mustReject = (label, category, mutate) => {
@@ -135,28 +156,34 @@ mustReject(
   },
 );
 
-// blockedOn contents themselves must stay complete against the queue. F41 is
-// the queue-recorded IN_PROGRESS dependency (post-C26-promotion, the only
-// current non-PASS blocker with a first-queue row).
+// blockedOn contents themselves must stay complete against the queue. The
+// original seed dropped F41 from F05.blockedOn, but F41 was promoted PASS on
+// 2026-08-07 and F05.blockedOn is now empty, which made that mutation a
+// no-op (caught when the #614 allowlist unmasked it). The mirror shape is
+// drift-resistant while any queue row stays open: declare a currently
+// non-PASS first-queue row (F40, IN_PROGRESS) in dependsOn without also
+// declaring it in blockedOn — the same understatement, seeded from the other
+// side of the join.
 mustReject(
-  "F05 drops queue-recorded non-PASS dependency F41 from blockedOn",
+  "F05 takes on queue-recorded non-PASS dependency F40 without declaring it in blockedOn",
   "omittedCurrentBlocker",
   (candidate) => {
     const f05 = rowOf(candidate, "F05");
-    f05.blockedOn = f05.blockedOn.filter((dependency) => dependency !== "F41");
+    f05.dependsOn = [...f05.dependsOn, "F40"];
   },
 );
 
-// The prose form of the same understatement.
+// The prose form of the same understatement: the row takes on F40 in both
+// dependency fields but its only-current-blockers sentence still names F41
+// alone. (The original seed rewrote F41 → Q02 in the sentence, which became
+// a no-op once F41 went PASS and F05's current-blocker set emptied.)
 mustReject(
-  "F05 prose omits F41 from its only-current-blockers sentence",
+  "F05 prose omits current non-PASS dependency F40 from its only-current-blockers sentence",
   "blockedOnlyClaimMismatch",
   (candidate) => {
     const f05 = rowOf(candidate, "F05");
-    f05.blockedBecause = f05.blockedBecause.replace(
-      "non-PASS queue rows: F41",
-      "non-PASS queue rows: Q02",
-    );
+    f05.dependsOn = [...f05.dependsOn, "F40"];
+    f05.blockedOn = [...f05.blockedOn, "F40"];
   },
 );
 
