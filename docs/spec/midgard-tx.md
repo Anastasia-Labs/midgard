@@ -270,11 +270,11 @@ Item-level rules:
   item above. The same 38 bytes serve three consumers, and they are
   required to be identical:
 
-  | consumer | derivation |
-  | --- | --- |
-  | field-0/1 preimage items | `enc_0` / `enc_1` (this row) |
-  | ledger MPF trie key | the same bytes, unchanged |
-  | ledger database `outref` column / primary key | the same bytes, unchanged |
+  | consumer                                      | derivation                   |
+  | --------------------------------------------- | ---------------------------- |
+  | field-0/1 preimage items                      | `enc_0` / `enc_1` (this row) |
+  | ledger MPF trie key                           | the same bytes, unchanged    |
+  | ledger database `outref` column / primary key | the same bytes, unchanged    |
 
   On-chain this is literal: `ledger_outref_key`
   (`onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak`) is a
@@ -300,6 +300,7 @@ Item-level rules:
   the 0–65,535 index domain is the ledger's index domain; and a
   development ledger written under any other spelling must be reset, not
   migrated (pre-mainnet, per `AGENTS.md`).
+
 - **Fields 3/4 — asserted 28-byte width.** Every observer/signer item MUST
   be exactly 28 bytes (wrapper `58 1C`, **stride 30**,
   `item_offset(i) = header_len + 30·i`). Both encoder twins enforce the
@@ -510,12 +511,12 @@ These sit between the tier-2 and tier-3 definitions on purpose: tier 2's
 bound _is_ `K`, and tier 3 is defined as the `preimage_len > K` case, so both
 neighbours read against this table.
 
-| constant                            | value                               | status                                                                                                                                                                                     |
-| ----------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `K` (chunk size / tier-2 bound)     | ~~15,900 bytes~~ → **15,148 bytes** | **FALSIFIED, re-pinned and applied — erratum E1 below is normative for this row.** 15,148 is the measured reserve-clearing publication frontier, and both `chunk_bytes_k` and `MIDGARD_CHUNK_BYTES_K_V1` now read it. |
-| `maxTier1RedeemerPreimageBytes`     | **14,336 bytes**                    | **measured at the evidence layer and not falsified** (#580, 2026-08-15): at the cap the one-step evidence is 15,848 B over a 14,336-B preimage — 1,512 B of step framing against the 2,048-B allowance, inside a 16,383-B envelope, leaving 536 B unspent. A complete **signed** tier-1 step transaction at the cap is still unmeasured, so #557's M2 is narrowed rather than closed. |
-| `maxTransactionAggregateFieldBytes` | 32,768 bytes                        | retained                                                                                                                                                                                   |
-| maximum tier-3 chunk count          | `⌈32,768 / K⌉ = 3`                  | derived; unchanged by the re-pin                                                                                                                                                           |
+| constant                            | value                               | status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `K` (chunk size / tier-2 bound)     | ~~15,900 bytes~~ → **15,148 bytes** | **FALSIFIED, re-pinned and applied — erratum E1 below is normative for this row.** 15,148 is the measured reserve-clearing publication frontier, and both `chunk_bytes_k` and `MIDGARD_CHUNK_BYTES_K_V1` now read it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `maxTier1RedeemerPreimageBytes`     | **14,336 bytes**                    | **FALSIFIED at the signed-transaction layer; repricing escalated (#611, 2026-08-17).** The evidence-layer reading stands (#580: 15,848-B one-step evidence at the cap, 536 B unspent in the 16,383-B envelope), but the complete **signed** step transaction at the cap — measured for the first time by `complete-item-proof-fit-emulator-v1.test.ts` on the deployed route (resolver sourced by reference) — is **17,389 B against `maxTxSize` 16,384, margin −1,005**. The bisected fitting frontier is a **13,357-B item (13,361-B preimage): exactly 16,384 signed bytes, zero margin, no reserve**; one more byte overflows. The parameter is deliberately NOT re-pinned here — repricing is owner authority and rides the #611 escalation (see the §8.11 erratum update). |
+| `maxTransactionAggregateFieldBytes` | 32,768 bytes                        | retained                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| maximum tier-3 chunk count          | `⌈32,768 / K⌉ = 3`                  | derived; unchanged by the re-pin                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 **Every number below this table that is quoted at `K` is quoted at the repaired
 15,148**, because the fixtures, the goldens and the compiled validator all sit
@@ -587,9 +588,9 @@ value are in E1 immediately after this list.
 
   **#580 disposition (2026-08-15): real, correct, and not a capability gap. The
   assertion stays, unchanged, as an anti-conflation guard.** The two constants
-  answer different questions — 14,396 is the largest complete item *one
-  publication transaction* carries as an inline datum, 14,336 the largest field
-  preimage a *step redeemer* carries — and neither bounds the other. §8.4's
+  answer different questions — 14,396 is the largest complete item _one
+  publication transaction_ carries as an inline datum, 14,336 the largest field
+  preimage a _step redeemer_ carries — and neither bounds the other. §8.4's
   ladder is a partition, so nothing in the band is stranded: an item in
   (14,332, 14,396] has a field preimage in (14,336, 14,400], which selects tier 2
   `RawUtxo`, and the tier-2 door carries it end to end with every stage inside
@@ -613,6 +614,7 @@ value are in E1 immediately after this list.
   re-pin K downward if that transaction does not clear `maxTxSize` with the
   same 512-byte reserve. The certification transaction re-carries no chunk
   bytes and so never constrains K.
+
 - **maxTier1RedeemerPreimageBytes = 14,336** — `maxTxSize` (16,384) minus a
   round 2,048-byte allowance for step machinery (thread-continuity input
   and continuing output, control datum, redeemer framing, reference-input
@@ -648,12 +650,12 @@ transaction does not clear `maxTxSize` with the same 512-byte reserve" — has
 been taken, and `K = 15,900` does not clear `maxTxSize` **at all**, reserve or
 no reserve.
 
-| reading                                                                    | measured                                             |
-| -------------------------------------------------------------------------- | ---------------------------------------------------- |
-| signed publication of a 15,900-byte chunk                                  | **16,648 B**                                         |
-| overrun against `maxTxSize` (16,384)                                       | **+264 B**                                           |
-| largest publishable preimage (signed transaction lands **on** `maxTxSize`) | **15,644 B** — 16,384 B signed                       |
-| largest publishable preimage with the 512-byte reserve                     | **15,148 B** — 15,872 B signed                       |
+| reading                                                                    | measured                                                              |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| signed publication of a 15,900-byte chunk                                  | **16,648 B**                                                          |
+| overrun against `maxTxSize` (16,384)                                       | **+264 B**                                                            |
+| largest publishable preimage (signed transaction lands **on** `maxTxSize`) | **15,644 B** — 16,384 B signed                                        |
+| largest publishable preimage with the 512-byte reserve                     | **15,148 B** — 15,872 B signed                                        |
 | non-payload framing at the exact frontier                                  | **740 B** (245 B fixed + 3 B datum head + 492 B payload-proportional) |
 
 Every row is a real signed emulator transaction at mainnet
@@ -681,9 +683,9 @@ that does not fit, and 15,149 the first that does not clear the reserve.
   whole of the carriage ladder the datum sits in the third band and this term
   is a flat 3, which is why an earlier revision of this erratum folded it into
   the first and published "248 bytes of fixed, payload-independent framing".
-  That band is bounded on both sides. Below it the collapsed model *overstates*
+  That band is bounded on both sides. Below it the collapsed model _overstates_
   by up to two bytes, which refuses nothing that would have fitted; above it the
-  collapsed model *understates* by two, which is the direction that hands a
+  collapsed model _understates_ by two, which is the direction that hands a
   builder a transaction the ledger rejects. It is modelled rather than
   documented around.
 - **≈ 3.125 % of the payload.** Above 64 bytes a Plutus Data byte string is
@@ -700,10 +702,10 @@ two publishable frontiers above are **derived from it** rather than written
 down, so the cost model and the bound cannot drift apart.
 
 **Where the analysis went wrong.** The 15,900 estimate was carried forward from
-#556's *reconstruction* bench and justified by the 101 bytes of framing measured
+#556's _reconstruction_ bench and justified by the 101 bytes of framing measured
 for an **unsigned** 4,574-byte publication. A real publication is signed and has
 change, and the datum it carries is not the payload. #556's 101 bytes are the
-gap between a 4,574-byte *datum* and the 4,675-byte *unsigned* transaction
+gap between a 4,574-byte _datum_ and the 4,675-byte _unsigned_ transaction
 holding it; the 248 bytes of fixed framing measured here are that envelope plus
 a vkey witness, an input, a change output and the fee, and the remaining 492 of
 the 740 are the payload's own Plutus Data encoding, which the 4,574-byte figure
@@ -730,7 +732,7 @@ the shape of it is what the repair had to close. Under the superseded `K`:
   `maxTxSize` even without one — and above 15,644 it does not fit `maxTxSize` at
   all.
 - **Tier 3** fared worse, not better. The chunker cuts at `chunk_bytes_k`, and the
-  §8.3 guard is a refusal, **not a re-split**, so at `K` = 15,900 *every* tier-3
+  §8.3 guard is a refusal, **not a re-split**, so at `K` = 15,900 _every_ tier-3
   plan — at every preimage length from 15,901 bytes to the §5.4 cap — had a first
   chunk of exactly 15,900 bytes, which publishes as 16,648 bytes and is 264 over
   `maxTxSize`. There was no tier-3 preimage whose carriage could be published.
@@ -743,7 +745,7 @@ in kind about tier 3, which it described as merely mis-partitioned when in fact 
 did not function.
 
 **With the re-pin applied the window is empty, and that is a property of the
-repair rather than a coincidence.** `K` is now *defined* as the reserve-clearing
+repair rather than a coincidence.** `K` is now _defined_ as the reserve-clearing
 publication frontier, so the largest chunk the chunker can cut is the largest
 chunk that can be published: tier 2 admits exactly the preimages that fit one
 publication, and every chunk of every tier-3 plan — including the two full-`K`
@@ -753,7 +755,7 @@ rather than build such a publication; what has changed is that no honest §8.4 p
 asks it to.
 
 **The prohibition is on publication, not on planning.** A previous revision told
-implementations not to *plan* a field into the affected window. That is the
+implementations not to _plan_ a field into the affected window. That is the
 wrong instrument, and under the real window it is incoherent: since every
 tier-3 plan is affected, a plan-time refusal would refuse every tier-3 preimage
 that exists, and with it the certificate derivation, the content-addressed
@@ -769,7 +771,7 @@ transaction is built.
 `buildUnsignedFieldPreimagePublicationV1Program` refuses to build one, naming this
 erratum. A caller may raise the builder's limit (bounded by the §5.4 cap) for
 measurement work, so it is a fail-closed default rather than an inescapable
-invariant. What the re-pin changed is what the guard catches: before it, *every*
+invariant. What the re-pin changed is what the guard catches: before it, _every_
 tier-3 plan, which is how the outage became visible at build time instead of at
 submission; after it, only a chunk list that did not come from this chunker, or a
 deliberately raised limit. The guard is still deliberately not a re-split, because
@@ -778,7 +780,7 @@ re-cutting them off-schedule would produce carriage the compiled validator
 rejects.
 
 **The re-pin is applied in both languages, and what it re-cut.** `K` is the
-*split*, not merely a bound, so moving it moved every chunk boundary in the
+_split_, not merely a bound, so moving it moved every chunk boundary in the
 system, and all of it moved in one commit rather than being carried as a live
 spec/code divergence:
 
@@ -817,7 +819,7 @@ tooling carry a preimage of any size up to the §5.4 cap. **Half of that is not
 discharged as of #574 and was discharged by E1's repair instead.** At the
 superseded `K` only `[1, 15,148]` was carriable at the real `maxTxSize`, and the
 tier-3 end-to-end exercise ran on an emulator configured with an inflated
-`maxTxSize` — honest as a measurement of the *format*, and not evidence that the
+`maxTxSize` — honest as a measurement of the _format_, and not evidence that the
 carriage was publishable on L1. **The re-pin closes that half.** Every chunk of
 every §8.4 plan up to the §5.4 cap now publishes inside the reserve, and the
 emulator blocks that had to be inflated — the tier ladder, the tier-3 corner
@@ -855,7 +857,7 @@ for the same reason: a ledger no workflow runs would reproduce in a new place
 exactly the unfalsifiable-cost-claim defect it was added to close.
 
 **The tier-1 bound is not falsified by this erratum, but it is not untouched by
-it either.** `maxTier1RedeemerPreimageBytes` is a bound on the *step*
+it either.** `maxTier1RedeemerPreimageBytes` is a bound on the _step_
 transaction, not on a publication, and its measurement is #557's pending M2
 ("fixed per-step overhead in the real thread harness"). Nothing in #574 measures
 a step transaction, so nothing here falsifies or confirms 14,336; it remains
@@ -865,7 +867,7 @@ neither was stated in the first revision of this erratum:
 > **#580 UPDATE (2026-08-15) — the allowance is now measured, and 14,336
 > stands.** The Phase-7 pass measured the step side that #574 could not, through
 > `demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts` (`keeps
-> stage-4 one-step evidence O(1) in output size at every admissible output`)
+stage-4 one-step evidence O(1) in output size at every admissible output`)
 > against the Phase-6 blueprint. At the cap, a 14,336-byte preimage produces a
 > **14,795-byte auxiliary** — confirming the 450-byte Plutus-Data chunking figure
 > below to within 9 bytes — inside a **15,848-byte one-step evidence** against a
@@ -879,7 +881,7 @@ neither was stated in the first revision of this erratum:
 > (tier-2 `RawUtxo` at a 14,778-byte preimage, tier-3 `Certified` at 16,388),
 > because §8 carriage above tier 1 is reference indices rather than payload.
 >
-> **What this does NOT discharge.** The reading is of the one-step *evidence*
+> **What this does NOT discharge.** The reading is of the one-step _evidence_
 > CBOR, which is what rides the redeemer — not of a complete signed step
 > transaction at the cap, which no suite in this tree builds. By the
 > by-reference series in this section a redeemer of 15,848 bytes sits in a
@@ -890,6 +892,33 @@ neither was stated in the first revision of this erratum:
 > tier-1 bound should carry a reliability reserve of its own the way `K` does is
 > a parameter question for CG5's target-network binding rather than something
 > this pass settles.
+>
+> **#611 UPDATE (2026-08-17) — the signed-transaction half is now measured, and
+> it FALSIFIES the bound.** The new row in
+> `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`
+> (`measures the complete signed tier-1 step transaction at the 14,336-byte
+preimage cap`) builds and submits the at-cap authenticate transaction on the
+> emulator against the applied resolver, on both bases. Deployed route
+> (resolver sourced from the published reference script, one-step argument
+> inline in the redeemer): **17,389 signed bytes, margin −1,005** against
+> `maxTxSize` 16,384. Embedded-resolver variant: **20,518 signed bytes, margin
+> −4,134** — so the published reference script is load-bearing for step
+> liveness anywhere near the cap. The ~16,278 estimate above under-counted the
+> framing: beside the redeemer, the signed transaction carries the thread
+> input, the continuation output with its authenticated datum, the required
+> signer, the resolver reference input and a change output — ~1.8 KB of
+> transaction framing over the one-step evidence, roughly four times the ~430-B
+> by-reference-series figure, which was taken from a bare measurement
+> transaction with none of that protocol shape. The bisected fitting frontier
+> on the deployed route: a **13,357-byte item (13,361-byte preimage) lands at
+> exactly 16,384 signed bytes — zero margin, no reserve — and one more byte
+> overflows** (probe series in the row's `MIDGARD_PRINT_PROOF_FIT` output).
+> With a K-style 512-byte reserve the reliable frontier would sit near a
+> ≈12,845-byte item (≈12,849-byte preimage; arithmetic, not probed). Whether
+> the repair is a smaller cap, a tier-1 reliability reserve, or a documented
+> reference/chunked-route requirement above the frontier is CG5 parameter
+> authority — **escalated on #611, not decided here**, and the parameter is
+> not re-pinned by this update.
 
 - **The 740-byte framing is not a floor.** It was published as "a lower bound on
   any transaction of this family", and the same measurement contradicts that:
@@ -978,7 +1007,7 @@ witnesses is a 32,757-byte field 7, which is over the §8.3 tier-1 redeemer boun
 and over `K`, so on L1 that preimage travels under tier 3 (admissible for a
 witness-set field since #606 resolved limit 3 below). The row is nonetheless
 taken under tier-1 carriage in the harness at a width tier 1 could not carry,
-and it is published as a *walk-cost* reading rather than as a reachable
+and it is published as a _walk-cost_ reading rather than as a reachable
 configuration;
 `q1x_f6_address_witness_fixture_sits_at_the_admissible_cardinality` asserts
 exactly that, so the fact cannot go unnoticed. It does not soften the limit,
@@ -987,7 +1016,7 @@ carriage can deliver is ≈ 154 witnesses, and the walk leaves the memory basis 
 ≈ 101. The operative statement is **≈ 101 address witnesses**, and it is reached
 before either carriage bound.
 
-**Limit 2 — carriage.** The walk needs the field's *authenticated* item count,
+**Limit 2 — carriage.** The walk needs the field's _authenticated_ item count,
 and for a variable-width field that count is authenticated only under tiers 1
 and 2. Under tier 3 (Certified) the §5.1 header's number is the prover's own
 assertion, so `field_item_count` aborts rather than return it. A field-6
@@ -1015,7 +1044,7 @@ same body, and §3's id preimage **is** the body — so a certificate can only b
 minted for the field the named transaction actually committed.
 
 For fields 6–8 it was not enough, for the same reason §2.5's anchor has two
-arms. The minter reads `witness_set_hash` off the *tail* of its own redeemer's
+arms. The minter reads `witness_set_hash` off the _tail_ of its own redeemer's
 `native_tx_compact_cbor`, and §3's id preimage does not reach that tail. A
 certifier could therefore present the committed transaction's genuine body —
 so the token was minted under the committed transaction's own name — followed
@@ -1051,12 +1080,12 @@ against #579, moved to #604 with the #575 off-chain remediation (owner ruling
 never reached a live system.
 
 One hypothesis remains recorded as **falsified** so it is not re-tried:
-carrying `witness_set_hash` in the thread anchor alone does *not* repair the
+carrying `witness_set_hash` in the thread anchor alone does _not_ repair the
 hole. The anchor already carried it — `WitnessAnchor { tx_id,
 witness_set_hash }`, checked in `anchored_native_tx` — and that is what closes
 the tiers-1/2 forgery, because under those tiers the door hashes the preimage
 itself. Under tier 3 the door never hashes the preimage, and there was
-nothing in the *token* for a step to check the anchored `witness_set_hash`
+nothing in the _token_ for a step to check the anchored `witness_set_hash`
 against — which is precisely why the repair had to put the commitment where
 the door can compare it: the mint-verified datum.
 
@@ -1368,7 +1397,7 @@ Three measurements were owed, and the third produced erratum E1 (§8.3).
 
 #### The three-chunk corner
 
-#556 established a two-chunk reconstruction *in fixture*. What was still owed is
+#556 established a two-chunk reconstruction _in fixture_. What was still owed is
 the three-chunk corner opened through the real door with the four reference
 inputs a consuming step carries — one certificate and three chunks. The fixture
 is field 1 (stride 40) at 819 items and 32,763 bytes, the largest fixed-stride
@@ -1383,8 +1412,8 @@ same door, and they differ **only** in which items are read. Row 0 stops before
 opening the door at all, so the fixture — which dominates every absolute figure,
 exactly as §12.5 found — subtracts out.
 
-| #   | seam test                             | what it adds                  | memory  | CPU         |
-| --- | ------------------------------------- | ----------------------------- | ------- | ----------- |
+| #   | seam test                             | what it adds                    | memory  | CPU         |
+| --- | ------------------------------------- | ------------------------------- | ------- | ----------- |
 | 0   | `tier3_corner_fixture_only`           | fixture only, door unopened     | 401,937 | 227,660,288 |
 | 1   | `tier3_corner_open_only`              | + the door                      | 640,675 | 299,793,903 |
 | 2   | `tier3_corner_one_read`               | + one item in chunk 0           | 795,817 | 393,852,884 |
@@ -1472,7 +1501,7 @@ Four readings.
    reading wholly inside that ragged tail **saves** 29.82 M CPU. This is the
    property tier 3 is sold on, and it is now measured rather than argued. The
    saving is on the CPU axis only, and the two axes disagree: row 6 costs 32,707
-   memory units *more* than row 2 (828,524 against 795,817) while costing 29.82 M
+   memory units _more_ than row 2 (828,524 against 795,817) while costing 29.82 M
    CPU less, because the read still allocates a view over three chunks and only
    the hashing shrinks. Quoting the CPU saving without the memory rise would be
    quoting half a measurement — the tail read is cheaper on the axis that is
@@ -1547,11 +1576,11 @@ token (#606) and checks it does not survive, and never touches carriage.
 **Min-Ada, at mainnet `coinsPerUtxoByte` = 4,310.** From
 `§8.6 Phase-4 exit measurement — certificate min-Ada and the one-transaction question`:
 
-| output                                          | payload  | inline datum | min-Ada (lovelace) | min-Ada         |
-| ----------------------------------------------- | -------- | ------------ | ------------------ | --------------- |
-| certificate manifest (3 digests)                | —        | 210 B        | 2,064,490          | **2.0645 ADA**  |
-| full chunk (`K` bytes, repaired `K` = 15,148)   | 15,148 B | 15,624 B     | 68,231,610         | **68.2316 ADA** |
-| ragged tail chunk                               | 2,467 B  | 2,547 B      | 11,869,740         | **11.8697 ADA** |
+| output                                        | payload  | inline datum | min-Ada (lovelace) | min-Ada         |
+| --------------------------------------------- | -------- | ------------ | ------------------ | --------------- |
+| certificate manifest (3 digests)              | —        | 210 B        | 2,064,490          | **2.0645 ADA**  |
+| full chunk (`K` bytes, repaired `K` = 15,148) | 15,148 B | 15,624 B     | 68,231,610         | **68.2316 ADA** |
+| ragged tail chunk                             | 2,467 B  | 2,547 B      | 11,869,740         | **11.8697 ADA** |
 
 (The manifest row moved with #606: the datum gained the 32-byte mint-welded
 `field_hash` plus its 2-byte CBOR head, 176 → 210 bytes, and the deposit
@@ -1581,7 +1610,7 @@ quantities; this total is a convenience.
 
 **Last-chunk publication and certification do not fit one transaction, and the
 reason is structural rather than budgetary.** §8.6 resolves chunks from
-*reference inputs*, and the Cardano ledger resolves reference inputs against the
+_reference inputs_, and the Cardano ledger resolves reference inputs against the
 UTxO set as it stands **before** the transaction; an output the same transaction
 creates is therefore not available to it, at any size and under any protocol
 parameters. A second and independent reason is measured: a signed full-`K`
@@ -1758,6 +1787,7 @@ through the field-access door:
   344,075,442 reading above is **pre-#606 and deliberately not re-taken** (no
   selector pins it); extrapolating the re-measured pair puts that shape within
   0.05% of it, so its 26× judgement is unaffected.
+
 - **The bound the mint enforces is per-field, not aggregate.** `whole_view`
   checks `total_length ≤ max_transaction_aggregate_field_bytes` at each opening
   and nothing in the walk sums the nine, so nine fields at 32,768 bytes each are
@@ -1777,11 +1807,11 @@ rule — the walk above is what consumes and exhausts it.
 
 **Tier selection is the creator's, under the L1 transaction budget.**
 
-| tier         | where the bytes are                                                              | what gates the choice                                                                                                              |
-| ------------ | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `Inline`     | the order transaction's own mint redeemer                                        | **no on-chain threshold constant** — the L1 16,384-byte transaction limit is the gate, so the inline/reference split is an off-chain planning concern |
-| `RawUtxo`    | one nothing-but-bytes inline datum published in a **prior** transaction          | `preimage_len ≤ K`; referenced datums are not part of the order transaction's bytes                                                  |
-| `Certified`  | §8.4 chunks plus one §8.6 manifest, published in **prior** transactions          | `preimage_len > K`, enforced by the door — §8.4's partition still holds at the top of the ladder                                     |
+| tier        | where the bytes are                                                     | what gates the choice                                                                                                                                 |
+| ----------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Inline`    | the order transaction's own mint redeemer                               | **no on-chain threshold constant** — the L1 16,384-byte transaction limit is the gate, so the inline/reference split is an off-chain planning concern |
+| `RawUtxo`   | one nothing-but-bytes inline datum published in a **prior** transaction | `preimage_len ≤ K`; referenced datums are not part of the order transaction's bytes                                                                   |
+| `Certified` | §8.4 chunks plus one §8.6 manifest, published in **prior** transactions | `preimage_len > K`, enforced by the door — §8.4's partition still holds at the top of the ladder                                                      |
 
 Tiers 1 and 2 are indistinguishable to the door below `K`: it hashes the same
 bytes against the same commitment whether they arrived in a redeemer or a
@@ -1860,6 +1890,7 @@ both readers.
    re-encode to a strictly shorter prefix of the vector) rather than asserting a
    refusal that does not happen. Closing it needs a canonicality guard on the
    off-chain decode path and is not carried by the vector set alone.
+
 3. Negative-vector suites cover the §7 invariants: out-of-range index,
    straddling-item reads, short/empty-slice equality attempts, certificate
    `(tx_id, field_index)` mismatch, certificate **`field_hash` mismatch**
@@ -1881,13 +1912,14 @@ both readers.
 5. Every refusal on the §10 walk's operational path — resume, advance,
    relocate, access, and the §10.3 decode — is accounted for in the §10.8
    table, as one of exactly two things:
-   * **isolated**, by a negative vector built so that every check the fixture
+
+   - **isolated**, by a negative vector built so that every check the fixture
      reaches before and after the named one is satisfied. Neutralising the
      named check turns that vector red and no other; that is what "isolates"
      means here and it is verified by running the neutralisation, not
      asserted. A vector that can only trip several checks at once is marked
      as a composite and does not count as coverage for any of them.
-   * a **backstop**: a refusal that no fixture can isolate, because a check
+   - a **backstop**: a refusal that no fixture can isolate, because a check
      that runs earlier already refuses everything it would. A backstop is
      admissible only with the earlier check named, and only in the table —
      "uncovered" is not a category. Backstops are kept rather than deleted
@@ -1896,6 +1928,7 @@ both readers.
 
    An implementation whose guard set does not partition this way has not met
    this clause.
+
 6. The §11 intra-item mechanisms are held to the same two clauses, one level
    down. Their refusals partition into isolated-or-backstop exactly as item 5
    requires, and §11.5 is that table; their cost claims are established from
@@ -1922,10 +1955,11 @@ both readers.
    signed-Cardano boundary, a declared construction's parameters — as distinct
    from the derived constants an implementation then asserts. For those families,
    both halves are held:
-   * every derived constant, in either language, is emitted by a script that also
+
+   - every derived constant, in either language, is emitted by a script that also
      runs in `--check` mode, so a constant that no producer emits is a failure
      rather than a green test; and
-   * the seed is itself produced — from a construction stated in parameters, or
+   - the seed is itself produced — from a construction stated in parameters, or
      from a search whose implementation is the vector's single source — so that a
      format change is absorbed by re-running producers and never by editing
      constants.
@@ -2149,11 +2183,11 @@ is normative rather than structural.
 ### 10.7 Cost claims
 
 Two claims this section makes are about cost, and both are established by
-measurement against the GOAL_SPEC §3.3 basis of 13,200,000 memory units rather
+measurement against the GOAL*SPEC §3.3 basis of 13,200,000 memory units rather
 than asserted. The reference measurements are the seam suite's runner report at
 the grammar of this document; they are re-taken whenever the grammar moves, and
 every number quoted below is a row of that report, so a re-take is reading four
-`authenticate_once_*` rows and two `spend_input_lookup_at_*` rows rather than
+`authenticate_once*_`rows and two`spend*input_lookup_at*_` rows rather than
 reconstructing a control by hand.
 
 1. **A dispute touching a field pays that field's full-preimage hash check at
@@ -2166,12 +2200,12 @@ reconstructing a control by hand.
 
    The four rows, in the order a re-take should read them:
 
-   | seam test | opens | relocations | memory |
-   | --- | --- | --- | --- |
-   | `authenticate_once_one_open_one_read` | 1 | 0 | 1.89 M |
-   | `authenticate_once_one_open_every_read` | 1 | 0 | 8.78 M |
-   | `authenticate_once_one_open_every_relocation` | 1 | 64 | 9.79 M |
-   | `authenticate_once_reopen_per_item_costs_more` | 64 | 64 | 13.27 M |
+   | seam test                                      | opens | relocations | memory  |
+   | ---------------------------------------------- | ----- | ----------- | ------- |
+   | `authenticate_once_one_open_one_read`          | 1     | 0           | 1.89 M  |
+   | `authenticate_once_one_open_every_read`        | 1     | 0           | 8.78 M  |
+   | `authenticate_once_one_open_every_relocation`  | 1     | 64          | 9.79 M  |
+   | `authenticate_once_reopen_per_item_costs_more` | 64    | 64          | 13.27 M |
 
    The third row is the control the decisive claim rests on, and it exists so
    that the 9.79 M is a runner measurement like every other number here rather
@@ -2185,6 +2219,7 @@ reconstructing a control by hand.
    row 2, same single open). The conclusion is unaffected, but the margin over
    the basis is 0.57%, so a re-take that models the gap as 63 hash checks will
    mis-predict where the line falls.
+
 2. **Spend-input lookup is an arithmetic slice, not a walk.** Reading item 0
    and item 295 of a 296-item field 0 differ by a residue attributable to the
    surrounding assertion, not to traversal, while the same comparison over a
@@ -2199,44 +2234,44 @@ to be either isolated by a vector or listed as a backstop with the earlier
 check that makes it unreachable. This is that list, for the reference
 implementation. Twenty-three refusals: sixteen isolated, seven backstops.
 
-| # | refusal | isolated by / backstop because |
-| --- | --- | --- |
-| 1 | §10.2 item 1 — `tx_id` matches the resuming transaction | `resume_rejects_a_checkpoint_from_another_transaction` |
-| 2 | §10.2 item 3 — `total_length` matches the view | `resume_rejects_a_forged_total_length` |
-| 3 | §10.2 item 3 — `item_count` matches the view | `resume_rejects_a_forged_item_count` |
-| 4 | §10.2 item 4 — `next_item_index ≥ 0` | backstop: §10.3's decoder re-encodes before the binding check runs, and the encoder asserts the same condition |
-| 5 | §10.2 item 4 — `next_item_index ≤ item_count` | backstop: same, the encoder asserts the same condition on the same two fields |
-| 6 | §10.2 item 4 — `next_offset ≥ header_len` | `resume_rejects_an_offset_inside_the_array_header` |
-| 7 | §10.2 item 4 — `next_offset ≤ total_length` | backstop: the encoder asserts it against the checkpoint's own `total_length`, which guard 2 pins to the view's |
-| 8 | §10.2 item 5 — a completed walk sits at `total_length` | `resume_rejects_a_walk_that_declares_itself_finished_early` |
-| 9 | §10.2 item 6 — fixed-stride offset recompute | `resume_rejects_a_forged_fixed_stride_offset` |
-| 10 | §10.2 item 7 — the item at the offset ends inside the field | `resume_rejects_a_position_whose_item_runs_past_the_field` |
-| 11 | §10.6 — the position hashes to the thread's commitment | `resume_rejects_a_position_the_thread_did_not_commit` |
-| 12 | §10.3 — the wire form has one admissible spelling | `checkpoint_decode_refuses_a_non_canonical_spelling` |
-| 13 | §10.4 — a completed checkpoint cannot be stepped | backstop: every obtainable complete checkpoint sits at `total_length`, where the §5.1 head read refuses first (see §10.6 on why no other can be obtained) |
-| 14 | §10.4 — the wrapper declares `stride − 2` bytes | `walk_next_refuses_a_wrapper_whose_length_misses_the_stride` |
-| 15 | §10.4 — the wrapper's payload begins two bytes in | backstop: §5.1 heads are minimal-width, so the payload offset is a function of the declared length and guard 14 already pins that |
-| 16 | §10.4 — the advance stays inside the authenticated bytes | backstop: the §8.8 read that follows refuses every extent outside the bytes |
-| 17 | §10.4 — the final advance lands exactly on `total_length` | `walk_next_refuses_a_final_advance_that_misses_the_end` |
-| 18 | §10.4 — a relocation stops at `item_count` | `walk_skip_refuses_to_pass_the_item_count_on_a_fixed_stride_field` |
-| 19 | §10.4 — a relocation moves forward | `walk_skip_refuses_a_negative_relocation` |
-| 20 | §10.4 — a fold's budget is a count of items | `walk_fold_refuses_a_negative_budget` |
-| 21 | §10.5 — the input accessor is guarded on the stride | `spend_input_at_refuses_a_variable_width_view_of_input_shaped_items` |
-| 22 | §10.5 — an input item is `spend_input_item_bytes` wide | backstop: given guard 21, §7.4's extent already pins the width to `stride − 2`; it is the line that notices if the two constants stop agreeing |
-| 23 | §10.5 — the count accessor is guarded on the stride | `spend_input_count_refuses_a_variable_width_view` |
+| #   | refusal                                                     | isolated by / backstop because                                                                                                                            |
+| --- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | §10.2 item 1 — `tx_id` matches the resuming transaction     | `resume_rejects_a_checkpoint_from_another_transaction`                                                                                                    |
+| 2   | §10.2 item 3 — `total_length` matches the view              | `resume_rejects_a_forged_total_length`                                                                                                                    |
+| 3   | §10.2 item 3 — `item_count` matches the view                | `resume_rejects_a_forged_item_count`                                                                                                                      |
+| 4   | §10.2 item 4 — `next_item_index ≥ 0`                        | backstop: §10.3's decoder re-encodes before the binding check runs, and the encoder asserts the same condition                                            |
+| 5   | §10.2 item 4 — `next_item_index ≤ item_count`               | backstop: same, the encoder asserts the same condition on the same two fields                                                                             |
+| 6   | §10.2 item 4 — `next_offset ≥ header_len`                   | `resume_rejects_an_offset_inside_the_array_header`                                                                                                        |
+| 7   | §10.2 item 4 — `next_offset ≤ total_length`                 | backstop: the encoder asserts it against the checkpoint's own `total_length`, which guard 2 pins to the view's                                            |
+| 8   | §10.2 item 5 — a completed walk sits at `total_length`      | `resume_rejects_a_walk_that_declares_itself_finished_early`                                                                                               |
+| 9   | §10.2 item 6 — fixed-stride offset recompute                | `resume_rejects_a_forged_fixed_stride_offset`                                                                                                             |
+| 10  | §10.2 item 7 — the item at the offset ends inside the field | `resume_rejects_a_position_whose_item_runs_past_the_field`                                                                                                |
+| 11  | §10.6 — the position hashes to the thread's commitment      | `resume_rejects_a_position_the_thread_did_not_commit`                                                                                                     |
+| 12  | §10.3 — the wire form has one admissible spelling           | `checkpoint_decode_refuses_a_non_canonical_spelling`                                                                                                      |
+| 13  | §10.4 — a completed checkpoint cannot be stepped            | backstop: every obtainable complete checkpoint sits at `total_length`, where the §5.1 head read refuses first (see §10.6 on why no other can be obtained) |
+| 14  | §10.4 — the wrapper declares `stride − 2` bytes             | `walk_next_refuses_a_wrapper_whose_length_misses_the_stride`                                                                                              |
+| 15  | §10.4 — the wrapper's payload begins two bytes in           | backstop: §5.1 heads are minimal-width, so the payload offset is a function of the declared length and guard 14 already pins that                         |
+| 16  | §10.4 — the advance stays inside the authenticated bytes    | backstop: the §8.8 read that follows refuses every extent outside the bytes                                                                               |
+| 17  | §10.4 — the final advance lands exactly on `total_length`   | `walk_next_refuses_a_final_advance_that_misses_the_end`                                                                                                   |
+| 18  | §10.4 — a relocation stops at `item_count`                  | `walk_skip_refuses_to_pass_the_item_count_on_a_fixed_stride_field`                                                                                        |
+| 19  | §10.4 — a relocation moves forward                          | `walk_skip_refuses_a_negative_relocation`                                                                                                                 |
+| 20  | §10.4 — a fold's budget is a count of items                 | `walk_fold_refuses_a_negative_budget`                                                                                                                     |
+| 21  | §10.5 — the input accessor is guarded on the stride         | `spend_input_at_refuses_a_variable_width_view_of_input_shaped_items`                                                                                      |
+| 22  | §10.5 — an input item is `spend_input_item_bytes` wide      | backstop: given guard 21, §7.4's extent already pins the width to `stride − 2`; it is the line that notices if the two constants stop agreeing            |
+| 23  | §10.5 — the count accessor is guarded on the stride         | `spend_input_count_refuses_a_variable_width_view`                                                                                                         |
 
 Four vectors in the suite are composites. They are marked as such in the suite
-and are not counted above, because each of them is the *natural* shape of an
+and are not counted above, because each of them is the _natural_ shape of an
 attack and the isolating vector is the contrived one — dropping them would lose
 the realistic case:
 
-* `resume_rejects_a_reshaped_view` disagrees with the fresh view on guards 2, 3
+- `resume_rejects_a_reshaped_view` disagrees with the fresh view on guards 2, 3
   and 9 at once;
-* `walk_next_refuses_to_step_past_the_end` is the ordinary shape of guard 13 and
+- `walk_next_refuses_to_step_past_the_end` is the ordinary shape of guard 13 and
   inherits its redundancy;
-* `walk_next_refuses_a_one_byte_wrapper_on_a_fixed_stride_field` trips guard 14
+- `walk_next_refuses_a_one_byte_wrapper_on_a_fixed_stride_field` trips guard 14
   on its way to guard 15, which is what makes guard 15 unisolable;
-* `walk_skip_refuses_to_pass_the_item_count` runs guard 18's bound on the
+- `walk_skip_refuses_to_pass_the_item_count` runs guard 18's bound on the
   variable-width path, where over-relocating walks into guard 13 instead.
 
 The ten range assertions in `encode_field_walk_checkpoint` are the wire form's
@@ -2257,11 +2292,11 @@ bytes**. This section says what a rule may do inside them.
 Three item interiors have structure a rule needs to reach into, and each needs
 a different mechanism because each is a different shape:
 
-| case | interior | §5 origin | mechanism |
-| --- | --- | --- | --- |
-| A | a multiasset value | §5.5, inside a field-2 output item | the **Value bookmark** (§11.1) |
-| B | a datum or redeemer | §5.5/§5.3, field-2 and field-8 items | the **Canonical-Data Acceptor** (§11.2) |
-| C | a native script | §5.3, a field-6 item at `language_tag` 0 | the **checkpointable pushdown** (§11.3) |
+| case | interior            | §5 origin                                | mechanism                               |
+| ---- | ------------------- | ---------------------------------------- | --------------------------------------- |
+| A    | a multiasset value  | §5.5, inside a field-2 output item       | the **Value bookmark** (§11.1)          |
+| B    | a datum or redeemer | §5.5/§5.3, field-2 and field-8 items     | the **Canonical-Data Acceptor** (§11.2) |
+| C    | a native script     | §5.3, a field-6 item at `language_tag` 0 | the **checkpointable pushdown** (§11.3) |
 
 The reference implementations are
 `onchain/aiken/lib/midgard/native-tx-intra-item-v1.ak` (cases A and B) and
@@ -2287,7 +2322,7 @@ authenticated, and it never takes a `FieldViewV1`: re-reading interior bytes
 through the view would make every byte pay tier-3's per-read chunk
 verification, which is the opposite of what §8.4's guarantee is for.
 
-**Where §7.6 applies, and where it does not.** §7.6 binds *resumable* state —
+**Where §7.6 applies, and where it does not.** §7.6 binds _resumable_ state —
 what a thread carries between transactions — to positions rather than verbatim
 bytes. Case C is resumable and pays §7.6 in full (§11.3). Cases A and B are
 not: they live and die inside one transaction, and a bookmark that carries the
@@ -2297,12 +2332,12 @@ bookmark or a §11.2 path has left this document's domain and owes §7.6 an
 answer of its own.
 
 **Opacity, wherever a position is state.** §10.6's clause applies unchanged to
-the intra-item positions that *are* state: a caller must not be able to
+the intra-item positions that _are_ state: a caller must not be able to
 construct one. Case A's bookmark and case C's cursor are opaque types whose
 constructors are private, case C's wire-form decoder is private, and case C's
 only exported resume is the commitment-taking one. A public constructor for
 either would let a prover place a position at a byte offset of its choosing
-*inside* an item's payload and read from there with nothing checked — which is
+_inside_ an item's payload and read from there with nothing checked — which is
 the same capability the §10.6 clause withholds, one level down.
 
 It does **not** extend to every offset a §11.2 reader will accept, and this
@@ -2311,12 +2346,12 @@ caller-chosen offset, deliberately. They carry no state, they are pure functions
 of bytes §7 has already authenticated, and they answer `None` — never a clamped
 or partial answer, and never an abort — for an offset that does not begin an
 item of the kind asked for. That last word is load-bearing and is not free: the
-shared interior head reader is §7.3 abort-never-clamp, so it *aborts* on a head
+shared interior head reader is §7.3 abort-never-clamp, so it _aborts_ on a head
 §6.1 does not admit, and a leaf reader that read the head first would abort on
 `d9 0079 80` rather than decline it. Each of the three therefore decides the item
 with §6.2's scan before reading it. There is nothing there to forge because
 there is nothing there to resume:
-an offset only *means* something by having come from the path accessor, and a
+an offset only _means_ something by having come from the path accessor, and a
 caller that invents one learns exactly what those bytes say and no more.
 
 ### 11.1 The Value bookmark (case A)
@@ -2404,14 +2439,14 @@ decided before any path step is taken, for the same reason §11.1 validates the
 value before serving a lookup.
 
 Three typed leaf readers accompany it, and each reads a form the `Data` route
-cannot: the **integer** reader covers majors 0/1 *and* canonical tag-2/3
+cannot: the **integer** reader covers majors 0/1 _and_ canonical tag-2/3
 bignums, definite or 64-byte chunked; the **byte-string** reader covers
 definite and chunked payloads; the **alternative** reader covers all three §6.2
 constructor spellings including tag 102. Between them a rule about a datum the
 materialisation path declines is still a rule that can be stated.
 
 **What the acceptor is for.** Not speed. §11.4 measures interior access as
-*more* expensive than `cbor.deserialise` on every datum the builtin can take,
+_more_ expensive than `cbor.deserialise` on every datum the builtin can take,
 because the builtin is a builtin and the acceptor is interpreted. It is for the
 datums the builtin cannot take at all, where it is the only route, and its
 budget claim is only that it fits — which it does with two orders of magnitude
@@ -2499,7 +2534,7 @@ unsound without any one:
 1. the 87 carried bytes hash to the digest the previous step committed, so the
    position is one a traversal actually reached;
 2. the re-supplied payload re-digests to the cursor's `script_digest` and has
-   its length, so the position belongs to *this* script;
+   its length, so the position belongs to _this_ script;
 3. the re-supplied frames re-derive to the committed stack root, so the pending
    thresholds are the ones the traversal built rather than ones chosen to make
    an unsatisfied script pass.
@@ -2579,20 +2614,20 @@ reconstructing a comparison by hand. Each mechanism's row is paired with the
 control that shows what a rule would otherwise have had to do, on the same
 fixture, for the same answer.
 
-| # | seam test | what it does | memory |
-| --- | --- | --- | --- |
-| 1 | `budget_value_bookmark_sweeps_64_units` | 64 ordered lookups over a 64-unit value through one bookmark | **12.22 M** |
-| 2 | `budget_materialised_value_reads_64_units` | control: the same 64 answers via `decode_canonical_output` | **20.15 M** |
-| 3 | `budget_value_bookmark_single_unit` | one lookup into the same value | 7.14 M |
-| 4 | `budget_datum_interior_access` | a child at depth two of a small datum | 0.93 M |
-| 5 | `budget_datum_materialised_access` | control: the same child via `cbor.deserialise` | 0.18 M |
-| 6 | `budget_wide_datum_interior_access` | the last leaf of a 24-leaf datum | 4.87 M |
-| 7 | `budget_wide_datum_materialised_access` | control: the same leaf via `cbor.deserialise` | 1.07 M |
-| 8 | `budget_native_script_pushdown_traversal` | an eight-node three-level script, whole traversal | 1.42 M |
-| 9 | `budget_native_script_recursive_control` | control: `native_script_v1.check_native_script` | 1.26 M |
-| 10 | `budget_native_script_checkpoint_and_resume` | the same traversal interrupted at five steps, committed, resumed and finished | 1.79 M |
-| 11 | `budget_value_bookmark_open_only` | the bookmark's structural pass over the same value, no lookup after it | 4.77 M |
-| 12 | `budget_materialised_value_decode_only` | control: `decode_canonical_output` on the same item, no lookup after it | 10.87 M |
+| #   | seam test                                    | what it does                                                                  | memory      |
+| --- | -------------------------------------------- | ----------------------------------------------------------------------------- | ----------- |
+| 1   | `budget_value_bookmark_sweeps_64_units`      | 64 ordered lookups over a 64-unit value through one bookmark                  | **12.22 M** |
+| 2   | `budget_materialised_value_reads_64_units`   | control: the same 64 answers via `decode_canonical_output`                    | **20.15 M** |
+| 3   | `budget_value_bookmark_single_unit`          | one lookup into the same value                                                | 7.14 M      |
+| 4   | `budget_datum_interior_access`               | a child at depth two of a small datum                                         | 0.93 M      |
+| 5   | `budget_datum_materialised_access`           | control: the same child via `cbor.deserialise`                                | 0.18 M      |
+| 6   | `budget_wide_datum_interior_access`          | the last leaf of a 24-leaf datum                                              | 4.87 M      |
+| 7   | `budget_wide_datum_materialised_access`      | control: the same leaf via `cbor.deserialise`                                 | 1.07 M      |
+| 8   | `budget_native_script_pushdown_traversal`    | an eight-node three-level script, whole traversal                             | 1.42 M      |
+| 9   | `budget_native_script_recursive_control`     | control: `native_script_v1.check_native_script`                               | 1.26 M      |
+| 10  | `budget_native_script_checkpoint_and_resume` | the same traversal interrupted at five steps, committed, resumed and finished | 1.79 M      |
+| 11  | `budget_value_bookmark_open_only`            | the bookmark's structural pass over the same value, no lookup after it        | 4.77 M      |
+| 12  | `budget_materialised_value_decode_only`      | control: `decode_canonical_output` on the same item, no lookup after it       | 10.87 M     |
 
 Three readings, and the third is the one a re-take must not lose:
 
@@ -2601,7 +2636,7 @@ Three readings, and the third is the one a re-take must not lose:
    20.15 M outside it. Rows 11 and 12 decompose that 7.93 M gap rather than
    leaving it to a story. **6.10 M** of it is what the two paths pay before
    answering anything: `decode_canonical_output` deserialises the output to
-   `Data` *and re-encodes the whole thing* to prove canonicity (10.87 M), where
+   `Data` _and re-encodes the whole thing_ to prove canonicity (10.87 M), where
    the bookmark reads the value in place with offset-and-slice (4.77 M). The
    remaining **1.83 M** is the sweep — 64 lookups cost 7.45 M through the
    bookmark against 9.28 M of searching the materialised asset list, so the
@@ -2614,6 +2649,7 @@ Three readings, and the third is the one a re-take must not lose:
    over the whole value — and nothing wider. The comparison is legitimate
    because row 2 is the cheapest way a rule could have obtained the same 64
    answers without §11.1, not because the two passes prove the same things.
+
 2. **Case C's discipline is affordable.** Row 10 against row 8 is what
    interruption costs: one extra cursor encode, one digest, one chain
    re-derivation and one extra payload digest, for 0.37 M. Row 9 shows the
@@ -2621,7 +2657,7 @@ Three readings, and the third is the one a re-take must not lose:
    either — 1.42 M against the recursive checker's 1.26 M is the price of
    carrying the stack explicitly, and it is small.
 3. **Case B is a capability case, not a cost case, and the rows say so.** Rows
-   5 and 7 are *cheaper* than rows 4 and 6, at both sizes and by roughly 4x.
+   5 and 7 are _cheaper_ than rows 4 and 6, at both sizes and by roughly 4x.
    `cbor.deserialise` is a builtin; the acceptor is interpreted Aiken. §11.2's
    justification is that the builtin cannot be asked at all about §6.2's
    re-pinned forms — on a bignum it aborts the machine — and that the acceptor
@@ -2636,59 +2672,59 @@ either isolated by a vector or listed as a backstop with the check that makes it
 unreachable named, on the same terms §10.8 states for the walk. This is that
 list. **Thirty-six refusals: twenty-nine isolated, seven backstops.**
 
-| # | refusal | isolated by / backstop because |
-| --- | --- | --- |
-| 1 | §5.5 — the output map head is `a2`/`a3`/`a4` | `value_bookmark_refuses_a_non_output_map_head` |
-| 2 | §5.5 — key `0`, the address, comes first | `value_bookmark_refuses_a_first_key_that_is_not_the_address` |
-| 3 | §5.5 — the address wrapper is the two-byte `58 LL` form | `value_bookmark_refuses_a_non_two_byte_address_wrapper` |
-| 4 | §5.5 — the address payload is 29 or 57 bytes | `value_bookmark_refuses_a_non_canonical_address_width` |
-| 5 | §5.5 — key `1`, the value, follows the address | `value_bookmark_refuses_a_second_key_that_is_not_the_value` |
-| 6 | §5.5 — the value is the two-element `[coin, multiasset]` | `value_bookmark_refuses_a_value_that_is_not_a_pair` |
-| 7 | §5.5 — a policy id is 28 bytes | `value_bookmark_refuses_a_short_policy_id` |
-| 8 | §5.5 — policy keys strictly increase | `value_bookmark_refuses_unordered_policies`, `value_bookmark_refuses_a_duplicate_policy` |
-| 9 | §5.5 — a policy group is non-empty | `value_bookmark_refuses_an_empty_policy_group` |
-| 10 | §5.5 — an asset name is at most 32 bytes | `value_bookmark_refuses_an_oversized_asset_name` |
-| 11 | §5.5 — asset keys strictly increase within a group | `value_bookmark_refuses_unordered_asset_names` |
-| 12 | §5.5 — quantities are strictly positive | `value_bookmark_refuses_a_zero_quantity` |
-| 13 | §11.1 — the structural pass ends inside the item | backstop: every read it makes goes through the shared reader below, which bound-checks before it reads, so a pass that would end past the item has already refused at the read that took it there. Kept, and not only for §9.5's reason: the scan's end offset has no other consumer, so an implementation that deletes this line deletes the pass |
-| 14 | §6.1 — an interior head is minimal-width | `value_bookmark_refuses_a_non_minimal_interior_head`, `…_two_byte_head`, `…_four_byte_head`, `…_eight_byte_head` — one vector per wide form, because a bound that only runs at the width the fixtures happen to reach is a bound nobody has checked |
-| 15 | §6.1 — an interior head is one of the five definite widths | `value_bookmark_refuses_an_indefinite_interior_head` |
-| 16 | §6.1 — an interior head's major type is the one the call site names | `value_bookmark_refuses_an_interior_head_of_the_wrong_major_type` |
-| 17 | §5.5 — a lookup names a 28-byte policy id | `value_quantity_refuses_a_short_policy_id` |
-| 18 | §5.5 — a lookup names an asset name of at most 32 bytes | `value_quantity_refuses_an_oversized_asset_name` |
-| 19 | §11.1 — the monotone floor | `value_bookmark_refuses_a_repeated_lookup`, `value_bookmark_refuses_a_backwards_lookup` |
-| 20 | §6.2 — a byte-string chunk is at most the chunk size | backstop: the stitch is reached only through the §6.2 scan, which has already decided the chunked string and caps a chunk there, so the stitch never meets a longer one |
-| 21 | §11.3 — a walk is opened over a non-empty payload | `open_refuses_an_empty_payload` |
-| 22 | §11.3 — a payload is at most 2²⁴ − 1 bytes | backstop: the cursor encoder asserts the same condition on the same field, which is a three-byte wire scalar, and §5.4's field byte bound is orders of magnitude below it — no §5-admissible payload reaches either. It is the line that notices if those two constants stop agreeing |
-| 23 | §11.3 — a node's array header agrees with its tag | `run_refuses_a_node_whose_arity_disagrees_with_its_tag` |
-| 24 | §5.3 — a signature node's key hash is 28 bytes | `run_refuses_a_signature_of_the_wrong_key_width` |
-| 25 | §11.3 — the tag is one of the six node kinds | `run_refuses_an_unknown_node_tag` |
-| 26 | §11.3 — the node bound | `run_refuses_more_nodes_than_the_bound_without_a_wide_child` |
-| 27 | §11.3 — the depth bound, in the definition's units | `run_refuses_a_script_one_level_past_the_depth_bound` |
-| 28 | §11.3 — a fold has a parent to fold into, and `remaining` never goes negative | backstop: the budgeted fold stops at a complete walk, which is exactly the state with an empty stack and a pending verdict, so the fold is never entered without a parent; `remaining` is positive when a frame is pushed and the frame is popped at zero |
-| 29 | §11.3 resume 1 — the cursor hashes to the thread's commitment | `resume_rejects_a_position_the_thread_did_not_commit` |
-| 30 | §11.3 — the carried bytes are `native_script_cursor_bytes` long | backstop: guard 31's re-encode produces exactly that many bytes, so an input of any other length cannot equal it. This check refuses the same inputs a step sooner and keeps the reads under it in range |
-| 31 | §11.3 — the wire form has one admissible spelling, which is also the frame-stack check | backstop: the commitment check (guard 29) re-encodes the same walk from the same fields and the same re-supplied frames, so every input this would refuse also hashes to something other than the committed digest |
-| 32 | §11.3 resume 2 — the payload re-digests to the cursor's script | `resume_rejects_a_same_length_different_script` |
-| 33 | §11.3 resume 2 — the payload's length matches the cursor's | backstop: guard 32 pins the payload by digest, and a payload of a different length has a different digest |
-| 34 | §11.3 — a fold's payload is the one the walk was opened on | `run_rejects_a_payload_the_walk_was_not_opened_on` |
-| 35 | §11.3 — `budget` is a count of steps | `run_refuses_a_negative_budget` |
-| 36 | §11.3 — a completed traversal consumed the payload exactly | `verdict_refuses_a_script_with_trailing_bytes` |
+| #   | refusal                                                                                | isolated by / backstop because                                                                                                                                                                                                                                                                                                                     |
+| --- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | §5.5 — the output map head is `a2`/`a3`/`a4`                                           | `value_bookmark_refuses_a_non_output_map_head`                                                                                                                                                                                                                                                                                                     |
+| 2   | §5.5 — key `0`, the address, comes first                                               | `value_bookmark_refuses_a_first_key_that_is_not_the_address`                                                                                                                                                                                                                                                                                       |
+| 3   | §5.5 — the address wrapper is the two-byte `58 LL` form                                | `value_bookmark_refuses_a_non_two_byte_address_wrapper`                                                                                                                                                                                                                                                                                            |
+| 4   | §5.5 — the address payload is 29 or 57 bytes                                           | `value_bookmark_refuses_a_non_canonical_address_width`                                                                                                                                                                                                                                                                                             |
+| 5   | §5.5 — key `1`, the value, follows the address                                         | `value_bookmark_refuses_a_second_key_that_is_not_the_value`                                                                                                                                                                                                                                                                                        |
+| 6   | §5.5 — the value is the two-element `[coin, multiasset]`                               | `value_bookmark_refuses_a_value_that_is_not_a_pair`                                                                                                                                                                                                                                                                                                |
+| 7   | §5.5 — a policy id is 28 bytes                                                         | `value_bookmark_refuses_a_short_policy_id`                                                                                                                                                                                                                                                                                                         |
+| 8   | §5.5 — policy keys strictly increase                                                   | `value_bookmark_refuses_unordered_policies`, `value_bookmark_refuses_a_duplicate_policy`                                                                                                                                                                                                                                                           |
+| 9   | §5.5 — a policy group is non-empty                                                     | `value_bookmark_refuses_an_empty_policy_group`                                                                                                                                                                                                                                                                                                     |
+| 10  | §5.5 — an asset name is at most 32 bytes                                               | `value_bookmark_refuses_an_oversized_asset_name`                                                                                                                                                                                                                                                                                                   |
+| 11  | §5.5 — asset keys strictly increase within a group                                     | `value_bookmark_refuses_unordered_asset_names`                                                                                                                                                                                                                                                                                                     |
+| 12  | §5.5 — quantities are strictly positive                                                | `value_bookmark_refuses_a_zero_quantity`                                                                                                                                                                                                                                                                                                           |
+| 13  | §11.1 — the structural pass ends inside the item                                       | backstop: every read it makes goes through the shared reader below, which bound-checks before it reads, so a pass that would end past the item has already refused at the read that took it there. Kept, and not only for §9.5's reason: the scan's end offset has no other consumer, so an implementation that deletes this line deletes the pass |
+| 14  | §6.1 — an interior head is minimal-width                                               | `value_bookmark_refuses_a_non_minimal_interior_head`, `…_two_byte_head`, `…_four_byte_head`, `…_eight_byte_head` — one vector per wide form, because a bound that only runs at the width the fixtures happen to reach is a bound nobody has checked                                                                                                |
+| 15  | §6.1 — an interior head is one of the five definite widths                             | `value_bookmark_refuses_an_indefinite_interior_head`                                                                                                                                                                                                                                                                                               |
+| 16  | §6.1 — an interior head's major type is the one the call site names                    | `value_bookmark_refuses_an_interior_head_of_the_wrong_major_type`                                                                                                                                                                                                                                                                                  |
+| 17  | §5.5 — a lookup names a 28-byte policy id                                              | `value_quantity_refuses_a_short_policy_id`                                                                                                                                                                                                                                                                                                         |
+| 18  | §5.5 — a lookup names an asset name of at most 32 bytes                                | `value_quantity_refuses_an_oversized_asset_name`                                                                                                                                                                                                                                                                                                   |
+| 19  | §11.1 — the monotone floor                                                             | `value_bookmark_refuses_a_repeated_lookup`, `value_bookmark_refuses_a_backwards_lookup`                                                                                                                                                                                                                                                            |
+| 20  | §6.2 — a byte-string chunk is at most the chunk size                                   | backstop: the stitch is reached only through the §6.2 scan, which has already decided the chunked string and caps a chunk there, so the stitch never meets a longer one                                                                                                                                                                            |
+| 21  | §11.3 — a walk is opened over a non-empty payload                                      | `open_refuses_an_empty_payload`                                                                                                                                                                                                                                                                                                                    |
+| 22  | §11.3 — a payload is at most 2²⁴ − 1 bytes                                             | backstop: the cursor encoder asserts the same condition on the same field, which is a three-byte wire scalar, and §5.4's field byte bound is orders of magnitude below it — no §5-admissible payload reaches either. It is the line that notices if those two constants stop agreeing                                                              |
+| 23  | §11.3 — a node's array header agrees with its tag                                      | `run_refuses_a_node_whose_arity_disagrees_with_its_tag`                                                                                                                                                                                                                                                                                            |
+| 24  | §5.3 — a signature node's key hash is 28 bytes                                         | `run_refuses_a_signature_of_the_wrong_key_width`                                                                                                                                                                                                                                                                                                   |
+| 25  | §11.3 — the tag is one of the six node kinds                                           | `run_refuses_an_unknown_node_tag`                                                                                                                                                                                                                                                                                                                  |
+| 26  | §11.3 — the node bound                                                                 | `run_refuses_more_nodes_than_the_bound_without_a_wide_child`                                                                                                                                                                                                                                                                                       |
+| 27  | §11.3 — the depth bound, in the definition's units                                     | `run_refuses_a_script_one_level_past_the_depth_bound`                                                                                                                                                                                                                                                                                              |
+| 28  | §11.3 — a fold has a parent to fold into, and `remaining` never goes negative          | backstop: the budgeted fold stops at a complete walk, which is exactly the state with an empty stack and a pending verdict, so the fold is never entered without a parent; `remaining` is positive when a frame is pushed and the frame is popped at zero                                                                                          |
+| 29  | §11.3 resume 1 — the cursor hashes to the thread's commitment                          | `resume_rejects_a_position_the_thread_did_not_commit`                                                                                                                                                                                                                                                                                              |
+| 30  | §11.3 — the carried bytes are `native_script_cursor_bytes` long                        | backstop: guard 31's re-encode produces exactly that many bytes, so an input of any other length cannot equal it. This check refuses the same inputs a step sooner and keeps the reads under it in range                                                                                                                                           |
+| 31  | §11.3 — the wire form has one admissible spelling, which is also the frame-stack check | backstop: the commitment check (guard 29) re-encodes the same walk from the same fields and the same re-supplied frames, so every input this would refuse also hashes to something other than the committed digest                                                                                                                                 |
+| 32  | §11.3 resume 2 — the payload re-digests to the cursor's script                         | `resume_rejects_a_same_length_different_script`                                                                                                                                                                                                                                                                                                    |
+| 33  | §11.3 resume 2 — the payload's length matches the cursor's                             | backstop: guard 32 pins the payload by digest, and a payload of a different length has a different digest                                                                                                                                                                                                                                          |
+| 34  | §11.3 — a fold's payload is the one the walk was opened on                             | `run_rejects_a_payload_the_walk_was_not_opened_on`                                                                                                                                                                                                                                                                                                 |
+| 35  | §11.3 — `budget` is a count of steps                                                   | `run_refuses_a_negative_budget`                                                                                                                                                                                                                                                                                                                    |
+| 36  | §11.3 — a completed traversal consumed the payload exactly                             | `verdict_refuses_a_script_with_trailing_bytes`                                                                                                                                                                                                                                                                                                     |
 
 Four vectors in the suites are composites. They are marked as such and are not
-counted above, because each is the *natural* shape of an attack and the
+counted above, because each is the _natural_ shape of an attack and the
 isolating vector is the contrived one:
 
-* `resume_rejects_a_substituted_frame_stack` and
+- `resume_rejects_a_substituted_frame_stack` and
   `resume_rejects_a_shortened_frame_stack` trip guards 29 and 31 at once —
   either alone refuses them, which is what makes guard 31 unisolable;
-* `resume_rejects_a_different_script` trips guards 32 and 33 at once, because a
+- `resume_rejects_a_different_script` trips guards 32 and 33 at once, because a
   differently-shaped script is also a differently-sized one;
-* `run_refuses_more_nodes_than_the_bound` — 33 signatures under one `any` — is
+- `run_refuses_more_nodes_than_the_bound` — 33 signatures under one `any` — is
   the ordinary shape of guard 26, and the child-count bound refuses it before
   the running node count can. An earlier revision of this table cited that as
   the reason guard 26 could not be isolated. It was wrong: a script gets big by
-  being *bushy*, not only by having one enormous node, and guard 26's vector is
+  being _bushy_, not only by having one enormous node, and guard 26's vector is
   49 nodes with no child count above sixteen.
 
 Every "isolated by" row above is verified by neutralising the named check and
@@ -2696,7 +2732,7 @@ confirming that exactly the listed vectors turn red — run, not asserted; every
 "backstop" row is a neutralisation that turned **nothing** red, which is what
 put it in that column rather than an argument that it should be there. That
 distinction is not pedantic: the entry this table previously carried for guard
-26 was an *argued* backstop, and arguing is how it came to be false.
+26 was an _argued_ backstop, and arguing is how it came to be false.
 
 Two families of assertion are not itemised, for §10.8's reason — they are the
 construction domain of a value some other guard already fixes, and no fixture
@@ -2705,7 +2741,7 @@ them turns nothing red. §11's three modules — the shared interior reader and 
 two mechanism modules — carry **71** assertions in all; the thirty-six rows above
 account for **41** of them, and these two families are the remaining **30**.
 
-* The range assertions in the frame and cursor encoders, which are re-run on
+- The range assertions in the frame and cursor encoders, which are re-run on
   every decode, together with the compound reader's `child_count` bounds and its
   `required ≥ 0`, one step earlier on the value that becomes a frame. Each names
   something another guard already fixes: `kind` by guard 25's tag domain;
@@ -2719,9 +2755,9 @@ account for **41** of them, and these two families are the remaining **30**.
   encoder's `required` range is met by construction on every frame the traversal
   builds, and a resume handed a frame outside it fails the stack-root
   re-derivation. That distinction matters because the same line written as a
-  *bound* on `n` would not be in this family at all — it would be an
+  _bound_ on `n` would not be in this family at all — it would be an
   unaccounted-for refusal, and a §11.3-conforming one does not exist.
-* The offset and length bounds in the shared interior reader's byte and slice
+- The offset and length bounds in the shared interior reader's byte and slice
   primitives (§7.3's abort-never-clamp), which run on every read all three
   mechanisms make.
 
@@ -2849,7 +2885,7 @@ Three conditions are normative and none is redundant:
 
 1. **The statement's transaction is the walk's.** The checkpoint reports the
    tx id the §8.8 door authenticated against, and it MUST equal the statement's.
-   Without this check a statement is a claim about *some* transaction: the same
+   Without this check a statement is a claim about _some_ transaction: the same
    bytes would prove against any transaction whose field happened to hold a
    refused item at the named index, and the accusation would name no one.
 2. **The statement's field is the walk's.** §4's plain hashing removed
@@ -2882,7 +2918,7 @@ adjudication makes names that unit.
   rounds** so that the order check spans the boundary between two of them.
 
 **Both sides begin at item 0, and this is normative.** A sweep is an assertion
-about a *field*, not about a range of it: the mint side's `0` means "this
+about a _field_, not about a range of it: the mint side's `0` means "this
 transaction does not mint this unit", and the outputs side's total means "this is
 what these outputs hold". A sweep opened part-way through a field asserts neither.
 The attack is concrete and cheap, because §10.4's forward relocation is public
@@ -2896,7 +2932,7 @@ its field.
 **A conservation adjudication is one invocation's work**, and this is the
 contract rather than an implementation limit. The two sweeps deliberately have no
 wire form, no decoder and no commitment-resume constructor — the exact opposite
-of §10.3's checkpoint — because a sweep is a running *measurement* and not a
+of §10.3's checkpoint — because a sweep is a running _measurement_ and not a
 position, and the §10.6 apparatus that makes a position safe to carry would have
 to be repeated over state that §12.5's own measurement (reading 2) says a
 variable-width field near the tier-2 bound cannot afford to re-authenticate per
@@ -2944,7 +2980,7 @@ conservation fault would hide behind.
 
 The order check reaches exactly the prefix the sweep reads, which is what
 licenses stopping early and is all that licenses it: no key at or after the
-stopping point is examined, so a §5.6 violation *there* — the requested policy
+stopping point is examined, so a §5.6 violation _there_ — the requested policy
 repeated after the matched group — is out of the sweep's reach. Curing that
 inside the sweep means reading every remaining item, which is the early stop the
 monotone design exists for.
@@ -2958,13 +2994,13 @@ fault, not a conservation fault**: the ordering rule is the encoder's (§5.6), i
 is checked whole where a transaction is canonically decoded before admission —
 adjacent machinery in §8.9's sense, outside this document — and a field that
 reached a commitment without satisfying it is faultable by the family that proves
-format faults, not by this one. A §12.4 verdict is therefore sound *relative to a
-field that satisfies §5.6*, and this sweep re-checks for free the part of that
+format faults, not by this one. A §12.4 verdict is therefore sound _relative to a
+field that satisfies §5.6_, and this sweep re-checks for free the part of that
 premise it can reach. §11.1's `sweep_to_unit` carries the identical residue one
 level down, and neither is discharged by the other.
 
 **Budget exhaustion is not absence.** Each side's measurement carries whether it
-*finished*, and a sweep that stopped because it ran out of budget carries
+_finished_, and a sweep that stopped because it ran out of budget carries
 `is_final = false`. This is the distinction the section turns on: a mint sweep
 that has not yet reached the requested policy holds a running `0`, and read as an
 answer it says the transaction minted none of a unit it may well have minted —
@@ -3005,12 +3041,12 @@ opened, so the difference within a pair is one step's re-open and nothing else.
 Both fixtures sit at `chunk_bytes_k` (§8.3) rather than merely being large, and
 the suite asserts that so the numbers stay quoted where they were taken.
 
-| # | seam test | field | preimage | opens | memory |
-| --- | --- | --- | --- | --- | --- |
-| 1 | `tier2_fixed_stride_one_open` | 1 (stride 40, 378 items) | 15,123 B | 1 | 10,011,478 (10.01 M) |
-| 2 | `tier2_fixed_stride_two_opens` | 1 (stride 40, 378 items) | 15,123 B | 2 | 10,105,299 (10.11 M) |
-| 3 | `tier2_variable_width_one_open` | 6 (variable, 1,372 items) | 15,095 B | 1 | 58,753,191 (58.75 M) |
-| 4 | `tier2_variable_width_two_opens` | 6 (variable, 1,372 items) | 15,095 B | 2 | 86,638,113 (86.64 M) |
+| #   | seam test                        | field                     | preimage | opens | memory               |
+| --- | -------------------------------- | ------------------------- | -------- | ----- | -------------------- |
+| 1   | `tier2_fixed_stride_one_open`    | 1 (stride 40, 378 items)  | 15,123 B | 1     | 10,011,478 (10.01 M) |
+| 2   | `tier2_fixed_stride_two_opens`   | 1 (stride 40, 378 items)  | 15,123 B | 2     | 10,105,299 (10.11 M) |
+| 3   | `tier2_variable_width_one_open`  | 6 (variable, 1,372 items) | 15,095 B | 1     | 58,753,191 (58.75 M) |
+| 4   | `tier2_variable_width_two_opens` | 6 (variable, 1,372 items) | 15,095 B | 2     | 86,638,113 (86.64 M) |
 
 **Both fixtures moved with §8.3 erratum E1's repair of `K`** (15,900 → 15,148),
 because "at the tier-2 bound" is a statement about `K`: the largest fixed-stride
@@ -3066,10 +3102,11 @@ Three readings, and the third is the one a re-take must not lose.
    is carried under tier 3 — where `certified_view` deliberately does not run the
    walk (§8.4) and pays per-read chunk verification instead. §8's
    simplest-fitting-first mandate therefore has a second, measured edge to it:
-   for variable-width fields the ladder's rungs differ in what a *step* costs, not
+   for variable-width fields the ladder's rungs differ in what a _step_ costs, not
    only in what a publication costs. §12.4 is where this conclusion is spent:
    fields 2 and 5 are both variable-width, which is why a conservation
    adjudication is one invocation's work and its sweeps have no wire form.
+
 3. **Rows 3 and 4 are not budget verdicts, and a re-take must not read them as
    such.** Both exceed the basis outright, because building a 1,372-item fixture
    inside a test dominates both arms. Only the **difference** within a pair is
@@ -3091,47 +3128,47 @@ conditions are not refusals at all — the two sweep types discharge them at
 compile time. One of the three held a row here and keeps its number, marked; the
 other two are named in the note below the table.
 
-| # | refusal | isolated by / backstop because |
-| --- | --- | --- |
-| 1 | §12.1 — an item-fault statement names no unit | `encode_refuses_an_item_fault_that_names_a_unit` |
-| 2 | §12.1 — an item-fault statement claims no quantity | `encode_refuses_an_item_fault_that_claims_a_quantity` |
-| 3 | §12.1 — a conservation statement names a 28-byte policy id | `encode_refuses_a_short_policy_id` |
-| 4 | §12.2 — the wire form has one admissible spelling (the decoder re-encodes and demands the input back) | `decode_refuses_an_unvalidated_wrapper_byte` |
-| 5 | §12.3 — the statement's field is the walk's | `item_fault_refuses_a_statement_about_another_field` |
-| 6 | §12.3 — the code is an item-fault code | `item_fault_refuses_a_conservation_statement` |
-| 7 | §12.3 — the statement is well-shaped at adjudication | `item_fault_refuses_a_malformed_statement` |
-| 8 | §12.4 — an outputs sweep opens only on a field-2 walk | `conservation_refuses_a_walk_over_another_field` (composite: the guard is the first refusal, but §11.1's structural pass also declines a field-6 item, so the vector cannot attribute to one site) |
-| 9 | §12.4 — a mint sweep opens only on a field-5 walk | `mint_unit_quantity_refuses_a_walk_over_another_field` (composite with guard 23, on the same terms) |
-| 10 | §12.4 — the code is a conservation code | `conservation_refuses_an_item_statement` |
-| 11 | §12.4 — the statement is well-shaped at adjudication | `conservation_refuses_a_malformed_statement` |
-| 12 | §5.6 — mint policy keys strictly increase | `mint_unit_quantity_refuses_an_unordered_field` |
-| 13 | §5.6 — a mint quantity is non-zero | `mint_unit_quantity_refuses_a_zero_quantity` |
-| 14 | §10.4 — relocation is forward-only | `item_fault_refuses_a_backwards_statement` (composite with §10.8 guard 19, which it re-uses rather than re-establishes) |
-| 15 | §12.2 — the quantity element's `49` wrapper | backstop: guard 4's re-encode produces that byte, so an input carrying any other cannot equal it |
-| 16 | §12.2 — the sign byte is `00` or `01` | backstop **confirmed by neutralisation**: removing it turns nothing red, because guard 4's re-encode spells the sign from the decoded value's own sign. `decode_refuses_a_non_canonical_spelling` is the composite vector over the pair |
-| 17 | §12.2 — `claimed`'s magnitude fits eight bytes | backstop: the wire scalar's construction domain, kept for §7.3's reason — a wider number fails inside the integer-to-bytes builtin with nothing attributable said |
-| 18 | §12.2 — a name encoding is at most 32 bytes | backstop: guards 1–3's shape rule already fixes both names, one step earlier and on the same values |
-| 19 | §12.4 — the outputs fold's unit is a 28-byte policy id | backstop: §11.1's own lookup asserts the same condition on the same value (§11.5 guard 17) |
-| 20 | §12.4 — the outputs fold's asset name is at most 32 bytes | backstop: same, §11.5 guard 18 |
-| 21 | §12.4 — the mint sweep's unit is a 28-byte policy id | backstop: the §5.6 item's own policy width (guard 23) refuses every group the request could match, so a malformed request answers absent rather than wrongly |
-| 22 | §12.4 — the mint sweep's asset name is at most 32 bytes | backstop: the group scan's own name bound (guard 25) on the values it compares against |
-| 23 | §5.6 — a mint item is `82 ‖ 58 1C policy_id ‖ …` | backstop: the item reached the sweep through §10's `walk_next`, and a field-5 item that is not this shape has no §5.6 spelling at all; kept as the line that notices if §5.6 and this reader stop agreeing |
-| 24 | §5.6 — a policy group is non-empty | backstop: §5.5/§5.6's encoders give an empty group no spelling, and §11.5 guard 9 isolates the same condition one level down |
-| 25 | §5.6 — a mint asset name is at most 32 bytes | backstop: §11.5 guard 10 isolates the same condition on the same grammar |
-| 26 | §5.6 — asset keys strictly increase within a group | backstop: §11.5 guard 11 isolates the same condition on the same grammar |
-| 27 | §12.4 — a fold's budget is a count of items | backstop: §10.8 guard 20 isolates the same condition on `walk_fold`, and these folds stop on the same zero |
-| 28 | §12.4 — a mint sweep's budget is a count of items | backstop: same |
-| 29 | §12.3 — the statement's transaction is the walk's | `item_fault_refuses_a_statement_about_another_transaction` |
-| 30 | §12.4 — both sweeps were taken over the accused transaction | `conservation_refuses_sweeps_of_another_transaction` |
-| 31 | §12.4 — both sweeps are about the statement's own unit | `conservation_refuses_a_sweep_about_another_unit` |
-| 32 | §12.4 — the outputs argument is an outputs sweep and the mint argument a mint sweep | **not a refusal**: `asset_conservation_fault_is_proven` takes an `OutputUnitSweepV1` and a `MintUnitSweepV1`, so a transposed call does not compile. `conservation_refuses_the_two_sides_transposed` was this row's vector and has been deleted — a `fail` test cannot be written against a type error |
-| 33 | §12.4 — the adjudication refuses an unfinished mint sweep | `conservation_refuses_a_budget_exhausted_mint_sweep` |
-| 34 | §12.4 — the adjudication refuses an unfinished outputs fold | `conservation_refuses_a_budget_exhausted_outputs_fold` |
-| 35 | §12.4 — an unfinished sweep will not report a quantity | `conservation_refuses_the_running_total_of_an_unfinished_fold` and `mint_unit_quantity_refuses_a_budget_exhausted_sweep`, on the two sides |
-| 36 | §5.6 — mint policy keys strictly increase **across budget rounds** | `mint_unit_quantity_refuses_an_unordered_field_across_budget_rounds` (guard 12 is the single-round vector; this is the one an order key scoped to a single `sweep_mint_unit` call would not catch. Renamed from `…_across_steps`: a sweep does not cross a step, and the old name claimed a protocol this section does not have) |
-| 37 | §12.4 — a sweep begins at item 0 of its field | `conservation_refuses_a_fold_opened_past_the_start` and `mint_unit_quantity_refuses_a_sweep_opened_past_the_target`, on the two sides. The mint vector is the sharp one: opened one `walk_skip` past the accused policy's group, a neutralised sweep returns `is_final` with a fabricated `0` that guards 30, 31 and 33 all accept |
-| 38 | §12.1 — a conservation statement's `field_index` has one spelling | `encode_refuses_a_conservation_statement_that_names_another_field` and `conservation_refuses_a_statement_that_names_another_field`, at the encoder and at the adjudication |
-| 39 | §12.1 — a conservation statement's `item_index` has one spelling | `encode_refuses_a_conservation_statement_that_names_a_starting_item` and `conservation_refuses_a_statement_that_names_a_starting_item`, on the same two seams |
+| #   | refusal                                                                                               | isolated by / backstop because                                                                                                                                                                                                                                                                                                     |
+| --- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | §12.1 — an item-fault statement names no unit                                                         | `encode_refuses_an_item_fault_that_names_a_unit`                                                                                                                                                                                                                                                                                   |
+| 2   | §12.1 — an item-fault statement claims no quantity                                                    | `encode_refuses_an_item_fault_that_claims_a_quantity`                                                                                                                                                                                                                                                                              |
+| 3   | §12.1 — a conservation statement names a 28-byte policy id                                            | `encode_refuses_a_short_policy_id`                                                                                                                                                                                                                                                                                                 |
+| 4   | §12.2 — the wire form has one admissible spelling (the decoder re-encodes and demands the input back) | `decode_refuses_an_unvalidated_wrapper_byte`                                                                                                                                                                                                                                                                                       |
+| 5   | §12.3 — the statement's field is the walk's                                                           | `item_fault_refuses_a_statement_about_another_field`                                                                                                                                                                                                                                                                               |
+| 6   | §12.3 — the code is an item-fault code                                                                | `item_fault_refuses_a_conservation_statement`                                                                                                                                                                                                                                                                                      |
+| 7   | §12.3 — the statement is well-shaped at adjudication                                                  | `item_fault_refuses_a_malformed_statement`                                                                                                                                                                                                                                                                                         |
+| 8   | §12.4 — an outputs sweep opens only on a field-2 walk                                                 | `conservation_refuses_a_walk_over_another_field` (composite: the guard is the first refusal, but §11.1's structural pass also declines a field-6 item, so the vector cannot attribute to one site)                                                                                                                                 |
+| 9   | §12.4 — a mint sweep opens only on a field-5 walk                                                     | `mint_unit_quantity_refuses_a_walk_over_another_field` (composite with guard 23, on the same terms)                                                                                                                                                                                                                                |
+| 10  | §12.4 — the code is a conservation code                                                               | `conservation_refuses_an_item_statement`                                                                                                                                                                                                                                                                                           |
+| 11  | §12.4 — the statement is well-shaped at adjudication                                                  | `conservation_refuses_a_malformed_statement`                                                                                                                                                                                                                                                                                       |
+| 12  | §5.6 — mint policy keys strictly increase                                                             | `mint_unit_quantity_refuses_an_unordered_field`                                                                                                                                                                                                                                                                                    |
+| 13  | §5.6 — a mint quantity is non-zero                                                                    | `mint_unit_quantity_refuses_a_zero_quantity`                                                                                                                                                                                                                                                                                       |
+| 14  | §10.4 — relocation is forward-only                                                                    | `item_fault_refuses_a_backwards_statement` (composite with §10.8 guard 19, which it re-uses rather than re-establishes)                                                                                                                                                                                                            |
+| 15  | §12.2 — the quantity element's `49` wrapper                                                           | backstop: guard 4's re-encode produces that byte, so an input carrying any other cannot equal it                                                                                                                                                                                                                                   |
+| 16  | §12.2 — the sign byte is `00` or `01`                                                                 | backstop **confirmed by neutralisation**: removing it turns nothing red, because guard 4's re-encode spells the sign from the decoded value's own sign. `decode_refuses_a_non_canonical_spelling` is the composite vector over the pair                                                                                            |
+| 17  | §12.2 — `claimed`'s magnitude fits eight bytes                                                        | backstop: the wire scalar's construction domain, kept for §7.3's reason — a wider number fails inside the integer-to-bytes builtin with nothing attributable said                                                                                                                                                                  |
+| 18  | §12.2 — a name encoding is at most 32 bytes                                                           | backstop: guards 1–3's shape rule already fixes both names, one step earlier and on the same values                                                                                                                                                                                                                                |
+| 19  | §12.4 — the outputs fold's unit is a 28-byte policy id                                                | backstop: §11.1's own lookup asserts the same condition on the same value (§11.5 guard 17)                                                                                                                                                                                                                                         |
+| 20  | §12.4 — the outputs fold's asset name is at most 32 bytes                                             | backstop: same, §11.5 guard 18                                                                                                                                                                                                                                                                                                     |
+| 21  | §12.4 — the mint sweep's unit is a 28-byte policy id                                                  | backstop: the §5.6 item's own policy width (guard 23) refuses every group the request could match, so a malformed request answers absent rather than wrongly                                                                                                                                                                       |
+| 22  | §12.4 — the mint sweep's asset name is at most 32 bytes                                               | backstop: the group scan's own name bound (guard 25) on the values it compares against                                                                                                                                                                                                                                             |
+| 23  | §5.6 — a mint item is `82 ‖ 58 1C policy_id ‖ …`                                                      | backstop: the item reached the sweep through §10's `walk_next`, and a field-5 item that is not this shape has no §5.6 spelling at all; kept as the line that notices if §5.6 and this reader stop agreeing                                                                                                                         |
+| 24  | §5.6 — a policy group is non-empty                                                                    | backstop: §5.5/§5.6's encoders give an empty group no spelling, and §11.5 guard 9 isolates the same condition one level down                                                                                                                                                                                                       |
+| 25  | §5.6 — a mint asset name is at most 32 bytes                                                          | backstop: §11.5 guard 10 isolates the same condition on the same grammar                                                                                                                                                                                                                                                           |
+| 26  | §5.6 — asset keys strictly increase within a group                                                    | backstop: §11.5 guard 11 isolates the same condition on the same grammar                                                                                                                                                                                                                                                           |
+| 27  | §12.4 — a fold's budget is a count of items                                                           | backstop: §10.8 guard 20 isolates the same condition on `walk_fold`, and these folds stop on the same zero                                                                                                                                                                                                                         |
+| 28  | §12.4 — a mint sweep's budget is a count of items                                                     | backstop: same                                                                                                                                                                                                                                                                                                                     |
+| 29  | §12.3 — the statement's transaction is the walk's                                                     | `item_fault_refuses_a_statement_about_another_transaction`                                                                                                                                                                                                                                                                         |
+| 30  | §12.4 — both sweeps were taken over the accused transaction                                           | `conservation_refuses_sweeps_of_another_transaction`                                                                                                                                                                                                                                                                               |
+| 31  | §12.4 — both sweeps are about the statement's own unit                                                | `conservation_refuses_a_sweep_about_another_unit`                                                                                                                                                                                                                                                                                  |
+| 32  | §12.4 — the outputs argument is an outputs sweep and the mint argument a mint sweep                   | **not a refusal**: `asset_conservation_fault_is_proven` takes an `OutputUnitSweepV1` and a `MintUnitSweepV1`, so a transposed call does not compile. `conservation_refuses_the_two_sides_transposed` was this row's vector and has been deleted — a `fail` test cannot be written against a type error                             |
+| 33  | §12.4 — the adjudication refuses an unfinished mint sweep                                             | `conservation_refuses_a_budget_exhausted_mint_sweep`                                                                                                                                                                                                                                                                               |
+| 34  | §12.4 — the adjudication refuses an unfinished outputs fold                                           | `conservation_refuses_a_budget_exhausted_outputs_fold`                                                                                                                                                                                                                                                                             |
+| 35  | §12.4 — an unfinished sweep will not report a quantity                                                | `conservation_refuses_the_running_total_of_an_unfinished_fold` and `mint_unit_quantity_refuses_a_budget_exhausted_sweep`, on the two sides                                                                                                                                                                                         |
+| 36  | §5.6 — mint policy keys strictly increase **across budget rounds**                                    | `mint_unit_quantity_refuses_an_unordered_field_across_budget_rounds` (guard 12 is the single-round vector; this is the one an order key scoped to a single `sweep_mint_unit` call would not catch. Renamed from `…_across_steps`: a sweep does not cross a step, and the old name claimed a protocol this section does not have)   |
+| 37  | §12.4 — a sweep begins at item 0 of its field                                                         | `conservation_refuses_a_fold_opened_past_the_start` and `mint_unit_quantity_refuses_a_sweep_opened_past_the_target`, on the two sides. The mint vector is the sharp one: opened one `walk_skip` past the accused policy's group, a neutralised sweep returns `is_final` with a fabricated `0` that guards 30, 31 and 33 all accept |
+| 38  | §12.1 — a conservation statement's `field_index` has one spelling                                     | `encode_refuses_a_conservation_statement_that_names_another_field` and `conservation_refuses_a_statement_that_names_another_field`, at the encoder and at the adjudication                                                                                                                                                         |
+| 39  | §12.1 — a conservation statement's `item_index` has one spelling                                      | `encode_refuses_a_conservation_statement_that_names_a_starting_item` and `conservation_refuses_a_statement_that_names_a_starting_item`, on the same two seams                                                                                                                                                                      |
 
 Guards 29–36 were added by the first review of this section and guards 37–39 by
 the second. Each was confirmed by neutralisation — removing the check turns the
@@ -3182,11 +3219,11 @@ alone and the module's 48 vectors re-run under the same runner. Each turned
 **exactly** its own two vectors red and nothing else, and all three runs
 collected 48 tests:
 
-| weakened guard | vectors that turned red |
-| --- | --- |
-| 37 — a sweep begins at item 0 | `conservation_refuses_a_fold_opened_past_the_start`, `mint_unit_quantity_refuses_a_sweep_opened_past_the_target` |
-| 38 — `field_index` has one spelling | `encode_refuses_a_conservation_statement_that_names_another_field`, `conservation_refuses_a_statement_that_names_another_field` |
-| 39 — `item_index` has one spelling | `encode_refuses_a_conservation_statement_that_names_a_starting_item`, `conservation_refuses_a_statement_that_names_a_starting_item` |
+| weakened guard                      | vectors that turned red                                                                                                             |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 37 — a sweep begins at item 0       | `conservation_refuses_a_fold_opened_past_the_start`, `mint_unit_quantity_refuses_a_sweep_opened_past_the_target`                    |
+| 38 — `field_index` has one spelling | `encode_refuses_a_conservation_statement_that_names_another_field`, `conservation_refuses_a_statement_that_names_another_field`     |
+| 39 — `item_index` has one spelling  | `encode_refuses_a_conservation_statement_that_names_a_starting_item`, `conservation_refuses_a_statement_that_names_a_starting_item` |
 
 Two vectors per row rather than one because each of these conditions is met at
 two seams — the encoder and the adjudication for 38 and 39, the two sides of the
@@ -3198,7 +3235,7 @@ earlier, so neutralising it alone changes no verdict and the sweep would report
 the empty result it reports for guard 16 without distinguishing "backstop" from
 "dead". The cross-section backstops (19–28) are argued for the same reason plus
 a second one: weakening them means editing sections this one does not own. That
-residue is Phase-7 work; §11.5's own history — an *argued* backstop, its guard
+residue is Phase-7 work; §11.5's own history — an _argued_ backstop, its guard
 26, that was simply false — is why it is named here instead of left implicit.
 
 Two families of assertion are not itemised, for §10.8's and §11.5's reason —
@@ -3254,13 +3291,13 @@ envelope**. This section adjudicates a **byte string that is not an
 envelope**. They are disjoint claims about disjoint sets of committed fields,
 and neither is a special case of the other:
 
-| | §12.3 `fault_item_predicate` | §12.7 `canonical-decodability` |
-| --- | --- | --- |
-| what is accused | one item, at `(field_index, item_index)` | one field, at `field_index` |
-| the envelope | must be well-formed — the walk that reaches the item is the door's, and it aborts otherwise | must **not** be well-formed; that is the whole accusation |
-| what is read | exactly one item's bytes (§12.3), through a `FieldViewV1` | the whole preimage, as bytes, through no view at all |
-| who decides | the caller's per-item predicate, which this document does not define | §5.1's grammar, defined below and defined nowhere else |
-| item index | carried, and load-bearing | **absent** — an ungrammatical envelope has no item indices, so there is nothing for one to name |
+|                 | §12.3 `fault_item_predicate`                                                                | §12.7 `canonical-decodability`                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| what is accused | one item, at `(field_index, item_index)`                                                    | one field, at `field_index`                                                                     |
+| the envelope    | must be well-formed — the walk that reaches the item is the door's, and it aborts otherwise | must **not** be well-formed; that is the whole accusation                                       |
+| what is read    | exactly one item's bytes (§12.3), through a `FieldViewV1`                                   | the whole preimage, as bytes, through no view at all                                            |
+| who decides     | the caller's per-item predicate, which this document does not define                        | §5.1's grammar, defined below and defined nowhere else                                          |
+| item index      | carried, and load-bearing                                                                   | **absent** — an ungrammatical envelope has no item indices, so there is nothing for one to name |
 
 The three consequences that follow are normative:
 
@@ -3291,7 +3328,7 @@ bytes an operator committed, and neither is convictable here:
 
 - **§7.4's fixed-stride arithmetic.** For fields 0, 1, 3, 4 and 7 the door
   settles count consistency as `header_len + stride·N == total_length` rather
-  than by walking. A committed preimage that *is* a §5.1 envelope but whose
+  than by walking. A committed preimage that _is_ a §5.1 envelope but whose
   items are not the field's stride satisfies this section's verdict — code 0 —
   and still aborts the door.
 - **§5.4's per-field byte bound.** `whole_view` refuses a `total_length` above
@@ -3332,19 +3369,19 @@ range.
 
 The codes:
 
-| code | name | meaning |
-| --- | --- | --- |
-| 0 | `grammatical` | the bytes are a §5.1 envelope |
-| 1 | `missing_array_header` | zero bytes; §5.1's shortest form is the one-byte `80` |
-| 2 | `not_an_array_header` | leading byte outside `80..97`, `98`, `99` |
-| 3 | `non_minimal_array_header` | a `98`/`99` head whose count a narrower form spells |
-| 4 | `truncated_array_header` | a `98`/`99` head whose own width leaves the preimage |
-| 5 | `missing_item_header` | items remain to be read and no byte remains to start one |
-| 6 | `not_an_item_header` | an item's leading byte outside `40..57`, `58`, `59` |
-| 7 | `non_minimal_item_header` | a `58`/`59` head whose length a narrower form spells |
-| 8 | `truncated_item_header` | a `58`/`59` head whose own width leaves the preimage |
-| 9 | `truncated_item_payload` | an item's declared payload leaves the preimage |
-| 10 | `trailing_bytes` | all declared items were read and bytes remain |
+| code | name                       | meaning                                                  |
+| ---- | -------------------------- | -------------------------------------------------------- |
+| 0    | `grammatical`              | the bytes are a §5.1 envelope                            |
+| 1    | `missing_array_header`     | zero bytes; §5.1's shortest form is the one-byte `80`    |
+| 2    | `not_an_array_header`      | leading byte outside `80..97`, `98`, `99`                |
+| 3    | `non_minimal_array_header` | a `98`/`99` head whose count a narrower form spells      |
+| 4    | `truncated_array_header`   | a `98`/`99` head whose own width leaves the preimage     |
+| 5    | `missing_item_header`      | items remain to be read and no byte remains to start one |
+| 6    | `not_an_item_header`       | an item's leading byte outside `40..57`, `58`, `59`      |
+| 7    | `non_minimal_item_header`  | a `58`/`59` head whose length a narrower form spells     |
+| 8    | `truncated_item_header`    | a `58`/`59` head whose own width leaves the preimage     |
+| 9    | `truncated_item_payload`   | an item's declared payload leaves the preimage           |
+| 10   | `trailing_bytes`           | all declared items were read and bytes remain            |
 
 The procedure, over `preimage` of length `T`:
 
@@ -3390,7 +3427,7 @@ Four properties of this definition are normative rather than incidental:
 - **The codes are diagnostic, not load-bearing.** The adjudication asks only
   whether the code is 0 (below). A mis-assigned non-zero code convicts the
   same set of blocks. They are distinguished so that a conformance vector can
-  say *which* rule of §5.1 a fixture leaves, which is the difference between
+  say _which_ rule of §5.1 a fixture leaves, which is the difference between
   a suite that pins the grammar and one that pins "something was wrong".
 - **The verdict MUST agree with the doors on every input.** `code = 0` if and
   only if `whole_view` would accept the same bytes for a variable-width field
@@ -3403,7 +3440,7 @@ Four properties of this definition are normative rather than incidental:
 - **The verdict is the whole decision.** An implementation MUST NOT add
   conditions to it. In particular it MUST NOT bound the preimage's length:
   §5.4's byte bound is a property of a valid transaction, and a field
-  committed above it that is *also* not an envelope must stay convictable.
+  committed above it that is _also_ not an envelope must stay convictable.
 
 #### Adjudication
 
@@ -3427,7 +3464,7 @@ derivation against the rule.
    which is what makes the bytes that reach the verdict undeniably the
    committed preimage.
 3. `envelope_verdict` is taken over those bytes and `(tx_id, field_index,
-   verdict)` is pinned into the computation thread. Every member is derived,
+verdict)` is pinned into the computation thread. Every member is derived,
    so a fabricated verdict or a re-addressed field index is not forwardable.
 
 **Step 02 — convict.** The proof finalizes when, and only when, the pinned
@@ -3453,12 +3490,12 @@ Five further conditions are normative:
   does not.
 - **The field index is a redeemer argument here**, unlike at every read site,
   where §4's loss of field-index domain separation makes a call-site literal
-  mandatory. It has to be free because it *is* the accusation's address
+  mandatory. It has to be free because it _is_ the accusation's address
   (§12.1). It is safe because the expected commitment is extracted for the
   slot the index names: a verdict rendered under index `i` is a verdict about
   the bytes slot `i` committed, whichever `i` was chosen. §4's aliasing —
   fields 0/1 and 3/4 commit identically for identical content — does not
-  weaken this, because aliased slots commit the *same bytes* and a
+  weaken this, because aliased slots commit the _same bytes_ and a
   non-envelope convicted under either index is a non-envelope under both.
 - **All three §8 tiers are admissible, at all nine fields.** Tier 3 was
   admissible for the witness-set fields here even while erratum E2's limit-3
@@ -3497,7 +3534,7 @@ splits the way the work does.
 - **The ceiling is measured, not fitted.** The single-transaction adjudication
   ceiling for this family is **1,076 items**, and **1,077** is the first
   cardinality over the basis. This was a fit — `(13,200,000 − 251,285) /
-  12,032.44` — until #580's re-measurement pass (2026-08-15) bisected the
+12,032.44` — until #580's re-measurement pass (2026-08-15) bisected the
   crossing on the net memory axis and read it; #606's E2 certificate repair
   (2026-08-16) then **falsified that reading and moved it down one item**, and
   it was re-bisected through #580's own net-memory method rather than
@@ -3524,7 +3561,7 @@ splits the way the work does.
   consequence is exact: a committed field carrying more than **1,076** items
   cannot be adjudicated by this family in one transaction. The hatch that
   leaves is narrower than the one this section closes — an operator would have
-  to commit bytes that are *also* a many-item envelope prefix — but it is a
+  to commit bytes that are _also_ a many-item envelope prefix — but it is a
   hatch, and the repair is §10's resumable walk applied to the verdict rather
   than anything in this section. Raised on #596; measured on #580.
 
@@ -3534,23 +3571,23 @@ splits the way the work does.
 be isolated by a vector or listed as a backstop. **Fifteen refusals: thirteen
 isolated, two backstops.**
 
-| # | refusal | isolated by / backstop because |
-| --- | --- | --- |
-| 1 | the carried bytes hash to the accused slot's commitment (§4) | `canonical_decodability_step_01_rejects_uncommitted_bytes`, and `canonical_decodability_verdict_refuses_substituted_certified_chunks` at tier 3 |
-| 2 | the forwarded verdict is the one the bytes earned | `canonical_decodability_step_01_rejects_a_fabricated_verdict` |
-| 3 | the forwarded field index is the one that was opened | `canonical_decodability_step_01_rejects_a_fabricated_field_index` |
-| 4 | a body claim names a body slot | `canonical_decodability_step_01_rejects_a_body_claim_at_a_witness_field` |
-| 5 | a witness claim names a witness-set slot | `canonical_decodability_step_01_rejects_a_witness_claim_at_a_body_field` |
-| 6 | the disputed transaction is one the challenged block committed | `canonical_decodability_step_01_rejects_a_forged_transactions_root` |
-| 7 | a grammatical field does not finalize | `canonical_decodability_step_02_rejects_a_grammatical_field`, with `…_step_01_binds_a_grammatical_field_without_convicting` proving the refusal is step 02's rather than an accident of step 01 |
-| 8 | `field_index` is in 0..8, upper bound | `canonical_decodability_step_02_rejects_an_out_of_range_field_index` |
-| 9 | `field_index` is in 0..8, lower bound | `canonical_decodability_step_02_rejects_a_negative_field_index` |
-| 10 | `verdict` is a code some walk produces | `canonical_decodability_step_02_rejects_an_unknown_verdict_code` |
-| 11 | the verdict agrees with the doors, ungrammatical direction | the ten `canonical_decodability_door_refuses_*` selectors, one per code, because an abort ends a test and a fold over the table would prove only that some vector aborts |
-| 12 | the verdict agrees with the doors, grammatical direction | `canonical_decodability_door_opens_every_grammatical_vector` |
-| 13 | the witness set re-derives to the committed `witness_set_hash` | backstop: `field_door_prologue` asserts it for every door entry point and §8.8's own guard coverage isolates it; guards 4 and 5 fix which half a claim may name |
-| 14 | §8.4's tier-3 partition (`total_length > K`, derived chunk count, chunk shape) | backstop: `certified_chunks` is shared with both view doors and §8.10's rows isolate it there; this family re-uses it unchanged |
-| 15 | the derived accusation is produced at step 02's script | `canonical_decodability_step_01_rejects_a_foreign_next_step_hash` |
+| #   | refusal                                                                        | isolated by / backstop because                                                                                                                                                                  |
+| --- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | the carried bytes hash to the accused slot's commitment (§4)                   | `canonical_decodability_step_01_rejects_uncommitted_bytes`, and `canonical_decodability_verdict_refuses_substituted_certified_chunks` at tier 3                                                 |
+| 2   | the forwarded verdict is the one the bytes earned                              | `canonical_decodability_step_01_rejects_a_fabricated_verdict`                                                                                                                                   |
+| 3   | the forwarded field index is the one that was opened                           | `canonical_decodability_step_01_rejects_a_fabricated_field_index`                                                                                                                               |
+| 4   | a body claim names a body slot                                                 | `canonical_decodability_step_01_rejects_a_body_claim_at_a_witness_field`                                                                                                                        |
+| 5   | a witness claim names a witness-set slot                                       | `canonical_decodability_step_01_rejects_a_witness_claim_at_a_body_field`                                                                                                                        |
+| 6   | the disputed transaction is one the challenged block committed                 | `canonical_decodability_step_01_rejects_a_forged_transactions_root`                                                                                                                             |
+| 7   | a grammatical field does not finalize                                          | `canonical_decodability_step_02_rejects_a_grammatical_field`, with `…_step_01_binds_a_grammatical_field_without_convicting` proving the refusal is step 02's rather than an accident of step 01 |
+| 8   | `field_index` is in 0..8, upper bound                                          | `canonical_decodability_step_02_rejects_an_out_of_range_field_index`                                                                                                                            |
+| 9   | `field_index` is in 0..8, lower bound                                          | `canonical_decodability_step_02_rejects_a_negative_field_index`                                                                                                                                 |
+| 10  | `verdict` is a code some walk produces                                         | `canonical_decodability_step_02_rejects_an_unknown_verdict_code`                                                                                                                                |
+| 11  | the verdict agrees with the doors, ungrammatical direction                     | the ten `canonical_decodability_door_refuses_*` selectors, one per code, because an abort ends a test and a fold over the table would prove only that some vector aborts                        |
+| 12  | the verdict agrees with the doors, grammatical direction                       | `canonical_decodability_door_opens_every_grammatical_vector`                                                                                                                                    |
+| 13  | the witness set re-derives to the committed `witness_set_hash`                 | backstop: `field_door_prologue` asserts it for every door entry point and §8.8's own guard coverage isolates it; guards 4 and 5 fix which half a claim may name                                 |
+| 14  | §8.4's tier-3 partition (`total_length > K`, derived chunk count, chunk shape) | backstop: `certified_chunks` is shared with both view doors and §8.10's rows isolate it there; this family re-uses it unchanged                                                                 |
+| 15  | the derived accusation is produced at step 02's script                         | `canonical_decodability_step_01_rejects_a_foreign_next_step_hash`                                                                                                                               |
 
 The verdict's own decision table is pinned separately and exhaustively:
 `canonical_decodability_verdict_table_is_exact` asserts one vector per code,
@@ -3613,7 +3650,7 @@ claim about §5.3's stride table inside it. One more fault kind is the cheaper
 price, and it keeps both boundaries exact.
 
 The doors' abort semantics stay **exactly** as they are, for §12.7's reason:
-aborting is still the correct answer to a *prover* supplying the wrong bytes
+aborting is still the correct answer to a _prover_ supplying the wrong bytes
 (§7.3), and softening the doors machine-wide to serve one adjudication would
 put a clampable absence on every consumer's hot path.
 
@@ -3623,13 +3660,13 @@ put a clampable absence on every consumer's hot path.
 adjudicates a byte string that **is** one and that slot `i` still refuses.
 They are disjoint claims about disjoint sets of committed fields:
 
-| | §12.7 `canonical-decodability` | §12.8 `committed-field-shape` |
-| --- | --- | --- |
-| what is accused | one field, at `field_index` | one field, at `field_index` |
-| the envelope | must **not** be well-formed; that is the whole accusation | must be well-formed; the accusation is about its length |
-| the verdict's arguments | `preimage` | `(field_index, preimage)` |
-| what decides | §5.1's grammar, and nothing per-field | §7.4's stride arithmetic and §5.4's byte bound, both per-field |
-| what is read | the whole preimage, as bytes, through no view at all | the same bytes, plus §5.1's array header — no item content |
+|                         | §12.7 `canonical-decodability`                            | §12.8 `committed-field-shape`                                  |
+| ----------------------- | --------------------------------------------------------- | -------------------------------------------------------------- |
+| what is accused         | one field, at `field_index`                               | one field, at `field_index`                                    |
+| the envelope            | must **not** be well-formed; that is the whole accusation | must be well-formed; the accusation is about its length        |
+| the verdict's arguments | `preimage`                                                | `(field_index, preimage)`                                      |
+| what decides            | §5.1's grammar, and nothing per-field                     | §7.4's stride arithmetic and §5.4's byte bound, both per-field |
+| what is read            | the whole preimage, as bytes, through no view at all      | the same bytes, plus §5.1's array header — no item content     |
 
 Three consequences follow, and they are normative:
 
@@ -3646,7 +3683,7 @@ Three consequences follow, and they are normative:
    the machine's.
 3. **The §12.3 boundary is inherited unchanged.** §12.3's
    `fault_item_predicate` adjudicates a bad item inside an envelope **the
-   door opens**. This section convicts only envelopes the door *refuses*, so
+   door opens**. This section convicts only envelopes the door _refuses_, so
    the two are disjoint for the same reason §12.7 and §12.3 are: the walk
    that would reach an item aborts first.
 
@@ -3672,12 +3709,12 @@ no byte it has not first shown to be in range.
 
 The codes:
 
-| code | name | meaning |
-| --- | --- | --- |
-| 0 | `admissible` | field `i`'s door opens these bytes |
-| 1 | `not_an_envelope` | not a §5.1 envelope — §12.7's fault; does **not** convict here |
-| 2 | `field_byte_bound` | §5.4: `total_length > max_transaction_aggregate_field_bytes` |
-| 3 | `wrong_stride` | §7.4: `header_len + stride·N ≠ total_length` at a fixed-stride field |
+| code | name               | meaning                                                              |
+| ---- | ------------------ | -------------------------------------------------------------------- |
+| 0    | `admissible`       | field `i`'s door opens these bytes                                   |
+| 1    | `not_an_envelope`  | not a §5.1 envelope — §12.7's fault; does **not** convict here       |
+| 2    | `field_byte_bound` | §5.4: `total_length > max_transaction_aggregate_field_bytes`         |
+| 3    | `wrong_stride`     | §7.4: `header_len + stride·N ≠ total_length` at a fixed-stride field |
 
 The procedure, over `preimage` of length `T` at slot `i`:
 
@@ -3695,9 +3732,9 @@ otherwise                                   → 3
 Five properties of this definition are normative rather than incidental:
 
 - **The two arguments have different owners, and the asymmetry is
-  deliberate.** The preimage is the *operator's*: an abort on it would be the
+  deliberate.** The preimage is the _operator's_: an abort on it would be the
   stall under adjudication, so the verdict is total over bytes. The
-  `field_index` is the *prover's*: `field_stride` refuses one outside §2.5's
+  `field_index` is the _prover's_: `field_stride` refuses one outside §2.5's
   nine, and that refusal is §7.3's correct answer to a prover supplying
   something outside the format. Every caller reaches the verdict through the
   door entry point below, which bounds the index before a byte is read.
@@ -3755,7 +3792,7 @@ evidence and derives, the second holds the derivation against the rule.
    `(tx_id, field_index, verdict)` is pinned into the computation thread.
    Every member is derived, so a fabricated verdict or a re-addressed field
    index is not forwardable. The re-addressing refusal carries more weight
-   here than in §12.7, because the verdict *depends* on the index: a
+   here than in §12.7, because the verdict _depends_ on the index: a
    re-addressed accusation would be a verdict about one slot's rules filed
    against another slot's bytes.
 
@@ -3780,7 +3817,7 @@ Five further conditions are normative:
   that returns the hash-checked bytes and runs no §5.1, §7.4 or §5.4 check —
   is reused unchanged and is the only door entry point this family uses.
 - **The field index is a redeemer argument here**, for §12.7's reason: it
-  *is* the accusation's address (§12.1). It is safe because the expected
+  _is_ the accusation's address (§12.1). It is safe because the expected
   commitment is extracted for the slot the index names, so a verdict rendered
   under index `i` is a verdict about the bytes slot `i` committed. §4's
   aliasing — fields 0/1 and 3/4 commit identically for identical content —
@@ -3817,8 +3854,8 @@ section closes:
   before it materialises tier 3, and the §8.6 certificate is refused at the
   same bound at minting, so no such certificate can exist. Tiers 1 and 2 are
   bounded far below it by L1's `maxTxSize`.
-- Therefore a committed preimage above §5.4's bound is convictable *in the
-  rule* and unreachable *in the carriage*: the stall §12.7 named for that
+- Therefore a committed preimage above §5.4's bound is convictable _in the
+  rule_ and unreachable _in the carriage_: the stall §12.7 named for that
   shape is closed for every length the ladder can deliver, and open above it.
   The §7.4 shape has no such gap — it lives entirely at lengths at or below
   the bound and is convictable at all three tiers.
@@ -3884,24 +3921,24 @@ this section's own two questions are `O(1)` over a header read in three bytes.
 be isolated by a vector or listed as a backstop. **Sixteen refusals: fourteen
 isolated, two backstops.**
 
-| # | refusal | isolated by / backstop because |
-| --- | --- | --- |
-| 1 | the carried bytes hash to the accused slot's commitment (§4) | `committed_field_shape_step_01_rejects_uncommitted_bytes`, `…_rejects_a_substituted_raw_utxo_carriage` at tier 2, and `committed_field_shape_verdict_refuses_substituted_certified_chunks` at tier 3 |
-| 2 | the forwarded verdict is the one the bytes earned at that slot | `committed_field_shape_step_01_rejects_a_fabricated_verdict` |
-| 3 | the forwarded field index is the one that was opened | `committed_field_shape_step_01_rejects_a_fabricated_field_index` |
-| 4 | a body claim names a body slot | `committed_field_shape_step_01_rejects_a_body_claim_at_a_witness_field` |
-| 5 | a witness claim names a witness-set slot | `committed_field_shape_step_01_rejects_a_witness_claim_at_a_body_field` |
-| 6 | the disputed transaction is one the challenged block committed | `committed_field_shape_step_01_rejects_a_forged_transactions_root` |
-| 7 | a well-shaped field does not finalize | `committed_field_shape_step_02_rejects_an_admissible_field`, with `…_step_01_binds_a_right_stride_field_without_convicting` proving the refusal is step 02's rather than an accident of step 01 |
-| 8 | **a field §12.7 owns does not finalize here** | `committed_field_shape_step_02_rejects_a_non_envelope`, with `…_step_01_binds_a_non_envelope_without_convicting` proving the same |
-| 9 | `field_index` is in 0..8, upper bound | `committed_field_shape_step_02_rejects_an_out_of_range_field_index` |
-| 10 | `field_index` is in 0..8, lower bound | `committed_field_shape_step_02_rejects_a_negative_field_index` |
-| 11 | `verdict` is a code some verdict produces | `committed_field_shape_step_02_rejects_an_unknown_verdict_code` |
-| 12 | the verdict agrees with the doors, refusing direction | the six `committed_field_shape_door_refuses_*` selectors, one per convicting shape, because an abort ends a test and a fold over the table would prove only that some vector aborts |
-| 13 | the verdict agrees with the doors, opening direction | `committed_field_shape_door_opens_every_admissible_vector` and `…_door_opens_the_field_at_the_byte_bound`; the direction that is *not* claimed is pinned as such by `…_defers_a_fixed_stride_field_the_door_opens`, so a later reader cannot mistake it for a defect |
-| 14 | the derived accusation is produced at step 02's script | `committed_field_shape_step_01_rejects_a_foreign_next_step_hash` |
-| 15 | the witness set re-derives to the committed `witness_set_hash` | backstop: `field_door_prologue` asserts it for every door entry point and §8.8's own guard coverage isolates it; guards 4 and 5 fix which half a claim may name |
-| 16 | §8.4's tier-3 partition (`total_length > K`, derived chunk count, chunk shape) | backstop: `certified_chunks` is shared with both view doors and §8.10's rows isolate it there; this family re-uses it unchanged |
+| #   | refusal                                                                        | isolated by / backstop because                                                                                                                                                                                                                                       |
+| --- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | the carried bytes hash to the accused slot's commitment (§4)                   | `committed_field_shape_step_01_rejects_uncommitted_bytes`, `…_rejects_a_substituted_raw_utxo_carriage` at tier 2, and `committed_field_shape_verdict_refuses_substituted_certified_chunks` at tier 3                                                                 |
+| 2   | the forwarded verdict is the one the bytes earned at that slot                 | `committed_field_shape_step_01_rejects_a_fabricated_verdict`                                                                                                                                                                                                         |
+| 3   | the forwarded field index is the one that was opened                           | `committed_field_shape_step_01_rejects_a_fabricated_field_index`                                                                                                                                                                                                     |
+| 4   | a body claim names a body slot                                                 | `committed_field_shape_step_01_rejects_a_body_claim_at_a_witness_field`                                                                                                                                                                                              |
+| 5   | a witness claim names a witness-set slot                                       | `committed_field_shape_step_01_rejects_a_witness_claim_at_a_body_field`                                                                                                                                                                                              |
+| 6   | the disputed transaction is one the challenged block committed                 | `committed_field_shape_step_01_rejects_a_forged_transactions_root`                                                                                                                                                                                                   |
+| 7   | a well-shaped field does not finalize                                          | `committed_field_shape_step_02_rejects_an_admissible_field`, with `…_step_01_binds_a_right_stride_field_without_convicting` proving the refusal is step 02's rather than an accident of step 01                                                                      |
+| 8   | **a field §12.7 owns does not finalize here**                                  | `committed_field_shape_step_02_rejects_a_non_envelope`, with `…_step_01_binds_a_non_envelope_without_convicting` proving the same                                                                                                                                    |
+| 9   | `field_index` is in 0..8, upper bound                                          | `committed_field_shape_step_02_rejects_an_out_of_range_field_index`                                                                                                                                                                                                  |
+| 10  | `field_index` is in 0..8, lower bound                                          | `committed_field_shape_step_02_rejects_a_negative_field_index`                                                                                                                                                                                                       |
+| 11  | `verdict` is a code some verdict produces                                      | `committed_field_shape_step_02_rejects_an_unknown_verdict_code`                                                                                                                                                                                                      |
+| 12  | the verdict agrees with the doors, refusing direction                          | the six `committed_field_shape_door_refuses_*` selectors, one per convicting shape, because an abort ends a test and a fold over the table would prove only that some vector aborts                                                                                  |
+| 13  | the verdict agrees with the doors, opening direction                           | `committed_field_shape_door_opens_every_admissible_vector` and `…_door_opens_the_field_at_the_byte_bound`; the direction that is _not_ claimed is pinned as such by `…_defers_a_fixed_stride_field_the_door_opens`, so a later reader cannot mistake it for a defect |
+| 14  | the derived accusation is produced at step 02's script                         | `committed_field_shape_step_01_rejects_a_foreign_next_step_hash`                                                                                                                                                                                                     |
+| 15  | the witness set re-derives to the committed `witness_set_hash`                 | backstop: `field_door_prologue` asserts it for every door entry point and §8.8's own guard coverage isolates it; guards 4 and 5 fix which half a claim may name                                                                                                      |
+| 16  | §8.4's tier-3 partition (`total_length > K`, derived chunk count, chunk shape) | backstop: `certified_chunks` is shared with both view doors and §8.10's rows isolate it there; this family re-uses it unchanged                                                                                                                                      |
 
 The verdict's own decision table is pinned separately and exhaustively:
 `committed_field_shape_verdict_table_is_exact` asserts one vector per code,

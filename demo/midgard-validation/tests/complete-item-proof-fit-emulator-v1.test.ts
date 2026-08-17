@@ -34,12 +34,14 @@ import {
   type BuildTxWithRedeemer,
   CML,
   Constr,
+  credentialToAddress,
   Data,
   Emulator,
   Lucid,
   type LucidEvolution,
   PROTOCOL_PARAMETERS_DEFAULT,
   type Script,
+  scriptHashToCredential,
   toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -529,11 +531,20 @@ const submitSemanticProof = async ({
   itemCase,
   threadUtxo,
   proofItemReferenceUtxo,
+  validatorReferenceUtxo,
 }: {
   readonly harness: EmulatorHarness;
   readonly itemCase: CanonicalDecodeItemCase;
   readonly threadUtxo: UTxO;
   readonly proofItemReferenceUtxo?: UTxO;
+  /**
+   * When set, the semantic resolver is sourced from this reference-script
+   * UTxO instead of being embedded in the witness set — the production
+   * basis: `submitValidationDisputeSemanticResolution`'s authenticate stage
+   * reads the published resolver (one reference input on the direct route)
+   * rather than attaching it.
+   */
+  readonly validatorReferenceUtxo?: UTxO;
 }): Promise<{
   readonly measurement: CompleteSignedTransactionMeasurement;
   readonly outputDatum: string;
@@ -600,6 +611,9 @@ const submitSemanticProof = async ({
   if (proofItemReferenceUtxo !== undefined) {
     tx = tx.readFrom([proofItemReferenceUtxo]);
   }
+  if (validatorReferenceUtxo !== undefined) {
+    tx = tx.readFrom([validatorReferenceUtxo]);
+  }
   tx = tx.pay
     .ToContract(
       harness.itemSourceAddress,
@@ -609,8 +623,10 @@ const submitSemanticProof = async ({
         [harness.threadUnit]: 1n,
       },
     )
-    .addSignerKey(harness.signerHash)
-    .attach.SpendingValidator(harness.semanticScript);
+    .addSignerKey(harness.signerHash);
+  if (validatorReferenceUtxo === undefined) {
+    tx = tx.attach.SpendingValidator(harness.semanticScript);
+  }
   const unsigned = await tx.complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const signedCbor = signed.toCBOR();
@@ -743,6 +759,55 @@ const measureDirectAt = async (
     harness,
     itemCase,
     threadUtxo: harness.threadUtxos[0]!,
+  });
+  return { itemCase, ...result };
+};
+
+/**
+ * The deployed-route variant of `measureDirectAt`: the semantic resolver is
+ * parked as a reference script and sourced through a reference input, the way
+ * `submitValidationDisputeSemanticResolution`'s authenticate stage sources the
+ * published `validationTraceDisputeItemSemantic` copy — one reference input on
+ * the direct route, no embedded script. The parking transaction rides the
+ * raised emulator ceiling and is not part of the measurement.
+ */
+const measureByReferenceAt = async (
+  itemBytes: number,
+): Promise<{
+  readonly itemCase: CanonicalDecodeItemCase;
+  readonly measurement: CompleteSignedTransactionMeasurement;
+  readonly outputDatum: string;
+}> => {
+  const itemCase = await buildCanonicalDecodeItemCase(itemBytes);
+  const harness = await setupEmulator([
+    preparedThreadDatumCbor(itemCase, SIGNER_HASH),
+  ]);
+  const parkAddress = credentialToAddress(
+    "Custom",
+    scriptHashToCredential("2f".repeat(28)),
+  );
+  const parkUnsigned = await harness.lucid
+    .newTx()
+    .pay.ToAddressWithData(
+      parkAddress,
+      undefined,
+      { lovelace: 60_000_000n },
+      harness.semanticScript,
+    )
+    .complete();
+  const parkSigned = await parkUnsigned.sign.withWallet().complete();
+  await harness.lucid.awaitTx(await parkSigned.submit());
+  const validatorReferenceUtxo = (
+    await harness.lucid.utxosAt(parkAddress)
+  ).find((utxo) => utxo.scriptRef != null);
+  if (validatorReferenceUtxo === undefined) {
+    throw new Error("semantic resolver reference script failed to park");
+  }
+  const result = await submitSemanticProof({
+    harness,
+    itemCase,
+    threadUtxo: harness.threadUtxos[0]!,
+    validatorReferenceUtxo,
   });
   return { itemCase, ...result };
 };
@@ -912,6 +977,154 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
               authenticationTransaction: authentication.measurement,
               reservedMemoryUnits: RESERVED_MEMORY_UNITS,
               reservedCpuUnits: RESERVED_CPU_UNITS,
+            },
+          },
+          (_key, value: unknown) =>
+            typeof value === "bigint" ? value.toString() : value,
+          2,
+        ),
+      );
+    }
+  }, 600_000);
+
+  it("measures the complete signed tier-1 step transaction at the 14,336-byte preimage cap", async () => {
+    // #611 (#557 M2): #580 measured the at-cap ONE-STEP EVIDENCE — 15,848
+    // bytes over the 14,336-byte preimage, 536 unspent inside the 16,383-byte
+    // evidence envelope — but no suite built the complete SIGNED step
+    // transaction around it, so M2 was narrowed rather than closed. This row
+    // builds and submits that transaction. The production route cannot
+    // produce it: `selectValidationCompleteItemCarriageV1` forces reference
+    // carriage far below the cap (its boundary is 8,273, a deliberately
+    // different axis than §8.4's 14,336 — docs/spec/midgard-tx.md §8.4 note),
+    // so the hand-built authenticate-stage redeemer here is the only producer
+    // of the worst-case inline step transaction — exactly the shape the
+    // tier-1 bound has to hold for, and the shape an adversarial prover is
+    // free to submit.
+    // Production basis: the resolver sourced by reference (authenticate
+    // carries one reference input on the direct route), the at-cap one-step
+    // argument inline in the redeemer.
+    const byReference = await measureByReferenceAt(
+      TIER1_MAX_COMPLETE_ITEM_BYTES,
+    );
+    // The carried §5.1 preimage really is the whole tier-1 domain — cap
+    // bytes, carried Inline (the case builder throws on any other carriage).
+    expect(
+      Buffer.from(byReference.itemCase.fieldPreimageHex, "hex").length,
+    ).toBe(MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1);
+    expect(byReference.measurement.redeemerCount).toBe(1);
+    expect(byReference.measurement.referenceInputCount).toBe(1);
+    expect(Number(byReference.measurement.executionMemory)).toBeLessThanOrEqual(
+      RESERVED_MEMORY_UNITS,
+    );
+    expect(Number(byReference.measurement.executionSteps)).toBeLessThanOrEqual(
+      RESERVED_CPU_UNITS,
+    );
+    // #557 M2, MEASURED AND FALSIFIED (#611, 2026-08-17): the complete signed
+    // step transaction at the cap does NOT fit maxTxSize even on the deployed
+    // route. The evidence-layer reading (15,848 bytes, 536 unspent in the
+    // 16,383-byte evidence envelope) never included the authenticate stage's
+    // protocol framing — thread input, continuation output and datum,
+    // required signer, reference input, change — which the production shape
+    // cannot shed. This assertion pins the measured overflow so the row
+    // flips of its own accord when the owner reprices the tier-1 bound; it
+    // does NOT accept the state as correct — repricing is parameter churn and
+    // rides the #611 escalation.
+    expect(byReference.measurement.completeSignedBytes).toBeGreaterThan(
+      MAX_L1_PROOF_TX_BYTES,
+    );
+
+    // Embedded basis, measured for the record: a prover who attaches the
+    // resolver instead of referencing the published copy adds the whole
+    // resolver body on top — route waste on the prover's side, but it pins
+    // that the published reference script is load-bearing for step liveness
+    // anywhere near the cap.
+    const embedded = await measureDirectAt(TIER1_MAX_COMPLETE_ITEM_BYTES);
+    expect(embedded.measurement.referenceInputCount).toBe(0);
+    expect(embedded.measurement.completeSignedBytes).toBeGreaterThan(
+      byReference.measurement.completeSignedBytes,
+    );
+
+    // The actual fitting frontier, bisected on the deployed route: the
+    // largest complete item whose signed authenticate transaction fits
+    // maxTxSize. `maxReliableDirectCompleteItemBytes` (8,273) is a known
+    // fitting floor; the cap is the measured overflow above. This is the
+    // number a repricing decision needs.
+    // Not every exact item size is constructible — the datum filler's chunk
+    // headers make the size ladder skip a byte or two at chunk boundaries —
+    // so the bisect walks the nearest constructible size and the frontier is
+    // exact at constructible-size resolution.
+    const constructibleNear = (target: number): number | undefined => {
+      for (let offset = 0; offset <= 4; offset += 1) {
+        for (const candidate of offset === 0
+          ? [target]
+          : [target - offset, target + offset]) {
+          try {
+            makeExactSizeOutputItem(candidate);
+            return candidate;
+          } catch {
+            // Not constructible; keep looking.
+          }
+        }
+      }
+      return undefined;
+    };
+    let fittingItemBytes: number =
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
+    let overflowingItemBytes: number = TIER1_MAX_COMPLETE_ITEM_BYTES;
+    const probes: Record<string, number> = {
+      [TIER1_MAX_COMPLETE_ITEM_BYTES.toString()]:
+        byReference.measurement.completeSignedBytes,
+    };
+    while (overflowingItemBytes - fittingItemBytes > 1) {
+      const midpoint = Math.floor(
+        (fittingItemBytes + overflowingItemBytes) / 2,
+      );
+      const candidate = constructibleNear(midpoint);
+      if (
+        candidate === undefined ||
+        candidate <= fittingItemBytes ||
+        candidate >= overflowingItemBytes
+      ) {
+        break;
+      }
+      const probe = await measureByReferenceAt(candidate);
+      probes[candidate.toString()] = probe.measurement.completeSignedBytes;
+      if (probe.measurement.completeSignedBytes <= MAX_L1_PROOF_TX_BYTES) {
+        fittingItemBytes = candidate;
+      } else {
+        overflowingItemBytes = candidate;
+      }
+    }
+    if (probes[fittingItemBytes.toString()] === undefined) {
+      const floorProbe = await measureByReferenceAt(fittingItemBytes);
+      probes[fittingItemBytes.toString()] =
+        floorProbe.measurement.completeSignedBytes;
+    }
+    // The frontier is tight to within the constructible-size ladder's gaps.
+    expect(overflowingItemBytes - fittingItemBytes).toBeLessThanOrEqual(3);
+    expect(probes[fittingItemBytes.toString()]).toBeLessThanOrEqual(
+      MAX_L1_PROOF_TX_BYTES,
+    );
+    expect(probes[overflowingItemBytes.toString()]).toBeGreaterThan(
+      MAX_L1_PROOF_TX_BYTES,
+    );
+
+    if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
+      console.info(
+        JSON.stringify(
+          {
+            tier1CapSignedStepTransactionV1: {
+              tier1PreimageCapBytes:
+                MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+              itemBytes: TIER1_MAX_COMPLETE_ITEM_BYTES,
+              evidenceBytes: byReference.itemCase.argument.evidenceCbor.length,
+              byReferenceAuthenticationTransaction: byReference.measurement,
+              embeddedAuthenticationTransaction: embedded.measurement,
+              fittingFrontierItemBytes: fittingItemBytes,
+              fittingFrontierSignedBytes: probes[fittingItemBytes.toString()],
+              overflowSignedBytes: probes[overflowingItemBytes.toString()],
+              probes,
+              maxL1ProofTxBytes: MAX_L1_PROOF_TX_BYTES,
             },
           },
           (_key, value: unknown) =>
