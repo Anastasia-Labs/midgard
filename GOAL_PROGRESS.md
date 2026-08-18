@@ -4746,3 +4746,46 @@ the `e1e65629` goldens-type repair and the C20 retirement above, all five
 #476 acceptance criteria measure PASS at `ccce10f6`; both CG1 gate issues
 (#476, #477) are measured all-PASS, unblocking #479 (CG1 closure) as the
 next Wave C item.
+
+## #479 (B02, C10-C13 + CG1) measured: four sub-gates PASS, CG1's aggregate verifier was never built (2026-08-17)
+
+First direct measurement of #479's own criteria, at `9f133730`,
+measurement-only:
+
+- **C10 PASS** — normalized format 9/9, `aiken check --skip-tests` exit 0,
+  declared compiler v1.1.23 confirmed via static-policy PASS, pinned
+  suites 32/32 (matching the 2026-08-05 pin exactly), closure verifier
+  reports the release gate genuinely unset (1/35 passing criteria,
+  0 release commits bound — fail-closed as required), and the monolithic
+  `validate()` has zero call sites in deployed validators (only
+  `validate_cek` is wired).
+- **C11 PASS** — dispute-hub fit suites 11/11 (pin was 9/9: growth, the
+  tier-1 14,336-byte preimage-cap case included).
+- **C12 PASS** — resolver routing totality 8/8 + dispute totality 1/1 +
+  applied-hashes 2/2; unknown/duplicate/absent/terminal/wrong hashes all
+  fail closed.
+- **C13 PASS modulo the accepted #597 red** — ABI selectors 7/7 and 11/11
+  Aiken-side, TS twins 11/11, sdk 5/5, fault-proofs 20/21 (the one red is
+  exactly the accepted #597 carriage-selection case). All against the
+  current blueprint `f49cae22…`, byte-identical across the session.
+- **CG1 MEASUREMENT-BLOCKED, structurally** — CG1's manifest row names
+  `demo/scripts/verify-canonical-v1-cg1-control-publication-fit.mjs` and
+  `docs/exec-plans/evidence/canonical-v1-cg1-control-publication-fit-v1.json`
+  as its writable surfaces; neither exists anywhere in the tree. There is
+  no aggregate gate proving *every* parameterized hub/control validator
+  (beyond the C11 dispute hub) fits a real 16,384-byte publication
+  transaction bound to validator hashes. No consolidated-review record
+  exists (criterion 5 is an owner event, not attempted).
+
+Staleness recorded, not yet acted on: the §status table's
+`AC-C10 | TODO` row and the task manifest's C10-C13/CG1 block
+(NOT_STARTED, blockedOn chains, one stale `compiler = "v1.1.22"` grep
+literal) predate today's measurements; reconciling them belongs with the
+CG1 verifier build so the manifest contract moves once, on measured
+output. Next advanceable item: build the CG1 aggregate
+fit verifier + pinned evidence artifact in the F02-R sibling-checker
+style (roster derived from the deployment manifest's required
+publication set — the oversized CEK direct resolver is deliberately
+outside that set and stays tracked by P1; evidence pinned to current
+`f49cae22…` applied hashes with an explicit re-pin trigger at #510's
+freeze).
