@@ -5489,3 +5489,49 @@ MIDGARD_AIKEN_BIN, 1 static structural check, 0 partial, 0 open) —
 identical counts to the pre-pin baseline, so the pin changed provenance
 only. The published runner command in the handoff artifact is
 unchanged (it names the selector set, not the binary path).
+
+## #481 (B13): the prescribed Q11 per-family closure surfaces are built and gated (2026-08-18)
+
+The Q10 architecture's twin for the no-input family:
+canonical-v1-proof-family-q11-v1.json gated by
+verify-canonical-v1-proof-family-q11.mjs. Same contract — hard fork
+compiler pin measured from the spawned binary, outputs 1–4 and 9
+measured family-locally, outputs 5–8 delegated to the shared Q1x
+artifact under hard asserts (Q11 cells LOCAL_PASS, zero open cells,
+both remediation blocks measuring this family, binding stage step-02),
+output 10 OPEN on the parent-owned matrix rows, ten negative
+self-tests plus three positive controls. Family-measured differences
+from Q10, all from source: the on-chain census is 18/18 selectors
+across the four step modules (5/3/6/4; 8 positive, 4 valid-block
+negative, 6 further negative — the #545 published-chunk arms and the
+two #582 witness-faithful exclusion arms are held in the census); the
+family owns three step Args records plus the shared 9-field
+NativeTxInclusionArgs, all parity-checked; the emulator lifecycle
+lives in the shared ledger-rules suite (4 lifecycles, exactly 1 this
+family's, both counts published); the whole-file marker scan was
+deliberately not ported because the shared suite carries sibling
+families' slashing markers — the scan is scoped to this family's block
+and the unasserted slashing route is owned as finding Q11-F5. Nine
+residual findings recorded.
+
+Measured twice (builder run and an independent re-run, identical):
+Q11 gate PASS (9 LOCAL_PASS, 1 OPEN, 0 N/A; 53 vitest tests over 4
+suites with 22 required titles). The gate's compiler pin measurably
+rejects the OTHER fork build on PATH (aiken-fork reports
+v1.1.23+6d14ab2, not the sanctioned +2a78108) — identity is asserted
+by hash suffix, not version number alone.
+
+Manifest Q11 row reconciled in the same edit set: the built-surfaces
+supersede (sourceAnchors tail, schedulingNote, expectedNonzeroCounts —
+the exactly-8/2-per-step census pins superseded by the measured 18);
+the CONFIRMED GAP 1 anchor (zero test declarations) superseded by the
+measured census; and the row's one broken executable citation
+re-pinned — focusedCommands cited
+no_input_step_01_rejects_a_missing_verifier_invocation, which never
+existed under the step_01 name in any committed tree (the arm lives in
+step_03), measured red at HEAD (collected=3 of 4), re-pinned onto the
+three existing step_01 chunk selectors plus a new step_03 focused
+command, both measured green. Manifest quality gate PASS 186/186,
+0 defects. Every proof family named by the B13 wave now has its
+prescribed per-family surfaces or a recorded owner: Q10/Q11 built,
+Q12/Q14 q1x-cell decisions recorded in the shared artifact.
