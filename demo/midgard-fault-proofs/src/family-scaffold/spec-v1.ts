@@ -14,7 +14,8 @@ export const FRAUD_PROOF_FAMILY_SCAFFOLD_SPEC_V1_SCHEMA_VERSION =
 
 export type ScaffoldFieldTypeV1 =
   | "hash32"
-  | "midgard_inputs_hash"
+  | "midgard_tx_id"
+  | "field_opening_v1"
   | "int"
   | "bytes";
 
@@ -106,7 +107,8 @@ const TASK_ID = /^Q\d{2}$/u;
 
 const FIELD_TYPES: readonly ScaffoldFieldTypeV1[] = [
   "hash32",
-  "midgard_inputs_hash",
+  "midgard_tx_id",
+  "field_opening_v1",
   "int",
   "bytes",
 ];

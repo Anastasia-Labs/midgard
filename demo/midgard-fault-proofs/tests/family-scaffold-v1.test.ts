@@ -621,7 +621,7 @@ describe("Q02 generated families retain explicit schemas and tests", () => {
       "use midgard/fraud_proofs/native_binding_fixture_v1 as fixture",
     );
     expect(stepOne).toContain("fixture.native_block_fixture_v1(");
-    expect(stepOne).toContain("fixture.native_inclusion_args_v1(");
+    expect(stepOne).toContain("fixture.native_inclusion_carriage_v1(");
     // The valid-block negative claims a forged root under a valid header.
     expect(stepOne).toContain("header: valid_block.header");
     expect(stepOne).toContain("header_hash: valid_block.header_hash");
@@ -1200,16 +1200,28 @@ describe("Q02 generated shape matches the deployed families", () => {
           raw.violationId = "zero-input";
           raw.catalogueCategory = "zeroInput";
           const steps = raw.steps as Record<string, unknown>[];
-          const field = {
-            name: "bad_tx_spend_inputs_hash",
-            type: "midgard_inputs_hash",
-            doc: "Canonical spend-inputs hash of the bad transaction.",
+          // Post-#575: the thread carries the disputed transaction's §2.5
+          // anchor (its id), not a per-field collection commitment.
+          const anchorField = {
+            name: "bad_tx_id",
+            type: "midgard_tx_id",
+            doc: "The disputed transaction's §2.5 anchor.",
           };
-          steps[0].outputState = [field];
-          steps[1].inputState = [field];
+          steps[0].outputState = [anchorField];
+          steps[1].inputState = [anchorField];
+          // The terminal step opens field 0 through the §8 door instead of
+          // comparing a forwarded commitment against the empty constant.
+          steps[1].argsFields = [
+            {
+              name: "spend_inputs_opening",
+              type: "field_opening_v1",
+              doc: "The prover's chosen §8 carriage for field 0's preimage.",
+            },
+          ];
         }),
       );
     const plan = generateFraudProofFamilyScaffoldV1({ spec });
+
     const generatedTypes = artifact(
       plan,
       "onchain/aiken/lib/midgard/fraud-proofs/zero-input/step-02.ak",
@@ -1222,16 +1234,73 @@ describe("Q02 generated shape matches the deployed families", () => {
       "utf8",
     );
     // Same declarations, in the same order, as the family that already builds.
+    // The shipped `Args` block carries a `///` doc comment between
+    // `fraud_proof_mint_redeemer_index` and `spend_inputs_opening` that the
+    // boilerplate emitter does not reproduce (family-specific prose is not
+    // boilerplate), so the block is pinned field-line by field-line rather
+    // than as one contiguous string.
     for (const declaration of [
       "use midgard/computation_thread as ct",
-      "use midgard/ledger_state.{MidgardInputsHash}",
-      "pub type State {\n  bad_tx_spend_inputs_hash: MidgardInputsHash,\n}",
+      "use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}",
+      "use midgard/ledger_state.{MidgardTxId}",
+      "pub type State {\n  bad_tx_id: MidgardTxId,\n}",
       "pub type Datum =\n  ct.StepDatum<State>",
-      "pub type Args {\n  input_index: Int,\n  output_index: Int,\n  fraud_proof_mint_redeemer_index: Int,\n}",
+      "  input_index: Int,",
+      "  output_index: Int,",
+      "  fraud_proof_mint_redeemer_index: Int,",
+      "  spend_inputs_opening: FieldOpeningV1,",
       "pub type SpendRedeemer =\n  ct.StepRedeemer<Args>",
     ]) {
       expect(generatedTypes).toContain(declaration);
       expect(shippedTypes).toContain(declaration);
     }
+
+    // The divergence this ticket exists to close is load-bearing at step one
+    // too: the deployed step-01 consumes a `NativeTxInclusionCarriage`
+    // (issue #545's published-chunk carriage), not the retired
+    // `NativeTxInclusionArgs` the generator used to emit directly.
+    const generatedStepOne = artifact(
+      plan,
+      "onchain/aiken/lib/midgard/fraud-proofs/zero-input/step-01.ak",
+    ).contents;
+    const shippedStepOne = await readFile(
+      join(
+        REPO_ROOT,
+        "onchain/aiken/lib/midgard/fraud-proofs/zero-input/step-01.ak",
+      ),
+      "utf8",
+    );
+    for (const declaration of [
+      "use midgard/computation_thread as ct",
+      "use midgard/fraud_proofs/common.{NativeTxInclusionCarriage}",
+      "pub type Datum =\n  ct.StepDatum<Data>",
+      "pub type Args =\n  NativeTxInclusionCarriage",
+      "pub type SpendRedeemer =\n  ct.StepRedeemer<Args>",
+    ]) {
+      expect(generatedStepOne).toContain(declaration);
+      expect(shippedStepOne).toContain(declaration);
+    }
+
+    // The off-chain twin rebinds the same way: the step-01 redeemer carries
+    // the carriage schema and the step-02 args schema carries the opening,
+    // in the same position as the shipped `ZeroInputStep02ArgsSchema`.
+    const sdk = artifact(
+      plan,
+      "demo/midgard-sdk/src/fraud-proof/zero-input.ts",
+    ).contents;
+    expect(sdk).toContain(
+      'import { FieldOpeningV1Schema } from "./field-opening-v1.js";',
+    );
+    expect(sdk).not.toContain("NativeTxInclusionArgsSchema");
+    expect(sdk).toContain(
+      "faultProofStepRedeemerSchema(NativeTxInclusionCarriageSchema)",
+    );
+    expect(sdk).toContain("  fraud_proof_mint_redeemer_index: Data.Integer(),");
+    expect(sdk).toContain("  spend_inputs_opening: FieldOpeningV1Schema,");
+    // Positional order matches the shipped `ZeroInputStep02ArgsSchema`: the
+    // mint-redeemer index precedes the family-specific opening.
+    expect(sdk.indexOf("fraud_proof_mint_redeemer_index")).toBeLessThan(
+      sdk.indexOf("spend_inputs_opening"),
+    );
   });
 });

@@ -23,7 +23,7 @@ type FieldBinding = {
   readonly aikenType: string;
   readonly aikenImport: string | null;
   readonly tsSchema: string;
-  readonly tsImport: "common" | null;
+  readonly tsImport: "common" | "fieldOpeningV1" | null;
 };
 
 const FIELD_BINDINGS: Readonly<Record<ScaffoldFieldTypeV1, FieldBinding>> = {
@@ -33,11 +33,24 @@ const FIELD_BINDINGS: Readonly<Record<ScaffoldFieldTypeV1, FieldBinding>> = {
     tsSchema: "H32Schema",
     tsImport: "common",
   },
-  midgard_inputs_hash: {
-    aikenType: "MidgardInputsHash",
-    aikenImport: "use midgard/ledger_state.{MidgardInputsHash}",
+  // Post-#575 shape: every rebound family thread carries the disputed
+  // transaction's §2.5 anchor (its id), not a per-field collection
+  // commitment. `midgard_inputs_hash` (`MidgardInputsHash`) is retired from
+  // this vocabulary because no shipped fraud-proof consumer carries it any
+  // more (issue #607).
+  midgard_tx_id: {
+    aikenType: "MidgardTxId",
+    aikenImport: "use midgard/ledger_state.{MidgardTxId}",
     tsSchema: "H32Schema",
     tsImport: "common",
+  },
+  // The §8 door opening a downstream step re-opens one committed field
+  // through, in place of a reproduced `..._preimage: List<…>` argument.
+  field_opening_v1: {
+    aikenType: "FieldOpeningV1",
+    aikenImport: "use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}",
+    tsSchema: "FieldOpeningV1Schema",
+    tsImport: "fieldOpeningV1",
   },
   int: {
     aikenType: "Int",
@@ -109,7 +122,10 @@ const terminalArgsFields = (
     { name: "input_index", type: "int", doc: "Own input index." },
     { name: "output_index", type: "int", doc: "Produced output index." },
   ];
-  const trailing: readonly ScaffoldFieldV1[] = isTerminal
+  // Shipped terminal steps (`zero-input/step-02.ak`, `double-spend/step-04.ak`)
+  // carry the mint-redeemer index immediately after the two positional
+  // indices, with every family-specific field trailing it.
+  const mintRedeemerIndex: readonly ScaffoldFieldV1[] = isTerminal
     ? [
         {
           name: "fraud_proof_mint_redeemer_index",
@@ -118,7 +134,7 @@ const terminalArgsFields = (
         },
       ]
     : [];
-  return [...positional, ...(step.argsFields ?? []), ...trailing];
+  return [...positional, ...mintRedeemerIndex, ...(step.argsFields ?? [])];
 };
 
 /** `lib/midgard/fraud-proofs/<family>/step-NN.ak` — explicit step types. */
@@ -135,9 +151,9 @@ export const emitAikenStepTypesModuleV1 = ({
   const blocks: string[] = [];
 
   if (isFirst) {
-    uses.push("use midgard/fraud_proofs/common.{NativeTxInclusionArgs}");
+    uses.push("use midgard/fraud_proofs/common.{NativeTxInclusionCarriage}");
     blocks.push("pub type Datum =\n  ct.StepDatum<Data>");
-    blocks.push("pub type Args =\n  NativeTxInclusionArgs");
+    blocks.push("pub type Args =\n  NativeTxInclusionCarriage");
   } else {
     const state = precedingOutputState(spec, step);
     for (const field of state) {
@@ -203,7 +219,7 @@ const firstStepValidatorBody = (
             _header,
             _bad_tx_id,
             _bad_tx_view
-          <- pass_native_tx_to_next_step(
+          <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
           datum,
@@ -399,7 +415,7 @@ test ${positive}() {
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
-    ct.Continue(fixture.native_inclusion_args_v1(block)),
+    ct.Continue(fixture.native_inclusion_carriage_v1(block)),
     fixture.own_out_ref(),
     l1_tx,
   )
@@ -435,7 +451,7 @@ test ${negative}() {
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
-    ct.Continue(fixture.native_inclusion_args_v1(claimed_block)),
+    ct.Continue(fixture.native_inclusion_carriage_v1(claimed_block)),
     fixture.own_out_ref(),
     l1_tx,
   )
@@ -497,7 +513,7 @@ export const emitAikenStepValidatorV1 = ({
   if (isFirst) {
     uses.push(
       "use aiken/crypto.{ScriptHash}",
-      "use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}",
+      "use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step_carried}",
       "use midgard/fraud_proofs/native_binding_fixture_v1 as fixture",
       "use midgard/fraud_proofs/native_tx/types.{MidgardTransaction}",
       `use midgard/fraud_proofs/${names.aikenModule}/${stepModule}.{Datum, SpendRedeemer}`,
@@ -589,6 +605,11 @@ export const emitSdkFamilyModuleV1 = (
       (field) => FIELD_BINDINGS[field.type].tsImport === "common",
     ),
   );
+  const usesFieldOpeningV1Schema = spec.steps.some((step) =>
+    [...precedingOutputState(spec, step), ...(step.argsFields ?? [])].some(
+      (field) => FIELD_BINDINGS[field.type].tsImport === "fieldOpeningV1",
+    ),
+  );
 
   const blocks: string[] = [];
   for (const step of spec.steps) {
@@ -602,7 +623,7 @@ export const emitSdkFamilyModuleV1 = (
       blocks.push(
         tsAlias(
           `${stepName}SpendRedeemer`,
-          "faultProofStepRedeemerSchema(NativeTxInclusionArgsSchema)",
+          "faultProofStepRedeemerSchema(NativeTxInclusionCarriageSchema)",
         ),
       );
       continue;
@@ -646,6 +667,30 @@ export const emitSdkFamilyModuleV1 = (
     )
     .join("\n");
 
+  // Import groups, in the order the shipped `#604`-rebound modules use them:
+  // the external package, then the `@/`-aliased common schemas, then the
+  // family-scaffold's own relative modules (grouped together, no blank line
+  // between them).
+  const aliasImportLines = usesCommonSchema
+    ? ['import { H32Schema } from "@/common.js";']
+    : [];
+  const relativeImportLines = [
+    ...(usesFieldOpeningV1Schema
+      ? ['import { FieldOpeningV1Schema } from "./field-opening-v1.js";']
+      : []),
+    `import {
+  faultProofStepDatumSchema,
+  faultProofStepRedeemerSchema,
+  NativeTxInclusionCarriageSchema,
+} from "./native.js";`,
+  ];
+  const importBlock = [
+    'import { Data } from "@lucid-evolution/lucid";',
+    ...(aliasImportLines.length > 0 ? ["", ...aliasImportLines] : []),
+    "",
+    ...relativeImportLines,
+  ].join("\n");
+
   const contents = `/**
  * ${spec.summary}
  *
@@ -656,13 +701,7 @@ export const emitSdkFamilyModuleV1 = (
  * explicit and the step resolver is an exhaustive union with no fallback, so an
  * unknown step name is a compile error rather than a silently accepted value.
  */
-import { Data } from "@lucid-evolution/lucid";
-${usesCommonSchema ? '\nimport { H32Schema } from "@/common.js";\n' : ""}
-import {
-  faultProofStepDatumSchema,
-  faultProofStepRedeemerSchema,
-  NativeTxInclusionArgsSchema,
-} from "./native.js";
+${importBlock}
 
 ${blocks.join("\n\n")}
 
