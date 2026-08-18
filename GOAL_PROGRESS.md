@@ -4565,3 +4565,60 @@ inferred:
   `docs/exec-plans/evidence/necessity/cek-program-material-v1.md` as the
   superseding receipt bullet; the P1 oversized-validator conclusion
   strengthens in magnitude, unchanged in direction.
+
+## §3.2 necessity-artifact flat re-derivation campaign complete-with-escalation (2026-08-17)
+
+The C21 residual "re-derive the §3.2 necessity artifacts under the flat
+scheme" (task lane opened in the C21 reconciliation entry above) is closed
+for everything agent-adjudicable. Scope resolution: of the eight artifacts
+in `docs/exec-plans/evidence/necessity/`,
+`input-no-idx-spend-input-proof-v1.md` was already dissolved by the #560
+ruling and retired in place under #580 (no live pin; out of scope), and
+`cek-program-material-v1.md` was discharged via the receipt re-take in the
+addendum above. Results for the remaining six:
+
+- **Re-derived and landed (5):** `transaction-field-chunk-v1.md` (the
+  template, `6c2482e8`), then `redeemer-item-traversal-v1.md`,
+  `mint-fold-asset-v1.md`, `native-script-traversal-v1.md`,
+  `ledger-output-incremental-proof-v1.md` (this commit). Pattern per file:
+  a new "Measurements — flat `FieldCarriageV1` scheme (current)" section
+  measured against the producing suites (union across the campaign:
+  complete-item-proof-fit 5/5, complete-item-proof-fit-emulator 6/6,
+  complete-item-equivalence 2/2, field-preimage-carriage-fit-emulator
+  16/16, complete-item-carriage-tiers-emulator 5/5,
+  nested-redeemer-data-boundary 1/1, ordered-collection-mint-boundary 1/1,
+  complete-item-carriage-policy 6/6 — all green, blueprint `f49cae22…`/md5
+  `5e38d7c6…` freshly digest-verified), with every figure carrying its
+  producing selector or named JSON/spec source; all counted-era sections
+  retained verbatim under invariant-14 SUPERSEDED headings. Every
+  necessity conclusion re-derived same-direction: preimages above K=15,148
+  still require tier-3 carriage, and each family's incremental walk
+  survives on its own (post-authentication structural) axis. The three
+  known movements (16,613 combined lower bound and 210 B / 2,064,490
+  certificate figures from #606; the #611 tier-1 signed-frontier
+  falsification at 13,357/13,361 bytes) are cited by reference, not
+  re-pinned; no NEW discrepancies surfaced in the four fan-out artifacts.
+- **Escalated, deliberately not edited (1):** `script-source-hash-block-v1.md`
+  carries a "RETIRED IN PLACE — DISSOLVED" notice (#560 ruling 2026-08-07,
+  confirmed by #580's `7b731f2c0`) whose aliveness claim is false at HEAD
+  and was false when written: the notice says "the
+  `ScriptSourceHashBlockWitness` / `chunk_proof` machinery it measures does
+  not exist in the tree", but that machinery has existed continuously since
+  `2d7151d38` (2026-07-26) — live constructor and match arms
+  (`validation-machine-v1.ak:339`, `:8409`), the
+  `script_sources_stage_zero_hash_block_semantic_v1` validator present in
+  the current 398-validator blueprint, and the honest producer actively
+  building `"scriptSourceHashBlock"` witnesses
+  (`demo/midgard-validation/src/validation-machine.ts:721,3672,3703`).
+  Likely reconciliation (not adjudicated here): the #560 ruling names
+  `Blake2b256TraceControlV1` (a 256-bit trace living in
+  `cek-source-blob-v1.ak`/`blake2b-256-trace-v1.ak`), while this artifact's
+  live lane drives the distinct 224-bit
+  `blake2b_224_trace_v1.Blake2b224TraceControlV1` — a plausible
+  naming-collision mis-scope in the retirement notice. Secondary drift
+  regardless of the aliveness question: the notice's 703,198-memory pin is
+  stale against its own cited source
+  (`canonical-decodability-exec-ledger-v1.json`, re-taken under #606:
+  697,743 net). Whether to narrow the dissolution's scope, reconfirm it
+  over live code, or flip the artifact back to live is owner authority —
+  raised on #580 with citations; no pin moved.

@@ -144,7 +144,151 @@
   mint boundary corpus in
   `demo/midgard-validation/tests/ordered-collection-mint-boundary-v1.test.ts`.
 
-## Measurements (§3.2 order — stop at the first representation that fits)
+## Measurements — flat `FieldCarriageV1` scheme (current; §3.2 order — stop at the first tier that fits)
+
+**The flat reversion (#552/#565, complete) replaced the counted
+`TransactionFieldChunkWitness` field-carriage mechanism below with the §8
+three-tier ladder** (`docs/spec/midgard-tx.md` §8) for the *byte* question
+(how the mint field's bytes, and one mint policy's item within it, reach the
+machine). It did **not** touch the *structural* question this artifact
+actually adjudicates: how one mint policy's asset list is folded
+asset-by-asset against the accumulated `Value` delta commitment once the
+machine has that policy's bytes in hand. That fold is still driven by
+`ValidationAuxiliaryWitnessV1.MintFoldAssetWitness { chunk_proof,
+next_chunk_proof: Option<bounded_item_v1.ChunkProofV1> }`
+(`onchain/aiken/lib/midgard/validation-machine-v1.ak:367-370`), still
+pattern-matched at the mint-fold step
+(`script_sources_fold_mint_asset`, `validation-machine-v1.ak:9797-9803`)
+guarded by `MintFoldControlV1` (`validation-machine-v1.ak:7004-7053`), and
+still opened via `bounded_item_v1.verify_chunk` against `bounded_item_v1`'s
+own `chunk_bytes: Int = 4095` constant
+(`onchain/aiken/lib/midgard/bounded-item-v1.ak:11,145`) — unchanged since
+the counted era. The mint policy *begin* step (one policy's items, entered
+once per policy) reaches the flat door instead: `fold.active_policy == #""`
+routes to `TransactionFieldChunkWitness { field_index, item_index, carriage
+}` and `script_sources_begin_mint_policy`
+(`validation-machine-v1.ak:9780-9791`), the same flat-carriage constructor
+`transaction-field-chunk-v1.md` re-derives.
+
+All figures below were reproduced this pass against the blueprint this
+file's own Binding section already pins post-#606
+(`onchain/aiken/plutus.json` sha256
+`f49cae224f24cfab577f1ed10b5340384b75e541851eb7b77b507a79cb7d5e00`, md5
+`5e38d7c6ccb7987d0aca710307dcaea7`, 398 validators / 702 definitions, fork
+`aiken v1.1.23+2a78108`, `--env testnet` — confirmed by a fresh
+`sha256sum`/`md5sum` of `onchain/aiken/plutus.json` this pass; no Binding
+refresh needed, the pin above was already current) by running six suites
+with `MIDGARD_PRINT_PROOF_FIT=1`, one file at a time
+(`pnpm --config.verifyDepsBeforeRun=false --dir midgard-validation exec
+vitest run tests/<file> --pool=forks --no-file-parallelism --bail=0` from
+`demo/`): `complete-item-proof-fit-v1.test.ts` (5/5),
+`complete-item-proof-fit-emulator-v1.test.ts` (6/6),
+`field-preimage-carriage-fit-emulator-v1.test.ts` (16/16),
+`complete-item-carriage-tiers-emulator-v1.test.ts` (5/5),
+`ordered-collection-mint-boundary-v1.test.ts` (1/1), and
+`complete-item-equivalence-v1.test.ts` (2/2) — all green.
+`ordered-collection-mint-boundary-v1.test.ts`'s own `MIDGARD_PRINT_PROOF_FIT`
+receipt this pass still prints a field-5 `chunkProof` (`chunkIndex: 0`,
+`totalLength: 43`) alongside the outputs' collection proof, confirming the
+per-asset `bounded_item_v1` chunk structure is live in the current tree
+rather than a stale code path.
+
+**Movement notes.** The byte-fit half of this artifact's argument is now the
+shared flat-carriage table, not a family-specific measurement, and is cited
+rather than re-derived: `docs/exec-plans/evidence/necessity/transaction-field-chunk-v1.md`'s
+own "Measurements — flat `FieldCarriageV1` scheme" section, re-run this pass
+via the same suites (that file additionally cites
+`complete-item-carriage-policy-v1.test.ts`, 6/6 here too). Carried from
+there rather than re-taken: tier-1 nominal cap 14,336 (item ≤ 14,332),
+**falsified at the signed-transaction layer above a 13,357-byte item /
+13,361-byte preimage (#611, `docs/spec/midgard-tx.md` §8.3, escalated to
+owner authority, not re-priced here)**; tier-2 `K` = 15,148 reliable / 15,644
+exact, unmoved by #606; tier-3 combined lower bound 16,613 bytes (not the
+P7-pinned 16,579 — #606 welded `field_hash` into the certificate datum,
+`docs/spec/midgard-tx.md` §8.10). The two byte guardrails that make this
+fold necessary in the first place — `maxTransactionAggregateFieldBytes`
+32,768 (`MAX_MINT_PREIMAGE_BYTES`, `demo/midgard-core/src/consensus-profile-v1.ts:174`)
+and `maxDistinctAssetCount` 16,384
+(`MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT`, `consensus-profile-v1.ts:146,255`)
+— are structural guardrails independent of carriage tier and did not move.
+None of the above is re-flagged as a new finding; it is the same movement
+`transaction-field-chunk-v1.md` already records, cited here because this
+artifact's byte-fit representations 1–2 below inherit it directly.
+
+### Exact limiting constraint — flat scheme
+
+Two constraints stack, and only one of them moved. **Byte fit** (how the
+mint field's bytes, and one policy's item within it, reach the machine) is
+now the flat ladder cited above: tier 1 to the signed frontier at 13,357
+item bytes, tier 2 to `K` = 15,148, tier 3 to the 32,768-byte aggregate cap.
+**Execution fit** (how up to 16,384 distinct assets' conservation mutations
+are folded once the policy's bytes are available) is unmoved: each mutation
+is checked against the accumulated `Value` delta commitment via its own MPF
+sibling path, and a one-shot fold across the worst legal policy would
+concentrate all of its mutations in one step. One transition per asset with
+one bounded `bounded_item_v1` chunk remains the largest step shape that
+stays inside the reserved 13,200,000-memory / 8,000,000,000-CPU ceilings
+(GOAL_SPEC §3.3) for the worst legal field — the same shape the counted era
+used, now gated internally rather than against a field-level wire
+commitment.
+
+### Why no simpler authenticated representation closes the gap — flat scheme
+
+Tier 1 and tier 2 now hand the machine the *complete* mint-field preimage in
+one step below their respective frontiers — tier 2 "hashes the whole
+preimage against the committed field hash (measured free at ≤ 32 KB)" per
+`docs/spec/midgard-tx.md` §8.2 — which removes the old byte-revelation
+argument below `K`. It does **not** remove the per-asset conservation
+argument: mint verification is not byte transport, and having every asset
+triple's bytes in hand does not bound the cost of checking each one against
+the accumulated `Value` delta commitment. A complete-field representation
+that skipped the per-asset fold would concentrate up to 16,384 MPF mutations
+in one transition; the deployed `MintFoldAssetWitness` walk is the same
+minimal per-asset-cursor machinery the counted era used, now decoupled from
+(and cheaper to reach into, since whole-preimage reads are free through
+tier 1/2) the byte-carriage question that `transaction-field-chunk-v1.md`
+answers separately.
+
+### Preserved complete-item path — flat scheme
+
+Mint fields — and the one policy's item within a mint field — that fit
+tier 1 (signed frontier 13,357 bytes) or tier 2 (`K` = 15,148) reach the
+machine as a complete preimage in one carriage step, exactly as the counted
+era's "small fields fold in a single chunk whose bytes are the complete
+field" did — only the door supplying that preimage changed. Chunked
+per-asset folding and the complete-item read bind the identical bounded-item
+commitment: `demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts`
+(2/2 this pass) proves commitment equality and
+omission/duplication/reorder/substitution/trailing rejection for both, and
+`ordered-collection-mint-boundary-v1.test.ts` (1/1 this pass) exercises the
+deployed mint policy/asset packing at the `maxValueSize` boundary with every
+policy authorized by its field-6 native script.
+
+### Necessity conclusion (re-derived for the flat scheme)
+
+Re-derived same-direction: **YES**. A mint field whose policy carries too
+many assets to fold against the `Value` delta commitment in one step still
+requires the staged `MintFoldAssetWitness` walk, one asset per step,
+regardless of which §8 tier delivered the field's bytes — the flat
+reversion answered the byte-carriage question this artifact used to share
+with `transaction-field-chunk-v1.md`'s family, and left the per-asset
+conservation question, which is this artifact's own, untouched. Nothing in
+this pass's measurements (all suites cited above green against the current
+blueprint) weakens or strengthens that conclusion past what the counted-era
+analysis below already established for its own scheme.
+
+## Measurements — SUPERSEDED (counted-era `TransactionFieldChunkWitness` scheme; retained per GOAL_SPEC §3 invariant 14)
+
+**Everything from this heading through the end of "Preserved complete-item
+path" below prices the *counted* `TransactionFieldChunkWitness` mechanism's
+byte-carriage half only.** It is retained verbatim as historical record —
+superseded-not-deleted, GOAL_SPEC §3 invariant 14 — not because it is current
+guidance. The flat-scheme section above is the current analysis for the
+byte-fit representations (1–2); the execution-fit representation (4) and its
+conclusion carry forward unchanged, restated above rather than re-argued.
+Nothing below this notice was re-measured this pass.
+
+### Measurements (§3.2 order — stop at the first representation that fits)
 
 | Representation | Tx bytes / maxTxSize | Mem / limit·0.8 | CPU / limit·0.8 | Fee | Fits §3.3? |
 | --- | --- | --- | --- | --- | --- |
@@ -153,7 +297,7 @@
 | 3. Minimum multi-output publication + complete reconstruction | value semantics still require per-asset conservation deltas against the ledger `Value` commitments — the per-asset fold, not the bytes, is the binding step | — | — | — | superseded by 4 |
 | 4. Asset-by-asset fold over ≤4,095-byte chunks (`MintFoldAssetWitness`) | each step ≤ one chunk reveal (≤4,675-byte publication, pinned) | within pinned per-step receipts / 13,200,000 | within pinned receipts / 8,000,000,000 | per pinned receipts | YES |
 
-## Exact limiting constraint
+### Exact limiting constraint — SUPERSEDED (counted era)
 
 `maxTxSize = 16,384` on the complete serialized transaction: the mint
 aggregate field is reserved to 32,768 bytes (measured single-publication
@@ -164,7 +308,7 @@ sibling paths. One transition per asset with one bounded chunk is the
 largest step shape that stays inside both the byte envelope and the
 reserved execution ceilings for the worst legal field.
 
-## Why no simpler authenticated representation closes the gap
+### Why no simpler authenticated representation closes the gap — SUPERSEDED (counted era)
 
 Mint verification is not byte transport: every asset triple must be checked
 against the accumulated `Value` delta commitment. A complete-field
@@ -174,7 +318,7 @@ concentrates 16,384 MPF mutations in one step. The deployed fold reuses the
 same bounded chunk commitment for the field bytes and adds only the
 per-asset cursor.
 
-## Preserved complete-item path
+### Preserved complete-item path — SUPERSEDED (counted era)
 
 Mint fields at or below 14,396 bytes retain complete-item carriage for
 byte authentication (direct at or below the measured 13,282-byte frontier;

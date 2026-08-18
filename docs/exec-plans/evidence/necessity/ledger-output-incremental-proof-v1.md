@@ -145,7 +145,178 @@
   `demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts`
   (deterministically regenerable).
 
-## Measurements (§3.2 order — stop at the first representation that fits)
+## Measurements — flat `FieldCarriageV1` scheme (current; §3.2 order — stop at the first tier that fits)
+
+**The flat reversion (#552/#565, complete) replaced the counted
+`TransactionFieldChunkWitness` field-carriage mechanism below with the §8
+three-tier ladder** (`docs/spec/midgard-tx.md` §8) for the *byte* question
+(how one complete ledger-output item's bytes, as a whole `outputs`-field
+item, reach the machine). It did **not** touch the *structural* question
+this artifact actually adjudicates: how one output's already-authenticated
+preimage is walked incrementally — chunk by chunk, datum action by datum
+action, native-script frame by native-script frame, Value asset by Value
+asset — once the machine has that preimage's commitment in hand. That walk
+is still driven by `ValidationAuxiliaryWitnessV1.LedgerOutputProofBeginWitness
+{ output_index, total_length, item_commitment, siblings }` /
+`.LedgerOutputProofStepWitness { witness: ledger_output_proof_v1.LedgerOutputProofWitnessV1 }`
+/ `.LedgerOutputProofFinalizeWitness { descriptor_cbor, signer_proof }`
+(`onchain/aiken/lib/midgard/validation-machine-v1.ak:316-327`), dispatched by
+stage-5's `script_sources_stage_five`
+(`validation-machine-v1.ak:9429-9489`: begin routes to
+`script_sources_output_proof_begin`, step to `script_sources_output_proof_step`,
+finalize to `script_sources_output_proof_finalize`, gated on
+`ledger_output_proof_v1.terminal_is_exact_v1`), and `LedgerOutputProofWitnessV1`'s
+own four live variants — `LedgerOutputProofChunks { chunk_proof,
+next_chunk_proof }`, `LedgerOutputProofValue { policy_id, asset_name,
+quantity, siblings }`, `LedgerOutputProofDatum`, `LedgerOutputProofNativeFrame`,
+and `LedgerOutputProofAdvanced { control }`
+(`onchain/aiken/lib/midgard/ledger-output-proof-v1.ak:52-76`) — still open
+their chunks against `bounded_item_v1.verify_chunk(control.item_commitment,
+proof)` (`ledger-output-proof-v1.ak:486`) and still walk in strides of
+`bounded_item_v1.chunk_bytes` (`:498-554,839-875`), unchanged since the
+counted era, with `chunk_bytes: Int = 4095`
+(`onchain/aiken/lib/midgard/bounded-item-v1.ak:11`). The `item_commitment`
+and `total_length` this family's begin step receives are handed off from
+stage 4's proof-only tag-29 fold (unchanged — see the "Preserved
+complete-item path" discussion below, carried forward verbatim), not from
+canonical decode's flat door directly; the flat reversion is one hop removed
+from this family, reached only through the complete-item byte question
+representations 1–2 below share with every other §3.2 family.
+
+All figures below were reproduced this pass against the blueprint this
+file's own Binding section already pins post-#606
+(`onchain/aiken/plutus.json` sha256
+`f49cae224f24cfab577f1ed10b5340384b75e541851eb7b77b507a79cb7d5e00`, md5
+`5e38d7c6ccb7987d0aca710307dcaea7`, 398 validators / 702 definitions, fork
+`aiken v1.1.23+2a78108`, `--env testnet` — confirmed by a fresh
+`sha256sum`/`md5sum` of `onchain/aiken/plutus.json` this pass; no Binding
+refresh needed, the last bullet above was already current) by running six
+suites with `MIDGARD_PRINT_PROOF_FIT=1`, one file at a time
+(`pnpm --config.verifyDepsBeforeRun=false --dir midgard-validation exec
+vitest run tests/<file> --pool=forks --no-file-parallelism --bail=0` from
+`demo/`): `complete-item-proof-fit-v1.test.ts` (5/5),
+`complete-item-proof-fit-emulator-v1.test.ts` (6/6),
+`field-preimage-carriage-fit-emulator-v1.test.ts` (16/16),
+`complete-item-carriage-tiers-emulator-v1.test.ts` (5/5),
+`complete-item-carriage-policy-v1.test.ts` (6/6), and
+`complete-item-equivalence-v1.test.ts` (2/2) — all green. The Aiken-level
+unit test this family's own "Preserved complete-item path" cites,
+`script_sources_rejects_a_forged_output_item_commitment` /
+`_length`, is an `.ak` test, not a vitest suite; per this pass's
+measurement rules (no `aiken build`/`aiken check` in `onchain/aiken`) it was
+not re-run — its continued presence in the source tree and in the compiled
+398-validator blueprint above is cited as structural evidence only, not as
+a re-taken measurement.
+
+**Movement notes.** The byte-fit half of this artifact's argument is the
+shared flat-carriage table, cited rather than re-derived:
+`docs/exec-plans/evidence/necessity/transaction-field-chunk-v1.md`'s own
+"Measurements — flat `FieldCarriageV1` scheme" section, re-run this pass via
+the same suites (that file is the origin of the citation above; nothing
+here is a second, independent derivation of it). Carried from there:
+tier-1 nominal cap 14,336 (item ≤ 14,332), **falsified at the
+signed-transaction layer above a 13,357-byte item / 13,361-byte preimage
+(#611, `docs/spec/midgard-tx.md` §8.3, escalated to owner authority, not
+re-priced here)**; tier-2 `K` = 15,148 reliable / 15,644 exact, unmoved by
+#606; tier-3 combined lower bound 16,613 bytes (not the P7-pinned 16,579 —
+#606 welded `field_hash` into the certificate datum,
+`docs/spec/midgard-tx.md` §8.10). `maxLedgerOutputPreimageBytes` itself is
+unmoved at 16,384 (confirmed live this pass in
+`complete-item-proof-fit-v1.test.ts`'s printed receipt:
+`"maxLedgerOutputPreimageBytes": 16384`); it is the tier-1/tier-2/tier-3
+*route* to that 16,384-byte ceiling that changed, not the ceiling. The
+begin/step/finalize per-step receipt ceilings this family's own
+"Re-measurement 2026-08-03" section pins (3,398,228 mem, 1,209,745,039 cpu)
+are downstream of the incremental walk, not the field door, and are not
+re-flagged as new movement here. None of the above is a new finding; it is
+the same movement `transaction-field-chunk-v1.md` already records, cited
+here because representations 1–2 below inherit it directly.
+
+### Exact limiting constraint — flat scheme
+
+Two constraints stack, and only one of them moved. **Byte fit** (how one
+complete ledger-output item's bytes reach the machine as a field item) is
+now the flat ladder cited above: tier 1 to the signed frontier at 13,357
+item bytes, tier 2 to `K` = 15,148, tier 3 to the 32,768-byte aggregate cap
+— none of which reach `maxLedgerOutputPreimageBytes` (16,384) in one
+carriage step, since 16,384 exceeds even tier 3's per-item practical
+frontier once framed as a complete field item. **Incremental-walk fit**
+(how the output's datum/Value/native-script sub-structures are verified
+once its preimage commitment is available) is unmoved: a 16,384-byte
+complete output's `Verify` redeemer still cannot be framed in one
+publication transaction at all (the original 16,900-byte measurement below
+is a structural fact about redeemer framing overhead, independent of which
+tier delivered the item), so the begin/step/finalize traversal — one
+bounded chunk, one datum action, one native-script frame, or one Value
+asset per step — remains the only route to a 16,384-byte output's complete
+authentication.
+
+### Why no simpler authenticated representation closes the gap — flat scheme
+
+Tier 1 and tier 2 now hand the machine a *complete* item preimage in one
+step below their respective frontiers — tier 2 "hashes the whole preimage
+against the committed field hash (measured free at ≤ 32 KB)" per
+`docs/spec/midgard-tx.md` §8.2 — which removes the old byte-revelation
+argument for items at or below `K`. It does **not** remove the
+incremental-walk argument for the ledger-output's own maximum, 16,384 bytes,
+which sits above every tier's practical single-step frontier: a flat
+multi-output publication would still need the datum, Value, and
+native-script sub-structures verified against the output commitment, which
+is exactly what the begin/step/finalize route does while consuming the
+same `bounded_item_v1` chunks — a flat variant would duplicate the chunk
+machinery without removing any step, now for the identical reason the
+counted era gave, just with the field-level revelation question answered
+separately.
+
+### Preserved complete-item path — flat scheme
+
+Ledger outputs that fit tier 1 (signed frontier 13,357 bytes) or tier 2
+(`K` = 15,148) reach the machine as a complete preimage in one carriage step
+through the canonical-decode complete-item route — the same
+`TransactionFieldItemWitness` guard `complete-item-carriage-policy-v1.test.ts`
+pins (6/6 this pass), now gated by the flat door rather than a per-item wire
+commitment. Both representations still bind the same bounded-item
+commitment; equivalence and
+omission/duplication/reorder/substitution/trailing rejection are still
+exercised by `demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts`
+(2/2 this pass) and the deployed-route rejection tests in
+`demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`
+(6/6 this pass). The stage-4/stage-5 hand-off — the proof-only tag-29
+witness that makes stage-4 evidence O(1) in output size, described in the
+"Residual gap: CLOSED" paragraph below — is untouched by the flat
+reversion; it operates on the authenticated
+`(field_index, item_index, item_length, item_commitment)` tuple regardless
+of which §8 tier delivered the underlying bytes, and is retained verbatim
+below rather than re-argued.
+
+### Necessity conclusion (re-derived for the flat scheme)
+
+Re-derived same-direction: **YES**. A maximum, 16,384-byte ledger output
+still equals the whole L1 envelope by itself and still cannot be framed
+into one publication or proof transaction regardless of which §8 tier would
+otherwise carry it, so the begin/step/finalize incremental traversal —
+one bounded chunk, datum action, native frame, or Value asset per step —
+remains required. The flat reversion answered the byte-carriage question
+this artifact used to share with `transaction-field-chunk-v1.md`'s family
+for items at or below tier 3, and left the incremental-walk question for
+the ledger-output's own 16,384-byte maximum, which this artifact owns,
+untouched. Nothing in this pass's measurements (all vitest suites cited
+above green against the current blueprint) weakens or strengthens that
+conclusion past what the counted-era analysis below already established
+for its own scheme.
+
+## Measurements — SUPERSEDED (counted-era `TransactionFieldChunkWitness` scheme; retained per GOAL_SPEC §3 invariant 14)
+
+**Everything from this heading through the end of "Preserved complete-item
+path" below prices the *counted* `TransactionFieldChunkWitness` mechanism's
+byte-carriage half only.** It is retained verbatim as historical record —
+superseded-not-deleted, GOAL_SPEC §3 invariant 14 — not because it is current
+guidance. The flat-scheme section above is the current analysis for the
+byte-fit representations (1–2); the incremental-walk representation (4) and
+its conclusion carry forward unchanged, restated above rather than
+re-argued. Nothing below this notice was re-measured this pass.
+
+### Measurements (§3.2 order — stop at the first representation that fits)
 
 | Representation | Tx bytes / maxTxSize | Mem / limit·0.8 | CPU / limit·0.8 | Fee | Fits §3.3? |
 | --- | --- | --- | --- | --- | --- |
@@ -154,7 +325,7 @@
 | 3. Minimum multi-output publication + complete logical reconstruction | not deployed; the incremental route below consumes the same ≤4,095-byte bounded chunks and additionally interleaves Value, datum-traversal, and native-frame sub-proofs that a flat reconstruction would still need | — | — | — | superseded by 4 |
 | 4. Incremental begin/step/finalize traversal (chunks + datum actions + native frames + Value proofs) | each step ≤ one bounded chunk reveal (≤4,675-byte publication, pinned) | within pinned per-step receipts (3,398,228 max observed field-chunk receipt) / 13,200,000 | 1,209,745,039 / 8,000,000,000 | per pinned receipts | YES |
 
-## Exact limiting constraint
+### Exact limiting constraint — SUPERSEDED (counted era)
 
 `maxTxSize = 16,384` on the complete serialized publication or proof
 transaction: a maximum 16,384-byte ledger output equals the whole L1
@@ -164,7 +335,7 @@ by 1,906 bytes. The consensus profile therefore retains ledger outputs
 resolve-inputs membership route must be able to traverse output preimages,
 inline datums, embedded native scripts, and Values chunk by chunk.
 
-## Why no simpler authenticated representation closes the gap
+### Why no simpler authenticated representation closes the gap — SUPERSEDED (counted era)
 
 The complete output cannot enter one transaction above 14,396 bytes
 (measured, not inferred from item length). A multi-output flat publication
@@ -173,7 +344,7 @@ verified against the output commitment, which is exactly what the
 begin/step/finalize route does while consuming the same bounded chunks; a
 flat variant would duplicate the chunk machinery without removing any step.
 
-## Preserved complete-item path
+### Preserved complete-item path — SUPERSEDED (counted era)
 
 Every output at or below `maxSinglePublicationCompleteItemBytes` (14,396)
 keeps its complete-item carriage: the canonical-decode producer emits
