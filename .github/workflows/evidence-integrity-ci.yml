@@ -152,6 +152,19 @@ jobs:
       # rejected with its specific diagnostic.
       - name: Self-test the CG4 gate against seeded promotions
         run: node demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate-self-test.mjs
+      # #479/CG1: every parameterized hub/control validator must fit a real
+      # 16,384-byte publication transaction. The gate recomputes the roster
+      # from nodeRuntimeReferenceScriptTargets and fails closed on drift, a
+      # missing or invented validator, an unjustified exclusion, or a stale
+      # pin. The blueprint itself is gitignored and structurally absent from
+      # a fresh checkout, so ONLY the working-tree blueprint-hash comparison
+      # is relaxed here; it enforces wherever a working tree carries the
+      # blueprint, and re-pins at #510's freeze-event regeneration.
+      - name: Verify canonical V1 CG1 control-publication fit gate
+        run: node demo/scripts/verify-canonical-v1-cg1-control-publication-fit.mjs --blueprint-optional
+      # An uninvoked gate and a gate that cannot fail are the same defect.
+      - name: Self-test the CG1 gate against seeded mutations
+        run: node demo/scripts/verify-canonical-v1-cg1-control-publication-fit-self-test.mjs
 
   # #519 V-8: `verify-canonical-v1-header-v1-abi.mjs` holds the only comparison
   # of the format registry's L01 contract against BOTH real projections — the

@@ -45,6 +45,11 @@ const repositoryRoot = resolve(scriptDirectory, "../..");
 const GATE_PATH =
   "docs/exec-plans/evidence/canonical-v1-cg1-control-publication-fit-v1.json";
 const BLUEPRINT_PATH = "onchain/aiken/plutus.json";
+/* The blueprint is gitignored, so a fresh checkout (CI) structurally     */
+/* cannot carry it. --blueprint-optional skips ONLY the working-tree hash */
+/* comparison in that case; every index-bound check still enforces, and a */
+/* PRESENT blueprint is always compared regardless of the flag.           */
+const blueprintOptional = process.argv.includes("--blueprint-optional");
 const ROSTER_SOURCE_PATH =
   "demo/midgard-node/src/transactions/reference-scripts.ts";
 const AUTH_TOKEN_MAP_PATH = "demo/midgard-sdk/src/reference-scripts.ts";
@@ -290,9 +295,9 @@ if (blueprintExists) {
   } catch {
     blueprintValidatorCount = -1;
   }
-} else {
+} else if (!blueprintOptional) {
   fail(
-    `Blueprint ${BLUEPRINT_PATH} does not exist in the working tree; CG1 cannot measure a hash basis without it`,
+    `Blueprint ${BLUEPRINT_PATH} does not exist in the working tree; CG1 cannot measure a hash basis without it (pass --blueprint-optional only where the gitignored blueprint is structurally absent, e.g. CI)`,
   );
 }
 const blueprintIsIndexed = indexHas(BLUEPRINT_PATH);
@@ -657,8 +662,11 @@ const measuredZeroDebt = {
   missingRosterEntries: missingRosterEntries.length,
   extraRosterEntries: extraRosterEntries.length,
   unjustifiedExclusions,
-  staleBlueprintPins:
-    blueprintExists && gate.hashBasis?.blueprintSha256 === blueprintSha256
+  staleBlueprintPins: blueprintExists
+    ? gate.hashBasis?.blueprintSha256 === blueprintSha256
+      ? 0
+      : 1
+    : blueprintOptional
       ? 0
       : 1,
   dependencyRowsNotPass: REQUIRED_DEPENDENCIES.filter((id) => {
