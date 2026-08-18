@@ -780,18 +780,12 @@ describe("validation-dispute transaction validity", () => {
       Data.to(transition, ValidationOneStepWitnessV1),
       "hex",
     );
-    const completeCollectionProof = new Constr(0, [
-      1n,
-      0n,
-      1n,
-      0n,
-      1n,
-      "08".repeat(32),
-      [],
-      [],
-    ]);
+    // #597: the tag-30 `TransactionFieldItemWitness` carries one field — a
+    // `FieldCarriageV1` — so a fitting fixture is a tier-1 `Inline` carriage,
+    // `Constr(0, [preimage])`, not the retired collection-proof pair.
+    const completeItemCarriage = new Constr(0, ["00"]);
     const completeItemAuxiliaryCbor = Buffer.from(
-      Data.to(new Constr(30, [completeCollectionProof, "00"]) as never),
+      Data.to(new Constr(30, [completeItemCarriage]) as never),
       "hex",
     );
     for (const proofItemReferenceInputIndex of [undefined, 0n] as const) {
@@ -837,7 +831,7 @@ describe("validation-dispute transaction validity", () => {
     // that cannot be semantically equivalent to the direct proof. Keep the
     // direct deployed ABI parseable and fail closed on that reference route.
     const stageFourAuxiliaryCbor = Buffer.from(
-      Data.to(new Constr(29, [completeCollectionProof]) as never),
+      Data.to(new Constr(29, [completeItemCarriage]) as never),
       "hex",
     );
     const stageFourDirect = encodeValidationSemanticResolutionRedeemerV1({
@@ -883,16 +877,6 @@ describe("validation-dispute transaction validity", () => {
       "22".repeat(32),
       [],
     ] as const;
-    const redeemerItemProof = new Constr(0, [
-      1n,
-      8n,
-      1n,
-      0n,
-      1n,
-      "22".repeat(32),
-      [],
-      [],
-    ]);
     const redeemerChunkProof = new Constr(0, [
       1n,
       8n,
@@ -958,7 +942,7 @@ describe("validation-dispute transaction validity", () => {
       },
       {
         index: 15,
-        auxiliary: new Constr(29, [redeemerItemProof]),
+        auxiliary: new Constr(29, [completeItemCarriage]),
         module: "script_sources_stage_one_redeemer_semantic_v1",
       },
       {
@@ -1012,10 +996,7 @@ describe("validation-dispute transaction validity", () => {
       },
       {
         index: 25,
-        auxiliary: new Constr(1, [
-          new Constr(0, [1n, 3n, 1n, 0n, 28n, "11".repeat(32), [], []]),
-          new Constr(0, [1n, 3n, 0n, 28n, 0n, "11".repeat(28), [], []]),
-        ]),
+        auxiliary: new Constr(1, [0n, 0n, completeItemCarriage]),
         module: "script_sources_stage_seven_observer_semantic_v1",
       },
       {
@@ -1376,12 +1357,12 @@ describe("validation-dispute transaction validity", () => {
     ).toThrow(/FoldMap or FinalizeFrame/u);
   });
 
-  it("emits the deployed 5-field complete-item Verify redeemer with the item unwrapped", () => {
-    // C21-DISPUTE-SUBMIT defect 1: the standalone encoder previously wrapped
-    // the whole auxiliary into a 4-field Verify action. The deployed
-    // canonical_decode_item_semantic_v1 ABI takes 5 fields with
-    // collection_proof and item_cbor as separate arguments, item bytes
-    // unwrapped. Pin the exact emitted shape and its blueprint parse.
+  it("emits the deployed 4-field complete-item Verify redeemer with the carriage as its own field", () => {
+    // C21-DISPUTE-SUBMIT defect 1, superseded by #597: the deployed
+    // canonical_decode_item_semantic_v1 ABI's `Verify` arm takes 4 fields —
+    // input_index, output_index, transition, and the item's own §8
+    // `FieldCarriageV1` — not the retired collection_proof/item_cbor pair.
+    // Pin the exact emitted shape and its blueprint parse.
     const state: ValidationMachineStateV1 = {
       machine_version: 1n,
       event_key_hash: "01".repeat(32),
@@ -1409,23 +1390,13 @@ describe("validation-dispute transaction validity", () => {
       ),
       "hex",
     );
-    const collectionProof = new Constr(0, [
-      1n,
-      0n,
-      1n,
-      0n,
-      1n,
-      "08".repeat(32),
-      [],
-      [],
-    ]);
-    const itemCborHex = "0102030405";
+    const itemCarriage = new Constr(0, ["0102030405"]);
     const oneStepArgument = {
       resolverIndex: 0,
       semanticResolverIndex: 1,
       transitionCbor,
       auxiliaryCbor: Buffer.from(
-        Data.to(new Constr(30, [collectionProof, itemCborHex]) as never),
+        Data.to(new Constr(30, [itemCarriage]) as never),
         "hex",
       ),
     };
@@ -1442,14 +1413,13 @@ describe("validation-dispute transaction validity", () => {
     const directAction = directOuter.fields[0] as Constr<unknown>;
     expect(directAction).toBeInstanceOf(Constr);
     expect(directAction.index).toBe(0);
-    expect(directAction.fields).toHaveLength(5);
+    expect(directAction.fields).toHaveLength(4);
     expect(directAction.fields[0]).toBe(5n);
     expect(directAction.fields[1]).toBe(7n);
     expect(directAction.fields[2]).toEqual(
       Data.from(transitionCbor.toString("hex")),
     );
-    expect(directAction.fields[3]).toEqual(collectionProof);
-    expect(directAction.fields[4]).toBe(itemCborHex);
+    expect(directAction.fields[3]).toEqual(itemCarriage);
     expect(
       parseExactAikenDataCbor({
         blueprint,

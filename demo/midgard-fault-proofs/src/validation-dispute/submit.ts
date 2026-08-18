@@ -3615,7 +3615,6 @@ export const encodeValidationSemanticResolutionRedeemerV1 = ({
             outputIndex,
             staged.transitionData,
             staged.auxiliary.fields[0]!,
-            staged.auxiliary.fields[1]!,
           ]),
         ]),
       ),
@@ -3725,7 +3724,6 @@ const makeSemanticResolutionRedeemer = ({
             layout.outputIndex,
             transition,
             auxiliary.fields[0]!,
-            auxiliary.fields[1]!,
           ]),
         ]),
       );
@@ -4126,16 +4124,28 @@ export const submitValidationDisputePrepareSelected = async ({
     );
   }
   const staged = requireStagedOneStepArgumentV1(oneStepArgument);
-  const prepareCompleteItemByHash =
+  const isPrepareCompleteCanonicalItem =
     oneStepArgument.resolverIndex === 0 &&
     staged.semanticResolverIndex === 1 &&
     hasValidationAuxiliaryShapeV1(
       staged.auxiliary,
       VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
-    ) &&
-    typeof staged.auxiliary.fields[1] === "string" &&
+    );
+  // #597: `TransactionFieldItemWitness` carries one field — a `FieldCarriageV1`
+  // — so the size this step budgets the prepare-selected redeemer against is
+  // the tier-1 `Inline` preimage inside the carriage, never a retired second
+  // field. Tiers 2-3 name reference inputs and carry no bytes, so embedding
+  // them directly never needs the by-hash route.
+  const prepareCompleteItemCarriage = isPrepareCompleteCanonicalItem
+    ? midgardFieldCarriageFromDataV1(
+        staged.auxiliary.fields[0]!,
+        "Validation prepare-selected complete item §8 carriage",
+      )
+    : undefined;
+  const prepareCompleteItemByHash =
+    prepareCompleteItemCarriage?.carriage === "Inline" &&
     selectValidationCompleteItemCarriageV1(
-      Buffer.from(staged.auxiliary.fields[1], "hex").length,
+      prepareCompleteItemCarriage.preimage.length,
     ) === "reference";
   const prepareContract =
     contracts.validationTraceDispute.prepareResolvers[
