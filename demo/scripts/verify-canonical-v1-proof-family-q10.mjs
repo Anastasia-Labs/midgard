@@ -1447,8 +1447,8 @@ if (emitJson) {
       evidence.summary.vitestSuitesExecuted,
     )} suites with ${String(evidence.summary.vitestTitlesRequired)} required titles, ${String(
       evidence.summary.emulatorLifecyclesExecuted,
-    )} emulator lifecycles, outputs 5-8 delegated to the Q1x gate, output 10 OPEN on ${String(
-      matrixRowsMeasured,
-    )} parent-owned matrix rows)`,
+    )} emulator lifecycles, outputs 5-8 delegated to the Q1x gate, output 10 ${
+      matricesRecordLocalPass ? "LOCAL_PASS" : "OPEN"
+    } on ${String(matrixRowsMeasured)} parent-owned matrix rows)`,
   );
 }

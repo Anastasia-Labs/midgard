@@ -360,9 +360,9 @@
         "separatorLine": 92,
         "labelColumnHeader": "Rule",
         "rowLabel": "No double spend (DOUBLE-SPEND)",
-        "measuredStatusCell": "✅ (emulator; preprod unproven)",
+        "measuredStatusCell": "✅ Q10 `LOCAL_PASS` (canonical-v1-proof-family-q10-v1.json); live evidence remains Q57/QG3",
         "measuredRemainingCell": "Preprod run (W-T4)",
-        "recordsLocalPass": false
+        "recordsLocalPass": true
       },
       {
         "file": "docs/fault-proofs/catalogue-status.md",
@@ -371,9 +371,9 @@
         "separatorLine": 18,
         "labelColumnHeader": "Type",
         "rowLabel": "`double-spend` (4 steps)",
-        "measuredStatusCell": "✅ Complete & verified (emulator only; not preprod)",
+        "measuredStatusCell": "✅ Q10 `LOCAL_PASS` (canonical-v1-proof-family-q10-v1.json); live evidence remains Q57/QG3",
         "measuredRemainingCell": null,
-        "recordsLocalPass": false
+        "recordsLocalPass": true
       }
     ],
     "comparisonRow": {
@@ -456,8 +456,8 @@
     {
       "output": 10,
       "title": "Coverage and catalogue rows changed to the family's local status at integration",
-      "status": "OPEN",
-      "whyOpen": "Both matrices are measured NOT to record this family's local closure yet. docs/fault-proofs/coverage-matrix.md line 96 states `✅ (emulator; preprod unproven)` with `Preprod run (W-T4)` remaining, and docs/fault-proofs/catalogue-status.md line 19 states `✅ Complete & verified (emulator only; not preprod)`. Neither is the statement the adjacent Q13 row makes (`✅ Q13 \\`LOCAL_PASS\\`; live evidence remains Q57/QG3`), which is what a closed local status looks like in this matrix. Both files are parent-owned — the manifest's Q10 row lists them under pathsMustNotTouch — so this gate measures their current cells, derives this row's status from that measurement, and lists the edit under parentIntegration.pendingEdits instead of performing it. The cell closes when the parent lands the rows, not when this artifact is written.",
+      "status": "LOCAL_PASS",
+      "whyPreviouslyOpen": "SUPERSEDED IN THIS TREE: the parent integration landed both matrix rows in the exact form pinned under parentIntegration.pendingEdits, and this row's status is re-derived LOCAL_PASS from the re-measured Status cells. The original derivation is retained: Both matrices are measured NOT to record this family's local closure yet. docs/fault-proofs/coverage-matrix.md line 96 states `✅ (emulator; preprod unproven)` with `Preprod run (W-T4)` remaining, and docs/fault-proofs/catalogue-status.md line 19 states `✅ Complete & verified (emulator only; not preprod)`. Neither is the statement the adjacent Q13 row makes (`✅ Q13 \\`LOCAL_PASS\\`; live evidence remains Q57/QG3`), which is what a closed local status looks like in this matrix. Both files are parent-owned — the manifest's Q10 row lists them under pathsMustNotTouch — so this gate measures their current cells, derives this row's status from that measurement, and lists the edit under parentIntegration.pendingEdits instead of performing it. The cell closes when the parent lands the rows, not when this artifact is written.",
       "evidence": "Measured cell text for both rows is recorded verbatim in output10MatrixRows and re-read by this gate from the header-derived Status column, so a parent edit that lands the rows flips this row's derivation rather than requiring a prose change. The Q10 status this row is waiting on is otherwise complete: outputs 1 to 9 are LOCAL_PASS above.",
       "owner": "parent"
     }
@@ -474,8 +474,8 @@
   "residualFindings": [
     {
       "id": "Q10-F1",
-      "severity": "gap",
-      "finding": "Output 10 is OPEN on parent-owned files. docs/fault-proofs/coverage-matrix.md line 96 records `✅ (emulator; preprod unproven)` with `Preprod run (W-T4)` remaining, and docs/fault-proofs/catalogue-status.md line 19 records `✅ Complete & verified (emulator only; not preprod)`. Neither states this family's local closure, and the manifest's Q10 row lists both files under pathsMustNotTouch, so the edit cannot be made from this task. The measured cell text is pinned in output10MatrixRows so the parent's edit is a one-line diff against a known baseline rather than a rewrite.",
+      "severity": "observation",
+      "finding": "SUPERSEDED IN THIS TREE: the parent integration landed both matrix edits in the pinned form and the queue row, and output 10 is LOCAL_PASS re-derived from the measured cells. The original finding is retained: Output 10 is OPEN on parent-owned files. docs/fault-proofs/coverage-matrix.md line 96 records `✅ (emulator; preprod unproven)` with `Preprod run (W-T4)` remaining, and docs/fault-proofs/catalogue-status.md line 19 records `✅ Complete & verified (emulator only; not preprod)`. Neither states this family's local closure, and the manifest's Q10 row lists both files under pathsMustNotTouch, so the edit cannot be made from this task. The measured cell text is pinned in output10MatrixRows so the parent's edit is a one-line diff against a known baseline rather than a rewrite.",
       "owner": "parent"
     },
     {
@@ -511,8 +511,8 @@
   ],
   "summary": {
     "outputs": 10,
-    "localPass": 9,
-    "open": 1,
+    "localPass": 10,
+    "open": 0,
     "notApplicable": 0,
     "delegatedOutputs": 4,
     "aikenModules": 4,
@@ -534,7 +534,8 @@
       "docs/fault-proofs/catalogue-status.md line 19 (`\\`double-spend\\` (4 steps)`): change the Status cell from `✅ Complete & verified (emulator only; not preprod)` to this family's local closure, citing this artifact.",
       "GOAL_PROGRESS.md: add the Q10 queue row the manifest's schedulingNote says is missing, binding 9.1 outputs 1 to 9 at LOCAL_PASS with the measured numbers in this artifact — 15 of 15 on-chain selectors across four step modules under aiken v1.1.23+2a78108, 32 of 32 canonical-evidence tests, 8 of 8 prepare-double-spend, 1 of 1 spend-input-witness, 3 of 3 emulator lifecycles — and recording output 10 as parent-owned until the two matrix rows land.",
       "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json row Q10: the schedulingNote still says what keeps the row open is the prescribed per-family surfaces (canonical-v1-proof-family-q10-v1.json, verify-canonical-v1-proof-family-q10.mjs) and the queue row. Both surfaces now exist; the note needs re-scoping to the queue row and output 10. The row's focusedCommands also cite `double_spend_step_01_rejects_a_missing_verifier_invocation`, which is measured absent from fraud_proofs/double_spend/step_01 — the module's five measured selectors are pinned in output4OnchainSelectors and the stale citation belongs in the parent's next manifest pass.",
-      "docs/fault-proofs/coverage-matrix.md line 96 and docs/fault-proofs/catalogue-status.md preamble carry the two stale citations recorded as Q10-F3 (the `phase-b.ts:852` line reference against 2 measured sites at 993 and 1124, and `exactly 8 categories` against 11 measured), which the parent may fix in the same pass."
+      "docs/fault-proofs/coverage-matrix.md line 96 and docs/fault-proofs/catalogue-status.md preamble carry the two stale citations recorded as Q10-F3 (the `phase-b.ts:852` line reference against 2 measured sites at 993 and 1124, and `exactly 8 categories` against 11 measured), which the parent may fix in the same pass.",
+      "SUPERSEDED IN THIS TREE — the parent integration pass landed the two matrix status cells in the pinned form, added the queue row, re-scoped the manifest schedulingNote, and re-pinned the stale focusedCommands citation; the optional stale-citation fixes (phase-b line references, the exactly-8-categories preamble, and the pre-#582 selector name in the coverage matrix prose) remain for a later parent pass."
     ]
   }
 }

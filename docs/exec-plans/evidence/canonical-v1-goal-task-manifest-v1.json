@@ -5550,7 +5550,7 @@
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator.test.ts",
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs validators/fraud-proofs/double-spend/step-01.ak validators/fraud-proofs/double-spend/step-02.ak validators/fraud-proofs/double-spend/step-03.ak validators/fraud-proofs/double-spend/step-04.ak lib/midgard/fraud-proofs/double-spend/input-witness.ak lib/midgard/fraud-proofs/double-spend/step-01.ak lib/midgard/fraud-proofs/double-spend/step-02.ak lib/midgard/fraud-proofs/double-spend/step-03.ak lib/midgard/fraud-proofs/double-spend/step-04.ak lib/midgard/fraud-proofs/chunked-inclusion-v1.ak lib/midgard/fraud-proofs/chunked-inclusion-v1.test.ak validators/mpf-chunked-verify.ak",
         "cd onchain/aiken && aiken check --skip-tests",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/double_spend/step_01 double_spend_step_01_binds_a_published_chunk_membership_proof double_spend_step_01_rejects_published_chunks_under_a_forged_root double_spend_step_01_rejects_a_claim_the_redeemer_did_not_name double_spend_step_01_rejects_a_missing_verifier_invocation",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/double_spend/step_01 double_spend_step_01_binds_a_published_chunk_membership_proof double_spend_step_01_rejects_published_chunks_under_a_forged_root double_spend_step_01_rejects_a_claim_the_redeemer_did_not_name",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/chunked_inclusion_v1 chunked_inclusion_v1_verifies_a_deep_published_membership_proof chunked_inclusion_v1_verifies_the_protocol_maximum_step_count chunked_inclusion_v1_rejects_a_withheld_chunk chunked_inclusion_v1_rejects_reordered_chunks",
         "cd onchain/aiken && node scripts/run-focused-check.mjs mpf_chunked_verify mpf_chunked_verify_accepts_a_deep_published_membership_proof mpf_chunked_verify_rejects_a_withheld_chunk mpf_chunked_verify_rejects_reordered_chunks mpf_chunked_verify_rejects_a_substituted_root",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-chunked-proof-carriage.test.ts",
@@ -8402,8 +8402,6 @@
         "A final-tree source inventory changes the enabled/reachable family or rule set named by this row"
       ],
       "blockedOn": [
-        "Q10",
-        "Q11",
         "Q12",
         "Q14",
         "Q15",
@@ -8424,7 +8422,7 @@
         "Q41",
         "Q42"
       ],
-      "blockedBecause": "Q50 is blocked on the current non-PASS rows that own standalone or umbrella catalogue families: Q10-Q12, Q14-Q22, Q27-Q29, Q35, Q37, and Q39-Q42. Q13 and Q44 are already registered PASS. Structural/N/A Q23-Q26, Q30-Q34, Q36, Q38, Q43, and Q45-Q49 require executable route evidence but no standalone positional slot."
+      "blockedBecause": "Q50 is blocked on the current non-PASS rows that own standalone or umbrella catalogue families: Q12, Q14-Q22, Q27-Q29, Q35, Q37, and Q39-Q42. Q10, Q11, Q13 and Q44 are already registered PASS. Structural/N/A Q23-Q26, Q30-Q34, Q36, Q38, Q43, and Q45-Q49 require executable route evidence but no standalone positional slot."
     },
     {
       "id": "Q51",
@@ -8523,8 +8521,6 @@
         "Provider submission semantics, confirmation depth, rollback handling, journal schema, transaction-body hashing, or chain reconciliation query changes after capture"
       ],
       "blockedOn": [
-        "Q10",
-        "Q11",
         "Q12",
         "Q14",
         "Q15",
@@ -8561,7 +8557,7 @@
         "Q49",
         "Q50"
       ],
-      "blockedBecause": "Q51 remains dependency-blocked only on current non-PASS queue rows: Q10, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q21, Q22, Q23, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34, Q35, Q36, Q37, Q38, Q39, Q40, Q41, Q42, Q43, Q45, Q46, Q47, Q48, Q49, Q50. Dependencies recorded PASS, including Q02, Q03, Q13, Q24, Q25, and Q44 where applicable, are deliberately omitted."
+      "blockedBecause": "Q51 remains dependency-blocked only on current non-PASS queue rows: Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q21, Q22, Q23, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34, Q35, Q36, Q37, Q38, Q39, Q40, Q41, Q42, Q43, Q45, Q46, Q47, Q48, Q49, Q50. Dependencies recorded PASS, including Q02, Q03, Q13, Q24, Q25, and Q44 where applicable, are deliberately omitted."
     },
     {
       "id": "Q52",
@@ -8875,8 +8871,6 @@
         "A final-tree source inventory changes the enabled/reachable family or rule set named by this row"
       ],
       "blockedOn": [
-        "Q10",
-        "Q11",
         "Q12",
         "Q14",
         "Q15",
@@ -8917,7 +8911,7 @@
         "Q53",
         "Q58"
       ],
-      "blockedBecause": "Q55 remains dependency-blocked only on current non-PASS queue rows: Q10, Q11, Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q21, Q22, Q23, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34, Q35, Q36, Q37, Q38, Q39, Q40, Q41, Q42, Q43, Q45, Q46, Q47, Q48, Q49, Q50, Q51, Q52, Q53, Q58. Dependencies recorded PASS, including Q02, Q03, Q13, Q24, Q25, and Q44 where applicable, are deliberately omitted."
+      "blockedBecause": "Q55 remains dependency-blocked only on current non-PASS queue rows: Q12, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q21, Q22, Q23, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34, Q35, Q36, Q37, Q38, Q39, Q40, Q41, Q42, Q43, Q45, Q46, Q47, Q48, Q49, Q50, Q51, Q52, Q53, Q58. Dependencies recorded PASS, including Q02, Q03, Q13, Q24, Q25, and Q44 where applicable, are deliberately omitted."
     },
     {
       "id": "Q56",
@@ -9254,8 +9248,6 @@
         "Executable proof tree, structural/N/A inventory, coverage/catalogue documentation, tooling route, focused test result, emulator result, or reconciliation verifier changes after capture"
       ],
       "blockedOn": [
-        "Q10",
-        "Q11",
         "Q12",
         "Q14",
         "Q15",
@@ -9299,7 +9291,7 @@
         "Q62",
         "Q63"
       ],
-      "blockedBecause": "QG1 is OPEN on every non-PASS member of Q10-Q12, Q14-Q50, Q55, and Q58-Q63; authoritative queue PASS rows Q13, Q24, Q25, Q44, and Q54 remain dependencies but are omitted from blockedOn. The current 70-row reconciliation still reports 53 OPEN rows, so no local/live promotion is permitted before exact zero-debt closure."
+      "blockedBecause": "QG1 is OPEN on every non-PASS member of Q10-Q12, Q14-Q50, Q55, and Q58-Q63; authoritative queue PASS rows Q10, Q11, Q13, Q24, Q25, Q44, and Q54 remain dependencies but are omitted from blockedOn. The current 70-row reconciliation still reports 53 OPEN rows, so no local/live promotion is permitted before exact zero-debt closure."
     },
     {
       "id": "QG2",
