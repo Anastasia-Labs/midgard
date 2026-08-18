@@ -4929,3 +4929,42 @@ adjacent rejection, each terminal fold vector byte-identical across
 TypeScript and Aiken. All five #480 acceptance criteria measure PASS;
 the acceptance comment is posted on the issue. Logs:
 `scratchpad/issue-480/` (session-local).
+
+## #484 (B05) C22–C26 re-measured green on the flat basis at `bd833ff3` (2026-08-18)
+
+With B04 measured all-PASS, the C22–C26 rows were replayed at HEAD by
+running each row's `focusedCommands` serially under the sanctioned fork
+binary (`aiken v1.1.23+2a78108`, md5 verified). Every gate exits 0 and
+every count lands exactly on its closure contract: C22 5 guarded Aiken
+(`ledger_output_value_v1` 4/4 including
+`maximum_nested_value_terminal_agrees_with_typescript`;
+`ledger_output_proof_v1` 1/1) + 2/2 TypeScript; C23/C24/C25 4/4 guarded
+constructor/list/map selectors each, with the combined breadth file 7/7;
+C26 4/4 guarded unary-depth selectors + 6/6 TypeScript; normalized
+format, `aiken check --skip-tests`, typecheck, and eslint green
+throughout. These are the first replays of the 140f0a836/e4335bbd
+closure evidence under the post-flat-reversion tree and the
+v1.1.23+2a78108 compiler — the pre-reversion PASS promotions
+(C22–C25 ledgered 2026-08-04, C26 owner-promoted 2026-08-06) carry
+forward onto the flat basis unchanged.
+
+Manifest reconciliation in the same edit set: C22's `readyBecause`
+still read "is not PASS and still owes the two explicitly prescribed
+complete-Value closure checks" — false against both the 2026-08-04
+ledger entry and today's measurement, superseded in place (prior text
+retained verbatim); C22's `expectedNonzeroCounts` gained the fresh
+2026-08-18 measured contract with the prescribed-missing wording
+retained as superseded; C23–C26's `blockedBecause` no-blocker readings
+converted to `readyBecause` measured statements (prior text retained
+verbatim), following the C10–C13 precedent. Manifest-quality gate
+PASS after the edits: 186/186 tasks, 0 defects under the emptied
+ruling-B standing enumeration; the manifest stays prettier-clean.
+`focusedCommands` are untouched, so the capability-reconciliation
+citation basis is unchanged.
+
+C21 remains the only #484 constituent not fully green: its measured
+contract (43 collected, 42 passing, exactly 1 attributed failure) holds
+as re-pinned 2026-08-17; the residuals — the 8,273 carriage-selector
+rebind (doubly owner-gated) and the #597 observe-stage
+reference-script convention — are owner decisions, not chased here.
+Logs: `scratchpad/issue-484/` (session-local).

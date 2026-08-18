@@ -1665,13 +1665,13 @@
         "pnpm --dir demo/midgard-validation typecheck",
         "pnpm --dir demo/midgard-validation exec eslint tests/helpers/ordered-collection-boundary-v1.ts tests/helpers/retained-da-boundary-v1.ts tests/nested-value-boundary-v1.test.ts"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/ledger_output_value_v1.test, midgard/ledger_output_proof_v1.test, nested-value-boundary-v1.test.ts. Current tracked source has exactly 4 named guarded Aiken tests and exactly 1 TypeScript test. Prescribed missing Aiken selector maximum_nested_value_terminal_agrees_with_typescript and prescribed missing TypeScript case proves the complete 5,000-byte Value fits direct and reference carriage before fallback must be added; closure requires exactly 5 guarded Aiken tests and exactly 2 TypeScript tests, all passing with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/ledger_output_value_v1.test, midgard/ledger_output_proof_v1.test, nested-value-boundary-v1.test.ts. Fresh measured contract (2026-08-18, bd833ff3, aiken v1.1.23+2a78108): both previously prescribed checks exist in tracked source since 140f0a836; exactly 4 guarded ledger_output_value_v1 tests and exactly 1 guarded ledger_output_proof_v1 test pass (guarded Aiken total exactly 5) and exactly 2 TypeScript tests pass in nested-value-boundary-v1.test.ts, 0 failures. SUPERSEDED (2026-08-18) CONTRACT, retained verbatim: Current tracked source has exactly 4 named guarded Aiken tests and exactly 1 TypeScript test. Prescribed missing Aiken selector maximum_nested_value_terminal_agrees_with_typescript and prescribed missing TypeScript case proves the complete 5,000-byte Value fits direct and reference carriage before fallback must be added; closure requires exactly 5 guarded Aiken tests and exactly 2 TypeScript tests, all passing with 0 failures.",
       "invalidationTriggers": [
         "F10 inventory, Value/output codec, maxValueSize, output descriptor, or canonical ordering changes",
         "Any writable path, applied validator hash, target protocol parameters, maxTxSize, min-Ada, or proof representation changes",
         "The 5,000/5,001 boundary, policy/asset identities, signed quantities, complete-item fit, or terminal changes"
       ],
-      "readyBecause": "F10 is PASS in the authoritative first GOAL_PROGRESS.md queue; C22 is ready for bounded assignment but is not PASS and still owes the two explicitly prescribed complete-Value closure checks.",
+      "readyBecause": "C22 is PASS: both prescribed closure checks landed in 140f0a836 (2026-08-04, ledgered C22 -> PASS the same day) and the closure contract replays exactly at bd833ff3 (2026-08-18) under aiken v1.1.23+2a78108 (sanctioned fork, md5 b3acfdf348235798cb6b921d0f87750a) — 5 guarded Aiken tests (ledger_output_value_v1 4/4 including maximum_nested_value_terminal_agrees_with_typescript; ledger_output_proof_v1 1/1) and 2 TypeScript tests in nested-value-boundary-v1.test.ts, 0 failures, with normalized-format, aiken check --skip-tests, typecheck, and eslint green. SUPERSEDED (2026-08-18) READING, retained verbatim: F10 is PASS in the authoritative first GOAL_PROGRESS.md queue; C22 is ready for bounded assignment but is not PASS and still owes the two explicitly prescribed complete-Value closure checks.",
       "schedulingNote": "Serialize one shared Aiken compiler lease for both guarded modules, and serialize the TypeScript workspace lease after Aiken; coordinate before any shared output/Value ABI edit."
     },
     {
@@ -1735,7 +1735,7 @@
         "Any writable path, target protocol parameter, cost model, maxTxSize, applied validator hash, or proof representation changes",
         "The accepted/adjacent breadth, child identities/order, source span/frontier, complete-item fit, or terminal changes"
       ],
-      "blockedBecause": "C23 has no remaining non-PASS dependency; C20-2 and C20-8 are both PASS in the authoritative first GOAL_PROGRESS.md queue.",
+      "readyBecause": "C23 replays green at bd833ff3 (2026-08-18) under aiken v1.1.23+2a78108: 4/4 guarded constructor selectors and 7/7 TypeScript tests in the combined breadth file, matching the corrected 2026-08-04 closure contract below (ledgered C23 -> PASS in the 140f0a836 wave). Prior reading, retained verbatim: C23 has no remaining non-PASS dependency; C20-2 and C20-8 are both PASS in the authoritative first GOAL_PROGRESS.md queue.",
       "schedulingNote": "After blockers clear, serialize one shared Aiken compiler lease and the TypeScript workspace lease; C23\u2013C25 share the same breadth modules/file and must run sequentially."
     },
     {
@@ -1799,7 +1799,7 @@
         "Any writable path, target protocol parameter, cost model, maxTxSize, applied validator hash, or proof representation changes",
         "The accepted/adjacent breadth, child identities/order, source span/frontier, complete-item fit, or terminal changes"
       ],
-      "blockedBecause": "C24 has no remaining non-PASS dependency; C20-2 and C20-8 are both PASS in the authoritative first GOAL_PROGRESS.md queue.",
+      "readyBecause": "C24 replays green at bd833ff3 (2026-08-18) under aiken v1.1.23+2a78108: 4/4 guarded list selectors and 7/7 TypeScript tests in the combined breadth file, matching the corrected 2026-08-04 closure contract below (ledgered C24 -> PASS in the 140f0a836 wave). Prior reading, retained verbatim: C24 has no remaining non-PASS dependency; C20-2 and C20-8 are both PASS in the authoritative first GOAL_PROGRESS.md queue.",
       "schedulingNote": "After blockers clear, serialize one shared Aiken compiler lease and the TypeScript workspace lease; C23\u2013C25 share the same breadth modules/file and must run sequentially."
     },
     {
@@ -1863,7 +1863,7 @@
         "Any writable path, target protocol parameter, cost model, maxTxSize, applied validator hash, or proof representation changes",
         "The accepted/adjacent breadth, pair/key/value identities/order, source span/frontiers, complete-item fit, or terminal changes"
       ],
-      "blockedBecause": "C25 has no remaining non-PASS dependency; C20-2 and C20-8 are both PASS in the authoritative first GOAL_PROGRESS.md queue.",
+      "readyBecause": "C25 replays green at bd833ff3 (2026-08-18) under aiken v1.1.23+2a78108: 4/4 guarded map selectors and 7/7 TypeScript tests in the combined breadth file, matching the corrected 2026-08-04 closure contract below (ledgered C25 -> PASS in the 140f0a836 wave). Prior reading, retained verbatim: C25 has no remaining non-PASS dependency; C20-2 and C20-8 are both PASS in the authoritative first GOAL_PROGRESS.md queue.",
       "schedulingNote": "After blockers clear, serialize one shared Aiken compiler lease and the TypeScript workspace lease; C23\u2013C25 share the same breadth modules/file and must run sequentially."
     },
     {
@@ -1931,7 +1931,7 @@
         "The authoritative first GOAL_PROGRESS.md C26 status or any dependency status/ABI changes"
       ],
       "detailStatus": "DETAILED",
-      "blockedBecause": "C26 has no remaining non-PASS dependency; C20-2 and C20-8 are both PASS in the authoritative first GOAL_PROGRESS.md queue.",
+      "readyBecause": "C26 replays green at bd833ff3 (2026-08-18) under aiken v1.1.23+2a78108: 4/4 guarded unary-depth selectors and 6/6 TypeScript tests, consistent with the queue's 2026-08-06 owner promotion to PASS at e4335bbd (this row records measurement only). Prior reading, retained verbatim: C26 has no remaining non-PASS dependency; C20-2 and C20-8 are both PASS in the authoritative first GOAL_PROGRESS.md queue.",
       "schedulingNote": "After C20-8 closes, serialize one shared Aiken compiler lease before the guarded selector batch, then acquire the serialized TypeScript workspace lease; do not overlap shared Data/codec work."
     },
     {
