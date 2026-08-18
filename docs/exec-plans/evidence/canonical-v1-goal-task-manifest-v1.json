@@ -341,7 +341,7 @@
         "pnpm --dir demo exec prettier --check ../docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json scripts/verify-canonical-v1-capability-reconciliation.mjs",
         "git diff --check -- docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json demo/scripts/verify-canonical-v1-capability-reconciliation.mjs"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-capability-reconciliation.mjs. Exactly 22 reconciled P2 tasks comprise 16 PASS, 6 PARTIAL, 0 OPEN, and 0 AUTHORITATIVE_CONFLICT dispositions; exactly 5 control-plane statuses are PASS, F10 acceptance is exactly 1 PASS, and CG2 is exactly 1 OPEN gate with 0 PARTIAL tasks promoted by this reconciliation alone.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-capability-reconciliation.mjs. Exactly 22 reconciled P2 tasks comprise 19 PASS, 3 PARTIAL, 0 OPEN, and 0 AUTHORITATIVE_CONFLICT dispositions; exactly 5 control-plane statuses are PASS, F10 acceptance is exactly 1 PASS, and CG2 is exactly 1 OPEN gate. Disposition attribution since the prior pin: 16/6 became 17/5 when C28 was promoted later the same day (0acf2f489, 2026-08-04), and 19/3 when C26 and C29 were promoted on measured evidence (2026-08-18; C26 per the queue's 2026-08-06 owner promotion at e4335bbd replayed green, C29 per its all-PASS acceptance at 8ef0e471). SUPERSEDED (2026-08-18) READING, retained verbatim: Counted focused selectors: verify-canonical-v1-capability-reconciliation.mjs. Exactly 22 reconciled P2 tasks comprise 16 PASS, 6 PARTIAL, 0 OPEN, and 0 AUTHORITATIVE_CONFLICT dispositions; exactly 5 control-plane statuses are PASS, F10 acceptance is exactly 1 PASS, and CG2 is exactly 1 OPEN gate with 0 PARTIAL tasks promoted by this reconciliation alone.",
       "invalidationTriggers": [
         "F01/F02 changes or any P0/P1/P2 matrix row, source binding, fresh-check result, disposition, control-plane status, authority-conflict fact, or whole-preimage ABI fact changes",
         "A claimed PASS loses current-source evidence, a PARTIAL residual closes/changes, a new capability gap appears, or the P2 task queue diverges from the reconciliation",
@@ -2225,7 +2225,7 @@
         "Target protocol parameters, maxTxSize, retained payload roots/counts, applied validator hash, or maximum corpus changes"
       ],
       "blockedOn": ["C21", "C22", "C23", "C24", "C25", "C29"],
-      "blockedBecause": "C30 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C29; every C20-* ordered-field row is PASS and is deliberately omitted."
+      "readyBecause": "C30's focusedCommands replayed all-green at 2a942662 (2026-08-18): exactly 1 focused production retained-DA maximum reconstruction test and 1/1 retained-DA boundary test, with typecheck and eslint green, matching the pinned contract exactly. Dependencies C22-C25 replayed green at bd833ff3, C26 (queue owner promotion 2026-08-06, e4335bbd) and C29 (all-PASS acceptance at 8ef0e471) are promoted PASS in the capability artifact, and C21 remains open solely on its two owner rulings (the 8,273 carriage-selector rebind and the #597 observe-stage reference-script convention). Prior reading, retained verbatim: C30 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C29; every C20-* ordered-field row is PASS and is deliberately omitted."
     },
     {
       "id": "C31",
@@ -2300,7 +2300,7 @@
         "Forced transaction root/count, verdict/classification, target parameters, applied validator hash, or maximum corpus changes"
       ],
       "blockedOn": ["C21", "C22", "C23", "C24", "C25", "C29"],
-      "blockedBecause": "C31 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C29; every C20-* ordered-field row is PASS and is deliberately omitted."
+      "readyBecause": "C31's focusedCommands replayed all-green at 2a942662 (2026-08-18): exactly 1 focused forced retained-DA fail-closed test and 1/1 retained-DA boundary test, with typecheck and eslint green, matching the pinned contract exactly. Dependencies C22-C25 replayed green at bd833ff3, C26 (queue owner promotion 2026-08-06, e4335bbd) and C29 (all-PASS acceptance at 8ef0e471) are promoted PASS in the capability artifact, and C21 remains open solely on its two owner rulings (the 8,273 carriage-selector rebind and the #597 observe-stage reference-script convention). Prior reading, retained verbatim: C31 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C29; every C20-* ordered-field row is PASS and is deliberately omitted."
     },
     {
       "id": "C32",
@@ -2383,6 +2383,8 @@
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/c26_unary_depth_v1.test maximum_unary_depth_is_bound_by_signed_cardano_capacity maximum_unary_depth_terminal_agrees_with_typescript_and_rejects_mutation",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/script_proof_v1.test midgard_v1_script_tag_and_hash_prefix_vector_is_stable script_proof_source_and_redeemer_vectors_are_stable signer_leaf_and_seven_leaf_frontier_root_match_typescript inline_script_source_binds_raw_field_six_and_rejects_field_seven redeemer_purpose_tags_are_stable",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/cek_proof_v1.test canonical_program_envelope_decodes_with_exact_bounds small_canonical_program_envelope_decodes program_envelope_rejects_noncanonical_and_out_of_bounds_claims",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/cek_data_traverse.max_cardano.test maximum_cardano_nested_data_applies_real_head_controls maximum_cardano_nested_data_applies_real_fold_controls maximum_cardano_nested_data_terminal_matches_typescript maximum_cardano_nested_redeemer_terminal_matches_typescript",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/ledger_output_value.max_cardano.test maximum_cardano_value_terminal_fold_matches_typescript maximum_cardano_value_policy_transition_matches_typescript",
         "pnpm --dir demo/midgard-validation exec vitest run tests/nested-value-boundary-v1.test.ts tests/data-breadth-boundary-v1.test.ts tests/nested-redeemer-data-boundary-v1.test.ts tests/plutus-data-unary-depth-boundary-v1.test.ts tests/cek-program.test.ts tests/retained-da-boundary-v1.test.ts",
         "pnpm --dir demo/midgard-core exec vitest run tests/script-proof.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/cardano-capability-retained-da-v1.test.ts",
@@ -2395,14 +2397,14 @@
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/cek_data_traverse maximum_cardano_nested_data_applies_real_head_controls maximum_cardano_nested_data_applies_real_fold_controls maximum_cardano_nested_data_terminal_matches_typescript maximum_cardano_nested_redeemer_terminal_matches_typescript",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/ledger_output_value maximum_cardano_value_terminal_fold_matches_typescript maximum_cardano_value_policy_transition_matches_typescript"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1.test, midgard/ledger_output_value_v1.test, midgard/cek_data_breadth_v1.test, midgard/cek_data_traverse, midgard/ledger_output_value, midgard/fraud_proofs/c26_unary_depth_v1.test, midgard/script_proof_v1.test, midgard/cek_proof_v1.test, nested-value-boundary-v1.test.ts, data-breadth-boundary-v1.test.ts, nested-redeemer-data-boundary-v1.test.ts, plutus-data-unary-depth-boundary-v1.test.ts, cek-program.test.ts, retained-da-boundary-v1.test.ts, script-proof.test.ts, cardano-capability-retained-da-v1.test.ts. Current tracked aggregate collects exactly 42 guarded Aiken tests and exactly 26 TypeScript tests across 8 exact files. Closure adds the remaining C22 Aiken terminal selector and 4 prescribed complete-item TypeScript cases, for exactly 43 guarded Aiken tests and exactly 30 TypeScript tests; all 73 closure tests pass with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1.test, midgard/ledger_output_value_v1.test, midgard/cek_data_breadth_v1.test, midgard/cek_data_traverse, midgard/ledger_output_value, midgard/fraud_proofs/c26_unary_depth_v1.test, midgard/script_proof_v1.test, midgard/cek_proof_v1.test, nested-value-boundary-v1.test.ts, data-breadth-boundary-v1.test.ts, nested-redeemer-data-boundary-v1.test.ts, plutus-data-unary-depth-boundary-v1.test.ts, cek-program.test.ts, retained-da-boundary-v1.test.ts, script-proof.test.ts, cardano-capability-retained-da-v1.test.ts. Measured 2026-08-18 at 2a942662: exactly 43 guarded Aiken tests (the closure basis, complete since 140f0a836 landed the remaining C22 terminal maximum_nested_value_terminal_agrees_with_typescript) and exactly 32 TypeScript tests across the same 8 exact files; all 75 tests pass with 0 failures. The prior 30-test TypeScript closure figure moved +2 with commit-level attribution: 140f0a836 (2026-08-04) landed the 4 prescribed complete-item cases (reaching the contracted 30) plus a fifth same-commit case beyond the prescription (rejects malformed and noncanonical unary Data at the exact maximum depth, +1), and e4335bbd (2026-08-06) added the field-8 unary-redeemer maximum case as part of C26's closure (+1). SUPERSEDED (2026-08-18) READING, retained verbatim: Current tracked aggregate collects exactly 42 guarded Aiken tests and exactly 26 TypeScript tests across 8 exact files. Closure adds the remaining C22 Aiken terminal selector and 4 prescribed complete-item TypeScript cases, for exactly 43 guarded Aiken tests and exactly 30 TypeScript tests; all 73 closure tests pass with 0 failures.",
       "invalidationTriggers": [
         "Any listed writable path, maximum accepted/adjacent fixture, applied/terminal vector, proof representation, or guarded selector changes",
         "Any C20-0 through C31 dependency status/ABI changes, C21 Option B-prime is reconsidered, or C21-AUDIT evidence is repinned",
         "Applied validator hash, target protocol parameters, cost model, maxTxSize, min-Ada, or complete-item necessity conclusion changes"
       ],
       "blockedOn": ["C21", "C22", "C23", "C24", "C25", "C29", "C30", "C31"],
-      "blockedBecause": "C32 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C29, C30, C31; every C20-* ordered-field row is PASS and is deliberately omitted."
+      "readyBecause": "C32's complete closure basis measured all-green on 2026-08-18 at 2a942662 under aiken v1.1.23+2a78108 (md5 b3acfdf348235798cb6b921d0f87750a): 43/43 guarded Aiken selectors (37 via the row's prior focused commands plus the 4 midgard/cek_data_traverse.max_cardano.test and 2 midgard/ledger_output_value.max_cardano.test selectors this row already counted, now invoked explicitly by the completed focusedCommands) and 32/32 TypeScript tests across the 8 exact files. Dependencies C22-C25 replayed green at bd833ff3, C26/C29 are promoted PASS in the capability artifact, C30/C31 measured green the same day, and C21 remains open solely on its two owner rulings. Prior reading, retained verbatim: C32 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C29, C30, C31; every C20-* ordered-field row is PASS and is deliberately omitted."
     },
     {
       "id": "C33",
@@ -2460,14 +2462,14 @@
         "pnpm --dir demo/midgard-core exec eslint src/codec/native-cardano-conversion.ts src/codec/native-redeemer.ts",
         "pnpm --dir demo/midgard-validation exec eslint tests/data-breadth-boundary-v1.test.ts tests/nested-value-boundary-v1.test.ts tests/nested-redeemer-data-boundary-v1.test.ts tests/redeemer-collateral-schema-feasibility-v1.test.ts"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/script_language_views_v1.test, midgard/validation_machine_v1.test, data-breadth-boundary-v1.test.ts, nested-value-boundary-v1.test.ts, nested-redeemer-data-boundary-v1.test.ts, redeemer-collateral-schema-feasibility-v1.test.ts. Exactly 4 guarded script-language-view Aiken tests, exactly 1 guarded validation-machine integrity test, and exactly 7 TypeScript cases across 4 exact files; all 12 tests pass with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/script_language_views_v1.test, midgard/validation_machine_v1.test, data-breadth-boundary-v1.test.ts, nested-value-boundary-v1.test.ts, nested-redeemer-data-boundary-v1.test.ts, redeemer-collateral-schema-feasibility-v1.test.ts. Measured 2026-08-18 at 2a942662: exactly 4 guarded script-language-view Aiken tests, exactly 1 guarded validation-machine integrity test, and exactly 11 TypeScript cases across the 4 exact files; all 16 tests pass with 0 failures. The prior 7-case TypeScript figure moved +4 entirely at 140f0a836 (2026-08-04, hours after the pin): the it.each constructor/list/map complete-Data carriage cases in data-breadth-boundary-v1.test.ts (+3) and the complete maximum-Value carriage case in nested-value-boundary-v1.test.ts (+1). SUPERSEDED (2026-08-18) READING, retained verbatim: Exactly 4 guarded script-language-view Aiken tests, exactly 1 guarded validation-machine integrity test, and exactly 7 TypeScript cases across 4 exact files; all 12 tests pass with 0 failures.",
       "invalidationTriggers": [
         "Any listed writable path, genuine Cardano conversion, native redeemer projection, collateral rejection, source label, or integrity recomputation changes",
         "Any C23 through C28 dependency status/ABI changes, including script/program carriage semantics",
         "CML/emulator version, target protocol parameters, language views, applied validator hash, or signed boundary fixture changes"
       ],
       "blockedOn": ["C23", "C24", "C25"],
-      "blockedBecause": "C33 remains dependency-blocked only on current non-PASS queue rows: C23, C24, C25. PASS dependencies are deliberately omitted."
+      "readyBecause": "C33's focusedCommands replayed all-green at 2a942662 (2026-08-18) under aiken v1.1.23+2a78108: 4/4 guarded script-language-view selectors, 1/1 guarded validation-machine integrity selector, and 11/11 TypeScript tests across the 4 exact files, with format, aiken check, typecheck, and eslint green. Dependencies C23-C25 replayed green at bd833ff3 and C26 is promoted PASS (queue owner promotion 2026-08-06, e4335bbd); C27 and C28 were already PASS. Prior reading, retained verbatim: C33 remains dependency-blocked only on current non-PASS queue rows: C23, C24, C25. PASS dependencies are deliberately omitted."
     },
     {
       "id": "CG2",
@@ -2522,7 +2524,7 @@
       ],
       "sourceAnchors": [
         "GOAL_SPEC.md 8.2 P2 proof-item capability tasks, row CG2: Every required P2 matrix row and every cell is `PASS`; complete-item carriage through the simplest fitting \u00a73.2 tier remains available wherever it fits; every tier-3 or incremental fallback has a measured \u00a73.2 necessity artifact and exact semantic-equivalence tests; production searches and ABI tests reject unjustified bounded-only paths.",
-        "docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json (22-row P2 matrix, current 16 PASS/6 PARTIAL summary, CG2 OPEN)",
+        "docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json (22-row P2 matrix, current 19 PASS/3 PARTIAL summary, CG2 OPEN)",
         "demo/scripts/verify-canonical-v1-capability-reconciliation.mjs (exact matrix/static ABI/gate assertions)",
         "docs/exec-plans/evidence/necessity/transaction-field-chunk-v1.md and its seven enumerated \u00a73.2 necessity families"
       ],
@@ -2537,7 +2539,7 @@
         "pnpm --dir demo/midgard-validation typecheck",
         "pnpm --dir demo/midgard-validation exec eslint tests/complete-item-carriage-policy-v1.test.ts tests/complete-item-equivalence-v1.test.ts tests/complete-item-proof-fit-v1.test.ts tests/complete-item-proof-fit-emulator-v1.test.ts"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-capability-reconciliation.mjs, complete-item-carriage-policy-v1.test.ts, complete-item-equivalence-v1.test.ts, complete-item-proof-fit-v1.test.ts, complete-item-proof-fit-emulator-v1.test.ts. The reconciliation verifier asserts exactly 22 P2 task entries, exactly 16 PASS, exactly 6 PARTIAL, exactly 0 OPEN task rows, and gate CG2 OPEN; the 4 exact TypeScript files collect exactly 17 tests, all passing with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-capability-reconciliation.mjs, complete-item-carriage-policy-v1.test.ts, complete-item-equivalence-v1.test.ts, complete-item-proof-fit-v1.test.ts, complete-item-proof-fit-emulator-v1.test.ts. Measured 2026-08-18 at 2a942662: the reconciliation verifier asserts exactly 22 P2 task entries, exactly 19 PASS, exactly 3 PARTIAL, exactly 0 OPEN task rows, and gate CG2 OPEN; the 4 exact TypeScript files collect exactly 19 tests, all passing with 0 failures. Attribution since the prior pin: dispositions moved 16/6 to 17/5 at C28's later-same-day promotion (0acf2f489, 2026-08-04) and to 19/3 at the 2026-08-18 C26/C29 promotion; the TypeScript count moved 17 to 19 via 4dd629b7d (#600, net +1 in complete-item-proof-fit-v1.test.ts after d470fe320/#597's net-zero two-case replacement) and bf5cb8ed3 (#611, +1 measured 14,336-byte-cap signed tier-1 emulator case). SUPERSEDED (2026-08-18) READING, retained verbatim: The reconciliation verifier asserts exactly 22 P2 task entries, exactly 16 PASS, exactly 6 PARTIAL, exactly 0 OPEN task rows, and gate CG2 OPEN; the 4 exact TypeScript files collect exactly 17 tests, all passing with 0 failures.",
       "invalidationTriggers": [
         "Any dependency, serialized ABI, catalogue order, compiled validator hash, deployment identity, target parameter, or owned executable path changes after evidence capture",
         "A final-tree source inventory changes the enabled/reachable family or rule set named by this row"
@@ -2554,7 +2556,7 @@
         "C32",
         "C33"
       ],
-      "blockedBecause": "CG2 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C29, C30, C31, C32, C33; every C20-* ordered-field row is PASS and is deliberately omitted."
+      "blockedBecause": "CG2 remains open on the owner-pinned OPEN gate and on C21's two owner rulings; every other dependency measured green on 2026-08-18: C22-C25 replayed at bd833ff3, C26 and C29 promoted PASS in the capability artifact (queue owner promotion 2026-08-06 at e4335bbd and all-PASS acceptance at 8ef0e471 respectively), and C30/C31/C32/C33 focusedCommands replayed all-green at 2a942662 with their promotion pending #486 owner review. The reconciliation verifier passes at 19 PASS / 3 PARTIAL after the C26/C29 promotion. Prior reading, retained verbatim: CG2 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C29, C30, C31, C32, C33; every C20-* ordered-field row is PASS and is deliberately omitted."
     },
     {
       "id": "C40",

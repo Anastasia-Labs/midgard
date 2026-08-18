@@ -4991,3 +4991,71 @@ contract (4 Aiken + 27 TypeScript = 31) with the superseded wording
 retained verbatim. Manifest-quality gate PASS after the edit (186/186,
 0 defects); prettier-clean. Logs: `scratchpad/issue-485/`
 (session-local).
+
+## #486 (B07) C30–C33 measured all-green at `2a942662`; C26/C29 promoted PASS in the capability artifact (2026-08-18)
+
+The whole C30–C33 + CG2 frontier was measured serially under the
+sanctioned fork binary `aiken v1.1.23+2a78108` (md5
+`b3acfdf348235798cb6b921d0f87750a`, verified per script). C30 and C31:
+all focused gates exit 0 — the production `reconstructDaPayloadV1`
+maximum test, the forced fail-closed test, and the 1/1 retained-DA
+boundary test, with typecheck/eslint green; both rows match their
+pinned contracts exactly and their `blockedBecause` readings converted
+to measured `readyBecause` statements (prior text retained verbatim).
+
+C32 carried a structural row defect: the closure contract counts 43
+guarded Aiken selectors but `focusedCommands` invoked only 37 — the
+dotted modules `midgard/cek_data_traverse.max_cardano.test` (4 tests)
+and `midgard/ledger_output_value.max_cardano.test` (2 tests) sat in
+the counted-selectors list and the format command with no
+`run-focused-check` invocation. Both batches measured green and the
+two invocations are now in the row. Result: 43/43 guarded Aiken and
+32/32 TypeScript across the 8 exact files. The TypeScript pin moved
+30→32 with commit-level attribution before it moved: `140f0a836`
+landed the 4 prescribed complete-item cases (reaching the contracted
+30) plus a fifth same-commit case beyond the prescription (the unary
+max-depth rejection, +1), and `e4335bbd` added the field-8
+unary-redeemer maximum with C26's closure (+1); the pin-era method
+reproduces the superseded 26 exactly at `2ac420d82`.
+
+C33 is newly unblocked — its dependency row is C23–C28 with no C21
+edge — and measured all-green: 4/4 script-language-view selectors, 1/1
+validation-machine integrity selector, 11/11 TypeScript across the 4
+exact files, format/check/typecheck/eslint green. Its 7-case
+TypeScript pin moved to 11 entirely at `140f0a836` (it.each
+complete-Data carriage +3, complete maximum-Value +1).
+
+C26 and C29 were promoted PARTIAL→PASS in
+`canonical-v1-capability-reconciliation-v1.json` under the #529 update
+contract — C26 per the queue's 2026-08-06 owner promotion
+(`e4335bbd`) replayed green at `bd833ff3`, C29 per its all-PASS
+acceptance at `8ef0e471` (#485). Every coupled surface moved together:
+`p2Tasks`, `p2TaskWitnesses` (new witnesses are those tasks'
+manifest-declared focused verifications:
+`plutus-data-unary-depth-boundary-v1.test.ts` and
+`validation-machine.test.ts`), `p2WitnessCommands` (16→18 in
+derivation order), `p2PerTaskAikenCoverage` (tasks 17→19, citations
+114→122, distinct selectors and passed 105→113, modules +
+`midgard/fraud_proofs/c26_unary_depth_v1.test`; the 8 newly entering
+selectors are C26's 4 unary-depth and C29's 4 canonical-decode
+selectors, all measured green this window), `p2Summary` and the
+`updateContract` note (17/5→19/3), and the verifier's pinned literals
+with a dated promotion note. The full verifier replayed green
+end-to-end under `MIDGARD_FORK_AIKEN_BIN`. CG2's four complete-item
+files collect 19/19 passing; its row re-pinned 17→19 (`4dd629b7d`/#600
+net +1 after `d470fe32`/#597's net-zero two-case replacement,
+`bf5cb8ed3`/#611 +1) and its disposition pin 16/6→19/3 (attributed:
+C28's later-same-day promotion `0acf2f489`, then this promotion), with
+F10's `expectedNonzeroCounts` re-pinned on the same attribution; all
+superseded wordings retained verbatim. CG2's `blockedBecause` now
+records the true residual: the owner-pinned OPEN gate and C21's two
+owner rulings.
+
+Deliberately NOT done: C30/C31/C32 stay PARTIAL in the capability
+artifact — measured green, promotion pending #486 owner review — and
+`p2Tasks.CG2`/`acceptance.CG2` stay owner-pinned OPEN. C21's residuals
+(the 8,273 carriage-selector rebind, doubly owner-gated, and the #597
+observe-stage reference-script convention) remain owner decisions, not
+chased here. Manifest-quality gate PASS after all edits (186/186, 0
+defects); manifest, artifact, and verifier prettier-clean. Logs:
+`scratchpad/issue-486/` (session-local).

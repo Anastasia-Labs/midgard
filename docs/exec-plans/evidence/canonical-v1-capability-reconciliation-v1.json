@@ -5,7 +5,7 @@
   "updateContract": {
     "verifier": "demo/scripts/verify-canonical-v1-capability-reconciliation.mjs",
     "generator": "none - this artifact is hand-maintained; the verifier is the only contract",
-    "note": "Issue #529: p2Summary.pass is no longer established by counting 'PASS' strings in p2Tasks. Every task published as PASS must appear in p2TaskWitnesses with at least one executable witness; the verifier spawns those witnesses (each package's own Vitest CLI, plus one `aiken check -e` invocation) and derives the pass count from the runner reports alone. A witness that collects nothing, fails, or is skipped fails the gate closed. Each witness must additionally be declared as that task's focused verification in canonical-v1-goal-task-manifest-v1.json, so this artifact cannot supply its own audit scope. The p2Summary literal {tasks:22,pass:17,partial:5,open:0,authoritativeConflict:0,gate:'OPEN'} is still pinned in the verifier and is cross-checked against both the measured result and the base-role classification of p2Tasks, so promoting or demoting a task requires editing p2Tasks, p2TaskWitnesses, p2WitnessCommands and the verifier literals together — and the promotion only holds if the new witness actually passes. acceptance.CG2 and p2Tasks.CG2 are separately pinned to OPEN, and authorityConflict.tasks/disposition are pinned to ['C20-6','C20-7'] / 'RESOLVED'."
+    "note": "Issue #529: p2Summary.pass is no longer established by counting 'PASS' strings in p2Tasks. Every task published as PASS must appear in p2TaskWitnesses with at least one executable witness; the verifier spawns those witnesses (each package's own Vitest CLI, plus one `aiken check -e` invocation) and derives the pass count from the runner reports alone. A witness that collects nothing, fails, or is skipped fails the gate closed. Each witness must additionally be declared as that task's focused verification in canonical-v1-goal-task-manifest-v1.json, so this artifact cannot supply its own audit scope. The p2Summary literal {tasks:22,pass:19,partial:3,open:0,authoritativeConflict:0,gate:'OPEN'} is still pinned in the verifier and is cross-checked against both the measured result and the base-role classification of p2Tasks, so promoting or demoting a task requires editing p2Tasks, p2TaskWitnesses, p2WitnessCommands and the verifier literals together — and the promotion only holds if the new witness actually passes. acceptance.CG2 and p2Tasks.CG2 are separately pinned to OPEN, and authorityConflict.tasks/disposition are pinned to ['C20-6','C20-7'] / 'RESOLVED'."
   },
   "sources": {
     "goalSpec": {
@@ -52,10 +52,10 @@
     "C23": "PASS",
     "C24": "PASS",
     "C25": "PASS",
-    "C26": "PARTIAL",
+    "C26": "PASS",
     "C27": "PASS",
     "C28": "PASS",
-    "C29": "PARTIAL",
+    "C29": "PASS",
     "C30": "PARTIAL",
     "C31": "PARTIAL",
     "C32": "PARTIAL",
@@ -169,6 +169,12 @@
         "file": "demo/midgard-validation/tests/data-breadth-boundary-v1.test.ts"
       }
     ],
+    "C26": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/plutus-data-unary-depth-boundary-v1.test.ts"
+      }
+    ],
     "C27": [
       {
         "kind": "vitest",
@@ -179,6 +185,12 @@
       {
         "kind": "vitest",
         "file": "demo/midgard-validation/tests/cek-program.test.ts"
+      }
+    ],
+    "C29": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/validation-machine.test.ts"
       }
     ],
     "C33": [
@@ -202,17 +214,19 @@
     "pnpm --dir demo/midgard-sdk exec vitest run tests/validation-proof-item-v1.test.ts",
     "pnpm --dir demo/midgard-validation exec vitest run tests/nested-value-boundary-v1.test.ts",
     "pnpm --dir demo/midgard-validation exec vitest run tests/data-breadth-boundary-v1.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/plutus-data-unary-depth-boundary-v1.test.ts",
     "pnpm --dir demo/midgard-core exec vitest run tests/script-proof.test.ts",
     "pnpm --dir demo/midgard-validation exec vitest run tests/cek-program.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/validation-machine.test.ts",
     "pnpm --dir demo/midgard-validation exec vitest run tests/redeemer-collateral-schema-feasibility-v1.test.ts",
     "cd onchain/aiken && aiken check -e -m inline_carriage_authenticates_a_witness_set_field"
   ],
   "p2PerTaskAikenCoverage": {
     "note": "Issue #538. p2TaskWitnesses is one focused verification per PASS task; canonical-v1-goal-task-manifest-v1.json declares more for every one of them — the per-task `node scripts/run-focused-check.mjs <module> <selector> ...` citations covering the heavier maximum_*/CEK/boundary selectors — and nothing replayed those, so the gate's scope was a strict subset of the scope its own authority declares. The verifier now derives this plan from the manifest's focusedCommands (never from plannedFocusedCommands, which commit 6e805a78 quarantined as planned rather than executable, and never from this artifact), executes every distinct selector in one batched `check -e` invocation of the patched fork, and refuses to publish a task as PASS unless each selector the manifest binds to it was collected from its declared module and passed. The counts below are pins asserted against that runner report; they are not compared to each other. A selector's identity is its source pair, not the spelling a citation happens to use: `lib/midgard/x-v1.ak` and `lib/midgard/x-v1.test.ak` are one pair addressed by one `aiken check -m` prefix, and the manifest cites it both ways (commit e4335bbd corrected C21 to the `.test` form while C20-0/C20-1/C20-2 still name the stem). `selectors` therefore counts distinct source-pair selectors, `citations` counts every manifest mention of one, and `modules` lists the module names the runner reported collecting from rather than either citation spelling.",
-    "tasks": 17,
-    "citations": 114,
-    "selectors": 105,
-    "passed": 105,
+    "tasks": 19,
+    "citations": 122,
+    "selectors": 113,
+    "passed": 113,
     "excluded": [],
     "compiler": "aiken v1.1.23+2a78108",
     "invocation": {
@@ -223,6 +237,7 @@
     "modules": [
       "midgard/cek_data_breadth_v1.test",
       "midgard/cek_proof_v1.test",
+      "midgard/fraud_proofs/c26_unary_depth_v1.test",
       "midgard/fraud_proofs/native_tx.max_redeemers.test",
       "midgard/fraud_proofs/native_tx_v1.test",
       "midgard/ledger_output_proof_v1.test",
@@ -248,15 +263,17 @@
       "C23": 4,
       "C24": 4,
       "C25": 4,
+      "C26": 4,
       "C27": 5,
       "C28": 5,
+      "C29": 4,
       "C33": 5
     }
   },
   "p2Summary": {
     "tasks": 22,
-    "pass": 17,
-    "partial": 5,
+    "pass": 19,
+    "partial": 3,
     "open": 0,
     "authoritativeConflict": 0,
     "gate": "OPEN"

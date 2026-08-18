@@ -413,10 +413,13 @@ assert.deepEqual(evidence.p2Summary, {
   // promoted 2026-08-04 after exact focused boundary/protocol verification,
   // and C28 was promoted later the same day once complete content-addressed
   // CEK program material was authenticated and consumed by reference only.
+  // C26 and C29 were promoted 2026-08-18: C26 after the queue's 2026-08-06
+  // owner promotion (e4335bbd) replayed green at bd833ff3, and C29 after its
+  // all-PASS acceptance re-measurement at 8ef0e471.
   // CG2 stays OPEN while any P2 task is PARTIAL. The `pass` count is asserted
   // against the measured result below, not merely against this literal.
-  pass: 17,
-  partial: 5,
+  pass: 19,
+  partial: 3,
   open: 0,
   authoritativeConflict: 0,
   gate: "OPEN",
