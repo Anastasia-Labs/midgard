@@ -2619,7 +2619,7 @@
         "pnpm --dir demo/midgard-validation typecheck",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1.test, midgard/validation_one_step_cross_language.test, validation-machine.test.ts. Exactly 8 guarded validation-machine Aiken tests, exactly 1 cross-language Aiken test, and exactly 23 TypeScript tests in 1 exact file; all 32 tests pass with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1.test, midgard/validation_one_step_cross_language.test, validation-machine.test.ts. Measured 2026-08-18 at e7b093e3: exactly 8 guarded validation-machine Aiken tests, exactly 1 cross-language Aiken test, and exactly 27 TypeScript tests in 1 exact file; all 36 tests pass with 0 failures. The 23-test TypeScript pin moved to 27 on the attribution already recorded at C29's 2026-08-18 re-pin: +4 canonical-decode closure tests at 7d01f2b71, -1 counted-era mutation test retired by d470fe32 (#597), and +1 pin-short-on-measurement-day (the 2ac420d82 file already ran 24). SUPERSEDED (2026-08-18) READING, retained verbatim: Exactly 8 guarded validation-machine Aiken tests, exactly 1 cross-language Aiken test, and exactly 23 TypeScript tests in 1 exact file; all 32 tests pass with 0 failures.",
       "invalidationTriggers": [
         "any canonical CBOR or transaction-identity change re-runs the whole CanonicalDecode selector set",
         "a consensus-profile or deployment-domain change (demo/midgard-core/src/consensus-profile-v1.ts)",
@@ -2627,7 +2627,7 @@
       ],
       "detailStatus": "DETAILED",
       "blockedOn": ["CG2"],
-      "blockedBecause": "C40 remains dependency-blocked only on current non-PASS queue rows: CG2. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted."
+      "blockedBecause": "C40 remains dependency-blocked only on the owner-pinned CG2 gate; its own focusedCommands replayed all-green at e7b093e3 (2026-08-18) under aiken v1.1.23+2a78108 (8/8 + 1/1 guarded Aiken, 27/27 TypeScript, format/check/typecheck green), and every CG2 constituent row measured green the same day with C26/C29 promoted PASS in the capability artifact. Prior reading, retained verbatim: C40 remains dependency-blocked only on current non-PASS queue rows: CG2. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted."
     },
     {
       "id": "C41",
@@ -2693,7 +2693,7 @@
         "pnpm --dir demo/midgard-validation typecheck",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1.test, midgard/mpf_proof_v1.test, input-resolution-schedule-boundary-v1.test.ts, validation-machine.test.ts. Exactly 11 guarded validation-machine Aiken tests, exactly 12 guarded MPF Aiken tests, exactly 2 input-resolution TypeScript tests, and exactly 23 validation-machine TypeScript tests; all 48 tests pass with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1.test, midgard/mpf_proof_v1.test, input-resolution-schedule-boundary-v1.test.ts, validation-machine.test.ts. Measured 2026-08-18 at e7b093e3: exactly 11 guarded validation-machine Aiken tests, exactly 12 guarded MPF Aiken tests, exactly 2 input-resolution TypeScript tests, and exactly 27 validation-machine TypeScript tests; all 52 tests pass with 0 failures. The 23-test validation-machine pin moved to 27 on the attribution already recorded at C29's 2026-08-18 re-pin: +4 canonical-decode closure tests at 7d01f2b71, -1 counted-era mutation test retired by d470fe32 (#597), and +1 pin-short-on-measurement-day (the 2ac420d82 file already ran 24). SUPERSEDED (2026-08-18) READING, retained verbatim: Exactly 11 guarded validation-machine Aiken tests, exactly 12 guarded MPF Aiken tests, exactly 2 input-resolution TypeScript tests, and exactly 23 validation-machine TypeScript tests; all 48 tests pass with 0 failures.",
       "invalidationTriggers": [
         "any MPF proof format or root-domain change re-runs membership and non-membership selectors",
         "a ledger-output descriptor or commitment change (C42) re-runs resolution proofs",
@@ -2701,7 +2701,7 @@
       ],
       "detailStatus": "DETAILED",
       "blockedOn": ["CG2"],
-      "blockedBecause": "C41 remains dependency-blocked only on current non-PASS queue rows: CG2. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted."
+      "blockedBecause": "C41 remains dependency-blocked only on the owner-pinned CG2 gate; its own focusedCommands replayed all-green at e7b093e3 (2026-08-18) under aiken v1.1.23+2a78108 (11/11 + 12/12 guarded Aiken, 2/2 + 27/27 TypeScript, format/check/typecheck green), and every CG2 constituent row measured green the same day with C26/C29 promoted PASS in the capability artifact. Prior reading, retained verbatim: C41 remains dependency-blocked only on current non-PASS queue rows: CG2. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted."
     },
     {
       "id": "C42",

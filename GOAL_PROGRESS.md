@@ -5059,3 +5059,26 @@ observe-stage reference-script convention) remain owner decisions, not
 chased here. Manifest-quality gate PASS after all edits (186/186, 0
 defects); manifest, artifact, and verifier prettier-clean. Logs:
 `scratchpad/issue-486/` (session-local).
+
+## #487 (B08) C40/C41 measured all-green at `e7b093e3`; both 23-test pins re-pinned to 27 on the C29 attribution (2026-08-18)
+
+C40 and C41's `focusedCommands` replayed serially under the sanctioned
+fork binary `aiken v1.1.23+2a78108` (md5
+`b3acfdf348235798cb6b921d0f87750a`, verified): all ten gates exit 0 —
+C40's 8/8 guarded validation-machine selectors and 1/1 cross-language
+selector, C41's 11/11 input-sets/resolve-inputs selectors and 12/12
+MPF selectors, both normalized-format batches, `aiken check
+--skip-tests`, `input-resolution-schedule-boundary-v1.test.ts` 2/2
+(exactly its pin), `validation-machine.test.ts` 27/27, and typecheck.
+The single drift is the shared `validation-machine.test.ts` pin:
+both rows said "exactly 23" from the same `2ac420d82` pin day, and
+both re-pin to 27 on the attribution already recorded verbatim at
+C29's 2026-08-18 re-pin (+4 `7d01f2b71`, −1 `d470fe32`/#597, +1
+pin-short-on-measurement-day), with the superseded wordings retained
+verbatim. Both rows' `blockedBecause` readings superseded in place:
+the sole remaining dependency is the owner-pinned CG2 gate — every
+CG2 constituent row measured green 2026-08-18 and C26/C29 are
+promoted PASS, so gate closure is an owner decision, not open
+measurement. Manifest-quality gate PASS after the edits (186/186, 0
+defects); prettier-clean. Logs: `scratchpad/issue-487/`
+(session-local).
