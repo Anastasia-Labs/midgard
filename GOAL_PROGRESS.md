@@ -5291,3 +5291,62 @@ unregressed, both package typechecks clean, quality gate PASS
 (186/186, 0 defects). Applying the cap to each shipped fault proof's
 measured cost rides the C53 sweep's genuine-acceptance artifact once
 it lands.
+
+## #491: the C53 resolver proof-fit sweep landed with genuine-acceptance measurement and a pinned honest coverage gap (2026-08-18)
+
+The prescribed-missing C53 sweep exists:
+`demo/midgard-validation/tests/resolver-proof-fit-sweep-v1.test.ts`
+(4 tests) verifying the committed artifact
+`tests/fixtures/resolver-proof-fit-sweep-v1.generated.json` — exactly
+105 rows (14 top-level + 75 semantic + 12 prepare + 4 canonical-decode
+item stages, as prescribed) — regenerated deterministically by
+`scripts/generate-resolver-proof-fit-sweep-v1.mjs`, a thin spawn
+wrapper (with `--check` byte-compare) around the env-gated vitest
+worker
+`demo/midgard-fault-proofs/tests/resolver-proof-fit-sweep-generate-v1.test.ts`
+(`MIDGARD_REGENERATE_RESOLVER_SWEEP=1`, auto-skipped in routine runs).
+The worker lives in the fault-proofs package because the harness
+helpers under `tests/support/` are never compiled to dist and plain
+node's type-stripper cannot import them (systemic non-`import type`
+type imports); vitest is the one sanctioned loader that already
+resolves them, and no new transpile layer was added.
+
+Measurement method (`emulator-harness-v1`): a row is measured only via
+a genuine `tx.complete({ localUPLCEval: true })` + sign + submit +
+`awaitTx()` lifecycle through the real emulator harness; cpu/memory
+come from the evaluated per-redeemer ExUnits in the signed witness
+set and bytes from the signed CBOR, mirroring
+`measureCompleteSignedTransaction`. A first cut the same day (never
+committed) measured rejection budgets off `Machine.eval`'s
+budgetSpent-on-rejection via hand-built ScriptContexts and was
+rejected as the gate-that-cannot-fail hazard; the landed generator
+hard-fails on any non-accepted measured row.
+
+Honest split: 10 rows measured/accepted (topLevel 2, prepare 2 —
+copied from same-scriptHash topLevel rows rather than re-derived,
+semantic 2, canonicalDecodeItemStage 4/4); every budget is far inside
+the §3.3 reserves (max memory 1,074,699 of 13,200,000; max cpu
+593,180,218 of 8,000,000,000; min byte margin 5,348 of 16,384). The
+other 95 rows are honestly unmeasured — no existing harness fixture
+drives a genuine one-step validation dispute to them (only two
+fixtures exist, reaching resolverIndex 0/canonicalDecode and
+3/InputSets) — and are pinned exactly (identity plus per-row reason)
+in `tests/fixtures/resolver-proof-fit-sweep-v1.unfit-pin.json`, a
+separately-committed snapshot so the comparison is a real regression
+check: any reachability or reason drift fails the suite; the gap
+merely persisting never does. The unreached rows include the
+direct-resolver cek/valueAndMint rows at topLevel[11]/[12] — the same
+two gaps CG3 records. C53's prior 'no unmeasured resolver' contract
+is therefore NOT met and the row stays open on fixture reachability.
+
+C52 linkage: each measured row's per-transaction budgets sit trivially
+within the 5,000-transaction cap arithmetic; applying the cap to whole
+shipped fault proofs still rides fuller sweep coverage.
+
+Measured (at `1cf84c04` plus the staged sweep): sweep suite 4/4
+(including the ~271s byte-identity regeneration test), `--check`
+byte-identical on independent parent re-run, both package typechecks
+clean, prettier clean after formatting the suite, quality gate PASS.
+The manifest C53 row carries the landed surfaces (writablePaths,
+focusedCommands) and dated supersedes in
+expectedNonzeroCounts/blockedBecause with all prior text retained.
