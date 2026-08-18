@@ -896,7 +896,7 @@ assert.deepEqual(evidence.taskResidues, {
   completedPrerequisites: ["Q00", "Q02", "Q03", "Q24", "Q25", "Q44", "Q54"],
   completedFamilyLifecycle: ["Q13"],
   openFamilyClosures: ["Q14", "Q15", "Q16", "Q17", "Q18", "Q19", "Q20"],
-  openStructural: ["Q49-L298", "Q49-L302"],
+  openStructural: [],
   openLifecycleAndAcceptance: [
     "Q50",
     "Q51",
@@ -918,19 +918,19 @@ assert.deepEqual(evidence.taskResidues, {
 });
 assert.deepEqual(evidence.structuralAudit.summary, {
   rows: 9,
-  pass: 7,
-  partial: 2,
+  pass: 9,
+  partial: 0,
   open: 0,
 });
 const structuralAuditRows = Object.entries(evidence.structuralAudit.rows);
 assert.equal(structuralAuditRows.length, 9);
 assert.equal(
   structuralAuditRows.filter(([, row]) => row.disposition === "PASS").length,
-  7,
+  9,
 );
 assert.equal(
   structuralAuditRows.filter(([, row]) => row.disposition === "PARTIAL").length,
-  2,
+  0,
 );
 assert.equal(
   structuralAuditRows.filter(([, row]) => row.disposition === "OPEN").length,
@@ -939,7 +939,17 @@ assert.equal(
 for (const [rowId, row] of structuralAuditRows) {
   if (row.disposition === "PASS") {
     assert.ok(
-      ["L295", "L296", "L297", "L299", "L300", "L301", "L303"].includes(rowId),
+      [
+        "L295",
+        "L296",
+        "L297",
+        "L298",
+        "L299",
+        "L300",
+        "L301",
+        "L302",
+        "L303",
+      ].includes(rowId),
     );
     assert.equal(row.remainingTask, null);
   } else {
@@ -950,11 +960,11 @@ const structuralContract = {
   L295: ["Duplicate TxId in a block", "PASS", null],
   L296: ["Header carry-over fields", "PASS", null],
   L297: ["Oversized deposits", "PASS", null],
-  L298: ["Cross-block replay", "PARTIAL", "Q49-L298"],
+  L298: ["Cross-block replay", "PASS", null],
   L299: ["L2 fee misdirection", "PASS", null],
   L300: ["Withdrawal payout amount/destination", "PASS", null],
   L301: ["Deposit `inclusion_time` value forgery", "PASS", null],
-  L302: ["Malformed validity interval", "PARTIAL", "Q49-L302"],
+  L302: ["Malformed validity interval", "PASS", null],
   L303: ["Deposit refund double-representation", "PASS", null],
 };
 for (const [rowId, [concern, disposition, remainingTask]] of Object.entries(
@@ -1467,8 +1477,8 @@ assert.match(
 );
 assert.match(
   firstQueueDetails.get("F21") ?? "",
-  /PARTIAL L298 cross-block replay and L302 malformed interval.*7 PASS\s*\/\s*2 PARTIAL\s*\/\s*0 OPEN/iu,
-  "first F21 queue record retained stale physical structural dispositions",
+  /PARTIAL L298 cross-block replay and L302 malformed interval.*7 PASS\s*\/\s*2 PARTIAL\s*\/\s*0 OPEN.*SUPERSEDED \(2026-08-18, #481\).*9 PASS\s*\/\s*0 PARTIAL\s*\/\s*0 OPEN/iu,
+  "first F21 queue record must retain the original 7/2 derivation and record the Q49 closure supersede",
 );
 assert.doesNotMatch(
   firstQueueDetails.get("F21") ?? "",

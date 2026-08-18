@@ -247,7 +247,8 @@
     "pendingEdits": [
       "docs/fault-proofs/coverage-matrix.md L298 evidence cell: replace the bare `no-input proof` reference with the four executable no-input step selectors recorded here.",
       "docs/fault-proofs/coverage-matrix.md L302: remove the `**unverified inference**` and `needs a W-T8 test` text and cite the executable invalid-range selectors recorded here.",
-      "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json structuralAudit: move L298 and L302 from PARTIAL to PASS, clear remainingTask Q49-L298 and Q49-L302, and set summary to {rows 9, pass 9, partial 0, open 0}."
+      "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json structuralAudit: move L298 and L302 from PARTIAL to PASS, clear remainingTask Q49-L298 and Q49-L302, and set summary to {rows 9, pass 9, partial 0, open 0}.",
+      "SUPERSEDED IN THIS TREE \u2014 all three edits are executed: the coverage-matrix L298/L302 evidence cells cite the executable selectors (L298 now naming the two #582 witness-faithful step-03 arms), and the reconciliation artifact's structuralAudit re-derives 9 PASS / 0 PARTIAL / 0 OPEN with both remainingTask fields cleared, its verifier's deliberate exact pins re-pinned in the same edit set and the ledger F21 queue row superseded in place."
     ]
   }
 }

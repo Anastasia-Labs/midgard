@@ -130,7 +130,7 @@
     "completedPrerequisites": ["Q00", "Q02", "Q03", "Q24", "Q25", "Q44", "Q54"],
     "completedFamilyLifecycle": ["Q13"],
     "openFamilyClosures": ["Q14", "Q15", "Q16", "Q17", "Q18", "Q19", "Q20"],
-    "openStructural": ["Q49-L298", "Q49-L302"],
+    "openStructural": [],
     "openLifecycleAndAcceptance": [
       "Q50",
       "Q51",
@@ -244,8 +244,8 @@
     "status": "PASS",
     "summary": {
       "rows": 9,
-      "pass": 7,
-      "partial": 2,
+      "pass": 9,
+      "partial": 0,
       "open": 0
     },
     "rows": {
@@ -271,8 +271,8 @@
         "executableEvidence": ["deposit token-count boundary selectors"]
       },
       "L298": {
-        "disposition": "PARTIAL",
-        "remainingTask": "Q49-L298",
+        "disposition": "PASS",
+        "remainingTask": null,
         "executableEvidence": [
           "onchain/aiken/validators/fraud-proofs/no-input/step-01.ak: no_input_step_01_binds_native_v1_block_fixture, no_input_step_01_rejects_forged_transactions_root",
           "onchain/aiken/validators/fraud-proofs/no-input/step-02.ak: no_input_step_02_forwards_the_challenged_spend_input, no_input_step_02_rejects_a_substituted_inputs_preimage",
@@ -305,8 +305,8 @@
         ]
       },
       "L302": {
-        "disposition": "PARTIAL",
-        "remainingTask": "Q49-L302",
+        "disposition": "PASS",
+        "remainingTask": null,
         "executableEvidence": [
           "onchain/aiken/validators/fraud-proofs/invalid-range/step-01.ak: normalize_native_validity_range_rejects_empty_interval, invalid_range_step_01_binds_native_v1_block_fixture, invalid_range_step_01_rejects_forged_transactions_root",
           "onchain/aiken/validators/fraud-proofs/invalid-range/step-02.ak: invalid_range_step_02_accepts_uncovered_and_inverted_intervals, invalid_range_step_02_rejects_valid_block_challenge"
