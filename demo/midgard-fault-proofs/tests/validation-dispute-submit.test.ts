@@ -43,10 +43,12 @@ import {
   openValidationDisputeAfterSourceVerification,
   refreshExpiredValidationDisputeValidityRange,
   requireValidationCekDirectResolverReferenceScriptOutRef,
+  requireValidationItemObserveReferenceScriptOutRef,
   requireValidationItemSemanticReferenceScriptOutRef,
   selectValidationCompleteItemCarriageV1,
   validateCekSubmissionEvidenceV1,
   VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
+  VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   validationDisputeTimeoutValidityRange,
   validationDisputeValidityRange,
@@ -466,6 +468,53 @@ describe("validation-dispute transaction validity", () => {
       requireValidationItemSemanticReferenceScriptOutRef({
         deploymentInfo: {
           [VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
+            scriptHash: otherScriptHash,
+            refScriptUTxO,
+          },
+        },
+        expectedScriptHash: scriptHash,
+      }),
+    ).toThrow(/script hash mismatch/u);
+  });
+
+  it("requires the published item-observe reference script from deployment info", () => {
+    const scriptHash = "ab".repeat(28);
+    const otherScriptHash = "cd".repeat(28);
+    const refScriptUTxO = { txHash: "12".repeat(32), outputIndex: 3 };
+    expect(
+      requireValidationItemObserveReferenceScriptOutRef({
+        deploymentInfo: {
+          [VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
+            scriptHash,
+            refScriptUTxO,
+          },
+        },
+        expectedScriptHash: scriptHash,
+      }),
+    ).toEqual(refScriptUTxO);
+    expect(() =>
+      requireValidationItemObserveReferenceScriptOutRef({
+        deploymentInfo: {},
+        expectedScriptHash: scriptHash,
+      }),
+    ).toThrow(
+      /missing "validationTraceDisputeItemObserve"; publish the V1 canonical-decode item-observe reference script/u,
+    );
+    expect(() =>
+      requireValidationItemObserveReferenceScriptOutRef({
+        deploymentInfo: {
+          [VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
+            scriptHash,
+            refScriptUTxO: null,
+          },
+        },
+        expectedScriptHash: scriptHash,
+      }),
+    ).toThrow(/is missing refScriptUTxO; publish the V1 canonical-decode/u);
+    expect(() =>
+      requireValidationItemObserveReferenceScriptOutRef({
+        deploymentInfo: {
+          [VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
             scriptHash: otherScriptHash,
             refScriptUTxO,
           },

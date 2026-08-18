@@ -85,7 +85,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { MIDGARD_CONSENSUS_LIMITS_V1,outRefLabel } from "@al-ft/midgard-core";
+import { MIDGARD_CONSENSUS_LIMITS_V1, outRefLabel } from "@al-ft/midgard-core";
 import {
   buildValidationTraceDisputeFaultProofContracts,
   parseFaultProofBlueprint,
@@ -338,6 +338,11 @@ const runResolverScenario = async ({
         ReturnType<typeof buildValidationTraceDisputeFaultProofContracts>
       >["validationTraceDispute"]["semanticResolvers"][number]
     | undefined;
+  let itemObserveContract:
+    | Effect.Effect.Success<
+        ReturnType<typeof buildValidationTraceDisputeFaultProofContracts>
+      >["validationTraceDispute"]["canonicalDecodeItemStages"]["observe"]
+    | undefined;
   if (needsItemSemanticPublication) {
     const validationDisputeSdkContracts = await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({
@@ -349,6 +354,12 @@ const runResolverScenario = async ({
     );
     itemSemanticContract =
       validationDisputeSdkContracts.validationTraceDispute.semanticResolvers[1];
+    // #597 ruling a / #617: the observe stage sources its validator from a
+    // published reference script too, so the complete-item chain needs the
+    // observe publication beside the item-semantic one.
+    itemObserveContract =
+      validationDisputeSdkContracts.validationTraceDispute
+        .canonicalDecodeItemStages.observe;
   }
 
   const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
@@ -414,6 +425,9 @@ const runResolverScenario = async ({
         if (itemSemanticContract === undefined) {
           throw new Error("Expected item-semantic contract to be resolved");
         }
+        if (itemObserveContract === undefined) {
+          throw new Error("Expected item-observe contract to be resolved");
+        }
         const itemSemanticPublication = await runEmulatorLifecycleStage(
           "reference-script.publish-item-semantic",
           async () => {
@@ -432,6 +446,24 @@ const runResolverScenario = async ({
             }
           },
         );
+        const itemObservePublication = await runEmulatorLifecycleStage(
+          "reference-script.publish-item-observe",
+          async () => {
+            emulator.protocolParameters = {
+              ...setupProtocolParameters,
+              maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+            };
+            try {
+              return await publishPlainReferenceScriptUtxo({
+                lucid: referenceScriptPublisherLucid,
+                script: itemObserveContract.spendingScript,
+                label: "validation item-observe",
+              });
+            } finally {
+              emulator.protocolParameters = setupProtocolParameters;
+            }
+          },
+        );
         return buildRemovalDeploymentInfo(
           contracts,
           catalogue,
@@ -439,6 +471,10 @@ const runResolverScenario = async ({
           {
             scriptHash: itemSemanticContract.spendingScriptHash,
             utxo: itemSemanticPublication.utxo,
+          },
+          {
+            scriptHash: itemObserveContract.spendingScriptHash,
+            utxo: itemObservePublication.utxo,
           },
         );
       })()
@@ -644,8 +680,10 @@ const runResolverScenario = async ({
   // proof-item-publication transaction ahead of the semantic resolver's own
   // "authenticate" transaction (confirmed against
   // `submit-init-emulator-validation-dispute.test.ts`'s own
-  // `referenceInputCount` assertions: `[0, 2, 0, 1, 0, 0]` for reference vs
-  // `[1, 0, 0, 0, 0]` for direct); stripping it here keeps
+  // `referenceInputCount` assertions: `[0, 2, 0, 2, 0, 0]` for reference vs
+  // `[1, 0, 1, 0, 0]` for direct — authenticate reads the item-semantic
+  // reference script and observe reads the item-observe one, #597 ruling
+  // a / #617); stripping it here keeps
   // `semanticMeasurements[0]` always the authenticate transaction and
   // `semanticMeasurements[1..4]` (when present) always the four
   // canonical-decode-item stage transactions, regardless of which carriage

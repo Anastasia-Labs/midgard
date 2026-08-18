@@ -480,6 +480,77 @@ const requireValidationItemSemanticReferenceScriptUtxo = async ({
 };
 
 /**
+ * Deployment-info entry that publishes the applied
+ * `canonical_decode_item_observe_v1` validator as an L1 reference script.
+ * The observe stage is the §8.8 door — the one stage that dereferences the
+ * carriage — so its proof transaction must keep the 16,384-byte L1 envelope
+ * for the carriage bytes rather than the ~9 KiB applied observe validator
+ * body (#597 ruling a, executed inside the #617 regeneration wave; owner
+ * rulings 2026-08-18, R3).
+ */
+export const VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY =
+  "validationTraceDisputeItemObserve";
+
+export const requireValidationItemObserveReferenceScriptOutRef = ({
+  deploymentInfo,
+  expectedScriptHash,
+}: {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly expectedScriptHash: string;
+}): { readonly txHash: string; readonly outputIndex: number } => {
+  const entry =
+    deploymentInfo[VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY];
+  if (entry === undefined) {
+    throw new Error(
+      `Deployment info is missing "${VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY}"; publish the V1 canonical-decode item-observe reference script and regenerate deployment info before submitting a complete-item semantic resolution`,
+    );
+  }
+  if (entry.refScriptUTxO == null) {
+    throw new Error(
+      `Deployment info entry "${VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY}" is missing refScriptUTxO; publish the V1 canonical-decode item-observe reference script and regenerate deployment info before submitting a complete-item semantic resolution`,
+    );
+  }
+  if (entry.scriptHash !== expectedScriptHash) {
+    throw new Error(
+      `Deployment entry "${VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY}" script hash mismatch: deployment=${entry.scriptHash}, derived=${expectedScriptHash}`,
+    );
+  }
+  return entry.refScriptUTxO;
+};
+
+const requireValidationItemObserveReferenceScriptUtxo = async ({
+  lucid,
+  deploymentInfo,
+  expectedScriptHash,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly expectedScriptHash: string;
+}): Promise<UTxO> => {
+  const outRef = requireValidationItemObserveReferenceScriptOutRef({
+    deploymentInfo,
+    expectedScriptHash,
+  });
+  const utxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef,
+    label: "validation item-observe reference-script UTxO",
+  });
+  if (utxo.scriptRef == null) {
+    throw new Error(
+      `Validation item-observe reference UTxO ${outRefLabel(utxo)} does not carry a reference script`,
+    );
+  }
+  const actualScriptHash = validatorToScriptHash(utxo.scriptRef);
+  if (actualScriptHash !== expectedScriptHash) {
+    throw new Error(
+      `Validation item-observe reference script hash mismatch: actual=${actualScriptHash}, expected=${expectedScriptHash}`,
+    );
+  }
+  return utxo;
+};
+
+/**
  * Auth-role name minted onto the published CEK direct-resolver
  * reference-script UTxO (`REFERENCE_SCRIPT_AUTH_TOKEN_NAMES` in
  * `@al-ft/midgard-sdk`).
@@ -5319,6 +5390,20 @@ export const submitValidationDisputeSemanticResolution = async ({
         expectedScriptHash: semanticContract.spendingScriptHash,
       })
     : undefined;
+  // The observe stage — the §8.8 door — must source its validator from the
+  // published reference script the same way: embedding the applied observe
+  // body in the door transaction spends the envelope the carriage bytes need
+  // (#597 ruling a / #617). Resolved up front, beside the semantic entry, so
+  // a missing deployment entry fails fast.
+  const observeReferenceScriptUtxo = isCompleteCanonicalItem
+    ? await requireValidationItemObserveReferenceScriptUtxo({
+        lucid,
+        deploymentInfo: parsedDeploymentInfo,
+        expectedScriptHash:
+          contracts.validationTraceDispute.canonicalDecodeItemStages.observe
+            .spendingScriptHash,
+      })
+    : undefined;
   let resolvedProofItemReferenceOutRef = proofItemReferenceOutRef;
   let proofItemReferenceUtxo =
     proofItemReferenceOutRef === undefined
@@ -5969,6 +6054,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       stageOutputDatum: observedDatum,
       label: "Validation canonical item observation",
       proofReference: proofItemReferenceUtxo,
+      scriptReference: observeReferenceScriptUtxo,
       ...(observeCarriageReferences === undefined
         ? {}
         : { carriageReferences: observeCarriageReferences }),

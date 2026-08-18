@@ -434,6 +434,13 @@ describe("fault-proof emulator integration", () => {
       const itemSemanticContract =
         validationDisputeSdkContracts.validationTraceDispute
           .semanticResolvers[1];
+      // The observe stage — the §8.8 door — sources its validator from a
+      // published reference script the same way (#597 ruling a / #617), so
+      // the applied observe body is published beside the item-semantic one
+      // and pinned as absent from the proof transactions below.
+      const itemObserveContract =
+        validationDisputeSdkContracts.validationTraceDispute
+          .canonicalDecodeItemStages.observe;
       const catalogue = await buildCatalogueDeploymentInfo(
         contracts.fraudProofs,
       );
@@ -515,6 +522,24 @@ describe("fault-proof emulator integration", () => {
           }
         },
       );
+      const itemObservePublication = await runEmulatorLifecycleStage(
+        "reference-script.publish-item-observe",
+        async () => {
+          emulator.protocolParameters = {
+            ...setupProtocolParameters,
+            maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+          };
+          try {
+            return await publishPlainReferenceScriptUtxo({
+              lucid: referenceScriptPublisherLucid,
+              script: itemObserveContract.spendingScript,
+              label: "validation item-observe",
+            });
+          } finally {
+            emulator.protocolParameters = setupProtocolParameters;
+          }
+        },
+      );
       const deploymentInfo = buildRemovalDeploymentInfo(
         contracts,
         catalogue,
@@ -522,6 +547,10 @@ describe("fault-proof emulator integration", () => {
         {
           scriptHash: itemSemanticContract.spendingScriptHash,
           utxo: itemSemanticPublication.utxo,
+        },
+        {
+          scriptHash: itemObserveContract.spendingScriptHash,
+          utxo: itemObservePublication.utxo,
         },
       );
       const initResult = await runEmulatorLifecycleStage("init", () =>
@@ -764,15 +793,18 @@ describe("fault-proof emulator integration", () => {
         expectedCarriage === "reference" ? 6 : 5,
       );
       // The semantic-resolution (authentication) proof transaction sources
-      // the item-semantic validator from the published reference script: one
-      // extra reference input beside the direct route, two beside the
-      // published proof item on the reference route.
+      // the item-semantic validator from the published reference script, and
+      // the observation transaction sources the item-observe validator from
+      // its published reference script (#597 ruling a / #617): authenticate
+      // carries one reference input beside the direct route (two beside the
+      // published proof item on the reference route), and observe carries
+      // one (two on the reference route, beside the proof item).
       expect(
         semanticSubmission.measurements.map(
           (measurement) => measurement.referenceInputCount,
         ),
       ).toEqual(
-        expectedCarriage === "reference" ? [0, 2, 0, 1, 0, 0] : [1, 0, 0, 0, 0],
+        expectedCarriage === "reference" ? [0, 2, 0, 2, 0, 0] : [1, 0, 1, 0, 0],
       );
       expect(
         semanticSubmission.measurements.every(
@@ -806,6 +838,26 @@ describe("fault-proof emulator integration", () => {
       );
       expect(
         authenticationCbor.includes(itemSemanticContract.spendingScript.script),
+      ).toBe(false);
+      // #597 ruling a / #617: the observation transaction — the §8.8 door,
+      // the stage whose envelope the carriage bytes need — likewise stays at
+      // or below the literal 16,384-byte L1 envelope and does not embed the
+      // applied item-observe validator body; no Plutus script witness at
+      // all — the validator arrives via its published reference script.
+      const observationMeasurement = resolutionMeasurements[2]!;
+      const observationCbor = resolutionCbors[2]!;
+      expect(observationMeasurement.completeSignedBytes).toBeLessThanOrEqual(
+        16_384,
+      );
+      expect(observationMeasurement.plutusV3ScriptCount).toBe(0);
+      expect(observationMeasurement.plutusV2ScriptCount).toBe(0);
+      expect(observationMeasurement.plutusV1ScriptCount).toBe(0);
+      expect(observationMeasurement.nativeScriptCount).toBe(0);
+      expect(itemObserveContract.spendingScript.script.length).toBeGreaterThan(
+        0,
+      );
+      expect(
+        observationCbor.includes(itemObserveContract.spendingScript.script),
       ).toBe(false);
       expect(
         semanticResult.stageTransactions?.map(

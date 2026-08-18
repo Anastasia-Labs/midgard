@@ -245,6 +245,7 @@ describe("fault-proof maximum proof fit", () => {
       catalogue,
       undefined,
       undefined,
+      undefined,
       removalReferenceScriptPublications.published,
     );
 
@@ -503,6 +504,7 @@ describe("fault-proof maximum proof fit", () => {
       catalogue,
       undefined,
       undefined,
+      undefined,
       removalReferenceScriptPublications.published,
     );
 
@@ -730,6 +732,7 @@ describe("fault-proof maximum proof fit", () => {
       catalogue,
       undefined,
       undefined,
+      undefined,
       removalReferenceScriptPublications.published,
     );
 
@@ -914,6 +917,7 @@ describe("fault-proof maximum proof fit", () => {
     const deploymentInfo = buildRemovalDeploymentInfo(
       contracts,
       catalogue,
+      undefined,
       undefined,
       undefined,
       removalReferenceScriptPublications.published,

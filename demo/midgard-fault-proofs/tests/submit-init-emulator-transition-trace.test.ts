@@ -123,6 +123,7 @@ describe("fault-proof emulator integration", () => {
       catalogue,
       undefined,
       undefined,
+      undefined,
       removalReferenceScriptPublications.published,
     );
     const initResult = await submitInit({

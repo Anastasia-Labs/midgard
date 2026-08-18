@@ -165,6 +165,7 @@ import {
   submitValidationDisputeReveal,
   submitValidationDisputeSemanticResolution,
   submitValidationDisputeVerifySource,
+  VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   validationDisputeValidityRange,
 } from "../../src/index.js";
@@ -3219,6 +3220,10 @@ export const buildRemovalDeploymentInfo = (
     readonly scriptHash: string;
     readonly utxo: UTxO;
   },
+  validationItemObserveReference?: {
+    readonly scriptHash: string;
+    readonly utxo: UTxO;
+  },
   removalReferenceScripts?: RemovalReferenceScriptPublications,
 ) => {
   const deploymentEntry = (
@@ -3255,6 +3260,17 @@ export const buildRemovalDeploymentInfo = (
               refScriptUTxO: {
                 txHash: validationItemSemanticReference.utxo.txHash,
                 outputIndex: validationItemSemanticReference.utxo.outputIndex,
+              },
+            },
+          }),
+      ...(validationItemObserveReference === undefined
+        ? {}
+        : {
+            [VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
+              scriptHash: validationItemObserveReference.scriptHash,
+              refScriptUTxO: {
+                txHash: validationItemObserveReference.utxo.txHash,
+                outputIndex: validationItemObserveReference.utxo.outputIndex,
               },
             },
           }),
@@ -3747,6 +3763,7 @@ export const runForcedValidationDisputeScenario = async (
     contracts,
     catalogue,
     validationDisputePublication,
+    undefined,
     undefined,
     removalReferenceScriptPublications.published,
   );
