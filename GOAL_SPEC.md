@@ -564,19 +564,30 @@ are:
    not a captured artifact**; no protocol-params artifact in this repository
    pins epoch 648. The live cap is pinned for release by CG5's target-network
    parameter binding, which supersedes both. *Verdicts that do move with the
-   basis, stated exactly:* two recorded results sit inside the
-   11,200,000–13,200,000 band and therefore flip FAIL→PASS when re-judged at
-   the declared basis — in
-   `docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json`,
-   `spendInputCardinalityBound.measured`: Q10's step-04 first-over-reserve
-   point at 40 spend inputs (11,312,784 memory units) and Q11's step-02
-   first-over-reserve point at 41 (11,465,641). Neither flip is
-   load-bearing. The headline Q1X-F6 verdict is taken at the admissible
-   296-input Cardano spend shape, where neither family's proof can be
-   evaluated at all because it exceeds the ledger's own transaction memory
-   cap, so raising a reserve basis does not move it; and `GOAL_PROGRESS.md`
-   deliberately holds the Q10/Q11 output-5 cells OPEN for the Phase-7
-   re-measurement rather than closing them on either basis. Apart from those
+   basis, stated exactly (superseded at #606/#612, as noted in place):* two
+   recorded results sat inside the 11,200,000–13,200,000 band and therefore
+   flipped FAIL→PASS when re-judged at the declared basis — in the
+   counted-era `spendInputCardinalityBound.measured` of
+   `docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json`: Q10's
+   step-04 first-over-reserve point at 40 spend inputs (11,312,784 memory
+   units) and Q11's step-02 first-over-reserve point at 41 (11,465,641).
+   Neither flip was load-bearing, and the #606 flat re-measurement retired
+   both points: under the flat commitment execution memory is near-constant
+   in spend-input cardinality, so no spend-input measurement sits near
+   either memory basis any more. The headline Q1X-F6 verdict is taken at
+   the admissible 296-input Cardano spend shape, and the basis still does
+   not move it — for the measured reason rather than the superseded one.
+   This clause as originally recorded said neither family's proof could be
+   evaluated at all there because it exceeded the ledger's own transaction
+   memory cap; #606 measured that claim false in every part — at 296 both
+   proofs BUILD and EVALUATE (625,256 and 495,554 memory units, far inside
+   either basis) and the tier-1 inline shape misses on L1 bytes alone. The
+   companion clause that `GOAL_PROGRESS.md` deliberately holds the Q10/Q11
+   output-5 cells OPEN for the Phase-7 re-measurement is likewise
+   superseded: the Phase-7 record itself was superseded at #606, and the
+   cells closed at #612's measured §8 tier-2 carriage routing
+   (`spendInputTierRoutedCarriage` in the same artifact), not by any basis
+   change. Apart from those
    two boundary points, no prior measurement verdict flips under the declared
    basis; the single basis exists so every re-measured PASS/FAIL is
    comparable and none is left ambiguous by a 2M-unit basis gap.

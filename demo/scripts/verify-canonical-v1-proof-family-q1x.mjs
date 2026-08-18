@@ -944,16 +944,91 @@ assert.equal(
   true,
   "the admissible shape is measured to evaluate for every affected family above; recording otherwise would contradict those measurements",
 );
+// ## Tier-routed spend-input carriage (issue #612): the remediation of Q1X-F6
+//
 // Unchanged in force from the block this replaces: a carriage remediation of
-// this axis would have to be recorded as a remediation block, measured end to
-// end, exactly as chunkedProofCarriage is for Q1X-F5. What is new is that the
-// artifact must also say whether the residual is even carriage-shaped, and who
-// owns it — the retired body claimed it was NOT, on a mechanism that no longer
-// exists.
+// this axis has to be recorded as a remediation block, measured end to end,
+// exactly as chunkedProofCarriage is for Q1X-F5. Issue #612 landed that
+// remediation — the legacy builders gained the programmatic `publishCarriage`
+// demotion and both families are driven at the admissible shape with every
+// transaction, publications included, inside the envelope — so this gate now
+// REQUIRES the block: the tier-1 verdict above stays recorded as the exposure,
+// and the remediation is what lets the affected output-5 cells close in spite
+// of it. Every margin is recomputed from the recorded bytes, the publication
+// transactions must be measured stages of their own, and the closure must be
+// taken at the admissible cardinality itself, not below it.
 assert.equal(
   cardinality.remediatedByCarriage,
-  false,
-  "a carriage remediation of this axis would have to be recorded as a remediation block, exactly as chunkedProofCarriage is for Q1X-F5",
+  true,
+  "issue #612's tier-routed remediation is measured in the cited suite; recording it as unremediated would contradict the closure lifecycle this gate schedules below",
+);
+const tierRouting = evidence.spendInputTierRoutedCarriage;
+assert.ok(
+  tierRouting !== undefined && typeof tierRouting === "object",
+  "the tier-routed carriage that remediates Q1X-F6 must be recorded, not asserted in prose",
+);
+assert.equal(
+  tierRouting.remediates,
+  "Q1X-F6",
+  "the tier-routing block must name the finding it remediates",
+);
+assert.equal(
+  tierRouting.cardinality,
+  cardinality.admissibleCardinality,
+  "the routed closure must be measured at the admissible shape itself, not below it",
+);
+assert.equal(
+  tierRouting.recordedTier,
+  "RawUtxo",
+  "the ladder's own pick at the routed preimage size is Inline; the recorded tier must be the single §8 demotion the option forces",
+);
+for (const goalId of tierRouting.measuredFamilies) {
+  assert.ok(
+    cardinality.affectsGoalIds.includes(goalId),
+    `tier routing names ${goalId}, which the cardinality axis does not affect`,
+  );
+  const stages = tierRouting.stages[goalId];
+  assert.ok(
+    Array.isArray(stages) && stages.length > 0,
+    `${goalId} claims a routed closure but records no stages`,
+  );
+  assert.ok(
+    stages.some((stage) => stage.stage.endsWith("-carriage")),
+    `${goalId} routed journey must measure the carriage publication that carries the preimage bytes, not only the step that references it`,
+  );
+  for (const stage of stages) {
+    assert.equal(
+      stage.l1ByteMargin,
+      L1_MAX_TX_SIZE - stage.bytes,
+      `${goalId} routed stage ${stage.stage} margin ${String(stage.l1ByteMargin)} does not equal 16384 - ${String(stage.bytes)}`,
+    );
+    assert.ok(
+      stage.l1ByteMargin >= 0,
+      `${goalId} routed stage ${stage.stage} exceeds the L1 envelope, so the remediation does not remediate`,
+    );
+  }
+  const bindingStageName = tierRouting.bindingStages[goalId];
+  const routedBinding = stages.find(
+    (stage) => stage.stage === bindingStageName,
+  );
+  assert.ok(
+    routedBinding !== undefined,
+    `${goalId} must measure its binding stage ${String(bindingStageName)} on the routed journey; that is the stage the tier-1 verdict records missing`,
+  );
+  assert.equal(
+    bindingStageName,
+    cardinality.measured[goalId].bindingStage,
+    `${goalId} routed binding stage must be the same stage the tier-1 measurement binds on`,
+  );
+}
+assert.deepEqual(
+  [...tierRouting.measuredFamilies].sort(),
+  [...cardinality.affectsGoalIds].sort(),
+  "every family the cardinality axis affects must be routed-measured, or the axis stays unsettled for the family that is not",
+);
+assert.ok(
+  cardinality.titles.includes(tierRouting.closureTitle),
+  "the routed closure lifecycle must be declared for the runner, so its passage is measured rather than cited",
 );
 assert.equal(
   typeof cardinality.byteShapedAndCarriageAddressable,
@@ -963,7 +1038,7 @@ assert.equal(
 assert.ok(
   typeof cardinality.remediationOwner === "string" &&
     cardinality.remediationOwner.length > 0,
-  "an unremediated residual must name the issue that owns its remediation",
+  "the remediation's provenance must name the issue that owned it",
 );
 assert.ok(
   cardinality.titles.includes(cardinality.derivationTitle) &&
@@ -1168,9 +1243,14 @@ const axisBoundClearsTheAxis = (axis) => {
       );
   }
 };
-// The depth axis is the one Q1X-F5 records. It counts as settled for a family
-// only through a remediation block this gate validated above, and only where
-// that block records a measurement for the family itself.
+// An axis counts as settled for a family only through a remediation block
+// this gate validated above, and only where that block records a measurement
+// for the family itself. The depth axis is remediated by chunkedProofCarriage
+// (Q1X-F5); the cardinality axis by spendInputTierRoutedCarriage (Q1X-F6).
+const remediationMeasuredFamilies = {
+  chunkedProofCarriage: carriage.measuredFamilies,
+  spendInputTierRoutedCarriage: tierRouting.measuredFamilies,
+};
 const axisIsSettledFor = (axis, goalId) => {
   if (!axis.affectsGoalIds.includes(goalId)) {
     return true;
@@ -1181,12 +1261,12 @@ const axisIsSettledFor = (axis, goalId) => {
       // axis's own bound, not by an unrelated one.
       return axisBoundClearsTheAxis(axis);
     }
-    assert.equal(
-      axis.remediatedBy,
-      "chunkedProofCarriage",
+    const measuredFamilies = remediationMeasuredFamilies[axis.remediatedBy];
+    assert.ok(
+      measuredFamilies !== undefined,
       `adversarial axis "${axis.axis}" claims a remediation this gate does not know how to verify`,
     );
-    return carriage.measuredFamilies.includes(goalId);
+    return measuredFamilies.includes(goalId);
   }
   return false;
 };
@@ -1232,26 +1312,40 @@ for (const axis of evidence.adversarialAxes) {
 }
 
 // A finding that claims remediation must name the block that carries it, and
-// that block must have been validated above. Q1X-F5's measurement stays
-// recorded either way: a remediated finding is restated, never deleted.
+// that block must have been validated above. A remediated finding's
+// measurement stays recorded either way: it is restated, never deleted. Each
+// status maps to exactly one remediation block, and the finding must retain
+// the measurement it was built on — the depth finding its per-level marginal
+// cost, the cardinality finding its measured frontiers (enforced separately
+// below for every number the block records).
+const remediationStatuses = {
+  "remediated-by-carriage": {
+    remediates: carriage.remediates,
+    retainedMeasurement: String(
+      evidence.adversarialDepthBound.proofTransactionBranchLevelBytes,
+    ),
+  },
+  "remediated-by-tier-routing": {
+    remediates: tierRouting.remediates,
+    retainedMeasurement: String(cardinality.admissibleCardinality),
+  },
+};
 for (const finding of evidence.residualFindings) {
   if (finding.status === undefined) {
     continue;
   }
-  assert.equal(
-    finding.status,
-    "remediated-by-carriage",
+  const expected = remediationStatuses[finding.status];
+  assert.ok(
+    expected !== undefined,
     `residual finding ${finding.id} carries an unknown status ${String(finding.status)}`,
   );
   assert.equal(
     finding.id,
-    carriage.remediates,
-    `residual finding ${finding.id} claims a remediation the carriage block does not name`,
+    expected.remediates,
+    `residual finding ${finding.id} claims a remediation whose block does not name it`,
   );
   assert.ok(
-    finding.finding.includes(
-      String(evidence.adversarialDepthBound.proofTransactionBranchLevelBytes),
-    ),
+    finding.finding.includes(expected.retainedMeasurement),
     `residual finding ${finding.id} was remediated but dropped the measurement it was built on`,
   );
 }
@@ -1266,9 +1360,16 @@ assert.ok(
   cardinalityFinding !== undefined,
   "the spend-input cardinality axis must be owned by a residual finding",
 );
+// The tier-1 exposure alone made this a defect; a remediation measured for
+// every family the axis affects demotes it to an observation, exactly as
+// Q1X-F5's carriage remediation did. Neither state may be asserted by hand.
+const cardinalityRemediatedForAllAffected = cardinality.affectsGoalIds.every(
+  (goalId) => tierRouting.measuredFamilies.includes(goalId),
+);
 assert.equal(
   cardinalityFinding.severity,
-  cardinality.admissibleCardinalityExceedsMeasuredCeiling
+  cardinality.admissibleCardinalityExceedsMeasuredCeiling &&
+    !cardinalityRemediatedForAllAffected
     ? "defect"
     : "observation",
   `residual finding ${cardinalityFinding.id} does not carry the severity its own measurement implies`,

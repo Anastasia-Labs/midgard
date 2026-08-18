@@ -5350,3 +5350,57 @@ clean, prettier clean after formatting the suite, quality gate PASS.
 The manifest C53 row carries the landed surfaces (writablePaths,
 focusedCommands) and dated supersedes in
 expectedNonzeroCounts/blockedBecause with all prior text retained.
+
+## #481 (B13): the Q10/Q11 output-5 cells closed on the measured #612 tier-routed carriage; Q1X-F6 demoted to observation (2026-08-18)
+
+Issue #612 landed the Q1X-F6 remediation at `51ce5427` (the legacy
+no-input/double-spend step builders' `publishCarriage` option demotes
+the §8 ladder's tier-1 Inline pick to tier-2 raw-UTxO carriage, plus a
+fifth cardinality-suite lifecycle driving both families at the
+admissible 296) but did not re-pin the Q1x artifact, so
+`verify-canonical-v1-proof-family-q1x.mjs` was genuinely red at HEAD
+("the cardinality suite collected a different number of tests than the
+artifact cites: 5 !== 4"). This entry records the re-pin.
+
+`docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json` now
+carries a `spendInputTierRoutedCarriage` remediation block on the
+`chunkedProofCarriage` precedent, with every number copied verbatim
+from two green runs of the closure lifecycle in this tree (the second
+under `MIDGARD_PRINT_PROOF_FIT=1`): both families routed at 296, all
+tiers RawUtxo, carriage publications executing no script, every
+transaction inside the 16,384-byte envelope — Q10 step-03-carriage
+12,520 / step-04-carriage 12,520 / step-03 8,294 / binding step-04
+13,364 (+3,020); Q11 step-01 10,980 / step-02-carriage 12,520 /
+binding step-02 8,340 (+8,044). The tier-1 bound block stays recorded
+as the exposure (fits 74/195, first-over 75/196, inline miss at 296),
+`remediatedByCarriage` flips to true, the cardinality axis's
+`remediatedBy` names the block, the output-5 Q10/Q11 cells close to
+LOCAL_PASS (whyOpen retained as whyPreviouslyOpen), and Q1X-F6 is
+demoted defect→observation with its full measurement retained —
+exactly the F5 pattern. The verifier now REQUIRES the remediation
+block (validated field-by-field: recomputed margins, carriage stages
+present, binding stages equal to the tier-1 binding stages, measured
+families covering all affected families) and derives the F6 severity
+and the output-5 cells from it; a builder bypassing the demotion or a
+missing routed family flips the gate red again.
+
+Superseded in place with prior text retained: GOAL_SPEC.md §3.3's
+basis note (the "cannot be evaluated at all at 296" clause is measured
+false since #606 — both proofs evaluate at 625,256/495,554 memory
+units and missed on bytes; the "GOAL_PROGRESS holds output 5 OPEN for
+Phase-7" clause is superseded by this closure), and the manifest
+Q10/Q11 rows (spend-input DEFECT anchors, the "exactly 4 of 4" counts,
+and the 39/40 / 40/41 memory-basis frontiers, all superseded by the
+byte-axis frontiers and the 5-of-5 routed closure; the rows note their
+prescribed per-family q10/q11 verifiers remain unbuilt, a #524-class
+citation).
+
+Measured (this tree, `111e49c1` plus these edits):
+`verify-canonical-v1-proof-family-q1x.mjs` PASS — 20 LOCAL_PASS cells,
+0 OPEN, spend-input admissible 296 against measured tier-1 ceiling
+195; cardinality suite 5/5; manifest quality gate PASS 186/186 with 0
+defects; prettier clean on the verifier. Remaining B13 reds, owned
+separately: the Q49 structural-handoff pins still cite the
+`no_input_step_03_excludes_the_input_from_the_initial_ledger` selector
+that #582 renamed (next item), and fp-reconciliation inherits the
+accepted Q02 scanner red.

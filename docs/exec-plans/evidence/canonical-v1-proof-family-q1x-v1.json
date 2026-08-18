@@ -528,13 +528,13 @@
     {
       "output": 5,
       "title": "Maximum/adversarial proof-fit fixture",
-      "Q10": "OPEN",
-      "Q11": "OPEN",
+      "Q10": "LOCAL_PASS",
+      "Q11": "LOCAL_PASS",
       "Q12": "LOCAL_PASS",
       "Q14": "LOCAL_PASS",
-      "evidence": "Four measurements exist, and all four are re-pinned at #606 from runner reports produced in this tree. Issue #482 added the first threshold-enforcing measurement of the complete correction path on the MINIMAL fixture; re-measured here its worst byte margins are Q10 2,978 at step-04, Q11 4,674 at step-04, Q12 5,365 at step-01 and Q14 3,838 at step-02. The #481 residual added the MAXIMUM/adversarial fixture: a deterministically grinded block forcing five all-branch levels into each family's step-01 membership proof, and for Q11 into the step-04 non-membership proof as well, with the marginal cost of one further level measured at two real depths (276 complete-signed-transaction bytes, 48,388.75 execution memory units, 14,976,664.75 execution steps) and the resulting per-family envelope ceilings at branch level 15, 17, 19 and 18. Issue #545 added the third: the same real prepare/submit pipeline with the proof carried by published chunks and verified by the merkelized mpf_chunked_verify validator, driven at branch level 22 — past every family's direct-route ceiling — end to end for all four families, whose worst carriage margins are Q14 3,359 at step-01, Q12 3,049 at step-01, Q10 2,978 at step-04 and Q11 2,790 at step-04, every stage inside the 20% execution reserve. Issue #549 added the fourth: the second adversarial axis, spend-input preimage cardinality, measured through the same pipeline for Q10 and Q11 — and at the admissible shape it does not fit.",
-      "whyOpen": "Q12 and Q14 are LOCAL_PASS: their maximum is measured to FIT, because the depth an adversary can force no longer reaches the step transaction, and neither family carries the second adversarial axis at all (the invalid-range steps operate on the compact transaction and the zero-input family's challenged transaction spends nothing by construction). Q10 and Q11 stay OPEN, and no longer for want of a measurement: their chunked lifecycles are measured end to end at branch level 22 like their siblings', but the second axis IS measured and at the admissible shape it DOES NOT FIT. The admissible spend-input cardinality is 296 and the correction paths cross the 16,384-byte L1 envelope at 75 (Q10) and 196 (Q11); at 296 both proofs evaluate comfortably and miss on bytes alone. Finding Q1X-F6 records the numbers. Unlike the mechanism #549 published, this residual is byte-shaped and so is carriage-addressable in principle (§8's tier-2/tier-3 ladder, issue #612), but no such carriage is measured for either family, so nothing here settles the axis.",
-      "owner": "Q12/Q14 closed at issue #545; Q10/Q11 chunked lifecycle and F6 measurement landed at issue #549, re-pinned at issue #606; the cells remain with issue #483 and the F6 residual with issue #612"
+      "evidence": "Four measurements exist, and all four are re-pinned at #606 from runner reports produced in this tree. Issue #482 added the first threshold-enforcing measurement of the complete correction path on the MINIMAL fixture; re-measured here its worst byte margins are Q10 2,978 at step-04, Q11 4,674 at step-04, Q12 5,365 at step-01 and Q14 3,838 at step-02. The #481 residual added the MAXIMUM/adversarial fixture: a deterministically grinded block forcing five all-branch levels into each family's step-01 membership proof, and for Q11 into the step-04 non-membership proof as well, with the marginal cost of one further level measured at two real depths (276 complete-signed-transaction bytes, 48,388.75 execution memory units, 14,976,664.75 execution steps) and the resulting per-family envelope ceilings at branch level 15, 17, 19 and 18. Issue #545 added the third: the same real prepare/submit pipeline with the proof carried by published chunks and verified by the merkelized mpf_chunked_verify validator, driven at branch level 22 — past every family's direct-route ceiling — end to end for all four families, whose worst carriage margins are Q14 3,359 at step-01, Q12 3,049 at step-01, Q10 2,978 at step-04 and Q11 2,790 at step-04, every stage inside the 20% execution reserve. Issue #549 added the fourth: the second adversarial axis, spend-input preimage cardinality, measured through the same pipeline for Q10 and Q11 — and at the admissible shape the tier-1 inline carriage does not fit. Issue #612 added the fifth: the same journeys routed through the §8 tier-2 carriage at the admissible 296 — the preimage publishes once as a raw UTxO and every transaction, publications included, fits the envelope, with binding-step margins of 3,020 bytes (Q10 step-04) and 8,044 (Q11 step-02); the routed stages are pinned in spendInputTierRoutedCarriage.",
+      "whyPreviouslyOpen": "SUPERSEDED AT ISSUE #612; retained as written at the #606 re-pin, when the Q10/Q11 cells were still OPEN: Q12 and Q14 are LOCAL_PASS: their maximum is measured to FIT, because the depth an adversary can force no longer reaches the step transaction, and neither family carries the second adversarial axis at all (the invalid-range steps operate on the compact transaction and the zero-input family's challenged transaction spends nothing by construction). Q10 and Q11 stay OPEN, and no longer for want of a measurement: their chunked lifecycles are measured end to end at branch level 22 like their siblings', but the second axis IS measured and at the admissible shape it DOES NOT FIT. The admissible spend-input cardinality is 296 and the correction paths cross the 16,384-byte L1 envelope at 75 (Q10) and 196 (Q11); at 296 both proofs evaluate comfortably and miss on bytes alone. Finding Q1X-F6 records the numbers. Unlike the mechanism #549 published, this residual is byte-shaped and so is carriage-addressable in principle (§8's tier-2/tier-3 ladder, issue #612), but no such carriage was measured for either family then, so nothing in the #606 re-pin settled the axis. Issue #612 measured it: both families are driven at 296 through the tier-2 raw-UTxO carriage with every transaction inside the envelope, which is what closes these two cells.",
+      "owner": "Q12/Q14 closed at issue #545; Q10/Q11 chunked lifecycle and F6 measurement landed at issue #549, re-pinned at issue #606; the Q10/Q11 cells closed when issue #612 landed and measured the tier-routed carriage; family-level integration remains with issue #483"
     },
     {
       "output": 6,
@@ -593,19 +593,19 @@
       "axis": "spend-input preimage cardinality",
       "growsWith": "the number of inputs the challenged transaction spends",
       "affects": "double-spend step-03 and step-04 and no-input step-02, each of which carries the spend-input field preimage in its own step redeemer",
-      "measuredToday": "driven end to end through the real pipeline for both families at the largest cardinality whose binding step fits the 16,384-byte L1 envelope, at the first that does not, and at the admissible 296: Q10 fits 74 (step-04, 16,378 bytes, 6 bytes of margin) and crosses the envelope at 75 (16,419 bytes, -35), Q11 fits 195 (step-02, 16,345, +39) and crosses at 196 (16,387, -3). At 296 both journeys BUILD and EVALUATE — Q10's step-04 at 625,256 memory units and Q11's step-02 at 495,554, each better than seventeen times inside the 11,200,000 reserve ceiling — and only the byte margin is negative (-9,154 and -4,130). The axis is therefore exercised and bounded, and the bound is the exposure: finding Q1X-F6.",
-      "note": "Enlarging a native transaction's OUTPUTS does not grow these transactions, because the step redeemer carries native_tx_compact_cbor, whose fields are hashes rather than preimages. Only the paths that carry actual preimages grow. Both #482's and #549's expectations about WHERE and HOW this axis binds are measured false and are recorded in spendInputCardinalityBound.expectationCorrected: the witness publication is not the constraint and no longer exists, and execution memory is constant in cardinality rather than the wall the finding named. What binds is L1 bytes at tier-1 redeemer carriage, about 41 complete-signed bytes per input. That makes the residual carriage-addressable in principle — §8's ladder moves those bytes off the step — but no such carriage is measured for either family, so the axis stays unsettled and remediatedBy stays null. See finding Q1X-F6 and issue #612.",
+      "measuredToday": "driven end to end through the real pipeline for both families at the largest cardinality whose binding step fits the 16,384-byte L1 envelope, at the first that does not, and at the admissible 296: Q10 fits 74 (step-04, 16,378 bytes, 6 bytes of margin) and crosses the envelope at 75 (16,419 bytes, -35), Q11 fits 195 (step-02, 16,345, +39) and crosses at 196 (16,387, -3). At 296 both journeys BUILD and EVALUATE — Q10's step-04 at 625,256 memory units and Q11's step-02 at 495,554, each better than seventeen times inside the 11,200,000 reserve ceiling — and only the byte margin is negative (-9,154 and -4,130). The axis is therefore exercised and bounded, and the bound is the exposure: finding Q1X-F6. Issue #612 then routed both families through the §8 tier-2 carriage at the same admissible 296: the preimage publishes once as a raw UTxO (12,520 bytes, no script executed) and the binding step drops to 13,364 bytes (Q10 step-04, +3,020 margin) and 8,340 (Q11 step-02, +8,044), every transaction inside the envelope, so the axis is bounded AND remediated for both families.",
+      "note": "Enlarging a native transaction's OUTPUTS does not grow these transactions, because the step redeemer carries native_tx_compact_cbor, whose fields are hashes rather than preimages. Only the paths that carry actual preimages grow. Both #482's and #549's expectations about WHERE and HOW this axis binds are measured false and are recorded in spendInputCardinalityBound.expectationCorrected: the witness publication is not the constraint and no longer exists, and execution memory is constant in cardinality rather than the wall the finding named. What binds is L1 bytes at tier-1 redeemer carriage, about 41 complete-signed bytes per input. That makes the residual carriage-addressable in principle — §8's ladder moves those bytes off the step — and issue #612 landed and measured exactly that carriage for both families — the routed closure at 296 is recorded in spendInputTierRoutedCarriage — so remediatedBy names it and the axis is settled for Q10 and Q11 the way the depth axis is for all four. See finding Q1X-F6.",
       "affectsGoalIds": ["Q10", "Q11"],
-      "remediatedBy": null,
+      "remediatedBy": "spendInputTierRoutedCarriage",
       "boundedBy": "spendInputCardinalityBound"
     }
   ],
   "residualFindings": [
     {
       "id": "Q1X-F1",
-      "severity": "gap",
-      "finding": "Output 5 is closed for Q12 and Q14 and remains OPEN for Q10 and Q11. The maximum/adversarial fixture that #482 recorded as missing exists and is runner-measured, and what it measures — that the redeemer-carried maximum does not fit (Q1X-F5) — is remediated by published-chunk carriage, now measured end to end for all four families (chunkedProofCarriage). Q10 and Q11 stay OPEN on the second axis alone (Q1X-F6), which does not apply to Q12 or Q14. That axis is measured, and at the admissible 296-input Cardano spend shape it does not fit — on bytes, not on execution.",
-      "owner": "issue #483 (Q10/Q11 only)"
+      "severity": "observation",
+      "finding": "Output 5 is closed for all four families — for Q12 and Q14 on the depth remediation alone, and for Q10 and Q11 since issue #612 measured the tier-routed carriage (spendInputTierRoutedCarriage). The maximum/adversarial fixture that #482 recorded as missing exists and is runner-measured, and what it measures — that the redeemer-carried maximum does not fit (Q1X-F5) — is remediated by published-chunk carriage, now measured end to end for all four families (chunkedProofCarriage). Q10 and Q11 stayed OPEN on the second axis alone (Q1X-F6), which does not apply to Q12 or Q14. That axis is measured, and at the admissible 296-input Cardano spend shape the tier-1 inline carriage does not fit — on bytes, not on execution — and the measured §8 tier-2 routing now carries those bytes off the step, closing both cells.",
+      "owner": "issue #483 (Q10/Q11 integration); the Q10/Q11 cells closed at issue #612"
     },
     {
       "id": "Q1X-F2",
@@ -634,9 +634,10 @@
     },
     {
       "id": "Q1X-F6",
-      "severity": "defect",
-      "finding": "MEASURED; THE EXECUTION WALL IS GONE AND A BYTE-CARRIAGE GAP REMAINS. The second adversarial axis, spend-input preimage cardinality, is exercised end to end for Q10 and Q11, and its verdict is re-pinned here from a runner report for the first time since #580 inverted it — #580 ruling 2c deliberately left this body un-re-pinned, because this artifact's verifier could not complete until #606 cleared the #608 pexcludes red. The admissible cardinality is unchanged at 296, the smallest of the consensus profile's 16,384-item guardrail, its 32,768-byte spend-inputs preimage field bound (862 inputs at 38 bytes each), and the Cardano script-spend shape already pinned as maximum_cardano_spend_redeemer_count. What is retracted is the mechanism. The counted-era claim — execution memory binding at ~276,000 units per input from re-hashing an authenticated bounded collection, with Q10 fitting 39 inputs and Q11 40, and neither proof evaluable at all at 296 — is measured false in every part. Under the flat commitment there is no collection to reproduce: step memory moves by 8,036 units over Q10's further 222 inputs and 3,212 over Q11's further 101, about 36 and 32 units per input, and at 296 both journeys build and evaluate at 625,256 and 495,554 memory units, better than seventeen times inside the 11,200,000 reserve ceiling. The binding envelope is L1 transaction bytes, at a measured 41 (Q10) and 42 (Q11) complete-signed bytes per input on the binding step: Q10's step-04 fits at 74 inputs with 6 bytes of margin and crosses the envelope at 75 (-35), Q11's step-02 fits at 195 with 39 bytes and crosses at 196 (-3). The exposure that survives is real but different in kind, and smaller: with the legacy builders' unconditional tier-1 inline carriage, a challenged transaction spending more than 74 (Q10) or 195 (Q11) admissible inputs still cannot be corrected, and that still costs the adversary nothing to arrange. Unlike an on-chain execution wall it is remediable by moving bytes — §8's tier-2/tier-3 ladder, off-chain only, no validator touched — but no such carriage is measured for either family here, so the cells stay OPEN and the finding stays a defect rather than an observation. Issue #612 owns the builder-side fix over the bands (74, 296] and (195, 296].",
-      "owner": "issue #612 (builder-side tier selection); the Q10/Q11 output-5 cells remain with issue #483",
+      "severity": "observation",
+      "status": "remediated-by-tier-routing",
+      "finding": "REMEDIATED AT ISSUE #612 BY MEASURED §8 TIER-2 CARRIAGE; the tier-1 exposure below is retained as measured, because it is what the routing remediates and what a builder that bypasses the publishCarriage demotion re-opens. As measured at #606: MEASURED; THE EXECUTION WALL IS GONE AND A BYTE-CARRIAGE GAP REMAINS. The second adversarial axis, spend-input preimage cardinality, is exercised end to end for Q10 and Q11, and its verdict is re-pinned here from a runner report for the first time since #580 inverted it — #580 ruling 2c deliberately left this body un-re-pinned, because this artifact's verifier could not complete until #606 cleared the #608 pexcludes red. The admissible cardinality is unchanged at 296, the smallest of the consensus profile's 16,384-item guardrail, its 32,768-byte spend-inputs preimage field bound (862 inputs at 38 bytes each), and the Cardano script-spend shape already pinned as maximum_cardano_spend_redeemer_count. What is retracted is the mechanism. The counted-era claim — execution memory binding at ~276,000 units per input from re-hashing an authenticated bounded collection, with Q10 fitting 39 inputs and Q11 40, and neither proof evaluable at all at 296 — is measured false in every part. Under the flat commitment there is no collection to reproduce: step memory moves by 8,036 units over Q10's further 222 inputs and 3,212 over Q11's further 101, about 36 and 32 units per input, and at 296 both journeys build and evaluate at 625,256 and 495,554 memory units, better than seventeen times inside the 11,200,000 reserve ceiling. The binding envelope is L1 transaction bytes, at a measured 41 (Q10) and 42 (Q11) complete-signed bytes per input on the binding step: Q10's step-04 fits at 74 inputs with 6 bytes of margin and crosses the envelope at 75 (-35), Q11's step-02 fits at 195 with 39 bytes and crosses at 196 (-3). The exposure that survives is real but different in kind, and smaller: with the legacy builders' unconditional tier-1 inline carriage, a challenged transaction spending more than 74 (Q10) or 195 (Q11) admissible inputs still cannot be corrected, and that still costs the adversary nothing to arrange. Unlike an on-chain execution wall it is remediable by moving bytes — §8's tier-2/tier-3 ladder, off-chain only, no validator touched — at the #606 re-pin no such carriage was measured for either family, so the cells stayed OPEN and this finding stood as a defect over the bands (74, 296] and (195, 296]. Issue #612 then landed the builder-side fix and it is measured here: spendInputTierRoutedCarriage records both families driven at 296 through the §8 tier-2 raw-UTxO carriage, the preimage published once off the step and every transaction inside the envelope, so the cells close and the finding is an observation — the tier-1 inline shape still misses at 296, and only the demotion keeps it from binding.",
+      "owner": "issue #612 (builder-side tier selection, landed at 51ce5427); the Q10/Q11 output-5 cells closed with the measured routed closure",
       "affectsGoalIds": ["Q10", "Q11"]
     }
   ],
@@ -668,8 +669,8 @@
   "summary": {
     "families": 4,
     "outputsBound": 5,
-    "localPassCells": 18,
-    "openCells": 2,
+    "localPassCells": 20,
+    "openCells": 0,
     "measuredProofFitStages": 20,
     "measuredMaximumProofFitStages": 16,
     "worstByteMarginAcrossFamilies": 2978,
@@ -680,15 +681,15 @@
     "maximumFixtureLifecyclesExecuted": 6,
     "chunkedCarriageStages": 26,
     "chunkedCarriageLifecyclesExecuted": 5,
-    "spendInputCardinalityLifecyclesExecuted": 4,
+    "spendInputCardinalityLifecyclesExecuted": 5,
     "residualFindings": 6
   },
   "parentIntegration": {
     "owner": "parent",
     "pendingEdits": [
-      "GOAL_PROGRESS.md: bind Q10/Q11/Q12/Q14 rows for 9.1 outputs 6 to 9 at LOCAL_PASS and output 5 at OPEN, with the measured numbers in this artifact.",
+      "GOAL_PROGRESS.md: bind Q10/Q11/Q12/Q14 rows for 9.1 outputs 6 to 9 at LOCAL_PASS and output 5 at LOCAL_PASS for all four families (Q10/Q11 closed by the #612 tier-routed carriage), with the measured numbers in this artifact.",
       "Finding Q1X-F5 is a protocol exposure, not a bookkeeping item: the L1 envelope on the step-01 proof transaction is exhaustible at roughly 2^84 grinding work. It needs an owner outside this artifact — either a bound on admissible membership-proof depth, a proof-transaction split, or an accepted risk with the number written down.",
-      "docs/fault-proofs/coverage-matrix.md: the four families' rows may cite this artifact for outputs 6 to 9; output 5 must remain OPEN.",
+      "docs/fault-proofs/coverage-matrix.md: the four families' rows may cite this artifact for outputs 6 to 9; output 5 closed for all four families at issue #612 and may be cited accordingly.",
       "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json: the Q10/Q11/Q12 schedulingNote text still says outputs 5 to 9 are all unreached; outputs 6 to 9 are now bound here. Q14's writablePaths do not include this artifact or its verifier, so the Q14 row needs its path set widened by the parent.",
       "Manifest rows for Q10 and Q11 cite the chunked-carriage lifecycle and the spend-input cardinality measurement landed at issue #549."
     ]
@@ -935,7 +936,8 @@
       "derives the admissible spend-input cardinality from the consensus profile",
       "fits the largest double-spend spend-input preimage and measures the first that does not",
       "fits the largest no-input spend-input preimage and measures the first that does not",
-      "reaches the admissible Cardano spend shape on execution and misses it on bytes alone"
+      "reaches the admissible Cardano spend shape on execution and misses it on bytes alone",
+      "routes both families through §8 tier-2 carriage to the admissible Cardano spend shape"
     ],
     "derivationTitle": "derives the admissible spend-input cardinality from the consensus profile",
     "admissibilityDerivation": "Three protocol constraints bound how many inputs an admissible challenged transaction may spend, and the smallest is the one a fraud proof must survive. (1) MIDGARD_CONSENSUS_LIMITS_V1.maxSpendInputCount = 16,384, which is bounded_collection_v1.max_tx_size_derived_item_count in onchain/aiken/lib/midgard/bounded-collection-v1.ak; its own source calls it a one-byte-per-item encoding floor that can never reject a shape Cardano could fit, so it is a guardrail, not the effective bound. (2) MIDGARD_CONSENSUS_LIMITS_V1.maxSpendInputsPreimageBytes = 32,768, twice the preserved L1 envelope, in demo/midgard-core/src/consensus-profile-v1.ts; at 38 bytes per canonical TransactionInput item it admits 862. (3) The Cardano script-spend shape boundary this repository already pins: 296 inputs each carrying a spend redeemer, maximum_cardano_spend_redeemer_count in onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-redeemers.test.ak, which validators/fraud-proofs/input-no-idx/step-02.ak already names as the shape a Q13 proof must handle. 296 is the smallest, and is the admissible cardinality these two families are measured against.",
@@ -1011,9 +1013,39 @@
     "bindingEnvelopeBefore580": "executionMemory",
     "evaluatesAtAdmissibleCardinality": true,
     "fitsAtAdmissibleCardinality": false,
-    "remediatedByCarriage": false,
+    "remediatedByCarriage": true,
     "byteShapedAndCarriageAddressable": true,
-    "remediationOwner": "issue #612",
-    "whyNotRemediatedHere": "The exposure is byte-shaped, so unlike the retired execution wall it CAN be moved off the step — that is the whole difference from the finding this block used to publish. §8's carriage ladder exists for it: above tier 1 the same preimage publishes once as a raw UTxO (tier 2) or as certified chunks (tier 3) and is reached by reference for a handful of index bytes, with no validator change. It is recorded as NOT remediated because no such remediation is measured: the legacy no-input and double-spend step builders these journeys drive carry the preimage inline unconditionally, so nothing here drives either family at 296 on a higher tier, and a remediation claim without a measured end-to-end block would be exactly the unfalsifiable prose this gate exists to refuse. Issue #612 owns the builder-side tier selection; its acceptance baseline is the band left open at tier-1 carriage, (195, 296] for Q11 and (74, 296] for Q10 — one input wider at each lower edge than the (196, 296] and (75, 296] #580 recorded, because this ticket's regeneration grew every field-door-consuming step validator."
+    "remediationOwner": "issue #612 (landed at 51ce5427, measured in this tree)",
+    "whyNotRemediatedHere": "SUPERSEDED AT ISSUE #612, WHICH LANDED AND MEASURED THE CARRIAGE THIS FIELD RECORDS AS MISSING: the legacy no-input and double-spend step builders gained the programmatic publishCarriage demotion, and spendInputTierRoutedCarriage in this artifact records both families driven end to end at the admissible 296 through the §8 tier-2 raw-UTxO carriage with every transaction, publications included, inside the L1 envelope. What remains true, and why this tier-1 block still does not remediate: the verdict above is the measured tier-1 INLINE shape, which still misses at 296, and it stays recorded as the exposure a builder re-opens by bypassing the demotion. Retained as written before #612 landed: The exposure is byte-shaped, so unlike the retired execution wall it CAN be moved off the step — that is the whole difference from the finding this block used to publish. §8's carriage ladder exists for it: above tier 1 the same preimage publishes once as a raw UTxO (tier 2) or as certified chunks (tier 3) and is reached by reference for a handful of index bytes, with no validator change. It is recorded as NOT remediated because no such remediation is measured: the legacy no-input and double-spend step builders these journeys drive carry the preimage inline unconditionally, so nothing here drives either family at 296 on a higher tier, and a remediation claim without a measured end-to-end block would be exactly the unfalsifiable prose this gate exists to refuse. Issue #612 owns the builder-side tier selection; its acceptance baseline is the band left open at tier-1 carriage, (195, 296] for Q11 and (74, 296] for Q10 — one input wider at each lower edge than the (196, 296] and (75, 296] #580 recorded, because this ticket's regeneration grew every field-door-consuming step validator."
+  },
+  "spendInputTierRoutedCarriage": {
+    "remediates": "Q1X-F6",
+    "issue": 612,
+    "landedAt": "51ce5427",
+    "suite": "demo/midgard-fault-proofs/tests/submit-init-emulator-spend-input-cardinality.test.ts",
+    "closureTitle": "routes both families through §8 tier-2 carriage to the admissible Cardano spend shape",
+    "cardinality": 296,
+    "recordedTier": "RawUtxo",
+    "preimageBytesAtAdmissible": 11251,
+    "mechanism": "Issue #612 gave the legacy no-input and double-spend step builders a publishCarriage option that demotes the §8 ladder's tier-1 Inline pick to the tier-2 raw-UTxO carriage: the spend-input field preimage (3 + 296 × 38 = 11,251 bytes at the admissible shape, still Inline by the ladder's own byte thresholds) publishes once as a carriage UTxO in a transaction of its own that executes no script, and the binding step carries a reference to it instead of the preimage. No validator changed; the on-chain readers already accepted every §8 tier.",
+    "measuredFamilies": ["Q10", "Q11"],
+    "bindingStages": {
+      "Q10": "step-04",
+      "Q11": "step-02"
+    },
+    "stages": {
+      "Q10": [
+        { "stage": "step-03-carriage", "bytes": 12520, "l1ByteMargin": 3864, "executionMemory": 0, "executionSteps": 0 },
+        { "stage": "step-04-carriage", "bytes": 12520, "l1ByteMargin": 3864, "executionMemory": 0, "executionSteps": 0 },
+        { "stage": "step-03", "bytes": 8294, "l1ByteMargin": 8090, "executionMemory": 510240, "executionSteps": 171302290 },
+        { "stage": "step-04", "bytes": 13364, "l1ByteMargin": 3020, "executionMemory": 641038, "executionSteps": 216968325 }
+      ],
+      "Q11": [
+        { "stage": "step-01", "bytes": 10980, "l1ByteMargin": 5404, "executionMemory": 876914, "executionSteps": 290160048 },
+        { "stage": "step-02-carriage", "bytes": 12520, "l1ByteMargin": 3864, "executionMemory": 0, "executionSteps": 0 },
+        { "stage": "step-02", "bytes": 8340, "l1ByteMargin": 8044, "executionMemory": 511336, "executionSteps": 171917697 }
+      ]
+    },
+    "provenance": "Landed at 51ce5427 (issue #612) without a re-pin; measured in this tree on 2026-08-17/18 by two green runs of the cited suite's closure lifecycle, the second under MIDGARD_PRINT_PROOF_FIT=1, whose printed stage records these numbers are copied from verbatim. The carriage stages execute no script (memory and steps 0); every stage of both routed journeys, publications included, fits the 16,384-byte L1 envelope, and the binding steps land at 13,364 bytes (Q10 step-04) and 8,340 (Q11 step-02) against tier-1 inline misses of 25,538 and 20,514 at the same cardinality."
   }
 }
