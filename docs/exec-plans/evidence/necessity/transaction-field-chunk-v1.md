@@ -156,7 +156,161 @@
   `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`
   (exact-size canonical output items; regenerable by running the suites).
 
-## Measurements (§3.2 order — stop at the first representation that fits)
+## Measurements — flat `FieldCarriageV1` scheme (current; §3.2 order — stop at the first tier that fits)
+
+**The flat reversion (#552/#565, complete) replaced the counted
+`TransactionFieldChunkWitness` mechanism below with the §8 three-tier ladder**
+(`docs/spec/midgard-tx.md` §8), carrying a raw field preimage rather than a
+counted collection of items. All figures in this section were reproduced this
+pass against the blueprint this file's own Binding section currently pins
+(`onchain/aiken/plutus.json` sha256 `f49cae224f24cfab577f1ed10b5340384b75e541851eb7b77b507a79cb7d5e00`,
+md5 `5e38d7c6ccb7987d0aca710307dcaea7` — confirmed by a fresh `sha256sum`/`md5sum`
+this pass) by running the four suites named below with
+`MIDGARD_PRINT_PROOF_FIT=1`, one file at a time
+(`pnpm --config.verifyDepsBeforeRun=false --dir midgard-validation exec vitest
+run tests/<file> --pool=forks --no-file-parallelism --bail=0` from `demo/`);
+every suite reported all cases green. Where a number is cited from
+`docs/exec-plans/evidence/canonical-v1-p7-remeasurement-v1.json` or from
+`docs/spec/midgard-tx.md`'s own pinned on-chain exec-ledger rather than from
+one of the four runs, that source is named inline rather than re-derived.
+
+**Two figures moved against the P7 pin, and are reported rather than
+averaged.** `canonical-v1-p7-remeasurement-v1.json`'s
+`phase4CarriageMeasurements.certificateMinAda` /
+`.publicationPlusCertificationFit` were taken 2026-08-15, one day before
+issue #606 welded `field_hash` into the certificate datum (`docs/spec/midgard-tx.md`
+§8.6); that grew the datum 176 → 210 bytes and is already reflected in
+`docs/spec/midgard-tx.md` §8.10's own tables, but the P7 JSON's
+`supersededInPartBy606` note names only §12.7/§12.8/§8.11 and the K/tier-1/
+publication-frontier/64-byte-overhang figures as unmoved by #606 — it does not
+mention these two, and a fresh run of
+`field-preimage-carriage-fit-emulator-v1.test.ts` this pass reproduces the
+post-#606 values, not the P7-pinned ones (below). The tier-1 row below carries
+a second, larger movement: `docs/spec/midgard-tx.md` §8.3 records the #611
+finding (2026-08-17, landed at commit `bf5cb8ed`) that the complete **signed**
+tier-1 step transaction at the nominal 14,336-byte cap does not fit
+`maxTxSize` at all — a measurement the P7 JSON's `tier1Bound` predates and
+explicitly did not attempt ("the evidence-layer reading... not... a complete
+signed step transaction"). Both are reported as measured below; neither is
+resolved by this artifact, matching how #611's own repricing is deferred to
+owner authority in `docs/spec/midgard-tx.md` §8.3 rather than decided there.
+
+| Tier / representation | Preimage (item) bound | Signed tx bytes vs `maxTxSize` (16,384) | Fits one tx? | Measured (selector) or structural |
+| --- | --- | --- | --- | --- |
+| 1. Tier 1 — `Inline` (redeemer carriage) | nominal cap `MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1` = 14,336 (item ≤ 14,332) | evidence layer: 15,848 B one-step evidence at the cap inside a 16,383-B envelope, 536 B of the 2,048-B allowance unspent (NOT falsified). Complete **signed** step transaction at the cap: **17,389 B by-reference (margin −1,005), 20,518 B embedded-resolver (margin −4,134) — FALSIFIED.** Real bisected fitting frontier: item 13,357 B / preimage 13,361 B → exactly 16,384 B signed; 13,358/13,362 → 16,385 B, overflow. | evidence-layer YES to 14,336; **signed-transaction basis NO above 13,361 preimage bytes** — repricing escalated, not decided (#611) | measured: `keeps stage-4 one-step evidence O(1)…` (`complete-item-proof-fit-v1.test.ts`) and `measures the complete signed tier-1 step transaction at the 14,336-byte preimage cap` (`complete-item-proof-fit-emulator-v1.test.ts`) — both re-run this pass, both reproduce `docs/spec/midgard-tx.md` §8.3's own figures to the byte |
+| 2. Tier 2 — `RawUtxo` (single raw-UTxO publication + input/reference consumption) | `K` = `MIDGARD_CHUNK_BYTES_K_V1` = 15,148 reliable (512-B reserve) / 15,644 exact (zero margin) | reliable: 15,872 B (margin 512); exact: 16,384 B (margin 0); 15,645 B preimage → 16,385 B, first unpublishable byte. Framing at the exact frontier: 740 B (248 B fixed + datum-head, 492 B payload-proportional Plutus-Data chunking). | YES to 15,148 reliable / 15,644 exact | measured: `measures the largest publishable preimage and re-pins K against it` (`field-preimage-carriage-fit-emulator-v1.test.ts`) — re-run this pass, reproduces the P7 pin unmoved |
+| 2a. (64-byte overhang, not a fifth tier) | counted-era publication cap 14,396 sits 64 B above tier-1's admissible 14,332 | an item in (14,332, 14,396] carries a preimage in (14,336, 14,400], which selects tier 2, not a stranded band | YES — measured green at exactly 14,396 | measured: `carries one complete item at the applied publication maximum through the tier-2 door` (`complete-item-carriage-tiers-emulator-v1.test.ts`) — re-run this pass, 5/5 green; disposition ratified in `canonical-v1-p7-remeasurement-v1.json`'s `sixtyFourByteOverhang` ("REAL, CORRECT, AND NOT A CAPABILITY GAP") |
+| 3. Tier 3 — `Certified` (chunked raw carriage + one certificate; ≤ 3 `K`-byte chunks by reference) | `preimage_len` > 15,148 up to the §5.4 aggregate cap 32,768; chunk `j` = `[j·K, (j+1)·K)`, last ragged; max chunk count `⌈32,768/15,148⌉` = 3 | structural: a certifying transaction can never reference a chunk its own transaction publishes (reference inputs resolve against the pre-transaction UTxO set), at any size. Independently over budget by bytes alone even for the cheapest two-transaction case: full-chunk publication 15,872 B + certify redeemer 531 B + certificate datum 210 B = **combined lower bound 16,613 B > 16,384**. | structurally NO for one-transaction carriage at any size above `K`; YES as an `n + 1`-transaction plan (`n` = chunk count, 1–3) | measured: `shows last-chunk publication and certification cannot share a transaction` and `reports min-Ada at the sizes the ladder really uses` (`field-preimage-carriage-fit-emulator-v1.test.ts`) — re-run this pass; combined lower bound is **16,613, not the P7-pinned 16,579** (see the movement note above); min-Ada: certificate manifest 2,064,490 lovelace (210-B datum, not the P7-pinned 176-B/1,939,500), full chunk 68,231,610, ragged tail 11,869,740, at `coinsPerUtxoByte` 4,310 |
+| 4. Surviving internal bounded chunk walk (not a §3.2 carriage alternative) | applies inside tier 3's `Chunked` field view (§8.8) on-chain, and inside the off-chain validation machine's own trace at every tier | on-chain: reading an item re-verifies the chunk(s) it lands in — one `blake2b_256` per chunk touched (two on a straddling item), linear, no amortization. Off-chain: `countedMachineFieldTraceV1` / `countedMachineFieldChunkStepsV1` (`demo/midgard-validation/src/validation-machine.ts:206-263`) build the machine's own item-major/chunk-major trace for step-counting and size measurement, independent of which tier supplied the bytes, and are never compared against a §4 field commitment (that comparison is `verifyMidgardV1TxFieldPreimage`, run once over the whole flat preimage) | N/A — not a representation choice; it is what tier 3 costs once selected, and what the machine's own accounting looks like at every tier | structural / cited, not re-run this pass: the three-chunk corner (32,763-B field-1 preimage, split `[15,148, 15,148, 2,467]`) costs 238,738 mem / 72.13M CPU to open plus 155,142 mem / 94.06M CPU per item read (≈ 83-item per-step budget, memory-bound), per `docs/spec/midgard-tx.md` §8.10's own pinned exec-ledger (`onchain/aiken/scripts/native-tx-carriage-exec-ledger-v1.json`) — outside the four suites this pass reproduces, and not independently re-run here |
+
+### Exact limiting constraint — flat scheme
+
+`maxTxSize = 16,384` on the complete serialized transaction — the same
+constraint the counted era measured against, restated at
+`minSupportedL1MaxTxBytes` in `docs/spec/midgard-tx.md` §8.10. Measured
+against the applied §8 door and the tier-2/tier-3 cost model this pass: the
+tier-1 **signed** step transaction crosses it at a 13,358-byte item
+(13,362-byte preimage), 1,005 bytes below the nominal 14,332/14,336
+redeemer-encoding cap that bounds only the one-step evidence CBOR, not the
+transaction it rides in; the tier-2 signed publication crosses it at a
+15,645-byte preimage (16,385 bytes, one byte over); and tier-3's cheapest
+possible combination (one full-`K` chunk publication plus certification)
+crosses it by construction — 16,613 bytes against 16,384 — independent of
+preimage size, because reference inputs resolve pre-transaction. Preimages up
+to the 32,768-byte aggregate maximum (§5.4, nine general fields) are legal
+canonical content, so tier 3's chunked-plus-certified fallback is required
+above the tier-2 frontier.
+
+### Why no simpler authenticated representation closes the gap — flat scheme
+
+Tier 1 cannot be widened without repeating the shape of regression commit
+`92426384` refused for the counted era's direct/reference split: the #611
+measurement shows the complete **signed** transaction, not the abstract
+redeemer-byte cap, is what actually limits tier 1, so raising the nominal
+14,336 constant would widen acceptance onto a basis the deployed step route
+does not clear — the same "widening a `≤ constant` selector past what the
+deployed route matches" shape that commit refused when it declined to move
+`maxReliableDirectCompleteItemBytes` from 8,273 to 13,282 (see the counted-era
+paragraph below, retained). Tier 2 cannot carry a preimage above `K` by
+construction: `K` is *defined* as the reserve-clearing publication frontier
+(`docs/spec/midgard-tx.md` §8.3 erratum E1), so raising it moves the very
+frontier it would be measured against, and splitting one preimage across
+multiple tier-2 outputs of one transaction does not reduce that transaction's
+total serialized size any more than splitting a counted-era item did.
+Tier 3 introduces no second commitment scheme — the certificate's chunk
+digest vector is re-derived from, and welded to, the same flat §4 field hash
+tiers 1 and 2 authenticate directly (`docs/spec/midgard-tx.md` §8.6) — so the
+deployed chunked-plus-certified stream is the minimum additional machinery,
+exactly as GOAL_SPEC §3.2 item 3 anticipates ("accept the same complete
+logical item at the public API… publish it as deterministic fixed-size
+chunks plus one certified digest-manifest").
+
+### Preserved complete-item / complete-preimage path — flat scheme
+
+Preimages at or below `MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1` =
+14,336 bytes continue to use tier-1 `Inline` at the evidence layer (13,361
+bytes on the measured signed-transaction basis, per the #611 finding above —
+carried here as measured record, not a re-pin); preimages at or below `K` =
+15,148 bytes fit tier-2 `RawUtxo`. The ladder is enforced as a partition
+rather than a preference: "a preimage that fits tier 1 or tier 2 has exactly
+one admissible carriage" (`docs/spec/midgard-tx.md` §8.4), and a consumer
+MUST reject a tier-3 certificate whose `total_length ≤ K`, so the same
+preimage can never be carried two ways. All three tiers authenticate the
+identical flat §4 field commitment through one access door
+(`authenticated_field_view`, §8.8's frozen `FieldCarriageV1`/`FieldViewV1`
+sum types); tier-invisible reads through that one door are exercised
+end to end by `carries a preimage of every tier to a dispute read with no
+tier branch` (`field-preimage-carriage-fit-emulator-v1.test.ts`) and by the
+four applied-door journeys in `complete-item-carriage-tiers-emulator-v1.test.ts`
+(tier-2 `RawUtxo`, tier-2-at-the-publication-maximum, tier-3 `Certified`, and
+rejection of a reference-input set moved under the committed indices) — both
+suites re-run this pass, all cases green. Omission/duplication/reorder/
+substitution/trailing-data rejection and re-publication healing after a yank
+or a malicious publication are exercised by the same emulator suite's §8.7
+healing cases, also green this pass.
+
+### Necessity conclusion (re-derived for the flat scheme)
+
+Preimages above the tier-2 reliable frontier (`K` = 15,148 bytes; 15,644
+bytes on the razor's-edge exact basis, deliberately not the constant the
+chunker cuts at) still **require tier-3 `Certified` carriage**: no
+single-transaction representation reaches them — tier 1's redeemer bound and
+tier 2's publication bound are both narrower, and tier 3's own certification
+cannot be merged into the last chunk's publication transaction, structurally,
+regardless of byte budget. The validation machine's internal bounded
+item-major/chunk-major walk remains the consumption mechanism at every tier
+in the sense that survived the reversion: it is how the *off-chain* machine
+builds its own step trace over whatever bytes the door's tier-1/2/3 carriage
+produced, independent of which tier supplied them, while the *on-chain*
+per-chunk re-verification that walk's cost model prices is specific to tier
+3's `Chunked` view (tiers 1–2 hand the machine a `Whole` view with nothing
+left to walk in chunks). Both halves of the counted-era mechanism therefore
+survive, but demoted: the counted ≤ 4,095-byte chunk boundary is gone from
+the wire and from consensus authentication — `docs/spec/midgard-tx.md` §8.9
+retires `maxTransactionFieldChunkBytes` and `maxSinglePublicationCompleteItemBytes`
+and prohibits both in new surface — and what is left is (a) the machine's own
+internal trace naming discipline (`counted…` marks machine-trace structure
+never compared against a §4 field commitment) and (b) tier 3's real,
+`K`-byte (15,148) chunk boundary, which is not the retired 4,095-byte one.
+This is the same shape of conclusion the counted-era analysis below reached
+for its own scheme, re-derived rather than copied: measured across every tier
+this pass, nothing in the fresh run weakens or strengthens it past what is
+stated here.
+
+## Measurements — SUPERSEDED (counted-era `TransactionFieldChunkWitness` scheme; retained per GOAL_SPEC §3 invariant 14)
+
+**Everything from this heading through the end of "Preserved complete-item
+path" below prices the *counted* `TransactionFieldChunkWitness` mechanism,
+which #560/#565's flat field-hash reversion dissolved.** It is retained
+verbatim as historical record — superseded-not-deleted, GOAL_SPEC §3
+invariant 14 — not because it is current guidance. `docs/spec/midgard-tx.md`
+§8.9 explicitly retires the two constants this table prices
+(`maxTransactionFieldChunkBytes` = 4,095, `maxSinglePublicationCompleteItemBytes`
+= 14,396) and prohibits both in new surface; the flat-scheme section above is
+the current "Alternatives considered" analysis for this family. Nothing below
+this notice was re-measured this pass.
+
+### Measurements (§3.2 order — stop at the first representation that fits)
 
 Execution reserve applied: 20% below the 16,500,000-memory /
 10,000,000,000-CPU floors → 13,200,000 / 8,000,000,000
@@ -169,7 +323,7 @@ Execution reserve applied: 20% below the 16,500,000-memory /
 | 3. Minimum multi-output publication + complete logical reconstruction | not deployed for this family; the bounded-chunk stream below already reconstructs the complete item from ≤4,095-byte authenticated chunks bound to one item commitment | — | — | — | superseded by 4 |
 | 4. Bounded chunk consumption (`TransactionFieldChunkWitness`, ≤4,095-byte chunks) | every chunk reveal ≤ 4,675-byte publication (`MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxFieldPublicationUnsignedTransactionBytes`, pinned by `demo/midgard-sdk/tests/tx-order-v1.test.ts`) | 3,398,228 / 13,200,000 | 1,209,745,039 / 8,000,000,000 | per pinned receipt measurements | YES |
 
-## Exact limiting constraint
+### Exact limiting constraint — SUPERSEDED (counted era)
 
 `maxTxSize = 16,384` on the complete serialized transaction. Measured with
 complete signed constructions against the applied validators: the direct
@@ -181,7 +335,7 @@ crosses it between 14,396 (15,256 bytes) and 16,384 item bytes
 maximum and the 32,768-byte aggregate-field maximum are legal canonical
 content, so a bounded fallback is required above 14,396 bytes.
 
-## Why no simpler authenticated representation closes the gap
+### Why no simpler authenticated representation closes the gap — SUPERSEDED (counted era)
 
 The item bytes themselves exceed what one L1 transaction can carry: even a
 zero-overhead publication of a 16,384-byte item equals the whole envelope
@@ -192,7 +346,7 @@ The deployed bounded-chunk stream is the minimum additional machinery: it
 reuses the same per-item commitment (chunk tree root) that representation 1
 and 2 authenticate, so no second commitment scheme is introduced.
 
-## Preserved complete-item path
+### Preserved complete-item path — SUPERSEDED (counted era)
 
 Items at or below 13,282 measured bytes fit representation 1; items at or
 below 14,396 bytes fit representation 2 (`deriveValidationProofItemPublicationV1`
