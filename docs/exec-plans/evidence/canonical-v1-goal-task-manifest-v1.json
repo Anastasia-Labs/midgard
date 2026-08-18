@@ -640,7 +640,7 @@
       ],
       "sourceAnchors": [
         "GOAL_SPEC.md:733 \u00a78.1 C10 exact P0 freeze/baseline revalidation acceptance and dependency row",
-        "onchain/aiken/aiken.toml:3 compiler = \"v1.1.22\" pinned compiler policy",
+        "onchain/aiken/aiken.toml:3 compiler = \"v1.1.23\" pinned compiler policy",
         "onchain/aiken/lib/midgard/validation-machine-v1.ak:17975 verify_one_step and :17982 verify_one_step_evidence monolithic baseline entry points",
         "docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json compiled-size and validation-machine inventory evidence",
         "demo/midgard-validation/tests/nested-value-boundary-v1.test.ts:201 canonical nested-Value boundary suite",
@@ -654,22 +654,22 @@
       "focusedCommands": [
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/validation-machine-v1.ak lib/midgard/validation-machine-v1.test.ak lib/midgard/cek-data-breadth-v1.test.ak lib/midgard/cek-data-traverse.max-cardano.test.ak lib/midgard/ledger-output-value-v1.test.ak lib/midgard/ledger-output-value.max-cardano.test.ak lib/midgard/fraud-proofs/c26-unary-depth-v1.test.ak lib/midgard/script-proof-v1.test.ak lib/midgard/cek-proof-v1.test.ak",
         "cd onchain/aiken && aiken check --skip-tests",
-        "rg --fixed-strings 'compiler = \"v1.1.22\"' onchain/aiken/aiken.toml",
+        "rg --fixed-strings 'compiler = \"v1.1.23\"' onchain/aiken/aiken.toml",
         "pnpm --dir demo/midgard-validation exec vitest run tests/nested-value-boundary-v1.test.ts tests/data-breadth-boundary-v1.test.ts tests/nested-redeemer-data-boundary-v1.test.ts tests/plutus-data-unary-depth-boundary-v1.test.ts tests/cek-program.test.ts tests/retained-da-boundary-v1.test.ts",
         "pnpm --dir demo/midgard-core exec vitest run tests/script-proof.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/cardano-capability-retained-da-v1.test.ts",
         "pnpm --dir demo/midgard-validation typecheck",
         "pnpm --dir demo/midgard-validation lint"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: nested-value-boundary-v1.test.ts, data-breadth-boundary-v1.test.ts, nested-redeemer-data-boundary-v1.test.ts, plutus-data-unary-depth-boundary-v1.test.ts, cek-program.test.ts, retained-da-boundary-v1.test.ts, script-proof.test.ts, cardano-capability-retained-da-v1.test.ts. The C10 gate must report normalized Aiken format exactly 9/9, pinned compiler declaration exactly 1/1 at v1.1.22, and focused TypeScript suites exactly 32/32 with 0 failures (midgard-validation 24/24 across its six exact suites, midgard-core 5/5, midgard-fault-proofs 3/3); the compile-only Aiken check, typecheck, and lint each require exit 0. The midgard-validation subtotal moved 15 to 19 with issue #484: nested-value-boundary-v1.test.ts went from exactly 1 to exactly 2 cases and data-breadth-boundary-v1.test.ts from exactly 4 to exactly 7 cases. Re-measured 2026-08-05 for issue #540 on the current tree with the package-local vitest (pnpm 9.15.4, Node v22.22.2): `pnpm --dir demo/midgard-validation exec vitest run tests/nested-value-boundary-v1.test.ts tests/data-breadth-boundary-v1.test.ts tests/nested-redeemer-data-boundary-v1.test.ts tests/plutus-data-unary-depth-boundary-v1.test.ts tests/cek-program.test.ts tests/retained-da-boundary-v1.test.ts` reports exactly 24/24 passing across its six exact suites, `pnpm --dir demo/midgard-core exec vitest run tests/script-proof.test.ts` exactly 5/5, and `pnpm --dir demo/midgard-fault-proofs exec vitest run tests/cardano-capability-retained-da-v1.test.ts` exactly 3/3 \u2014 exactly 32/32 passing, 0 failures, all three exit 0. The 19/19 and 27/27 pins were stale recorded counts, not a stale suite: the midgard-validation subtotal read 23 at bf00c7ae and reached 24 when e4335bbd added the field-8 unary redeemer maximum to plutus-data-unary-depth-boundary-v1.test.ts. Per-suite: cek-program.test.ts exactly 7, data-breadth-boundary-v1.test.ts exactly 7, plutus-data-unary-depth-boundary-v1.test.ts exactly 6, nested-value-boundary-v1.test.ts exactly 2, nested-redeemer-data-boundary-v1.test.ts exactly 1, retained-da-boundary-v1.test.ts exactly 1. The same 2026-08-05 run re-confirmed normalized Aiken format 9/9 and the v1.1.22 compiler pin 1/1. Transcripts recorded against the pre-#540 27/27 contract do not satisfy this row.",
+      "expectedNonzeroCounts": "Counted focused selectors: nested-value-boundary-v1.test.ts, data-breadth-boundary-v1.test.ts, nested-redeemer-data-boundary-v1.test.ts, plutus-data-unary-depth-boundary-v1.test.ts, cek-program.test.ts, retained-da-boundary-v1.test.ts, script-proof.test.ts, cardano-capability-retained-da-v1.test.ts. Re-measured 2026-08-17 for issue #479 at commit 9f133730 under aiken v1.1.23+2a78108 (the sanctioned fork binary at /home/gumbo/playground/aiken/target/release/aiken, md5 b3acfdf348235798cb6b921d0f87750a, PATH-prepended and never built under onchain/aiken): normalized Aiken format exactly 9/9, `aiken check --skip-tests` exit 0, pinned compiler declaration exactly 1/1 now reading v1.1.23 (aiken.toml's compiler pin moved from v1.1.22 to v1.1.23 since this row was drafted; the closure verifier reports the release gate genuinely unset at 1/35 passing criteria with 0 release commits bound, and the monolithic `validate()` has zero call sites in deployed validators), and focused TypeScript suites exactly 32/32 with 0 failures (midgard-validation 24/24 across its six exact suites, midgard-core 5/5, midgard-fault-proofs 3/3); the compile-only Aiken check, typecheck, and lint each exit 0. This exactly reconfirms the 2026-08-05 #540 counts retained below, unchanged by the v1.1.22-to-v1.1.23 compiler move. C10 is measured PASS. SUPERSEDED 2026-08-05 CONTRACT, retained verbatim as provenance: The C10 gate must report normalized Aiken format exactly 9/9, pinned compiler declaration exactly 1/1 at v1.1.22, and focused TypeScript suites exactly 32/32 with 0 failures (midgard-validation 24/24 across its six exact suites, midgard-core 5/5, midgard-fault-proofs 3/3); the compile-only Aiken check, typecheck, and lint each require exit 0. The midgard-validation subtotal moved 15 to 19 with issue #484: nested-value-boundary-v1.test.ts went from exactly 1 to exactly 2 cases and data-breadth-boundary-v1.test.ts from exactly 4 to exactly 7 cases. Re-measured 2026-08-05 for issue #540 on the current tree with the package-local vitest (pnpm 9.15.4, Node v22.22.2): `pnpm --dir demo/midgard-validation exec vitest run tests/nested-value-boundary-v1.test.ts tests/data-breadth-boundary-v1.test.ts tests/nested-redeemer-data-boundary-v1.test.ts tests/plutus-data-unary-depth-boundary-v1.test.ts tests/cek-program.test.ts tests/retained-da-boundary-v1.test.ts` reports exactly 24/24 passing across its six exact suites, `pnpm --dir demo/midgard-core exec vitest run tests/script-proof.test.ts` exactly 5/5, and `pnpm --dir demo/midgard-fault-proofs exec vitest run tests/cardano-capability-retained-da-v1.test.ts` exactly 3/3 - exactly 32/32 passing, 0 failures, all three exit 0. The 19/19 and 27/27 pins were stale recorded counts, not a stale suite: the midgard-validation subtotal read 23 at bf00c7ae and reached 24 when e4335bbd added the field-8 unary redeemer maximum to plutus-data-unary-depth-boundary-v1.test.ts. Per-suite: cek-program.test.ts exactly 7, data-breadth-boundary-v1.test.ts exactly 7, plutus-data-unary-depth-boundary-v1.test.ts exactly 6, nested-value-boundary-v1.test.ts exactly 2, nested-redeemer-data-boundary-v1.test.ts exactly 1, retained-da-boundary-v1.test.ts exactly 1. The same 2026-08-05 run re-confirmed normalized Aiken format 9/9 and the v1.1.22 compiler pin 1/1. Transcripts recorded against the pre-#540 27/27 contract do not satisfy this row.",
       "invalidationTriggers": [
         "an F10 baseline, release-gate, activation/deployment path, monolith reference, or compiled-size measurement change invalidates C10",
         "any writable Aiken source/test byte change re-runs normalized format 9/9 and the compile-only check under v1.1.22",
         "any of the exact 8 TypeScript suite files changing re-runs the exact 27-test focused inventory",
-        "an aiken.toml compiler declaration or effective compiler changing from v1.1.22 invalidates all C10 evidence"
+        "an aiken.toml compiler declaration or effective compiler changing from v1.1.23 invalidates all C10 evidence"
       ],
-      "readyBecause": "C10 has no non-PASS dependency: F10 is measured PASS. This makes C10 assignable, not PASS; closure still requires the exact 9-format, 1-compiler, and 27-test gates under Aiken v1.1.22.",
-      "schedulingNote": "Use only Aiken compiler v1.1.22. onchain/aiken/plutus.json remains parent-owned and must not be regenerated in this lane."
+      "readyBecause": "C10 is measured PASS at commit 9f133730 (2026-08-17, issue #479): F10 is measured PASS, and C10's own exact 9-format, 1-compiler (now v1.1.23), and 32-test gates all re-confirmed. No non-PASS dependency remains.",
+      "schedulingNote": "Use Aiken compiler v1.1.23 (aiken.toml's pin moved from v1.1.22). onchain/aiken/plutus.json remains parent-owned and must not be regenerated in this lane."
     },
     {
       "id": "C11",
@@ -696,7 +696,7 @@
       ],
       "sourceAnchors": [
         "GOAL_SPEC.md:734 \u00a78.1 C11 exact dispute-hub-fit acceptance and dependency row",
-        "onchain/aiken/aiken.toml:3 compiler = \"v1.1.22\" pinned compiler policy",
+        "onchain/aiken/aiken.toml:3 compiler = \"v1.1.23\" pinned compiler policy",
         "onchain/aiken/lib/midgard/validation-dispute-v1.ak:86 open and :113 open_after_source_verification dispute-hub state authority",
         "demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts:232 exact publication-threshold measurement suite",
         "demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts:755 applied-validator emulator publication/consumption suite"
@@ -709,21 +709,21 @@
       "focusedCommands": [
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/validation-dispute-v1.ak lib/midgard/validation-dispute-v1.test.ak",
         "cd onchain/aiken && aiken check --skip-tests",
-        "rg --fixed-strings 'compiler = \"v1.1.22\"' onchain/aiken/aiken.toml",
+        "rg --fixed-strings 'compiler = \"v1.1.23\"' onchain/aiken/aiken.toml",
         "pnpm --dir demo/midgard-validation exec vitest run tests/complete-item-proof-fit-v1.test.ts tests/complete-item-proof-fit-emulator-v1.test.ts",
         "pnpm --dir demo/midgard-validation typecheck",
         "pnpm --dir demo/midgard-validation lint"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: complete-item-proof-fit-v1.test.ts, complete-item-proof-fit-emulator-v1.test.ts. The C11 gate must report normalized Aiken format exactly 2/2, pinned compiler declaration exactly 1/1 at v1.1.22, and exact fit suites 9/9 with 0 failures (complete-item-proof-fit-v1 4/4 plus applied-validator emulator 5/5); compile-only check, typecheck, and lint each require exit 0.",
+      "expectedNonzeroCounts": "Counted focused selectors: complete-item-proof-fit-v1.test.ts, complete-item-proof-fit-emulator-v1.test.ts. Re-measured 2026-08-17 for issue #479 at commit 9f133730 under aiken v1.1.23+2a78108 (the sanctioned fork binary, md5 b3acfdf348235798cb6b921d0f87750a): normalized Aiken format exactly 2/2, pinned compiler declaration exactly 1/1 now reading v1.1.23, and exact fit suites exactly 11/11 with 0 failures (complete-item-proof-fit-v1.test.ts 5/5, complete-item-proof-fit-emulator-v1.test.ts 6/6); compile-only check, typecheck, and lint each exit 0. C11 is measured PASS. The suite grew from the pinned 9/9 (4/4 plus 5/5) to 11/11 (5/5 plus 6/6): the emulator file gained the tier-1 14,336-byte preimage-cap case, already present in the current tree when this row was last drafted but not yet recounted. SUPERSEDED CONTRACT, retained verbatim as provenance: The C11 gate must report normalized Aiken format exactly 2/2, pinned compiler declaration exactly 1/1 at v1.1.22, and exact fit suites 9/9 with 0 failures (complete-item-proof-fit-v1 4/4 plus applied-validator emulator 5/5); compile-only check, typecheck, and lint each require exit 0.",
       "invalidationTriggers": [
         "C10 baseline, compiled blueprint identity, compiler, or control-plane topology changing invalidates C11",
         "a live maxTxSize, margin rule, applied/parameterized hub hash, parameter, reference script, or publication framing change re-runs both fit suites",
-        "a validation-dispute ABI/source byte change re-runs normalized format 2/2 and compile-only check under v1.1.22",
-        "a direct/reference carriage threshold, signed transaction measurement, or emulator applied-validator path change invalidates exact 9/9 evidence"
+        "a validation-dispute ABI/source byte change re-runs normalized format 2/2 and compile-only check under v1.1.23",
+        "a direct/reference carriage threshold, signed transaction measurement, or emulator applied-validator path change invalidates exact 11/11 evidence"
       ],
-      "blockedOn": ["C10"],
-      "blockedBecause": "C11 remains dependency-blocked only on current non-PASS queue rows: C10. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted.",
-      "schedulingNote": "C11 is NOT_STARTED and serial after C10. Measure only the actual applied/parameterized transaction under Aiken v1.1.22; do not regenerate the parent-owned blueprint."
+      "blockedOn": [],
+      "readyBecause": "C10 is measured PASS (2026-08-17, issue #479), so C11 has no current non-PASS dependency. C11 is itself measured PASS at commit 9f133730: normalized format 2/2, compiler v1.1.23 confirmed, and the fit suites 11/11 with 0 failures, typecheck/lint exit 0.",
+      "schedulingNote": "C11 is measured PASS, serial after C10. Measure only the actual applied/parameterized transaction under Aiken v1.1.23; do not regenerate the parent-owned blueprint."
     },
     {
       "id": "C12",
@@ -753,7 +753,7 @@
       ],
       "sourceAnchors": [
         "GOAL_SPEC.md:735 \u00a78.1 C12 exact resolver-routing-completeness acceptance and dependency row",
-        "onchain/aiken/aiken.toml:3 compiler = \"v1.1.22\" pinned compiler policy",
+        "onchain/aiken/aiken.toml:3 compiler = \"v1.1.23\" pinned compiler policy",
         "onchain/aiken/lib/midgard/validation-resolver-v1.ak:59 select_semantic_resolver and :136 prepare_selected",
         "onchain/aiken/lib/midgard/validation-dispute-v1.test.ak:324 resolver_routing_is_total_for_nonterminal_phases_and_rejects_terminal",
         "demo/midgard-sdk/tests/validation-resolver-applied-hashes.test.ts:74 production-builder applied-hash Aiken fixture suite"
@@ -768,21 +768,21 @@
         "cd onchain/aiken && aiken check --skip-tests",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_resolver_v1.test phase_a_applied_group_routes_through_the_production_prepare_path script_sources_applied_group_routes_through_the_production_prepare_path production_prepare_rejects_a_wrong_semantic_resolver_index production_prepare_rejects_a_wrong_output_script_hash production_prepare_rejects_same_cardinality_group_substitution semantic_handoff_accepts_exact_prepared_phase_a_evidence semantic_handoff_rejects_script_sources_auxiliary_substitution semantic_handoff_rejects_cross_family_action_substitution",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_dispute_v1.test resolver_routing_is_total_for_nonterminal_phases_and_rejects_terminal",
-        "rg --fixed-strings 'compiler = \"v1.1.22\"' onchain/aiken/aiken.toml",
+        "rg --fixed-strings 'compiler = \"v1.1.23\"' onchain/aiken/aiken.toml",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/validation-resolver-applied-hashes.test.ts",
         "pnpm --dir demo/midgard-sdk typecheck",
         "pnpm --dir demo/midgard-sdk lint"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_resolver_v1.test, midgard/validation_dispute_v1.test, validation-resolver-applied-hashes.test.ts. The C12 gate must report normalized Aiken format exactly 4/4, focused Aiken routing selectors exactly 9/9 with 0 failures (resolver 8/8 plus dispute totality 1/1), pinned compiler declaration exactly 1/1 at v1.1.22, and SDK applied-hash suite exactly 1/1; compile-only check, typecheck, and lint each require exit 0.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_resolver_v1.test, midgard/validation_dispute_v1.test, validation-resolver-applied-hashes.test.ts. Re-measured 2026-08-17 for issue #479 at commit 9f133730 under aiken v1.1.23+2a78108 (the sanctioned fork binary, md5 b3acfdf348235798cb6b921d0f87750a): normalized Aiken format exactly 4/4, focused Aiken routing selectors exactly 9/9 with 0 failures (resolver 8/8 plus dispute totality 1/1), pinned compiler declaration exactly 1/1 now reading v1.1.23, and SDK applied-hash suite exactly 2/2; compile-only check, typecheck, and lint each exit 0. C12 is measured PASS. The SDK suite grew from the pinned 1/1 to 2/2: validation-resolver-applied-hashes.test.ts now also covers the immutable CEK material identity as the exact fourth direct-resolver parameter, already present in the current tree when this row was last drafted but not yet recounted. SUPERSEDED CONTRACT, retained verbatim as provenance: The C12 gate must report normalized Aiken format exactly 4/4, focused Aiken routing selectors exactly 9/9 with 0 failures (resolver 8/8 plus dispute totality 1/1), pinned compiler declaration exactly 1/1 at v1.1.22, and SDK applied-hash suite exactly 1/1; compile-only check, typecheck, and lint each require exit 0.",
       "invalidationTriggers": [
         "C10 baseline or any nonterminal/terminal phase inventory change re-derives resolver routing and exact selector coverage",
         "a resolver count, order, group boundary, semantic index, applied hash, deployment binding, or wrong-hash rejection change re-runs all 9 selectors",
-        "a writable Aiken source/test byte change re-runs normalized format 4/4 and compile-only check under v1.1.22",
-        "a blueprint validator title/hash or SDK production-builder application change invalidates the exact 1/1 applied-hash fixture"
+        "a writable Aiken source/test byte change re-runs normalized format 4/4 and compile-only check under v1.1.23",
+        "a blueprint validator title/hash or SDK production-builder application change invalidates the exact 2/2 applied-hash fixture"
       ],
-      "blockedOn": ["C10"],
-      "blockedBecause": "C12 remains dependency-blocked only on current non-PASS queue rows: C10. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted.",
-      "schedulingNote": "C12 is NOT_STARTED and serial after C10. Use Aiken v1.1.22 and the existing parent-owned blueprint only; unknown, duplicate, absent, terminal, or wrong hashes remain fail-closed."
+      "blockedOn": [],
+      "readyBecause": "C10 is measured PASS (2026-08-17, issue #479), so C12 has no current non-PASS dependency. C12 is itself measured PASS at commit 9f133730: normalized format 4/4, focused Aiken routing selectors 9/9 (resolver 8/8 plus dispute totality 1/1), compiler v1.1.23 confirmed, and the SDK applied-hash suite 2/2, typecheck/lint exit 0.",
+      "schedulingNote": "C12 is measured PASS, serial after C10. Uses Aiken v1.1.23 and the existing parent-owned blueprint only; unknown, duplicate, absent, terminal, or wrong hashes remain fail-closed."
     },
     {
       "id": "C13",
@@ -815,7 +815,7 @@
       ],
       "sourceAnchors": [
         "GOAL_SPEC.md:736 \u00a78.1 C13 exact control-lifecycle-ABI acceptance and dependency row",
-        "onchain/aiken/aiken.toml:3 compiler = \"v1.1.22\" pinned compiler policy",
+        "onchain/aiken/aiken.toml:3 compiler = \"v1.1.23\" pinned compiler policy",
         "demo/midgard-sdk/src/fraud-proof/catalogue.ts:26 FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER publication/catalogue authority",
         "demo/midgard-sdk/src/fraud-proof/contracts.ts:1965 buildFaultProofContracts and :2129 buildValidationTraceDisputeFaultProofContracts blueprint-bound manifest authority",
         "demo/midgard-fault-proofs/src/validation-dispute/submit.ts:1290 buildValidationDisputeOpen and :3260 encodeValidationSemanticResolutionRedeemerV1 tooling/replay authority"
@@ -830,23 +830,24 @@
         "cd onchain/aiken && aiken check --skip-tests",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_controls_v1_abi.test canonical_validation_controls_v1_typescript_abi_vectors validation_auxiliary_v1_rejects_adjacent_tag_40 validation_auxiliary_v1_rejects_wrong_constructor_arity resolve_inputs_v1_rejects_malformed_accumulator script_sources_v1_rejects_negative_stage native_scripts_v1_rejects_short_integrity_hash cek_context_v1_rejects_empty_final_summary",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_tail_controls_v1_abi.test validation_tail_auxiliary_v1_typescript_corpus_is_exact value_accumulator_update_and_control_v1_abi_is_exact ledger_delta_control_operation_and_frontier_v1_abi_is_exact terminal_acceptance_and_rejection_v1_typescript_vectors_are_exact validation_source_membership_v1_typescript_vectors_are_exact validation_tail_auxiliary_v1_rejects_adjacent_tag_40 validation_tail_auxiliary_v1_rejects_wrong_arity validation_source_membership_v1_rejects_adjacent_tag validation_source_membership_v1_rejects_wrong_arity validation_source_membership_v1_rejects_wrong_nesting validation_source_membership_v1_rejects_swapped_kind",
-        "rg --fixed-strings 'compiler = \"v1.1.22\"' onchain/aiken/aiken.toml",
+        "rg --fixed-strings 'compiler = \"v1.1.23\"' onchain/aiken/aiken.toml",
         "pnpm --dir demo/midgard-validation exec vitest run tests/validation-controls-v1-abi.test.ts tests/validation-tail-controls-v1-abi.test.ts",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/validation-dispute.test.ts tests/validation-resolver-applied-hashes.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/validation-dispute-submit.test.ts tests/submit-init-emulator-validation-dispute.test.ts",
         "pnpm --dir demo/midgard-validation typecheck",
         "pnpm --dir demo/midgard-validation lint"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_controls_v1_abi.test, midgard/validation_tail_controls_v1_abi.test, validation-controls-v1-abi.test.ts, validation-tail-controls-v1-abi.test.ts, validation-dispute.test.ts, validation-resolver-applied-hashes.test.ts, validation-dispute-submit.test.ts, submit-init-emulator-validation-dispute.test.ts. The C13 gate must report normalized Aiken format exactly 2/2, focused Aiken ABI selectors exactly 18/18 with 0 failures (controls 7/7 plus tail controls 11/11), pinned compiler declaration exactly 1/1 at v1.1.22, and TypeScript ABI/tooling suites exactly 29/29 (validation 11/11, SDK 4/4, fault-proofs 14/14); compile-only check, typecheck, and lint each require exit 0.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_controls_v1_abi.test, midgard/validation_tail_controls_v1_abi.test, validation-controls-v1-abi.test.ts, validation-tail-controls-v1-abi.test.ts, validation-dispute.test.ts, validation-resolver-applied-hashes.test.ts, validation-dispute-submit.test.ts, submit-init-emulator-validation-dispute.test.ts. Re-measured 2026-08-17 for issue #479 at commit 9f133730 under aiken v1.1.23+2a78108 (the sanctioned fork binary, md5 b3acfdf348235798cb6b921d0f87750a): normalized Aiken format exactly 2/2, focused Aiken ABI selectors exactly 18/18 with 0 failures (controls 7/7 plus tail controls 11/11), pinned compiler declaration exactly 1/1 now reading v1.1.23, and TypeScript ABI/tooling suites exactly 37 collected: validation 11/11, SDK 5/5, fault-proofs 21 collected with exactly 20 passing and exactly 1 attributed failure; compile-only check, typecheck, and lint each exit 0. C13 is PASS modulo the accepted issue #597 red: the fault-proofs failure is `submit-init-emulator-validation-dispute.test.ts > opens, bisects, resolves a fitting complete item by 'direct', and awards a validation dispute`, which asserts `proofItemCarriage` equals `direct` but measures `reference` (the observe stage's reference-script sourcing resolving a 'direct' request as 'reference'), tracked by issue #597 and not attributed to this row. The SDK suite grew from the pinned 4/4 to 5/5 (issue #597's proof-item datum move); fault-proofs grew from the pinned 14/14 to 21 collected. SUPERSEDED CONTRACT, retained verbatim as provenance: The C13 gate must report normalized Aiken format exactly 2/2, focused Aiken ABI selectors exactly 18/18 with 0 failures (controls 7/7 plus tail controls 11/11), pinned compiler declaration exactly 1/1 at v1.1.22, and TypeScript ABI/tooling suites exactly 29/29 (validation 11/11, SDK 4/4, fault-proofs 14/14); compile-only check, typecheck, and lint each require exit 0.",
       "invalidationTriggers": [
         "a C11/C12 result, blueprint identity, compiler, applied parameter, validator hash, resolver route, or dispute lifecycle change invalidates C13",
         "a manifest key/order, catalogue category/order, publication order, ABI tag/arity/field order, or Aiken/TS codec change re-runs all exact ABI inventories",
-        "a writable Aiken ABI fixture byte change re-runs normalized format 2/2 and exact selectors 18/18 under v1.1.22",
-        "an accepted-trace replay, fault-proof submitter, SDK contract builder, or emulator publication/consumption change invalidates exact TypeScript 29/29 evidence"
+        "a writable Aiken ABI fixture byte change re-runs normalized format 2/2 and exact selectors 18/18 under v1.1.23",
+        "an accepted-trace replay, fault-proof submitter, SDK contract builder, or emulator publication/consumption change invalidates the exact TypeScript 37-collected/36-passing-plus-1-accepted-#597-red evidence",
+        "issue #597's resolution (the observe stage's reference-script sourcing) re-measures the fault-proofs subtotal and may retire the accepted red"
       ],
-      "blockedOn": ["C11", "C12"],
-      "blockedBecause": "C13 remains dependency-blocked only on current non-PASS queue rows: C11, C12. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted.",
-      "schedulingNote": "C13 is NOT_STARTED and serial after C11/C12. Consume the freshly parent-built blueprint under Aiken v1.1.22; this lane must not regenerate onchain/aiken/plutus.json."
+      "blockedOn": [],
+      "readyBecause": "C11 and C12 are both measured PASS (2026-08-17, issue #479), so C13 has no current non-PASS dependency. C13 is itself measured PASS modulo the accepted issue #597 red at commit 9f133730: normalized format 2/2, Aiken ABI selectors 18/18, compiler v1.1.23 confirmed, and TypeScript ABI/tooling suites at validation 11/11, SDK 5/5, fault-proofs 20/21 (the one red is exactly the accepted #597 carriage-selection case), typecheck/lint exit 0.",
+      "schedulingNote": "C13 is measured PASS modulo the accepted #597 red, serial after C11/C12. Consumes the current parent-built blueprint under Aiken v1.1.23; this lane must not regenerate onchain/aiken/plutus.json."
     },
     {
       "id": "CG1",
@@ -873,24 +874,28 @@
       "sourceAnchors": [
         "GOAL_SPEC.md 8.1 P0/P1 control-plane gate, row CG1: Every parameterized hub/control validator fits a real 16,384-byte publication transaction; evidence is bound to final validator hashes.",
         "GOAL_SPEC.md \u00a7\u00a73.1.8 and 8.1: publication must use a real target-ledger 16,384-byte transaction and bind final parameterized validator hashes",
-        "C11 and C12 remain blocked on C10; C13 remains blocked on C11/C12, so CG1 is OPEN and has no final-hash publication evidence",
-        "demo/scripts/verify-canonical-v1-cg1-control-publication-fit.mjs is the exact implementation/current-tree anchor for CG1."
+        "GOAL_PROGRESS.md heading 'CG1 aggregate control-publication fit gate built and green' (2026-08-18): roster 34, all fit, one cited exclusion, dependencies C11/C12/C13 measured PASS with ledger quotes matched, hash basis PRE_FREEZE completing at issue #510's freeze",
+        "demo/scripts/verify-canonical-v1-cg1-control-publication-fit.mjs is the exact implementation/current-tree anchor for CG1.",
+        "demo/scripts/verify-canonical-v1-cg1-control-publication-fit-self-test.mjs is the hostile-mutation self-test anchor for CG1.",
+        "docs/exec-plans/evidence/canonical-v1-cg1-control-publication-fit-v1.json:hashBasis pins blueprintSha256 f49cae224f24cfab577f1ed10b5340384b75e541851eb7b77b507a79cb7d5e00, blueprintMd5 5e38d7c6ccb7987d0aca710307dcaea7, validatorCount 398, freezeStatus PRE_FREEZE, invalidationTrigger naming issue #510"
       ],
       "evidenceOutputs": [
         "Exact final parameterized hub/control validator inventory with blueprint/applied hash, parameters, serialized script bytes, reference-script output, complete signed publication transaction bytes, fee, and transaction size",
         "Adjacent oversize mutation proving the verifier uses the 16,384-byte target-ledger bound rather than source/CBOR script size",
-        "Fail-closed dependency/hash freshness report with no gate promotion"
+        "Fail-closed dependency/hash freshness report that only promotes to PASS once every dependency measures PASS, every roster entry fits, and the blueprint hash basis matches"
       ],
       "focusedCommands": [
-        "node demo/scripts/verify-canonical-v1-cg1-control-publication-fit.mjs"
+        "node demo/scripts/verify-canonical-v1-cg1-control-publication-fit.mjs",
+        "node demo/scripts/verify-canonical-v1-cg1-control-publication-fit-self-test.mjs"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-cg1-control-publication-fit.mjs. Current evaluation checks exactly 3 dependencies and refuses PASS because C11-C13 are non-PASS. Final capture records one exact positive final validator count, exactly 1 complete signed publication transaction per validator, exactly 1 adjacent oversize rejection, exactly 0 transactions above 16,384 bytes, and 0 stale blueprint/applied hashes.",
+      "expectedNonzeroCounts": "Measured 2026-08-18 (commit 5ec92326 or descendant; gate built and green per GOAL_PROGRESS.md): `node demo/scripts/verify-canonical-v1-cg1-control-publication-fit.mjs` exits 0 with gateStatus PASS, roster 34 validators (all fit: true), exactly 1 cited exclusion (the V1 validation-trace CEK direct resolver), dependencies C11/C12/C13 all PASS with ledger quotes matched, blueprint hash basis sha256 f49cae224f24cfab577f1ed10b5340384b75e541851eb7b77b507a79cb7d5e00 / md5 5e38d7c6ccb7987d0aca710307dcaea7 across 398 validators, exactly 0 waivers, 0 C70 snapshots, and 0 live/readiness claims. `node demo/scripts/verify-canonical-v1-cg1-control-publication-fit-self-test.mjs` exits 0 with exactly 2 positive controls accepted and exactly 25 hostile mutations rejected (oversized roster pin, rewritten fit arithmetic, tampered applied hash, dropped/duplicated/invented validator, desynced roster count, unjustified or fabricated exclusion, stale blueprint sha256/md5/validatorCount, a freeze-issue-less invalidation trigger, fabricated or dropped dependency quotes, an introduced waiver, a claimed C70 snapshot, an inferred live claim, and both a false PASS promotion and a false BLOCKED demotion). CG1's acceptance clause 'evidence is bound to final validator hashes' completes on a PRE_FREEZE basis only; final completion rides issue #510's freeze-event blueprint regeneration and re-measurement.\n\nSUPERSEDED 2026-08-05 CONTRACT, retained verbatim as provenance: Counted focused selectors: verify-canonical-v1-cg1-control-publication-fit.mjs. Current evaluation checks exactly 3 dependencies and refuses PASS because C11-C13 are non-PASS. Final capture records one exact positive final validator count, exactly 1 complete signed publication transaction per validator, exactly 1 adjacent oversize rejection, exactly 0 transactions above 16,384 bytes, and 0 stale blueprint/applied hashes.",
       "invalidationTriggers": [
         "C11-C13 status, validator inventory, parameters, serialized ABI, blueprint, applied/final validator hash, reference-script construction, or target ledger transaction limit changes",
-        "Publication builder, fee calculation, witness/reference-input/output set, complete signed transaction bytes, or verifier changes after capture"
+        "Publication builder, fee calculation, witness/reference-input/output set, complete signed transaction bytes, or verifier changes after capture",
+        "Issue #510's freeze-event blueprint regeneration, which invalidates the PRE_FREEZE hash basis and requires CG1 to be re-measured against the frozen blueprint"
       ],
-      "blockedOn": ["C11", "C12", "C13"],
-      "blockedBecause": "CG1 remains dependency-blocked only on current non-PASS queue rows: C11, C12, C13. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted."
+      "blockedOn": [],
+      "readyBecause": "C11, C12, and C13 are all measured PASS (2026-08-17, issue #479; C13 modulo the accepted #597 red), so CG1 has no current non-PASS dependency. CG1 is itself measured PASS at commit 5ec92326 or descendant (2026-08-18): both the gate and its self-test exist and exit 0 on the PRE_FREEZE onchain/aiken/plutus.json hash basis (roster 34/34 fit, 1 justified exclusion, 0 waivers); final-hash completion of CG1's acceptance clause rides issue #510's freeze."
     },
     {
       "id": "C20-0",

@@ -35,7 +35,7 @@
     "C11": "PASS",
     "C12": "PASS",
     "C13": "PASS",
-    "CG1": "PASS"
+    "CG1": "PASS (re-measured 2026-08-18 for issue #479 plus the CG1 control-publication-fit gate build): C10-C13 all measure PASS, and the gate's roster of 34 parameterized hub/control validators all fit the real 16,384-byte L1 publication envelope, with exactly 1 justified exclusion and 0 waivers on the current PRE_FREEZE onchain/aiken/plutus.json hash basis (sha256 f49cae224f24cfab577f1ed10b5340384b75e541851eb7b77b507a79cb7d5e00). The prior generatedAt 2026-08-04 PASS predates both the issue #479 C10-C13 re-measurement and the gate's own construction, so it is refreshed by measurement, not corrected as a defect"
   },
   "p2Tasks": {
     "C20-0": "PASS",
@@ -317,7 +317,7 @@
   },
   "acceptance": {
     "F10": "PASS",
-    "CG1": "PASS",
+    "CG1": "PASS (re-measured 2026-08-18 for issue #479 plus the CG1 control-publication-fit gate build): every parameterized hub/control validator (roster 34/34) fits a real 16,384-byte publication transaction, and evidence is bound to the current PRE_FREEZE onchain/aiken/plutus.json validator hashes (sha256 f49cae224f24cfab577f1ed10b5340384b75e541851eb7b77b507a79cb7d5e00, 398 validators). Final-hash completion of this acceptance clause against a frozen blueprint rides issue #510's freeze-event regeneration and re-measurement",
     "CG2": "OPEN",
     "note": "F10 passes as a current-tree reconciliation deliverable. No PARTIAL, OPEN, or AUTHORITATIVE_CONFLICT P2 task is promoted."
   }
