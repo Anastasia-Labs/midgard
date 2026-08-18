@@ -49,17 +49,27 @@ import {
   rootCountProof,
 } from "./witnesses.js";
 
+/**
+ * The complete set of fault kinds `detectTransitionTraceFaults` can report,
+ * as a runtime tuple rather than a bare union — so closure-contract tests can
+ * enumerate it directly instead of hand-copying the kind list. Add new kinds
+ * here (the type below is derived from this array, not the reverse).
+ */
+export const TRANSITION_TRACE_FAULT_KINDS = [
+  "traceBoundary",
+  "traceLink",
+  "eventToStepMismatch",
+  "sourceMembershipMismatch",
+  "invalidOneStepTransition",
+  "omittedDueL1Event",
+  "duplicateTraceEvent",
+  "outOfWindowSourceEvent",
+  "countFault",
+  "acceptedTransactionTransitionMismatch",
+] as const;
+
 export type TransitionTraceFaultKind =
-  | "traceBoundary"
-  | "traceLink"
-  | "eventToStepMismatch"
-  | "sourceMembershipMismatch"
-  | "invalidOneStepTransition"
-  | "omittedDueL1Event"
-  | "duplicateTraceEvent"
-  | "outOfWindowSourceEvent"
-  | "countFault"
-  | "acceptedTransactionTransitionMismatch";
+  (typeof TRANSITION_TRACE_FAULT_KINDS)[number];
 
 export type TransitionTraceDetection =
   | {

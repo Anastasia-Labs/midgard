@@ -5164,3 +5164,69 @@ implementation gap the manifest already records, not measurement
 drift. C48 is not a `p2Tasks` row; capability artifact untouched.
 Manifest-quality gate PASS (186/186, 0 defects); prettier-clean.
 Logs: `scratchpad/issue-490/` (session-local).
+
+## #491 (B12) C49-C52 contracted closures measured complete; C53 baselines re-pinned; CG3 diagnostics all-green (2026-08-18)
+
+All measurement serial under the sanctioned fork binary `aiken
+v1.1.23+2a78108` (md5 `b3acfdf348235798cb6b921d0f87750a`, verified per
+run) at `09c59a24` plus the staged closure surfaces.
+
+- **C49 closure complete.** The contracted 4 TypeScript parameter
+  cases landed: value-accounting.test.ts 2→5 (min-fee boundary via
+  `validatePhaseASingle`/`RejectCodes.MinFee` at the a=44/b=155,381
+  CBOR-width fixed point; min-Ada floor pins against real
+  `encodeMidgardTxOutput` bytes at coins_per_utxo_byte=4,310 with the
+  160-byte overhead; settle-to-zero conservation negatives) and
+  ordered-collection-mint-boundary-v1.test.ts 1→2 (four-leg mint/burn
+  authorization under Emulator native-script witness enforcement),
+  with new exports `MIN_ADA_OUTPUT_OVERHEAD_BYTES_V1` /
+  `minAdaLovelaceV1` / `outputMeetsMinAdaV1` mirroring
+  `min_ada_lovelace_v1` (validation-machine-v1.ak:2188). All 21
+  closure tests green: 10/10 vm Aiken + 4/4 ledger-output-value Aiken
+  + 7/7 TS, phase-a 37/37 unregressed, format batch, typecheck,
+  `aiken check --skip-tests`.
+- **C50 closure recorded** (working-tree edits from earlier this
+  window): 8/8 Aiken + 4/4 TS after the `0acf2f489` re-pin (11→12).
+- **C51 closure complete.** The challenger pin decoded (24
+  declarations = 39 running; `e7adfd079` +1) and the prescribed
+  dense-totality suite landed:
+  ledger-delta-dense-trace-totality-v1.test.ts, exactly 4 plain tests
+  (normal dense trace, forced dense trace, event-to-step totality over
+  every enabled fault kind, extra/missing/reordered/substituted
+  rejection). The only production edit is additive: detect.ts's
+  fault-kind union became the runtime tuple
+  `TRANSITION_TRACE_FAULT_KINDS` (type now derived from the array), so
+  the closure test enumerates the production list instead of a
+  hand-copy. Measured 43/43 combined (39 challenger unregressed + 4
+  new), fault-proofs typecheck clean.
+- **C52 closure complete; derivation basis flagged.** New
+  src/aggregate-script-execution-floor-v1.ts,
+  src/deterministic-proof-priority-v1.ts, 5/5 floor/priority tests,
+  and verify-canonical-v1-aggregate-floor-priority-v1.mjs (PASS:
+  per-proof-tx usable 13,200,000 mem / 8,000,000,000 CPU as the exact
+  §3.3 4/5 ratio; bounded count derived as the minimum sufficient
+  N=ceil(max(1.25,1.25))=2; aggregate floor 26,400,000 mem /
+  16,000,000,000 CPU ≥ the snapshot ceilings — the acceptance
+  inequality made checkable). §3.3 pins no execution-axis literal (its
+  32 is bisection rounds), so the bound follows ADR 0001's accepted
+  proof-decomposition tradeoff as a derived minimum — **flagged in-row
+  for owner review**, re-derives automatically on any C70/reserve
+  change. Capability-parity 6/6 and fit-emulator 6/6 unregressed; both
+  typechecks clean. An out-of-scope barrel edit (src/index.ts) by the
+  implementing agent was reverted; nothing imports through it.
+- **CG3 diagnostics all-green; gate stays OPEN.** 2+2+3 pinned Aiken
+  selectors + 27/27 validation-machine TS; the 23→27 re-pin rides
+  C29's recorded attribution (+4 `7d01f2b71`, −1 `d470fe32` #597, +1
+  pin-short-on-measurement-day), reproduced independently. Residual:
+  p3-totality verifier prescribed-missing; owner-pinned holes stand.
+- **C53 baselines re-pinned** (row still owes the sweep):
+  fit-emulator 5→6 (+1 `bf5cb8ed3` #611, −1 `988c6f9c4`, +1
+  `daf79380a`), measured 6/6; fit-v1 4→5 (#597/#600 rewrites),
+  measured 5/5; submit-init 'exactly 2' was a declaration count — runs
+  4, measured 3 passing + the sole accepted #597 'direct'-carriage red
+  (already recorded verbatim at C13). Sweep surfaces confirmed absent;
+  the 4-test/105-row sweep remains this row's forward work.
+
+Manifest rows C49/C50/C51/C52/C53/CG3 superseded in place with the
+above; quality gate PASS (186/186, 0 defects); prettier-clean.
+Logs: `scratchpad/issue-491/` (session-local).
