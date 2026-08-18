@@ -5720,3 +5720,39 @@ mechanism citations (phase-a.ts:138 vs the measured :201 opener, the
 retired native empty-list-hash wording), the Q14-F9 SDK
 EMPTY_SPEND_INPUTS_HASH docstring, and the Q14-F5/F6 emulator
 refusal-origin and absent-assertion nuances (parent/#482 work).
+
+## 2026-08-18 — Q39 fabricated-deposit family: Aiken + SDK halves land
+
+B14 (#482) opens with Q39. Eight new Aiken modules land the family
+(lib + validators `fraud-proofs/fabricated-deposit/step-0{1..4}.ak`):
+step-01 authenticates the challenged header out of the state-queue
+node and proves the disputed `(DepositId, DepositInfo)` leaf against
+the counted `deposits_root`/`deposit_count` pair via the
+transition-trace membership walker under `DepositsRootDomain` (no
+second walker); step-02 is the only L1-reading step, adjudicating
+AbsentDepositIdentity (a live output at the committed ref proves no
+authentic event — `authenticate_new_event` rule 4 requires a spent
+nonce outref) and PresentDepositEvent (hub-oracle policy +
+`out_ref_to_nonce` asset name + event-id equality), carrying the
+32-byte info hash so the family survives event-NFT burn; steps 03/04
+finish content comparison and conviction. Selector census measured
+16/16 (4/4/4/4 per step, positives through the real `main.spend`,
+negatives single-mutation `fail` tests), re-run independently by the
+parent: exits 0, normalized Aiken format PASS (8/8) under the
+sanctioned fork (v1.1.23+2a78108). SDK byte twins land in
+`demo/midgard-sdk/src/fraud-proof/fabricated-deposit-v1.ts` with
+`tests/fabricated-deposit-v1.test.ts` 8/8; the barrel export is
+parent-applied (serialized surface) and the dist rebuild + scaffold
+suite confirm the accepted baseline unchanged (1 of 45, the four Q02
+scanner findings only — nothing from the new family). Category id
+`0000000b` (index 11) is pinned in four places; parent sequencing
+note: fabricated-deposit must be appended to the catalogue before
+any other new category or the pins and thread-token twins rebind.
+The 8 blueprint titles
+(`fraud_proofs/fabricated_deposit/step_0{1..4}.main.spend` + `.else`)
+are absent from the frozen blueprint by design — emulator lifecycle
+activation and registration ride the #617 regeneration wave (R5);
+catalogue/CLI registration diffs stay parent-serialized proposals.
+Remaining Q39 surfaces (prepare/submit modules, 16-test family
+suite via direct module import, emulator-to-boundary test, then the
+§9.1 per-family artifact + verifier) continue on the same lane.
