@@ -61,7 +61,24 @@
       "preExisting": true,
       "insideThisBatchesCascade": false,
       "outsideCascadeBecause": "#579's cascade regenerates onchain/aiken/plutus.json and reconciles the artifacts that quote it. Creating a missing Aiken test module \u2014 or retracting nine manifest citations \u2014 writes new test source and edits parent-owned manifest rows, neither of which regeneration reaches and both of which the ruling forbids this batch from doing.",
-      "disposition": "RECORDED_AND_ACCEPTED"
+      "disposition": "RETIRED_BY_C20_CITATION_RETRACTION_2026_08_17",
+      "retirement": {
+        "date": "2026-08-17",
+        "issues": [587, 476],
+        "authorizedBy": "This record's own ac3Closure.howToRetireLater prescription \u2014 'retract the nine C20-* citations' as a parent integration \u2014 executed by the parent lane during the #476 acceptance measurement (criterion 4, manifest quality).",
+        "whatMoved": "All nine C20-0..C20-8 rows in one reconciliation: the dead focused selector `run-focused-check.mjs midgard/fraud_proofs/proof_v1_fragment_envelope.test` re-pointed to `cd onchain/aiken && node scripts/verify-carriage-exec-ledger-v1.mjs` \u2014 the gate df53dc6a7 (#587) named as the replacement when it retired `proof-v1-fragment-envelope.test.ak` and the counted publication receipt chain; the deleted file removed from writablePaths and normalized-format command arguments; sourceAnchors moved onto the live carriage-exec-ledger surfaces; every expectedNonzeroCounts contract re-derived from runs measured under the pinned fork compiler, with the superseded counted-era wording retained per invariant 14. The forward-cited module was never written because #587 removed its subject; retraction, not authorship, was the correct closure.",
+        "reMeasuredAfterRetirement": {
+          "command": "cd demo && node scripts/verify-canonical-v1-goal-task-manifest-quality.mjs --json",
+          "exitCode": 0,
+          "defects": 0,
+          "tasks": "186/186",
+          "ciStyleWithThisRecord": {
+            "defects": 0,
+            "acceptedDefects": 0,
+            "unacceptedDefects": 0
+          }
+        }
+      }
     },
     {
       "category": "watcherFocusedGateContractMismatch",
@@ -112,22 +129,10 @@
   "acceptedDefectsAfter613Repin": {
     "date": "2026-08-17",
     "issue": 613,
-    "note": "Standing enumeration for gates built after the #613 re-pin (e.g. the #614 CI allowlist): the accepted defect set is now exactly the 9 unresolvableFocusedModuleCitation defects at C20-0..C20-8. The 3 watcherFocusedGateContractMismatch defects recorded above were retired by the #613 six-surface re-pin and are preserved above only as the measured history of ruling B's original 12.",
-    "defects": 9,
-    "categories": {
-      "unresolvableFocusedModuleCitation": 9
-    },
-    "ids": [
-      "C20-0",
-      "C20-1",
-      "C20-2",
-      "C20-3",
-      "C20-4",
-      "C20-5",
-      "C20-6",
-      "C20-7",
-      "C20-8"
-    ]
+    "note": "Standing enumeration for gates built after the #613 re-pin (e.g. the #614 CI allowlist). SUPERSEDED IN PLACE later the same day: the 9 unresolvableFocusedModuleCitation defects at C20-0..C20-8 — which this block enumerated after the #613 re-pin retired the 3 watcherFocusedGateContractMismatch defects from ruling B's original 12 — were themselves retired by the C20 citation retraction (see that class's retirement record above). The standing accepted defect set is now empty; both nine-and-three histories are preserved verbatim in defectClasses.",
+    "defects": 0,
+    "categories": {},
+    "ids": []
   },
   "ac3Closure": {
     "f20Recaptured": true,

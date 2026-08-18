@@ -115,13 +115,24 @@ const loadAcceptedDefects = () => {
   if (
     standing === undefined ||
     !Array.isArray(standing.ids) ||
-    standing.ids.length === 0 ||
     typeof standing.categories !== "object"
   ) {
     process.stderr.write(
       "--accepted-defects: the record carries no acceptedDefectsAfter613Repin standing enumeration\n",
     );
     process.exit(2);
+  }
+  // An all-retired record is valid and accepts nothing: once every defect in
+  // the standing enumeration has a retirement record, ids and categories are
+  // empty and the gate holds the tree to zero defects with no allowlist.
+  if (standing.ids.length === 0) {
+    if (standing.defects !== 0 || Object.keys(standing.categories).length > 0) {
+      process.stderr.write(
+        "--accepted-defects: an empty standing id set must carry defects: 0 and no categories\n",
+      );
+      process.exit(2);
+    }
+    return { path: acceptedPath, keys: new Set() };
   }
   // Accepted keys are (category, id, detail) triples: the detail is taken
   // from the record's own defectClasses measurement, so a NEW defect that
