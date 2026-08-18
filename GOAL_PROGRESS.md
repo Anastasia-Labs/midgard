@@ -438,6 +438,7 @@
 | Q10             | Q00–Q03           | parent (#481 B13 integration) | Q10 per-family §9.1 closure surfaces: `canonical-v1-proof-family-q10-v1.json` gated by `demo/scripts/verify-canonical-v1-proof-family-q10.mjs`; outputs 5–8 delegated to the shared Q1x artifact | PASS | `f2790f45` | Outputs 1–10 LOCAL_PASS. Measured at the gate under aiken v1.1.23+2a78108: 15/15 on-chain selectors across four step modules (6 positive, 4 valid-block negative, 5 further negative), 32/32 canonical-evidence, 8/8 prepare-double-spend, 1/1 spend-input-witness, 44 tests over 4 suites with 17 required titles, 3/3 emulator lifecycles; outputs 5–8 hard-delegated to the Q1x cells (all LOCAL_PASS, zero open cells); output 10 closed by this integration pass's matrix edits (coverage-matrix.md L96, catalogue-status.md L19, in the pinned Q13 form). Residual findings stay owned in the artifact (no emulator valid-block negative Q10-F4; unpinned script hashes Q10-F6). LIVE_PASS remains Q57/QG3 and is not claimed. |
 | Q11             | Q00–Q03           | parent (#481 B13 integration) | Q11 per-family §9.1 closure surfaces: `canonical-v1-proof-family-q11-v1.json` gated by `demo/scripts/verify-canonical-v1-proof-family-q11.mjs`; outputs 5–8 delegated to the shared Q1x artifact | PASS | `3870f467` | Outputs 1–10 LOCAL_PASS. Measured at the gate under aiken v1.1.23+2a78108: 18/18 on-chain selectors across four step modules (8 positive, 4 valid-block negative, 6 further negative; the #545 published-chunk arms and both #582 witness-faithful exclusion arms are census-held), 32/32 canonical-evidence, 12/12 prepare-non-existent-input, 5/5 field-opening-v1, 53 tests over 4 suites with 22 required titles, this family's one emulator lifecycle inside the 4/4 shared ledger-rules suite; outputs 5–8 hard-delegated to the Q1x cells; output 10 closed by this integration pass's matrix edits (coverage-matrix.md L94, catalogue-status.md L20). The two output-9 gaps stay owned as Q11-F4/Q11-F5 (emulator valid-block negative, slashing assertion). LIVE_PASS remains Q57/QG3 and is not claimed. |
 | Q12             | Q00–Q03           | parent (#481 B13 integration) | Q12 per-family §9.1 closure surfaces: `canonical-v1-proof-family-q12-v1.json` gated by `demo/scripts/verify-canonical-v1-proof-family-q12.mjs`; outputs 5–8 delegated to the shared Q1x artifact | PASS | `11739a53` | Outputs 1–10 LOCAL_PASS. Measured at the gate under aiken v1.1.23+2a78108: 10/10 on-chain selectors across the two step modules (6 positive of which 3 are step-scoped proof-step positives and 3 module-local normalizer unit cases, 2 valid-block negative, 2 further negative; the gate holds a step-scoped-positive floor per module), 32/32 canonical-evidence, 30/30 SDK fault-proof, 6/6 prepare-invalid-range, 72 tests over 4 suites with 16 required titles, this family's one emulator lifecycle inside the 4/4 shared ledger-rules suite; output 3 LOCAL_PASS as a measured committed-field absence (0 of 9 opened, bound to the spec tables); outputs 5–8 hard-delegated to the Q1x cells with the spend-input cardinality axis measured out of scope for this family and gated bidirectionally; output 10 closed by this integration pass's matrix edits (coverage-matrix.md L137, catalogue-status.md L21, in the pinned Q13 form). The output-9 gaps stay owned as Q12-F4/Q12-F5 (no emulator valid-block negative; no adversarial assertion in the journey block — parent/#482). LIVE_PASS remains Q57/QG3 and is not claimed. |
+| Q14             | Q00–Q03           | parent (#481 B13 integration) | Q14 per-family §9.1 closure surfaces: `canonical-v1-proof-family-q14-v1.json` gated by `demo/scripts/verify-canonical-v1-proof-family-q14.mjs`; outputs 5–8 delegated to the shared Q1x artifact | PASS | `3d00322a` | Outputs 1–10 LOCAL_PASS. Measured at the gate under aiken v1.1.23+2a78108: 8/8 on-chain selectors across the two step modules (5 in step_01, 3 in step_02; 3 positive all step-scoped — scope derived by fixed-point reachability of main.spend — 2 valid-block negative one per step, 3 further negative, 0 module-helper), 32/32 canonical-evidence, 30/30 SDK fault-proof, 7/7 prepare-zero-input, 5/5 field-opening-v1, 78 tests over 5 suites with 22 required titles, and 2 of the shared ledger-rules suite's 4 emulator blocks this family's — 1 lifecycle and 1 genuine valid-block negative; output 3 LOCAL_PASS as a measured opening: committed field 0 (spend inputs) opened through the §8.8 door with field_item_count(spend_inputs_view) == 0 pinned and FieldOpeningV1 bound positionally by wire index; outputs 5–8 hard-delegated to the Q1x cells with the spend-input cardinality axis measured out of scope across the 4 family-owned Aiken modules and gated bidirectionally; output 10 closed by this integration pass's matrix edits (coverage-matrix.md L93, catalogue-status.md L24, in the pinned Q13 form). The remaining gaps stay owned as Q14-F5/Q14-F6 (both adversarial refusals measured raised off-chain; four absent assertions in the negative block — parent/#482). LIVE_PASS remains Q57/QG3 and is not claimed. |
 
 ## Decisions
 
@@ -5694,3 +5695,28 @@ findings recorded Q14-F1..F10 (gaps F4 manifest drift, F5 off-chain
 refusal origin, F6 four measured absent assertions in the negative
 block — parent/#482-owned). Queue row deferred until output 10
 closes, matching the Q10/Q11/Q12 sequence.
+
+## #481 (B13): Q14 output-10 parent integration — queue row added (2026-08-18)
+
+Executed the parent-owned edits the Q14 artifact pinned under
+parentIntegration.pendingEdits. The two matrix status cells now state
+the family's local closure in the pinned Q13 form (coverage-matrix.md
+L93, catalogue-status.md L24, citing the family artifact; the
+coverage row's Remaining cell untouched — the preprod/W-T4 residue is
+Q57/QG3-owned live evidence; the catalogue table realigned under the
+demo-pinned prettier because the new cell widens its column — the
+only content change in each file is the one status cell). The
+artifact re-derived in the same edit set: measuredStatusCell
+re-pinned to the new text, recordsLocalPass flipped by measurement,
+output-10 row LOCAL_PASS with the prior derivation retained under
+whyPreviouslyOpen, summary recounts 10/0, F1 superseded in place.
+Queue row Q14 added at the queue table (PASS, citing 3d00322a and
+this pass). Manifest blockedOn arrays for Q50/Q51/Q55/QG1 no longer
+name Q14 (dependsOn untouched); Q50's family prose narrows to
+Q15-Q22, Q14 joins the registered-PASS lists in Q50 and QG1, and the
+Q51/Q55 non-PASS row lists drop it. Deferred, recorded in the
+artifact's pendingEdits completion note: the Q14-F7/F8 stale
+mechanism citations (phase-a.ts:138 vs the measured :201 opener, the
+retired native empty-list-hash wording), the Q14-F9 SDK
+EMPTY_SPEND_INPUTS_HASH docstring, and the Q14-F5/F6 emulator
+refusal-origin and absent-assertion nuances (parent/#482 work).

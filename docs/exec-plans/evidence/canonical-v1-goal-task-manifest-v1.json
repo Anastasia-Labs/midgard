@@ -8402,7 +8402,6 @@
         "A final-tree source inventory changes the enabled/reachable family or rule set named by this row"
       ],
       "blockedOn": [
-        "Q14",
         "Q15",
         "Q16",
         "Q17",
@@ -8421,7 +8420,7 @@
         "Q41",
         "Q42"
       ],
-      "blockedBecause": "Q50 is blocked on the current non-PASS rows that own standalone or umbrella catalogue families: Q14-Q22, Q27-Q29, Q35, Q37, and Q39-Q42. Q10, Q11, Q12, Q13 and Q44 are already registered PASS. Structural/N/A Q23-Q26, Q30-Q34, Q36, Q38, Q43, and Q45-Q49 require executable route evidence but no standalone positional slot."
+      "blockedBecause": "Q50 is blocked on the current non-PASS rows that own standalone or umbrella catalogue families: Q15-Q22, Q27-Q29, Q35, Q37, and Q39-Q42. Q10, Q11, Q12, Q13, Q14 and Q44 are already registered PASS. Structural/N/A Q23-Q26, Q30-Q34, Q36, Q38, Q43, and Q45-Q49 require executable route evidence but no standalone positional slot."
     },
     {
       "id": "Q51",
@@ -8520,7 +8519,6 @@
         "Provider submission semantics, confirmation depth, rollback handling, journal schema, transaction-body hashing, or chain reconciliation query changes after capture"
       ],
       "blockedOn": [
-        "Q14",
         "Q15",
         "Q16",
         "Q17",
@@ -8555,7 +8553,7 @@
         "Q49",
         "Q50"
       ],
-      "blockedBecause": "Q51 remains dependency-blocked only on current non-PASS queue rows: Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q21, Q22, Q23, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34, Q35, Q36, Q37, Q38, Q39, Q40, Q41, Q42, Q43, Q45, Q46, Q47, Q48, Q49, Q50. Dependencies recorded PASS, including Q02, Q03, Q13, Q24, Q25, and Q44 where applicable, are deliberately omitted."
+      "blockedBecause": "Q51 remains dependency-blocked only on current non-PASS queue rows: Q15, Q16, Q17, Q18, Q19, Q20, Q21, Q22, Q23, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34, Q35, Q36, Q37, Q38, Q39, Q40, Q41, Q42, Q43, Q45, Q46, Q47, Q48, Q49, Q50. Dependencies recorded PASS, including Q02, Q03, Q13, Q24, Q25, and Q44 where applicable, are deliberately omitted."
     },
     {
       "id": "Q52",
@@ -8869,7 +8867,6 @@
         "A final-tree source inventory changes the enabled/reachable family or rule set named by this row"
       ],
       "blockedOn": [
-        "Q14",
         "Q15",
         "Q16",
         "Q17",
@@ -8908,7 +8905,7 @@
         "Q53",
         "Q58"
       ],
-      "blockedBecause": "Q55 remains dependency-blocked only on current non-PASS queue rows: Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q21, Q22, Q23, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34, Q35, Q36, Q37, Q38, Q39, Q40, Q41, Q42, Q43, Q45, Q46, Q47, Q48, Q49, Q50, Q51, Q52, Q53, Q58. Dependencies recorded PASS, including Q02, Q03, Q13, Q24, Q25, and Q44 where applicable, are deliberately omitted."
+      "blockedBecause": "Q55 remains dependency-blocked only on current non-PASS queue rows: Q15, Q16, Q17, Q18, Q19, Q20, Q21, Q22, Q23, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34, Q35, Q36, Q37, Q38, Q39, Q40, Q41, Q42, Q43, Q45, Q46, Q47, Q48, Q49, Q50, Q51, Q52, Q53, Q58. Dependencies recorded PASS, including Q02, Q03, Q13, Q24, Q25, and Q44 where applicable, are deliberately omitted."
     },
     {
       "id": "Q56",
@@ -9245,7 +9242,6 @@
         "Executable proof tree, structural/N/A inventory, coverage/catalogue documentation, tooling route, focused test result, emulator result, or reconciliation verifier changes after capture"
       ],
       "blockedOn": [
-        "Q14",
         "Q15",
         "Q16",
         "Q17",
@@ -9287,7 +9283,7 @@
         "Q62",
         "Q63"
       ],
-      "blockedBecause": "QG1 is OPEN on every non-PASS member of Q10-Q12, Q14-Q50, Q55, and Q58-Q63; authoritative queue PASS rows Q10, Q11, Q12, Q13, Q24, Q25, Q44, and Q54 remain dependencies but are omitted from blockedOn. The current 70-row reconciliation still reports 53 OPEN rows, so no local/live promotion is permitted before exact zero-debt closure."
+      "blockedBecause": "QG1 is OPEN on every non-PASS member of Q10-Q12, Q14-Q50, Q55, and Q58-Q63; authoritative queue PASS rows Q10, Q11, Q12, Q13, Q14, Q24, Q25, Q44, and Q54 remain dependencies but are omitted from blockedOn. The current 70-row reconciliation still reports 53 OPEN rows, so no local/live promotion is permitted before exact zero-debt closure."
     },
     {
       "id": "QG2",

@@ -770,9 +770,9 @@
         "line": 93,
         "labelColumnHeader": "Rule",
         "rowLabel": "≥1 input (ZERO-INPUT)",
-        "measuredStatusCell": "✅ (emulator; author-supplied preprod evidence not independently rerun)",
+        "measuredStatusCell": "✅ Q14 `LOCAL_PASS` (canonical-v1-proof-family-q14-v1.json); live evidence remains Q57/QG3",
         "measuredRemainingCell": "Publish/re-run reproducible preprod evidence (W-T4); reduce 4 commands to 1 (W-O4)",
-        "recordsLocalPass": false
+        "recordsLocalPass": true
       },
       {
         "file": "docs/fault-proofs/catalogue-status.md",
@@ -781,9 +781,9 @@
         "line": 24,
         "labelColumnHeader": "Type",
         "rowLabel": "`zero-input` (2 steps)",
-        "measuredStatusCell": "✅ Complete & verified (emulator; author-supplied preprod evidence not independently rerun)",
+        "measuredStatusCell": "✅ Q14 `LOCAL_PASS` (canonical-v1-proof-family-q14-v1.json); live evidence remains Q57/QG3",
         "measuredRemainingCell": null,
-        "recordsLocalPass": false
+        "recordsLocalPass": true
       }
     ],
     "comparisonRow": {
@@ -870,10 +870,10 @@
     {
       "output": 10,
       "title": "Coverage matrix and catalogue status updated to the family's real state",
-      "status": "OPEN",
+      "status": "LOCAL_PASS",
       "owner": "parent",
       "evidence": "Both parent-owned rows are measured at HEAD through their tables' own header-derived Status column: docs/fault-proofs/coverage-matrix.md line 93 still reads `✅ (emulator; author-supplied preprod evidence not independently rerun)` and docs/fault-proofs/catalogue-status.md line 24 still reads `✅ Complete & verified (emulator; author-supplied preprod evidence not independently rerun)`. Neither records this family's local closure. The settled Q13 row at coverage-matrix.md line 95 is measured through the same machinery as a positive control, and is the pinned form the two pending cells must take.",
-      "whyOpen": "The two files are parent-owned — the manifest's Q14 row lists both under pathsMustNotTouch — so this gate measures them and refuses to edit them. The status is derived from the measurement, not asserted, so the parent's edit closes this cell without any prose change here. The exact edits are listed verbatim in parentIntegration.pendingEdits."
+      "whyPreviouslyOpen": "SUPERSEDED IN THIS TREE: the parent integration landed both matrix rows in the exact form pinned under parentIntegration.pendingEdits, and this row's status is re-derived LOCAL_PASS from the re-measured Status cells. The original derivation is retained: The two files are parent-owned — the manifest's Q14 row lists both under pathsMustNotTouch — so this gate measures them and refuses to edit them. The status is derived from the measurement, not asserted, so the parent's edit closes this cell without any prose change here. The exact edits are listed verbatim in parentIntegration.pendingEdits."
     }
   ],
   "notApplicableOutputs": [],
@@ -894,7 +894,7 @@
         "docs/fault-proofs/coverage-matrix.md",
         "docs/fault-proofs/catalogue-status.md"
       ],
-      "finding": "Output 10 is OPEN and parent-owned. docs/fault-proofs/coverage-matrix.md line 93 and docs/fault-proofs/catalogue-status.md line 24 both still carry the pre-closure emulator wording and neither records this family's LOCAL_PASS. Both files are listed under the manifest Q14 row's pathsMustNotTouch, so this gate measures them and refuses to edit them; the status is derived from that measurement rather than asserted, so the parent's edit closes the cell with no change to this artifact's prose.",
+      "finding": "SUPERSEDED IN THIS TREE: the parent integration pass landed both matrix rows in the pinned form and added the queue row, and output 10 is LOCAL_PASS re-derived from the measured cells. The original finding is retained: Output 10 is OPEN and parent-owned. docs/fault-proofs/coverage-matrix.md line 93 and docs/fault-proofs/catalogue-status.md line 24 both still carry the pre-closure emulator wording and neither records this family's LOCAL_PASS. Both files are listed under the manifest Q14 row's pathsMustNotTouch, so this gate measures them and refuses to edit them; the status is derived from that measurement rather than asserted, so the parent's edit closes the cell with no change to this artifact's prose.",
       "owner": "parent"
     },
     {
@@ -975,8 +975,8 @@
   ],
   "summary": {
     "outputs": 10,
-    "localPass": 9,
-    "open": 1,
+    "localPass": 10,
+    "open": 0,
     "notApplicable": 0,
     "delegatedOutputs": 4,
     "aikenModules": 2,
@@ -1008,7 +1008,8 @@
       "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json row Q14 also carries the stale census recorded as Q14-F4, which the parent may fix in the same pass: the `step-02.ak holds 7 tests / step-01.ak holds 2` split and the `exactly 9 Aiken selectors` and `#545 adds exactly 4 published-chunk selectors to step_01 (5 of 5)` pins, against 5 + 3 = 8 measured; the focusedCommands naming `zero_input_step_01_rejects_a_missing_verifier_invocation` and the retired step-02 selector names, none of which exist anywhere in onchain/ (a runner following them would exit 0 while running fewer checks than it claims); and the `exactly 3 zero-input prepare tests` count against 7 measured.",
       "docs/fault-proofs/coverage-matrix.md line 93 also carries the stale citations recorded as Q14-F7 — the Local cell's `phase-a.ts:138` against the single enforcement site at phase-a.ts:201, and the L1 cell's \"native empty-list hash\" description of the retired pinned-constant mechanism — and docs/fault-proofs/catalogue-status.md line 24 carries the same retired mechanism in its Fault-proven cell (Q14-F8). Both are safe to fix in the same pass as the Status cells, and both are the kind of description that would talk a future reader back into a design section 4 made unsound.",
       "demo/midgard-sdk/src/fraud-proof/zero-input.ts carries the stale docstring recorded as Q14-F9, describing `EMPTY_SPEND_INPUTS_HASH` as the value `fraud_proofs/zero_input/step_02` compares against. The deployed step opens field 0 and reads its authenticated item count instead. This is a comment fix in a Q00/Q02-owned module, outside this family's two prescribed surfaces, so it is handed over rather than made here.",
-      "Q14-F5 stays parent-owned and is not closable from a family-local surface: this family HAS a real emulator negative, so the Q12-F4/Q1X-F2 gap does not apply, but both of its emulator refusals are measured to originate off-chain (the builder guard in submit-zero-input-step-01.ts and the door in field-opening-v1.ts). Closing the remaining nuance means an emulator journey that submits a valid-block challenge to the deployed step and watches the SCRIPT fail, which is a new block in a shared suite rather than an edit to either surface prescribed here."
+      "Q14-F5 stays parent-owned and is not closable from a family-local surface: this family HAS a real emulator negative, so the Q12-F4/Q1X-F2 gap does not apply, but both of its emulator refusals are measured to originate off-chain (the builder guard in submit-zero-input-step-01.ts and the door in field-opening-v1.ts). Closing the remaining nuance means an emulator journey that submits a valid-block challenge to the deployed step and watches the SCRIPT fail, which is a new block in a shared suite rather than an edit to either surface prescribed here.",
+      "SUPERSEDED IN THIS TREE — the parent integration pass landed the two matrix status cells in the pinned Q13 form and added the queue row; the manifest schedulingNote re-scope and the Q14-F4 manifest census/focusedCommand re-pins landed with the surfaces commit itself (3d00322a). Still deferred for a later parent pass: the Q14-F7/Q14-F8 stale mechanism citations (the coverage Local cell's phase-a.ts:138 against the measured phase-a.ts:201 single-line opener, the retired native empty-list-hash wording in both matrices), the Q14-F9 SDK EMPTY_SPEND_INPUTS_HASH docstring, and the Q14-F5/Q14-F6 emulator refusal-origin and absent-assertion nuances, which are parent/#482 work, not matrix-cell edits."
     ]
   }
 }
