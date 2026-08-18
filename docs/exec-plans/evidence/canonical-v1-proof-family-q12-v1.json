@@ -515,9 +515,9 @@
         "separatorLine": 136,
         "labelColumnHeader": "Rule",
         "rowLabel": "Validity interval within block range (INVALID-RANGE)",
-        "measuredStatusCell": "✅ (emulator)",
+        "measuredStatusCell": "✅ Q12 `LOCAL_PASS` (canonical-v1-proof-family-q12-v1.json); live evidence remains Q57/QG3",
         "measuredRemainingCell": "Preprod (W-T4)",
-        "recordsLocalPass": false
+        "recordsLocalPass": true
       },
       {
         "file": "docs/fault-proofs/catalogue-status.md",
@@ -526,9 +526,9 @@
         "separatorLine": 18,
         "labelColumnHeader": "Type",
         "rowLabel": "`invalid-range` (2 steps)",
-        "measuredStatusCell": "✅ Complete & verified (emulator only)",
+        "measuredStatusCell": "✅ Q12 `LOCAL_PASS` (canonical-v1-proof-family-q12-v1.json); live evidence remains Q57/QG3",
         "measuredRemainingCell": null,
-        "recordsLocalPass": false
+        "recordsLocalPass": true
       }
     ],
     "comparisonRow": {
@@ -616,8 +616,8 @@
     {
       "output": 10,
       "title": "Coverage and catalogue rows changed to the family's local status at integration",
-      "status": "OPEN",
-      "whyOpen": "Both matrices are measured NOT to record this family's local closure. docs/fault-proofs/coverage-matrix.md line 137 states `✅ (emulator)` with `Preprod (W-T4)` remaining, and docs/fault-proofs/catalogue-status.md line 21 states `✅ Complete & verified (emulator only)`. Neither is the statement the Q13 row at coverage-matrix line 95 makes through the same Status column (`✅ Q13 \\`LOCAL_PASS\\`; live evidence remains Q57/QG3`), which is what a closed local status looks like in this matrix. Both files are parent-owned — the manifest's Q12 row lists them under pathsMustNotTouch — so this gate measures their current cells, derives this row's status from that measurement, and lists the edit under parentIntegration.pendingEdits instead of performing it. The cell closes when the parent lands the rows, not when this artifact is written.",
+      "status": "LOCAL_PASS",
+      "whyPreviouslyOpen": "SUPERSEDED IN THIS TREE: the parent integration landed both matrix rows in the exact form pinned under parentIntegration.pendingEdits, and this row's status is re-derived LOCAL_PASS from the re-measured Status cells. The original derivation is retained: Both matrices are measured NOT to record this family's local closure. docs/fault-proofs/coverage-matrix.md line 137 states `✅ (emulator)` with `Preprod (W-T4)` remaining, and docs/fault-proofs/catalogue-status.md line 21 states `✅ Complete & verified (emulator only)`. Neither is the statement the Q13 row at coverage-matrix line 95 makes through the same Status column (`✅ Q13 \\`LOCAL_PASS\\`; live evidence remains Q57/QG3`), which is what a closed local status looks like in this matrix. Both files are parent-owned — the manifest's Q12 row lists them under pathsMustNotTouch — so this gate measures their current cells, derives this row's status from that measurement, and lists the edit under parentIntegration.pendingEdits instead of performing it. The cell closes when the parent lands the rows, not when this artifact is written.",
       "evidence": "Measured cell text for both rows is recorded verbatim in output10MatrixRows and re-read by this gate from the header-derived Status column, so a parent edit that lands the rows flips this row's derivation rather than requiring a prose change. The Q12 status this row is waiting on is otherwise complete: outputs 1 to 9 are LOCAL_PASS above.",
       "owner": "parent"
     }
@@ -635,7 +635,7 @@
     {
       "id": "Q12-F1",
       "severity": "observation",
-      "finding": "Output 10 is OPEN on parent-owned files. docs/fault-proofs/coverage-matrix.md line 137 records `✅ (emulator)` with `Preprod (W-T4)` remaining, and docs/fault-proofs/catalogue-status.md line 21 records `✅ Complete & verified (emulator only)`. Neither states this family's local closure, and the manifest's Q12 row lists both files under pathsMustNotTouch, so the edit cannot be made from this task. The measured cell text is pinned in output10MatrixRows so the parent's edit is a one-line diff against a known baseline rather than a rewrite.",
+      "finding": "SUPERSEDED IN THIS TREE: the parent integration pass landed both matrix rows in the pinned form and added the queue row, and output 10 is LOCAL_PASS re-derived from the measured cells. The original finding is retained: Output 10 is OPEN on parent-owned files. docs/fault-proofs/coverage-matrix.md line 137 records `✅ (emulator)` with `Preprod (W-T4)` remaining, and docs/fault-proofs/catalogue-status.md line 21 records `✅ Complete & verified (emulator only)`. Neither states this family's local closure, and the manifest's Q12 row lists both files under pathsMustNotTouch, so the edit cannot be made from this task. The measured cell text is pinned in output10MatrixRows so the parent's edit is a one-line diff against a known baseline rather than a rewrite.",
       "owner": "parent"
     },
     {
@@ -707,8 +707,8 @@
   ],
   "summary": {
     "outputs": 10,
-    "localPass": 9,
-    "open": 1,
+    "localPass": 10,
+    "open": 0,
     "notApplicable": 0,
     "delegatedOutputs": 4,
     "aikenModules": 2,
@@ -737,7 +737,8 @@
       "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json row Q12 also carries the stale citations recorded as Q12-F8 — the `exactly 7`/`8 of 8` selector counts against 10 measured, the `invalid_range_step_01_rejects_a_missing_verifier_invocation` focusedCommand that names a selector living only in fraud_proofs/no_input/step_03 (and would therefore run one test short while exiting 0), the `step-02.ak has ZERO tests` sourceAnchor, and the schedulingNote's 3-test description of step-01 — which the parent may fix in the same pass, alongside the inherited `Q12: 7 of 7 Aiken selectors` line in docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json.",
       "docs/fault-proofs/coverage-matrix.md carries the stale Evidence citation recorded as Q12-F3 (`:179-194` against 6 measured enforcement sites at phase-a.ts 268/281 and phase-b.ts 915/925/1097/1106), and docs/fault-proofs/catalogue-status.md carries the imprecise `step-02.ak:82-92` and `invalid-range/step-01.ak:20-44` ranges and the `exactly 8 categories` preamble against 11 measured, which the parent may fix in the same pass.",
       "The output-9 gap stays parent-owned and is not closable from a family-local surface: this family's journey needs an adversarial assertion — at minimum a valid-block negative that observes the correction path refuse to finalize (Q12-F4, restating Q1X-F2), and more narrowly any refusal assertion at all, since `.rejects.toThrow` is measured absent from its block while all three sibling lifecycles in the same file carry one (Q12-F5). The sibling journeys already show the shape of both.",
-      "Q12-F11 needs an owner outside this artifact: the positional constructor order of `aiken_design_patterns/validity_range_normalization`'s `NormalizedTimeRange` is not measurable from tracked files, so the SDK mirror of that enum is bound here as a set of constructor names only. Whoever owns the dependency pin should decide whether a positional check belongs in the Q00 codec parity machinery."
+      "Q12-F11 needs an owner outside this artifact: the positional constructor order of `aiken_design_patterns/validity_range_normalization`'s `NormalizedTimeRange` is not measurable from tracked files, so the SDK mirror of that enum is bound here as a set of constructor names only. Whoever owns the dependency pin should decide whether a positional check belongs in the Q00 codec parity machinery.",
+      "SUPERSEDED IN THIS TREE — the parent integration pass landed the two matrix status cells in the pinned Q13 form and added the queue row; the manifest schedulingNote re-scope and the Q12-F8 manifest citations (census pins, ZERO-tests anchor, the focused command naming a no-input/step-03 selector) landed with the surfaces commit itself. Still deferred for a later parent pass: the Q12-F3 stale citations (the coverage Evidence :179-194 range, the catalogue step ranges, the exactly-8-categories preamble), and the shared Q1x artifact's inherited Q12: 7-of-7 line, which stays as closed-at-#481 historical provenance beside its equally superseded Q10/Q11 sibling lines."
     ]
   }
 }
