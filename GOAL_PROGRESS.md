@@ -4730,3 +4730,19 @@ hostile mutations rejected — including a seeded
 when unaccepted). #476 criteria now read 1-4 PASS; criterion 5's remaining
 red is the static-policy environment block (compiler mismatch under the
 stale PATH binary), next in this lane.
+
+## #476 criterion 5 closed by measurement: static-policy PASS under the sanctioned compiler (2026-08-17)
+
+The one remaining #476 red was an environment artifact, not a tree defect:
+`node scripts/verify-canonical-v1-goal-static-policy.mjs` exits 2 under the
+stale PATH binary (v1.1.22+39d6b04) with "Aiken compiler mismatch: declared
+v1.1.23". Re-run at `ccce10f6` with the sanctioned fork binary prepended
+(`/home/gumbo/playground/aiken/target/release/aiken`, v1.1.23+2a78108, md5
+`b3acfdf348235798cb6b921d0f87750a` verified immediately before):
+`{"status":"PASS","workspacePackages":9,"declaredCompiler":"v1.1.23",
+"forbiddenWholeItemChecks":6,"forbiddenWholeItemBindings":0}`, exit 0 — the
+same environment CI's aiken-fork step provides, so no CI divergence. With
+the `e1e65629` goldens-type repair and the C20 retirement above, all five
+#476 acceptance criteria measure PASS at `ccce10f6`; both CG1 gate issues
+(#476, #477) are measured all-PASS, unblocking #479 (CG1 closure) as the
+next Wave C item.
