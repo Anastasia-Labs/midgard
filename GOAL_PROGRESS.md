@@ -5756,3 +5756,43 @@ catalogue/CLI registration diffs stay parent-serialized proposals.
 Remaining Q39 surfaces (prepare/submit modules, 16-test family
 suite via direct module import, emulator-to-boundary test, then the
 §9.1 per-family artifact + verifier) continue on the same lane.
+
+## 2026-08-18 — Q39 fabricated-deposit: prepare/submit surfaces, family
+## suite, and the measured emulator boundary land
+
+The family's off-chain half completes (7 files under
+`demo/midgard-fault-proofs`): `src/prepare-fabricated-deposit.ts`
+authenticates evidence per the B2 ruling — the deposits MPF is
+rebuilt from the DA payload, committed under the deposits root
+domain via `commitCountedRoot`, and refused unless BOTH the counted
+root equals `header.depositsRoot` AND the count equals
+`header.depositCount` (`deposits_root_mismatch`);
+`assertSecurityGradeEvidenceV1` gates both provenances unchanged;
+`liveOutputReferences` membership is a real check
+(`consumed_live_utxo_fallback_refused`); 13 fail-closed rejection
+codes; `assertNativeInclusionRootAuthenticatedV1` deliberately not
+used (transactions_root-specific — precedent
+prepare-from-evidence-v1.ts:145-150, reason in the module header).
+Four submit modules take an explicit `FabricatedDepositContractsV1`
+record so `contracts.ts`/`runtime.ts` stay untouched and the #609
+arity guard remains the single parameterization site; every rule the
+unreachable Lucid bodies enforce is factored into exported pure
+functions the suite drives for real, and step-02's off-chain twin
+reads the deposit policy from the authentic hub-oracle datum. The
+16-test family suite (`tests/fabricated-deposit.test.ts`) reaches
+the family by direct module import (registration deferred to #617)
+and asserts Aiken-measured absolutes — counted deposits roots, PHAS
+roots, `out_ref_to_nonce`, the info/event-datum commitments, and
+byte-for-byte step-04 handoff CBORs.
+`tests/submit-init-emulator-fabricated-deposit.test.ts` measures the
+blueprint boundary: the frozen blueprint carries 398 validators and
+none of the family's 8 titles (a present control title proves the
+read is real), everything short of UPLC evaluation is measured, and
+the skip reason names #510 / R5 / #617 — the absence assertion is
+the retirement trigger when regeneration lands. Parent re-ran
+everything independently: family+emulator suites 16 passed /
+1 skipped (exit 0), scaffold baseline unchanged (1 of 45, the same
+four Q02 findings, none from the new files), tsc/eslint/prettier all
+exit 0, attribution scan clean. Remaining on the lane: the Q39 §9.1
+per-family artifact + verifier, queue row, and matrix cells; then
+Q40 → Q42 → Q41.
