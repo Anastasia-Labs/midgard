@@ -3200,7 +3200,7 @@
       ],
       "detailStatus": "DETAILED",
       "blockedOn": ["C45", "C46", "C47"],
-      "blockedBecause": "C48 remains dependency-blocked only on current non-PASS queue rows: C45, C46, C47. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted."
+      "blockedBecause": "C48 remains dependency-blocked only on current non-PASS queue rows: C45, C46, C47. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted. SUPERSEDED 2026-08-18: C45-C47's measurable frontiers closed at `42b71e83` (#489), and C48's own gates measured all-green at HEAD `42b71e83` (3/3 + 8/8 + 8/8 Aiken, 34/34 TypeScript across the 3 exact files, format, typecheck, aiken check) with every pinned count holding exactly — no re-pin needed. The residual here is the owner-pinned CG2 chain plus this row's recorded resolver-gap substance (the cek aggregate remains unsplit; `semanticResolverOffsetsV1` still pins -1 at index 11), which is XL implementation work, not measurement drift."
     },
     {
       "id": "C49",

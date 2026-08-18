@@ -5144,3 +5144,23 @@ record — a recorded implementation decision, not a defect. C45–C47
 are not `p2Tasks` rows; capability artifact untouched.
 Manifest-quality gate PASS after all edits (186/186, 0 defects);
 prettier-clean. Logs: `scratchpad/issue-489/` (session-local).
+
+## #490 (B11) C48 measured all-green at `42b71e83`; every pinned count holds exactly (2026-08-18)
+
+C48's `focusedCommands` replayed serially under the sanctioned fork
+binary `aiken v1.1.23+2a78108` (md5
+`b3acfdf348235798cb6b921d0f87750a`, verified): all 7 gates exit 0 on
+the first pass — 3/3 guarded validation-machine CEK selectors, 8/8
+cek-machine selectors, 8/8 cek-builtin selectors, the 9-file format
+batch, `aiken check --skip-tests`, 34/34 TypeScript across
+cek-machine/cek-executor/cek-builtin (5+15+14, exactly the pin), and
+typecheck. All 19 pinned Aiken selectors were pre-verified present at
+HEAD before the run; no re-pin needed anywhere. The row's
+`blockedBecause` superseded in place: C45-C47's frontiers closed at
+`42b71e83` (#489), so the residual is the owner-pinned CG2 chain plus
+the row's recorded XL substance — the cek aggregate resolver remains
+unsplit (`semanticResolverOffsetsV1` pins -1 at index 11), an
+implementation gap the manifest already records, not measurement
+drift. C48 is not a `p2Tasks` row; capability artifact untouched.
+Manifest-quality gate PASS (186/186, 0 defects); prettier-clean.
+Logs: `scratchpad/issue-490/` (session-local).
