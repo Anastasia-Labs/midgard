@@ -18,7 +18,13 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -41,11 +47,20 @@ const clone = (value) => structuredClone(value);
 const workspace = mkdtempSync(resolve(tmpdir(), "cg1-gate-self-test-"));
 const candidatePath = resolve(workspace, "cg1-gate.json");
 
+/* The blueprint is gitignored, so a fresh checkout (CI) structurally     */
+/* cannot carry it. Forward --blueprint-optional to the gate exactly when */
+/* that is the case, mirroring the CI invocation; wherever a working tree */
+/* carries the blueprint the gate under test runs strict.                 */
+const blueprintPresent = existsSync(
+  resolve(repositoryRoot, "onchain/aiken/plutus.json"),
+);
+const forwardedFlags = blueprintPresent ? [] : ["--blueprint-optional"];
+
 const runGate = (candidate) => {
   writeFileSync(candidatePath, `${JSON.stringify(candidate, null, 2)}\n`);
   return spawnSync(
     process.execPath,
-    [gateScript, `--gate-under-test=${candidatePath}`],
+    [gateScript, `--gate-under-test=${candidatePath}`, ...forwardedFlags],
     { cwd: repositoryRoot, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
   );
 };
