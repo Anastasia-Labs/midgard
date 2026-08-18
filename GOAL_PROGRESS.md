@@ -4459,3 +4459,83 @@ git history (last full copy: the parent of the commit introducing this note):
 
 No Task queue, Criterion ledger, Decisions, Validation ledger, or dated wave
 entries were altered.
+
+## C21 flat-scheme reconciliation (2026-08-17)
+
+The C21 rows written before the flat field-hash reversion (#552/#565, P1–P8
+complete 2026-08-16) describe the retired counted bounded-collection shape.
+This dated entry reconciles them against the measured tree at `9f191e9a`; no
+earlier row is edited.
+
+**1. Equivalence audit — `complete-item-equivalence-v1.test.ts` is
+legitimate, not a dead path.** The retained `counted…` helpers are the
+machine's OWN tier-3 chunk-walk trace structure — 20+ live call sites in
+`demo/midgard-validation/src/validation-machine.ts`, naming discipline at
+:195-263 (nothing called `counted…` may be compared against a §4 field
+commitment) — and the test honors it: proofs authenticate against
+`collection.commitment` (the trace's own), never a §4 flat commitment. It
+still proves the surviving core of the §3.2 closure condition (tier-1 ≡
+tier-3 at item altitude, full reject matrix in both representations,
+byte-identical reassembly), and the seam the reversion added — §4 flat-hash
+authentication of the whole preimage — is covered by
+`verifyMidgardV1TxFieldPreimage` / `midgardFieldCommitmentV1` at 3 production
+sites and 9+ test files. Disposition: semantic equivalence is CURRENT under
+the flat scheme; no code or test change needed.
+
+**2. Carriage selector — superseded provenance, live conservative use,
+already role-reconciled by #600.** `selectValidationCompleteItemCarriageV1`
+(submit.ts:151) branches on `maxReliableDirectCompleteItemBytes` (8,273), the
+counted-era five-stage pipeline frontier. Both production call sites gate an
+operator-side redeemer-size optimisation inside tier 1 only — "never as a
+fourth rung" (#600 Ruling 1 Q4). Too-low fails toward unnecessary
+reference-route publication cost; too-high fails loud before signing
+(submit.ts envelope guards, MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES
+16,384). No unilateral rebind: the re-derivation rides the §3.2 necessity
+remeasurement campaign, and — sharpened by finding 3 below — the bound now
+measurably OVERSTATES the direct-route frontier, so the rebind is doubly
+owner-gated.
+
+**3. The four unmasked dispute-submit reds — #597 wire-twin gap, fixed
+`9f191e9a`, one owner decision remains.** The fault-proofs focused pair
+measured 4 failed | 17 passed against the C21 manifest row's "exactly 21, 0
+failures" pin (2026-08-05). Attribution before any pin moved (full record:
+issue #597 comment, 2026-08-17): never CI-visible — Midgard Node CI's serial
+test job died at the validation/SDK steps on every completed run in the
+visible window, so the fault-proofs step first executed at `f2629293` (run
+32081082025) and reproduced all four with its own fork-built blueprint. Root
+cause: #597 migrated the auxiliary-witness shape table but the dispute-submit
+staging lane kept counted-era assumptions — both semantic `Verify` emitters
+built the retired 5-field action (deployed ABI is 4-field with the carriage
+as its own argument; C21-DISPUTE-SUBMIT had corrected this very encoder TO
+5-field in July when that WAS the deployed shape), the prepare-selected
+by-hash gate measured a retired second field (route permanently dead, literal
+auxiliary always embedded, reference-route journey 21,792 B vs the 16,384
+envelope), and five test fixtures pinned retired shapes. Fixed in
+`9f191e9a`; after: unit file 17/17, emulator reference journey green, focused
+pair 20/21, fault-proofs suite 355 passed / 2 attributed reds, typecheck
+clean. The remaining emulator direct-route red is an OWNER DECISION, not
+absorbed: the observe stage of `submitValidationDisputeSemanticResolution`
+embeds `canonical_decode_item_observe_v1` instead of sourcing the published
+reference script (the authenticate stage does), a ~11,097-byte fixed base
+leaving ~5,287 bytes of real item headroom while the 8,273 selector bound
+admits items that then build unsubmittable transactions — a live liveness gap
+for the (≈5,287, 8,273] band, needing both a deployment-info convention for
+the observe reference script and a parameter ruling on the bound.
+
+**4. Manifest row re-pin.** C21 `expectedNonzeroCounts` rewritten at
+`9f191e9a` from measured runs: 6 guarded Aiken (unchanged) + 11 validation
+(was 9; #597/#600/#611/#606) + 5 SDK (was 6; #597 proof-item datum move) + 21
+fault-proofs collected = 43 total, 42 passing, exactly 1 attributed failure
+(the owner-gated direct-route case above); superseded 2026-08-05 contract
+retained verbatim. All five sourceAnchors re-measured (:9133, :12751, :3791,
+:96, :5163). Manifest-quality gate PASS (9 recorded-and-accepted defects,
+unchanged set).
+
+**Also surfaced, pre-existing at HEAD, not chased:**
+`family-scaffold-v1.test.ts`'s Q02 permissive-dispatch scanner is red at HEAD
+independent of this work (verified by stash-comparison): 4 findings against
+shipped artifacts (`native-binding-fixture-v1.ak:500` plus three
+`demo/midgard-sdk/src/fraud-proof/*.ts`). Owner disposition rides the #607
+lane. `demo/midgard-core/scripts/measure-validation-proof-item-envelope.mjs`
+still models the retired 2-field shape — inherited by the §3.2 necessity
+remeasurement lane.
