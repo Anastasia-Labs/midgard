@@ -5404,3 +5404,31 @@ separately: the Q49 structural-handoff pins still cite the
 `no_input_step_03_excludes_the_input_from_the_initial_ledger` selector
 that #582 renamed (next item), and fp-reconciliation inherits the
 accepted Q02 scanner red.
+
+## #481 (B13): Q49 handoff and reconciliation pins re-cited onto #582's witness-faithful step-03 selectors (2026-08-18)
+
+`verify-canonical-v1-q49-structural-handoff.mjs` was genuinely red at
+HEAD (`ERR_AIKEN_SELECTOR_NOT_COLLECTED`): two evidence pins still
+cited `no_input_step_03_excludes_the_input_from_the_initial_ledger`,
+which #582 (`06c2769d`) replaced when it retired the unprovable h32_a
+initial-ledger claim. Coverage equivalence verified from source before
+re-pinning: the old single positive became TWO witness-faithful
+positive arms in validators/fraud-proofs/no-input/step-03.ak —
+`..._from_a_genesis_initial_ledger` (empty-root/empty-witness arm the
+first block takes) and `..._from_a_populated_initial_ledger` (real
+single-leaf absence witness, the arm every later block takes) — with
+the valid-block negative `..._rejects_a_non_membership_claim_for_
+another_key` unchanged, so the citation strictly widened.
+
+Re-pinned surgically: canonical-v1-q49-structural-handoff-v1.json (the
+L298 selector list and the recomputed-and-verified runner command; the
+verifier-recomputed `executedChecks` 30→31) and
+canonical-v1-fault-proof-reconciliation-v1.json (the L298 row's
+prose citation of the same module). Measured after the edit: Q49
+structural handoff PASS (9 rows, 31 runner-executed checks, 1 static
+structural check, 0 partial, 0 open) — every cited selector collected
+and passing under the sanctioned aiken; fp-reconciliation re-run reds
+solely on the accepted Q02 permissive-dispatch scanner baseline
+(family-scaffold-v1.test.ts, 1 of 45), unchanged. With this and the
+q1x re-pin above, every B13 gate red at orientation is either green or
+attributed to the owner-owned baseline.

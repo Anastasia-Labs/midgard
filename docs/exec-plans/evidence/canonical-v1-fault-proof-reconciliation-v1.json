@@ -276,7 +276,7 @@
         "executableEvidence": [
           "onchain/aiken/validators/fraud-proofs/no-input/step-01.ak: no_input_step_01_binds_native_v1_block_fixture, no_input_step_01_rejects_forged_transactions_root",
           "onchain/aiken/validators/fraud-proofs/no-input/step-02.ak: no_input_step_02_forwards_the_challenged_spend_input, no_input_step_02_rejects_a_substituted_inputs_preimage",
-          "onchain/aiken/validators/fraud-proofs/no-input/step-03.ak: no_input_step_03_excludes_the_input_from_the_initial_ledger, no_input_step_03_rejects_a_non_membership_claim_for_another_key",
+          "onchain/aiken/validators/fraud-proofs/no-input/step-03.ak: no_input_step_03_excludes_the_input_from_a_genesis_initial_ledger, no_input_step_03_excludes_the_input_from_a_populated_initial_ledger, no_input_step_03_rejects_a_non_membership_claim_for_another_key",
           "onchain/aiken/validators/fraud-proofs/no-input/step-04.ak: no_input_step_04_excludes_the_producing_transaction, no_input_step_04_rejects_valid_block_challenge"
         ]
       },
