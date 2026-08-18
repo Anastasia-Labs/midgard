@@ -65,8 +65,11 @@
 //// The residual is **unrepaired and out of #606's authorised scope**: this is
 //// a library used by validators, so translating it here would move
 //// `plutus.json` and the applied-identity cascade beyond the five-validator
-//// movement the rider authorised. It is recorded for a follow-up ticket, and
-//// `#582`'s witness-faithful fixtures are the natural place to gate it.
+//// movement the rider authorised. The repair is DECIDED (owner approval
+//// 2026-08-17) and executes inside #510's single freeze-event regeneration,
+//// together with the matching `insert_root` fold-in. #582 is NOT this
+//// repair's gate — that earlier claim was self-referential, tracing back to
+//// this module's own defect note.
 
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, blake2b_256}

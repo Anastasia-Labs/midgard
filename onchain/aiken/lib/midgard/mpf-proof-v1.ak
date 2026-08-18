@@ -345,9 +345,13 @@ pub fn has_value_hash(
 /// because #606's scope rider (owner ruling on #608, 2026-08-15) authorised
 /// placement (a) — `pexcludes.ak` — and nothing else; this module is imported
 /// by validators, so translating it moves `plutus.json` and the applied-identity
-/// cascade past the five-validator movement that ruling costed. Awaiting a
-/// follow-up ticket; `chunked-inclusion-v1.ak`'s module header records the
-/// user-visible consequence.
+/// cascade past the five-validator movement that ruling costed. The repair is
+/// DECIDED (owner approval 2026-08-17), not awaiting a ticket: it executes
+/// inside #510's single freeze-event regeneration — land the translation here,
+/// fold the same translation into `insert_root` below (unreachable today,
+/// a live hazard once `does_not_have` accepts the sentinel), regenerate once,
+/// then measure and freeze. `chunked-inclusion-v1.ak`'s module header records
+/// the user-visible consequence.
 pub fn does_not_have(root: ByteArray, key: ByteArray, proof: mpf.Proof) -> Bool {
   let path = blake2b_256(key)
   let well_formed = and {
