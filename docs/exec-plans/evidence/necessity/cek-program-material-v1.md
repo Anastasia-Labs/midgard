@@ -361,6 +361,24 @@ reference-script deployment role:
   resolves and verifies the UTxO (exact script hash, exactly one role token)
   and consumes it via `readFrom`, never attaching the resolver body
   (`requireValidationCekDirectResolverReferenceScriptUtxo`).
+- **Re-taken 2026-08-17 (#597 staging-lane clearance) — the owed receipt is
+  measured again and the two superseded notes below close.** `9f191e9a`
+  repaired the #597 wire-twin gap in the dispute-submit staging lane, which
+  restored the producing selector (`publishes and verifies the authenticated
+  generated-blueprint CEK direct-resolver reference script`) to green; the
+  owed re-take recorded in
+  `docs/exec-plans/evidence/canonical-v1-p7-remeasurement-v1.json`
+  (`residuals[1]`) is discharged. Measured under `MIDGARD_PRINT_PROOF_FIT=1`
+  at `185ffa2c` against blueprint `f49cae22…` (md5 `5e38d7c6…`, 398
+  validators — the rebuild whose identity `5010a2bf`'s commit message pins,
+  and whose `a4bfbd01…` / 162,145-byte applied body the #606 note below
+  already carries): **162,660 signed bytes, L1 margin −146,276** — worse than
+  the superseded −140,598 exactly as both notes below predicted. Publication
+  framing is byte-for-byte unchanged at 515 bytes (162,660 − 162,145 = 515 =
+  156,982 − 156,467), so the whole −5,678 movement is the resolver body
+  growth (#592 rider 2's fifth parameter, +5,615, then #606's E2 repair
+  constant, +63). The P1 oversized-validator conclusion is unchanged in
+  direction and strengthened in magnitude.
 - **#580 (2026-08-15): every receipt in this bullet is SUPERSEDED-AND-NOT-YET-
   RE-TAKEN, and the direction is known.** The applied `cek_v1` body it calls
   "unchanged at 156,467 bytes / `f5d6395c…`" is now

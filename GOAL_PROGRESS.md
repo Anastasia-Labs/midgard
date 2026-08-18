@@ -4539,3 +4539,29 @@ shipped artifacts (`native-binding-fixture-v1.ak:500` plus three
 lane. `demo/midgard-core/scripts/measure-validation-proof-item-envelope.mjs`
 still models the retired 2-field shape — inherited by the §3.2 necessity
 remeasurement lane.
+
+### Addendum (2026-08-17, same pass): the owed CEK publication receipt is re-taken, and the four reds' acceptance status sharpened
+
+Two corrections/completions to the entry above, measured rather than
+inferred:
+
+- **Acceptance status.** The four dispute-submit reds were not merely
+  unattributed drift: they appear as owner-accepted in #608's authoritative
+  red map (2026-08-15), and `canonical-v1-p7-remeasurement-v1.json`
+  `residuals[1]` recorded a re-take owed "once that red clears". The entry
+  above stands (never CI-visible, root cause #597's staging-lane gap), with
+  this sharper provenance: `9f191e9a` retired an ACCEPTED red class, in the
+  same motion as the #606 accepted-red retirement earlier this window.
+- **The owed receipt is discharged.** With the producing selector green, the
+  CEK direct-resolver publication receipt was re-taken at `185ffa2c` under
+  `MIDGARD_PRINT_PROOF_FIT=1`: **162,660 signed bytes, L1 margin −146,276**
+  (superseded: 156,982 / −140,598), against blueprint `f49cae22…` (md5
+  `5e38d7c6…`, 398 validators) whose provenance is closed two independent
+  ways — `5010a2bf`'s commit message pins the md5, and a fresh scratch-copy
+  `aiken build --env testnet` from HEAD with the pinned fork (md5-verified
+  binary) reproduces both digests byte-identically. Publication framing is
+  unchanged at 515 bytes, so the whole −5,678 movement is the resolver body
+  (+5,615 from #592 rider 2, +63 from #606's E2 repair). Recorded in
+  `docs/exec-plans/evidence/necessity/cek-program-material-v1.md` as the
+  superseding receipt bullet; the P1 oversized-validator conclusion
+  strengthens in magnitude, unchanged in direction.
