@@ -4905,3 +4905,27 @@ via the immutable `midgard-2a78108c` tag). Replays must set
 `MIDGARD_FORK_AIKEN_BIN=/home/gumbo/playground/aiken/target/release/aiken`.
 The F10 row's PASS reading is current again on the
 post-flat-reversion basis.
+
+## #480 (B04) acceptance re-measured all-PASS at `9526ada2` (2026-08-18)
+
+With both blockers (#476, #477) measured all-PASS, B04's four live rows
+(C20-0, C20-1, C20-3, C20-8; C20-2/C20-4–C20-7 remain inherited PASS)
+were re-measured at HEAD by running the union of their
+`focusedCommands` serially — one shared Aiken compiler lease, then the
+serialized TypeScript workspace lease — under the sanctioned fork
+binary (`aiken v1.1.23+2a78108`, md5 `b3acfdf348235798cb6b921d0f87750a`,
+verified before the run). Every gate exits 0 and every count lands
+exactly on its row's fresh 2026-08-17 measured contract:
+`verify-carriage-exec-ledger-v1.mjs` PASS rows=13/derived=9; guarded
+Aiken 3/3 (C20-0), 5/5 (C20-1), 6/6 (C20-3), and 2+3+2 = 7 (C20-8:
+max-redeemers, redeemer-item-proof, validation-machine); TypeScript
+1/1 for each of the three ordered-collection boundary files and 4/4
+across C20-8's three files; `verify-normalized-format.mjs`,
+`aiken check --skip-tests`, `typecheck`, and `eslint` all green. The
+genuine-boundary evidence stands as pinned: 434/435 spend inputs at
+16,379/16,417 signed bytes, 433/434 reference inputs at 16,380/16,418,
+224/225 observers at 16,338/16,410, and the field-8 maximum with its
+adjacent rejection, each terminal fold vector byte-identical across
+TypeScript and Aiken. All five #480 acceptance criteria measure PASS;
+the acceptance comment is posted on the issue. Logs:
+`scratchpad/issue-480/` (session-local).
