@@ -226,31 +226,41 @@ mustReject(
 );
 
 /* --- The blueprint hash basis must match the real, gitignored working-tree
- * blueprint (there is no committed copy to check against instead). --- */
+ * blueprint (there is no committed copy to check against instead). These
+ * three mutations exercise exactly the comparison --blueprint-optional
+ * skips, so they can only run where the working tree carries the
+ * blueprint; in a fresh checkout they are structurally unexercisable and
+ * are skipped with a note rather than silently dropped. --- */
 
-mustReject(
-  "blueprint hash pin gone stale relative to the working tree",
-  /hashBasis\.blueprintSha256 is stale/u,
-  (candidate) => {
-    candidate.hashBasis.blueprintSha256 = "0".repeat(64);
-  },
-);
+if (blueprintPresent) {
+  mustReject(
+    "blueprint hash pin gone stale relative to the working tree",
+    /hashBasis\.blueprintSha256 is stale/u,
+    (candidate) => {
+      candidate.hashBasis.blueprintSha256 = "0".repeat(64);
+    },
+  );
 
-mustReject(
-  "blueprint md5 pin gone stale relative to the working tree",
-  /hashBasis\.blueprintMd5 is stale/u,
-  (candidate) => {
-    candidate.hashBasis.blueprintMd5 = "0".repeat(32);
-  },
-);
+  mustReject(
+    "blueprint md5 pin gone stale relative to the working tree",
+    /hashBasis\.blueprintMd5 is stale/u,
+    (candidate) => {
+      candidate.hashBasis.blueprintMd5 = "0".repeat(32);
+    },
+  );
 
-mustReject(
-  "blueprint validator count overstated",
-  /hashBasis\.validatorCount is stale/u,
-  (candidate) => {
-    candidate.hashBasis.validatorCount = 1;
-  },
-);
+  mustReject(
+    "blueprint validator count overstated",
+    /hashBasis\.validatorCount is stale/u,
+    (candidate) => {
+      candidate.hashBasis.validatorCount = 1;
+    },
+  );
+} else {
+  process.stdout.write(
+    "skipped: 3 stale-blueprint-pin mutations (gitignored blueprint absent from this checkout; enforced wherever a working tree carries it)\n",
+  );
+}
 
 mustReject(
   "invalidation trigger no longer names the freeze issue",
