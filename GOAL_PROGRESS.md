@@ -5230,3 +5230,22 @@ run) at `09c59a24` plus the staged closure surfaces.
 Manifest rows C49/C50/C51/C52/C53/CG3 superseded in place with the
 above; quality gate PASS (186/186, 0 defects); prettier-clean.
 Logs: `scratchpad/issue-491/` (session-local).
+
+## #491 addendum: the CG3 p3-totality verifier landed, measuring REFUSE-PASS with exactly the 2 recorded direct-resolver gaps (2026-08-18)
+
+`demo/scripts/verify-canonical-v1-p3-totality-v1.mjs` (new,
+deterministic: exit 0, byte-identical stdout across consecutive runs)
+enumerates the 14 nonterminal phases each bound to a live
+`verify_<phase>_one_step_v1` selector, parses exactly 18 `reject_*`
+codes from validation-machine-v1.ak with all 18 mapped to a one-step
+verifier (0 unmapped), and reconciles the cardinality guards on both
+axes (2=2; 29=29 — the CG3 sourceAnchor's `28` was stale at authoring:
+`b99f703c9` bumped it 2026-08-03, the day before the `2ac420d82` pin).
+Final status: `REFUSE-PASS (2 unprovable gaps)` — the recorded
+direct-resolver holes at indices 11 (Cek) and 12 (ValueAndMint), read
+live from validation-machine-data.ts/validation-machine.test.ts so the
+gate flips automatically when C48/C49 split the aggregates (IG1/#510,
+owner-gated). Provenance: the cross-language test file now holds 6
+declarations (+1 `d470fe320` #597, +2 `4dd629b7d` #600); the guarded
+pin remains the 3 named selectors, all green. CG3 stays OPEN. Quality
+gate PASS (186/186, 0 defects).
