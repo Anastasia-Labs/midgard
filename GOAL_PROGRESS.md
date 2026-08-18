@@ -5562,3 +5562,38 @@ pass, still recorded in the artifacts: the stale phase-b line
 references in the matrix rule cells, the exactly-8-categories
 preamble (11 measured), and the pre-#582 selector name in
 coverage-matrix prose.
+
+## #481 (B13): Q12 per-family closure surfaces built and gated (2026-08-18)
+
+Built the two surfaces the manifest Q12 row prescribes:
+docs/exec-plans/evidence/canonical-v1-proof-family-q12-v1.json gated by
+demo/scripts/verify-canonical-v1-proof-family-q12.mjs — PASS exit 0
+under the pinned fork compiler (aiken v1.1.23+2a78108 via
+MIDGARD_AIKEN_BIN), 9 LOCAL_PASS / 1 OPEN / 0 N/A. Outputs 1–4 and 9
+measured family-locally: 10/10 on-chain selectors across the two step
+modules (8 in step_01, 2 in step_02; 6 positive of which 3 are
+step-scoped proof-step positives and 3 module-local normalizer unit
+cases, 2 valid-block negative, 2 further negative — the gate requires
+≥1 step-scoped positive per module so the helper cases cannot stand in
+for deleted proof-step positives); 72 vitest tests over 4 suites with
+16 required titles; 4 emulator lifecycles in the shared ledger-rules
+suite, exactly 1 this family's. Output 3 is LOCAL_PASS as a measured
+absence: Q12 opens none of the nine committed fields, the gate parses
+the §2.5/§2.1 tables and binds validity_interval_start/_end
+positionally. Outputs 5–8 delegated to the shared Q1x artifact under
+hard asserts, with the spend-input cardinality axis measured out of
+scope for this family and gated bidirectionally (Q12 must stay absent
+from spendInputTierRoutedCarriage exactly while
+spendInputCardinalityBound.affectsGoalIds excludes it). Output 10 OPEN
+on the parent-owned matrix rows (pendingEdits pinned). 10 negative
+self-tests + 3 positive controls in-gate; 24 external artifact
+mutations all rejected. Manifest Q12 row superseded in place: the
+exactly-7 / 8-of-8 census pins (mutually inconsistent, 10 measured),
+the step-02-has-ZERO-tests anchor (2 measured), and the step_01
+focused command citing rejects_a_missing_verifier_invocation — that
+arm exists only in no-input/step-03 (0 hits in this family), so the
+command ran one test short while exiting 0; re-pinned onto the three
+existing chunk selectors. 12 residual findings recorded Q12-F1..F12
+(gaps F4/F5: no emulator valid-block negative and no adversarial
+assertion in the family's journey block — parent/#482-owned). Queue
+row deferred until output 10 closes, matching the Q10/Q11 sequence.
