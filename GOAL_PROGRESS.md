@@ -4968,3 +4968,26 @@ as re-pinned 2026-08-17; the residuals — the 8,273 carriage-selector
 rebind (doubly owner-gated) and the #597 observe-stage
 reference-script convention — are owner decisions, not chased here.
 Logs: `scratchpad/issue-484/` (session-local).
+
+## #485 (B06/C29) measured green at `8ef0e471`; the 23-test pin re-pinned to 27 with full drift attribution (2026-08-18)
+
+C29's `focusedCommands` replayed serially under the sanctioned fork
+binary: all six gates exit 0 — guarded canonical-decode Aiken 4/4,
+`validation-machine.test.ts` 27/27, format/check/typecheck/eslint
+green. The TypeScript count landed at 27 against the row's pinned
+"exactly 23"; the drift is attributed commit-by-commit before the pin
+moved, and nothing else in the contract shifted: the pin (`2ac420d82`,
+2026-08-04) was written hours before `7d01f2b71` landed the four
+canonical-decode closure tests that same day without a re-pin (+4);
+`d470fe32` (#597) retired the counted-era
+count/ordering/substitution mutation test when that coverage migrated
+to the per-field boundary suites and the carriage-borne witness path
+(−1); and the pin was one short on its own measurement day — the
+`2ac420d82` file already ran 24 (19 plain tests plus 2+3 `it.each`
+cases, no skips; `e991e9326`'s third input-set case predates the pin)
+(+1). 23+4−1+1 = 27, every current test named in the measurement log.
+The row's `expectedNonzeroCounts` now carries the fresh 2026-08-18
+contract (4 Aiken + 27 TypeScript = 31) with the superseded wording
+retained verbatim. Manifest-quality gate PASS after the edit (186/186,
+0 defects); prettier-clean. Logs: `scratchpad/issue-485/`
+(session-local).
