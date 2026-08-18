@@ -5118,3 +5118,29 @@ untouched by these selector swaps (verified: only the manifest
 referenced the stale names). Manifest-quality gate PASS after all
 edits (186/186, 0 defects); prettier-clean. Logs:
 `scratchpad/issue-488/` (session-local).
+
+## #489 (B10) C45–C47 measured all-green at `f43b1bc0`; single re-pin C47 25→26 (2026-08-18)
+
+The three rows' `focusedCommands` replayed serially under the sanctioned
+fork binary `aiken v1.1.23+2a78108` (md5
+`b3acfdf348235798cb6b921d0f87750a`, verified): all 16 gates exit 0 on
+the first pass — no stale-selector defects this time (all 52 pinned
+Aiken selectors pre-verified present at HEAD before the run). C45:
+12/12 validation-machine script-source selectors, 12/12
+redeemer-normalization, 3/3 redeemer-item, 3/3 TypeScript — every
+pinned count holds exactly (30/30). C46: 1/1 integrity selector, 4/4
+language-view selectors, 6/6 cek-cost TypeScript — holds exactly
+(11/11). C47: 4/4 context selectors, 16/16 script-context selectors,
+6/6 TypeScript against a pin of 5 — re-pinned 25→26 with attribution:
+`0acf2f489` (C28 content-addressed CEK material) added the
+canonical-envelope-identity case to cek-observer-boundary-v1.test.ts
+(pin-era 2→3); pin-era arithmetic reproduces 5 exactly at
+`2ac420d82`, and `d470fe320`/#597 touched the file without changing
+its count. All three `blockedBecause` readings superseded in place —
+C41–C46's measurable frontiers are closed and the residual is the
+owner-pinned CG2 chain. C45's six dormant stage-one redeemer
+validators remain deliberately unwired per the standing orphan-safety
+record — a recorded implementation decision, not a defect. C45–C47
+are not `p2Tasks` rows; capability artifact untouched.
+Manifest-quality gate PASS after all edits (186/186, 0 defects);
+prettier-clean. Logs: `scratchpad/issue-489/` (session-local).

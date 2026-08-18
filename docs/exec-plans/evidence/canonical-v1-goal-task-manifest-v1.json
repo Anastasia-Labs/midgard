@@ -3001,7 +3001,7 @@
       ],
       "detailStatus": "DETAILED",
       "blockedOn": ["C41", "C42", "C43", "C44"],
-      "blockedBecause": "C45 remains dependency-blocked only on current non-PASS queue rows: C41, C42, C43, C44. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted."
+      "blockedBecause": "C45 remains dependency-blocked only on current non-PASS queue rows: C41, C42, C43, C44. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted. SUPERSEDED 2026-08-18: C41's frontier closed at `3660aa94` (#487) and C42-C44's at `f43b1bc0` (#488), all with the owner-pinned CG2 gate as sole residual; C45's own gates measured all-green at HEAD `f43b1bc0` (12/12 + 12/12 + 3/3 Aiken, 3/3 TypeScript, format, both typechecks, aiken check) with every pinned count holding exactly. The six dormant stage-one redeemer validators remain deliberately unwired per the GOAL_PROGRESS.md orphan-safety record — a recorded implementation decision, not a measurement defect. The residual here is the owner-pinned chain."
     },
     {
       "id": "C46",
@@ -3065,7 +3065,7 @@
       ],
       "detailStatus": "DETAILED",
       "blockedOn": ["C45"],
-      "blockedBecause": "C46 remains dependency-blocked only on current non-PASS queue rows: C45. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted."
+      "blockedBecause": "C46 remains dependency-blocked only on current non-PASS queue rows: C45. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted. SUPERSEDED 2026-08-18: C45's measurable frontier closed the same day at HEAD `f43b1bc0`, and C46's own gates measured all-green (1/1 + 4/4 Aiken, 6/6 cek-cost TypeScript, format, typecheck, aiken check) with every pinned count holding exactly — no re-pin needed. The residual here is the owner-pinned chain, not a measurable defect."
     },
     {
       "id": "C47",
@@ -3120,7 +3120,7 @@
         "pnpm --dir demo/midgard-validation typecheck",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1.test, midgard/script_context_v1.test, script-context-proof.test.ts, cek-observer-boundary-v1.test.ts. Exactly 4 guarded validation-machine context tests, exactly 16 guarded script-context Aiken tests, and exactly 5 TypeScript tests across 2 exact files; all 25 tests pass with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1.test, midgard/script_context_v1.test, script-context-proof.test.ts, cek-observer-boundary-v1.test.ts. Exactly 4 guarded validation-machine context tests, exactly 16 guarded script-context Aiken tests, and exactly 6 TypeScript tests across 2 exact files; all 26 tests pass with 0 failures. Re-pinned 2026-08-18 from 'exactly 5 TypeScript tests ... all 25 tests': `0acf2f489` (C28 content-addressed CEK material) added the canonical-envelope-identity case to cek-observer-boundary-v1.test.ts (2→3); pin-era arithmetic reproduces 5 exactly at `2ac420d82`, and `d470fe320` (#597) touched the file without changing its count. Measured 6/6 green under the sanctioned binary.",
       "invalidationTriggers": [
         "any context ABI change re-runs the cross-language context vectors",
         "a resolver-index or cardinality change requires a parent registry update and blueprint regeneration (IG1)",
@@ -3128,7 +3128,7 @@
       ],
       "detailStatus": "DETAILED",
       "blockedOn": ["C41", "C42", "C43", "C44", "C45", "C46"],
-      "blockedBecause": "C47 remains dependency-blocked only on current non-PASS queue rows: C41, C42, C43, C44, C45, C46. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted."
+      "blockedBecause": "C47 remains dependency-blocked only on current non-PASS queue rows: C41, C42, C43, C44, C45, C46. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted. SUPERSEDED 2026-08-18: C41-C46's measurable frontiers all closed by `f43b1bc0` (#487/#488 plus this issue's C45/C46 measurements), and C47's own gates measured all-green at HEAD `f43b1bc0` (4/4 + 16/16 Aiken, 6/6 TypeScript after the `0acf2f489` re-pin, format, typecheck, aiken check). The residual here is the owner-pinned chain, not a measurable defect."
     },
     {
       "id": "C48",
