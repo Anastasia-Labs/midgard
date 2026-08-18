@@ -1,19 +1,25 @@
 #!/usr/bin/env node
 /**
- * C52 "Aggregate script-execution floor" (GOAL_SPEC.md §8.3, line 901).
+ * C52 "Proof-transaction count cap" (GOAL_SPEC.md §8.3, line 901).
  *
  * Standalone re-derivation gate: independently recomputes the §3.3 20%
- * per-proof-transaction execution reserve and the bounded aggregate floor
- * from the live `MIDGARD_CONSENSUS_LIMITS_V1` target snapshot, and checks
- * the recomputed values against what
- * `demo/midgard-validation/src/aggregate-script-execution-floor-v1.ts`
- * actually exports — so a drifted or hand-edited constant in that module
- * fails this gate instead of silently shipping. It then exercises the
- * module's own checking function at the floor boundary (accept) and at both
- * adjacent-reject cases (one fewer proof transaction; one execution unit
- * short), and exercises the companion deterministic proof-priority ordering
- * in `deterministic-proof-priority-v1.ts` for determinism and its canonical
- * tie-break.
+ * per-proof-transaction execution reserve from the live
+ * `MIDGARD_CONSENSUS_LIMITS_V1` target snapshot and checks the recomputed
+ * values against what
+ * `demo/midgard-validation/src/proof-transaction-count-cap-v1.ts` actually
+ * exports — so a drifted or hand-edited constant in that module fails this
+ * gate instead of silently shipping. It then exercises the module's
+ * cap-checking function at the cap boundary (accept) and one unit past it
+ * on each axis (reject), and exercises the companion deterministic
+ * proof-priority ordering in `deterministic-proof-priority-v1.ts` for
+ * determinism and its canonical tie-break.
+ *
+ * Owner ruling (2026-08-18): the earlier aggregate-floor framing (bounded
+ * count derived as the minimum reaching the snapshot ceiling; aggregate
+ * floor = count × usable) is retired. The cap is an owner-asserted sanity
+ * bound — this gate verifies the module ships exactly the ruled cap of
+ * 5,000 and that the required-count arithmetic is the worst-axis ceiling
+ * over the per-transaction usable budget.
  *
  * Deterministic: pure bigint arithmetic over already-committed source, no
  * network access, no timestamps, no reliance on `Date.now()` or process
@@ -30,15 +36,15 @@ const repositoryRoot = resolve(scriptDirectory, "..", "..");
 // specifier: this script lives in `demo/scripts/`, which has no
 // `node_modules` linkage of its own, unlike `demo/midgard-validation/`
 // (whose `node_modules/@al-ft/midgard-core` workspace symlink is what lets
-// the floor module below resolve that same bare specifier from its own
+// the cap module below resolve that same bare specifier from its own
 // location).
 const consensusProfileModulePath = resolve(
   repositoryRoot,
   "demo/midgard-core/dist/consensus-profile-v1.js",
 );
-const floorModulePath = resolve(
+const capModulePath = resolve(
   repositoryRoot,
-  "demo/midgard-validation/src/aggregate-script-execution-floor-v1.ts",
+  "demo/midgard-validation/src/proof-transaction-count-cap-v1.ts",
 );
 const priorityModulePath = resolve(
   repositoryRoot,
@@ -50,15 +56,14 @@ const { MIDGARD_CONSENSUS_LIMITS_V1 } = await import(
 );
 
 const {
-  AGGREGATE_SCRIPT_EXECUTION_CPU_FLOOR_V1,
-  AGGREGATE_SCRIPT_EXECUTION_MEMORY_FLOOR_V1,
-  BOUNDED_PROOF_TRANSACTION_COUNT_V1,
-  checkAggregateScriptExecutionFloorV1,
+  checkProofTransactionCountCapV1,
   PER_PROOF_TRANSACTION_USABLE_CPU_UNITS_V1,
   PER_PROOF_TRANSACTION_USABLE_MEMORY_UNITS_V1,
+  PROOF_TRANSACTION_COUNT_CAP_V1,
+  requiredProofTransactionCountV1,
   TARGET_SNAPSHOT_CPU_UNITS_V1,
   TARGET_SNAPSHOT_MEMORY_UNITS_V1,
-} = await import(floorModulePath);
+} = await import(capModulePath);
 
 const {
   compareProofTransactionPriorityV1,
@@ -71,8 +76,9 @@ const fail = (message) => {
 };
 
 // ---------------------------------------------------------------------------
-// Phase 1 — independently re-derive the floor arithmetic from the live
-// target snapshot and check it against the module's exported constants.
+// Phase 1 — independently re-derive the per-transaction usable budget from
+// the live target snapshot, check it against the module's exported
+// constants, and check the cap is exactly the ruled constant.
 // ---------------------------------------------------------------------------
 
 const targetSnapshotMemoryUnits = BigInt(
@@ -90,25 +96,6 @@ const expectedUsableCpuUnits = (targetSnapshotCpuUnits * 4n) / 5n;
 
 const ceilDiv = (numerator, denominator) =>
   (numerator + denominator - 1n) / denominator;
-
-// The bounded proof-transaction count: the smallest N such that N maximally
-// §3.3-reserved proof transactions reach the target snapshot's aggregate
-// ceiling on both axes at once (docs/midgard/decisions/
-// 0001-cardano-l1-transaction-capability-floor.md, "Accepted proof
-// decomposition tradeoff": minimizing proof-transaction count is an
-// optimization objective, so the bound is the minimum that suffices).
-const requiredByMemory = ceilDiv(
-  targetSnapshotMemoryUnits,
-  expectedUsableMemoryUnits,
-);
-const requiredByCpu = ceilDiv(targetSnapshotCpuUnits, expectedUsableCpuUnits);
-const expectedBoundedProofTransactionCount =
-  requiredByMemory > requiredByCpu ? requiredByMemory : requiredByCpu;
-
-const expectedAggregateMemoryFloor =
-  expectedUsableMemoryUnits * expectedBoundedProofTransactionCount;
-const expectedAggregateCpuFloor =
-  expectedUsableCpuUnits * expectedBoundedProofTransactionCount;
 
 const assertBigintEqual = (label, actual, expected) => {
   if (actual !== expected) {
@@ -138,95 +125,122 @@ assertBigintEqual(
   PER_PROOF_TRANSACTION_USABLE_CPU_UNITS_V1,
   expectedUsableCpuUnits,
 );
+
+// The cap is owner-asserted (ruling 2026-08-18), not derived: this gate
+// pins the shipped constant to exactly the ruled value so a silent edit
+// fails here.
 assertBigintEqual(
-  "BOUNDED_PROOF_TRANSACTION_COUNT_V1",
-  BOUNDED_PROOF_TRANSACTION_COUNT_V1,
-  expectedBoundedProofTransactionCount,
-);
-assertBigintEqual(
-  "AGGREGATE_SCRIPT_EXECUTION_MEMORY_FLOOR_V1",
-  AGGREGATE_SCRIPT_EXECUTION_MEMORY_FLOOR_V1,
-  expectedAggregateMemoryFloor,
-);
-assertBigintEqual(
-  "AGGREGATE_SCRIPT_EXECUTION_CPU_FLOOR_V1",
-  AGGREGATE_SCRIPT_EXECUTION_CPU_FLOOR_V1,
-  expectedAggregateCpuFloor,
+  "PROOF_TRANSACTION_COUNT_CAP_V1",
+  PROOF_TRANSACTION_COUNT_CAP_V1,
+  5_000n,
 );
 
-// C52's own acceptance criterion: the bounded aggregate floor must reach at
-// least the target snapshot's per-transaction ceiling on both axes.
-if (AGGREGATE_SCRIPT_EXECUTION_MEMORY_FLOOR_V1 < targetSnapshotMemoryUnits) {
-  fail(
-    `ERR_C52_FLOOR_BELOW_TARGET: aggregate memory floor ${String(AGGREGATE_SCRIPT_EXECUTION_MEMORY_FLOOR_V1)} is below the target snapshot's ${String(targetSnapshotMemoryUnits)}`,
-  );
+// Required-count arithmetic: worst-axis ceiling over the usable budget,
+// re-derived here on probe costs and compared against the module.
+const probeCosts = [
+  // The target snapshot's own per-transaction ceiling on both axes: needs
+  // exactly 2 proof transactions under the 4/5 reserve (ceil(5/4) = 2).
+  {
+    label: "target-snapshot-scale proof",
+    memoryUnits: targetSnapshotMemoryUnits,
+    cpuUnits: targetSnapshotCpuUnits,
+  },
+  // Memory-dominant and CPU-dominant probes: the worst axis governs.
+  {
+    label: "memory-dominant probe",
+    memoryUnits: expectedUsableMemoryUnits * 6n + 1n,
+    cpuUnits: expectedUsableCpuUnits,
+  },
+  {
+    label: "cpu-dominant probe",
+    memoryUnits: expectedUsableMemoryUnits,
+    cpuUnits: expectedUsableCpuUnits * 6n + 1n,
+  },
+  // The ruling's explicitly acceptable scale: ~1,000 proof transactions.
+  {
+    label: "thousand-transaction proof",
+    memoryUnits: expectedUsableMemoryUnits * 1_000n,
+    cpuUnits: expectedUsableCpuUnits * 1_000n,
+  },
+];
+
+for (const probe of probeCosts) {
+  const expectedRequired = (() => {
+    const byMemory = ceilDiv(probe.memoryUnits, expectedUsableMemoryUnits);
+    const byCpu = ceilDiv(probe.cpuUnits, expectedUsableCpuUnits);
+    return byMemory > byCpu ? byMemory : byCpu;
+  })();
+  const actualRequired = requiredProofTransactionCountV1({
+    memoryUnits: probe.memoryUnits,
+    cpuUnits: probe.cpuUnits,
+  });
+  if (actualRequired !== expectedRequired) {
+    fail(
+      `ERR_C52_DERIVATION_MISMATCH: ${probe.label} required count ${String(actualRequired)} but the independent re-derivation computes ${String(expectedRequired)}`,
+    );
+  }
+  if (actualRequired > PROOF_TRANSACTION_COUNT_CAP_V1) {
+    fail(
+      `ERR_C52_PROBE_OVER_CAP: ${probe.label} unexpectedly requires ${String(actualRequired)} proof transactions, over the cap ${String(PROOF_TRANSACTION_COUNT_CAP_V1)}`,
+    );
+  }
 }
-if (AGGREGATE_SCRIPT_EXECUTION_CPU_FLOOR_V1 < targetSnapshotCpuUnits) {
-  fail(
-    `ERR_C52_FLOOR_BELOW_TARGET: aggregate CPU floor ${String(AGGREGATE_SCRIPT_EXECUTION_CPU_FLOOR_V1)} is below the target snapshot's ${String(targetSnapshotCpuUnits)}`,
-  );
-}
 
-// ---------------------------------------------------------------------------
-// Phase 2 — exercise the checking function at the floor boundary and at
-// both adjacent-reject cases.
-// ---------------------------------------------------------------------------
-
-const maximalProofTransaction = () => ({
-  memoryUnits: PER_PROOF_TRANSACTION_USABLE_MEMORY_UNITS_V1,
-  cpuUnits: PER_PROOF_TRANSACTION_USABLE_CPU_UNITS_V1,
+const targetSnapshotRequired = requiredProofTransactionCountV1({
+  memoryUnits: targetSnapshotMemoryUnits,
+  cpuUnits: targetSnapshotCpuUnits,
 });
-const maximalSequence = (count) =>
-  Array.from({ length: Number(count) }, maximalProofTransaction);
 
-const atFloor = checkAggregateScriptExecutionFloorV1(
-  maximalSequence(BOUNDED_PROOF_TRANSACTION_COUNT_V1),
-);
-if (!atFloor.accepted) {
-  fail(
-    "ERR_C52_FLOOR_NOT_ACCEPTED: the bounded proof-transaction sequence at maximal per-transaction utilization was not accepted at the aggregate floor",
-  );
-}
+// ---------------------------------------------------------------------------
+// Phase 2 — exercise the cap check at the boundary and one unit past it on
+// each axis.
+// ---------------------------------------------------------------------------
 
-const oneFewer = checkAggregateScriptExecutionFloorV1(
-  maximalSequence(BOUNDED_PROOF_TRANSACTION_COUNT_V1 - 1n),
-);
-if (oneFewer.accepted) {
-  fail(
-    "ERR_C52_ADJACENT_ACCEPT: one fewer proof transaction than the bounded count was incorrectly accepted",
-  );
-}
-
-const oneUnitUnderMemorySequence = maximalSequence(
-  BOUNDED_PROOF_TRANSACTION_COUNT_V1,
-);
-const lastIndex = oneUnitUnderMemorySequence.length - 1;
-oneUnitUnderMemorySequence[lastIndex] = {
-  memoryUnits: oneUnitUnderMemorySequence[lastIndex].memoryUnits - 1n,
-  cpuUnits: oneUnitUnderMemorySequence[lastIndex].cpuUnits,
+const exactlyAtCapCost = {
+  memoryUnits: expectedUsableMemoryUnits * PROOF_TRANSACTION_COUNT_CAP_V1,
+  cpuUnits: expectedUsableCpuUnits * PROOF_TRANSACTION_COUNT_CAP_V1,
 };
-const oneUnitUnderMemory = checkAggregateScriptExecutionFloorV1(
-  oneUnitUnderMemorySequence,
-);
-if (oneUnitUnderMemory.accepted) {
+const atCap = checkProofTransactionCountCapV1(exactlyAtCapCost);
+if (
+  !atCap.accepted ||
+  atCap.requiredProofTransactionCount !== PROOF_TRANSACTION_COUNT_CAP_V1
+) {
   fail(
-    "ERR_C52_ADJACENT_ACCEPT: an aggregate one memory unit below the floor was incorrectly accepted",
+    `ERR_C52_CAP_BOUNDARY: a proof requiring exactly the cap (${String(PROOF_TRANSACTION_COUNT_CAP_V1)}) was not accepted at the boundary (required ${String(atCap.requiredProofTransactionCount)}, accepted ${String(atCap.accepted)})`,
   );
 }
 
-const oneUnitUnderCpuSequence = maximalSequence(
-  BOUNDED_PROOF_TRANSACTION_COUNT_V1,
-);
-oneUnitUnderCpuSequence[lastIndex] = {
-  memoryUnits: oneUnitUnderCpuSequence[lastIndex].memoryUnits,
-  cpuUnits: oneUnitUnderCpuSequence[lastIndex].cpuUnits - 1n,
-};
-const oneUnitUnderCpu = checkAggregateScriptExecutionFloorV1(
-  oneUnitUnderCpuSequence,
-);
-if (oneUnitUnderCpu.accepted) {
+const oneMemoryUnitOver = checkProofTransactionCountCapV1({
+  memoryUnits: exactlyAtCapCost.memoryUnits + 1n,
+  cpuUnits: exactlyAtCapCost.cpuUnits,
+});
+if (oneMemoryUnitOver.accepted) {
   fail(
-    "ERR_C52_ADJACENT_ACCEPT: an aggregate one CPU unit below the floor was incorrectly accepted",
+    "ERR_C52_ADJACENT_ACCEPT: a proof one memory unit past the cap's usable budget was incorrectly accepted",
+  );
+}
+
+const oneCpuUnitOver = checkProofTransactionCountCapV1({
+  memoryUnits: exactlyAtCapCost.memoryUnits,
+  cpuUnits: exactlyAtCapCost.cpuUnits + 1n,
+});
+if (oneCpuUnitOver.accepted) {
+  fail(
+    "ERR_C52_ADJACENT_ACCEPT: a proof one CPU unit past the cap's usable budget was incorrectly accepted",
+  );
+}
+
+// Fail-closed on malformed input: negative measured cost must throw, never
+// report a count.
+let negativeThrew = false;
+try {
+  requiredProofTransactionCountV1({ memoryUnits: -1n, cpuUnits: 0n });
+} catch {
+  negativeThrew = true;
+}
+if (!negativeThrew) {
+  fail(
+    "ERR_C52_NEGATIVE_ACCEPTED: a negative measured cost did not fail closed",
   );
 }
 
@@ -295,8 +309,8 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `C52 aggregate script-execution floor: PASS (bounded proof-transaction count ${String(BOUNDED_PROOF_TRANSACTION_COUNT_V1)}, ` +
+  `C52 proof-transaction count cap: PASS (cap ${String(PROOF_TRANSACTION_COUNT_CAP_V1)}, ` +
     `per-transaction usable ${String(PER_PROOF_TRANSACTION_USABLE_MEMORY_UNITS_V1)} memory / ${String(PER_PROOF_TRANSACTION_USABLE_CPU_UNITS_V1)} CPU, ` +
-    `aggregate floor ${String(AGGREGATE_SCRIPT_EXECUTION_MEMORY_FLOOR_V1)} memory / ${String(AGGREGATE_SCRIPT_EXECUTION_CPU_FLOOR_V1)} CPU)`,
+    `target-snapshot-scale proof requires ${String(targetSnapshotRequired)} proof transactions)`,
 );
 process.exit(0);

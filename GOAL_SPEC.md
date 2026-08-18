@@ -898,7 +898,7 @@ validation-machine module must run serially.
 | C49 | Value, fee, mint, and burn              | C41–C48      | Exact signed multi-asset conservation, Ada rule, fee, min-Ada, mint/burn authorization, and no arbitrary sub-cap.                         |
 | C50 | Observer/protected-output semantics     | C42, C45–C48 | Required observer and protected receive behavior is fully semantic and independently disputable.                                          |
 | C51 | Ledger delta                            | C41–C50      | Exact spent/produced operations, accepted/rejected behavior, roots, receipt, terminal replay, and no extra/missing operation.             |
-| C52 | Aggregate script-execution floor        | C45–C51      | A Cardano-capable transaction receives at least the target snapshot's aggregate memory/steps across bounded proof transactions.           |
+| C52 | Proof-transaction count cap             | C45–C51      | No fault proof requires more than the 5,000 proof-transaction sanity cap: the ceiling of measured proof cost over the §3.3 per-transaction usable budget stays at or below the cap on both axes. |
 | C53 | Resolver proof-fit sweep                | C40–C52      | Every concrete one-step argument and actual applied resolver transaction fits target-network byte/memory/CPU limits within the §3.3 margin thresholds. |
 | CG3 | P3 gate                                 | C40–C53      | No enabled accepted transition or rejection reason lacks an L1 one-step verifier; TypeScript/Aiken vectors cover every instruction.       |
 

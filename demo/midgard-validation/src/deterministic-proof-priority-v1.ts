@@ -1,19 +1,18 @@
 /**
- * C52 "Aggregate script-execution floor" (GOAL_SPEC.md §8.3, line 901) needs
- * a deterministic way to pick which candidate proof transactions fill the
- * bounded aggregate-floor sequence
- * (`aggregate-script-execution-floor-v1.ts`'s
- * `BOUNDED_PROOF_TRANSACTION_COUNT_V1`) whenever more candidates exist than
- * there are bounded slots. GOAL_SPEC.md §3.1.6 requires proof selection to be
- * deterministic; this module is that total order.
+ * C52 "Proof-transaction count cap" (GOAL_SPEC.md §8.3, line 901) needs a
+ * deterministic way to order candidate proof transactions whenever more
+ * candidates exist than a caller's bounded slot budget (any bound at or
+ * below `proof-transaction-count-cap-v1.ts`'s
+ * `PROOF_TRANSACTION_COUNT_CAP_V1`). GOAL_SPEC.md §3.1.6 requires proof
+ * selection to be deterministic; this module is that total order.
  *
- * A candidate is described only by what the floor arithmetic and canonical
+ * A candidate is described only by what the cap arithmetic and canonical
  * identity need: its measured execution units and its canonical proof
  * transaction id.
  */
 
 /**
- * One candidate proof transaction competing for a bounded aggregate-floor
+ * One candidate proof transaction competing for a bounded sequence
  * slot. `proofTransactionId` is the candidate's canonical transaction
  * identifier (a hex-encoded content hash) and is, by domain construction,
  * distinct for every distinct descriptor — two descriptors sharing an id are

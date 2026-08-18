@@ -5249,3 +5249,45 @@ owner-gated). Provenance: the cross-language test file now holds 6
 declarations (+1 `d470fe320` #597, +2 `4dd629b7d` #600); the guarded
 pin remains the 3 named selectors, all green. CG3 stays OPEN. Quality
 gate PASS (186/186, 0 defects).
+
+## C52 owner ruling applied: the capacity-floor framing is retired for the 5,000-transaction upper-bound sanity cap (2026-08-18)
+
+Owner ruling (2026-08-18): the bounded proof-transaction count as a
+capacity floor is not a needed concept. The governing constraint is
+that a fault proof completes within the 7-day challenge period before
+the commitment merges; single-party proofs have no interaction
+latency, so a proof on the order of 1,000+ transactions is explicitly
+acceptable. "Bounded count = 2" and "aggregate floor = 2 × usable" are
+retired; the replacement check inverts direction: for each fault
+proof, ceil(measured proof cost ÷ §3.3 per-transaction usable budget),
+worst axis governing, must stay at or below the owner-asserted sanity
+cap of 5,000. The §3.3 4/5 reserve arithmetic and the deterministic
+priority ordering survive unchanged. This resolves the derivation
+basis flagged for owner review in the 2026-08-18 C52 closure entry —
+no owner-review residual remains on the row.
+
+Surfaces: `src/aggregate-script-execution-floor-v1.ts`,
+`tests/aggregate-script-execution-floor-v1.test.ts`, and
+`demo/scripts/verify-canonical-v1-aggregate-floor-priority-v1.mjs` are
+deleted, replaced by `src/proof-transaction-count-cap-v1.ts`
+(`PROOF_TRANSACTION_COUNT_CAP_V1 = 5_000n`, owner-asserted, plus
+`requiredProofTransactionCountV1`/`checkProofTransactionCountCapV1`),
+`tests/proof-transaction-count-cap-v1.test.ts` (8 plain tests: the two
+priority tests carried over verbatim plus usable-budget derivation,
+worst-axis arithmetic, thousand-transaction acceptance, at-cap
+acceptance with one-unit adjacent rejection on each axis, and
+zero/negative fail-closed), and
+`demo/scripts/verify-canonical-v1-proof-transaction-count-cap-priority-v1.mjs`.
+GOAL_SPEC §8.3's C52 row and the manifest row (title, acceptance,
+writablePaths, focusedCommands, evidenceOutputs, invalidationTriggers,
+plus dated supersedes in expectedNonzeroCounts/blockedBecause with all
+prior text retained) are rewritten in step.
+
+Measured (at `b224bcd1` plus the staged rework): verifier PASS — `cap
+5000, per-transaction usable 13200000 memory / 8000000000 CPU,
+target-snapshot-scale proof requires 2 proof transactions` — 8/8 cap/
+priority tests, capability-parity 6/6 and fit-emulator 6/6
+unregressed, both package typechecks clean, quality gate PASS
+(186/186, 0 defects). Applying the cap to each shipped fault proof's
+measured cost rides the C53 sweep's genuine-acceptance artifact once
+it lands.
