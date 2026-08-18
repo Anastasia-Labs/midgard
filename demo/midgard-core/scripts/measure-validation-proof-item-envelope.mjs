@@ -66,11 +66,6 @@ const input = (fill, index = 0n) =>
 const integer = (value) =>
   CML.PlutusData.new_integer(CML.BigInteger.from_str(value.toString()));
 const bytes = (value) => CML.PlutusData.new_bytes(value);
-const list = (values) => {
-  const items = CML.PlutusDataList.new();
-  values.forEach((value) => items.add(value));
-  return CML.PlutusData.new_list(items);
-};
 const constr = (alternative, fields) => {
   const items = CML.PlutusDataList.new();
   fields.forEach((field) => items.add(field));
@@ -93,29 +88,13 @@ const scriptAddress = (scriptHashHex) =>
 const proofItemAddress = scriptAddress(proofItemScriptHash);
 const awardAddress = scriptAddress("11".repeat(28));
 
-const frontier = Array.from({ length: 9 }, (_, height) =>
-  constr(0, [integer(height), bytes(hash(0x40 + height))]),
-);
-const siblings = Array.from({ length: 9 }, (_, index) =>
-  bytes(hash(0x60 + index)),
-);
-const collectionProof = (itemBytes) =>
-  constr(0, [
-    integer(1),
-    integer(2),
-    integer(434),
-    integer(433),
-    integer(itemBytes),
-    bytes(hash(0x31)),
-    list(frontier),
-    list(siblings),
-  ]);
+// Deployed ValidationProofItemDatumV1: version, transaction_id,
+// transaction_commitment, field_preimage (validation-machine-v1.ak:421-426).
 const proofItemDatum = (itemBytes) =>
   constr(0, [
     integer(1),
     bytes(hash(0x32)),
     bytes(hash(0x33)),
-    collectionProof(itemBytes),
     bytes(Buffer.alloc(itemBytes, 0x55)),
   ]);
 
@@ -217,13 +196,13 @@ const machineState = constr(0, [
 ]);
 const transition = constr(0, [bytes(Buffer.from([0x81, 0x00])), machineState]);
 const proofTransaction = (itemBytes, route) => {
-  const auxiliary = constr(30, [
-    collectionProof(itemBytes),
-    bytes(Buffer.alloc(itemBytes, 0x55)),
-  ]);
+  // Deployed Verify carries the FieldCarriageV1 as its own fourth field;
+  // Inline is Constr(0, [preimage]) (canonical-decode-item-semantic-v1.ak:20-26,
+  // native-tx-field-access-v1.ts:39-88).
+  const carriage = constr(0, [bytes(Buffer.alloc(itemBytes, 0x55))]);
   const action =
     route === "direct"
-      ? constr(0, [integer(0), integer(0), transition, auxiliary])
+      ? constr(0, [integer(0), integer(0), transition, carriage])
       : constr(1, [integer(0), integer(0), transition, integer(1)]);
   const redeemer = constr(1, [action]);
   const build = (fee) => {
@@ -310,11 +289,9 @@ console.log(
         proofItemScriptHash,
         semanticScriptHash,
       },
-      collectionProofShape: {
-        itemCount: 434,
-        itemIndex: 433,
-        frontierPeaks: frontier.length,
-        siblings: siblings.length,
+      shapeBasis: {
+        proofItemDatumFields: 4,
+        directCarriage: "Inline{preimage} (FieldCarriageV1)",
       },
       boundaries: [
         reportBoundary("complete-item-publication", publicationTransaction),

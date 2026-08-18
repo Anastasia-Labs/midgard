@@ -4622,3 +4622,33 @@ addendum above. Results for the remaining six:
   697,743 net). Whether to narrow the dissolution's scope, reconfirm it
   over live code, or flip the artifact back to live is owner authority —
   raised on #580 with citations; no pin moved.
+
+## Proof-item envelope producer modernized to the deployed post-#597 shapes (2026-08-17)
+
+`demo/midgard-core/scripts/measure-validation-proof-item-envelope.mjs` — the
+producer behind the superseded 8,273 selector basis and P7's
+`byteTables.boundaries` — still modelled two retired counted-era shapes: a
+5-field proof-item datum embedding a `collectionProof` (deployed
+`ValidationProofItemDatumV1` is 4-field, `validation-machine-v1.ak:421-426`)
+and a 2-field tag-30 auxiliary embedded whole as the direct `Verify` action's
+fourth field (deployed is `carriage: FieldCarriageV1`, Inline =
+`Constr(0,[preimage])`). Modernized to the deployed ABI and re-run
+(`cd demo/midgard-core && node scripts/measure-validation-proof-item-envelope.mjs`,
+blueprint `f49cae22…`), fresh output vs the P7 pins (2026-08-15,
+retired-shape basis — pins left untouched as history):
+
+- `complete-item-publication`: exact 14,892 → **15,569**, reliable 14,396 →
+  **15,072** (+677/+676 — the retired datum's collectionProof overhead).
+- `semantic-proof-validator-by-reference`: exact 14,494 → **15,172**,
+  reliable 13,998 → **14,676** (+678 — same overhead in the redeemer;
+  envelope identical: 15,954-byte redeemer at 16,384 transaction bytes).
+- `reference-proof-item-and-validator-by-reference`: byte-identical
+  (303-byte redeemer, 769-byte transaction) — internal control; the
+  `VerifyReference` action shape never moved.
+
+No parameter or evidence pin changed: `maxReliableDirectCompleteItemBytes`
+stays 8,273 (its re-derivation is the open #597 owner decision; these
+numbers are by-reference-basis inputs to it, NOT the deployed direct route's
+frontier — the script's own header note stands), and the
+consensus-profile-v1 suite passed 7/7 after the stale 13,998 comment gained
+its post-#597 reading (14,676). Output archived at the #597 thread.
