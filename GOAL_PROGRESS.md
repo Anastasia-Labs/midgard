@@ -5432,3 +5432,35 @@ solely on the accepted Q02 permissive-dispatch scanner baseline
 (family-scaffold-v1.test.ts, 1 of 45), unchanged. With this and the
 q1x re-pin above, every B13 gate red at orientation is either green or
 attributed to the owner-owned baseline.
+
+## #481 (B13): the prescribed Q10 per-family closure surfaces are built and gated (2026-08-18)
+
+The manifest's Q10 row prescribes per-family surfaces
+(canonical-v1-proof-family-q10-v1.json plus
+verify-canonical-v1-proof-family-q10.mjs) that no family had yet — the
+shared Q1x artifact bound outputs 5–9 family-locally but nothing
+measured outputs 1–4 or 10 per family. Built both surfaces. The
+verifier hard-pins the fork compiler identity (measured from the
+spawned binary, `aiken v1.1.23+2a78108`), measures output 1 on the
+catalogue statics and registered-families suite, output 2 on the
+canonical-evidence suite plus 9-field NativeTxInclusionArgs parity,
+output 3 on the prepare-double-spend and spend-input-witness suites,
+output 4 as one `aiken check` batch (15/15 selectors across the 4
+double-spend step modules: 6 positive, 4 valid-block negative, 5
+further negative), and output 9 on the submit-init-emulator
+double-spend lifecycles. Outputs 5–8 are delegated to the shared Q1x
+artifact under hard asserts (Q10 cells LOCAL_PASS, zero open cells,
+both remediation blocks measuring this family); the Q1x gate remains
+the executable authority in the same battery. Output 10 is OPEN on the
+two parent-owned matrix rows, listed as pendingEdits. Ten negative
+self-tests (seeded vitest/aiken/compiler defects must fail with their
+specific diagnostics) and three positive controls guard the gate
+against the gate-that-cannot-fail class.
+
+Measured: Q10 gate PASS (9 LOCAL_PASS, 1 OPEN, 0 N/A; 44 vitest tests
+over 4 suites with 17 required titles; 3 emulator lifecycles; 6
+residual findings recorded, none a defect beyond the parent-owned
+output-10 gap). Manifest Q10 row superseded in place: the prescribed
+surfaces exist, so the row's residual pendency narrows to output 10.
+Manifest quality gate PASS 186/186, 0 defects. Q11's twin surfaces are
+the next B13 item.
