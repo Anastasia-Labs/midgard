@@ -2755,14 +2755,14 @@
         "a bounded-material record: no output field admits unbounded content"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1.test script_sources_commits_an_authenticated_output_item script_sources_rejects_a_forged_output_item_commitment script_sources_rejects_a_forged_output_item_length script_sources_finishes_authenticated_output_commitment script_sources_begins_an_authenticated_output_proof script_sources_advances_one_bounded_output_proof_step",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1.test script_sources_commits_an_authenticated_output_item script_sources_rejects_a_forged_output_item_commitment script_sources_rejects_a_forged_output_total_count script_sources_finishes_authenticated_output_commitment script_sources_begins_an_authenticated_output_proof script_sources_advances_one_bounded_output_proof_step",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/ledger_output_proof_v1.test authenticates_a_complete_output_without_a_reference_script derives_the_first_script_hash_block_from_the_output_chunk authenticates_the_inline_datum_semantics_from_output_chunks reports_authenticated_invalid_output_bytes fails_closed_for_a_substituted_chunk fails_closed_for_a_substituted_reference_script_item_chunk fails_closed_for_a_substituted_inline_datum_item_chunk decodes_the_long_typescript_terminal_control_canonically",
         "pnpm --dir demo/midgard-validation exec vitest run tests/ledger-output-descriptor.test.ts tests/nested-value-boundary-v1.test.ts",
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/ledger-output-v1.ak lib/midgard/ledger-output-v1.test.ak lib/midgard/ledger-output-value-v1.ak lib/midgard/ledger-output-value-v1.test.ak lib/midgard/ledger-output-commitment-v1.ak lib/midgard/ledger-output-commitment-v1.test.ak lib/midgard/ledger-output-proof-v1.ak lib/midgard/ledger-output-proof-v1.test.ak lib/midgard/validation-machine-v1.ak lib/midgard/validation-machine-v1.test.ak",
         "pnpm --dir demo/midgard-validation typecheck",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1.test, midgard/ledger_output_proof_v1.test, ledger-output-descriptor.test.ts, nested-value-boundary-v1.test.ts. Exactly 6 guarded validation-machine Aiken output tests, exactly 8 guarded ledger-output-proof Aiken tests, exactly 4 descriptor TypeScript tests, and exactly 1 nested-value TypeScript test; all 19 tests pass with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1.test, midgard/ledger_output_proof_v1.test, ledger-output-descriptor.test.ts, nested-value-boundary-v1.test.ts. Exactly 6 guarded validation-machine Aiken output tests, exactly 8 guarded ledger-output-proof Aiken tests, exactly 4 descriptor TypeScript tests, and exactly 2 nested-value TypeScript tests; all 20 tests pass with 0 failures. Re-pinned 2026-08-18 from 'exactly 1 nested-value TypeScript test; all 19 tests': `140f0a836` added the complete maximum-Value carriage-fit case (+1); and `55f9c91d` (#592) renamed the sixth validation-machine selector `script_sources_rejects_a_forged_output_item_length` to `script_sources_rejects_a_forged_output_total_count` — the forged quantity moved from the retired membership conjunct's `item_length` to the fold's `output_total_count`, per the rename note in lib/midgard/validation-machine-v1.test.ak. Both corrected batches measured 6/6 and 20/20 green under the sanctioned binary.",
       "invalidationTriggers": [
         "a target-network parameter change (C70 snapshots) re-derives min-Ada and size boundaries",
         "a value or datum codec change re-runs the output commitment selectors",
@@ -2770,7 +2770,7 @@
       ],
       "detailStatus": "DETAILED",
       "blockedOn": ["C40", "C41"],
-      "blockedBecause": "C42 remains dependency-blocked only on current non-PASS queue rows: C40, C41. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted."
+      "blockedBecause": "C42 remains dependency-blocked only on current non-PASS queue rows: C40, C41. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted. SUPERSEDED 2026-08-18: C40 and C41's measurable frontiers closed at `3660aa94` (#487) with the owner-pinned CG2 gate as their sole residual, and C42's own gates measured all-green at HEAD once the #592 selector rename was reconciled (6/6 + 8/8 Aiken, 4+2 TypeScript, format, typecheck, aiken check). The residual here is the same owner-pinned chain, not a measurable defect."
     },
     {
       "id": "C43",
@@ -2814,7 +2814,7 @@
         "SUBSTANTIAL SURFACE EXISTS \u2014 signatures-v1.ak + 4 semantics (advance, address-item, required-item, handoff); lib `SignerSetProofV1` (:333), `SignaturesControlV1` (:2599), `InputSignerAuthorizationV1` (:5962), `encode_signatures_scan_witness`, `verify_signatures_*`",
         "existing exact selectors: `signatures_accepts_an_empty_required_signer_and_witness_set` (:3117), `signatures_handoff_rejects_a_stage_zero_control_claiming_a_verdict` (:3326), `signatures_handoff_emits_the_not_yet_evaluated_sentinel` (:3334), `signatures_proves_a_missing_required_signer_is_an_exact_no_op` (:3338)",
         "Q32 disposition is signature semantics only: an unbacked required_signer_hashes entry tightens the transaction and is covered by C43 required-set exactness; it does not create a standalone fault-proof family",
-        "canonical witness-encoding authority already settled by Q00: onchain/aiken/lib/midgard/fraud-proofs/common.ak `verify_native_tx_witness_set` (:438) subsumed the Pairs-vs-list witness split; its selectors are `common_witness_set_binding_accepts_committed_preimage` and `common_witness_set_binding_rejects_forged_preimage` in lib/midgard/fraud-proofs/common.test.ak (22 tests)",
+        "canonical witness-encoding authority already settled by Q00: onchain/aiken/lib/midgard/fraud-proofs/common.ak `verify_native_tx_witness_set` (:438) subsumed the Pairs-vs-list witness split; its selectors are `common_witness_set_binding_accepts_committed_preimage` and `common_witness_set_binding_rejects_forged_preimage` in lib/midgard/fraud-proofs/common.test.ak (22 tests) — SUPERSEDED 2026-08-18: #575 (`2fec6b0fb`) retired `verify_native_tx_witness_set` and both selectors; the derivation now runs as a precondition inside `authenticated_field_view` against the thread-anchored `witness_set_hash` rather than one the redeemer's own compact bytes carried, and the successor assertions are `witness_opening_reads_a_witness_field` and `forged_witness_set_and_compact_is_refused_under_the_anchor` in lib/midgard/fraud-proofs/field-opening-v1.test.ak — strictly stronger per the in-file retirement note, because the old helper could only catch a witness set forged on one side",
         "KNOWN BOUND recorded in GOAL_PROGRESS.md Q00: pure Aiken cannot produce a valid ed25519 signature, so invalid-signature's valid-block property is enforced at witness-binding level; the full property needs off-chain tooling \u2014 this row must state which half it closes",
         "signer-entry length-check looseness in onchain/aiken/lib/midgard/fraud-proofs/native-tx/preimages.ak is the open C20-4 codec-hardening item and belongs to this row's boundary"
       ],
@@ -2827,13 +2827,13 @@
       ],
       "focusedCommands": [
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1.test signatures_accepts_an_empty_required_signer_and_witness_set signatures_handoff_rejects_a_stage_zero_control_claiming_a_verdict signatures_handoff_emits_the_not_yet_evaluated_sentinel signatures_proves_a_missing_required_signer_is_an_exact_no_op signatures_proves_an_invalid_address_signature_is_an_exact_no_op",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/common.test common_witness_set_binding_accepts_committed_preimage common_witness_set_binding_rejects_forged_preimage",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/field_opening_v1.test witness_opening_reads_a_witness_field forged_witness_set_and_compact_is_refused_under_the_anchor",
         "pnpm --dir demo/midgard-validation exec vitest run tests/phase-a.test.ts tests/ordered-collection-signer-witness-boundary-v1.test.ts",
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs validators/fraud-proofs/validation-trace/signatures-v1.ak validators/fraud-proofs/validation-trace/signatures-advance-semantic-v1.ak validators/fraud-proofs/validation-trace/signatures-address-item-semantic-v1.ak validators/fraud-proofs/validation-trace/signatures-required-item-semantic-v1.ak validators/fraud-proofs/validation-trace/signatures-handoff-semantic-v1.ak lib/midgard/validation-machine-v1.ak lib/midgard/validation-machine-v1.test.ak lib/midgard/fraud-proofs/common.ak lib/midgard/fraud-proofs/common.test.ak lib/midgard/fraud-proofs/native-tx/preimages.ak",
         "pnpm --dir demo/midgard-validation typecheck",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1.test, midgard/fraud_proofs/common.test, phase-a.test.ts, ordered-collection-signer-witness-boundary-v1.test.ts. Exactly 5 guarded validation-machine signature tests, exactly 2 guarded common witness-binding tests, exactly 24 phase-a TypeScript tests, and exactly 1 signer-witness TypeScript test; all 32 tests pass with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1.test, midgard/fraud_proofs/field_opening_v1.test, phase-a.test.ts, ordered-collection-signer-witness-boundary-v1.test.ts. Exactly 5 guarded validation-machine signature tests, exactly 2 guarded field-opening witness-binding tests, exactly 37 phase-a TypeScript tests, and exactly 1 signer-witness TypeScript test; all 45 tests pass with 0 failures. Re-pinned 2026-08-18 from 'exactly 2 guarded common witness-binding tests, exactly 24 phase-a ... all 32 tests': the witness-binding pair follows #575's (`2fec6b0fb`) retirement of `common_witness_set_binding_*` onto the field-opening successors named in the in-file retirement note, and the phase-a pin counted declarations (23 plain + 1 it.each block = 24) while vitest expands each-cases — 31 ran on the pin's own day (8-case block), and `e7adfd07` (#586) split that block into four blocks totalling 14 cases, giving 37 running tests, measured 37/37 green.",
       "invalidationTriggers": [
         "a witness-set codec change (onchain/aiken/lib/midgard/fraud-proofs/native-tx/preimages.ak, demo/midgard-core/src/codec/native.ts) re-runs every signature selector",
         "a required-signer field-order change in the canonical native transaction",
@@ -2841,7 +2841,7 @@
       ],
       "detailStatus": "DETAILED",
       "blockedOn": ["C40", "C41"],
-      "blockedBecause": "C43 remains dependency-blocked only on current non-PASS queue rows: C40, C41. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted."
+      "blockedBecause": "C43 remains dependency-blocked only on current non-PASS queue rows: C40, C41. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted. SUPERSEDED 2026-08-18: C40 and C41's measurable frontiers closed at `3660aa94` (#487) with the owner-pinned CG2 gate as their sole residual, and C43's own gates measured all-green at HEAD once the #575 witness-binding retirement was reconciled (5/5 + 2/2 Aiken, 37+1 TypeScript, format, typecheck, aiken check). The residual here is the same owner-pinned chain, not a measurable defect."
     },
     {
       "id": "C44",
@@ -2915,7 +2915,7 @@
       ],
       "detailStatus": "DETAILED",
       "blockedOn": ["C43"],
-      "blockedBecause": "C44 remains dependency-blocked only on current non-PASS queue rows: C43. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted."
+      "blockedBecause": "C44 remains dependency-blocked only on current non-PASS queue rows: C43. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted. SUPERSEDED 2026-08-18: C43's measurable frontier closed the same day, and C44's own gates measured all-green at HEAD with every pinned count holding exactly (4/4 + 5/5 Aiken, 1/1 TypeScript, format, both typechecks, aiken check) — no re-pin needed. The residual here is the owner-pinned chain, not a measurable defect."
     },
     {
       "id": "C45",

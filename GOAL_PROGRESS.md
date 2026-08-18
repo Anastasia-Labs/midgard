@@ -5082,3 +5082,39 @@ promoted PASS, so gate closure is an owner decision, not open
 measurement. Manifest-quality gate PASS after the edits (186/186, 0
 defects); prettier-clean. Logs: `scratchpad/issue-487/`
 (session-local).
+
+## #488 (B09) C42–C44 measured all-green at `3660aa94` after reconciling two post-pin selector renames (2026-08-18)
+
+The three rows' `focusedCommands` replayed serially under the sanctioned
+fork binary `aiken v1.1.23+2a78108` (md5
+`b3acfdf348235798cb6b921d0f87750a`, verified): 13 of the 15 gates exit
+0 on the first pass, and both reds attributed to the rows, not the
+tree. (1) C42's six-selector validation-machine batch collected 5:
+`script_sources_rejects_a_forged_output_item_length` was renamed to
+`script_sources_rejects_a_forged_output_total_count` by `55f9c91d`
+(#592), with the in-file doc-comment recording the rename and the
+quantity change — the old row forged `ItemProofV1.item_length`, whose
+only conjunct the flat reversion retired; the surviving
+prover-controlled count claim is the fold's `output_total_count`. (2)
+C43's `common_witness_set_binding_*` pair collected nothing: #575
+(`2fec6b0fb`) retired `verify_native_tx_witness_set` with an in-file
+note naming the strictly-stronger successors in
+`field_opening_v1.test` — `witness_opening_reads_a_witness_field` and
+`forged_witness_set_and_compact_is_refused_under_the_anchor` — because
+the guard now runs inside `authenticated_field_view` against the
+thread-anchored `witness_set_hash`. Both corrected batches replayed
+6/6 and 2/2 green. Row edits: C42/C43 focusedCommand selector swaps,
+the C43 Q00 sourceAnchor superseded in place, C42
+`expectedNonzeroCounts` 19→20 (nested-value 1→2 at `140f0a836`, the
+complete maximum-Value carriage-fit case), C43 32→45 (phase-a 24→37:
+the pin counted declarations — 23 plain + 1 it.each — while vitest
+expands cases; 31 ran on pin day, and `e7adfd07`/#586 split the
+8-case block into four blocks totalling 14 cases; measured 37/37),
+and all three `blockedBecause` readings superseded — residual is the
+owner-pinned CG2 chain, not a measurable defect. C44's pins hold
+exactly (4/4 + 5/5 Aiken, 1/1 TS); no re-pin. C42–C44 are not
+`p2Tasks` rows, so the capability artifact's coverage pins are
+untouched by these selector swaps (verified: only the manifest
+referenced the stale names). Manifest-quality gate PASS after all
+edits (186/186, 0 defects); prettier-clean. Logs:
+`scratchpad/issue-488/` (session-local).
