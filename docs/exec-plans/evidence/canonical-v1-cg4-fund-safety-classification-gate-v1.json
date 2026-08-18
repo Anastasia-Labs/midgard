@@ -244,9 +244,9 @@
   },
   "abiFreezeBinding": {
     "artifactPath": "docs/exec-plans/evidence/canonical-v1-abi-freeze-v1.json",
-    "artifactSha256": "2bef5a893c07de65abf17b8cd700069684781739d4758057f39a065a5ccc155b",
+    "artifactSha256": "d4e334281cd2c19a8fbaea4b8d17ad5c589568b8e1d62b7b1b4d6c9b106f25f4",
     "verifierPath": "demo/scripts/verify-canonical-v1-abi-freeze.mjs",
-    "verifierSha256": "0de278199adce544a461157e873de1ebd9aa3388247e159943bb3158c4f4da26",
+    "verifierSha256": "e92176d5f3781212cf3b3e36b3530835a54c04c4994819813c81dac943579ddf",
     "freezeStatus": "BLOCKED",
     "ig2Status": "BLOCKED",
     "ig2Violations": 11,
