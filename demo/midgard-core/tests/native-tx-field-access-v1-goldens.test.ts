@@ -101,13 +101,16 @@ type Golden = {
     readonly preimageBlockHex: string;
     readonly chunkLengths: readonly number[];
     readonly chunkDigestsHex: readonly string[];
-    readonly assetNameHex: string;
+    // The mint-welded datum commitment (#606) — the retired per-certificate
+    // blake2b_256(field_index ‖ tx_id) asset-name class has no field here.
+    readonly fieldHashHex: string;
   };
-  readonly certificateAssetNames: readonly {
-    readonly fieldIndex: number;
-    readonly txIdHex: string;
+  // #606: one constant asset name for every certificate of the policy.
+  readonly certificateAssetName: {
     readonly assetNameHex: string;
-  }[];
+    readonly byteLength: number;
+    readonly ascii: string;
+  };
 };
 
 const golden = JSON.parse(
