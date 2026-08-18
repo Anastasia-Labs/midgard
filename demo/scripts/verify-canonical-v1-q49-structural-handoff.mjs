@@ -34,6 +34,7 @@ import { fileURLToPath } from "node:url";
 import { isPassStatus } from "./lib/evidence-status.mjs";
 import { runFixtureMode } from "./lib/runner-fixtures.mjs";
 import {
+  aikenCompilerVersion,
   aikenModuleName,
   aikenPublishedCommand,
   deriveAikenOutcome,
@@ -219,12 +220,40 @@ for (const row of evidence.rows) {
 const aikenSelectors = [
   ...new Set(declaredAikenChecks.map(({ selector }) => selector)),
 ];
+
+// Aiken test execution for this goal is fork-only. Resolving the compiler by
+// name rather than by PATH default is what lets the gate publish *which* build
+// produced its on-chain result; falling through to a stock `aiken` would
+// silently supply the answer under another compiler's identity.
+// `MIDGARD_AIKEN_BIN` first, then `MIDGARD_FORK_AIKEN_BIN` — the same
+// precedence the Q63, Q60 and capability-reconciliation gates use, since CI
+// pins only the latter.
+const aikenBinaryVariable = [
+  "MIDGARD_AIKEN_BIN",
+  "MIDGARD_FORK_AIKEN_BIN",
+].find(
+  (name) =>
+    typeof process.env[name] === "string" && process.env[name].length > 0,
+);
+assert.ok(
+  aikenBinaryVariable !== undefined,
+  "ERR_AIKEN_BINARY_UNPINNED: neither MIDGARD_AIKEN_BIN nor MIDGARD_FORK_AIKEN_BIN names the patched Aiken fork — Q49's on-chain measurement is fork-only, and leaving both unset would run whatever `aiken` is first on PATH while still publishing the result as Q49's",
+);
+const aikenBinaryPath = process.env[aikenBinaryVariable];
+const FORK_VERSION_PREFIX = "aiken v1.1.23";
+const aikenCompiler = aikenCompilerVersion(aikenBinaryPath);
+assert.ok(
+  aikenCompiler.startsWith(FORK_VERSION_PREFIX),
+  `ERR_AIKEN_COMPILER_MISMATCH: ${aikenBinaryVariable}=${aikenBinaryPath} reports "${aikenCompiler}", which is not the patched fork Q49's on-chain measurement requires (expected a ${FORK_VERSION_PREFIX} build)`,
+);
+
 const aikenOutcome = deriveAikenOutcome({
   label: "Q49 structural handoff on-chain selectors",
   declared: declaredAikenChecks,
   ...runAikenCheck({
     projectRoot: aikenProjectRoot,
     selectors: aikenSelectors,
+    binary: aikenBinaryPath,
   }),
 });
 assert.equal(
@@ -434,6 +463,7 @@ const report = {
   executedChecks,
   staticStructuralChecks,
   aikenSelectorsCollected: aikenOutcome.collected,
+  aikenCompiler: { variable: aikenBinaryVariable, version: aikenCompiler },
   vitestFilesExecuted: vitestOutcomes.size,
   rows: checkedRows,
   closedHere: closedHere.map((row) => ({ line: row.line, task: row.closedBy })),
@@ -443,6 +473,6 @@ if (emitJson) {
   console.log(JSON.stringify(report, null, 2));
 } else {
   console.log(
-    `Q49 structural handoff: PASS (${String(evidence.rows.length)} rows, ${String(executedChecks)} runner-executed checks, ${String(staticStructuralChecks)} static structural check, 0 partial, 0 open)`,
+    `Q49 structural handoff: PASS (${String(evidence.rows.length)} rows, ${String(executedChecks)} runner-executed checks under ${aikenCompiler} via ${aikenBinaryVariable}, ${String(staticStructuralChecks)} static structural check, 0 partial, 0 open)`,
   );
 }

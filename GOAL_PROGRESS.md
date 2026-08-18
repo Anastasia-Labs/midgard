@@ -5464,3 +5464,28 @@ output-10 gap). Manifest Q10 row superseded in place: the prescribed
 surfaces exist, so the row's residual pendency narrows to output 10.
 Manifest quality gate PASS 186/186, 0 defects. Q11's twin surfaces are
 the next B13 item.
+
+## #481 (B13): the Q49 gate now hard-pins the fork compiler identity (2026-08-18)
+
+The Q49 structural-handoff gate executed its `aiken check` batch through
+`aikenBinary()`'s PATH fallback — the only selector-executing gate in
+the battery without the compiler pin its five siblings carry (Q63, Q60,
+Q62, structural-NA-Q47, capability-reconciliation; the new Q10
+per-family gate also carries it). On this machine bare `aiken` resolves
+to the retired stock v1.1.22 build, so an unpinned local run would
+execute selectors under the wrong compiler while publishing the result
+as Q49's; the provenance correction recorded earlier on #481 was
+exactly this failure mode. Ported the sibling pin verbatim:
+MIDGARD_AIKEN_BIN-then-MIDGARD_FORK_AIKEN_BIN resolution failing closed
+on ERR_AIKEN_BINARY_UNPINNED when neither is set, the measured-identity
+assert failing closed on ERR_AIKEN_COMPILER_MISMATCH for any non-1.1.23
+build, the batch executing through the resolved binary, and the PASS
+line publishing the measured identity and variable.
+
+Measured: unpinned run dies on ERR_AIKEN_BINARY_UNPINNED; stock-binary
+run dies on ERR_AIKEN_COMPILER_MISMATCH; fork-pinned run PASS (9 rows,
+31 runner-executed checks under aiken v1.1.23+2a78108 via
+MIDGARD_AIKEN_BIN, 1 static structural check, 0 partial, 0 open) —
+identical counts to the pre-pin baseline, so the pin changed provenance
+only. The published runner command in the handoff artifact is
+unchanged (it names the selector set, not the binary path).
