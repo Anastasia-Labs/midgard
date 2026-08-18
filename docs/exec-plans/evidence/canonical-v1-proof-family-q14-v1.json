@@ -1,0 +1,1014 @@
+{
+  "schema": "midgard.canonical-v1-proof-family-q14.v1",
+  "version": 1,
+  "goalIds": ["Q14"],
+  "family": "zero-input",
+  "prescribedBy": [
+    "GOAL_SPEC.md 9.1 per-family atomic closure contract (outputs 1 to 10)",
+    "GOAL_SPEC.md 9.3 Q14 (`zero-input`, key dependency Q00-Q03)",
+    "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json row Q14, evidenceOutputs: \"Prescribed missing surfaces: docs/exec-plans/evidence/canonical-v1-proof-family-q14-v1.json and demo/scripts/verify-canonical-v1-proof-family-q14.mjs\""
+  ],
+  "integrationIssue": "parent-owned. No issue number is recorded here: the manifest's Q14 row prescribes these two surfaces without naming an owning issue, and docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json is the artifact that binds this family's outputs 5 to 9. Inventing a number for the per-family surface would be an unmeasured claim, so the field is stated as provenance instead; the integration this artifact supports is handed over in parentIntegration.pendingEdits.",
+  "note": "The per-family closure surface for Q14 (`zero-input`, catalogue category `zeroInput`) at GOAL_SPEC.md 9.1. It publishes the outputs 1 to 10 status list for this one family, with the exact evidence behind each applicable output and an explicit justification for anything not applicable. Every count in this artifact was measured from a runner report produced by demo/scripts/verify-canonical-v1-proof-family-q14.mjs in this tree: one batched `aiken check -e` invocation under the pinned fork compiler for the on-chain selectors, and one Vitest run per cited suite. Nothing is counted from test source, from prose, or from a sibling artifact's numbers. LOCAL_PASS is the only passing status this artifact may record; the live half of a family's closure is owned exclusively by the Q57 sweep and QG3 and is never recorded in a family-local artifact. Outputs 5 to 8 are bound family-locally in the SHARED four-family artifact docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json, whose own gate demo/scripts/verify-canonical-v1-proof-family-q1x.mjs is the executable authority for those cells and runs in the same battery; this artifact records the delegation explicitly, re-reads the shared artifact's Q14 cells, and re-checks that the concrete Q14 surfaces those cells describe exist and are wired, rather than re-running the shared suites a second time. Output 10 is OPEN: the two parent-owned matrices are measured below and neither records this family's local status yet. Four structural differences from the Q10, Q11 and Q12 twins are measured rather than inherited. First, this family owns TWO blocks of the shared emulator suite rather than one — an end-to-end lifecycle and a dedicated negative — so each block's markers are scoped to its own `it` block, the two counts are published separately, and the negative's adversarial assertion is measured rather than assumed. Second, this family DOES open one of the nine section-2.5 committed fields (field 0, spend inputs) through the section-8.8 door, so output 3 binds that field positionally against both spec tables and against the on-chain and off-chain index constants, instead of measuring an absence the way the Q12 twin does. Third, the reason the section-549/612 spend-input cardinality axis does not reach this family is therefore narrower than Q12's and is measured from source: the finalizing step pins the opened field's AUTHENTICATED ITEM COUNT to zero, so any proof that finalizes carries the one-byte empty preimage and the axis's admissible 296-input stress cannot reach this family's success path. Fourth, the redeemer's nested carriage enum is tracked on both sides of the boundary, so its constructor order is bound POSITIONALLY rather than as a set of names.",
+  "compiler": {
+    "requiredVersion": "aiken v1.1.23+2a78108",
+    "binaryEnvironmentVariable": "MIDGARD_AIKEN_BIN",
+    "binaryEnvironmentFallback": "MIDGARD_FORK_AIKEN_BIN",
+    "measuredVersion": "aiken v1.1.23+2a78108",
+    "rationale": "The identity is measured from the spawned binary and required to match EXACTLY, not by prefix: a second fork build of the same 1.1.23 base reports a different `+<rev>` suffix and would supply this family's on-chain result under a compiler .github/workflows/aiken-ci.yml does not pin. The stock v1.1.22 that used to compile the blueprint carries a live unsound-codegen defect and is retired from every role, so no on-chain count in this artifact may come from it."
+  },
+  "output1RuleAndViolationIdentifier": {
+    "rule": "A Midgard L2 transaction must spend at least one input. Phase A rejects a transaction whose `spendInputs` collection is empty (`if (tx.spendInputs.length === 0)`), before any input can be resolved; the on-chain correction path proves the same fact about a transaction the block header already committed to, by opening the transaction's section-2.5 spend-inputs field and reading its authenticated item count as zero.",
+    "identifierDeclarationFile": "demo/midgard-validation/src/types.ts",
+    "violationIdentifiers": ["E_EMPTY_INPUTS"],
+    "measuredEnforcementSiteCount": 1,
+    "localEnforcement": [
+      {
+        "identifier": "E_EMPTY_INPUTS",
+        "identifierKey": "EmptyInputs",
+        "call": "RejectCodes.EmptyInputs",
+        "callOpener": "return reject(",
+        "file": "demo/midgard-validation/src/phase-a.ts",
+        "enclosingDeclaration": "const validateInputSets = (tx: MidgardLedgerTx): RejectedTx | null => {",
+        "measuredSiteCount": 1,
+        "measuredSites": [
+          {
+            "line": 201,
+            "openerLine": 201
+          }
+        ],
+        "note": "One site, and the rejection call is a SINGLE line, so the opener line and the token line are the same. The gate therefore requires the opener at or above the token line and requires that line to BEGIN the rejection call, rather than demanding the multi-line shape the Q10/Q11/Q12 siblings happen to have — a gate tuned to a sibling's formatting would fail here on a correctly enforced rule."
+      }
+    ],
+    "measuredNonEnforcementMentions": [
+      {
+        "file": "demo/midgard-validation/src/validation-machine.ts",
+        "line": 2703,
+        "call": "RejectCodes.EmptyInputs",
+        "text": "rejectionCode !== RejectCodes.EmptyInputs",
+        "role": "A cross-check comparison, not a rejection: it reads a rejection code that phase A already produced. Published so that \"the count above is an enforcement count\" rests on a measured exclusion rather than only on the openers of the sites that were counted."
+      }
+    ],
+    "catalogueBinding": {
+      "file": "demo/midgard-sdk/src/fraud-proof/catalogue.ts",
+      "orderConstant": "FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER",
+      "category": "zeroInput",
+      "categoryIndex": 5,
+      "categoryId": "00000005",
+      "categoryIdByteCount": 4,
+      "measuredCategoryCount": 11,
+      "note": "The deployed identifier is the positional index of the append-only order encoded over 4 bytes, so it is re-derived from the order constant rather than read from a constant. Inserting a category rather than appending one silently re-numbers every family after it, and this family sits at index 5 with five earlier insertion points ahead of it."
+    },
+    "registeredFamiliesSuiteNotCited": {
+      "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-registered-families.test.ts",
+      "reason": "That suite carries no zero-input lifecycle: the string `zeroInput` is measured absent from it. The exclusion is measured rather than asserted, so a zero-input lifecycle added there in future fails this gate until it is cited and run."
+    }
+  },
+  "output2SchemaAndCodecAgreement": {
+    "sharedInclusionRecord": {
+      "aikenModule": "onchain/aiken/lib/midgard/fraud-proofs/common.ak",
+      "aikenType": "NativeTxInclusionArgs",
+      "typescriptModule": "demo/midgard-sdk/src/fraud-proof/native.ts",
+      "typescriptSchema": "NativeTxInclusionArgsSchema",
+      "fieldCount": 9,
+      "fields": [
+        "input_index",
+        "output_index",
+        "hub_ref_input_index",
+        "state_queue_node_ref_input_index",
+        "native_tx_id",
+        "native_tx_compact_cbor",
+        "transactions_phas_root",
+        "tx_membership_proof",
+        "inclusion_proof_script_withdraw_redeemer_index"
+      ],
+      "owner": "Q00/Q01 — consumed, not edited, by this family, which is why the alias bindings below are measured rather than assumed.",
+      "note": "Positional agreement is the property that matters. These records reach the chain as Plutus data, where a swapped pair of same-typed fields type-checks on both sides of the boundary and mis-binds silently; this record opens with two same-typed integers and carries four more."
+    },
+    "aliasBindings": [
+      {
+        "file": "onchain/aiken/lib/midgard/fraud-proofs/zero-input/step-01.ak",
+        "declaration": "pub type Args =\n  NativeTxInclusionCarriage",
+        "role": "The first step's redeemer args ARE the shared carriage type, by alias. Nothing family-local is re-declared, so the parity measured above is what binds this step."
+      },
+      {
+        "file": "demo/midgard-sdk/src/fraud-proof/zero-input.ts",
+        "declaration": "export const ZeroInputStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(\n  NativeTxInclusionCarriageSchema,\n);",
+        "role": "The off-chain twin of the same alias: the step-01 spend redeemer is the shared step-redeemer wrapper applied to the shared carriage schema."
+      },
+      {
+        "file": "demo/midgard-sdk/src/fraud-proof/zero-input.ts",
+        "declaration": "NativeTxInclusionArgs as ZeroInputTxInclusionArgs,",
+        "role": "Re-export, not re-declaration: the family's public inclusion-args type is the shared one under a family name."
+      },
+      {
+        "file": "demo/midgard-sdk/src/fraud-proof/zero-input.ts",
+        "declaration": "NativeTxInclusionArgsSchema as ZeroInputTxInclusionArgsSchema,",
+        "role": "The schema half of the same re-export. If either alias is ever rewritten into a family-local re-declaration, the shared-record parity stops binding this family and the gate says so."
+      }
+    ],
+    "measuredFamilyArgsRecordCount": 1,
+    "familyArgsRecords": [
+      {
+        "step": "step-02",
+        "aikenModule": "onchain/aiken/lib/midgard/fraud-proofs/zero-input/step-02.ak",
+        "aikenType": "Args",
+        "typescriptModule": "demo/midgard-sdk/src/fraud-proof/zero-input.ts",
+        "typescriptSchema": "ZeroInputStep02ArgsSchema",
+        "fieldCount": 4,
+        "fields": [
+          "input_index",
+          "output_index",
+          "fraud_proof_mint_redeemer_index",
+          "spend_inputs_opening"
+        ],
+        "note": "This family owns exactly one step `Args` record; step-01's is the shared carriage by alias. The record opens with two same-typed integers, which is exactly the mis-binding a name-only comparison would accept, and closes with the nested carriage enum measured below."
+      }
+    ],
+    "measuredFamilyStateRecordCount": 1,
+    "familyStateRecords": [
+      {
+        "step": "step-02",
+        "aikenModule": "onchain/aiken/lib/midgard/fraud-proofs/zero-input/step-02.ak",
+        "aikenType": "State",
+        "typescriptModule": "demo/midgard-sdk/src/fraud-proof/zero-input.ts",
+        "typescriptSchema": "ZeroInputStep02StateSchema",
+        "fieldCount": 1,
+        "fields": ["bad_tx_id"],
+        "note": "The inter-step datum that actually crosses this family's step boundary, and the family's distinctive one: it is the section-2.5 anchor the terminal step re-opens the field against. Stopping at args would leave it unmeasured."
+      }
+    ],
+    "fieldOpeningEnum": {
+      "aikenModule": "onchain/aiken/lib/midgard/fraud-proofs/field-opening-v1.ak",
+      "aikenType": "FieldOpeningV1",
+      "typescriptModule": "demo/midgard-sdk/src/fraud-proof/field-opening-v1.ts",
+      "typescriptSchema": "FieldOpeningV1Schema",
+      "measuredConstructorCount": 2,
+      "familyArm": "BodyFieldOpening",
+      "constructors": [
+        {
+          "constructor": "BodyFieldOpening",
+          "wireIndex": 0,
+          "typescriptSchema": "BodyFieldOpeningV1Schema",
+          "fields": ["native_tx_compact_cbor", "carriage"]
+        },
+        {
+          "constructor": "WitnessFieldOpening",
+          "wireIndex": 1,
+          "typescriptSchema": "WitnessFieldOpeningV1Schema",
+          "fields": ["native_tx_compact_cbor", "witness_set", "carriage"]
+        }
+      ],
+      "note": "One field of the step-02 args record is not a scalar but the section-8 carriage enum, so field-name parity alone would not bind it. Both sides of this enum are tracked in this repository, so the comparison is POSITIONAL: the Aiken module's own doc comment says constructor order is wire format, and a set comparison would accept a swap of Constr 0 and Constr 1. Which arm this family uses is derived rather than chosen — the opened field's index is below the witness-set boundary, so a body arm is the only admissible one."
+    },
+    "suites": [
+      {
+        "file": "demo/midgard-fault-proofs/tests/canonical-evidence-source-v1.test.ts",
+        "requiredTitles": [
+          "refuses to emit zero-input and invalid-range proofs on the same gate",
+          "emits each family artifact only from native-root-authenticated canonical evidence",
+          "rejects diagnostic grade before every gated builder can emit proof material",
+          "rejects diagnostic grade on every prepare CLI verb before proof construction"
+        ],
+        "suiteFamilyMarkers": [
+          "prepareZeroInputFromCanonicalEvidenceV1",
+          "prepare-zero-input"
+        ],
+        "measured": {
+          "collected": 32,
+          "passed": 32,
+          "failed": 0
+        }
+      },
+      {
+        "file": "demo/midgard-sdk/tests/fault-proof.test.ts",
+        "requiredTitles": [
+          "round-trips zero-input step datums and redeemers",
+          "detects a zero-input violation from the native spend-inputs hash"
+        ],
+        "suiteFamilyMarkers": [
+          "ZeroInputStep02Datum",
+          "ZeroInputStep02SpendRedeemer",
+          "nativeTxBodyHasZeroInputViolation",
+          "buildZeroInputFaultProofContracts"
+        ],
+        "measured": {
+          "collected": 30,
+          "passed": 30,
+          "failed": 0
+        }
+      }
+    ]
+  },
+  "output3FlatFieldHashBinding": {
+    "authority": "docs/spec/midgard-tx.md",
+    "authoritySections": [
+      "### 2.1 `NativeTxBodyCompact`",
+      "### 2.5 The nine committed fields",
+      "## 3. Transaction identity (unchanged derivation)",
+      "## 4. The nine field commitments",
+      "### 5.1 Grammar (all nine fields)",
+      "### 5.2 Item count",
+      "### 8.8 Carriage wire types (consumers outside the validation machine)"
+    ],
+    "opensNoCommittedField": false,
+    "openedCommittedFields": [
+      {
+        "index": 0,
+        "field": "spend inputs",
+        "commitmentSlot": "body.spend_inputs_hash",
+        "openedBy": "onchain/aiken/validators/fraud-proofs/zero-input/step-02.ak"
+      }
+    ],
+    "committedFieldInventory": [
+      {
+        "index": 0,
+        "field": "spend inputs",
+        "commitmentSlot": "body.spend_inputs_hash"
+      },
+      {
+        "index": 1,
+        "field": "reference inputs",
+        "commitmentSlot": "body.reference_inputs_hash"
+      },
+      {
+        "index": 2,
+        "field": "outputs",
+        "commitmentSlot": "body.outputs_hash"
+      },
+      {
+        "index": 3,
+        "field": "required observers",
+        "commitmentSlot": "body.required_observers_hash"
+      },
+      {
+        "index": 4,
+        "field": "required signers",
+        "commitmentSlot": "body.required_signers_hash"
+      },
+      {
+        "index": 5,
+        "field": "mint",
+        "commitmentSlot": "body.mint_hash"
+      },
+      {
+        "index": 6,
+        "field": "script witnesses",
+        "commitmentSlot": "witness_set.script_tx_wits_hash"
+      },
+      {
+        "index": 7,
+        "field": "address (vkey) witnesses",
+        "commitmentSlot": "witness_set.addr_tx_wits_hash"
+      },
+      {
+        "index": 8,
+        "field": "redeemer witnesses",
+        "commitmentSlot": "witness_set.redeemer_tx_wits_hash"
+      }
+    ],
+    "bodyFieldCount": 12,
+    "boundBodySlot": {
+      "position": 0,
+      "field": "spend_inputs_hash",
+      "type": "32-byte hash"
+    },
+    "fieldIndexConstants": {
+      "aiken": {
+        "module": "onchain/aiken/lib/midgard/fraud-proofs/field-opening-v1.ak",
+        "constant": "spend_inputs_field_index",
+        "declaration": "pub const spend_inputs_field_index: Int = 0"
+      },
+      "typescript": {
+        "module": "demo/midgard-sdk/src/fraud-proof/field-opening-v1.ts",
+        "table": "MIDGARD_FIELD_INDEX_V1",
+        "boundEntry": "spendInputs",
+        "witnessBoundaryEntry": "scriptWitnesses",
+        "firstWitnessSetFieldIndex": 6,
+        "entries": [
+          {
+            "name": "spendInputs",
+            "value": 0
+          },
+          {
+            "name": "referenceInputs",
+            "value": 1
+          },
+          {
+            "name": "outputs",
+            "value": 2
+          },
+          {
+            "name": "requiredObservers",
+            "value": 3
+          },
+          {
+            "name": "requiredSigners",
+            "value": 4
+          },
+          {
+            "name": "mint",
+            "value": 5
+          },
+          {
+            "name": "scriptWitnesses",
+            "value": 6
+          },
+          {
+            "name": "addressWitnesses",
+            "value": 7
+          },
+          {
+            "name": "redeemers",
+            "value": 8
+          }
+        ]
+      },
+      "note": "The positional identity, bound in all three places it exists: section 2.5 index 0, the on-chain constant, and the off-chain table. This is not trivia for this family. Section 4 removed field-index domain separation, so the empty preimage of every one of the nine fields hashes to the same value; the INDEX is the only thing that makes this an opening of field 0 rather than of some other empty field, which is why the whole off-chain table is checked positionally and not just the one entry."
+    },
+    "authenticatedCountAssertion": {
+      "module": "onchain/aiken/validators/fraud-proofs/zero-input/step-02.ak",
+      "assertion": "expect field_item_count(spend_inputs_view) == 0",
+      "countFunction": "field_item_count",
+      "viewConstructorToken": "spend_inputs_view",
+      "requiredItemCount": 0,
+      "doorSymbols": [
+        "opened_field_view",
+        "BodyAnchor",
+        "spend_inputs_field_index",
+        "field_preimage_certificate_policy_id"
+      ],
+      "note": "This is the family's verdict, and it is an authenticated COUNT read rather than a hash comparison. The validator's own comment states why: section 4 removed field-index domain separation, so all nine empty fields share one commitment and a hash equality against a pinned empty-field constant would prove only that SOME field is empty. Positional identity lives inside the section-8.8 door, and reading the count out of the opened view is how this family gets it. The module's third selector exists to defend exactly that distinction."
+    },
+    "builderDoorBinding": {
+      "module": "demo/midgard-fault-proofs/src/submit-zero-input-step-02.ts",
+      "planner": "planFaultProofFieldOpeningV1",
+      "constructor": "faultProofFieldOpeningV1",
+      "redeemerField": "spend_inputs_opening",
+      "fieldIndexSymbol": "MIDGARD_FIELD_INDEX_V1.spendInputs",
+      "itemCountField": "spendInputsItemCount",
+      "note": "The off-chain half of the same door. The builder must name the positional index table rather than a bare integer, and that requirement is derived from the table's own entry name rather than hard-coded."
+    },
+    "builderAnchorBinding": {
+      "module": "demo/midgard-fault-proofs/src/submit-zero-input-step-01.ts",
+      "symbols": [
+        "requireNativeTxMatchesCompactCbor",
+        "nativeTxBodyHasZeroInputViolation",
+        "txInclusion.nativeTxId",
+        "bad_tx_id"
+      ],
+      "note": "The first step re-derives the transaction id from the compact bytes the block's `transactions_root` committed and writes it into thread state as `bad_tx_id`; `requireNativeTxMatchesCompactCbor` is what makes that id the committed transaction's rather than the prover's. That anchor is the only provenance `BodyAnchor` accepts in the terminal step, so a step-01 that stopped re-deriving it would leave the door opened against an unanchored id."
+    },
+    "suites": [
+      {
+        "file": "demo/midgard-fault-proofs/tests/prepare-zero-input.test.ts",
+        "requiredTitles": [
+          "selects the transaction that spends no inputs",
+          "accepts the counted transactions root committed by the block header",
+          "rejects the raw PHAS root where the counted header root is required",
+          "rejects a transactions root that is not committed by the block header",
+          "throws when every transaction in the block spends at least one input",
+          "rejects an explicitly requested tx that does spend inputs",
+          "writes tx-inclusion and plan artifacts the submit steps consume"
+        ],
+        "measured": {
+          "collected": 7,
+          "passed": 7,
+          "failed": 0
+        }
+      },
+      {
+        "file": "demo/midgard-fault-proofs/tests/field-opening-v1.test.ts",
+        "requiredTitles": [
+          "plans tier-1 inline carriage for a body field and opens the anchored slot",
+          "refuses compact bytes that do not re-derive to the anchored id",
+          "refuses a preimage that opens a different field of the same transaction",
+          "refuses a witness-set field with no witness set supplied",
+          "refuses a witness set that is not the one the compact transaction names"
+        ],
+        "measured": {
+          "collected": 5,
+          "passed": 5,
+          "failed": 0
+        }
+      }
+    ]
+  },
+  "output4OnchainSelectors": {
+    "projectDirectory": "onchain/aiken",
+    "declaredTotal": 8,
+    "measured": {
+      "declared": 8,
+      "collected": 8,
+      "passed": 8,
+      "failed": 0,
+      "positive": 3,
+      "validBlockNegative": 2,
+      "additionalNegative": 3,
+      "stepScoped": 8,
+      "moduleHelper": 0
+    },
+    "scopeNote": "Every selector's scope is DERIVED, not declared: the gate resolves whether the selector's own body reaches the module's `main.spend` handler, directly or through a module-local helper that itself does, over the comment-stripped source. All eight reach it, so this family has no module-helper unit cases and its positive count and its step-scoped positive count coincide. The distinction is kept in the schema because output 4's per-step requirement is stated on the step-scoped positives: a module-local unit case added later must not be able to satisfy that requirement with the real proof-step positives deleted.",
+    "modules": [
+      {
+        "module": "fraud_proofs/zero_input/step_01",
+        "source": "onchain/aiken/validators/fraud-proofs/zero-input/step-01.ak",
+        "selectorCount": 5,
+        "stepScopedPositiveCount": 2,
+        "measuredHandlerReachingHelpers": ["run_zero_input_step_01_published"],
+        "selectors": [
+          {
+            "selector": "zero_input_step_01_binds_native_v1_block_fixture",
+            "role": "positive",
+            "scope": "step",
+            "handlerReach": ["main.spend"],
+            "claim": "Drives the deployed step-01 handler over a native V1 block fixture: the challenged transaction's compact bytes are shown included under the header-authenticated counted `transactions_root`, and the thread advances carrying the re-derived section-2.5 anchor."
+          },
+          {
+            "selector": "zero_input_step_01_binds_a_published_chunk_membership_proof",
+            "role": "positive",
+            "scope": "step",
+            "handlerReach": ["run_zero_input_step_01_published"],
+            "claim": "The same passage over the issue-545 published-chunk carriage: the membership proof's levels live in published chunk UTxOs and only their order reaches the redeemer, and the step accepts it under the same authenticated root."
+          },
+          {
+            "selector": "zero_input_step_01_rejects_published_chunks_under_a_forged_root",
+            "role": "additionalNegative",
+            "scope": "step",
+            "handlerReach": ["run_zero_input_step_01_published"],
+            "claim": "A published-chunk carriage whose chunks were assembled under a root the header never committed is refused, so the cheaper carriage cannot be used to smuggle in an unauthenticated root."
+          },
+          {
+            "selector": "zero_input_step_01_rejects_a_claim_the_redeemer_did_not_name",
+            "role": "additionalNegative",
+            "scope": "step",
+            "handlerReach": ["run_zero_input_step_01_published"],
+            "claim": "A chunk reference the redeemer's index list does not name cannot be counted toward the proof, so the prover cannot rely on chunks that happen to be present in the transaction."
+          },
+          {
+            "selector": "zero_input_step_01_rejects_forged_transactions_root",
+            "role": "validBlockNegative",
+            "scope": "step",
+            "handlerReach": ["main.spend"],
+            "claim": "The step's valid-block negative: a raw transactions MPF root the challenged header's counted `transactions_root` does not authenticate is refused, so no block can be convicted on a prover-supplied root."
+          }
+        ]
+      },
+      {
+        "module": "fraud_proofs/zero_input/step_02",
+        "source": "onchain/aiken/validators/fraud-proofs/zero-input/step-02.ak",
+        "selectorCount": 3,
+        "stepScopedPositiveCount": 1,
+        "measuredHandlerReachingHelpers": ["run_finalize"],
+        "selectors": [
+          {
+            "selector": "zero_input_step_02_accepts_an_empty_spend_inputs_field",
+            "role": "positive",
+            "scope": "step",
+            "handlerReach": ["run_finalize"],
+            "claim": "Drives the deployed terminal handler to finalization: field 0 of the anchored transaction is opened through the section-8.8 door and its authenticated item count is zero, so the fraud proof mints."
+          },
+          {
+            "selector": "zero_input_step_02_rejects_valid_block_challenge",
+            "role": "validBlockNegative",
+            "scope": "step",
+            "handlerReach": ["run_finalize"],
+            "claim": "The family's valid-block negative: a challenge against a transaction that really does spend inputs cannot finalize, so an honest block cannot be convicted by this family."
+          },
+          {
+            "selector": "zero_input_step_02_rejects_an_empty_preimage_for_a_spending_transaction",
+            "role": "additionalNegative",
+            "scope": "step",
+            "handlerReach": ["main.spend"],
+            "claim": "The selector that defends the flat scheme's sharpest edge for this family: an empty section-5.1 preimage presented for a transaction that spends inputs is refused. Because section 4 removed field-index domain separation, all nine empty fields share one commitment, so a design that compared a forwarded commitment against a pinned empty-field constant would accept this. Reading the count out of the door does not."
+          }
+        ]
+      }
+    ]
+  },
+  "delegatedOutputs": {
+    "outputs": [5, 6, 7, 8],
+    "artifact": "docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json",
+    "gate": "demo/scripts/verify-canonical-v1-proof-family-q1x.mjs",
+    "rationale": "Those four cells are bound family-locally in the shared four-family artifact, and its gate is the executable authority for them: it spawns five Vitest suites, three of them emulator suites driving the complete correction path at forced branch level 22 and at the admissible 296-input Cardano spend shape. Re-running them here would double the battery's cost and measure nothing the shared gate does not already measure. So this artifact records the delegation, re-reads the shared artifact's Q14 cells, and re-checks in this tree that the concrete Q14 surfaces those cells describe exist and are wired.",
+    "assertedCells": {
+      "outputs": [5, 6, 7, 8, 9],
+      "requiredStatus": "LOCAL_PASS",
+      "requiredOpenCells": 0,
+      "requiredCarriageMembership": ["chunkedProofCarriage.measuredFamilies"],
+      "requiredCarriageNonMembership": [
+        "spendInputTierRoutedCarriage.measuredFamilies"
+      ],
+      "spendInputAxisScopeKey": "spendInputCardinalityBound.affectsGoalIds",
+      "measuredSpendInputAxisScope": ["Q10", "Q11"],
+      "spendInputAxisApplies": false,
+      "carriageDispositionNote": "This family rides ONE of the shared artifact's two carriage remediations. The issue-545 membership-proof depth remediation has measured it, and membership in that list is hard-required. The issue-612 tier-routed spend-input remediation has not, and rather than hard-code that absence, it is DERIVED from the axis's own scope list and required to agree in both directions: demanding this family in the tier-routed list would produce a row that can never go green, while dropping the axis silently would hide the obligation if the axis ever grew to cover it. Output 9 is asserted here as well as measured locally, so the two artifacts cannot disagree about this family's emulator cell.",
+      "note": "The delegation contract may not be relaxed from the artifact side: LOCAL_PASS is the only status that carries a cell, and a shared artifact with any open cell left in it is not a settled authority for four of this family's rows."
+    },
+    "spendInputAxisSourceSweep": {
+      "measuredModuleCount": 4,
+      "minimumModuleCount": 4,
+      "openingModules": [
+        "onchain/aiken/validators/fraud-proofs/zero-input/step-02.ak"
+      ],
+      "reason": "The Q12 twin could back the axis's absence with \"no step of this family opens a committed field at all\". This family DOES open one, so the absence rests on something narrower, and it is measured rather than asserted: the finalizing step pins the opened field's authenticated item count to zero (`expect field_item_count(spend_inputs_view) == 0`), so any proof that FINALIZES carries the one-byte empty section-5.1 preimage and cannot grow with spend-input cardinality. The axis's 296-input admissible-shape stress therefore cannot reach this family's success path, which is why the axis's own scope list names only Q10 and Q11. The sweep publishes every field-opening and `spend_inputs*` token in all four family-owned Aiken modules, so a second opening or a relaxed count pin lands here rather than passing unseen, and it requires the door to live in exactly the finalizing validator: an opening in the first step would put a preimage on the carriage of a step the depth axis does reach.",
+      "modules": [
+        {
+          "module": "onchain/aiken/lib/midgard/fraud-proofs/zero-input/step-01.ak",
+          "fieldOpeningTokens": [],
+          "spendInputTokens": []
+        },
+        {
+          "module": "onchain/aiken/lib/midgard/fraud-proofs/zero-input/step-02.ak",
+          "fieldOpeningTokens": [
+            {
+              "token": "FieldOpening",
+              "count": 2
+            },
+            {
+              "token": "field_opening",
+              "count": 1
+            },
+            {
+              "token": "_opening",
+              "count": 2
+            }
+          ],
+          "spendInputTokens": [
+            {
+              "token": "spend_inputs_opening",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "module": "onchain/aiken/validators/fraud-proofs/zero-input/step-01.ak",
+          "fieldOpeningTokens": [],
+          "spendInputTokens": []
+        },
+        {
+          "module": "onchain/aiken/validators/fraud-proofs/zero-input/step-02.ak",
+          "fieldOpeningTokens": [
+            {
+              "token": "field_opening",
+              "count": 1
+            },
+            {
+              "token": "_opening",
+              "count": 7
+            }
+          ],
+          "spendInputTokens": [
+            {
+              "token": "spend_inputs_field",
+              "count": 1
+            },
+            {
+              "token": "spend_inputs_field_index",
+              "count": 2
+            },
+            {
+              "token": "spend_inputs_opening",
+              "count": 4
+            },
+            {
+              "token": "spend_inputs_view",
+              "count": 2
+            }
+          ]
+        }
+      ],
+      "axisSurfaceTokens": [
+        {
+          "token": "maximum_cardano_spend_redeemer_count",
+          "presentAt": "onchain/aiken/validators/fraud-proofs/q1x-spend-input-cardinality.test.ak",
+          "role": "The admissible Cardano script-spend shape boundary the axis measures against (296)."
+        },
+        {
+          "token": "max_tx_size_derived_item_count",
+          "presentAt": "onchain/aiken/lib/midgard/bounded-collection-v1.ak",
+          "role": "The one-byte-per-item encoding guardrail the axis derives its item-count ceiling from (16,384)."
+        },
+        {
+          "token": "publishCarriage",
+          "presentAt": "demo/midgard-fault-proofs/tests/submit-init-emulator-spend-input-cardinality.test.ts",
+          "role": "The issue-612 mechanism that demotes the section-8 ladder's tier-1 Inline pick to tier-2 raw-UTxO carriage for the two families the axis reaches."
+        }
+      ],
+      "axisSurfaceNote": "Each token is required ABSENT from all four family-owned modules and PRESENT at the cited site: absent-and-gone-everywhere would make the comparison vacuous, and a cardinality surface appearing in this family would re-open the axis and force the delegation to be re-decided."
+    },
+    "concreteSurfaces": {
+      "output6": {
+        "blueprintTitles": [
+          "fraud_proofs/zero_input/step_01.main.spend",
+          "fraud_proofs/zero_input/step_02.main.spend"
+        ],
+        "firstStepTitle": "fraud_proofs/zero_input/step_01.main.spend",
+        "titlesConstant": "ZERO_INPUT_FAULT_PROOF_TITLES",
+        "titlesModule": "demo/midgard-sdk/src/fraud-proof/contracts.ts",
+        "chainBuilder": "buildZeroInputChain",
+        "titleReferences": [
+          "ZERO_INPUT_FAULT_PROOF_TITLES.step02",
+          "ZERO_INPUT_FAULT_PROOF_TITLES.step01"
+        ],
+        "suite": "demo/midgard-sdk/tests/fault-proof.test.ts",
+        "requiredTitles": [
+          "builds zero-input with the validator parameter order from the blueprint",
+          "builds zero-input without requiring unrelated category validators"
+        ],
+        "blueprintHashesPinned": false,
+        "note": "Declaring the titles is not using them, so each one is required to be APPLIED by the chain builder — the terminal step first, because the first step is parameterised by the terminal step's script hash. The applied parameter ORDER is bound by a passing test rather than by a source read: a re-ordered parameter list still reads correctly in source and still compiles. Applied script hashes are deliberately unpinned here; blueprint regeneration is parent-only (IG1) and re-pins them, so a family-local copy would become a second authority that goes stale on the next regeneration."
+      },
+      "output7": {
+        "module": "demo/midgard-fault-proofs/src/evidence/prepare-from-evidence-v1.ts",
+        "builder": "prepareZeroInputFromCanonicalEvidenceV1",
+        "admissionGate": "admitCanonicalEvidenceForProofBuildV1",
+        "note": "The builder's OWN body is required to route through the shared admission gate, not merely to sit in a module that exports one: the gate is what refuses diagnostic or operator-private evidence and what refuses a raw transactions MPF root that does not re-commit to the L1-committed `transactions_root`."
+      },
+      "output8": {
+        "module": "demo/midgard-fault-proofs/src/bin.ts",
+        "prepareVerb": "prepare-zero-input",
+        "initVerb": "submit-init",
+        "submitVerbs": [
+          "submit-zero-input-step-01",
+          "submit-zero-input-step-02"
+        ],
+        "resumableStepModules": [
+          "demo/midgard-fault-proofs/src/submit-zero-input-step-01.ts"
+        ],
+        "terminalStepModule": "demo/midgard-fault-proofs/src/submit-zero-input-step-02.ts",
+        "note": "One submit verb per deployed step; every non-terminal step returns `nextThreadOutRef` so the next step is addressable from the previous submission alone, and the terminal step is required NOT to return one and to return the permanent `fraudProofUnit` instead. Both halves are measured, so a terminal step that grew a hand-off, or a non-terminal step that lost one, fails rather than passing as resumable."
+      }
+    }
+  },
+  "output9EmulatorLifecycle": {
+    "suite": "demo/midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
+    "requiredTitles": [
+      "proves and removes a tail zero-input block end to end",
+      "rejects a spending transaction before a zero-input thread can advance"
+    ],
+    "measuredLifecycleTitle": "proves and removes a tail zero-input block end to end",
+    "hasValidBlockNegative": true,
+    "validBlockNegativeTitle": "rejects a spending transaction before a zero-input thread can advance",
+    "validBlockNegativeScope": "A step-advance negative: a transaction that spends at least one input cannot advance a zero-input thread. It is a genuine adjacent negative — measured to carry a real refusal assertion and to leave the thread unspent with no fraud-proof token minted — but it is not a full valid-block finalization negative, because the refusal is raised by the off-chain builder ahead of submission rather than by the deployed step refusing to finalize. The Q12-F4/Q1X-F2 \"no emulator valid-block negative at all\" gap does NOT apply to this family; what remains is the narrower off-chain-origin limit recorded as Q14-F5.",
+    "suiteBlockTitles": [
+      "proves and removes a tail invalid-range block end to end",
+      "proves and removes a tail zero-input block end to end",
+      "rejects a spending transaction before a zero-input thread can advance",
+      "proves and removes a tail non-existent-input block end to end"
+    ],
+    "familyBlockCount": 2,
+    "familyLifecycleCount": 1,
+    "familyValidBlockNegativeCount": 1,
+    "measuredAdversarialAssertions": 2,
+    "everyRefusalRaisedOffChain": true,
+    "refusalOriginCandidates": [
+      "demo/midgard-fault-proofs/src/submit-zero-input-step-01.ts",
+      "demo/midgard-fault-proofs/src/submit-zero-input-step-02.ts",
+      "demo/midgard-fault-proofs/src/field-opening-v1.ts"
+    ],
+    "sharedSuiteNote": "This suite is SHARED with the invalid-range and non-existent-input ledger-rule families, so every marker below is required inside the family's OWN `it` block: a whole-file scan would let a sibling's assertions satisfy this family's claims, and the suite really does carry sibling markers. The number of blocks the file executes is published separately from the number this family owns, and the declared block inventory is cross-checked against the runner's collected count.",
+    "familyBlocks": [
+      {
+        "title": "proves and removes a tail zero-input block end to end",
+        "role": "lifecycle",
+        "assertedStages": [
+          "init: the computation thread is opened against the challenged tail header, and the minted fraud-proof identifier is the append-only category id concatenated with the challenged header hash",
+          "step-01: the challenged transaction's compact bytes are shown included under the header-authenticated counted transactions root, and the re-derived section-2.5 anchor is written into thread state as `bad_tx_id`",
+          "step-02: field 0 is opened against that anchor through the section-8.8 door and its authenticated item count is measured zero, minting the permanent fraud-proof token",
+          "remove: the convicted block leaves the state queue, the operator is slashed, the retained fraud proof survives the removal, and the queue's header order is re-checked",
+          "proof fit: every stage of the journey is measured against the L1 byte and execution-unit ceilings"
+        ],
+        "sourceMarkers": [
+          "realZeroInput: true",
+          "publishRemovalReferenceScripts",
+          "buildZeroInputTransactionInclusionFixture",
+          "fraudCategory: \"zeroInput\"",
+          "initResult.fraudCategoryName).toBe(\"zeroInput\")",
+          "catalogue.categories.zeroInput.categoryId}${headerHash}",
+          "submitZeroInputStep01(",
+          "submitZeroInputStep02(",
+          "ZeroInputStep02Datum",
+          "data: { bad_tx_id:",
+          "step02Result.spendInputsItemCount).toBe(0)",
+          "FraudProofTokenDatum",
+          "slashingApproach",
+          "SlashActiveOperator",
+          "expectStateQueueHeaderOrder",
+          "retainedFraudProof",
+          "expectProofFitV1",
+          "proofFit[\"init\"]",
+          "proofFit[\"step-01\"]",
+          "proofFit[\"step-02\"]",
+          "proofFit[\"remove\"]",
+          "zero-input proof fit:"
+        ],
+        "adversarialAssertion": {
+          "form": ".rejects.toThrow",
+          "measuredCount": 1,
+          "messageFragment": "not the anchored transaction id",
+          "measuredOriginModules": [
+            "demo/midgard-fault-proofs/src/field-opening-v1.ts"
+          ],
+          "raisedOnChain": false,
+          "note": "Inside the lifecycle, before finalizing: a second transaction's compact bytes are offered for the thread's anchored id and the door refuses them. The refusal is raised by the off-chain door at demo/midgard-fault-proofs/src/field-opening-v1.ts, so what it proves is that the builder will not construct an unanchored opening, not that the deployed step rejects one — the on-chain half of that same property is the `zero_input_step_02_rejects_an_empty_preimage_for_a_spending_transaction` selector."
+        }
+      },
+      {
+        "title": "rejects a spending transaction before a zero-input thread can advance",
+        "role": "validBlockNegative",
+        "assertedStages": [
+          "a thread is opened against a block whose challenged transaction really does spend inputs",
+          "step-01 is attempted with that transaction's inclusion evidence and refuses",
+          "the refusal cost the thread nothing: it is still present and unspent",
+          "no fraud-proof token exists at the fraud-proof spending address"
+        ],
+        "sourceMarkers": [
+          "realZeroInput: true",
+          "alwaysFraudProofCatalogue: true",
+          "buildTransactionInclusionFixture()",
+          "fraudCategory: \"zeroInput\"",
+          "setup.fraudulentBlockOutRef",
+          "parseSubmitStep01TxInclusion(",
+          "submitZeroInputStep01(",
+          ".resolves.toHaveLength(1)",
+          "contracts.fraudProof.spendingScriptAddress",
+          ".resolves.toHaveLength(0)"
+        ],
+        "absentSourceMarkers": [
+          "submitZeroInputStep02(",
+          "expectProofFitV1",
+          "publishRemovalReferenceScripts",
+          "SlashActiveOperator"
+        ],
+        "adversarialAssertion": {
+          "form": ".rejects.toThrow",
+          "measuredCount": 1,
+          "messageFragment": "--tx-inclusion.nativeTx spends at least one input, so it does not violate the zero-input ledger rule.",
+          "measuredOriginModules": [
+            "demo/midgard-fault-proofs/src/submit-zero-input-step-01.ts"
+          ],
+          "raisedOnChain": false,
+          "note": "A real adversarial assertion, measured rather than assumed: the block refuses an honest transaction and then checks that the refusal cost the thread nothing. Its origin is measured too, by sweeping the family's four Aiken modules and its three off-chain modules for the expected message — it resolves to the off-chain builder guard in demo/midgard-fault-proofs/src/submit-zero-input-step-01.ts, so the emulator observes an off-chain refusal rather than an on-chain one."
+        }
+      }
+    ],
+    "measured": {
+      "collected": 4,
+      "passed": 4,
+      "failed": 0
+    }
+  },
+  "output10MatrixRows": {
+    "owner": "parent",
+    "note": "Both files are parent-owned (the manifest's Q14 row lists them under pathsMustNotTouch), so this cell is DERIVED from what they say today rather than asserted: the gate reads each row's Status cell through the table's own header and lets the measurement decide the status. A parent edit that lands the rows flips the derivation instead of requiring a prose change in the gate. The calibration row below is measured through the same header-derived machinery and DOES record a local status, so \"neither row records one\" cannot silently mean the Status column was being read from the wrong place.",
+    "rows": [
+      {
+        "file": "docs/fault-proofs/coverage-matrix.md",
+        "headerLine": 91,
+        "separatorLine": 92,
+        "line": 93,
+        "labelColumnHeader": "Rule",
+        "rowLabel": "≥1 input (ZERO-INPUT)",
+        "measuredStatusCell": "✅ (emulator; author-supplied preprod evidence not independently rerun)",
+        "measuredRemainingCell": "Publish/re-run reproducible preprod evidence (W-T4); reduce 4 commands to 1 (W-O4)",
+        "recordsLocalPass": false
+      },
+      {
+        "file": "docs/fault-proofs/catalogue-status.md",
+        "headerLine": 17,
+        "separatorLine": 18,
+        "line": 24,
+        "labelColumnHeader": "Type",
+        "rowLabel": "`zero-input` (2 steps)",
+        "measuredStatusCell": "✅ Complete & verified (emulator; author-supplied preprod evidence not independently rerun)",
+        "measuredRemainingCell": null,
+        "recordsLocalPass": false
+      }
+    ],
+    "comparisonRow": {
+      "file": "docs/fault-proofs/coverage-matrix.md",
+      "headerLine": 91,
+      "separatorLine": 92,
+      "line": 95,
+      "labelColumnHeader": "Rule",
+      "rowLabel": "Input index in range (INPUT-NO-IDX)",
+      "measuredStatusCell": "✅ Q13 `LOCAL_PASS`; live evidence remains Q57/QG3",
+      "measuredRemainingCell": "Q50/Q55 integration; no live/preprod promotion",
+      "recordsLocalPass": true,
+      "role": "Positive control for the derivation: the settled Q13 row, in the same table, read through the same header-derived Status column. It is also the pinned FORM the two pending Q14 cells must take."
+    }
+  },
+  "outputStatus": [
+    {
+      "output": 1,
+      "title": "Normative rule statement and its violation identifier(s)",
+      "status": "LOCAL_PASS",
+      "owner": "this artifact",
+      "evidence": "The rule is stated, and its identifier `E_EMPTY_INPUTS` is re-derived from the declared key in demo/midgard-validation/src/types.ts rather than quoted. Enforcement is measured, not counted from prose: exactly one site in demo/midgard-validation/src/phase-a.ts (line 201), whose line is required to BEGIN the `return reject(` call that makes it an enforcement site, inside the measured declaration `const validateInputSets = (tx: MidgardLedgerTx): RejectedTx | null => {`. The one further occurrence of the identifier in the validation package (validation-machine.ts line 2703) is measured to be a comparison rather than a rejection, so the site count is an enforcement count from both directions. The deployed identifier is re-derived as the 4-byte encoding of the append-only catalogue index — `zeroInput` at index 5 of 11 gives `00000005` — rather than read from a constant, so inserting a category instead of appending one cannot pass unnoticed."
+    },
+    {
+      "output": 2,
+      "title": "Canonical evidence schema plus strict codec agreement across the boundary",
+      "status": "LOCAL_PASS",
+      "owner": "this artifact",
+      "evidence": "Field-for-field, order-for-order parity is parsed out of each source and compared: the shared 9-field inclusion record, this family's one step `Args` record (4 fields), the inter-step `State` record that crosses the step boundary (1 field), and the nested section-8 carriage enum. Four alias bindings are measured, so the shared record's parity really is this family's binding rather than a neighbouring type's. The carriage enum is bound POSITIONALLY — both sides are tracked here, its own doc comment calls constructor order wire format, and a set comparison would accept a swap of Constr 0 and Constr 1 — and each arm's record is compared field-for-field against its schema. Passage: 32/32 canonical-evidence tests and 30/30 SDK fault-proof tests, each cited suite also required to carry this family's own markers so a sibling's coverage cannot stand in for it."
+    },
+    {
+      "output": 3,
+      "title": "Flat field-hash / section-5.1 preimage-grammar binding",
+      "status": "LOCAL_PASS",
+      "owner": "this artifact",
+      "evidence": "This family opens exactly one of the nine committed fields, and the binding is positional in every place it exists. The whole 9-row section-2.5 inventory and the whole 12-row section-2.1 body table are parsed from docs/spec/midgard-tx.md and required to be their own positional order; field 0 (`spend inputs`) is bound to body position 0 (`spend_inputs_hash`), with the join derived rather than asserted. The index constant is checked on-chain (`pub const spend_inputs_field_index: Int = 0`) and off-chain (the full 9-entry `MIDGARD_FIELD_INDEX_V1` table, positionally), and the body arm of the carriage enum is derived from the index sitting below the measured witness-set boundary. The verdict itself is measured in the validator that reaches it: `expect field_item_count(spend_inputs_view) == 0`, read through the section-8.8 door symbols, which is what gives this family positional identity at all — section 4 removed field-index domain separation, so all nine empty fields share one commitment and a hash equality would prove only that SOME field is empty. Passage: 7/7 prepare-zero-input and 5/5 field-opening-v1 tests."
+    },
+    {
+      "output": 4,
+      "title": "Aiken proof steps with positive and valid-block negative tests",
+      "status": "LOCAL_PASS",
+      "owner": "this artifact",
+      "evidence": "8 of 8 selectors across the family's 2 step modules pass in one batched `aiken check -e` run under aiken v1.1.23+2a78108, with the collected count required to equal the declared count so the exact `-m module.{test}` selection cannot have swept in extras. Roles are read from the declaration form, not from names: each negative is required to be declared `test <name>() fail` and each positive required not to be, giving 3 positive, 2 valid-block negative and 3 further negative. Every selector's scope is derived by resolving whether its body reaches its module's own `main.spend`, directly or through a module-local helper that does; all 8 do, and the published route is re-measured per selector. Output 4's requirement is checked PER STEP on the step-scoped positives: each module has at least one step-scoped positive and at least one valid-block negative."
+    },
+    {
+      "output": 5,
+      "title": "Maximum/adversarial proof-fit fixture",
+      "status": "LOCAL_PASS",
+      "owner": "shared Q1x artifact and gate",
+      "delegatedTo": "docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json",
+      "evidence": "Bound family-locally in the shared four-family artifact and executed by demo/scripts/verify-canonical-v1-proof-family-q1x.mjs in the same battery, including the forced branch-level-22 depth fixture. This gate re-reads the shared artifact's Q14 cell, requires it to be LOCAL_PASS with zero open cells anywhere in that artifact, and requires this family's membership in the issue-545 depth remediation. The issue-612 tier-routed remediation's non-membership is derived from the cardinality axis's own scope list and required to agree in both directions, and the source-side reason is measured across all four family-owned Aiken modules: the finalizing step pins the opened field's authenticated item count to zero, so the axis's admissible-shape stress cannot reach this family's success path."
+    },
+    {
+      "output": 6,
+      "title": "Catalogue identifier, first-step hash, membership proof, deployed identity",
+      "status": "LOCAL_PASS",
+      "owner": "shared Q1x artifact and gate",
+      "delegatedTo": "docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json",
+      "evidence": "Delegated, and the concrete surfaces re-checked here: both blueprint titles are declared in `ZERO_INPUT_FAULT_PROOF_TITLES` and both are APPLIED by `buildZeroInputChain` (terminal step first, since step 01 is parameterised by the terminal step's script hash), one title per deployed step, with the first-step identity derived as the chain's first title. The applied parameter order is bound by two passing SDK titles rather than by a source read. Applied script hashes are deliberately unpinned: blueprint regeneration is parent-only and re-pins them."
+    },
+    {
+      "output": 7,
+      "title": "DA-first evidence builder using retained authenticated material",
+      "status": "LOCAL_PASS",
+      "owner": "shared Q1x artifact and gate",
+      "delegatedTo": "docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json",
+      "evidence": "Delegated, and re-checked here: `prepareZeroInputFromCanonicalEvidenceV1` is exported from demo/midgard-fault-proofs/src/evidence/prepare-from-evidence-v1.ts and its OWN body routes through the shared admission gate `admitCanonicalEvidenceForProofBuildV1`, which is what refuses diagnostic or operator-private evidence and refuses a transactions root that does not re-commit to the L1-committed one. Four cited canonical-evidence titles execute that refusal path."
+    },
+    {
+      "output": 8,
+      "title": "One resumable prepare/submit command chain, no hidden manual state",
+      "status": "LOCAL_PASS",
+      "owner": "shared Q1x artifact and gate",
+      "delegatedTo": "docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json",
+      "evidence": "Delegated, and re-checked here: demo/midgard-fault-proofs/src/bin.ts accepts `prepare-zero-input`, `submit-init` and one submit verb per deployed step. Resumability is measured on both sides — the single non-terminal step returns `nextThreadOutRef`, and the terminal step is required NOT to and to return the permanent `fraudProofUnit` instead — so neither a lost hand-off nor a terminal step that grew one can pass."
+    },
+    {
+      "output": 9,
+      "title": "Emulator lifecycle: init, every step, permanent proof token, removal",
+      "status": "LOCAL_PASS",
+      "owner": "this artifact",
+      "evidence": "4/4 blocks of the shared ledger-rules suite pass, and this family owns TWO of them: the end-to-end lifecycle through removal and slashing, and a dedicated negative. Each block's structural markers are scoped to its own `it` block, so a sibling family's assertions cannot satisfy this family's claims, and the declared block inventory is cross-checked against the runner's collected count. The two counts are published separately rather than summed, because a lifecycle and a refusal answer different questions. Both blocks are measured to carry a real adversarial assertion (one `.rejects.toThrow` each, with the expected refusal message required inside the block), and the module that RAISES each message is resolved by sweeping the family's four Aiken and three off-chain modules — both resolve off-chain, which is recorded as Q14-F5 rather than presented as an on-chain rejection."
+    },
+    {
+      "output": 10,
+      "title": "Coverage matrix and catalogue status updated to the family's real state",
+      "status": "OPEN",
+      "owner": "parent",
+      "evidence": "Both parent-owned rows are measured at HEAD through their tables' own header-derived Status column: docs/fault-proofs/coverage-matrix.md line 93 still reads `✅ (emulator; author-supplied preprod evidence not independently rerun)` and docs/fault-proofs/catalogue-status.md line 24 still reads `✅ Complete & verified (emulator; author-supplied preprod evidence not independently rerun)`. Neither records this family's local closure. The settled Q13 row at coverage-matrix.md line 95 is measured through the same machinery as a positive control, and is the pinned form the two pending cells must take.",
+      "whyOpen": "The two files are parent-owned — the manifest's Q14 row lists both under pathsMustNotTouch — so this gate measures them and refuses to edit them. The status is derived from the measurement, not asserted, so the parent's edit closes this cell without any prose change here. The exact edits are listed verbatim in parentIntegration.pendingEdits."
+    }
+  ],
+  "notApplicableOutputs": [],
+  "notApplicableNote": "No output of GOAL_SPEC.md 9.1 is N/A for this family. Section 9.1 makes an output N/A only where the rule is structurally enforced elsewhere, and \"a transaction must spend at least one input\" is not: it is a real ledger rule with a real local identifier (E_EMPTY_INPUTS) enforced in phase A, a deployed two-step on-chain correction path that opens a committed field and reads its authenticated item count, a registered catalogue category at append-only index 5, off-chain tooling, and a measured emulator lifecycle plus a measured negative. Output 3 is not N/A either — unlike the Q12 twin, this family DOES open one of the nine committed fields, so output 3 is a binding to measure rather than an absence to excuse. The list is published empty and asserted empty rather than omitted, so an output cannot be quietly dropped from the ten by leaving it unmentioned.",
+  "runners": [
+    "cd onchain/aiken && aiken check -e -m fraud_proofs/zero_input/step_01.{zero_input_step_01_binds_native_v1_block_fixture} -m fraud_proofs/zero_input/step_01.{zero_input_step_01_binds_a_published_chunk_membership_proof} -m fraud_proofs/zero_input/step_01.{zero_input_step_01_rejects_published_chunks_under_a_forged_root} -m fraud_proofs/zero_input/step_01.{zero_input_step_01_rejects_a_claim_the_redeemer_did_not_name} -m fraud_proofs/zero_input/step_01.{zero_input_step_01_rejects_forged_transactions_root} -m fraud_proofs/zero_input/step_02.{zero_input_step_02_accepts_an_empty_spend_inputs_field} -m fraud_proofs/zero_input/step_02.{zero_input_step_02_rejects_valid_block_challenge} -m fraud_proofs/zero_input/step_02.{zero_input_step_02_rejects_an_empty_preimage_for_a_spending_transaction}",
+    "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/canonical-evidence-source-v1.test.ts",
+    "pnpm --dir demo/midgard-sdk exec vitest run tests/fault-proof.test.ts",
+    "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/prepare-zero-input.test.ts",
+    "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/field-opening-v1.test.ts",
+    "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-ledger-rules.test.ts"
+  ],
+  "residualFindings": [
+    {
+      "id": "Q14-F1",
+      "severity": "gap",
+      "owns": [
+        "docs/fault-proofs/coverage-matrix.md",
+        "docs/fault-proofs/catalogue-status.md"
+      ],
+      "finding": "Output 10 is OPEN and parent-owned. docs/fault-proofs/coverage-matrix.md line 93 and docs/fault-proofs/catalogue-status.md line 24 both still carry the pre-closure emulator wording and neither records this family's LOCAL_PASS. Both files are listed under the manifest Q14 row's pathsMustNotTouch, so this gate measures them and refuses to edit them; the status is derived from that measurement rather than asserted, so the parent's edit closes the cell with no change to this artifact's prose.",
+      "owner": "parent"
+    },
+    {
+      "id": "Q14-F2",
+      "severity": "observation",
+      "owns": [
+        "docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json"
+      ],
+      "finding": "Outputs 5 to 8 rest on docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json and on its gate demo/scripts/verify-canonical-v1-proof-family-q1x.mjs. That is a real dependency: if any Q14 cell in the shared artifact is ever re-opened, or if that artifact regains an open cell anywhere, this gate fails closed rather than keeping four rows. Whoever edits the shared artifact owns four of this family's ten rows.",
+      "owner": "parent"
+    },
+    {
+      "id": "Q14-F3",
+      "severity": "observation",
+      "owns": ["spendInputTierRoutedCarriage"],
+      "finding": "This family is deliberately absent from one of the shared artifact's two carriage remediations: `spendInputTierRoutedCarriage.measuredFamilies` names only Q10 and Q11, and so does `spendInputCardinalityBound.affectsGoalIds`. The absence is measured from source rather than assumed, and the reason is narrower than the Q12 twin's: this family DOES open the spend-inputs field, but its finalizing step pins the opened field's authenticated item count to zero, so any proof that finalizes carries the one-byte empty section-5.1 preimage and the axis's admissible 296-input stress cannot reach the success path. If the axis is ever widened to cover this family, the gate fails in the other direction and the disposition must be re-decided rather than left recording an absence.",
+      "owner": "shared Q1x artifact owner"
+    },
+    {
+      "id": "Q14-F4",
+      "severity": "gap",
+      "owns": [
+        "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json"
+      ],
+      "finding": "The Q14 row of docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json predicts an on-chain census this tree does not have, and the drift is in the direction of believing less coverage than exists. The row says step-02.ak holds 7 tests and step-01.ak holds 2 for \"exactly 9 Aiken selectors\", with issue #545 adding \"exactly 4 published-chunk selectors to step_01 (5 of 5)\"; measured today it is 5 in step-01 and 3 in step-02 for 8, all passing. The row's focusedCommands also name selectors that no longer exist anywhere in onchain/ — including `zero_input_step_01_rejects_a_missing_verifier_invocation` and the retired step-02 selector names — so a runner following the row would exit 0 while running fewer checks than it claims, and the row's \"exactly 3 zero-input prepare tests\" understates the 7 measured. The manifest is parent-owned and is not edited from here; the drift is owned rather than corrected.",
+      "owner": "parent"
+    },
+    {
+      "id": "Q14-F5",
+      "severity": "gap",
+      "owns": [
+        "demo/midgard-fault-proofs/src/field-opening-v1.ts",
+        "demo/midgard-fault-proofs/src/submit-zero-input-step-01.ts"
+      ],
+      "finding": "Every adversarial assertion this family's two emulator blocks make is raised off-chain. The sweep over the family's four Aiken modules and its three off-chain modules resolves the lifecycle block's refusal to demo/midgard-fault-proofs/src/field-opening-v1.ts and the negative block's refusal to demo/midgard-fault-proofs/src/submit-zero-input-step-01.ts, so what the emulator observes in both cases is a builder or door refusing to construct proof material, not a deployed script refusing to validate. This family therefore does NOT carry the Q12-F4/Q1X-F2 \"no emulator valid-block negative at all\" gap — it has a real one, with a real refusal assertion and a follow-up check that the refusal cost the thread nothing — but the emulator has still never watched the on-chain step refuse a valid block. The on-chain half of that property is covered by two `fail`-declared selectors (`zero_input_step_02_rejects_valid_block_challenge` and `zero_input_step_01_rejects_forged_transactions_root`) under aiken check, not by the emulator; closing the remaining nuance would mean an emulator journey that submits a valid-block challenge to the deployed step and watches the script fail.",
+      "owner": "parent"
+    },
+    {
+      "id": "Q14-F6",
+      "severity": "gap",
+      "owns": [
+        "submitZeroInputStep02(",
+        "expectProofFitV1",
+        "publishRemovalReferenceScripts",
+        "SlashActiveOperator"
+      ],
+      "finding": "The negative block refuses at step 01, so it asserts nothing about anything past that point, and the absences are measured rather than inferred: `submitZeroInputStep02(`, `expectProofFitV1`, `publishRemovalReferenceScripts` and `SlashActiveOperator` are each absent from that block while present elsewhere in the same file, which is what makes the absence a measured comparison against the sibling lifecycles rather than a vacuous one. The consequence is narrow but worth stating: no emulator block in this suite watches a zero-input thread reach step 02 and then fail to finalize, so the negative's evidence is about admission, not about finalization.",
+      "owner": "parent"
+    },
+    {
+      "id": "Q14-F7",
+      "severity": "observation",
+      "owns": ["phase-a.ts:138", "native empty-list hash"],
+      "finding": "docs/fault-proofs/coverage-matrix.md line 93 carries two stale descriptions of this family. Its Local cell cites `E_EMPTY_INPUTS` (phase-a.ts:138) against the single enforcement site measured at phase-a.ts:201, and its L1 cell still describes the mechanism as a \"native empty-list hash\" — the retired design in which the validator compared a forwarded commitment against a pinned empty-field constant. Under the flat scheme that comparison would be unsound on its own, because section 4 removed field-index domain separation and all nine empty fields share one commitment; the deployed step reads the authenticated item count out of the section-8.8 door instead. The parent may fix both in the same pass as the Status cell.",
+      "owner": "parent"
+    },
+    {
+      "id": "Q14-F8",
+      "severity": "observation",
+      "owns": ["encode_native_byte_list([])"],
+      "finding": "docs/fault-proofs/catalogue-status.md line 24 describes the same retired mechanism in its Fault-proven cell: \"native `spend_inputs_hash == blake2b_256(encode_native_byte_list([]))` (`step-02.ak`)\". That is the pinned-constant comparison the flat reversion replaced, and step-02.ak no longer contains it; the module's third selector exists precisely to refuse what such a comparison would accept. Parent-owned, fixable in the same pass.",
+      "owner": "parent"
+    },
+    {
+      "id": "Q14-F9",
+      "severity": "observation",
+      "owns": ["EMPTY_SPEND_INPUTS_HASH"],
+      "finding": "demo/midgard-sdk/src/fraud-proof/zero-input.ts carries a stale docstring around `EMPTY_SPEND_INPUTS_HASH` describing it as the value \"which is what `fraud_proofs/zero_input/step_02` compares against\". The deployed step compares nothing of the kind: it opens field 0 and asserts the authenticated item count is zero. The constant itself remains useful off-chain for detection, so this is a comment fix rather than a code fix, but it is the kind of comment that would talk a future reader back into an unsound design.",
+      "owner": "Q00/Q02 SDK owner"
+    },
+    {
+      "id": "Q14-F10",
+      "severity": "observation",
+      "owns": ["field-index domain separation"],
+      "finding": "Worth recording where a future family will look for it: because section 4 removed field-index domain separation, the empty preimage of every one of the nine committed fields hashes to the same value, so for a family whose verdict is \"this field is empty\" the field commitment alone carries no positional identity at all. Positional identity lives inside the section-8.8 door, which is handed the field index and authenticates the count. Any new family that decides a rule from an empty field must read the count through the door rather than compare a commitment, and must bind the index constant on both sides the way output 3 does here.",
+      "owner": "spec/Q02 owner"
+    }
+  ],
+  "summary": {
+    "outputs": 10,
+    "localPass": 9,
+    "open": 1,
+    "notApplicable": 0,
+    "delegatedOutputs": 4,
+    "aikenModules": 2,
+    "aikenSelectorsDeclared": 8,
+    "aikenSelectorsPassed": 8,
+    "aikenPositiveSelectors": 3,
+    "aikenValidBlockNegativeSelectors": 2,
+    "aikenAdditionalNegativeSelectors": 3,
+    "aikenStepScopedSelectors": 8,
+    "aikenModuleHelperSelectors": 0,
+    "committedFieldsOpened": 1,
+    "vitestSuitesExecuted": 5,
+    "vitestTestsPassed": 78,
+    "vitestTitlesRequired": 22,
+    "emulatorBlocksExecuted": 4,
+    "emulatorFamilyBlocks": 2,
+    "emulatorFamilyLifecycles": 1,
+    "emulatorFamilyValidBlockNegatives": 1,
+    "emulatorAdversarialAssertions": 2,
+    "residualFindings": 10
+  },
+  "parentIntegration": {
+    "owner": "parent",
+    "pendingEdits": [
+      "docs/fault-proofs/coverage-matrix.md line 93 (`≥1 input (ZERO-INPUT)`): change the Status cell from `✅ (emulator; author-supplied preprod evidence not independently rerun)` to this family's local closure, in the form the line-95 Q13 row already uses — `✅ Q14 \\`LOCAL_PASS\\` (canonical-v1-proof-family-q14-v1.json); live evidence remains Q57/QG3` — citing this artifact. This is one of the two edits that closes 9.1 output 10 for Q14.",
+      "docs/fault-proofs/catalogue-status.md line 24 (`\\`zero-input\\` (2 steps)`): change the Status cell from `✅ Complete & verified (emulator; author-supplied preprod evidence not independently rerun)` to `✅ Q14 \\`LOCAL_PASS\\` (canonical-v1-proof-family-q14-v1.json); live evidence remains Q57/QG3`, citing this artifact. This is the second of the two edits that closes output 10.",
+      "GOAL_PROGRESS.md: add the Q14 queue row, binding 9.1 outputs 1 to 9 at LOCAL_PASS with the measured numbers in this artifact — 8 of 8 on-chain selectors across two step modules under aiken v1.1.23+2a78108 (3 positive, all step-scoped; 2 valid-block negative, one per step; 3 further negative), committed field 0 of 9 opened through the section-8.8 door with its authenticated item count pinned to 0, 32 of 32 canonical-evidence tests, 30 of 30 SDK fault-proof tests, 7 of 7 prepare-zero-input, 5 of 5 field-opening-v1, and this family's one emulator lifecycle plus one emulator negative inside a 4 of 4 shared ledger-rules suite — and recording output 10 as parent-owned until the two matrix rows land.",
+      "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json row Q14: the schedulingNote still says what keeps the row open is outputs 5 to 9 plus the prescribed per-family surfaces (canonical-v1-proof-family-q14-v1.json, verify-canonical-v1-proof-family-q14.mjs). Outputs 5 to 9 are bound — 5 to 8 in the shared Q1x artifact and 9 here — and both surfaces now exist, so the note needs re-scoping to the queue row and output 10.",
+      "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json row Q14 also carries the stale census recorded as Q14-F4, which the parent may fix in the same pass: the `step-02.ak holds 7 tests / step-01.ak holds 2` split and the `exactly 9 Aiken selectors` and `#545 adds exactly 4 published-chunk selectors to step_01 (5 of 5)` pins, against 5 + 3 = 8 measured; the focusedCommands naming `zero_input_step_01_rejects_a_missing_verifier_invocation` and the retired step-02 selector names, none of which exist anywhere in onchain/ (a runner following them would exit 0 while running fewer checks than it claims); and the `exactly 3 zero-input prepare tests` count against 7 measured.",
+      "docs/fault-proofs/coverage-matrix.md line 93 also carries the stale citations recorded as Q14-F7 — the Local cell's `phase-a.ts:138` against the single enforcement site at phase-a.ts:201, and the L1 cell's \"native empty-list hash\" description of the retired pinned-constant mechanism — and docs/fault-proofs/catalogue-status.md line 24 carries the same retired mechanism in its Fault-proven cell (Q14-F8). Both are safe to fix in the same pass as the Status cells, and both are the kind of description that would talk a future reader back into a design section 4 made unsound.",
+      "demo/midgard-sdk/src/fraud-proof/zero-input.ts carries the stale docstring recorded as Q14-F9, describing `EMPTY_SPEND_INPUTS_HASH` as the value `fraud_proofs/zero_input/step_02` compares against. The deployed step opens field 0 and reads its authenticated item count instead. This is a comment fix in a Q00/Q02-owned module, outside this family's two prescribed surfaces, so it is handed over rather than made here.",
+      "Q14-F5 stays parent-owned and is not closable from a family-local surface: this family HAS a real emulator negative, so the Q12-F4/Q1X-F2 gap does not apply, but both of its emulator refusals are measured to originate off-chain (the builder guard in submit-zero-input-step-01.ts and the door in field-opening-v1.ts). Closing the remaining nuance means an emulator journey that submits a valid-block challenge to the deployed step and watches the SCRIPT fail, which is a new block in a shared suite rather than an edit to either surface prescribed here."
+    ]
+  }
+}

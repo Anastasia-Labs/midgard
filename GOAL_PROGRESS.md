@@ -5646,3 +5646,51 @@ PASS 186/186, 0 defects; the reconciliation verifier executes every
 re-pinned assert green and then exits 1 solely on the accepted Q02
 permissive-dispatch scanner baseline (family-scaffold-v1.test.ts, 1
 of 45, deriveFocusedCheckOutcome) — the same red it carries at HEAD.
+
+## #481 (B13): Q14 per-family closure surfaces built and gated (2026-08-18)
+
+Built the two surfaces the manifest Q14 row prescribes:
+docs/exec-plans/evidence/canonical-v1-proof-family-q14-v1.json gated
+by demo/scripts/verify-canonical-v1-proof-family-q14.mjs — PASS exit 0
+under the pinned fork compiler (aiken v1.1.23+2a78108 via
+MIDGARD_AIKEN_BIN), 9 LOCAL_PASS / 1 OPEN / 0 N/A, independently
+re-run by the parent. Outputs 1–4 and 9 measured family-locally: 8/8
+on-chain selectors across the two step modules (5 in step_01, 3 in
+step_02; 3 positive all step-scoped — scope derived by fixed-point
+reachability of main.spend over comment-stripped source, so a
+module-local unit case cannot stand in for a deleted proof-step
+positive — 2 valid-block negative one per step, 3 further negative, 0
+module-helper); 78 vitest tests over 5 suites with 22 required
+titles; 4 emulator blocks in the shared ledger-rules suite of which 2
+are this family's — 1 lifecycle and 1 genuine valid-block negative
+("rejects a spending transaction before a zero-input thread can
+advance"), so the Q12-F4/Q1X-F2 gap does not apply here; both
+adversarial refusals are measured raised off-chain (Q14-F5,
+parent-owned). Output 3 is LOCAL_PASS as a measured opening: unlike
+the Q10–Q12 siblings, Q14 OPENS committed field 0 (spend inputs)
+through the §8.8 door with field_item_count(spend_inputs_view) == 0
+pinned, FieldOpeningV1 constructor order bound positionally by
+wireIndex, and the enforcement site held to the single-line
+RejectCodes.EmptyInputs opener (phase-a.ts:201). Outputs 5–8
+delegated to the shared Q1x artifact under hard asserts, with the
+spend-input cardinality axis measured out of scope across the 4
+family-owned Aiken modules and gated bidirectionally, plus an
+anti-vacuity sweep requiring the axis tokens to still exist where the
+shared artifact says they do. Output 10 OPEN on the parent-owned
+matrix rows (pendingEdits pinned). Residual-finding ownership is
+CLAIMED, not inferred: each finding declares an owns array, claims
+must appear in the owner's own text, and no two findings may claim
+the same token — this closed two real gate defects the external
+mutation sweep exposed (finding deletion masked by sibling token
+overlap); final sweep 79/79 mutations rejected. Manifest Q14 row
+superseded in place per Q14-F4: the exactly-9 / 2-plus-7 / 5-of-5
+census pins (8 measured), the exactly-3 prepare-tests pin (7
+measured), the 7-and-2 source anchor and its retired
+exact-selector inventory, and the two focused commands citing
+zero_input_step_01_rejects_a_missing_verifier_invocation and six
+retired step-02 names (0 hits in onchain/, so both commands ran short
+while exiting 0) — re-pinned onto the measured selectors. 10 residual
+findings recorded Q14-F1..F10 (gaps F4 manifest drift, F5 off-chain
+refusal origin, F6 four measured absent assertions in the negative
+block — parent/#482-owned). Queue row deferred until output 10
+closes, matching the Q10/Q11/Q12 sequence.
