@@ -4789,3 +4789,54 @@ publication set — the oversized CEK direct resolver is deliberately
 outside that set and stays tracked by P1; evidence pinned to current
 `f49cae22…` applied hashes with an explicit re-pin trigger at #510's
 freeze).
+
+## CG1 aggregate control-publication fit gate built and green (2026-08-18)
+
+The never-built CG1 surfaces now exist, in the CG4 sibling-gate style:
+`demo/scripts/verify-canonical-v1-cg1-control-publication-fit.mjs`, its
+hostile self-test, and the pinned evidence artifact
+`docs/exec-plans/evidence/canonical-v1-cg1-control-publication-fit-v1.json`
+(the two manifest-named writablePaths plus the house-convention self-test
+sibling). Every number was measured, none hand-written:
+
+- **Roster: 34 parameterized hub/control validators, derived from
+  `nodeRuntimeReferenceScriptTargets`
+  (`demo/midgard-node/src/transactions/reference-scripts.ts`), all fit** a
+  real signed publication transaction under the 16,384-byte L1 envelope
+  (emulator pinned to the real maxTxSize). Largest: the V1
+  validation-trace dispute hub at 13,317 signed bytes (margin 3,067),
+  then state-queue minting 12,605 and validation-trace source 12,416.
+  Per-validator pins carry applied hash, serialized script bytes,
+  complete signed transaction bytes, fee, margin, and the publication
+  txHash/outputIndex. The two duplicate applied hashes in the roster are
+  the spend/mint purpose pairs of single scripts (da-params-governor,
+  da-attestation) — expected, not drift.
+- **One exclusion, cited, not silent**: the V1 validation-trace CEK
+  direct resolver (applied body 162,145 bytes; measured signed
+  publication 162,660, margin −146,276 — matching the ledgered C28
+  receipts and `a4bfbd01…`), structurally outside
+  `nodeRuntimeReferenceScriptTargets` and tracked by the P1
+  oversized-validator gate. The verifier recomputes the roster from
+  source and fails on any drift, unjustified exclusion, missing or
+  invented validator.
+- **Hash basis is honest about the freeze**: blueprint `f49cae22…`
+  (398 validators, gitignored working-tree blueprint, reproduced
+  byte-identically from a scratch `aiken build --env testnet` under the
+  pinned fork binary), recorded as PRE_FREEZE with #510's freeze-event
+  regeneration named as the invalidation trigger; CG1's "final validator
+  hashes" binding completes only at #510.
+- **Gates**: verifier exit 0 (roster 34, all fit, waivers 0); self-test
+  exit 0 with 2 positive controls accepted and 25 hostile mutations
+  rejected (oversized pin, tampered hash, dropped/invented validator,
+  unjustified exclusion, stale blueprint pin among them); both
+  re-verified independently by the parent after a prettier-convention
+  reflow. Only the three new files moved.
+
+Known standing contradiction, recorded not repaired: the 2026-08-04
+`canonical-v1-capability-reconciliation-v1.json` and the §status table's
+line-374 row still claim CG1 PASS from the pre-flat-reversion era; the
+2026-08-17 #479 measurement entry and this gate are the current basis.
+Reconciling those rows rides with the C10-C13/CG1 manifest-row
+reconciliation, still owed. Remaining for #479 closure after this: that
+manifest reconciliation, CI wiring of the new gate, and the criterion-5
+consolidated review (owner event).
