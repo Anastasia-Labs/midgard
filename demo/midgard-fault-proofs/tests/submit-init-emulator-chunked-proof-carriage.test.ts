@@ -277,6 +277,7 @@ describe("fault-proof published-chunk proof carriage", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       removalReferenceScriptPublications.published,
     );
 
@@ -550,6 +551,7 @@ describe("fault-proof published-chunk proof carriage", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       removalReferenceScriptPublications.published,
     );
 
@@ -746,6 +748,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     const deploymentInfo = buildRemovalDeploymentInfo(
       contracts,
       catalogue,
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -1053,6 +1056,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     const deploymentInfo = buildRemovalDeploymentInfo(
       contracts,
       catalogue,
+      undefined,
       undefined,
       undefined,
       undefined,

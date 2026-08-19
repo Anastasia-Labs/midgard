@@ -464,6 +464,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       removalReferenceScriptPublications.published,
     );
 

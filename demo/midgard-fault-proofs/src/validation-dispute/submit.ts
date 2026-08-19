@@ -551,6 +551,79 @@ const requireValidationItemObserveReferenceScriptUtxo = async ({
 };
 
 /**
+ * Deployment-info entry that publishes the applied `canonical_decode_v1`
+ * prepare-resolver validator as an L1 reference script. The prepare-selected
+ * step transaction commits the one-step argument — for a tier-1 complete
+ * item its redeemer carries the whole §5.1 preimage inline — so embedding
+ * the ~5.6 KiB applied prepare-resolver body beside that preimage spends the
+ * 16,384-byte L1 envelope the carriage bytes need (#617 follow-up to #597
+ * ruling a; measured step-transaction decomposition, 2026-08-18).
+ */
+export const VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY =
+  "validationTraceDisputeCanonicalDecodePrepare";
+
+export const requireValidationCanonicalDecodePrepareReferenceScriptOutRef = ({
+  deploymentInfo,
+  expectedScriptHash,
+}: {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly expectedScriptHash: string;
+}): { readonly txHash: string; readonly outputIndex: number } => {
+  const entry =
+    deploymentInfo[
+      VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY
+    ];
+  if (entry === undefined) {
+    throw new Error(
+      `Deployment info is missing "${VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY}"; publish the V1 canonical-decode prepare reference script and regenerate deployment info before preparing a complete-item semantic resolution`,
+    );
+  }
+  if (entry.refScriptUTxO == null) {
+    throw new Error(
+      `Deployment info entry "${VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY}" is missing refScriptUTxO; publish the V1 canonical-decode prepare reference script and regenerate deployment info before preparing a complete-item semantic resolution`,
+    );
+  }
+  if (entry.scriptHash !== expectedScriptHash) {
+    throw new Error(
+      `Deployment entry "${VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY}" script hash mismatch: deployment=${entry.scriptHash}, derived=${expectedScriptHash}`,
+    );
+  }
+  return entry.refScriptUTxO;
+};
+
+const requireValidationCanonicalDecodePrepareReferenceScriptUtxo = async ({
+  lucid,
+  deploymentInfo,
+  expectedScriptHash,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly expectedScriptHash: string;
+}): Promise<UTxO> => {
+  const outRef = requireValidationCanonicalDecodePrepareReferenceScriptOutRef({
+    deploymentInfo,
+    expectedScriptHash,
+  });
+  const utxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef,
+    label: "validation canonical-decode prepare reference-script UTxO",
+  });
+  if (utxo.scriptRef == null) {
+    throw new Error(
+      `Validation canonical-decode prepare reference UTxO ${outRefLabel(utxo)} does not carry a reference script`,
+    );
+  }
+  const actualScriptHash = validatorToScriptHash(utxo.scriptRef);
+  if (actualScriptHash !== expectedScriptHash) {
+    throw new Error(
+      `Validation canonical-decode prepare reference script hash mismatch: actual=${actualScriptHash}, expected=${expectedScriptHash}`,
+    );
+  }
+  return utxo;
+};
+
+/**
  * Auth-role name minted onto the published CEK direct-resolver
  * reference-script UTxO (`REFERENCE_SCRIPT_AUTH_TOKEN_NAMES` in
  * `@al-ft/midgard-sdk`).
@@ -4163,12 +4236,15 @@ export const submitValidationDisputePrepareSelected = async ({
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValidationDisputePrepareSelectedResult> => {
   const range = requireValidityRange(validityRange);
-  const { validationTraceDisputeCategory, contracts } =
-    await resolveValidationTraceDisputeDeploymentContracts({
-      blueprint,
-      deploymentInfo,
-      network,
-    });
+  const {
+    deploymentInfo: parsedDeploymentInfo,
+    validationTraceDisputeCategory,
+    contracts,
+  } = await resolveValidationTraceDisputeDeploymentContracts({
+    blueprint,
+    deploymentInfo,
+    network,
+  });
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -4234,6 +4310,18 @@ export const submitValidationDisputePrepareSelected = async ({
       `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at resolver ${resolverIndex.toString()}`,
     );
   }
+  // The complete-canonical-item step transaction sources the prepare-resolver
+  // validator from the published reference script: its redeemer already
+  // carries the tier-1 §5.1 preimage (direct carriage), so the ~5.6 KiB
+  // applied validator body must not ride inside the 16,384-byte L1 envelope
+  // beside it (#617 follow-up to #597 ruling a).
+  const prepareReferenceScriptUtxo = isPrepareCompleteCanonicalItem
+    ? await requireValidationCanonicalDecodePrepareReferenceScriptUtxo({
+        lucid,
+        deploymentInfo: parsedDeploymentInfo,
+        expectedScriptHash: prepareContract.spendingScriptHash,
+      })
+    : undefined;
   const outputDatum = Data.to(
     {
       fraud_prover: inputDatum.fraud_prover,
@@ -4276,9 +4364,15 @@ export const submitValidationDisputePrepareSelected = async ({
     )
     .validFrom(range.validFrom)
     .validTo(range.validTo)
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(prepareContract.spendingScript);
-  const unsigned = await tx.complete({ localUPLCEval: true });
+    .addSignerKey(signer.paymentKeyHash);
+  // The published reference script supplies the prepare-resolver validator;
+  // the step transaction must not embed the validator body inside the
+  // 16,384-byte L1 envelope.
+  const readiedTx =
+    prepareReferenceScriptUtxo === undefined
+      ? tx.attach.SpendingValidator(prepareContract.spendingScript)
+      : tx.readFrom([prepareReferenceScriptUtxo]);
+  const unsigned = await readiedTx.complete({ localUPLCEval: true });
   if (layout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve validation semantic preparation layout",

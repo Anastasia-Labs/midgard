@@ -1789,6 +1789,7 @@ export const buildProvedDoubleSpendFixture = async ({
     undefined,
     undefined,
     undefined,
+    undefined,
     removalReferenceScriptPublications.published,
   );
   const fraudulentBlockOutRef =

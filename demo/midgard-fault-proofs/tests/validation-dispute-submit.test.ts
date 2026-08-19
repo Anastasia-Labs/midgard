@@ -42,11 +42,13 @@ import {
   encodeValidationSemanticResolutionRedeemerV1,
   openValidationDisputeAfterSourceVerification,
   refreshExpiredValidationDisputeValidityRange,
+  requireValidationCanonicalDecodePrepareReferenceScriptOutRef,
   requireValidationCekDirectResolverReferenceScriptOutRef,
   requireValidationItemObserveReferenceScriptOutRef,
   requireValidationItemSemanticReferenceScriptOutRef,
   selectValidationCompleteItemCarriageV1,
   validateCekSubmissionEvidenceV1,
+  VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
@@ -518,6 +520,56 @@ describe("validation-dispute transaction validity", () => {
             scriptHash: otherScriptHash,
             refScriptUTxO,
           },
+        },
+        expectedScriptHash: scriptHash,
+      }),
+    ).toThrow(/script hash mismatch/u);
+  });
+
+  it("requires the published canonical-decode prepare reference script from deployment info", () => {
+    const scriptHash = "ab".repeat(28);
+    const otherScriptHash = "cd".repeat(28);
+    const refScriptUTxO = { txHash: "12".repeat(32), outputIndex: 3 };
+    expect(
+      requireValidationCanonicalDecodePrepareReferenceScriptOutRef({
+        deploymentInfo: {
+          [VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]:
+            {
+              scriptHash,
+              refScriptUTxO,
+            },
+        },
+        expectedScriptHash: scriptHash,
+      }),
+    ).toEqual(refScriptUTxO);
+    expect(() =>
+      requireValidationCanonicalDecodePrepareReferenceScriptOutRef({
+        deploymentInfo: {},
+        expectedScriptHash: scriptHash,
+      }),
+    ).toThrow(
+      /missing "validationTraceDisputeCanonicalDecodePrepare"; publish the V1 canonical-decode prepare reference script/u,
+    );
+    expect(() =>
+      requireValidationCanonicalDecodePrepareReferenceScriptOutRef({
+        deploymentInfo: {
+          [VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]:
+            {
+              scriptHash,
+              refScriptUTxO: null,
+            },
+        },
+        expectedScriptHash: scriptHash,
+      }),
+    ).toThrow(/is missing refScriptUTxO; publish the V1 canonical-decode/u);
+    expect(() =>
+      requireValidationCanonicalDecodePrepareReferenceScriptOutRef({
+        deploymentInfo: {
+          [VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]:
+            {
+              scriptHash: otherScriptHash,
+              refScriptUTxO,
+            },
         },
         expectedScriptHash: scriptHash,
       }),

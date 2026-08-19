@@ -121,6 +121,7 @@ describe("fault-proof emulator integration", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       removalReferenceScriptPublications.published,
     );
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
@@ -421,6 +422,7 @@ describe("fault-proof emulator integration", () => {
     const deploymentInfo = buildRemovalDeploymentInfo(
       contracts,
       catalogue,
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -815,6 +817,7 @@ describe("fault-proof emulator integration", () => {
     const deploymentInfo = buildRemovalDeploymentInfo(
       contracts,
       catalogue,
+      undefined,
       undefined,
       undefined,
       undefined,

@@ -441,6 +441,16 @@ describe("fault-proof emulator integration", () => {
       const itemObserveContract =
         validationDisputeSdkContracts.validationTraceDispute
           .canonicalDecodeItemStages.observe;
+      // The prepare-selected step transaction sources the canonical-decode
+      // prepare-resolver validator from a published reference script too
+      // (#617 follow-up to #597 ruling a): its redeemer carries the tier-1
+      // §5.1 preimage on the direct route, so the ~5.6 KiB applied
+      // prepare-resolver body is published beside the item-semantic and
+      // item-observe ones and pinned as absent from the step transaction
+      // below.
+      const canonicalDecodePrepareContract =
+        validationDisputeSdkContracts.validationTraceDispute
+          .prepareResolvers[0];
       const catalogue = await buildCatalogueDeploymentInfo(
         contracts.fraudProofs,
       );
@@ -540,6 +550,24 @@ describe("fault-proof emulator integration", () => {
           }
         },
       );
+      const canonicalDecodePreparePublication = await runEmulatorLifecycleStage(
+        "reference-script.publish-canonical-decode-prepare",
+        async () => {
+          emulator.protocolParameters = {
+            ...setupProtocolParameters,
+            maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+          };
+          try {
+            return await publishPlainReferenceScriptUtxo({
+              lucid: referenceScriptPublisherLucid,
+              script: canonicalDecodePrepareContract.spendingScript,
+              label: "validation canonical-decode prepare",
+            });
+          } finally {
+            emulator.protocolParameters = setupProtocolParameters;
+          }
+        },
+      );
       const deploymentInfo = buildRemovalDeploymentInfo(
         contracts,
         catalogue,
@@ -551,6 +579,10 @@ describe("fault-proof emulator integration", () => {
         {
           scriptHash: itemObserveContract.spendingScriptHash,
           utxo: itemObservePublication.utxo,
+        },
+        {
+          scriptHash: canonicalDecodePrepareContract.spendingScriptHash,
+          utxo: canonicalDecodePreparePublication.utxo,
         },
       );
       const initResult = await runEmulatorLifecycleStage("init", () =>
@@ -684,21 +716,24 @@ describe("fault-proof emulator integration", () => {
             awaitConfirmation: true,
           }),
       );
-      const selectedResult = await runEmulatorLifecycleStage(
+      const selectedSubmission = await runEmulatorLifecycleStage(
         "prepare-selected",
         () =>
-          submitValidationDisputePrepareSelected({
-            lucid: targetChallengerLucid,
-            blueprint: realBlueprint,
-            deploymentInfo,
-            network,
-            signer: challengerSigner,
-            threadOutRef: prepareResult.nextThreadOutRef,
-            oneStepArgument: fixture.evidence.oneStepArgument,
-            validityRange: validityRange(),
-            awaitConfirmation: true,
-          }),
+          captureEmulatorSubmission(emulator, () =>
+            submitValidationDisputePrepareSelected({
+              lucid: targetChallengerLucid,
+              blueprint: realBlueprint,
+              deploymentInfo,
+              network,
+              signer: challengerSigner,
+              threadOutRef: prepareResult.nextThreadOutRef,
+              oneStepArgument: fixture.evidence.oneStepArgument,
+              validityRange: validityRange(),
+              awaitConfirmation: true,
+            }),
+          ),
       );
+      const selectedResult = selectedSubmission.result;
       const semanticSubmission = await runEmulatorLifecycleStage(
         "semantic-resolution",
         () =>
@@ -858,6 +893,29 @@ describe("fault-proof emulator integration", () => {
       );
       expect(
         observationCbor.includes(itemObserveContract.spendingScript.script),
+      ).toBe(false);
+      // #617 follow-up to #597 ruling a: the prepare-selected step
+      // transaction — the one whose redeemer carries the tier-1 §5.1
+      // preimage on the direct route — likewise stays at or below the
+      // literal 16,384-byte L1 envelope and does not embed the applied
+      // canonical-decode prepare-resolver body; no Plutus script witness at
+      // all — the validator arrives via its published reference script.
+      const selectedMeasurement = selectedSubmission.measurement;
+      expect(selectedMeasurement.completeSignedBytes).toBeLessThanOrEqual(
+        16_384,
+      );
+      expect(selectedMeasurement.plutusV3ScriptCount).toBe(0);
+      expect(selectedMeasurement.plutusV2ScriptCount).toBe(0);
+      expect(selectedMeasurement.plutusV1ScriptCount).toBe(0);
+      expect(selectedMeasurement.nativeScriptCount).toBe(0);
+      expect(selectedMeasurement.referenceInputCount).toBe(1);
+      expect(
+        canonicalDecodePrepareContract.spendingScript.script.length,
+      ).toBeGreaterThan(0);
+      expect(
+        selectedSubmission.transactionCbors[0]!.includes(
+          canonicalDecodePrepareContract.spendingScript.script,
+        ),
       ).toBe(false);
       expect(
         semanticResult.stageTransactions?.map(

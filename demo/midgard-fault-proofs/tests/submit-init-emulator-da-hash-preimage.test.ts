@@ -169,6 +169,7 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       removalReferenceScriptPublications.published,
     );
 

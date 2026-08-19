@@ -165,6 +165,7 @@ import {
   submitValidationDisputeReveal,
   submitValidationDisputeSemanticResolution,
   submitValidationDisputeVerifySource,
+  VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   validationDisputeValidityRange,
@@ -3224,6 +3225,10 @@ export const buildRemovalDeploymentInfo = (
     readonly scriptHash: string;
     readonly utxo: UTxO;
   },
+  validationCanonicalDecodePrepareReference?: {
+    readonly scriptHash: string;
+    readonly utxo: UTxO;
+  },
   removalReferenceScripts?: RemovalReferenceScriptPublications,
 ) => {
   const deploymentEntry = (
@@ -3273,6 +3278,20 @@ export const buildRemovalDeploymentInfo = (
                 outputIndex: validationItemObserveReference.utxo.outputIndex,
               },
             },
+          }),
+      ...(validationCanonicalDecodePrepareReference === undefined
+        ? {}
+        : {
+            [VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]:
+              {
+                scriptHash:
+                  validationCanonicalDecodePrepareReference.scriptHash,
+                refScriptUTxO: {
+                  txHash: validationCanonicalDecodePrepareReference.utxo.txHash,
+                  outputIndex:
+                    validationCanonicalDecodePrepareReference.utxo.outputIndex,
+                },
+              },
           }),
       hubOracleMint: { scriptHash: contracts.hubOracle.policyId },
       fraudProofCatalogueMint: {
@@ -3763,6 +3782,7 @@ export const runForcedValidationDisputeScenario = async (
     contracts,
     catalogue,
     validationDisputePublication,
+    undefined,
     undefined,
     undefined,
     removalReferenceScriptPublications.published,

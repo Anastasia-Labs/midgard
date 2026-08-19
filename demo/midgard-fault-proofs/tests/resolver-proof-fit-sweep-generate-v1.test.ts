@@ -343,6 +343,11 @@ const runResolverScenario = async ({
         ReturnType<typeof buildValidationTraceDisputeFaultProofContracts>
       >["validationTraceDispute"]["canonicalDecodeItemStages"]["observe"]
     | undefined;
+  let canonicalDecodePrepareContract:
+    | Effect.Effect.Success<
+        ReturnType<typeof buildValidationTraceDisputeFaultProofContracts>
+      >["validationTraceDispute"]["prepareResolvers"][number]
+    | undefined;
   if (needsItemSemanticPublication) {
     const validationDisputeSdkContracts = await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({
@@ -360,6 +365,11 @@ const runResolverScenario = async ({
     itemObserveContract =
       validationDisputeSdkContracts.validationTraceDispute
         .canonicalDecodeItemStages.observe;
+    // #617 follow-up: the prepare-selected step transaction sources the
+    // canonical-decode prepare-resolver validator from a published
+    // reference script as well.
+    canonicalDecodePrepareContract =
+      validationDisputeSdkContracts.validationTraceDispute.prepareResolvers[0];
   }
 
   const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
@@ -428,6 +438,11 @@ const runResolverScenario = async ({
         if (itemObserveContract === undefined) {
           throw new Error("Expected item-observe contract to be resolved");
         }
+        if (canonicalDecodePrepareContract === undefined) {
+          throw new Error(
+            "Expected canonical-decode prepare contract to be resolved",
+          );
+        }
         const itemSemanticPublication = await runEmulatorLifecycleStage(
           "reference-script.publish-item-semantic",
           async () => {
@@ -464,6 +479,25 @@ const runResolverScenario = async ({
             }
           },
         );
+        const canonicalDecodePreparePublication =
+          await runEmulatorLifecycleStage(
+            "reference-script.publish-canonical-decode-prepare",
+            async () => {
+              emulator.protocolParameters = {
+                ...setupProtocolParameters,
+                maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+              };
+              try {
+                return await publishPlainReferenceScriptUtxo({
+                  lucid: referenceScriptPublisherLucid,
+                  script: canonicalDecodePrepareContract.spendingScript,
+                  label: "validation canonical-decode prepare",
+                });
+              } finally {
+                emulator.protocolParameters = setupProtocolParameters;
+              }
+            },
+          );
         return buildRemovalDeploymentInfo(
           contracts,
           catalogue,
@@ -475,6 +509,10 @@ const runResolverScenario = async ({
           {
             scriptHash: itemObserveContract.spendingScriptHash,
             utxo: itemObservePublication.utxo,
+          },
+          {
+            scriptHash: canonicalDecodePrepareContract.spendingScriptHash,
+            utxo: canonicalDecodePreparePublication.utxo,
           },
         );
       })()
