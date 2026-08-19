@@ -439,6 +439,7 @@
 | Q11             | Q00–Q03           | parent (#481 B13 integration) | Q11 per-family §9.1 closure surfaces: `canonical-v1-proof-family-q11-v1.json` gated by `demo/scripts/verify-canonical-v1-proof-family-q11.mjs`; outputs 5–8 delegated to the shared Q1x artifact | PASS | `3870f467` | Outputs 1–10 LOCAL_PASS. Measured at the gate under aiken v1.1.23+2a78108: 18/18 on-chain selectors across four step modules (8 positive, 4 valid-block negative, 6 further negative; the #545 published-chunk arms and both #582 witness-faithful exclusion arms are census-held), 32/32 canonical-evidence, 12/12 prepare-non-existent-input, 5/5 field-opening-v1, 53 tests over 4 suites with 22 required titles, this family's one emulator lifecycle inside the 4/4 shared ledger-rules suite; outputs 5–8 hard-delegated to the Q1x cells; output 10 closed by this integration pass's matrix edits (coverage-matrix.md L94, catalogue-status.md L20). The two output-9 gaps stay owned as Q11-F4/Q11-F5 (emulator valid-block negative, slashing assertion). LIVE_PASS remains Q57/QG3 and is not claimed. |
 | Q12             | Q00–Q03           | parent (#481 B13 integration) | Q12 per-family §9.1 closure surfaces: `canonical-v1-proof-family-q12-v1.json` gated by `demo/scripts/verify-canonical-v1-proof-family-q12.mjs`; outputs 5–8 delegated to the shared Q1x artifact | PASS | `11739a53` | Outputs 1–10 LOCAL_PASS. Measured at the gate under aiken v1.1.23+2a78108: 10/10 on-chain selectors across the two step modules (6 positive of which 3 are step-scoped proof-step positives and 3 module-local normalizer unit cases, 2 valid-block negative, 2 further negative; the gate holds a step-scoped-positive floor per module), 32/32 canonical-evidence, 30/30 SDK fault-proof, 6/6 prepare-invalid-range, 72 tests over 4 suites with 16 required titles, this family's one emulator lifecycle inside the 4/4 shared ledger-rules suite; output 3 LOCAL_PASS as a measured committed-field absence (0 of 9 opened, bound to the spec tables); outputs 5–8 hard-delegated to the Q1x cells with the spend-input cardinality axis measured out of scope for this family and gated bidirectionally; output 10 closed by this integration pass's matrix edits (coverage-matrix.md L137, catalogue-status.md L21, in the pinned Q13 form). The output-9 gaps stay owned as Q12-F4/Q12-F5 (no emulator valid-block negative; no adversarial assertion in the journey block — parent/#482). LIVE_PASS remains Q57/QG3 and is not claimed. |
 | Q14             | Q00–Q03           | parent (#481 B13 integration) | Q14 per-family §9.1 closure surfaces: `canonical-v1-proof-family-q14-v1.json` gated by `demo/scripts/verify-canonical-v1-proof-family-q14.mjs`; outputs 5–8 delegated to the shared Q1x artifact | PASS | `3d00322a` | Outputs 1–10 LOCAL_PASS. Measured at the gate under aiken v1.1.23+2a78108: 8/8 on-chain selectors across the two step modules (5 in step_01, 3 in step_02; 3 positive all step-scoped — scope derived by fixed-point reachability of main.spend — 2 valid-block negative one per step, 3 further negative, 0 module-helper), 32/32 canonical-evidence, 30/30 SDK fault-proof, 7/7 prepare-zero-input, 5/5 field-opening-v1, 78 tests over 5 suites with 22 required titles, and 2 of the shared ledger-rules suite's 4 emulator blocks this family's — 1 lifecycle and 1 genuine valid-block negative; output 3 LOCAL_PASS as a measured opening: committed field 0 (spend inputs) opened through the §8.8 door with field_item_count(spend_inputs_view) == 0 pinned and FieldOpeningV1 bound positionally by wire index; outputs 5–8 hard-delegated to the Q1x cells with the spend-input cardinality axis measured out of scope across the 4 family-owned Aiken modules and gated bidirectionally; output 10 closed by this integration pass's matrix edits (coverage-matrix.md L93, catalogue-status.md L24, in the pinned Q13 form). The remaining gaps stay owned as Q14-F5/Q14-F6 (both adversarial refusals measured raised off-chain; four absent assertions in the negative block — parent/#482). LIVE_PASS remains Q57/QG3 and is not claimed. |
+| Q39             | Q00–Q03           | parent (#482 B14 integration) | Q39 per-family §9.1 closure surfaces: `canonical-v1-proof-family-q39-v1.json` gated by `demo/scripts/verify-canonical-v1-proof-family-q39.mjs`; family landed `f4c41818`/`5dadd5d1` | LOCAL_PASS (7/10; outputs 6, 8, 9 ride #617) | `5dadd5d1` | Outputs 1–5, 7 and 10 LOCAL_PASS; outputs 6, 8, 9 OPEN owned by #617 (catalogue registration, CLI verbs, blueprint regeneration — all statuses DERIVED so the wave closes them without artifact edits). Measured at the gate under aiken v1.1.23+2a78108: 16/16 on-chain selectors across four step modules (4 positive, 4 valid-block negative, 8 further negative, all 16 step-scoped), 24/24 vitest across 3 suites (16 family + 8 SDK byte twins), 1 emulator block collected and measured `skipped` at the frozen-blueprint boundary (8 titles absent, control title present), 13 verifier self-tests. Adversarial proof-fit at max_deposit_count_v1 = 10,000 leaves: worst-case membership proof 770 bytes over 6 levels (closed form asserted against a 5-rung real-trie ladder), binding step step_01 payload 1,132 bytes, L1 byte margin 15,252 of 16,384; depth ceiling 115 levels (~2^460 grind) with cardinality measured NOT the binding axis — the binding axis is DepositInfo.l2_datum (committed ceiling 14,786 bytes, opened 15,386), which has NO normative size bound: owned as Q39-F5 (soundness-adjacent, ESCALATED to owner — an oversized committed l2_datum makes the leaf unchallengeable in either arm). Output 10 closed by this pass's matrix edits (coverage-matrix.md L150, catalogue-status.md row 13 L31, in the sibling pinned form with the #617 rider). 9 residual findings owned. LIVE_PASS remains Q57/QG3 and is not claimed. |
 
 ## Decisions
 
@@ -5796,3 +5797,40 @@ four Q02 findings, none from the new files), tsc/eslint/prettier all
 exit 0, attribution scan clean. Remaining on the lane: the Q39 §9.1
 per-family artifact + verifier, queue row, and matrix cells; then
 Q40 → Q42 → Q41.
+
+## 2026-08-18 — Q39 §9.1 closure surfaces land; output 10 closed in the
+## same pass; l2_datum bound ESCALATED to owner
+
+`canonical-v1-proof-family-q39-v1.json` +
+`demo/scripts/verify-canonical-v1-proof-family-q39.mjs` land on the
+B13 template (hard fork-compiler pin, family-locally derived
+outputs, claimed-ownership maps, 13 self-tests, fail-closed on
+compiler identity/blueprint readability/stale dist). Statuses are
+DERIVED, not asserted: outputs 6/8/9 measure OPEN (#617-owned —
+catalogue registration, CLI verbs, blueprint regeneration) and close
+automatically when the wave lands; the build-lane escalation asking
+whether to publish ten LOCAL_PASS was ruled AGAINST — the artifact
+records only what the tree proves. Output 10 closed inside this
+landing pass: coverage-matrix.md L150 re-measured (Build/L1/CLI/
+Tests/Status cells), catalogue-status.md gains numbered row 13 with
+the section-6 row updated, artifact re-pinned surgically
+(rows/recordsLocalPass/output-10/summary 7-3), verifier re-run PASS.
+Adversarial proof-fit measured at the run: 770-byte worst-case
+membership proof at 10,000 leaves (ladder + closed form in
+agreement), binding step step_01 margin 15,252 bytes, and two
+corrections of my own brief recorded — the unbounded content rides
+TWO step redeemers (step-01 leaf preimage, step-03 retained event
+datum), and the committed/opened ceilings are 14,786/15,386 bytes.
+**ESCALATION to owner (Q39-F5, soundness-adjacent):**
+`DepositInfo.l2_datum` (ledger-state.ak:334, `Option<Data>`) has no
+normative size bound; a block producer committing a deposit leaf
+with l2_datum above the measured 14,786-byte ceiling leaves no room
+for the membership witness in the 16,384-byte L1 envelope in EITHER
+fault arm — an unchallengeable fabricated deposit reachable by one
+field's size. The fix (a normative bound in ledger-state.ak + spec)
+is a parameter/bound change and is the owner's; the verifier
+re-measures the ceiling every run so a landed bound moves the
+number. Also recorded: PATH `aiken-fork` is a DIFFERENT fork build
+(v1.1.23+6d14ab2) — sibling gates matching the fork by version
+prefix rather than exact identity would silently accept it; sweep
+owed on the #607-class lane.
