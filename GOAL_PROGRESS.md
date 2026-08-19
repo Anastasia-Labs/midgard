@@ -5834,3 +5834,45 @@ number. Also recorded: PATH `aiken-fork` is a DIFFERENT fork build
 (v1.1.23+6d14ab2) — sibling gates matching the fork by version
 prefix rather than exact identity would silently accept it; sweep
 owed on the #607-class lane.
+
+## 2026-08-18 — Q40 fabricated-withdrawal family lands complete to the
+## blueprint boundary
+
+The Q39 mirror lands in one pass (17 files, disjoint paths — no
+fabricated-deposit file touched): 8 Aiken modules
+(`fraud-proofs/fabricated-withdrawal/step-0{1..4}.ak`, lib +
+validators) with the manifest row's 16 selector names verbatim,
+4/4/4/4 all step-scoped, positives through the real `main.spend`;
+SDK byte twins (8/8) and the 7 fault-proofs surfaces (prepare per
+the B2 pattern under the withdrawals domain — rebuilt MPF committed
+via `commitCountedRoot`, root AND count equality against
+`header.withdrawalsRoot`/`withdrawalCount`; submit modules on an
+explicit `FabricatedWithdrawalContractsV1` record; 16-test family
+suite via direct module import asserting Aiken-measured absolutes
+including both counted withdrawals roots and byte-for-byte step-04
+handoff CBORs; 1 emulator test measured `skipped` at the
+frozen-blueprint boundary, 8 titles absent, control title present).
+The parent applied the pre-ruled P1 barrel line
+(`fabricated-withdrawal-v1.js` in the SDK fraud-proof index) and
+rebuilt the dist; independent re-runs: 4×4 focused selectors EXIT=0,
+normalized format PASS (8/8) under aiken v1.1.23+2a78108,
+fault-proofs tsc 0 errors, family+emulator suites 16 passed /
+1 skipped, SDK twins 8/8, scaffold baseline unchanged (1 of 45, the
+same four Q02 findings). Build-lane fixes worth recording: the SDK
+export collision (`ChallengedHeaderHash*` renamed family-scoped to
+survive the barrel) and a scaffold-scanner regression avoided by
+replacing step-03's wildcard arm with explicit cross-pair
+enumeration. Category id `0000000c` (index 12) pinned at 7 sites,
+CONTINGENT on fabricatedDeposit registering at index 11 first — the
+category-id race note now covers both families. Withdrawal-specific
+soundness surfaces: leaf bytes are refused unless in `serialiseData`
+canonical form (a withdrawal leaf embeds a `Value` map), while
+step-03 event-datum openings re-serialise before hashing; the Aiken
+fixture's single shared event policy cannot distinguish
+deposit-vs-withdrawal hub policies on-chain (documented in step-02),
+closed off-chain by a distinct-policy refusal test — making it
+distinguishable on-chain needs per-event policies in the shared
+fixture (parent-owned). Registration (P2 catalogue append of BOTH
+families + common.ts keys, P3 fault-proofs barrel/runtime/bin) stays
+parent-serialized on #617. Remaining on the lane: Q40 §9.1 closure
+surfaces, then Q42, then Q41.
