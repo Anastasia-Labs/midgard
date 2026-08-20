@@ -687,7 +687,15 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
       }),
     ).rejects.toThrow(/categories\.validationTraceDispute/u);
-  }, 60_000);
+    // This row resolves the full V1 validation-dispute catalogue twice, which
+    // measures ~22 s uncontended but timed out at its previous 60,000 ms
+    // budget in 2 of 4 Midgard Node CI runs (#616) on a step that itself runs
+    // ~46 minutes on shared runners. That is runner contention, not a
+    // slowdown, so the budget follows midgard-node's 420 s precedent for
+    // contention-exposed steps rather than being absorbed into an accepted-red
+    // map. If it still times out here, #616 asks for a diagnosis instead of
+    // another raise.
+  }, 420_000);
 
   it("does not gate double-spend submit-init on stale invalid-range deployment readiness", async () => {
     const blueprint = readBlueprint();
