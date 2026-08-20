@@ -949,7 +949,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       expect(acceptedFit.publicationTransactionBytes).toBeLessThanOrEqual(
         acceptedFit.maxL1TransactionBytes,
       );
-      // Above 8,273 bytes the applied direct route is measured out, so the
+      // Above 12,810 bytes the applied direct route is measured out, so the
       // complete item survives only through reference carriage — this is the
       // "reference before fallback" step, not a fallback.
       expect(acceptedFit.fitsDirectCarriage).toBe(false);

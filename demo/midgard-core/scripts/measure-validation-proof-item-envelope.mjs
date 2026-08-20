@@ -2,15 +2,19 @@
 //
 // Every transaction modelled here sources its validator from a reference input
 // and embeds no script witness. That is the SINGLE-TRANSACTION BY-REFERENCE
-// basis. It is NOT the basis of
+// basis. It is still NOT the basis of
 // `MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes`, which
-// governs `selectValidationCompleteItemCarriageV1`: the deployed direct
-// carriage route embeds the applied validator in the transaction (reference
-// input count 0) and is limited by the observation stage, so its frontier is
-// far smaller than the `semantic-proof-validator-by-reference` boundary below.
+// governs `selectValidationCompleteItemCarriageV1`: since the #617
+// reference-script wiring (#597 ruling a) the deployed direct route also
+// sources every validator by reference, but its frontier is measured
+// end-to-end through the production submitter's five-stage lifecycle and is
+// limited by the authenticate stage, whose dispute-thread continuation,
+// prepare-selected step, and protocol framing this single-transaction model
+// omits — so its frontier is smaller than the
+// `semantic-proof-validator-by-reference` boundary below.
 //
 // Copying that boundary into the direct-carriage constant selects direct
-// carriage for items the observation transaction cannot carry. The
+// carriage for items the authenticate transaction cannot carry. The
 // `consensus-profile-v1` suite pins that boundary in both directions and will
 // fail if it is rebound here.
 import { readFileSync } from "node:fs";

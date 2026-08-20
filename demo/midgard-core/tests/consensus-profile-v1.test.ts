@@ -147,11 +147,15 @@ describe("canonical V1 consensus profile", () => {
   //            `docs/exec-plans/evidence/necessity/`, the same by-reference
   //            basis measured on a complete signed transaction.
   //
-  // The deployed direct-carriage route embeds the applied validator in the
-  // transaction (reference-input count 0) and is limited by the observation
-  // stage, so its frontier is far smaller than either. Binding a by-reference
-  // number here selects direct carriage for items the observation transaction
-  // cannot carry, which the L1 proof envelope then rejects.
+  // Since the #617 reference-script wiring (#597 ruling a; commits dce643b0 +
+  // 0a074421, landing on the branch as cherry-picks) the deployed direct
+  // route also sources every validator by reference, but its frontier is
+  // measured end-to-end through the production submitter's five-stage
+  // lifecycle and is limited by the AUTHENTICATE stage, whose dispute-thread
+  // continuation, prepare-selected step, and protocol framing the two
+  // single-transaction models above omit — so its reliable frontier stays
+  // below both. Binding either number here selects direct carriage for items
+  // the authenticate transaction cannot reliably carry.
   it("pins the direct complete-item carriage frontier in both directions", () => {
     const reserve =
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes;
@@ -160,13 +164,16 @@ describe("canonical V1 consensus profile", () => {
     const frontier =
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
 
-    // Anchored to the deployed five-stage measurement, observation limiting.
+    // Anchored to the deployed five-stage measurement, authenticate limiting.
+    // Owner-signed rebind 2026-08-18 (#597 ruling b / #617): measured exact
+    // 13,294 / reserve 12,810 on the post-wiring production route
+    // (dce643b0 + 0a074421, landing on the branch as cherry-picks).
     expect(reserve).toBe(512);
     expect(budget).toBe(15_872);
-    expect(frontier).toBe(8_273);
+    expect(frontier).toBe(12_810);
     expect(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactDirectCompleteItemBytes,
-    ).toBe(8_769);
+    ).toBe(13_294);
 
     // Mirrors `selectValidationCompleteItemCarriageV1`. The production selector
     // lives in `@al-ft/midgard-fault-proofs` (importing it here would invert the
@@ -178,10 +185,10 @@ describe("canonical V1 consensus profile", () => {
       itemBytes <= frontier ? "direct" : "reference";
 
     // Direction 1: the frontier item is carried directly.
-    expect(carriage(8_273)).toBe("direct");
+    expect(carriage(12_810)).toBe("direct");
     // Direction 2: one byte over is NOT. Widening this boundary is a soundness
     // regression, not a fix.
-    expect(carriage(8_274)).toBe("reference");
+    expect(carriage(12_811)).toBe("reference");
     // The two by-reference frontiers must both fall in the reference region.
     expect(carriage(13_282)).toBe("reference");
     expect(carriage(13_998)).toBe("reference");
@@ -201,11 +208,15 @@ describe("canonical V1 consensus profile", () => {
     ).toBe(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemProofTransactionBytes,
     );
-    // Observation, not authentication, is the stage that governs the bound.
+    // Authentication, not observation, is the stage that governs the bound
+    // since the #617 reference-script wiring un-bound the observe door
+    // (dce643b0) and the prepare resolver (0a074421): the authenticate stage
+    // carries the whole item preimage inline in its redeemer, so it is the
+    // stage that grows fastest with the item.
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemObservationTransactionBytes,
-    ).toBeGreaterThan(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemAuthenticationTransactionBytes,
+    ).toBeGreaterThan(
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemObservationTransactionBytes,
     );
 
     // The zero-reserve frontier may exceed the reliable one by at most the
@@ -216,9 +227,10 @@ describe("canonical V1 consensus profile", () => {
     expect(slack).toBeGreaterThan(0);
     expect(slack).toBeLessThanOrEqual(reserve);
 
-    // Embedding the applied validator is what makes direct carriage expensive:
-    // the identical proof resolved by reference costs a fraction of the
-    // transaction, which is why the reference route exists at all.
+    // Carrying the whole item preimage inline in the redeemer is what makes
+    // direct carriage expensive: the identical proof resolved by reference to
+    // a published proof-item UTxO costs a fraction of the transaction, which
+    // is why the reference route exists at all.
     expect(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.referenceCompleteItemProofTransactionBytes,
     ).toBeLessThan(

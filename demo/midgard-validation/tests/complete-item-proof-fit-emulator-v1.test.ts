@@ -764,24 +764,14 @@ const measureDirectAt = async (
 };
 
 /**
- * The deployed-route variant of `measureDirectAt`: the semantic resolver is
- * parked as a reference script and sourced through a reference input, the way
- * `submitValidationDisputeSemanticResolution`'s authenticate stage sources the
- * published `validationTraceDisputeItemSemantic` copy — one reference input on
- * the direct route, no embedded script. The parking transaction rides the
- * raised emulator ceiling and is not part of the measurement.
+ * Parks the applied semantic resolver as a reference script and returns the
+ * UTxO that sources it, the way the deployed route publishes the resolver
+ * once and reads it thereafter. The parking transaction rides the raised
+ * emulator ceiling and is not part of any measurement.
  */
-const measureByReferenceAt = async (
-  itemBytes: number,
-): Promise<{
-  readonly itemCase: CanonicalDecodeItemCase;
-  readonly measurement: CompleteSignedTransactionMeasurement;
-  readonly outputDatum: string;
-}> => {
-  const itemCase = await buildCanonicalDecodeItemCase(itemBytes);
-  const harness = await setupEmulator([
-    preparedThreadDatumCbor(itemCase, SIGNER_HASH),
-  ]);
+const parkSemanticReferenceScript = async (
+  harness: EmulatorHarness,
+): Promise<UTxO> => {
   const parkAddress = credentialToAddress(
     "Custom",
     scriptHashToCredential("2f".repeat(28)),
@@ -803,6 +793,28 @@ const measureByReferenceAt = async (
   if (validatorReferenceUtxo === undefined) {
     throw new Error("semantic resolver reference script failed to park");
   }
+  return validatorReferenceUtxo;
+};
+
+/**
+ * The deployed-route variant of `measureDirectAt`: the semantic resolver is
+ * parked as a reference script and sourced through a reference input, the way
+ * `submitValidationDisputeSemanticResolution`'s authenticate stage sources the
+ * published `validationTraceDisputeItemSemantic` copy — one reference input on
+ * the direct route, no embedded script.
+ */
+const measureByReferenceAt = async (
+  itemBytes: number,
+): Promise<{
+  readonly itemCase: CanonicalDecodeItemCase;
+  readonly measurement: CompleteSignedTransactionMeasurement;
+  readonly outputDatum: string;
+}> => {
+  const itemCase = await buildCanonicalDecodeItemCase(itemBytes);
+  const harness = await setupEmulator([
+    preparedThreadDatumCbor(itemCase, SIGNER_HASH),
+  ]);
+  const validatorReferenceUtxo = await parkSemanticReferenceScript(harness);
   const result = await submitSemanticProof({
     harness,
     itemCase,
@@ -941,13 +953,22 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
   }, 120_000);
 
   it("measures applied direct authentication at the staged reliability boundary", async () => {
-    // The observation stage is the limiting direct-carriage transaction and
-    // is pinned by the full five-stage fault-proof emulator lifecycle. This
-    // narrower validator test proves that the preceding authentication stage
-    // also fits when it embeds the applied script and exact boundary item.
+    // The authenticate stage is the limiting direct-carriage transaction
+    // since the #617 reference-script wiring (#597 ruling a; dce643b0 +
+    // 0a074421, landing on the branch as cherry-picks): the deployed route
+    // sources the applied resolver from its published reference script, and
+    // the frontier constant is owner-signed on exactly that measured basis
+    // (#597 ruling b, exact 13,294 / reserve 12,810). This narrower validator
+    // test proves the authenticate-shape transaction fits the reliability
+    // budget at the boundary item on the production basis. The
+    // embedded-validator variant this row measured through the counted era
+    // (14,270 signed bytes at the retired 8,273 frontier) cannot fit the
+    // envelope at the rebound frontier — un-binding it is what the wiring
+    // wave was for — so embedding near the boundary is route waste, pinned
+    // by the tier-1 cap row below rather than here.
     const reliableItemBytes =
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
-    const authentication = await measureDirectAt(reliableItemBytes);
+    const authentication = await measureByReferenceAt(reliableItemBytes);
     expect(authentication.measurement.redeemerCount).toBe(1);
     expect(authentication.measurement.completeSignedBytes).toBeLessThanOrEqual(
       MAX_L1_PROOF_TX_BYTES -
@@ -959,7 +980,7 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     expect(
       Number(authentication.measurement.executionSteps),
     ).toBeLessThanOrEqual(RESERVED_CPU_UNITS);
-    expect(authentication.measurement.referenceInputCount).toBe(0);
+    expect(authentication.measurement.referenceInputCount).toBe(1);
     expect(authentication.measurement.completeSignedBytes).toBeLessThanOrEqual(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemAuthenticationTransactionBytes,
     );
@@ -994,7 +1015,7 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     // transaction around it, so M2 was narrowed rather than closed. This row
     // builds and submits that transaction. The production route cannot
     // produce it: `selectValidationCompleteItemCarriageV1` forces reference
-    // carriage far below the cap (its boundary is 8,273, a deliberately
+    // carriage far below the cap (its boundary is 12,810, a deliberately
     // different axis than §8.4's 14,336 — docs/spec/midgard-tx.md §8.4 note),
     // so the hand-built authenticate-stage redeemer here is the only producer
     // of the worst-case inline step transaction — exactly the shape the
@@ -1046,7 +1067,7 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
 
     // The actual fitting frontier, bisected on the deployed route: the
     // largest complete item whose signed authenticate transaction fits
-    // maxTxSize. `maxReliableDirectCompleteItemBytes` (8,273) is a known
+    // maxTxSize. `maxReliableDirectCompleteItemBytes` (12,810) is a known
     // fitting floor; the cap is the measured overflow above. This is the
     // number a repricing decision needs.
     // Not every exact item size is constructible — the datum filler's chunk
@@ -1204,17 +1225,23 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
   it("reaches the identical terminal state through direct and reference carriage of the same item", async () => {
     // Same complete item, both representations, one emulator: the deployed
     // validator must accept both and bind the identical continuation state.
+    // Both legs source the resolver from its parked reference script — the
+    // production basis since the #617 wiring; at the rebound 12,810-byte
+    // frontier the embedded-validator direct shape no longer fits the
+    // 16,384-byte envelope at all.
     const itemBytes =
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
     const itemCase = await buildCanonicalDecodeItemCase(itemBytes);
     const threadDatum = preparedThreadDatumCbor(itemCase, SIGNER_HASH);
     const harness = await setupEmulator([threadDatum, threadDatum]);
     const [directThread, referenceThread] = harness.threadUtxos;
+    const validatorReferenceUtxo = await parkSemanticReferenceScript(harness);
 
     const direct = await submitSemanticProof({
       harness,
       itemCase,
       threadUtxo: directThread!,
+      validatorReferenceUtxo,
     });
     const publication = await publishProofItem({ harness, itemCase });
     const reference = await submitSemanticProof({
@@ -1222,6 +1249,7 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
       itemCase,
       threadUtxo: referenceThread!,
       proofItemReferenceUtxo: publication.utxo,
+      validatorReferenceUtxo,
     });
 
     expect(direct.outputDatum).toBe(reference.outputDatum);

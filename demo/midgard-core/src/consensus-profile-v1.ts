@@ -51,7 +51,7 @@ const MAX_L1_FAULT_PROOF_TX_BYTES = 16 * 1024;
 // 14,396 raw item bytes: the applied SDK publisher produces a 15,256-byte
 // complete signed transaction at that cap, retaining 1,128 bytes below the
 // 16,384-byte deployment floor. Direct carriage is separately bounded by the
-// larger of the authentication and observation transactions below.
+// authenticate stage of the production five-stage submitter, measured below.
 const MAX_SINGLE_PUBLICATION_COMPLETE_ITEM_BYTES = 14_396;
 // This reservation applies to one independently revealed proof chunk. It is
 // not a user-facing field or transaction limit: aggregate fields are
@@ -104,11 +104,35 @@ export const MIDGARD_V1_ENVELOPE_MEASUREMENTS = Object.freeze({
   maxReliableCompleteItemPublicationDatumBytes: 15_624,
   maxReliableCompleteItemPublicationMinAdaLovelace: 68_231_610,
   maxReliableCompleteItemPublicationFeeLovelace: 853_925,
-  maxExactDirectCompleteItemBytes: 8_769,
-  maxReliableDirectCompleteItemBytes: 8_273,
+  // Rebound 2026-08-19 (owner-signed 2026-08-18, #597 ruling b / #617;
+  // issued against the #617 wave commits dce643b0 + 0a074421, which land on
+  // the branch as cherry-picks): the frontier is measured end-to-end through
+  // the production five-stage submitter after the reference-script wiring
+  // moved the item-observe door (dce643b0) and the canonical-decode prepare
+  // resolver (0a074421) out of the transaction body. The binder is the
+  // AUTHENTICATE stage: at the reserve frontier it sits exactly on the
+  // 15,872-byte reliability budget (16,384 - 512). Adjacent-item probe
+  // ledger (signed authenticate bytes; the frontier is the largest item
+  // whose transaction the builder completes):
+  //   item 12,810 -> 15,872 (= budget)   item 12,811 -> 15,873
+  //   item 13,294 -> 16,371 (fits)       item 13,295 -> builder-refused
+  //                                      (estimate 16,385 > maxTxSize)
+  // The retired counted-era pins (exact 8,769 / reliable 8,273) measured the
+  // pre-wiring route, whose limiting stage embedded a validator body. The
+  // three per-transaction rows below re-pin the measured production stage
+  // table at the reserve frontier: authenticate 15,872 (binder), observation
+  // 15,138; the proof row remains the largest direct-route stage
+  // transaction, which the reserve frontier by construction places on the
+  // budget. The authentication row's former 14,543 basis — the
+  // embedded-validator authentication probe in
+  // `complete-item-proof-fit-emulator-v1.test.ts` — is retired: embedding
+  // no longer fits the envelope at the new frontier, which is what the
+  // wiring wave was for.
+  maxExactDirectCompleteItemBytes: 13_294,
+  maxReliableDirectCompleteItemBytes: 12_810,
   maxReliableDirectCompleteItemProofTransactionBytes: 15_872,
-  maxReliableDirectCompleteItemAuthenticationTransactionBytes: 14_543,
-  maxReliableDirectCompleteItemObservationTransactionBytes: 15_872,
+  maxReliableDirectCompleteItemAuthenticationTransactionBytes: 15_872,
+  maxReliableDirectCompleteItemObservationTransactionBytes: 15_138,
   referenceCompleteItemProofTransactionBytes: 8_275,
   referenceCompleteItemAuthenticationTransactionBytes: 5_967,
   referenceCompleteItemObservationTransactionBytes: 7_296,
