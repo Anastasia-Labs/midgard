@@ -839,6 +839,117 @@ describe("Q02 permissive-dispatch scanner", () => {
     ).toEqual(["ts_data_any"]);
   });
 
+  // The shipped field-8 arm of `native-binding-fixture-v1.ak` is a wildcard
+  // whose block opens with `expect field_index == 8`, so it refuses every case
+  // the explicit arms did not take. That is enumerate-and-refuse, not
+  // default-accept (owner-adjudicated 2026-08-18). The narrowing turns on two
+  // conditions, and the hostile controls below remove each in turn.
+  it("permits a refusing catch-all arm and still catches every permissive one", () => {
+    const ruleIds = (contents: string): readonly string[] =>
+      scanForPermissiveDispatchV1({
+        path: "sample.ak",
+        language: "aiken",
+        contents,
+      }).map((finding) => finding.ruleId);
+
+    // Benign: the arm's first statement refuses everything but field 8.
+    expect(
+      ruleIds(
+        "    _ -> {\n      expect field_index == 8\n      Pair(body, x)\n    }\n",
+      ),
+    ).toEqual([]);
+
+    // Hostile: a bare wildcard, with no refusal at all.
+    expect(ruleIds("    _ -> accept_step(datum)\n")).toContain(
+      "ak_catch_all_arm",
+    );
+    // Hostile: a block that opens on real work rather than a refusal.
+    expect(ruleIds("    _ -> {\n      Pair(body, x)\n    }\n")).toContain(
+      "ak_catch_all_arm",
+    );
+    // Hostile: the `expect` is reached only after other statements, so it does
+    // not gate the arm.
+    expect(
+      ruleIds(
+        "    _ -> {\n      let n = field_index\n      expect n == 8\n    }\n",
+      ),
+    ).toContain("ak_catch_all_arm");
+    // Hostile: `expect <pattern> = ...` destructures without refusing.
+    expect(
+      ruleIds(
+        "    _ -> {\n      expect Some(v) = lookup(x)\n      Pair(body, v)\n    }\n",
+      ),
+    ).toContain("ak_catch_all_arm");
+    // Hostile: an `expect` that asserts nothing.
+    expect(
+      ruleIds("    _ -> {\n      expect True\n      Pair(body, x)\n    }\n"),
+    ).toContain("ak_catch_all_arm");
+    // Hostile: an `expect` that discards the shape check it appears to make.
+    expect(
+      ruleIds(
+        "    _ -> {\n      expect _ = decode(d)\n      Pair(body, x)\n    }\n",
+      ),
+    ).toContain("ak_catch_all_arm");
+  });
+
+  // Two shipped `??` fallbacks carry no dispatch decision: a verdict *name*
+  // used only as a human-readable diagnostic label, and an absent asset
+  // quantity defaulted to zero under an equality test against one, where
+  // absence can only fail. Both are owner-adjudicated benign (2026-08-18);
+  // a fallback that feeds a verdict, a handler, or a widened acceptance is not.
+  it("permits label-only and conservative fallbacks while catching dispatching ones", () => {
+    const ruleIds = (contents: string): readonly string[] =>
+      scanForPermissiveDispatchV1({
+        path: "sample.ts",
+        language: "typescript",
+        contents,
+      }).map((finding) => finding.ruleId);
+
+    // Benign: a quoted string bound to a `*Name`-shaped diagnostic key.
+    expect(
+      ruleIds(
+        '    verdictName: MIDGARD_ENVELOPE_VERDICT_NAMES_V1[verdict] ?? "unknown",\n',
+      ),
+    ).toEqual([]);
+    // Benign: absent quantity defaults to zero and cannot satisfy `=== 1n`.
+    expect(
+      ruleIds(
+        "      (utxo) => (utxo.assets[unit] ?? 0n) === 1n && ok(utxo),\n",
+      ),
+    ).toEqual([]);
+
+    // Hostile: the fallback supplies a handler, i.e. a dispatch target.
+    expect(
+      ruleIds("  const handler = registry[family] ?? fallbackHandler;\n"),
+    ).toContain("ts_dynamic_registry_dispatch");
+    // Hostile: the same string-literal shape, but it feeds a verdict.
+    expect(
+      ruleIds('    verdict: MIDGARD_VERDICTS[key] ?? "accept",\n'),
+    ).toContain("ts_dynamic_registry_dispatch");
+    // Hostile: a label-shaped key whose fallback is computed, not a literal.
+    expect(
+      ruleIds("    verdictName: NAMES[verdict] ?? deriveName(verdict),\n"),
+    ).toContain("ts_dynamic_registry_dispatch");
+    // Hostile: a string-literal fallback bound to a key that is not a label.
+    expect(ruleIds('    nextStep: STEPS[index] ?? "default",\n')).toContain(
+      "ts_dynamic_registry_dispatch",
+    );
+    // Hostile: `?? 1n` widens acceptance — an absent token now matches.
+    expect(
+      ruleIds(
+        "      (utxo) => (utxo.assets[unit] ?? 1n) === 1n && ok(utxo),\n",
+      ),
+    ).toContain("ts_dynamic_registry_dispatch");
+    // Hostile: the default itself satisfies the comparison.
+    expect(
+      ruleIds("      (u) => (counts[key] ?? 0n) === 0n && ok(u),\n"),
+    ).toContain("ts_dynamic_registry_dispatch");
+    // Hostile: a truthy default.
+    expect(
+      ruleIds("      (u) => (flags[key] ?? true) === true && ok(u),\n"),
+    ).toContain("ts_dynamic_registry_dispatch");
+  });
+
   it("throws with every finding when asked to gate artifacts", () => {
     try {
       assertNoPermissiveDispatchV1([

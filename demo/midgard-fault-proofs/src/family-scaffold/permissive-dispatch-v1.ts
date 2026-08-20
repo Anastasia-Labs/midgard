@@ -25,6 +25,16 @@
  * requires every rule to fire on a sample of the construct it names. So the
  * scanner is neither vacuous nor noisy.
  *
+ * Three constructs are default-accept in shape but not in effect, and each is
+ * excluded by a guard narrow enough to name it rather than by a loosened
+ * pattern (owner-adjudicated 2026-08-18): a wildcard arm whose block opens with
+ * a refusing `expect`, an indexed lookup whose fallback is a quoted string
+ * bound to a `*Name`-shaped diagnostic key, and one whose fallback is zero
+ * under an equality test against a non-zero quantity. Each guard is paired
+ * with hostile negative controls in the suite: an unguarded arm, an arm whose
+ * `expect` is a binding or follows other statements, a fallback that feeds a
+ * verdict or a handler, and a default that widens acceptance all still fire.
+ *
  * Known bound: the rules are line-based, not parsed. `ak_opaque_data_parameter`
  * therefore accepts `List<Data>`/`Option<Data>`-style opaque carriers, which are
  * decoded explicitly by their callers. A genuinely opaque canonical field —
@@ -63,11 +73,13 @@ type Rule = {
   /** Matches a single logical line (comments already stripped). */
   readonly pattern: RegExp;
   /**
-   * Optional guard applied to the match. `before` is the artifact text
-   * immediately preceding the match, across line boundaries, so a construct
-   * that a formatter wrapped onto its own line is still judged in context.
+   * Optional guard applied to the match. `before` and `after` are the artifact
+   * text immediately preceding and following the match, across line
+   * boundaries, so a construct that a formatter wrapped onto its own line is
+   * still judged in context. `after` is what lets a guard read the statement a
+   * match introduces — an arm's body, or the fallback value of a `??`.
    */
-  readonly accept?: (before: string) => boolean;
+  readonly accept?: (before: string, after: string) => boolean;
 };
 
 const AIKEN = ["aiken"] as const;
@@ -98,6 +110,57 @@ const isOpaqueDataContainer = (before: string): boolean =>
 const isPermittedOpaqueData = (before: string): boolean =>
   isStepDatumPhantom(before) || isOpaqueDataContainer(before);
 
+/**
+ * A wildcard arm is not a default-accept when it opens a block whose *first*
+ * statement is a refusing `expect`: the arm then rejects every case that
+ * assertion does not admit, which is the enumerate-and-refuse shape the rule
+ * exists to require. `native-binding-fixture-v1.ak`'s field-8 arm is the
+ * shipped example — fields 6 and 7 are explicit arms and `_ -> { expect
+ * field_index == 8 ... }` refuses everything that is not 8.
+ *
+ * Two conditions carry the narrowing, and both are load-bearing. The `expect`
+ * must assert a *condition*, not bind a pattern: `expect x = decode(d)`
+ * destructures without refusing anything and `expect True` refuses nothing at
+ * all, so a comparison operator is required. And it must be the arm's *first*
+ * statement — an `expect` reached only after other work does not gate the arm.
+ */
+const isRefusingCatchAllArm = (_before: string, after: string): boolean =>
+  /^[^\S\n]*\{\s*expect[^\S\n]+[^\n=<>!]*(?:==|!=|>=|<=|>|<)[^\n]*\n/u.test(
+    after,
+  );
+
+/**
+ * `NAMES[verdict] ?? "unknown"` supplies a *diagnostic label*, never a
+ * decision: the fallback is a quoted string and the value lands in a
+ * `*Name`-shaped key that only ever reaches a human reading evidence. Both
+ * halves are required, so a fallback that feeds a verdict, a handler, or any
+ * other dispatch decision keeps firing — either its target is not
+ * label-shaped (`verdict: VERDICTS[k] ?? "accept"`) or its fallback is not a
+ * literal string (`registry[k] ?? fallbackHandler`).
+ */
+const isLabelOnlyFallback = (before: string, after: string): boolean =>
+  /\b[A-Za-z_$][\w$]*(?:Name|Label|Description)\s*:\s*$/u.test(before) &&
+  /^\s*"[^"\n]*"\s*[,;)\]]/u.test(after);
+
+/**
+ * `(utxo.assets[unit] ?? 0n) === 1n` defaults an absent quantity to zero and
+ * then requires a non-zero one, so an absent value can only ever *fail* the
+ * test. That is the conservative direction — the opposite of a default-accept.
+ * A widening default (`?? 1n`, `?? true`) or a comparison the default itself
+ * satisfies (`?? 0n) === 0n`) keeps firing.
+ */
+const isConservativeZeroDefault = (_before: string, after: string): boolean => {
+  const match = /^\s*0n?\s*\)\s*===\s*(\d+)n?\b/u.exec(after);
+  return match !== null && /[1-9]/u.test(match[1] ?? "");
+};
+
+const isNonDispatchingIndexedFallback = (
+  before: string,
+  after: string,
+): boolean =>
+  isLabelOnlyFallback(before, after) ||
+  isConservativeZeroDefault(before, after);
+
 export const PERMISSIVE_DISPATCH_RULES_V1: readonly Rule[] = [
   {
     ruleId: "ak_catch_all_arm_true",
@@ -114,6 +177,7 @@ export const PERMISSIVE_DISPATCH_RULES_V1: readonly Rule[] = [
     explanation:
       "a wildcard match arm hides unenumerated cases; enumerate every constructor and `fail`, `False`, or `None` on the rest",
     pattern: /(^|\s)_\s*(\w+\s*)?->(?!\s*(fail|False|None)\b)/u,
+    accept: isRefusingCatchAllArm,
   },
   {
     ruleId: "ak_always_true_predicate",
@@ -183,6 +247,7 @@ export const PERMISSIVE_DISPATCH_RULES_V1: readonly Rule[] = [
     explanation:
       "an indexed registry lookup with a fallback dispatches to an unenumerated handler",
     pattern: /\w+\[[^\]]+\]\s*\?\?/u,
+    accept: isNonDispatchingIndexedFallback,
   },
   {
     ruleId: "ts_any_type",
@@ -267,7 +332,9 @@ export const scanForPermissiveDispatchV1 = (
         Math.max(0, globalIndex - 96),
         globalIndex,
       );
-      if (rule.accept?.(before) === true) {
+      const matchEnd = globalIndex + match[0].length;
+      const after = artifact.contents.slice(matchEnd, matchEnd + 160);
+      if (rule.accept?.(before, after) === true) {
         continue;
       }
       findings.push({
