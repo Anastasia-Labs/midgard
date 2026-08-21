@@ -3,6 +3,7 @@ import {
   cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  encodeMidgardSpendInputItemV1,
 } from "@al-ft/midgard-core/codec";
 import {
   type QueuedTx,
@@ -150,9 +151,14 @@ describe("phase-a converted fixture signature bridge", () => {
     expect(phaseA.rejected, JSON.stringify(phaseA.rejected)).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
 
+    // Phase B keys the pre-state by the §5.3 fixed-index item form, not CML's
+    // minimal TransactionInput encoding.
     const preState = new Map<string, Buffer>([
       [
-        Buffer.from(input.to_cbor_bytes()).toString("hex"),
+        encodeMidgardSpendInputItemV1({
+          txId: Buffer.from("11".repeat(32), "hex"),
+          outputIndex: 0,
+        }).toString("hex"),
         makePubKeyOutput(
           signerKey.to_public().hash(),
           CML.Value.from_coin(3_000_000n),
