@@ -717,7 +717,43 @@ Formal specification:
 \end{split}
 \end{empheq}
 
-\todo
+The $min\_ada\_value$ function is the Cardano minimum-Ada rule verbatim. The
+target ledger prices an output at its serialized size plus the fixed
+$160$-byte UTxO entry overhead it adds to every output, at the target
+network's $coins\_per\_utxo\_byte$ protocol parameter:
+\[
+    min\_ada\_value(o) =
+      coins\_per\_utxo\_byte \cdot
+      \bigl(160 + |\T{serialised\_output}(o)|\bigr),
+\]
+where $|\T{serialised\_output}(o)|$ is the length in bytes of the canonical
+output encoding of $o$ used throughout this specification.
+
+The rate is not a constant of this specification: $coins\_per\_utxo\_byte$ is
+read from the pinned target-parameter snapshot (C70), so a snapshot change
+re-derives every floor and invalidates the pinned vectors and proof-fit
+evidence that depend on it. The floor is exactly the target-network limit: it
+is linear in the serialized size with slope $coins\_per\_utxo\_byte$ and
+carries no additional Midgard margin at any size, so an output the target
+network funds adequately is never rejected by this rule. There is no arbitrary
+sub-cap, and no substitution of an off-chain wallet check or a constant for the
+parameterized floor.
+
+Both violations below evaluate this same $min\_ada\_value$: MIN-ADA-TX over an
+output of a transaction in the block, and MIN-ADA-UTXO over a UTxO of the
+post-block set. An under-funded output is therefore convictable whether it is
+produced by a transaction under proof or is only observable in the resulting
+UTxO set, and cannot evade conviction by reaching state through a route a
+transaction-shaped proof cannot address.
+
+The rule has two hand-written implementations --- the on-chain validation
+machine's $\T{min\_ada\_lovelace\_v1}$ / $\T{output\_meets\_min\_ada\_v1}$ and
+their off-chain $\T{minAdaLovelaceV1}$ / $\T{outputMeetsMinAdaV1}$ twin --- and
+neither derives from the other. They are bound together by a cross-language
+cross-check that pins absolute floors, in lovelace, over shared serialized
+output vectors, including the exactly-at-the-floor accept and
+one-lovelace-below reject legs. Changing the slope, the intercept, or the
+comparison in either copy alone fails that cross-check.
 
 This ledger rule is violated if any of the following violations occur:
 \begin{itemize-multi}

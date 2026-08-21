@@ -159,6 +159,18 @@ export const mintDeltaToScriptMintValue = (
 // Cardano minimum-Ada floor for one ledger output is linear in its serialized
 // size, with a fixed 160-byte UTxO entry overhead and no additional Midgard
 // margin at any size.
+//
+// This is a HAND MIRROR of the Aiken twin, not a call into a ledger library.
+// `CML.min_ada_required` does appear in
+// `demo/midgard-sdk/src/fraud-proof/validation-proof-item-v1.ts`, but it funds a
+// _proof publication output_ on L1 and is not this consensus quantity; do not
+// read the two as the same computation (decision 0003, Q27).
+//
+// D-S4 (#618): because both copies are hand-written, they are bound to each
+// other on pinned absolute vectors -- including the exactly-at-the-floor accept
+// and one-lovelace-below reject legs -- by
+// `tests/min-ada-twin-cross-check-v1.test.ts`. Changing the slope, the
+// intercept, or the comparison on either side fails that suite.
 export const MIN_ADA_OUTPUT_OVERHEAD_BYTES_V1 = 160n;
 
 export const minAdaLovelaceV1 = (
