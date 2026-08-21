@@ -296,6 +296,13 @@ describe("zz609 the arity check is the only door", () => {
       allowed: 1,
       helper: "applyBlueprintDeclaredParams",
     },
+    // The emulator harness deploys the real blueprint into a real ledger, so
+    // an under-applied script there greens a test instead of a chain (#610).
+    {
+      path: "demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts",
+      allowed: 1,
+      helper: "applyCompiledScript",
+    },
   ] as const;
 
   it("routes every production deployment through the arity-checking helper", () => {
@@ -319,7 +326,18 @@ describe("zz609 the arity check is the only door", () => {
     // declared parameter would keep being deployed under-applied — the #605
     // always-succeeds shape with no failing gate. So every production source
     // that touches `compiledCode` must be one of the known doors.
-    const scanRoots = ["demo/midgard-sdk/src", "demo/midgard-node/src"];
+    const scanRoots = [
+      "demo/midgard-sdk/src",
+      "demo/midgard-node/src",
+      // The two fault-proofs sites the #608 addendum classified and the #610
+      // ruling (2026-08-18) put inside the door: the runtime loader in `src`,
+      // and the emulator harness's own loader under `tests`. `tests` is scanned
+      // as well as `src` because an emulator that deploys an always-succeeds
+      // script where an authenticated one belongs is a test that cannot fail —
+      // the same defect class, one package over.
+      "demo/midgard-fault-proofs/src",
+      "demo/midgard-fault-proofs/tests",
+    ];
     const allowedReaders = [
       // The two arity-checking helpers' homes, already pinned above.
       "demo/midgard-node/src/services/midgard-contracts.ts",
@@ -328,6 +346,25 @@ describe("zz609 the arity check is the only door", () => {
       "demo/midgard-sdk/src/phas-membership.ts",
       // Devnet-only convenience loader: an intentional, explicit exception.
       "demo/midgard-node/src/services/always-succeeds.ts",
+      // `getCompiledScript`, bare behind a zero-declared-parameters assertion,
+      // pinned below (#610).
+      "demo/midgard-fault-proofs/src/runtime.ts",
+      // The emulator harness's `getCompiledScript` (bare, same assertion) plus
+      // `applyCompiledScript`, its arity-checking applying door (#610).
+      "demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts",
+      // This gate itself: it reads `compiledCode` to CONSTRUCT the
+      // under-applied prefixes it then asserts nothing is deployed as.
+      "demo/midgard-fault-proofs/tests/zz605-semantic-resolver-arity.test.ts",
+      // The loading-boundary gate: drives both fault-proofs loaders and
+      // compares a correct load against the blueprint's own `compiledCode`.
+      "demo/midgard-fault-proofs/tests/zz610-compiled-script-arity.test.ts",
+      // Prose only — both name `compiledCode` in the skip reason explaining
+      // that the family's step titles are absent from the blueprint, and
+      // neither reads the field. Allowlisted rather than pattern-excused: the
+      // scan stays a plain mention scan, so a real read added to either file
+      // would still have to be justified here.
+      "demo/midgard-fault-proofs/tests/submit-init-emulator-fabricated-deposit.test.ts",
+      "demo/midgard-fault-proofs/tests/submit-init-emulator-fabricated-withdrawal.test.ts",
     ].sort();
     const collectTypescriptSources = (directory: string): readonly string[] =>
       readdirSync(resolve(repoRoot, directory), {
@@ -339,22 +376,65 @@ describe("zz609 the arity check is the only door", () => {
             ? [`${directory}/${entry.name}`]
             : [],
       );
-    const bareReaders = scanRoots
-      .flatMap(collectTypescriptSources)
-      .filter((path) =>
-        /\bcompiledCode\b/u.test(readFileSync(resolve(repoRoot, path), "utf8")),
-      )
+    const mentionsCompiledCode = (path: string): boolean =>
+      /\bcompiledCode\b/u.test(readFileSync(resolve(repoRoot, path), "utf8"));
+
+    /**
+     * A selector that collects nothing is the gate-that-cannot-fail shape this
+     * whole file exists to prevent: a mistyped or moved root would silently
+     * contribute no files and the set equality below would still pass. So every
+     * root's yield is MEASURED — both the sources it collected and the readers
+     * it matched — asserted nonzero, and reported.
+     */
+    const perRoot = scanRoots.map((root) => {
+      const sources = collectTypescriptSources(root);
+      return { root, sources, readers: sources.filter(mentionsCompiledCode) };
+    });
+    for (const { root, sources, readers } of perRoot) {
+      expect(
+        sources.length,
+        `${root} collected 0 TypeScript sources: a scan root that yields ` +
+          "nothing cannot fail (#610).",
+      ).toBeGreaterThan(0);
+      expect(
+        readers.length,
+        `${root} matched 0 compiledCode readers: the scan is not reaching ` +
+          "this root's loaders (#610).",
+      ).toBeGreaterThan(0);
+    }
+    console.log(
+      "\n#610 bare-compiledCode scan roots\n" +
+        perRoot
+          .map(
+            ({ root, sources, readers }) =>
+              `  ${String(sources.length).padStart(4)} .ts sources, ` +
+              `${String(readers.length).padStart(2)} compiledCode reader(s)  ${root}`,
+          )
+          .join("\n") +
+        "\n",
+    );
+
+    const bareReaders = perRoot
+      .flatMap(({ readers }) => readers)
+      .slice()
       .sort();
     expect(bareReaders).toEqual(allowedReaders);
-    // The phas-membership allowlisting is only sound while its zero-arity
-    // door stands: the loader must refuse a declared parameter at load time.
-    const phasSource = readFileSync(
-      resolve(repoRoot, "demo/midgard-sdk/src/phas-membership.ts"),
-      "utf8",
-    );
-    expect(phasSource).toMatch(
-      /declares \$\{declaredParameters\.length\} parameter\(s\) but this loader deploys compiledCode bare/u,
-    );
+    // Allowlisting a bare loader is only sound while its zero-arity door
+    // stands: each must refuse a declared parameter at load time. Removing an
+    // assertion fails this row even though its file stays allowlisted.
+    const zeroArityDoors = [
+      "demo/midgard-sdk/src/phas-membership.ts",
+      "demo/midgard-fault-proofs/src/runtime.ts",
+      "demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts",
+    ];
+    for (const door of zeroArityDoors) {
+      expect(
+        readFileSync(resolve(repoRoot, door), "utf8"),
+        `${door} no longer refuses a declared parameter at its bare-load door (#610)`,
+      ).toMatch(
+        /declares \$\{declaredParameters\.length\} parameter\(s\) but this loader deploys compiledCode bare/u,
+      );
+    }
   });
 
   it(

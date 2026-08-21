@@ -1096,6 +1096,24 @@ export const phasMembershipRewardAddress = (
   return CML.RewardAddress.new(networkId, credential).to_address().to_bech32();
 };
 
+/**
+ * The bare-load door (#610). Every caller of this function deploys the returned
+ * `compiledCode` as-is, applying nothing — so it is only sound while the
+ * validator declares no parameters.
+ *
+ * A declared parameter deployed unapplied is the #605 under-application shape:
+ * the remaining `validator main(...)` parameters stay as lambdas, the ledger's
+ * single Plutus V3 script-context application reduces to a lambda VALUE instead
+ * of running the validator body, evaluation terminates without error, and the
+ * ledger reads "no error" as SUCCESS. The deployment is an unconditional
+ * always-succeeds script standing where an authenticated one should be, and
+ * nothing downstream can tell the difference. Before this check an arity
+ * mismatch surfaced only as an opaque `→ undefined` evaluation failure several
+ * hundred milliseconds into a submission, if at all.
+ *
+ * `parseFaultProofBlueprint` normalises an absent `parameters` key to the empty
+ * list, so ABSENT MEANS ZERO here — never "unknown, skip the check".
+ */
 export const getCompiledScript = (
   blueprint: unknown,
   title: string,
@@ -1106,6 +1124,16 @@ export const getCompiledScript = (
   );
   if (found === undefined) {
     throw new Error(`Validator with title "${title}" not found in blueprint.`);
+  }
+  const declaredParameters = found.parameters;
+  if (declaredParameters.length !== 0) {
+    throw new Error(
+      `${title} declares ${declaredParameters.length} parameter(s) but this loader deploys compiledCode bare — declared: ${declaredParameters
+        .map((parameter) => parameter.title)
+        .join(
+          ", ",
+        )}. An unapplied declared parameter deploys an always-succeeds script; route this title through an arity-checking parameter-applying helper instead of widening this zero-arity door (#610).`,
+    );
   }
   return found.compiledCode;
 };

@@ -519,9 +519,20 @@ export const EMULATOR_PROTOCOL_PARAMETERS = {
   maxCollateralInputs: 3,
 } as const;
 
+export type BlueprintParameter = {
+  readonly title: string;
+};
+
 export type BlueprintValidator = {
   readonly title: string;
   readonly compiledCode: string;
+  /**
+   * The blueprint's declared parameter list, carried so the loaders below can
+   * check it against what the caller actually applies (#610). Absent means the
+   * validator declares none — that is the compiler's encoding for a nullary
+   * validator, never "unknown, skip the check".
+   */
+  readonly parameters?: readonly BlueprintParameter[];
 };
 
 export type Blueprint = {
@@ -534,17 +545,82 @@ export const readBlueprint = (path: string): Blueprint =>
 export const cloneBlueprint = (blueprint: Blueprint): Blueprint =>
   JSON.parse(JSON.stringify(blueprint)) as Blueprint;
 
-export const getCompiledScript = (
+/** Absent `parameters` is the compiler's encoding of "declares none" (#610). */
+const declaredParametersOf = (
+  validator: BlueprintValidator,
+): readonly BlueprintParameter[] => validator.parameters ?? [];
+
+const describeDeclaredParameters = (
+  declaredParameters: readonly BlueprintParameter[],
+): string =>
+  declaredParameters.length === 0
+    ? "none"
+    : declaredParameters.map((parameter) => parameter.title).join(", ");
+
+const requireBlueprintValidator = (
   blueprint: Blueprint,
   title: string,
-): string => {
+): BlueprintValidator => {
   const found = blueprint.validators.find(
     (validator) => validator.title === title,
   );
   if (found === undefined) {
     throw new Error(`Validator with title "${title}" not found`);
   }
+  return found;
+};
+
+/**
+ * The bare-load door (#610): returns `compiledCode` with nothing applied, so it
+ * is only sound while the validator declares no parameters.
+ *
+ * A declared parameter deployed unapplied is the #605 under-application shape —
+ * the unapplied `validator main(...)` parameters stay as lambdas, the ledger's
+ * single Plutus V3 script-context application reduces to a lambda VALUE rather
+ * than running the validator body, evaluation ends without error, and the
+ * ledger reads "no error" as SUCCESS. In this harness that produces an
+ * always-succeeds script standing in for an authenticated one, which is a test
+ * that cannot fail. Refuse at the load boundary instead: before this check the
+ * mismatch surfaced only as an opaque `→ undefined` evaluation failure a few
+ * hundred milliseconds into the emulated submission.
+ */
+export const getCompiledScript = (
+  blueprint: Blueprint,
+  title: string,
+): string => {
+  const found = requireBlueprintValidator(blueprint, title);
+  const declaredParameters = declaredParametersOf(found);
+  if (declaredParameters.length !== 0) {
+    throw new Error(
+      `${title} declares ${declaredParameters.length} parameter(s) but this loader deploys compiledCode bare — declared: ${describeDeclaredParameters(declaredParameters)}. An unapplied declared parameter deploys an always-succeeds script; load it with applyCompiledScript instead of widening this zero-arity door (#610).`,
+    );
+  }
   return found.compiledCode;
+};
+
+/**
+ * The parameter-applying door (#610), and the only permitted caller of
+ * `applyParamsToScript` in this harness.
+ *
+ * `applyParamsToScript` applies whatever list it is handed, positionally, and
+ * never checks it against the script's own declared arity: too few terms is the
+ * silent always-succeeds shape described above, too many is a well-formed
+ * script with a hash that matches nothing. Both are refused here, against the
+ * blueprint's own declaration, for every validator this harness deploys.
+ */
+export const applyCompiledScript = (
+  blueprint: Blueprint,
+  title: string,
+  params: readonly Data[],
+): string => {
+  const found = requireBlueprintValidator(blueprint, title);
+  const declaredParameters = declaredParametersOf(found);
+  if (declaredParameters.length !== params.length) {
+    throw new Error(
+      `${title} declares ${declaredParameters.length} parameter(s) but ${params.length} were applied — declared: ${describeDeclaredParameters(declaredParameters)}. Under-application deploys an always-succeeds script and over-application deploys an unusable script hash; apply exactly the declared parameters (#610).`,
+    );
+  }
+  return applyParamsToScript(found.compiledCode, [...params]);
 };
 
 export const makeMintingValidator = (
@@ -792,16 +868,13 @@ export const buildMinimalFaultProofContracts = async (
   // scaffolded only where needed to support the focused removal flow.
   const base = makeAlwaysSucceedsContracts(alwaysBlueprint);
   const hubOracle = makeMintingValidator(
-    applyParamsToScript(
-      getCompiledScript(realBlueprint, "hub_oracle.mint.mint"),
-      [
-        new Constr(0, [
-          nonceUtxo.txHash.toLowerCase(),
-          BigInt(nonceUtxo.outputIndex),
-        ]),
-        HUB_ORACLE_ASSET_NAME,
-      ],
-    ),
+    applyCompiledScript(realBlueprint, "hub_oracle.mint.mint", [
+      new Constr(0, [
+        nonceUtxo.txHash.toLowerCase(),
+        BigInt(nonceUtxo.outputIndex),
+      ]),
+      HUB_ORACLE_ASSET_NAME,
+    ]),
   );
   const hubOracleAuth: AuthenticatedValidator = {
     ...hubOracle,
@@ -821,10 +894,9 @@ export const buildMinimalFaultProofContracts = async (
   const fraudProofCatalogue = alwaysFraudProofCatalogue
     ? withHubOracle.fraudProofCatalogue
     : makeAuthenticatedValidator(
-        applyParamsToScript(
-          getCompiledScript(realBlueprint, "fraud_proof_catalogue.mint.mint"),
-          [hubOracle.policyId],
-        ),
+        applyCompiledScript(realBlueprint, "fraud_proof_catalogue.mint.mint", [
+          hubOracle.policyId,
+        ]),
         getCompiledScript(realBlueprint, "fraud_proof_catalogue.spend.else"),
       );
   const withCatalogue = {
@@ -833,11 +905,9 @@ export const buildMinimalFaultProofContracts = async (
   };
 
   const activeOperatorsMinting = makeMintingValidator(
-    applyParamsToScript(
-      getCompiledScript(
-        realBlueprint,
-        "operator_directory/active_operators.mint.mint",
-      ),
+    applyCompiledScript(
+      realBlueprint,
+      "operator_directory/active_operators.mint.mint",
       [
         hubOracle.policyId,
         withCatalogue.registeredOperators.policyId,
@@ -848,11 +918,9 @@ export const buildMinimalFaultProofContracts = async (
   const activeOperators: AuthenticatedValidator = {
     ...activeOperatorsMinting,
     ...makeSpendingValidator(
-      applyParamsToScript(
-        getCompiledScript(
-          realBlueprint,
-          "operator_directory/active_operators.spend.spend",
-        ),
+      applyCompiledScript(
+        realBlueprint,
+        "operator_directory/active_operators.spend.spend",
         [activeOperatorsMinting.policyId, hubOracle.policyId],
       ),
     ),
@@ -1058,24 +1126,20 @@ export const buildMinimalFaultProofContracts = async (
     ),
   );
   const schedulerMinting = makeMintingValidator(
-    applyParamsToScript(
-      getCompiledScript(realBlueprint, "scheduler.mint.mint"),
-      [hubOracle.policyId],
-    ),
+    applyCompiledScript(realBlueprint, "scheduler.mint.mint", [
+      hubOracle.policyId,
+    ]),
   );
   const scheduler: AuthenticatedValidator = {
     ...schedulerMinting,
     ...makeSpendingValidator(
-      applyParamsToScript(
-        getCompiledScript(realBlueprint, "scheduler.spend.spend"),
-        [
-          withActiveOperators.registeredOperators.policyId,
-          activeOperatorsAddressData,
-          withActiveOperators.activeOperators.policyId,
-          schedulerMinting.policyId,
-          hubOracle.policyId,
-        ],
-      ),
+      applyCompiledScript(realBlueprint, "scheduler.spend.spend", [
+        withActiveOperators.registeredOperators.policyId,
+        activeOperatorsAddressData,
+        withActiveOperators.activeOperators.policyId,
+        schedulerMinting.policyId,
+        hubOracle.policyId,
+      ]),
     ),
   };
   const withScheduler = {
@@ -1083,25 +1147,22 @@ export const buildMinimalFaultProofContracts = async (
     scheduler,
   };
   const stateQueueMinting = makeMintingValidator(
-    applyParamsToScript(
-      getCompiledScript(realBlueprint, "state_queue.mint.mint"),
-      [
-        hubOracle.policyId,
-        withScheduler.activeOperators.policyId,
-        activeOperatorsAddressData,
-        withScheduler.retiredOperators.policyId,
-        withScheduler.scheduler.policyId,
-        doubleSpendContracts.fraudProof.policyId,
-        withScheduler.settlement.policyId,
-        withScheduler.daAttestation.policyId,
-      ],
-    ),
+    applyCompiledScript(realBlueprint, "state_queue.mint.mint", [
+      hubOracle.policyId,
+      withScheduler.activeOperators.policyId,
+      activeOperatorsAddressData,
+      withScheduler.retiredOperators.policyId,
+      withScheduler.scheduler.policyId,
+      doubleSpendContracts.fraudProof.policyId,
+      withScheduler.settlement.policyId,
+      withScheduler.daAttestation.policyId,
+    ]),
   );
   const stateQueueSpending = makeSpendingValidator(
-    applyParamsToScript(
-      getCompiledScript(realBlueprint, "state_queue.spend.spend"),
-      [stateQueueMinting.policyId, withScheduler.daAttestation.policyId],
-    ),
+    applyCompiledScript(realBlueprint, "state_queue.spend.spend", [
+      stateQueueMinting.policyId,
+      withScheduler.daAttestation.policyId,
+    ]),
   );
 
   // The two Q39/Q40 families predate their catalogue registration: production
