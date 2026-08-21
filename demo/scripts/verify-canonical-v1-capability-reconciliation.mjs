@@ -416,10 +416,18 @@ assert.deepEqual(evidence.p2Summary, {
   // C26 and C29 were promoted 2026-08-18: C26 after the queue's 2026-08-06
   // owner promotion (e4335bbd) replayed green at bd833ff3, and C29 after its
   // all-PASS acceptance re-measurement at 8ef0e471.
-  // CG2 stays OPEN while any P2 task is PARTIAL. The `pass` count is asserted
-  // against the measured result below, not merely against this literal.
-  pass: 19,
-  partial: 3,
+  // C30, C31 and C32 were promoted on the owner ruling of 2026-08-18 on issue
+  // #486, which authorized the C30-C33 promotion on the recorded measurements
+  // (C33 was already PASS) and dispositioned the C32 mid-measurement row
+  // repair as the measurement discipline working, requiring no replay. Their
+  // witnesses are the focused verifications their own manifest rows declare,
+  // and this gate spawns them like every other.
+  // CG2 stays OPEN on its own owner pin, not on the PARTIAL count: the ruling
+  // kept `acceptance.CG2`/`p2Tasks.CG2` OPEN until CG2's consolidated review,
+  // which rides C21's two residuals. The `pass` count is asserted against the
+  // measured result below, not merely against this literal.
+  pass: 22,
+  partial: 0,
   open: 0,
   authoritativeConflict: 0,
   gate: "OPEN",
