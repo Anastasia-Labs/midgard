@@ -48,6 +48,9 @@ import { DaPayloadsDB } from "@/database/index.js";
 const PEER_A = "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
 const PEER_B = "12D3KooWR3iZBFz6W2fyFdRt2t45x2Ytz9p6c9JwHyDqaN49XU47";
 const PEER_C = "12D3KooWKf1kXPQFRZ6SR6WQF1Z7gqDRUjUe7S4hSm8LRmSk5kvA";
+// A dedicated, non-committee Noise identity for the public retained-DA
+// plane, as parseDaLibp2pRuntimeManifest requires.
+const PEER_RETAINED = "12D3KooWQYV9dGMFoRzNStwpXztXaBUjtPqi6aU76ZgUriHhKust";
 const DEPLOYMENT = "ab".repeat(32);
 const HEADER_HASH = Buffer.alloc(28, 0x02);
 const PAYLOAD_CBOR = Buffer.from("d87980", "hex");
@@ -818,6 +821,29 @@ const manifestFixture = (): Record<string, unknown> => ({
       request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
     },
     retention_days: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+  },
+  public_retained_da: {
+    profile: "public-retained-da-v1",
+    access_policy: "any_noise_authenticated_peer",
+    peer_id: PEER_RETAINED,
+    listen_multiaddrs: ["/ip4/127.0.0.1/tcp/0"],
+    announce_multiaddrs: [`/dns4/public.example/tcp/4003/p2p/${PEER_RETAINED}`],
+    protocols: [
+      "capabilities",
+      "payload-by-header",
+      "payload-chunk",
+      "metadata-by-header",
+      "proof-bundle-by-header",
+      "trace-step-by-index",
+      "event-to-step-by-event",
+    ],
+    limits: {
+      max_streams_per_peer: 4,
+      max_inflight_requests: 32,
+      max_inflight_requests_per_peer: 2,
+      max_inflight_proof_requests: 1,
+      request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+    },
   },
   da_committee: {
     threshold: 2,

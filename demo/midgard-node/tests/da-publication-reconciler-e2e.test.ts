@@ -40,6 +40,9 @@ import { provideDatabaseLayers } from "./utils.js";
 const enabled = process.env.MIDGARD_RUN_DA_PHASE5_JOINED_E2E === "1";
 const DEPLOYMENT = "c7".repeat(32);
 const RETENTION_DAYS = DA_TRANSPORT_LIMITS_V1.minimumRetentionDays;
+// A dedicated, non-committee Noise identity for the public retained-DA
+// plane, as parseDaLibp2pRuntimeManifest requires.
+const PEER_RETAINED = "12D3KooWQYV9dGMFoRzNStwpXztXaBUjtPqi6aU76ZgUriHhKust";
 const ENV_KEYS = [
   "MIDGARD_DEPLOYMENT_MANIFEST_PATH",
   "DA_LIBP2P_PRIVATE_KEY_SOURCE",
@@ -352,6 +355,29 @@ const runtimeManifest = (
       max_chunk_bytes: manifest.maxChunkBytes,
       max_streams_per_peer: manifest.maxStreamsPerPeer,
       request_timeout_ms: manifest.requestTimeoutMs,
+    },
+  },
+  public_retained_da: {
+    profile: "public-retained-da-v1",
+    access_policy: "any_noise_authenticated_peer",
+    peer_id: PEER_RETAINED,
+    listen_multiaddrs: ["/ip4/127.0.0.1/tcp/0"],
+    announce_multiaddrs: [`/dns4/public.example/tcp/4003/p2p/${PEER_RETAINED}`],
+    protocols: [
+      "capabilities",
+      "payload-by-header",
+      "payload-chunk",
+      "metadata-by-header",
+      "proof-bundle-by-header",
+      "trace-step-by-index",
+      "event-to-step-by-event",
+    ],
+    limits: {
+      max_streams_per_peer: 4,
+      max_inflight_requests: 32,
+      max_inflight_requests_per_peer: 2,
+      max_inflight_proof_requests: 1,
+      request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
     },
   },
   da_committee: {
