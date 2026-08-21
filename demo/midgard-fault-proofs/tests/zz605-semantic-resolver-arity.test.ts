@@ -358,13 +358,6 @@ describe("zz609 the arity check is the only door", () => {
       // The loading-boundary gate: drives both fault-proofs loaders and
       // compares a correct load against the blueprint's own `compiledCode`.
       "demo/midgard-fault-proofs/tests/zz610-compiled-script-arity.test.ts",
-      // Prose only — both name `compiledCode` in the skip reason explaining
-      // that the family's step titles are absent from the blueprint, and
-      // neither reads the field. Allowlisted rather than pattern-excused: the
-      // scan stays a plain mention scan, so a real read added to either file
-      // would still have to be justified here.
-      "demo/midgard-fault-proofs/tests/submit-init-emulator-fabricated-deposit.test.ts",
-      "demo/midgard-fault-proofs/tests/submit-init-emulator-fabricated-withdrawal.test.ts",
     ].sort();
     const collectTypescriptSources = (directory: string): readonly string[] =>
       readdirSync(resolve(repoRoot, directory), {
