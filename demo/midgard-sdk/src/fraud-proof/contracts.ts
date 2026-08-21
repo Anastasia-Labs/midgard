@@ -101,6 +101,20 @@ export const DA_HASH_PREIMAGE_FAULT_PROOF_TITLES = {
   step02: "fraud_proofs/da_hash_preimage/step_02.main.spend",
 } as const;
 
+export const FABRICATED_DEPOSIT_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/fabricated_deposit/step_01.main.spend",
+  step02: "fraud_proofs/fabricated_deposit/step_02.main.spend",
+  step03: "fraud_proofs/fabricated_deposit/step_03.main.spend",
+  step04: "fraud_proofs/fabricated_deposit/step_04.main.spend",
+} as const;
+
+export const FABRICATED_WITHDRAWAL_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/fabricated_withdrawal/step_01.main.spend",
+  step02: "fraud_proofs/fabricated_withdrawal/step_02.main.spend",
+  step03: "fraud_proofs/fabricated_withdrawal/step_03.main.spend",
+  step04: "fraud_proofs/fabricated_withdrawal/step_04.main.spend",
+} as const;
+
 export const TRANSITION_TRACE_FAULT_PROOF_TITLES = {
   route: "fraud_proofs/transition_trace/route_v1.main.spend",
   control: "fraud_proofs/transition_trace/control_v1.main.spend",
@@ -456,6 +470,40 @@ export type DaHashPreimageFaultProofContracts = {
   };
 };
 
+/**
+ * Q39 `fabricated-deposit`: a committed `deposits_root` leaf that is not the
+ * authentic L1 deposit event pair.
+ */
+export type FabricatedDepositFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fabricatedDeposit: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+/**
+ * Q40 `fabricated-withdrawal`: a committed `withdrawals_root` leaf that is not
+ * the authentic L1 withdrawal order pair.
+ */
+export type FabricatedWithdrawalFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fabricatedWithdrawal: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
 export type TransitionTraceFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
@@ -688,6 +736,12 @@ export type BuildZeroInputFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildDaHashPreimageFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildFabricatedDepositFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildFabricatedWithdrawalFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildTransitionTraceFaultProofContractsParams =
@@ -1674,6 +1728,184 @@ const buildDaHashPreimageChain = ({
     return {
       firstStep: daHashPreimageStep01,
       steps: [daHashPreimageStep01, daHashPreimageStep02],
+    };
+  });
+
+const buildFabricatedDepositChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: {
+  readonly blueprint: FaultProofBlueprint;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+}): Effect.Effect<
+  FabricatedDepositFaultProofContracts["fabricatedDeposit"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const step04 = yield* tryBuild(
+      "Failed to build fabricated-deposit step 04",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyBlueprintParams(
+            blueprint,
+            FABRICATED_DEPOSIT_FAULT_PROOF_TITLES.step04,
+            [
+              fraudProof.policyId,
+              fraudProofTokenAddressData,
+              computationThread.policyId,
+            ],
+          ),
+        ),
+    );
+
+    const step03 = yield* tryBuild(
+      "Failed to build fabricated-deposit step 03",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyBlueprintParams(
+            blueprint,
+            FABRICATED_DEPOSIT_FAULT_PROOF_TITLES.step03,
+            [step04.spendingScriptHash, computationThread.policyId],
+          ),
+        ),
+    );
+
+    const step02 = yield* tryBuild(
+      "Failed to build fabricated-deposit step 02",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyBlueprintParams(
+            blueprint,
+            FABRICATED_DEPOSIT_FAULT_PROOF_TITLES.step02,
+            [
+              step03.spendingScriptHash,
+              computationThread.policyId,
+              hubOraclePolicyId,
+            ],
+          ),
+        ),
+    );
+
+    const step01 = yield* tryBuild(
+      "Failed to build fabricated-deposit step 01",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyBlueprintParams(
+            blueprint,
+            FABRICATED_DEPOSIT_FAULT_PROOF_TITLES.step01,
+            [
+              step02.spendingScriptHash,
+              computationThread.policyId,
+              hubOraclePolicyId,
+            ],
+          ),
+        ),
+    );
+
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04],
+    };
+  });
+
+const buildFabricatedWithdrawalChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: {
+  readonly blueprint: FaultProofBlueprint;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+}): Effect.Effect<
+  FabricatedWithdrawalFaultProofContracts["fabricatedWithdrawal"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const step04 = yield* tryBuild(
+      "Failed to build fabricated-withdrawal step 04",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyBlueprintParams(
+            blueprint,
+            FABRICATED_WITHDRAWAL_FAULT_PROOF_TITLES.step04,
+            [
+              fraudProof.policyId,
+              fraudProofTokenAddressData,
+              computationThread.policyId,
+            ],
+          ),
+        ),
+    );
+
+    const step03 = yield* tryBuild(
+      "Failed to build fabricated-withdrawal step 03",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyBlueprintParams(
+            blueprint,
+            FABRICATED_WITHDRAWAL_FAULT_PROOF_TITLES.step03,
+            [step04.spendingScriptHash, computationThread.policyId],
+          ),
+        ),
+    );
+
+    const step02 = yield* tryBuild(
+      "Failed to build fabricated-withdrawal step 02",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyBlueprintParams(
+            blueprint,
+            FABRICATED_WITHDRAWAL_FAULT_PROOF_TITLES.step02,
+            [
+              step03.spendingScriptHash,
+              computationThread.policyId,
+              hubOraclePolicyId,
+            ],
+          ),
+        ),
+    );
+
+    const step01 = yield* tryBuild(
+      "Failed to build fabricated-withdrawal step 01",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyBlueprintParams(
+            blueprint,
+            FABRICATED_WITHDRAWAL_FAULT_PROOF_TITLES.step01,
+            [
+              step02.spendingScriptHash,
+              computationThread.policyId,
+              hubOraclePolicyId,
+            ],
+          ),
+        ),
+    );
+
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04],
     };
   });
 
@@ -2693,6 +2925,38 @@ export const buildDaHashPreimageFaultProofContracts = (
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
       daHashPreimage,
+    };
+  });
+
+export const buildFabricatedDepositFaultProofContracts = (
+  params: BuildFabricatedDepositFaultProofContractsParams,
+): Effect.Effect<FabricatedDepositFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const fabricatedDeposit = yield* buildFabricatedDepositChain({
+      ...params,
+      ...shared,
+    });
+    return {
+      computationThread: shared.computationThread,
+      fraudProof: shared.fraudProof,
+      fabricatedDeposit,
+    };
+  });
+
+export const buildFabricatedWithdrawalFaultProofContracts = (
+  params: BuildFabricatedWithdrawalFaultProofContractsParams,
+): Effect.Effect<FabricatedWithdrawalFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const fabricatedWithdrawal = yield* buildFabricatedWithdrawalChain({
+      ...params,
+      ...shared,
+    });
+    return {
+      computationThread: shared.computationThread,
+      fraudProof: shared.fraudProof,
+      fabricatedWithdrawal,
     };
   });
 

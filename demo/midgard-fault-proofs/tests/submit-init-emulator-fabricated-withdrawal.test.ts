@@ -1,34 +1,25 @@
 /**
- * `fabricated-withdrawal` emulator lifecycle (Goal task `Q40`, §9.1 output 9) — at
- * the boundary the frozen blueprint imposes.
+ * `fabricated-withdrawal` emulator lifecycle (Goal task `Q40`, §9.1 output 9).
  *
- * The four step validators exist in `onchain/aiken` and pass `aiken check`, but
- * the blueprint in the tree does **not** contain them: regenerating
- * `onchain/aiken/plutus.json` changes deployed script hashes, which is
- * owner-gated (#510, owner ruling R5 / #617). Until that regeneration lands there
- * is no `compiledCode` for `fraud_proofs/fabricated_withdrawal/step_0{1..4}`, so
- * no emulator can deploy the family and no on-chain execution can be measured.
- * This file therefore does everything short of execution **for real** and then
- * skips with the measured reason:
+ * Drives the real Aiken step validators through a Lucid emulator with the
+ * production submitters: init -> step-01 -> step-02 -> step-03 -> step-04 ->
+ * permanent fraud-proof token, plus the valid-block negative on both planes
+ * (off-chain fail-closed and on-chain membership rejection).
  *
- * - it reads the same frozen blueprint the emulator harness reads
- *   (`realBlueprintPath`, honouring `MIDGARD_REAL_BLUEPRINT_PATH`) and measures
- *   exactly which of the family's eight titles are missing, with a live control
- *   title proving the read itself works;
- * - it drives the whole off-chain lifecycle over a real withdrawals-bearing
- *   `DaPayloadV1` — evidence admission, proof plan, and the step-01 → step-02 →
- *   step-03 → step-04 handoffs — and encodes each thread datum the emulator
- *   would place on chain, so the only unmeasured link is the UPLC evaluation
- *   itself.
+ * The committed evidence is a `withdrawals_root` leaf that pairs the authentic
+ * withdrawal identity with a **diverted** L1 payout address — exactly the fault
+ * the family adjudicates (Q40's `MismatchedWithdrawalContent` shape). The
+ * authentic L1 withdrawal event is exhibited as a reference input carrying the
+ * hub-registered withdrawal event NFT, so step-02's verdict rests on
+ * authenticated material.
  *
- * The skip is self-retiring: if the blueprint gains the family's titles, the
- * absence assertion fails and names what has to replace this file — a real
- * lifecycle driven through `makeFaultProofEmulatorHarnessV1`, which needs a
- * `realFabricatedWithdrawal` contract option in the (parent-owned)
- * `tests/support/submit-init-emulator-shared.ts`.
+ * Until #614 regenerated the blueprint this file was a boundary tripwire that
+ * measured the family's titles as absent (#482); the titles are present now,
+ * so the tripwire is retired into this real lifecycle.
  */
+import { outRefLabel } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
+import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -39,10 +30,21 @@ import {
 import {
   deriveFabricatedWithdrawalStep01HandoffV1,
   parseSubmitFabricatedWithdrawalInclusion,
+  submitFabricatedWithdrawalStep01,
 } from "../src/submit-fabricated-withdrawal-step-01.js";
-import { deriveFabricatedWithdrawalStep03HandoffV1 } from "../src/submit-fabricated-withdrawal-step-03.js";
-import { assertFabricatedWithdrawalStep04FinalizableV1 } from "../src/submit-fabricated-withdrawal-step-04.js";
-import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { submitFabricatedWithdrawalStep02 } from "../src/submit-fabricated-withdrawal-step-02.js";
+import {
+  deriveFabricatedWithdrawalStep03HandoffV1,
+  submitFabricatedWithdrawalStep03,
+} from "../src/submit-fabricated-withdrawal-step-03.js";
+import {
+  assertFabricatedWithdrawalStep04FinalizableV1,
+  submitFabricatedWithdrawalStep04,
+} from "../src/submit-fabricated-withdrawal-step-04.js";
+import {
+  buildCountedRoot,
+  keyValuePhasProof,
+} from "../src/transition-trace/phas.js";
 import {
   authenticatedHeaderObservationV1,
   buildCanonicalBlockFixtureV1,
@@ -51,29 +53,17 @@ import {
   outRefCbor,
   reencodeFixturePayloadV1,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
-  readBlueprint,
-  realBlueprintPath,
+  alignUnixTimeToEmulatorSlotBoundary,
+  expectSingleUtxoWithUnit,
+  funderPaymentKeyHash,
+  makeFaultProofEmulatorHarnessV1,
+  makeHeader,
+  network,
+  submitFabricatedFamilyInitV1,
+  submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
-
-/** Every blueprint entry the family's four steps would contribute. */
-const FABRICATED_WITHDRAWAL_BLUEPRINT_TITLES_V1 = [
-  "fraud_proofs/fabricated_withdrawal/step_01.main.spend",
-  "fraud_proofs/fabricated_withdrawal/step_01.main.else",
-  "fraud_proofs/fabricated_withdrawal/step_02.main.spend",
-  "fraud_proofs/fabricated_withdrawal/step_02.main.else",
-  "fraud_proofs/fabricated_withdrawal/step_03.main.spend",
-  "fraud_proofs/fabricated_withdrawal/step_03.main.else",
-  "fraud_proofs/fabricated_withdrawal/step_04.main.spend",
-  "fraud_proofs/fabricated_withdrawal/step_04.main.else",
-] as const;
-
-/**
- * A title the frozen blueprint does carry, so "the family is missing" can never
- * be satisfied by a failed or empty blueprint read.
- */
-const CONTROL_BLUEPRINT_TITLE_V1 =
-  "fraud_proofs/da_hash_preimage/step_01.main.spend";
 
 // The `mismatched_content_block_v1` scenario, measured out of
 // `onchain/aiken/lib/midgard/fraud-proofs/fabricated-withdrawal/step-0{1,2}.ak`:
@@ -174,25 +164,104 @@ const buildChallengedBlockV1 = async () => {
   };
 };
 
-describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
-  it("measures the whole off-chain lifecycle and stops at the frozen blueprint", async (ctx) => {
-    // ## 1. The blueprint boundary, measured.
-    const blueprint = readBlueprint(realBlueprintPath);
-    const titles = new Set(blueprint.validators.map((entry) => entry.title));
-    expect(blueprint.validators.length).toBeGreaterThan(0);
-    // Control: the read works and this is the real frozen blueprint.
-    expect(titles.has(CONTROL_BLUEPRINT_TITLE_V1)).toBe(true);
-    const presentFamilyTitles =
-      FABRICATED_WITHDRAWAL_BLUEPRINT_TITLES_V1.filter((title) =>
-        titles.has(title),
-      );
-    // A failure here is the retirement signal, not a regression: the blueprint
-    // now carries the family, so this boundary file must be replaced by a real
-    // lifecycle driven through `makeFaultProofEmulatorHarnessV1` with a
-    // `realFabricatedWithdrawal` contract option.
-    expect(presentFamilyTitles).toEqual([]);
+/**
+ * The harness every emulator scenario in this file opens with: the real
+ * fabricated-withdrawal chain built from the regenerated blueprint, registered
+ * as the extra catalogue category `0000000c` on top of the canonical eleven.
+ */
+const makeEmulatorHarness = async () => {
+  const harness = await makeFaultProofEmulatorHarnessV1({
+    contractOptions: {
+      realFabricatedWithdrawal: true,
+      alwaysFraudProofCatalogue: true,
+    },
+  });
+  const fabricatedWithdrawal = harness.contracts.fabricatedWithdrawal;
+  const category = harness.catalogue.extraCategories.fabricatedWithdrawal;
+  if (fabricatedWithdrawal === undefined || category === undefined) {
+    throw new Error(
+      "Harness did not build the fabricated-withdrawal contracts/category",
+    );
+  }
+  expect(category.categoryId).toBe(
+    SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
+  );
+  expect(category.scriptHash).toBe(
+    fabricatedWithdrawal.steps[0].spendingScriptHash,
+  );
+  return { ...harness, fabricatedWithdrawal, category };
+};
 
-    // ## 2. Evidence admission over real retained-DA bytes.
+/**
+ * The challenged block committed on the emulator: the diverted leaf's counted
+ * root under the funder-operated header whose window opens at the aligned
+ * emulator clock. Returns everything the prover-side scenarios consume.
+ */
+const setupChallengedBlockOnEmulator = async (
+  harness: Awaited<ReturnType<typeof makeEmulatorHarness>>,
+  committedInfoCbor: string,
+) => {
+  const { emulator, funderLucid, contracts, catalogue, nonceUtxo } = harness;
+  const counted = await buildCountedRoot(SDK.ROOT_DOMAINS.withdrawals, [
+    {
+      key: Buffer.from(KEY_AUTHENTIC_WITHDRAWAL_ID, "hex"),
+      value: Buffer.from(committedInfoCbor, "hex"),
+    },
+  ]);
+  const funderKeyHash = await funderPaymentKeyHash(funderLucid);
+  const headerStartTime =
+    alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
+    1;
+  // `header_v1_is_valid` (state-queue `CommitBlockHeader`) enforces the
+  // transition-commitment identities: `total_event_count` must equal the sum
+  // of the per-kind counts, `transition_step_count` must equal it, and the
+  // transition-trace/event-to-step roots must be non-empty 32-byte roots
+  // whenever that count is non-zero. Reusing the withdrawals counted root
+  // keeps the header committable without touching validation traces (no
+  // forced or L2 transactions in this block).
+  const header: SDK.HeaderV1 = {
+    ...makeHeader(funderKeyHash, headerStartTime),
+    withdrawalsRoot: counted.root,
+    withdrawalCount: counted.count,
+    totalEventCount: counted.count,
+    transitionStepCount: counted.count,
+    transitionTraceRoot: counted.root,
+    eventToStepRoot: counted.root,
+  };
+  const setup = await submitSetupTx({
+    lucid: funderLucid,
+    contracts,
+    nonceUtxo,
+    catalogue,
+    header,
+  });
+  // The authentic event's inclusion time, inside this header's establishment
+  // window `(start_time, end_time]`.
+  const eventInclusionTime = header.startTime + 500n;
+  const authenticEventDatum: SDK.WithdrawalOrderDatum = {
+    ...Data.from(DATUM_AUTHENTIC_WITHDRAWAL_EVENT, SDK.WithdrawalOrderDatum),
+    inclusion_time: eventInclusionTime,
+  };
+  // Canonical (`serialiseData`-normalised) bytes: the datum carries token
+  // maps, so plain `Data.to` output is not the classifier's canonical form.
+  const eventDatumCbor = SDK.withdrawalEventDatumBytesV1(authenticEventDatum);
+  const observedEventAssetName = await Effect.runPromise(
+    SDK.withdrawalEventNonceV1(authenticEventDatum.event.id),
+  );
+  return {
+    counted,
+    header,
+    setup,
+    eventInclusionTime,
+    authenticEventDatum,
+    eventDatumCbor,
+    observedEventAssetName,
+  };
+};
+
+describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
+  it("admits retained-DA evidence and derives every thread handoff off-chain", async () => {
+    // ## 1. Evidence admission over real retained-DA bytes.
     const block = await buildChallengedBlockV1();
     expect(block.withdrawalsRoot).toBe(MM_WITHDRAWALS_ROOT);
     const evidence =
@@ -204,7 +273,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
     expect(evidence.grade).toBe("security");
     expect(evidence.headerHash).toBe(block.headerHash);
 
-    // ## 3. The proof plan the prover would submit.
+    // ## 2. The proof plan the prover would submit.
     const plan = await prepareFabricatedWithdrawalFromCommittedLeavesV1({
       headerHash: evidence.headerHash,
       committedWithdrawalsRoot: evidence.committedWithdrawalsRoot,
@@ -224,7 +293,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       `${SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1}${block.headerHash}`,
     );
 
-    // ## 4. Every thread datum the emulator would place on chain.
+    // ## 3. Every thread datum an emulator lifecycle places on chain.
     const step01Datum = Data.to(
       { fraud_prover: FRAUD_PROVER, data: null },
       SDK.FabricatedWithdrawalStep01Datum,
@@ -278,10 +347,401 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
     for (const datum of [step01Datum, step02Datum, step03Datum, step04Datum]) {
       expect(datum).toMatch(/^[0-9a-f]+$/u);
     }
+  }, 60_000);
 
-    // ## 5. The only unmeasured link.
-    ctx.skip(
-      `on-chain execution is unmeasurable until onchain/aiken/plutus.json is regenerated (#510, owner ruling R5 / #617): ${realBlueprintPath} carries ${blueprint.validators.length.toString()} validators and none of the family's ${FABRICATED_WITHDRAWAL_BLUEPRINT_TITLES_V1.length.toString()} titles — ${FABRICATED_WITHDRAWAL_BLUEPRINT_TITLES_V1.join(", ")} — so the four step scripts have no compiledCode to deploy. Everything short of evaluation is measured above: evidence admission, the proof plan, and all four thread datums.`,
+  it("proves a fabricated withdrawal end-to-end and mints the permanent fraud-proof token", async () => {
+    const harness = await makeEmulatorHarness();
+    const {
+      realBlueprint,
+      funderLucid,
+      proverLucid,
+      proverSigner,
+      contracts,
+      catalogue,
+      fabricatedWithdrawal,
+      category,
+    } = harness;
+
+    const {
+      counted,
+      header,
+      setup,
+      eventInclusionTime,
+      eventDatumCbor,
+      observedEventAssetName,
+    } = await setupChallengedBlockOnEmulator(
+      harness,
+      VALUE_DIVERTED_WITHDRAWAL_INFO,
     );
-  });
+    const { headerHash } = setup;
+    await expectStateQueueHeaderOrder({
+      lucid: funderLucid,
+      contracts,
+      expectedHeaderHashes: [headerHash],
+    });
+
+    // ## The authentic L1 withdrawal event, minted under the hub-registered
+    // withdrawal policy with the nonce asset name the committed identity
+    // derives.
+    const eventUnit = toUnit(
+      contracts.withdrawal.policyId,
+      observedEventAssetName,
+    );
+    const eventMintUnsigned = await funderLucid
+      .newTx()
+      .mintAssets({ [eventUnit]: 1n }, Data.void())
+      .pay.ToContract(
+        contracts.withdrawal.spendingScriptAddress,
+        { kind: "inline", value: eventDatumCbor },
+        { lovelace: 5_000_000n, [eventUnit]: 1n },
+      )
+      .attach.MintingPolicy(contracts.withdrawal.mintingScript)
+      .complete({ localUPLCEval: true });
+    const eventMintSigned = await eventMintUnsigned.sign
+      .withWallet()
+      .complete();
+    await funderLucid.awaitTx(await eventMintSigned.submit());
+    const eventUtxo = await expectSingleUtxoWithUnit(
+      funderLucid,
+      contracts.withdrawal.spendingScriptAddress,
+      eventUnit,
+    );
+
+    // ## Evidence admission over the emulator block's retained-DA bytes.
+    const base = await buildCanonicalBlockFixtureV1({ transactions: [] });
+    const payload: SDK.DaPayloadV1 = {
+      ...base.payload,
+      block_body: {
+        ...base.payload.block_body,
+        header,
+        header_hash: headerHash,
+        withdrawals: [
+          [KEY_AUTHENTIC_WITHDRAWAL_ID, VALUE_DIVERTED_WITHDRAWAL_INFO],
+        ],
+        counts: {
+          ...base.payload.block_body.counts,
+          withdrawalCount: counted.count,
+        },
+      },
+    };
+    const evidence =
+      await fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1({
+        observation: authenticatedHeaderObservationV1({
+          ...base,
+          header,
+          headerHash,
+        }),
+        payloadEnvelopeCbor: await reencodeFixturePayloadV1(payload),
+        daProvenance: DA_PROVENANCE,
+      });
+    expect(evidence.headerHash).toBe(headerHash);
+    expect(evidence.committedWithdrawalsRoot).toBe(counted.root);
+
+    // ## The proof plan, classified against the authentic event.
+    const plan = await prepareFabricatedWithdrawalFromCommittedLeavesV1({
+      headerHash: evidence.headerHash,
+      committedWithdrawalsRoot: evidence.committedWithdrawalsRoot,
+      withdrawalCount: evidence.withdrawalCount,
+      headerStartTime: evidence.headerStartTime,
+      headerEndTime: evidence.headerEndTime,
+      entries: evidence.entries,
+      witness: {
+        kind: "present_event",
+        observation: L1_OBSERVATION,
+        withdrawalEventPolicyId: contracts.withdrawal.policyId,
+        observedEventAssetName,
+        eventDatumCbor,
+      },
+    });
+    expect(plan.threadTokenAssetName).toBe(
+      `${SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1}${headerHash}`,
+    );
+    expect(plan.classification.fault).toEqual({
+      MismatchedWithdrawalContent: {
+        committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
+        authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+        event_inclusion_time: eventInclusionTime,
+      },
+    });
+
+    // ## init
+    const initResult = await submitFabricatedFamilyInitV1({
+      lucid: proverLucid,
+      realBlueprint,
+      contracts,
+      catalogueRoot: catalogue.root,
+      category,
+      family: fabricatedWithdrawal,
+      familyLabel: "fabricated-withdrawal",
+      signer: proverSigner,
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+    });
+    expect(initResult.txHash).toHaveLength(64);
+    expect(initResult.fraudulentHeaderHash).toBe(headerHash);
+    expect(initResult.computationThreadAssetName).toBe(
+      plan.threadTokenAssetName,
+    );
+    const firstStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      initResult.firstStepAddress,
+      initResult.computationThreadUnit,
+    );
+    expect(outRefLabel(firstStepUtxo)).toBe(initResult.threadOutRef);
+    expect(
+      Data.from(firstStepUtxo.datum!, SDK.FabricatedWithdrawalStep01Datum),
+    ).toEqual({ fraud_prover: proverSigner.paymentKeyHash, data: null });
+
+    // ## step-01: bind the committed diverted leaf to the header
+    const inclusion = parseSubmitFabricatedWithdrawalInclusion(
+      plan.withdrawalInclusion,
+    );
+    const expectedHandoff = await deriveFabricatedWithdrawalStep01HandoffV1({
+      header,
+      headerHash,
+      inclusion,
+    });
+    const step01Result = await submitFabricatedWithdrawalStep01({
+      lucid: proverLucid,
+      contracts: fabricatedWithdrawal,
+      network,
+      signer: proverSigner,
+      threadOutRef: initResult.threadOutRef,
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      withdrawalInclusion: inclusion,
+      awaitConfirmation: true,
+    });
+    expect(step01Result.txHash).toHaveLength(64);
+    expect(step01Result.fraudulentHeaderHash).toBe(headerHash);
+    expect(step01Result.committedWithdrawalInfoHash).toBe(
+      HASH_DIVERTED_WITHDRAWAL_INFO,
+    );
+    await expect(
+      proverLucid.utxosAtWithUnit(
+        initResult.firstStepAddress,
+        initResult.computationThreadUnit,
+      ),
+    ).resolves.toHaveLength(0);
+    const secondStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step01Result.secondStepAddress,
+      initResult.computationThreadUnit,
+    );
+    expect(outRefLabel(secondStepUtxo)).toBe(step01Result.nextThreadOutRef);
+    // The handoff the L1 step-01 validator pinned is exactly the one the
+    // off-chain rule derives from the committed bytes.
+    expect(
+      Data.from(secondStepUtxo.datum!, SDK.FabricatedWithdrawalStep02Datum),
+    ).toEqual({
+      fraud_prover: proverSigner.paymentKeyHash,
+      data: expectedHandoff.step02State,
+    });
+
+    // ## step-02: authenticate the L1 withdrawal-event witness
+    const step02Result = await submitFabricatedWithdrawalStep02({
+      lucid: proverLucid,
+      contracts: fabricatedWithdrawal,
+      network,
+      signer: proverSigner,
+      threadOutRef: step01Result.nextThreadOutRef,
+      evidence: { kind: "present_event", eventOutRef: outRefLabel(eventUtxo) },
+      awaitConfirmation: true,
+    });
+    expect(step02Result.verdict).toEqual({
+      WithdrawalEventObserved: {
+        event_datum_hash: plan.classification.eventDatumHash!,
+        event_inclusion_time: eventInclusionTime,
+      },
+    });
+    await expect(
+      proverLucid.utxosAtWithUnit(
+        step01Result.secondStepAddress,
+        initResult.computationThreadUnit,
+      ),
+    ).resolves.toHaveLength(0);
+    const thirdStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step02Result.thirdStepAddress,
+      initResult.computationThreadUnit,
+    );
+    expect(outRefLabel(thirdStepUtxo)).toBe(step02Result.nextThreadOutRef);
+    const step03State = SDK.fabricatedWithdrawalStep03StateV1(
+      expectedHandoff.step02State,
+      step02Result.verdict,
+    );
+    expect(
+      Data.from(thirdStepUtxo.datum!, SDK.FabricatedWithdrawalStep03Datum),
+    ).toEqual({
+      fraud_prover: proverSigner.paymentKeyHash,
+      data: step03State,
+    });
+
+    // ## step-03: re-open the authenticated event datum and pin the fault
+    const step03Result = await submitFabricatedWithdrawalStep03({
+      lucid: proverLucid,
+      contracts: fabricatedWithdrawal,
+      signer: proverSigner,
+      threadOutRef: step02Result.nextThreadOutRef,
+      eventDatumCbor,
+      awaitConfirmation: true,
+    });
+    expect(step03Result.fault).toEqual(plan.classification.fault);
+    await expect(
+      proverLucid.utxosAtWithUnit(
+        step02Result.thirdStepAddress,
+        initResult.computationThreadUnit,
+      ),
+    ).resolves.toHaveLength(0);
+    const fourthStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step03Result.fourthStepAddress,
+      initResult.computationThreadUnit,
+    );
+    expect(outRefLabel(fourthStepUtxo)).toBe(step03Result.nextThreadOutRef);
+    const step03Handoff = await deriveFabricatedWithdrawalStep03HandoffV1({
+      state: step03State,
+      eventDatumCbor,
+    });
+    expect(
+      Data.from(fourthStepUtxo.datum!, SDK.FabricatedWithdrawalStep04Datum),
+    ).toEqual({
+      fraud_prover: proverSigner.paymentKeyHash,
+      data: step03Handoff.step04State,
+    });
+
+    // ## step-04: adjudicate and mint the permanent fraud-proof token
+    const step04Result = await submitFabricatedWithdrawalStep04({
+      lucid: proverLucid,
+      contracts: fabricatedWithdrawal,
+      signer: proverSigner,
+      threadOutRef: step03Result.nextThreadOutRef,
+      awaitConfirmation: true,
+    });
+    expect(step04Result.fault).toEqual(plan.classification.fault);
+    expect(step04Result.fraudProofAssetName).toBe(plan.threadTokenAssetName);
+    // The computation thread is burned; the fraud-proof token is permanent.
+    await expect(
+      proverLucid.utxosAtWithUnit(
+        step03Result.fourthStepAddress,
+        initResult.computationThreadUnit,
+      ),
+    ).resolves.toHaveLength(0);
+    const fraudProofUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step04Result.fraudProofAddress,
+      step04Result.fraudProofUnit,
+    );
+    expect(outRefLabel(fraudProofUtxo)).toBe(step04Result.fraudProofOutRef);
+    expect(fraudProofUtxo.assets[step04Result.fraudProofUnit]).toBe(1n);
+    expect(Data.from(fraudProofUtxo.datum!, SDK.FraudProofTokenDatum)).toEqual({
+      fraud_prover: proverSigner.paymentKeyHash,
+    });
+  }, 240_000);
+
+  it("cannot advance a fabricated-withdrawal thread against a valid block", async () => {
+    const harness = await makeEmulatorHarness();
+    const {
+      realBlueprint,
+      funderLucid,
+      proverLucid,
+      proverSigner,
+      contracts,
+      catalogue,
+      fabricatedWithdrawal,
+      category,
+    } = harness;
+
+    // An honest block: the committed leaf's content IS the authentic event's.
+    const authenticInfoCbor = SDK.committedWithdrawalValueBytesV1(
+      Data.from(DATUM_AUTHENTIC_WITHDRAWAL_EVENT, SDK.WithdrawalOrderDatum)
+        .event.info,
+    );
+    const { counted, header, setup, eventDatumCbor, observedEventAssetName } =
+      await setupChallengedBlockOnEmulator(harness, authenticInfoCbor);
+
+    const initResult = await submitFabricatedFamilyInitV1({
+      lucid: proverLucid,
+      realBlueprint,
+      contracts,
+      catalogueRoot: catalogue.root,
+      category,
+      family: fabricatedWithdrawal,
+      familyLabel: "fabricated-withdrawal",
+      signer: proverSigner,
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+    });
+    const firstStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      initResult.firstStepAddress,
+      initResult.computationThreadUnit,
+    );
+
+    // Plane 1 — off-chain fail-closed: the committed content hash equals the
+    // authentic event's, so the classifier refuses to build a plan at all.
+    await expect(
+      prepareFabricatedWithdrawalFromCommittedLeavesV1({
+        headerHash: setup.headerHash,
+        committedWithdrawalsRoot: counted.root,
+        withdrawalCount: counted.count,
+        headerStartTime: header.startTime,
+        headerEndTime: header.endTime,
+        entries: [[KEY_AUTHENTIC_WITHDRAWAL_ID, authenticInfoCbor]],
+        witness: {
+          kind: "present_event",
+          observation: L1_OBSERVATION,
+          withdrawalEventPolicyId: contracts.withdrawal.policyId,
+          observedEventAssetName,
+          eventDatumCbor,
+        },
+      }),
+    ).rejects.toThrow(/authentic_content_matches_commitment/u);
+
+    // Plane 2 — on-chain: substituting diverted content for the honest leaf
+    // passes the local counted-root equality (root and count are the header's
+    // own), but the L1 membership proof cannot open the committed root over a
+    // value the block never committed. The inline MPF verification in step-01's
+    // spend handler is what refuses it.
+    const honestProof = await keyValuePhasProof(
+      { ...counted, root: counted.phasRoot },
+      Buffer.from(KEY_AUTHENTIC_WITHDRAWAL_ID, "hex"),
+      Buffer.from(authenticInfoCbor, "hex"),
+    );
+    const divertedInclusion = parseSubmitFabricatedWithdrawalInclusion({
+      committedWithdrawalIdCbor: KEY_AUTHENTIC_WITHDRAWAL_ID,
+      committedWithdrawalInfoCbor: VALUE_DIVERTED_WITHDRAWAL_INFO,
+      withdrawalsPhasRoot: counted.phasRoot,
+      withdrawalMembershipProofCbor: Data.to(honestProof, SDK.Proof),
+    });
+    await expect(
+      submitFabricatedWithdrawalStep01({
+        lucid: proverLucid,
+        contracts: fabricatedWithdrawal,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(firstStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        withdrawalInclusion: divertedInclusion,
+        awaitConfirmation: true,
+      }),
+    ).rejects.toThrow(/failed script execution.*Spend/su);
+
+    // The thread is untouched: no step-02 output exists and the valid block is
+    // still in the state queue.
+    const stillFirstStep = await expectSingleUtxoWithUnit(
+      proverLucid,
+      initResult.firstStepAddress,
+      initResult.computationThreadUnit,
+    );
+    expect(outRefLabel(stillFirstStep)).toBe(outRefLabel(firstStepUtxo));
+    await expect(
+      proverLucid.utxosAtWithUnit(
+        fabricatedWithdrawal.steps[1].spendingScriptAddress,
+        initResult.computationThreadUnit,
+      ),
+    ).resolves.toHaveLength(0);
+    await expectStateQueueHeaderOrder({
+      lucid: funderLucid,
+      contracts,
+      expectedHeaderHashes: [setup.headerHash],
+    });
+  }, 240_000);
 });

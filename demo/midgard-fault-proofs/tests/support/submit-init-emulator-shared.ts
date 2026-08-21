@@ -39,6 +39,8 @@ import {
   type AuthenticatedValidator,
   buildDaHashPreimageFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
+  buildFabricatedDepositFaultProofContracts,
+  buildFabricatedWithdrawalFaultProofContracts,
   buildInputNoIdxFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
   buildInvalidSignatureFaultProofContracts,
@@ -57,12 +59,17 @@ import {
   encodeLinkedListNodeView,
   EventKeySchema,
   EventToStepValueSchema,
+  FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1,
+  FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
   ForcedInclusionTxV1Schema,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+  type FraudProofCatalogueCategoryDeploymentInfo,
   FraudProofCatalogueDatum,
   type FraudProofCatalogueDeploymentInfo,
+  FraudProofComputationThreadRedeemer,
+  FraudProofComputationThreadStepDatum,
   type FraudProofs,
   GENESIS_HEADER_HASH,
   GENESIS_PROTOCOL_VERSION,
@@ -81,6 +88,7 @@ import {
   parseFaultProofBlueprint,
   parsePhasMembershipBlueprint,
   phasMembershipWithdrawalScriptFromBlueprint,
+  Proof,
   referenceScriptAuthPolicyDeploymentInfo,
   referenceScriptPublicationFundingTarget,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
@@ -90,6 +98,7 @@ import {
   requireOwnMintPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
+  requireWithdrawalRedeemerIndex,
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   RetiredOperatorMintRedeemer,
   ROOT_DOMAINS,
@@ -154,7 +163,13 @@ import { expect } from "vitest";
 import {
   buildCountedRoot,
   encodeData,
+  encodePhasMembershipProofRedeemer,
+  fetchUtxoByOutRef,
   keyValuePhasProof,
+  parseOutRef,
+  phasMembershipRewardAddress,
+  requireSingletonUtxo,
+  resolveFraudulentHeaderHash,
   resolveProverSigner,
   submitRemoveFraudulentBlock,
   submitValidationDisputeAward,
@@ -170,6 +185,9 @@ import {
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   validationDisputeValidityRange,
 } from "../../src/index.js";
+import type { FabricatedDepositContractsV1 } from "../../src/submit-fabricated-deposit-step-01.js";
+import type { FabricatedWithdrawalContractsV1 } from "../../src/submit-fabricated-withdrawal-step-01.js";
+import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import { submitInit } from "./legacy-submit-emulator.js";
 
 export const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -740,6 +758,8 @@ export const buildMinimalFaultProofContracts = async (
     realTransitionTrace = false,
     realZeroInput = false,
     realDaHashPreimage = false,
+    realFabricatedDeposit = false,
+    realFabricatedWithdrawal = false,
     realInputNoIdx = false,
     realNoReferenceInput = false,
     realReferenceInputNoIdx = false,
@@ -752,6 +772,8 @@ export const buildMinimalFaultProofContracts = async (
     readonly realTransitionTrace?: boolean;
     readonly realZeroInput?: boolean;
     readonly realDaHashPreimage?: boolean;
+    readonly realFabricatedDeposit?: boolean;
+    readonly realFabricatedWithdrawal?: boolean;
     readonly realInputNoIdx?: boolean;
     readonly realNoReferenceInput?: boolean;
     readonly realReferenceInputNoIdx?: boolean;
@@ -759,7 +781,12 @@ export const buildMinimalFaultProofContracts = async (
     readonly realValidationTraceDispute?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
-): Promise<MidgardValidators> => {
+): Promise<
+  MidgardValidators & {
+    readonly fabricatedDeposit?: FabricatedDepositContractsV1;
+    readonly fabricatedWithdrawal?: FabricatedWithdrawalContractsV1;
+  }
+> => {
   // This integration test proves the real active-operators slashing and
   // scheduler removal path. Registered/retired operator setup remains
   // scaffolded only where needed to support the focused removal flow.
@@ -933,6 +960,36 @@ export const buildMinimalFaultProofContracts = async (
       doubleSpendContracts.fraudProof.policyId,
     );
   }
+  const fabricatedDepositContracts = realFabricatedDeposit
+    ? await Effect.runPromise(
+        buildFabricatedDepositFaultProofContracts({
+          blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+          network,
+          hubOraclePolicyId: hubOracle.policyId,
+          fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+        }),
+      )
+    : undefined;
+  if (fabricatedDepositContracts !== undefined) {
+    expect(fabricatedDepositContracts.fraudProof.policyId).toBe(
+      doubleSpendContracts.fraudProof.policyId,
+    );
+  }
+  const fabricatedWithdrawalContracts = realFabricatedWithdrawal
+    ? await Effect.runPromise(
+        buildFabricatedWithdrawalFaultProofContracts({
+          blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+          network,
+          hubOraclePolicyId: hubOracle.policyId,
+          fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+        }),
+      )
+    : undefined;
+  if (fabricatedWithdrawalContracts !== undefined) {
+    expect(fabricatedWithdrawalContracts.fraudProof.policyId).toBe(
+      doubleSpendContracts.fraudProof.policyId,
+    );
+  }
   const inputNoIdxContracts = realInputNoIdx
     ? await Effect.runPromise(
         buildInputNoIdxFaultProofContracts({
@@ -1047,8 +1104,38 @@ export const buildMinimalFaultProofContracts = async (
     ),
   );
 
+  // The two Q39/Q40 families predate their catalogue registration: production
+  // deployment resolution cannot build them yet (parent-owned integration
+  // work), so their submitters take an explicit contracts record. Assemble it
+  // here, from the same parameterized chains whose step-01 hashes the tests
+  // register as extra catalogue categories.
+  const fabricatedDeposit: FabricatedDepositContractsV1 | undefined =
+    fabricatedDepositContracts === undefined
+      ? undefined
+      : {
+          steps: fabricatedDepositContracts.fabricatedDeposit.steps,
+          computationThread: fabricatedDepositContracts.computationThread,
+          fraudProof: fabricatedDepositContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+          categoryId: FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1,
+        };
+  const fabricatedWithdrawal: FabricatedWithdrawalContractsV1 | undefined =
+    fabricatedWithdrawalContracts === undefined
+      ? undefined
+      : {
+          steps: fabricatedWithdrawalContracts.fabricatedWithdrawal.steps,
+          computationThread: fabricatedWithdrawalContracts.computationThread,
+          fraudProof: fabricatedWithdrawalContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+          categoryId: FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
+        };
+
   return {
     ...withScheduler,
+    ...(fabricatedDeposit === undefined ? {} : { fabricatedDeposit }),
+    ...(fabricatedWithdrawal === undefined ? {} : { fabricatedWithdrawal }),
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,
@@ -1262,9 +1349,30 @@ export const makeNativeTx = ({
     },
   });
 
+/**
+ * A catalogue category registered on top of the canonical eleven — the Q39/Q40
+ * fabricated families, whose production registration is parent-owned. With no
+ * extras the emitted root and every base proof are byte-identical to the
+ * two-argument behaviour, so no measured fixture moves.
+ */
+export type CatalogueExtraCategoryV1 = {
+  readonly categoryId: string;
+  readonly scriptHash: string;
+  readonly membershipProofCbor: string;
+};
+
 export const buildCatalogueDeploymentInfo = async (
   fraudProofs: FraudProofs,
-): Promise<FraudProofCatalogueDeploymentInfo> => {
+  extraCategories: Readonly<
+    Record<string, { readonly categoryId: string; readonly scriptHash: string }>
+  > = {},
+): Promise<
+  FraudProofCatalogueDeploymentInfo & {
+    readonly extraCategories: Readonly<
+      Record<string, CatalogueExtraCategoryV1>
+    >;
+  }
+> => {
   const categories = Object.fromEntries(
     FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name, index) => [
       name,
@@ -1286,6 +1394,12 @@ export const buildCatalogueDeploymentInfo = async (
       encodeCatalogueValue(category.scriptHash),
     );
   }
+  for (const extra of Object.values(extraCategories)) {
+    await trie.insert(
+      encodeCatalogueKey(extra.categoryId),
+      encodeCatalogueValue(extra.scriptHash),
+    );
+  }
 
   const categoriesWithProofs = { ...categories };
   for (const name of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
@@ -1296,10 +1410,20 @@ export const buildCatalogueDeploymentInfo = async (
       membershipProofCbor: proof.toCBOR().toString("hex"),
     };
   }
+  const extraCategoriesWithProofs: Record<string, CatalogueExtraCategoryV1> =
+    {};
+  for (const [name, extra] of Object.entries(extraCategories)) {
+    const proof = await trie.prove(encodeCatalogueKey(extra.categoryId));
+    extraCategoriesWithProofs[name] = {
+      ...extra,
+      membershipProofCbor: proof.toCBOR().toString("hex"),
+    };
+  }
 
   return {
     root: trieRootHex(trie),
     categories: categoriesWithProofs,
+    extraCategories: extraCategoriesWithProofs,
   };
 };
 
@@ -3959,6 +4083,224 @@ export const funderPaymentKeyHash = async (
   return credential.hash;
 };
 
+const encodeCatalogueMembershipRedeemer = ({
+  root,
+  categoryId: id,
+  categoryScriptHash,
+  membershipProofCbor,
+}: {
+  readonly root: string;
+  readonly categoryId: string;
+  readonly categoryScriptHash: string;
+  readonly membershipProofCbor: string;
+}): string =>
+  encodePhasMembershipProofRedeemer({
+    root,
+    keyCbor: Data.to(id, categoryIdSchema as unknown as LucidDataSchema),
+    valueCbor: Data.to(
+      categoryScriptHash,
+      ScriptHashSchema as unknown as LucidDataSchema,
+    ),
+    membershipProofCbor,
+  });
+
+/**
+ * Init transaction for a fabricated family (Q39/Q40): mints the computation
+ * thread under the family's extra catalogue category and locks it at step-01.
+ *
+ * This mirrors the generic tail of `src/submit-init.ts` exactly — catalogue,
+ * hub-oracle and fraudulent-block reference inputs, the PHAS membership
+ * withdrawal carrying the category proof, and the `Init` mint redeemer — but
+ * lives here because the production `submitInit` category union is parent-owned
+ * and does not register these families yet.
+ */
+export const submitFabricatedFamilyInitV1 = async ({
+  lucid,
+  realBlueprint,
+  contracts,
+  catalogueRoot,
+  category,
+  family,
+  familyLabel,
+  signer,
+  fraudulentBlockOutRef,
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly realBlueprint: Blueprint;
+  readonly contracts: Pick<
+    MidgardValidators,
+    "fraudProofCatalogue" | "hubOracle"
+  >;
+  readonly catalogueRoot: string;
+  readonly category: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly family:
+    | FabricatedDepositContractsV1
+    | FabricatedWithdrawalContractsV1;
+  readonly familyLabel: string;
+  readonly signer: ReturnType<typeof resolveProverSigner>;
+  readonly fraudulentBlockOutRef: string;
+}): Promise<{
+  readonly txHash: string;
+  readonly fraudulentHeaderHash: string;
+  readonly computationThreadAssetName: string;
+  readonly computationThreadUnit: string;
+  readonly firstStepAddress: string;
+  readonly threadOutRef: string;
+}> => {
+  // The deployed step-01 must be the very script the catalogue category
+  // registers; a divergence would mint a thread the family cannot spend.
+  expect(category.categoryId).toBe(family.categoryId);
+  expect(category.scriptHash).toBe(family.steps[0].spendingScriptHash);
+
+  const [catalogueUtxo, hubOracleUtxo, fraudulentBlockUtxo] = await Promise.all(
+    [
+      requireSingletonUtxo({
+        lucid,
+        address: contracts.fraudProofCatalogue.spendingScriptAddress,
+        unit: toUnit(
+          contracts.fraudProofCatalogue.policyId,
+          FRAUD_PROOF_CATALOGUE_ASSET_NAME,
+        ),
+        label: `${familyLabel} init fraud-proof catalogue`,
+      }),
+      requireSingletonUtxo({
+        lucid,
+        address: credentialToAddress(
+          network,
+          scriptHashToCredential(contracts.hubOracle.policyId),
+        ),
+        unit: toUnit(contracts.hubOracle.policyId, HUB_ORACLE_ASSET_NAME),
+        label: `${familyLabel} init hub oracle`,
+      }),
+      fetchUtxoByOutRef({
+        lucid,
+        outRef: parseOutRef(
+          fraudulentBlockOutRef,
+          `${familyLabel} fraudulent block out-ref`,
+        ),
+        label: `${familyLabel} fraudulent block UTxO`,
+      }),
+    ],
+  );
+  const fraudulentHeaderHash = resolveFraudulentHeaderHash({
+    stateQueuePolicyId: family.stateQueuePolicyId,
+    fraudulentBlockUtxo,
+  });
+  const computationThreadAssetName = `${family.categoryId}${fraudulentHeaderHash}`;
+  const computationThreadUnit = toUnit(
+    family.computationThread.policyId,
+    computationThreadAssetName,
+  );
+  const phasMembershipScript: Script = {
+    type: "PlutusV3",
+    script: getCompiledScript(realBlueprint, "phas.membership.withdraw"),
+  };
+  const phasRewardAddress = phasMembershipRewardAddress(
+    network,
+    phasMembershipScript,
+  );
+  const firstStepAddress = family.steps[0].spendingScriptAddress;
+  const firstStepDatum = Data.to(
+    { fraud_prover: signer.paymentKeyHash, data: null },
+    FraudProofComputationThreadStepDatum,
+  );
+  const firstStepOutputMatches = computationThreadOutputPredicate({
+    address: firstStepAddress,
+    datum: firstStepDatum,
+    unit: computationThreadUnit,
+  });
+  let firstStepOutputIndex: bigint | undefined;
+  const computationThreadMintRedeemer = ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      family.computationThread.policyId,
+      `${familyLabel} init computation-thread mint`,
+    );
+    const outputIndex = requireUniqueOutputIndex(
+      ctx.outputs,
+      firstStepOutputMatches,
+      `${familyLabel} init first step`,
+    );
+    firstStepOutputIndex = outputIndex;
+    return Data.to(
+      {
+        Init: {
+          first_step_output_index: outputIndex,
+          fraud_category_id: category.categoryId,
+          fraud_category: category.scriptHash,
+          fraud_category_membership_proof: Data.from(
+            category.membershipProofCbor,
+            Proof,
+          ),
+          fraud_proof_catalogue_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            catalogueUtxo,
+            `${familyLabel} init fraud-proof catalogue`,
+          ),
+          inclusion_proof_script_redeemer_index: requireWithdrawalRedeemerIndex(
+            ctx,
+            phasRewardAddress,
+            `${familyLabel} init PHAS membership`,
+          ),
+          hub_oracle_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            hubOracleUtxo,
+            `${familyLabel} init hub oracle`,
+          ),
+          fraudulent_block_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            fraudulentBlockUtxo,
+            `${familyLabel} init fraudulent block`,
+          ),
+        },
+      },
+      FraudProofComputationThreadRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+  signer.selectWallet(lucid);
+  const unsigned = await lucid
+    .newTx()
+    .readFrom([catalogueUtxo, hubOracleUtxo, fraudulentBlockUtxo])
+    .withdraw(
+      phasRewardAddress,
+      0n,
+      encodeCatalogueMembershipRedeemer({
+        root: catalogueRoot,
+        categoryId: category.categoryId,
+        categoryScriptHash: category.scriptHash,
+        membershipProofCbor: category.membershipProofCbor,
+      }),
+    )
+    .mintAssets({ [computationThreadUnit]: 1n }, computationThreadMintRedeemer)
+    .pay.ToContract(
+      firstStepAddress,
+      { kind: "inline", value: firstStepDatum },
+      { [computationThreadUnit]: 1n },
+    )
+    .addSignerKey(signer.paymentKeyHash)
+    .attach.MintingPolicy(family.computationThread.mintingScript)
+    .attach.WithdrawalValidator(phasMembershipScript)
+    .complete({ localUPLCEval: true });
+  if (firstStepOutputIndex === undefined) {
+    throw new Error(
+      `BuildTxWithRedeemer did not resolve ${familyLabel} init output index.`,
+    );
+  }
+  const signed = await unsigned.sign.withWallet().complete();
+  const txHash = await signed.submit();
+  await lucid.awaitTx(txHash);
+
+  return {
+    txHash,
+    fraudulentHeaderHash,
+    computationThreadAssetName,
+    computationThreadUnit,
+    firstStepAddress,
+    threadOutRef: `${txHash}#${firstStepOutputIndex.toString()}`,
+  };
+};
+
 export type FaultProofEmulatorHarnessV1 = {
   readonly realBlueprint: Blueprint;
   readonly alwaysBlueprint: Blueprint;
@@ -4038,7 +4380,25 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
     nonceUtxo,
     contractOptions,
   );
-  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs, {
+    ...(contracts.fabricatedDeposit === undefined
+      ? {}
+      : {
+          fabricatedDeposit: {
+            categoryId: contracts.fabricatedDeposit.categoryId,
+            scriptHash: contracts.fabricatedDeposit.steps[0].spendingScriptHash,
+          },
+        }),
+    ...(contracts.fabricatedWithdrawal === undefined
+      ? {}
+      : {
+          fabricatedWithdrawal: {
+            categoryId: contracts.fabricatedWithdrawal.categoryId,
+            scriptHash:
+              contracts.fabricatedWithdrawal.steps[0].spendingScriptHash,
+          },
+        }),
+  });
   return {
     realBlueprint,
     alwaysBlueprint,
