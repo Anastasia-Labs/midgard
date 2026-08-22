@@ -35,6 +35,27 @@ if (
     ).join("|")}>`,
   );
 }
+// Fail-closed preflight before any phase: gates resolve @al-ft/midgard-core
+// from its gitignored dist/, and a stale dist silently serves retired
+// constants (the 8,273 -> 12,810 rebind incident). The preflight verifies the
+// build-time source-digest stamp and the named constant tripwire; its only
+// remedy is `pnpm --filter @al-ft/midgard-core build`.
+{
+  const preflight = spawnSync(
+    process.execPath,
+    [
+      resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        "assert-midgard-core-dist-current.mjs",
+      ),
+    ],
+    { stdio: "inherit" },
+  );
+  if (preflight.status !== 0) {
+    process.exit(preflight.status ?? 1);
+  }
+}
+
 // GOAL_SPEC §13.1: the aggregate commands run "with bounded resources". A
 // command that hangs must fail the phase rather than occupy the machine
 // forever, so every command gets a wall-clock bound: its own plan `timeoutMs`
