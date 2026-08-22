@@ -44,7 +44,8 @@ use midgard/fraud_proofs/native_tx/transaction.{
 }
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
-  MidgardVersionedScript, PlutusV3Script, TxIsValid, native_tx_version_v1,
+  MidgardVersionedScript, NativeCardanoScript, PlutusV3Script, TxIsValid,
+  native_tx_version_v1,
 }
 use midgard/script_context_v1
 use midgard/script_proof_v1
@@ -271,8 +272,9 @@ fn step_fixture(
   }
 }
 
-/// Kind 0: the hand-off. A transaction with no execution (`language_bitmap
-/// == 0`) has nothing to select, so its whole cek phase is this one step.
+/// Kind 0: the hand-off. A transaction with no execution at all
+/// (`execution_count == 0`) has nothing to select, so its whole cek phase is
+/// this one step.
 fn finish_fixture() -> CekStepFixtureV1 {
   let tx = empty_v1_transaction()
   let control = empty_native_control(tx)
@@ -494,6 +496,115 @@ fn selection_fixture() -> CekStepFixtureV1 {
       envelope_cbor: envelope,
       sidecar_cbor: one_node_sidecar(),
     },
+  )
+}
+
+/// Kind 1 again, over the case #629 turned on: a transaction whose only
+/// script execution is native. The language bitmap records Plutus languages
+/// only, so it is `0` here, yet the execution is still there to select --
+/// one selection step, exactly as the machine's trace emits it. Because it
+/// is the last (and only) execution, the selection the step makes *is* the
+/// hand-off to ValueAndMint, so its claimed successor is byte-for-byte the
+/// successor the finish branch would have to claim. That makes the pair
+/// below a clean read of the discriminator alone: the selection validator
+/// accepts this step and the finish validator must refuse it.
+fn native_only_selection_fixture() -> CekStepFixtureV1 {
+  let tx = empty_v1_transaction()
+  // The smallest native script: `ScriptPubkey(h_28_a)`, whose versioned
+  // encoding is the 36-byte `[0, h#"8200581c..."]` the scan reads a
+  // `language_tag == 0` header out of.
+  let script = MidgardVersionedScript {
+    language: NativeCardanoScript,
+    script_bytes: #"8200581c" |> bytearray.concat(h_28_a),
+  }
+  let script_cbor = encode_midgard_versioned_script(script)
+  let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
+  let script_hash = script_proof_v1.versioned_script_hash(script)
+  let subject = #"00"
+  let source_leaf = script_proof_v1.source_descriptor_leaf_hash(
+    0,
+    #"00",
+    0,
+    script_hash,
+    bytearray.length(script_cbor),
+    script_item_commitment,
+  )
+  let purpose_leaf = script_proof_v1.purpose_leaf_hash(
+    0,
+    0,
+    script_hash,
+    subject,
+  )
+  // A native execution carries no redeemer, so its execution leaf binds the
+  // empty redeemer leaf.
+  let execution_leaf = script_proof_v1.execution_leaf_hash(
+    0,
+    purpose_leaf,
+    source_leaf,
+    #"",
+  )
+  let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
+  let execution_frontier = validation_merkle_v1.build_frontier([execution_leaf])
+  let control = NativeScriptsControlV1 {
+    ..empty_native_control(tx),
+    source_count: 1,
+    source_peaks: source_frontier.peaks,
+    purpose_count: 1,
+    purpose_peaks: purpose_frontier.peaks,
+    execution_count: 1,
+    execution_peaks: execution_frontier.peaks,
+    execution_cursor: 1,
+    language_bitmap: 0,
+  }
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    control,
+    #"",
+    0,
+    #"",
+    0,
+    0,
+    #"",
+    40,
+    0,
+    0,
+  )
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    phase: validation_trace_v1.ValueAndMint,
+    program_counter: 41,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      41,
+      validation_machine_v1.encode_value_and_mint_witness_v1(control),
+    ),
+  }
+  step_fixture(
+    1,
+    pre,
+    work_witness_cbor,
+    post,
+    NativeExecutionScanWitness {
+      execution_index: 0,
+      language_tag: 0,
+      purpose_kind: 0,
+      purpose_index: 0,
+      script_hash,
+      subject,
+      purpose_siblings: [],
+      source_index: 0,
+      origin_kind: 0,
+      source_key: #"00",
+      script_total_length: bytearray.length(script_cbor),
+      script_item_commitment,
+      source_siblings: [],
+      redeemer_leaf: #"",
+      execution_siblings: [],
+      first_chunk_proof: singleton_field_item_chunk_proof(6, script_cbor),
+    },
+    // A native selection selects no program, so it carries no material.
+    NoCekMaterial,
   )
 }
 
@@ -1466,6 +1577,45 @@ test finish_validator_refuses_a_hand_off_with_pending_executions() fail {
     NoCekMaterial,
   )
   run_finish(prepared(f), f.transition)
+}
+
+/// #629: the same guard read from the other side. A native-only transaction
+/// (`language_bitmap == 0`) with one execution still pending is an execution
+/// selection, and the selection validator wins on it -- the language bitmap
+/// takes no part in the discrimination, only the cursor does.
+test execution_selection_validator_wins_a_native_only_selection() {
+  run_kind(1, native_only_selection_fixture())
+}
+
+/// #629, the negative twin. The very same pre-state and claimed successor
+/// -- an impeccably formed ValueAndMint hand-off under `NoAuxiliaryWitness`,
+/// so the prepared evidence hash is the one the finish validator rebuilds --
+/// is refused by the finish validator, because a cursor short of the
+/// execution count is never the hand-off however empty the bitmap is. Restore
+/// `|| language_bitmap == 0` to the finish discriminator and this vector is
+/// accepted; restore `language_bitmap != 0` to the selection discriminator
+/// and the positive above is refused.
+test finish_validator_refuses_a_native_only_selection() fail {
+  let honest = native_only_selection_fixture()
+  let f = CekStepFixtureV1 { ..honest, kind: 0, auxiliary: NoAuxiliaryWitness }
+  run_finish(prepared(f), f.transition)
+}
+
+/// And the aggregate route agrees: `verify_cek`'s else-branch is the
+/// execution selection, so the four kinds still cover the native-only step.
+test native_only_selection_is_an_honest_machine_step() {
+  let f = native_only_selection_fixture()
+  validation_machine_v1.verify_cek_one_step_v1(
+    f.pre,
+    ValidationOneStepEvidenceV1 {
+      transition: f.transition,
+      auxiliary: f.auxiliary,
+    },
+    field_door.MachineFieldDoorV1 {
+      reference_inputs: [],
+      certificate_policy_id: #"",
+    },
+  )
 }
 
 /// `pre.transaction_commitment` is what binds the cek control's native
