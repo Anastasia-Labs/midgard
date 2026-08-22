@@ -16,7 +16,6 @@ import {
   buildValidationTraceDisputeFaultProofContracts,
   createReferenceScriptAuthPolicy,
   parseFaultProofBlueprint,
-  referenceScriptAuthUnit,
   validationMachineStateDataFromCore,
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
@@ -33,7 +32,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  requireValidationCekDirectResolverReferenceScriptUtxo,
+  requireValidationCekSemanticReferenceScriptUtxo,
   resolveProverSigner,
   submitValidationDisputeAward,
   submitValidationDisputeEnterResolution,
@@ -43,8 +42,9 @@ import {
   submitValidationDisputeReveal,
   submitValidationDisputeSemanticResolution,
   submitValidationDisputeVerifySource,
-  VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
+  VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1,
   validationDisputeValidityRange,
+  validationSemanticResolverGlobalIndexV1,
 } from "../src/index.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import { buildInvalidForcedValidationDisputeFixture } from "./support/submit-init-emulator-fixtures.js";
@@ -60,7 +60,6 @@ import {
   EMULATOR_PROTOCOL_PARAMETERS,
   expectSingleUtxoWithUnit,
   network,
-  publishAuthenticatedValidationCekDirectResolver,
   publishAuthenticatedValidationDisputeControl,
   publishPlainReferenceScriptUtxo,
   publishValidationDisputeReferenceScript,
@@ -152,14 +151,15 @@ describe("fault-proof emulator integration", () => {
     }
   }, 300_000);
 
-  it("publishes and verifies the authenticated generated-blueprint CEK direct-resolver reference script", async () => {
+  it("publishes and verifies the generated-blueprint CEK semantic-resolver reference scripts", async () => {
     const realBlueprint = readBlueprint(realBlueprintPath);
     const publisher = generateEmulatorAccount({
       lovelace: 4_000_000_000_000n,
     });
-    // Deployment-time publication of the ~156 KiB applied resolver cannot fit
-    // the 16,384-byte L1 proof envelope; the emulator hosts it under a raised
-    // maxTxSize so the consuming finalization path can stay by-reference.
+    // Deployment-time publication of the ~45–94 KiB applied cek semantics
+    // cannot fit the 16,384-byte L1 proof envelope; the emulator hosts them
+    // under a raised maxTxSize so the consuming semantic-resolution path can
+    // stay by-reference.
     const emulator = new Emulator([publisher], {
       ...EMULATOR_PROTOCOL_PARAMETERS,
       maxTxSize: 262_144,
@@ -174,164 +174,165 @@ describe("fault-proof emulator integration", () => {
         fraudProofCataloguePolicyId: "22".repeat(28),
       }),
     );
-    const directResolver = contracts.validationTraceDispute.directResolvers[0];
-    const appliedResolverBytes =
-      directResolver.spendingScript.script.length / 2;
-    expect(appliedResolverBytes).toBeGreaterThan(
+    const cekOffset = validationSemanticResolverGlobalIndexV1(11, 0);
+    const cekSemantics = {
+      finish: contracts.validationTraceDispute.semanticResolvers[cekOffset]!,
+      1: contracts.validationTraceDispute.semanticResolvers[cekOffset + 1]!,
+      2: contracts.validationTraceDispute.semanticResolvers[cekOffset + 2]!,
+      3: contracts.validationTraceDispute.semanticResolvers[cekOffset + 3]!,
+    } as const;
+    // The finish resolver fits the envelope and attaches inline like every
+    // other small semantic; it is not published by reference.
+    expect(cekSemantics.finish.spendingScript.script.length / 2).toBeLessThan(
       PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
     );
-
-    const authPolicy = createReferenceScriptAuthPolicy(lucid, emulator.now());
-    const publication = await runEmulatorLifecycleStage(
-      "reference-script.publish-authenticated.cekDirectResolver",
-      () =>
-        publishAuthenticatedValidationCekDirectResolver({
-          lucid,
-          script: directResolver.spendingScript,
-          authPolicy,
-        }),
-    );
-    // Honest deployment-time measurement: the publication itself exceeds the
-    // L1 proof envelope precisely because the resolver body does.
-    expect(publication.publicationMeasurement.l1ByteMargin).toBeLessThan(0);
-    if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
-      console.info(
-        JSON.stringify(
-          {
-            cekDirectResolverReferencePublication: {
-              appliedResolverBytes,
-              appliedResolverHash: directResolver.spendingScriptHash,
-              measurement: publication.publicationMeasurement,
-            },
-          },
-          (_key, value: unknown) =>
-            typeof value === "bigint" ? value.toString() : value,
-          2,
-        ),
-      );
-    }
-    expect(publication.utxo.scriptRef).toBeDefined();
-    expect(validatorToScriptHash(publication.utxo.scriptRef!)).toBe(
-      directResolver.spendingScriptHash,
-    );
-    expect(
-      publication.utxo.assets[
-        referenceScriptAuthUnit(
-          authPolicy.policyId,
-          "V1 validation-trace CEK direct resolver",
-        )
-      ],
-    ).toBe(1n);
-
-    const publishedEntry = {
-      scriptHash: directResolver.spendingScriptHash,
-      refScriptUTxO: {
-        txHash: publication.utxo.txHash,
-        outputIndex: publication.utxo.outputIndex,
-      },
-    };
-
-    // Complete verification path used by CEK finalization submission.
-    const verified =
-      await requireValidationCekDirectResolverReferenceScriptUtxo({
-        lucid,
-        deploymentInfo: {
-          [VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]:
-            publishedEntry,
-        },
-        expectedScriptHash: directResolver.spendingScriptHash,
-        authPolicyId: authPolicy.policyId,
-      });
-    expect(outRefLabel(verified)).toBe(outRefLabel(publication.utxo));
-
-    // Missing registration rejects before any transaction is constructed.
     await expect(
-      requireValidationCekDirectResolverReferenceScriptUtxo({
+      requireValidationCekSemanticReferenceScriptUtxo({
         lucid,
         deploymentInfo: {},
-        expectedScriptHash: directResolver.spendingScriptHash,
-        authPolicyId: authPolicy.policyId,
+        semanticResolverIndex: 0,
+        expectedScriptHash: cekSemantics.finish.spendingScriptHash,
       }),
-    ).rejects.toThrow(/missing "validationTraceDisputeCekDirectResolver"/u);
+    ).rejects.toThrow(/CEK semantic resolver 0 is not published by reference/u);
 
-    // Wrong reference: a UTxO without any reference script rejects.
-    const plainUtxo = (await lucid.wallet().getUtxos()).find(
-      (candidate) => candidate.scriptRef == null,
-    );
-    expect(plainUtxo).toBeDefined();
-    await expect(
-      requireValidationCekDirectResolverReferenceScriptUtxo({
-        lucid,
-        deploymentInfo: {
-          [VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
-            scriptHash: directResolver.spendingScriptHash,
-            refScriptUTxO: {
-              txHash: plainUtxo!.txHash,
-              outputIndex: plainUtxo!.outputIndex,
+    const awardPublication = await publishPlainReferenceScriptUtxo({
+      lucid,
+      script: contracts.validationTraceDispute.award.spendingScript,
+      label: "V1 validation-trace award",
+    });
+
+    for (const semanticResolverIndex of [1, 2, 3] as const) {
+      const semantic = cekSemantics[semanticResolverIndex];
+      const entryName =
+        VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1[
+          semanticResolverIndex
+        ];
+      const appliedResolverBytes = semantic.spendingScript.script.length / 2;
+      expect(appliedResolverBytes).toBeGreaterThan(
+        PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+      );
+      const publication = await runEmulatorLifecycleStage(
+        `reference-script.publish.${entryName}`,
+        () =>
+          publishPlainReferenceScriptUtxo({
+            lucid,
+            script: semantic.spendingScript,
+            label: entryName,
+            oversized: true,
+          }),
+      );
+      // Honest deployment-time measurement: the publication itself exceeds
+      // the L1 proof envelope precisely because the resolver body does.
+      expect(publication.publicationMeasurement.l1ByteMargin).toBeLessThan(0);
+      if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
+        console.info(
+          JSON.stringify(
+            {
+              cekSemanticReferencePublication: {
+                entryName,
+                appliedResolverBytes,
+                appliedResolverHash: semantic.spendingScriptHash,
+                measurement: publication.publicationMeasurement,
+              },
             },
-          },
-        },
-        expectedScriptHash: directResolver.spendingScriptHash,
-        authPolicyId: authPolicy.policyId,
-      }),
-    ).rejects.toThrow(/does not carry a reference script/u);
+            (_key, value: unknown) =>
+              typeof value === "bigint" ? value.toString() : value,
+            2,
+          ),
+        );
+      }
+      expect(publication.utxo.scriptRef).toBeDefined();
+      expect(validatorToScriptHash(publication.utxo.scriptRef!)).toBe(
+        semantic.spendingScriptHash,
+      );
 
-    // Wrong reference: the published award control carries a different
-    // validator, so the resolver-hash check rejects it.
-    const awardPublication = await publishAuthenticatedValidationDisputeControl(
-      {
-        lucid,
-        target: {
-          control: "award",
-          name: "V1 validation-trace award",
-          script: contracts.validationTraceDispute.award.spendingScript,
-        } as ValidationDisputeControlPublicationTarget,
-        authPolicy,
-      },
-    );
-    await expect(
-      requireValidationCekDirectResolverReferenceScriptUtxo({
-        lucid,
-        deploymentInfo: {
-          [VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
-            scriptHash: directResolver.spendingScriptHash,
-            refScriptUTxO: {
-              txHash: awardPublication.utxo.txHash,
-              outputIndex: awardPublication.utxo.outputIndex,
-            },
-          },
+      const publishedEntry = {
+        scriptHash: semantic.spendingScriptHash,
+        refScriptUTxO: {
+          txHash: publication.utxo.txHash,
+          outputIndex: publication.utxo.outputIndex,
         },
-        expectedScriptHash: directResolver.spendingScriptHash,
-        authPolicyId: authPolicy.policyId,
-      }),
-    ).rejects.toThrow(/reference script hash mismatch/u);
+      };
 
-    // Wrong role: the exact resolver published under another role token
-    // rejects, so an attacker cannot substitute a differently-authorized
-    // publication.
-    const wrongRolePublication =
-      await publishAuthenticatedValidationCekDirectResolver({
+      // Complete verification path used by the cek semantic-resolution
+      // submission.
+      const verified = await requireValidationCekSemanticReferenceScriptUtxo({
         lucid,
-        script: directResolver.spendingScript,
-        authPolicy,
-        roleName: "V1 validation-trace award",
+        deploymentInfo: { [entryName]: publishedEntry },
+        semanticResolverIndex,
+        expectedScriptHash: semantic.spendingScriptHash,
       });
-    await expect(
-      requireValidationCekDirectResolverReferenceScriptUtxo({
-        lucid,
-        deploymentInfo: {
-          [VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
-            scriptHash: directResolver.spendingScriptHash,
-            refScriptUTxO: {
-              txHash: wrongRolePublication.utxo.txHash,
-              outputIndex: wrongRolePublication.utxo.outputIndex,
+      expect(outRefLabel(verified)).toBe(outRefLabel(publication.utxo));
+
+      // Missing registration rejects before any transaction is constructed.
+      await expect(
+        requireValidationCekSemanticReferenceScriptUtxo({
+          lucid,
+          deploymentInfo: {},
+          semanticResolverIndex,
+          expectedScriptHash: semantic.spendingScriptHash,
+        }),
+      ).rejects.toThrow(new RegExp(`missing "${entryName}"`, "u"));
+
+      // Wrong reference: a UTxO without any reference script rejects. The
+      // plain UTxO is captured after this publication so it is still unspent.
+      const plainUtxo = (await lucid.wallet().getUtxos()).find(
+        (candidate) => candidate.scriptRef == null,
+      );
+      expect(plainUtxo).toBeDefined();
+      await expect(
+        requireValidationCekSemanticReferenceScriptUtxo({
+          lucid,
+          deploymentInfo: {
+            [entryName]: {
+              scriptHash: semantic.spendingScriptHash,
+              refScriptUTxO: {
+                txHash: plainUtxo!.txHash,
+                outputIndex: plainUtxo!.outputIndex,
+              },
             },
           },
-        },
-        expectedScriptHash: directResolver.spendingScriptHash,
-        authPolicyId: authPolicy.policyId,
-      }),
-    ).rejects.toThrow(/must carry exactly one .* auth-role token/u);
+          semanticResolverIndex,
+          expectedScriptHash: semantic.spendingScriptHash,
+        }),
+      ).rejects.toThrow(/does not carry a reference script/u);
+
+      // Wrong reference: the published award carries a different validator,
+      // so the resolver-hash check rejects it.
+      await expect(
+        requireValidationCekSemanticReferenceScriptUtxo({
+          lucid,
+          deploymentInfo: {
+            [entryName]: {
+              scriptHash: semantic.spendingScriptHash,
+              refScriptUTxO: {
+                txHash: awardPublication.utxo.txHash,
+                outputIndex: awardPublication.utxo.outputIndex,
+              },
+            },
+          },
+          semanticResolverIndex,
+          expectedScriptHash: semantic.spendingScriptHash,
+        }),
+      ).rejects.toThrow(/reference script hash mismatch/u);
+
+      // Wrong entry: another cek semantic's publication under this entry
+      // rejects at the deployment-info hash check.
+      const other = cekSemantics[semanticResolverIndex === 1 ? 2 : 1];
+      await expect(
+        requireValidationCekSemanticReferenceScriptUtxo({
+          lucid,
+          deploymentInfo: {
+            [entryName]: {
+              scriptHash: other.spendingScriptHash,
+              refScriptUTxO: publishedEntry.refScriptUTxO,
+            },
+          },
+          semanticResolverIndex,
+          expectedScriptHash: semantic.spendingScriptHash,
+        }),
+      ).rejects.toThrow(/script hash mismatch/u);
+    }
   }, 300_000);
 
   it.each([

@@ -240,8 +240,8 @@ export const repoRoot = resolve(moduleDir, "../../../..");
  * Rows 5 and 6 are the two `it.each` rows of one table, so a runner reports them
  * under one `FAIL` block with two names. The two *other* validation-dispute
  * scenarios — "publishes every authenticated validation-dispute control under the
- * exact L1 envelope" and "publishes and verifies the authenticated
- * generated-blueprint CEK direct-resolver reference script" — **pass**: they
+ * exact L1 envelope" and "publishes and verifies the generated-blueprint CEK
+ * semantic-resolver reference scripts" — **pass**: they
  * publish and re-read controls without ever spending an affected leaf, so the
  * stale arity never reaches a script. Running these three files gives
  * `6 failed | 2 passed (8)`.
@@ -2044,16 +2044,21 @@ export const buildAcceptedClaimOverRejectingTransactionFixture = async ({
  * instruction, so the challenger must lose. Removing the delta-clearing clause
  * must not have made honest blocks challengeable.
  */
-export const buildHonestAcceptedValidationDisputeFixture = async ({
-  operatorVkey,
+/**
+ * One honest, valid, signed native transaction (one spend, one output) and
+ * its accepted deterministic trace, shared by the honest-operator mirror
+ * fixture below and the forged-operator-successor fixtures that dispute one
+ * of its steps. `txOrderSeed` keeps the forced-event keys of the fixtures
+ * distinct.
+ */
+const buildHonestAcceptedNativeTransactionTraceV1 = async ({
   now,
+  txOrderSeed,
 }: {
-  readonly operatorVkey: string;
   readonly now: number;
-}): Promise<
-  ForcedValidationDisputeFixture & { readonly disputedPhase: string }
-> => {
-  const txOrderId = transitionTraceOutRef("e3");
+  readonly txOrderSeed: string;
+}) => {
+  const txOrderId = transitionTraceOutRef(txOrderSeed);
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
   const spendingKey = CML.PrivateKey.generate_ed25519();
   const spendingAddress = Buffer.from(
@@ -2123,7 +2128,7 @@ export const buildHonestAcceptedValidationDisputeFixture = async ({
   });
   const preUtxosRoot = ledgerMutationSteps[0]!.preRoot.toString("hex");
   const postUtxosRoot = ledgerMutationSteps.at(-1)!.postRoot.toString("hex");
-  const operatorTrace = await Effect.runPromise(
+  const honestTrace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
       consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
       eventKeyCbor: encodeData(eventKey, EventKeySchema),
@@ -2144,6 +2149,52 @@ export const buildHonestAcceptedValidationDisputeFixture = async ({
       expectedRejectionCode: null,
     }),
   );
+  return {
+    txOrderId,
+    eventKey,
+    forcedTransaction,
+    honestTrace,
+    preUtxosRoot,
+    postUtxosRoot,
+  };
+};
+
+/**
+ * Mirror control for VM-DEFECT-2 (GOAL_SPEC §3 invariant 9 -- soundness is
+ * symmetric). Same block layout, same disputed instruction, same rejection
+ * code and same *genuinely non-empty* claimed ledger delta as the
+ * challenger-wins fixture; the only difference is that the transaction is
+ * actually valid and the operator's committed `Accepted` verdict is honest.
+ *
+ * The dishonest challenger commits the strongest forgery available: a
+ * rejecting terminal whose immutable context, program counter, execution
+ * budget and work root are all exactly what `rejected_successor_is_exact`
+ * demands (`hash_work_witness(Terminal, pre.program_counter + 1,
+ * encode_terminal_rejection_witness(code, pre.prior_ledger_root))`). The one
+ * thing it cannot supply is a genuine rejection at the `inputSets`
+ * instruction, so the challenger must lose. Removing the delta-clearing clause
+ * must not have made honest blocks challengeable.
+ */
+export const buildHonestAcceptedValidationDisputeFixture = async ({
+  operatorVkey,
+  now,
+}: {
+  readonly operatorVkey: string;
+  readonly now: number;
+}): Promise<
+  ForcedValidationDisputeFixture & { readonly disputedPhase: string }
+> => {
+  const {
+    txOrderId,
+    eventKey,
+    forcedTransaction,
+    honestTrace: operatorTrace,
+    preUtxosRoot,
+    postUtxosRoot,
+  } = await buildHonestAcceptedNativeTransactionTraceV1({
+    now,
+    txOrderSeed: "e3",
+  });
   const disputedLowIndex = operatorTrace.states.findIndex(
     (state) => state.phase === "inputSets",
   );
@@ -2208,6 +2259,113 @@ export const buildHonestAcceptedValidationDisputeFixture = async ({
     evidence,
     claimedLedgerDeltaRoot: operatorTrace.states[0]!.ledgerDeltaRoot,
     disputedPhase: preState.phase,
+  };
+};
+
+/**
+ * R5 item 1 (#617) journey fixture for the cek and ValueAndMint prepare +
+ * semantic decomposition. The transaction is the honest, valid, signed
+ * native transaction above and the challenger's trace is its honest
+ * accepted trace; the operator commits the same trace up to the first state
+ * of `disputedPhase` and a forged successor from there on (the honest
+ * `Accepted` terminal with a fabricated work root, repeated to the honest
+ * length so the descriptor and every midpoint after the boundary disagree,
+ * which pins the bisection at exactly that boundary). The one-step the challenger then
+ * proves on L1 is the honest trace's first step of that phase:
+ *
+ * - `cek`: a native-only transaction has no execution to select, so the cek
+ *   phase is the single stand-alone ValueAndMint hand-off (`cek_v1` prepare,
+ *   then `cek_finish_semantic_v1`, resolver 11 / semantic 0);
+ * - `valueAndMint`: the stage-0 `begin` step (`value_and_mint_v1` prepare,
+ *   then `value_and_mint_begin_semantic_v1`, resolver 12 / semantic 0).
+ */
+export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
+  operatorVkey,
+  now,
+  disputedPhase,
+}: {
+  readonly operatorVkey: string;
+  readonly now: number;
+  readonly disputedPhase: "cek" | "valueAndMint";
+}): Promise<
+  ForcedValidationDisputeFixture & {
+    readonly disputedPhase: "cek" | "valueAndMint";
+    readonly disputedLowIndex: number;
+  }
+> => {
+  const {
+    txOrderId,
+    eventKey,
+    forcedTransaction,
+    honestTrace: challengerTrace,
+    preUtxosRoot,
+    postUtxosRoot,
+  } = await buildHonestAcceptedNativeTransactionTraceV1({
+    now,
+    txOrderSeed: disputedPhase === "cek" ? "e4" : "e5",
+  });
+  const disputedLowIndex = challengerTrace.states.findIndex(
+    (state) => state.phase === disputedPhase,
+  );
+  if (disputedLowIndex < 0) {
+    throw new Error(
+      `honest accepted validation trace is missing its ${disputedPhase} phase`,
+    );
+  }
+  const honestTerminal = challengerTrace.states.at(-1)!;
+  if (honestTerminal.phase !== "terminal") {
+    throw new Error(
+      "honest accepted validation trace does not end in a terminal state",
+    );
+  }
+  // The honest terminal with only its work root fabricated: every endpoint
+  // check the source validator applies to the operator's claim (terminal
+  // phase, program counter == step count, verdict, rejection code, immutable
+  // context, ledger delta root) still holds, so the dispute opens and the
+  // bisection -- not the source stage -- is what exposes the forgery.
+  const forgedTerminal = {
+    ...honestTerminal,
+    workRoot: Buffer.alloc(32, 0x7e),
+  };
+  const operatorStates = challengerTrace.states.map((state, index) =>
+    index <= disputedLowIndex ? state : forgedTerminal,
+  );
+  const operatorTrace: DeterministicValidationMachineTrace = {
+    ...challengerTrace,
+    states: operatorStates,
+    tree: buildMidgardValidationTraceTree(
+      operatorStates.map(hashMidgardValidationMachineStateV1),
+      "accepted",
+      MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
+    ),
+  };
+  const evidence = buildValidationDisputeEvidenceBundleV1({
+    operatorTrace,
+    challengerTrace,
+    currentTime: now + 2_000,
+  });
+  const { header, claim } = await buildForcedValidationDisputeCommitments({
+    operatorVkey,
+    now,
+    txOrderId,
+    eventKey,
+    forcedTransaction,
+    operatorTrace,
+    preUtxosRoot,
+    postUtxosRoot,
+  });
+  return {
+    header,
+    claim,
+    operatorTrace,
+    challengerTrace,
+    challengerDescriptor: validationTraceDescriptorDataFromCore(
+      challengerTrace.tree.descriptor,
+    ),
+    evidence,
+    claimedLedgerDeltaRoot: operatorTrace.states[0]!.ledgerDeltaRoot,
+    disputedPhase,
+    disputedLowIndex,
   };
 };
 
@@ -3157,91 +3315,6 @@ export const publishValidationDisputeReferenceScript = async ({
   });
 };
 
-export const VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_ROLE =
-  "V1 validation-trace CEK direct resolver";
-
-/**
- * Publishes the applied `cek_v1` direct resolver (direct resolver 0) as an
- * authenticated reference-script UTxO carrying the
- * `V1ValidationTraceCekResolver0` role token. Unlike every dispute
- * control published by `publishAuthenticatedValidationDisputeControl`, the
- * applied resolver body exceeds the 16,384-byte L1 proof envelope, so this
- * deployment-time publication cannot fit that envelope; the measurement is
- * returned unasserted so callers pin the honest publication size while the
- * consuming finalization transaction stays inside the envelope through
- * `readFrom`.
- */
-export const publishAuthenticatedValidationCekDirectResolver = async ({
-  lucid,
-  script,
-  authPolicy,
-  roleName = VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_ROLE,
-}: {
-  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly script: Script;
-  readonly authPolicy: ReturnType<typeof createReferenceScriptAuthPolicy>;
-  /** Test-only override proving wrong-role publications are rejected. */
-  readonly roleName?: string;
-}) => {
-  const target = {
-    name: roleName,
-    script,
-  };
-  // The published output must reach min-Ada for a script-ref output whose
-  // reference script alone is ~156 KiB, far above the fixed
-  // SCRIPT_REF_OUTPUT_LOVELACE floor used by envelope-fitting controls.
-  const scriptRefLovelaceFloor =
-    BigInt(script.script.length / 2) * 8_620n + 100_000_000n;
-  const selectedFundingInputs = selectReferenceScriptFundingUtxos(
-    await lucid.wallet().getUtxos(),
-    referenceScriptPublicationFundingTarget(1) + scriptRefLovelaceFloor,
-  );
-  if (selectedFundingInputs.length === 0) {
-    throw new Error(
-      "Expected plain-Ada inputs funding the authenticated CEK direct-resolver reference-script publication",
-    );
-  }
-  const referenceScriptsAddress = await lucid.wallet().address();
-  const { tx, layout } = await Effect.runPromise(
-    completeReferenceScriptPublicationTxProgram({
-      lucid,
-      selectedFundingInputs,
-      walletAddress: referenceScriptsAddress,
-      referenceScriptsAddress,
-      missingTargets: [target],
-      authPolicy,
-    }),
-  );
-  const localOutput = layout.localReferenceOutputs.get(target.name);
-  if (localOutput === undefined) {
-    throw new Error(
-      "Authenticated publication transaction omitted the CEK direct-resolver reference-script output",
-    );
-  }
-  const signed = await tx.sign.withWallet().complete();
-  const publicationMeasurement = measureCompleteSignedTransaction(
-    signed.toCBOR(),
-  );
-  const txHash = await signed.submit();
-  await lucid.awaitTx(txHash);
-  const outRef = {
-    txHash,
-    outputIndex: localOutput.outputIndex,
-  };
-  const published = await lucid.utxosByOutRef([outRef]);
-  if (published.length !== 1 || published[0]!.scriptRef == null) {
-    throw new Error(
-      `Expected one live CEK direct-resolver reference-script UTxO at ${txHash}#${localOutput.outputIndex.toString()}`,
-    );
-  }
-  return {
-    authPolicyDeploymentInfo:
-      referenceScriptAuthPolicyDeploymentInfo(authPolicy),
-    publicationMeasurement,
-    utxo: published[0]!,
-  };
-};
-
 // Publishes a deployed validator as a plain reference-script UTxO at the
 // publisher wallet address, following the hash-checked deployment
 // consumption pattern (`requireDeploymentReferenceScript`); the consuming
@@ -3251,10 +3324,21 @@ export const publishPlainReferenceScriptUtxo = async ({
   lucid,
   script,
   label,
+  oversized = false,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly script: Script;
   readonly label: string;
+  /**
+   * The applied CEK execution-selection / context-step / core-step semantic
+   * resolvers (R5 item 1) exceed the 16,384-byte L1 proof envelope, so their
+   * deployment-time publication cannot fit it: the emulator must host them
+   * under a raised `maxTxSize`, the output must reach the script-ref min-Ada
+   * for a ~45–94 KiB reference script, and the measurement is returned
+   * unasserted so callers pin the honest publication size while the consuming
+   * semantic-resolution transaction stays inside the envelope via `readFrom`.
+   */
+  readonly oversized?: boolean;
 }): Promise<{
   readonly utxo: UTxO;
   readonly publicationMeasurement: CompleteSignedTransactionMeasurement;
@@ -3265,19 +3349,17 @@ export const publishPlainReferenceScriptUtxo = async ({
     network,
     scriptHashToCredential("2f".repeat(28)),
   );
+  const lovelace = oversized
+    ? BigInt(script.script.length / 2) * 8_620n + 100_000_000n
+    : 20_000_000n;
   const unsigned = await lucid
     .newTx()
-    .pay.ToAddressWithData(
-      parkAddress,
-      undefined,
-      { lovelace: 20_000_000n },
-      script,
-    )
+    .pay.ToAddressWithData(parkAddress, undefined, { lovelace }, script)
     .complete();
   const signed = await unsigned.sign.withWallet().complete();
   const signedCbor = signed.toCBOR();
   const publicationMeasurement = measureCompleteSignedTransaction(signedCbor);
-  if (publicationMeasurement.l1ByteMargin <= 0) {
+  if (!oversized && publicationMeasurement.l1ByteMargin <= 0) {
     throw new Error(
       `${label} reference-script publication is ${publicationMeasurement.completeSignedBytes.toString()} bytes and does not fit the 16,384-byte L1 envelope`,
     );
