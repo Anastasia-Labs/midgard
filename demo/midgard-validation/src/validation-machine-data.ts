@@ -1016,8 +1016,11 @@ export type CekStepKindV1 = "finish" | "selection" | "context" | "core";
  * execution selection): a core step carries an active state, a context step
  * carries a context control and no active state, and a step with neither is
  * the ValueAndMint hand-off when no execution is left to select (cursor at
- * the execution count, or no Plutus language in the bitmap) and an execution
- * selection otherwise. The auxiliary is not consulted: each on-chain semantic
+ * the execution count) and an execution selection otherwise. The language
+ * bitmap takes no part in the discrimination: a transaction whose executions
+ * are all native carries `language_bitmap == 0` and still has one selection
+ * step per execution, exactly as the machine emits them (#629). The
+ * auxiliary is not consulted: each on-chain semantic
  * resolver `expect`s the auxiliary shape of its own kind (none, a
  * `NativeExecutionScanWitness`, a cek context witness, a
  * `CekCoreStepWitness`), so a witness whose auxiliary does not match the kind
@@ -1045,17 +1048,12 @@ export const cekKindV1 = (
     nativeControl[21],
     "cek_witness.native_control.execution_count",
   );
-  const languageBitmap = asBigInt(
-    nativeControl[24],
-    "cek_witness.native_control.language_bitmap",
-  );
   const executionCursor = asBigInt(control[2], "cek_witness.execution_cursor");
   const hasContextControl =
     asBytes(control[1], "cek_witness.context_control").length > 0;
   const hasActiveState =
     asBytes(control[5], "cek_witness.active_state_hash").length > 0;
-  const selectionExhausted =
-    executionCursor === executionCount || languageBitmap === 0n;
+  const selectionExhausted = executionCursor === executionCount;
   if (hasActiveState) {
     return "core";
   }

@@ -16959,8 +16959,11 @@ fn cek_witness_is_well_formed_v1(
 
 /// A cek step whose control carries no active state and no context control
 /// is either the hand-off to ValueAndMint (`cek_control_is_finish_v1`) or an
-/// execution selection; the two are told apart by whether any execution is
-/// still pending.
+/// execution selection; the two are told apart by the execution cursor
+/// alone, so they stay total and disjoint. The language bitmap takes no part:
+/// a transaction whose executions are all native carries `language_bitmap
+/// == 0` and still has every one of those executions to select, one selection
+/// step each, exactly as the machine's trace emits them (#629).
 fn cek_control_is_selecting_v1(cek: CekWitnessControlV1) -> Bool {
   and {
     cek.active_state_hash == #"",
@@ -16971,10 +16974,7 @@ fn cek_control_is_selecting_v1(cek: CekWitnessControlV1) -> Bool {
 fn cek_control_is_finish_v1(cek: CekWitnessControlV1) -> Bool {
   and {
     cek_control_is_selecting_v1(cek),
-    or {
-      cek.execution_cursor == cek.control.execution_count,
-      cek.control.language_bitmap == 0,
-    },
+    cek.execution_cursor == cek.control.execution_count,
   }
 }
 
@@ -16982,7 +16982,6 @@ fn cek_control_is_execution_selection_v1(cek: CekWitnessControlV1) -> Bool {
   and {
     cek_control_is_selecting_v1(cek),
     cek.execution_cursor != cek.control.execution_count,
-    cek.control.language_bitmap != 0,
   }
 }
 

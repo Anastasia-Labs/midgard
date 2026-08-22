@@ -16996,7 +16996,7 @@ type CekKindFixtureV1 {
 }
 
 /// Kind 0: the stand-alone hand-off to ValueAndMint. A transaction with no
-/// execution at all (`language_bitmap == 0`) has nothing to select, so its
+/// execution at all (`execution_count == 0`) has nothing to select, so its
 /// whole cek phase is this one step.
 fn cek_finish_kind_fixture() -> CekKindFixtureV1 {
   let tx = empty_v1_transaction()
