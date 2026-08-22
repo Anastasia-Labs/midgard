@@ -2273,8 +2273,9 @@ export const buildHonestAcceptedValidationDisputeFixture = async ({
  * which pins the bisection at exactly that boundary). The one-step the challenger then
  * proves on L1 is the honest trace's first step of that phase:
  *
- * - `cek`: a native-only transaction has no execution to select, so the cek
- *   phase is the single stand-alone ValueAndMint hand-off (`cek_v1` prepare,
+ * - `cek`: this pure key-witness spend has `execution_count == 0` (no script
+ *   execution of any language), so the cek phase is the single stand-alone
+ *   ValueAndMint hand-off (`cek_v1` prepare,
  *   then `cek_finish_semantic_v1`, resolver 11 / semantic 0);
  * - `valueAndMint`: the stage-0 `begin` step (`value_and_mint_v1` prepare,
  *   then `value_and_mint_begin_semantic_v1`, resolver 12 / semantic 0).

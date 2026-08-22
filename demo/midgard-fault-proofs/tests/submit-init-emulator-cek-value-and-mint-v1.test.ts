@@ -25,8 +25,8 @@ describe("validation-dispute journeys through the cek and ValueAndMint decomposi
     {
       disputedPhase: "cek" as const,
       resolverName: "Cek" as const,
-      // A native-only transaction has nothing to select: the cek phase is the
-      // single stand-alone hand-off to ValueAndMint (`cek_finish_semantic_v1`).
+      // This key-witness spend has `execution_count == 0`, so the cek phase is
+      // the single stand-alone hand-off to ValueAndMint (`cek_finish_semantic_v1`).
       semanticResolverIndex: 0,
       semanticModule: "cek_finish_semantic_v1",
     },
