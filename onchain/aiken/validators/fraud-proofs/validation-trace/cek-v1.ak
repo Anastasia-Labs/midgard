@@ -1,28 +1,26 @@
 use aiken/crypto.{ScriptHash}
-use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/validation_resolver_v1.{CekSpendRedeemer, Datum, validate_cek}
+use midgard/validation_resolver_v1.{
+  Datum, PrepareSelectedSpendRedeemer, prepare_selected,
+}
+use midgard/validation_trace_v1.{Cek}
 
 validator main(
+  semantic_resolver_script_hashes: List<ScriptHash>,
   computation_thread_policy_id: PolicyId,
-  fraud_proof_policy_id: PolicyId,
-  fraud_proof_address: Address,
-  cek_program_material_script_hash: ScriptHash,
-  field_preimage_certificate_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
-    redeemer: CekSpendRedeemer,
+    redeemer: PrepareSelectedSpendRedeemer,
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    validate_cek(
-      cek_program_material_script_hash,
+    prepare_selected(
+      Cek,
+      semantic_resolver_script_hashes,
+      4,
       computation_thread_policy_id,
-      fraud_proof_policy_id,
-      fraud_proof_address,
-      field_preimage_certificate_policy_id,
       datum,
       redeemer,
       own_out_ref,

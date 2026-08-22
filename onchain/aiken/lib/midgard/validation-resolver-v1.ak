@@ -8,10 +8,9 @@ use cardano/transaction.{
 }
 use midgard/cek_proof_v1
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue, finalize}
+use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/ledger_state.{CekProgramMaterialDatumV1}
 use midgard/native_script_scan_v1
-use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_machine_v1
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
@@ -22,18 +21,6 @@ pub const script_sources_semantic_resolver_count: Int = 29
 
 pub type Datum =
   ct.StepDatum<validation_resolution_v1.ValidationResolutionStateV1>
-
-pub type ResolveActionV1 {
-  Resolve {
-    input_index: Int,
-    output_index: Int,
-    fraud_proof_mint_redeemer_index: Int,
-    challenger_evidence: validation_machine_v1.ValidationOneStepEvidenceV1,
-  }
-}
-
-pub type SpendRedeemer =
-  ct.StepRedeemer<ResolveActionV1>
 
 /// Complete CEK material is resolver evidence, never a machine auxiliary.
 pub type CekMaterialRouteV1 {
@@ -55,19 +42,6 @@ pub type CekSinglePublicationDatumV1 {
   program_envelope_hash: ByteArray,
   sidecar_cbor: ByteArray,
 }
-
-pub type CekResolveActionV1 {
-  ResolveCek {
-    input_index: Int,
-    output_index: Int,
-    fraud_proof_mint_redeemer_index: Int,
-    challenger_evidence: validation_machine_v1.ValidationOneStepEvidenceV1,
-    material_route: CekMaterialRouteV1,
-  }
-}
-
-pub type CekSpendRedeemer =
-  ct.StepRedeemer<CekResolveActionV1>
 
 fn cek_selection_envelope_cbor_v1(
   evidence: validation_machine_v1.ValidationOneStepEvidenceV1,
@@ -309,7 +283,14 @@ pub fn verify_cek_material_route_for_selected_envelope_v1(
   }
 }
 
-fn verify_cek_route_v1(
+/// Complete CEK program material is admitted only at the authenticated CEK
+/// execution-selection boundary: a selection step's envelope must be backed by
+/// an accepted material route, and every other cek step must carry no
+/// material at all. The material route is resolver evidence, never part of
+/// the hashed one-step evidence, so the selection semantic resolver checks it
+/// against the transaction's reference inputs after `continue_winning` has
+/// bound transition and auxiliary to the prepared evidence hash.
+pub fn verify_cek_route_v1(
   evidence: validation_machine_v1.ValidationOneStepEvidenceV1,
   material_route: CekMaterialRouteV1,
   reference_inputs: List<Input>,
@@ -492,159 +473,6 @@ pub fn prepare_selected(
             state.pre_state.phase == expected_phase,
             output_script_hash == semantic_resolver_script_hash,
             output_state == expected_output_state,
-          }
-        },
-      )
-    }
-  }
-}
-
-pub fn validate(
-  expected_phase: validation_trace_v1.ValidationPhase,
-  verify_one_step: fn(
-    validation_trace_v1.ValidationMachineStateV1,
-    validation_machine_v1.ValidationOneStepEvidenceV1,
-  ) ->
-    Bool,
-  computation_thread_token_policy_id: PolicyId,
-  fraud_proof_token_policy_id: PolicyId,
-  fraud_proof_token_address: Address,
-  datum: Option<Datum>,
-  redeemer: SpendRedeemer,
-  own_out_ref: OutputReference,
-  tx: Transaction,
-) -> Bool {
-  when redeemer is {
-    ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
-      cancel(
-        computation_thread_token_policy_id,
-        datum,
-        input_index,
-        own_out_ref,
-        computation_thread_mint_redeemer_index,
-        tx,
-      )
-    ct.Continue(Resolve {
-      input_index,
-      output_index,
-      fraud_proof_mint_redeemer_index,
-      challenger_evidence,
-    }) -> {
-      let Transaction { inputs, outputs, redeemers, .. } = tx
-      expect Some(step_datum) = datum
-      finalize(
-        computation_thread_token_policy_id,
-        fraud_proof_token_policy_id,
-        fraud_proof_token_address,
-        step_datum,
-        input_index,
-        output_index,
-        fraud_proof_mint_redeemer_index,
-        own_out_ref,
-        inputs,
-        outputs,
-        redeemers,
-        fn(
-          _input_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          input_state,
-        ) {
-          expect Some(state) = input_state
-          and {
-            state.pre_state.phase == expected_phase,
-            validation_resolution_v1.challenger_wins_with_valid_successor(
-              state,
-              challenger_evidence.transition.claimed_successor,
-              verify_one_step(state.pre_state, challenger_evidence),
-            ),
-          }
-        },
-      )
-    }
-  }
-}
-
-/// CEK finalization keeps the ordinary computation-thread cancellation and
-/// award economics, while admitting complete program material only at the
-/// authenticated CEK selection boundary.
-///
-/// `field_preimage_certificate_policy_id` (#592, §8.6) is **appended after the
-/// existing deployment parameters and before the script-context tail**, matching
-/// the thirteen validators that gained it as their last `validator main`
-/// parameter. It is deliberately not slotted in among the other two `PolicyId`s:
-/// three adjacent arguments of the same type at a call site is a mis-order that
-/// type-checks, and this door's policy id is the one whose mis-binding would let
-/// a look-alike certificate authenticate a manifest.
-pub fn validate_cek(
-  cek_program_material_script_hash: ScriptHash,
-  computation_thread_token_policy_id: PolicyId,
-  fraud_proof_token_policy_id: PolicyId,
-  fraud_proof_token_address: Address,
-  field_preimage_certificate_policy_id: PolicyId,
-  datum: Option<Datum>,
-  redeemer: CekSpendRedeemer,
-  own_out_ref: OutputReference,
-  tx: Transaction,
-) -> Bool {
-  when redeemer is {
-    ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
-      cancel(
-        computation_thread_token_policy_id,
-        datum,
-        input_index,
-        own_out_ref,
-        computation_thread_mint_redeemer_index,
-        tx,
-      )
-    ct.Continue(ResolveCek {
-      input_index,
-      output_index,
-      fraud_proof_mint_redeemer_index,
-      challenger_evidence,
-      material_route,
-    }) -> {
-      let Transaction { inputs, outputs, redeemers, reference_inputs, .. } = tx
-      expect Some(step_datum) = datum
-      finalize(
-        computation_thread_token_policy_id,
-        fraud_proof_token_policy_id,
-        fraud_proof_token_address,
-        step_datum,
-        input_index,
-        output_index,
-        fraud_proof_mint_redeemer_index,
-        own_out_ref,
-        inputs,
-        outputs,
-        redeemers,
-        fn(
-          _input_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          input_state,
-        ) {
-          expect Some(state) = input_state
-          and {
-            state.pre_state.phase == validation_trace_v1.Cek,
-            verify_cek_route_v1(
-              challenger_evidence,
-              material_route,
-              reference_inputs,
-              cek_program_material_script_hash,
-            ),
-            validation_resolution_v1.challenger_wins_with_valid_successor(
-              state,
-              challenger_evidence.transition.claimed_successor,
-              validation_machine_v1.verify_cek_one_step_v1(
-                state.pre_state,
-                challenger_evidence,
-                field_door.MachineFieldDoorV1 {
-                  reference_inputs,
-                  certificate_policy_id: field_preimage_certificate_policy_id,
-                },
-              ),
-            ),
           }
         },
       )

@@ -9291,7 +9291,17 @@ test ledger_delta_terminal_step_binds_more_than_128_operations() {
   )
 }
 
-fn maximum_program_envelope_selection_is_exact() -> Bool {
+/// One honest PlutusV3 execution selection over the maximum program
+/// envelope, plus the tampered successor the same evidence must refuse.
+/// Shared by the selection test below and the R5 item 1 route-agreement
+/// controls at the end of this module.
+type CekSelectionFixtureV1 {
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  evidence: validation_machine_v1.ValidationOneStepEvidenceV1,
+  tampered_post: validation_trace_v1.ValidationMachineStateV1,
+}
+
+fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
   let tx = empty_v1_transaction()
   let maximum_program_envelope = cek_proof_v1.encode_program_envelope_v1(
     1,
@@ -9460,23 +9470,30 @@ fn maximum_program_envelope_selection_is_exact() -> Bool {
       first_chunk_proof,
     },
   }
+  expect and {
+      bytearray.length(maximum_program_envelope) == 50,
+      maximum_program_envelope_hash == #"e4fe7f19ef343b55fef5a5c4a80383dd4bbe4bc7009db0a3214bfec086584697",
+    }
+  CekSelectionFixtureV1 { pre, evidence, tampered_post }
+}
+
+fn maximum_program_envelope_selection_is_exact() -> Bool {
+  let f = maximum_program_envelope_selection_fixture()
   and {
-    bytearray.length(maximum_program_envelope) == 50,
-    maximum_program_envelope_hash == #"e4fe7f19ef343b55fef5a5c4a80383dd4bbe4bc7009db0a3214bfec086584697",
-    bytearray.length(cbor.serialise(evidence)) < 16_384,
+    bytearray.length(cbor.serialise(f.evidence)) < 16_384,
     validation_machine_v1.verify_one_step_evidence(
-      pre,
-      evidence,
+      f.pre,
+      f.evidence,
       inline_field_door(),
     ),
     !validation_machine_v1.verify_one_step_evidence(
-      pre,
+      f.pre,
       validation_machine_v1.ValidationOneStepEvidenceV1 {
         transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-          work_witness_cbor,
-          claimed_successor: tampered_post,
+          ..f.evidence.transition,
+          claimed_successor: f.tampered_post,
         },
-        auxiliary: evidence.auxiliary,
+        auxiliary: f.evidence.auxiliary,
       },
       inline_field_door(),
     ),
@@ -12658,7 +12675,13 @@ test cek_context_maximum_mint_authenticates_last_asset_membership() {
   )
 }
 
-test cek_active_core_step_replays_exact_machine_transition() {
+/// One honest active core step (a `ComputeApplication` over two leaf terms)
+/// and its exact successor. Shared by the replay test below and the R5 item 1
+/// route-agreement controls at the end of this module.
+fn cek_active_core_step_fixture() -> Pair<
+  validation_trace_v1.ValidationMachineStateV1,
+  validation_machine_v1.ValidationOneStepEvidenceV1,
+> {
   let tx = empty_v1_transaction()
   let purpose_frontier = validation_merkle_v1.build_frontier([h_a])
   let execution_frontier = validation_merkle_v1.build_frontier([h_b])
@@ -12790,6 +12813,11 @@ test cek_active_core_step_replays_exact_machine_transition() {
       },
     },
   }
+  Pair(pre, evidence)
+}
+
+test cek_active_core_step_replays_exact_machine_transition() {
+  let Pair(pre, evidence) = cek_active_core_step_fixture()
   and {
     validation_machine_v1.verify_one_step_evidence(
       pre,
@@ -12803,7 +12831,7 @@ test cek_active_core_step_replays_exact_machine_transition() {
         transition: validation_machine_v1.ValidationOneStepWitnessV1 {
           ..evidence.transition,
           claimed_successor: validation_trace_v1.ValidationMachineStateV1 {
-            ..post,
+            ..evidence.transition.claimed_successor,
             execution_cpu: 16009,
           },
         },
@@ -16920,5 +16948,1014 @@ test stage_twelve_finish_pending_redeemer_hash_divergence_is_unreachable() {
       transition,
       validation_machine_v1.NoAuxiliaryWitness,
     ),
+  )
+}
+
+// ===========================================================================
+// R5 item 1 (#617) -- cek and ValueAndMint per-kind route agreement controls.
+//
+// Indices 11 (`cek`) and 12 (`valueAndMint`) used to be served by one
+// aggregate resolver each. They are now `prepare_selected` plus one semantic
+// resolver per auxiliary kind, and each of those validators calls a narrow
+// wrapper -- `verify_cek_<kind>_semantics_v1` (finish, execution selection,
+// context step, core step) or `verify_value_and_mint_<kind>_semantics_v1`
+// (the eleven stage/cursor kinds) -- that pins its own discriminator and then
+// runs the very branch the aggregate dispatcher (`verify_cek_one_step_v1`,
+// `verify_value_and_mint_one_step_v1`) would have taken.
+//
+// As with the ScriptSources controls above, every honest fixture is run
+// through both routes and the verdicts must agree, on the accepting step and
+// on a mutated successor. The second property is the one the R5 totality
+// verifier relies on at 11/12: every wrapper must refuse every OTHER kind's
+// honest step with a clean `False`, so the kinds partition the phase's step
+// space exactly -- no step is claimable under two resolvers, and none is
+// claimable under none.
+//
+// Kind numbering follows the deployed semantic-resolver group order
+// (`VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics` in the SDK).
+// ===========================================================================
+
+fn work_root_mutated(
+  witness: validation_machine_v1.ValidationOneStepWitnessV1,
+) -> validation_machine_v1.ValidationOneStepWitnessV1 {
+  validation_machine_v1.ValidationOneStepWitnessV1 {
+    ..witness,
+    claimed_successor: validation_trace_v1.ValidationMachineStateV1 {
+      ..witness.claimed_successor,
+      work_root: h_b,
+    },
+  }
+}
+
+// --- cek -------------------------------------------------------------------
+
+type CekKindFixtureV1 {
+  kind: Int,
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  evidence: validation_machine_v1.ValidationOneStepEvidenceV1,
+}
+
+/// Kind 0: the stand-alone hand-off to ValueAndMint. A transaction with no
+/// execution at all (`language_bitmap == 0`) has nothing to select, so its
+/// whole cek phase is this one step.
+fn cek_finish_kind_fixture() -> CekKindFixtureV1 {
+  let tx = empty_v1_transaction()
+  let control = empty_native_control_fixture(tx)
+  let Pair(pre, work_witness_cbor) = cek_state_fixture(tx, control, #"", 0, 40)
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    phase: validation_trace_v1.ValueAndMint,
+    program_counter: 41,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      41,
+      validation_machine_v1.encode_value_and_mint_witness_v1(control),
+    ),
+  }
+  CekKindFixtureV1 {
+    kind: 0,
+    pre,
+    evidence: validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: post,
+      },
+      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+    },
+  }
+}
+
+/// Kind 1: a PlutusV3 execution selection.
+fn cek_execution_selection_kind_fixture() -> CekKindFixtureV1 {
+  let f = maximum_program_envelope_selection_fixture()
+  CekKindFixtureV1 { kind: 1, pre: f.pre, evidence: f.evidence }
+}
+
+/// Kind 2: a context step -- the mint-context initialisation over a
+/// transaction that mints nothing, which is the smallest context step with
+/// no auxiliary at all.
+fn cek_context_step_kind_fixture() -> CekKindFixtureV1 {
+  let tx = empty_v1_transaction()
+  let control = cek_context_native_control_fixture(tx)
+  expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(
+    [],
+    False,
+  )
+  let init_control = validation_machine_v1.CekContextControlV1 {
+    ..empty_cek_context_control_fixture(6),
+    observer_summary,
+  }
+  let successor_control = validation_machine_v1.CekContextControlV1 {
+    ..init_control,
+    stage: 9,
+    mint_summary: cek_data_v1.map_data_summary_v1(
+      cek_data_v1.empty_data_pair_summary_v1(),
+    ),
+  }
+  let Pair(pre, work_witness_cbor) = cek_state_fixture(
+    tx,
+    control,
+    validation_machine_v1.encode_cek_context_control_v1(init_control),
+    0,
+    47,
+  )
+  let Pair(post, _) = cek_state_fixture(
+    tx,
+    control,
+    validation_machine_v1.encode_cek_context_control_v1(successor_control),
+    0,
+    48,
+  )
+  CekKindFixtureV1 {
+    kind: 2,
+    pre,
+    evidence: validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: post,
+      },
+      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+    },
+  }
+}
+
+/// Kind 3: an active core step.
+fn cek_core_step_kind_fixture() -> CekKindFixtureV1 {
+  let Pair(pre, evidence) = cek_active_core_step_fixture()
+  CekKindFixtureV1 { kind: 3, pre, evidence }
+}
+
+fn cek_kind_fixtures() -> List<CekKindFixtureV1> {
+  [
+    cek_finish_kind_fixture(),
+    cek_execution_selection_kind_fixture(),
+    cek_context_step_kind_fixture(),
+    cek_core_step_kind_fixture(),
+  ]
+}
+
+/// The deployed narrow route for cek kind `kind`, fed the auxiliary the
+/// kind's validator reconstructs from its action fields.
+fn cek_kind_route(
+  kind: Int,
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: validation_machine_v1.ValidationOneStepWitnessV1,
+  auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  if kind == 0 {
+    validation_machine_v1.verify_cek_finish_semantics_v1(pre, witness)
+  } else if kind == 1 {
+    validation_machine_v1.verify_cek_execution_selection_semantics_v1(
+      pre,
+      witness,
+      auxiliary,
+    )
+  } else if kind == 2 {
+    validation_machine_v1.verify_cek_context_step_semantics_v1(
+      pre,
+      witness,
+      auxiliary,
+      inline_field_door(),
+    )
+  } else {
+    expect validation_machine_v1.CekCoreStepWitness { step } = auxiliary
+    validation_machine_v1.verify_cek_core_step_semantics_v1(pre, witness, step)
+  }
+}
+
+fn cek_aggregate_route(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: validation_machine_v1.ValidationOneStepWitnessV1,
+  auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  validation_machine_v1.verify_cek_one_step_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: witness,
+      auxiliary,
+    },
+    inline_field_door(),
+  )
+}
+
+fn cek_kind_routes_agree(f: CekKindFixtureV1) -> Bool {
+  let witness = f.evidence.transition
+  let auxiliary = f.evidence.auxiliary
+  and {
+    stage_routes_agree(
+      cek_kind_route(f.kind, f.pre, witness, auxiliary),
+      cek_aggregate_route(f.pre, witness, auxiliary),
+      True,
+    ),
+    stage_routes_agree(
+      cek_kind_route(f.kind, f.pre, work_root_mutated(witness), auxiliary),
+      cek_aggregate_route(f.pre, work_root_mutated(witness), auxiliary),
+      False,
+    ),
+  }
+}
+
+test cek_finish_route_agrees_with_the_aggregate() {
+  cek_kind_routes_agree(cek_finish_kind_fixture())
+}
+
+test cek_execution_selection_route_agrees_with_the_aggregate() {
+  cek_kind_routes_agree(cek_execution_selection_kind_fixture())
+}
+
+test cek_context_step_route_agrees_with_the_aggregate() {
+  cek_kind_routes_agree(cek_context_step_kind_fixture())
+}
+
+test cek_core_step_route_agrees_with_the_aggregate() {
+  cek_kind_routes_agree(cek_core_step_kind_fixture())
+}
+
+/// Every cek wrapper refuses every other kind's honest step. The wrapper is
+/// handed its OWN kind's auxiliary shape (what its validator would rebuild
+/// from the redeemer) over the other kind's pre-state and transition, so the
+/// refusal can only come from the control discriminator, never from an
+/// auxiliary shape mismatch.
+test cek_kinds_partition_the_cek_step_space() {
+  let fixtures = cek_kind_fixtures()
+  list.all(
+    fixtures,
+    fn(own) {
+      list.all(
+        fixtures,
+        fn(other) {
+          or {
+            own.kind == other.kind,
+            !cek_kind_route(
+              own.kind,
+              other.pre,
+              other.evidence.transition,
+              own.evidence.auxiliary,
+            ),
+          }
+        },
+      )
+    },
+  )
+}
+
+// --- ValueAndMint ------------------------------------------------------------
+
+type ValueAndMintKindFixtureV1 {
+  kind: Int,
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  evidence: validation_machine_v1.ValidationOneStepEvidenceV1,
+}
+
+/// A ValueAndMint control at `stage` with every cursor at zero, every
+/// accumulator initial and no replay schedule.
+fn idle_value_and_mint_control(
+  native_control: validation_machine_v1.NativeScriptsControlV1,
+  stage: Int,
+) -> validation_machine_v1.ValueAndMintControlV1 {
+  validation_machine_v1.ValueAndMintControlV1 {
+    native_control,
+    stage,
+    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_cursor: 0,
+    replay_asset_cursor: 0,
+    replay_value_hash: zero,
+    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    output_cursor: 0,
+    output_asset_cursor: 0,
+    mint_cursor: 0,
+    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+      lovelace_delta: 0,
+      asset_root: null_hash,
+      seen_asset_count: 0,
+      nonzero_asset_count: 0,
+    },
+  }
+}
+
+fn value_and_mint_state_fixture(
+  tx: MidgardTransaction,
+  control: validation_machine_v1.ValueAndMintControlV1,
+  program_counter: Int,
+) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
+  let compact = midgard_transaction_to_compact(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
+    control,
+  )
+  Pair(
+    validation_trace_v1.ValidationMachineStateV1 {
+      machine_version: validation_trace_v1.machine_version,
+      event_key_hash: h_a,
+      transaction_id: tx_id,
+      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      validation_context_hash: validation_trace_v1.hash_validation_context(
+        validation_context_cbor,
+      ),
+      source_kind: validation_trace_v1.Forced,
+      prior_ledger_root: h_c,
+      phase: validation_trace_v1.ValueAndMint,
+      program_counter,
+      work_root: validation_trace_v1.hash_work_witness(
+        validation_trace_v1.ValueAndMint,
+        program_counter,
+        work_witness_cbor,
+      ),
+      execution_cpu: 0,
+      execution_memory: 0,
+      verdict: validation_trace_v1.Pending,
+      rejection_code_hash: zero,
+      ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
+    },
+    work_witness_cbor,
+  )
+}
+
+/// One ValueAndMint-to-ValueAndMint step from `control` to `next_control`.
+fn value_and_mint_kind_fixture(
+  kind: Int,
+  tx: MidgardTransaction,
+  control: validation_machine_v1.ValueAndMintControlV1,
+  next_control: validation_machine_v1.ValueAndMintControlV1,
+  auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1,
+) -> ValueAndMintKindFixtureV1 {
+  let Pair(pre, work_witness_cbor) = value_and_mint_state_fixture(
+    tx,
+    control,
+    40,
+  )
+  let Pair(post, _) = value_and_mint_state_fixture(tx, next_control, 41)
+  ValueAndMintKindFixtureV1 {
+    kind,
+    pre,
+    evidence: validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: post,
+      },
+      auxiliary,
+    },
+  }
+}
+
+/// The replayed input every stage-2 fixture below resolves: a spend input
+/// (`source_kind == 0`) whose descriptor carries `asset_count` assets of
+/// `(h_28_a, "beef", 7)` and three lovelace.
+const replayed_input_key =
+  #"8258200101010101010101010101010101010101010101010101010101010101010101010100"
+
+fn replayed_input_descriptor(
+  asset_count: Int,
+) -> ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+  let asset_frontier = if asset_count == 0 {
+    validation_merkle_v1.build_frontier([])
+  } else {
+    validation_merkle_v1.build_frontier(
+      [ledger_output_commitment_v1.asset_leaf_hash(h_28_a, #"beef", 7)],
+    )
+  }
+  let empty_summary = cek_data_v1.DataSummaryV1 {
+    root: h_a,
+    cbor_length: 0,
+    memory: 0,
+  }
+  ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+    version: ledger_output_commitment_v1.version,
+    output_index: 0,
+    total_length: 16384,
+    item_commitment: h_b,
+    address: #"60" |> bytearray.concat(h_28_b),
+    lovelace: 3,
+    asset_count,
+    asset_frontier_commitment: validation_merkle_v1.frontier_commitment(
+      asset_frontier.count,
+      asset_frontier.peaks,
+    ),
+    cardano_value_size: 5000,
+    reference_script_language: -1,
+    reference_script_hash: #"",
+    reference_script_total_length: 0,
+    reference_script_item_commitment: #"",
+    cardano_tx_out: empty_summary,
+    midgard_tx_out: empty_summary,
+    cardano_spend_datum: empty_summary,
+  }
+}
+
+/// A native control whose single resolved input is `replayed_input_key`
+/// resolving to `descriptor_cbor`, with the matching one-node schedule.
+fn single_replayed_input_native_control(
+  tx: MidgardTransaction,
+  descriptor_cbor: ByteArray,
+) -> validation_machine_v1.NativeScriptsControlV1 {
+  validation_machine_v1.NativeScriptsControlV1 {
+    ..empty_native_control_fixture(tx),
+    resolved_input_count: 1,
+    spend_input_count: 1,
+    resolved_item_peaks: validation_merkle_v1.build_frontier([h_a]).peaks,
+    resolved_inputs_accumulator: validation_machine_v1.resolved_input_accumulator_successor(
+      validation_machine_v1.initial_resolution_accumulator(),
+      0,
+      replayed_input_key,
+      descriptor_cbor,
+    ),
+    resolution_schedule_hash: validation_machine_v1.resolution_schedule_node_hash(
+      0,
+      replayed_input_key,
+      validation_machine_v1.empty_resolution_schedule_hash(),
+    ),
+  }
+}
+
+/// Kind 0: `begin` (stage 0 -> 1) installs the native resolution schedule as
+/// the replay schedule.
+fn value_and_mint_begin_kind_fixture() -> ValueAndMintKindFixtureV1 {
+  let tx = empty_v1_transaction()
+  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+    ..empty_native_control_fixture(tx),
+    resolution_schedule_hash: h_a,
+  }
+  let control = idle_value_and_mint_control(native_control, 0)
+  value_and_mint_kind_fixture(
+    0,
+    tx,
+    control,
+    validation_machine_v1.ValueAndMintControlV1 {
+      ..control,
+      stage: 1,
+      replay_schedule_hash: h_a,
+      replay_remaining_schedule_hash: h_a,
+    },
+    validation_machine_v1.NoAuxiliaryWitness,
+  )
+}
+
+/// Kind 1: `replay_begin` (stage 1 -> 2).
+fn value_and_mint_replay_begin_kind_fixture() -> ValueAndMintKindFixtureV1 {
+  let tx = empty_v1_transaction()
+  let control = idle_value_and_mint_control(empty_native_control_fixture(tx), 1)
+  value_and_mint_kind_fixture(
+    1,
+    tx,
+    control,
+    validation_machine_v1.ValueAndMintControlV1 { ..control, stage: 2 },
+    validation_machine_v1.NoAuxiliaryWitness,
+  )
+}
+
+/// Kind 2: `replay_input` (stage 2, schedule pending, asset cursor 0) over an
+/// asset-free descriptor, which completes the input in one step.
+fn value_and_mint_replay_input_kind_fixture() -> ValueAndMintKindFixtureV1 {
+  let tx = empty_v1_transaction()
+  let descriptor_cbor = ledger_output_commitment_v1.encode(
+    replayed_input_descriptor(0),
+  )
+  let native_control = single_replayed_input_native_control(tx, descriptor_cbor)
+  let control = validation_machine_v1.ValueAndMintControlV1 {
+    ..idle_value_and_mint_control(native_control, 2),
+    replay_schedule_hash: native_control.resolution_schedule_hash,
+    replay_remaining_schedule_hash: native_control.resolution_schedule_hash,
+  }
+  value_and_mint_kind_fixture(
+    2,
+    tx,
+    control,
+    validation_machine_v1.ValueAndMintControlV1 {
+      ..control,
+      replay_cursor: 1,
+      replay_accumulator: native_control.resolved_inputs_accumulator,
+      replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+      value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+        ..control.value_accumulator,
+        lovelace_delta: 3,
+      },
+    },
+    validation_machine_v1.ResolvedInputReplayWitness {
+      source_kind: 0,
+      key: replayed_input_key,
+      next_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+      value: descriptor_cbor,
+    },
+  )
+}
+
+/// Kind 3: `replay_asset` (stage 2, asset cursor > 0) folding the single
+/// asset of a one-asset descriptor, which also completes the input.
+fn value_and_mint_replay_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
+  let tx = empty_v1_transaction()
+  let descriptor = replayed_input_descriptor(1)
+  let descriptor_cbor = ledger_output_commitment_v1.encode(descriptor)
+  let native_control = single_replayed_input_native_control(tx, descriptor_cbor)
+  let unit = h_28_a |> bytearray.concat(#"beef")
+  let control = validation_machine_v1.ValueAndMintControlV1 {
+    ..idle_value_and_mint_control(native_control, 2),
+    replay_schedule_hash: native_control.resolution_schedule_hash,
+    replay_remaining_schedule_hash: native_control.resolution_schedule_hash,
+    replay_asset_cursor: 1,
+    replay_value_hash: blake2b_256(descriptor_cbor),
+    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+      lovelace_delta: 3,
+      asset_root: null_hash,
+      seen_asset_count: 0,
+      nonzero_asset_count: 0,
+    },
+  }
+  value_and_mint_kind_fixture(
+    3,
+    tx,
+    control,
+    validation_machine_v1.ValueAndMintControlV1 {
+      ..control,
+      replay_cursor: 1,
+      replay_asset_cursor: 0,
+      replay_value_hash: zero,
+      replay_accumulator: native_control.resolved_inputs_accumulator,
+      replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+      value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+        lovelace_delta: 3,
+        asset_root: singleton_root(unit, cbor.serialise(7)),
+        seen_asset_count: 1,
+        nonzero_asset_count: 1,
+      },
+    },
+    validation_machine_v1.ValueInputAssetWitness {
+      source_kind: 0,
+      key: replayed_input_key,
+      next_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+      descriptor_cbor,
+      asset_index: 0,
+      policy_id: h_28_a,
+      asset_name: #"beef",
+      quantity: 7,
+      asset_peaks: validation_merkle_v1.build_frontier(
+        [ledger_output_commitment_v1.asset_leaf_hash(h_28_a, #"beef", 7)],
+      ).peaks,
+      asset_siblings: [],
+      mutation: validation_machine_v1.ValueAssetMutationWitnessV1 {
+        delta_was_present: False,
+        old_delta: 0,
+        delta_proof: [],
+      },
+    },
+  )
+}
+
+/// Kind 4: `replay_finish` (stage 2, schedule exhausted -> stage 3).
+fn value_and_mint_replay_finish_kind_fixture() -> ValueAndMintKindFixtureV1 {
+  let tx = empty_v1_transaction()
+  let control = idle_value_and_mint_control(empty_native_control_fixture(tx), 2)
+  value_and_mint_kind_fixture(
+    4,
+    tx,
+    control,
+    validation_machine_v1.ValueAndMintControlV1 { ..control, stage: 3 },
+    validation_machine_v1.NoAuxiliaryWitness,
+  )
+}
+
+/// Kind 5: `output_descriptor` (stage 3, outputs pending, asset cursor 0).
+fn value_and_mint_output_descriptor_kind_fixture() -> ValueAndMintKindFixtureV1 {
+  let f = value_output_descriptor_fixture()
+  ValueAndMintKindFixtureV1 {
+    kind: 5,
+    pre: f.pre,
+    evidence: validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: f.initial_work,
+        claimed_successor: f.active_state,
+      },
+      auxiliary: validation_machine_v1.ValueOutputDescriptorWitness {
+        output_index: 0,
+        descriptor_cbor: f.descriptor_cbor,
+        siblings: [],
+      },
+    },
+  }
+}
+
+/// Kind 6: `output_asset` (stage 3, asset cursor > 0).
+fn value_and_mint_output_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
+  let f = value_output_descriptor_fixture()
+  ValueAndMintKindFixtureV1 {
+    kind: 6,
+    pre: f.active_state,
+    evidence: validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: f.active_work,
+        claimed_successor: f.final_state,
+      },
+      auxiliary: validation_machine_v1.ValueOutputAssetWitness {
+        output_index: 0,
+        descriptor_cbor: f.descriptor_cbor,
+        asset_index: 0,
+        policy_id: f.policy_id,
+        asset_name: f.asset_name,
+        quantity: f.quantity,
+        asset_peaks: f.asset_peaks,
+        asset_siblings: [],
+        mutation: validation_machine_v1.ValueAssetMutationWitnessV1 {
+          delta_was_present: False,
+          old_delta: 0,
+          delta_proof: [],
+        },
+      },
+    },
+  }
+}
+
+/// Kind 7: `output_finish` (stage 3, outputs exhausted -> stage 4).
+fn value_and_mint_output_finish_kind_fixture() -> ValueAndMintKindFixtureV1 {
+  let tx = empty_v1_transaction()
+  let control = idle_value_and_mint_control(empty_native_control_fixture(tx), 3)
+  value_and_mint_kind_fixture(
+    7,
+    tx,
+    control,
+    validation_machine_v1.ValueAndMintControlV1 { ..control, stage: 4 },
+    validation_machine_v1.NoAuxiliaryWitness,
+  )
+}
+
+/// Kind 8: `mint_asset` (stage 4, mints pending) -- the signed burn leaf
+/// replay from `value_and_mint_replays_signed_burn_leaf_on_l1`.
+fn value_and_mint_mint_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
+  let tx = empty_v1_transaction()
+  let policy_id = #"11111111111111111111111111111111111111111111111111111111"
+  let asset_name = #"beef"
+  let unit = policy_id |> bytearray.concat(asset_name)
+  let mint_frontier = validation_merkle_v1.build_frontier(
+    [validation_machine_v1.mint_asset_leaf_hash(policy_id, asset_name, -5)],
+  )
+  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+    ..empty_native_control_fixture(tx),
+    mint_count: mint_frontier.count,
+    mint_peaks: mint_frontier.peaks,
+  }
+  let control = validation_machine_v1.ValueAndMintControlV1 {
+    ..idle_value_and_mint_control(native_control, 4),
+    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+      lovelace_delta: 0,
+      asset_root: singleton_root(unit, cbor.serialise(5)),
+      seen_asset_count: 1,
+      nonzero_asset_count: 1,
+    },
+  }
+  value_and_mint_kind_fixture(
+    8,
+    tx,
+    control,
+    validation_machine_v1.ValueAndMintControlV1 {
+      ..control,
+      mint_cursor: 1,
+      value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+        lovelace_delta: 0,
+        asset_root: singleton_root(unit, cbor.serialise(0)),
+        seen_asset_count: 1,
+        nonzero_asset_count: 0,
+      },
+    },
+    validation_machine_v1.ValueMintAssetWitness {
+      mint_index: 0,
+      policy_id,
+      asset_name,
+      quantity: -5,
+      siblings: [],
+      mutation: validation_machine_v1.ValueAssetMutationWitnessV1 {
+        delta_was_present: True,
+        old_delta: 5,
+        delta_proof: [],
+      },
+    },
+  )
+}
+
+/// Kind 9: `mint_finish` (stage 4, mints exhausted -> stage 5).
+fn value_and_mint_mint_finish_kind_fixture() -> ValueAndMintKindFixtureV1 {
+  let tx = empty_v1_transaction()
+  let control = idle_value_and_mint_control(empty_native_control_fixture(tx), 4)
+  value_and_mint_kind_fixture(
+    9,
+    tx,
+    control,
+    validation_machine_v1.ValueAndMintControlV1 { ..control, stage: 5 },
+    validation_machine_v1.NoAuxiliaryWitness,
+  )
+}
+
+/// Kind 10: `finalize` (stage 5 -> LedgerDelta) on a settled accumulator.
+fn value_and_mint_finalize_kind_fixture() -> ValueAndMintKindFixtureV1 {
+  let tx = empty_v1_transaction()
+  let native_control = empty_native_control_fixture(tx)
+  let control = idle_value_and_mint_control(native_control, 5)
+  let Pair(pre, work_witness_cbor) = value_and_mint_state_fixture(
+    tx,
+    control,
+    40,
+  )
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    phase: validation_trace_v1.LedgerDelta,
+    program_counter: 41,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.LedgerDelta,
+      41,
+      validation_machine_v1.encode_ledger_delta_witness_v1(
+        native_control,
+        pre.prior_ledger_root,
+        control.replay_schedule_hash,
+      ),
+    ),
+  }
+  ValueAndMintKindFixtureV1 {
+    kind: 10,
+    pre,
+    evidence: validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: post,
+      },
+      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+    },
+  }
+}
+
+fn value_and_mint_kind_fixtures() -> List<ValueAndMintKindFixtureV1> {
+  [
+    value_and_mint_begin_kind_fixture(),
+    value_and_mint_replay_begin_kind_fixture(),
+    value_and_mint_replay_input_kind_fixture(),
+    value_and_mint_replay_asset_kind_fixture(),
+    value_and_mint_replay_finish_kind_fixture(),
+    value_and_mint_output_descriptor_kind_fixture(),
+    value_and_mint_output_asset_kind_fixture(),
+    value_and_mint_output_finish_kind_fixture(),
+    value_and_mint_mint_asset_kind_fixture(),
+    value_and_mint_mint_finish_kind_fixture(),
+    value_and_mint_finalize_kind_fixture(),
+  ]
+}
+
+/// The deployed narrow route for ValueAndMint kind `kind`, fed the auxiliary
+/// fields the kind's validator carries in its action.
+fn value_and_mint_kind_route(
+  kind: Int,
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: validation_machine_v1.ValidationOneStepWitnessV1,
+  auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  if kind == 0 {
+    validation_machine_v1.verify_value_and_mint_begin_semantics_v1(pre, witness)
+  } else if kind == 1 {
+    validation_machine_v1.verify_value_and_mint_replay_begin_semantics_v1(
+      pre,
+      witness,
+    )
+  } else if kind == 2 {
+    expect
+        validation_machine_v1.ResolvedInputReplayWitness {
+          source_kind,
+          key,
+          next_schedule_hash,
+          value,
+        }
+      = auxiliary
+    validation_machine_v1.verify_value_and_mint_replay_input_semantics_v1(
+      pre,
+      witness,
+      source_kind,
+      key,
+      next_schedule_hash,
+      value,
+    )
+  } else if kind == 3 {
+    expect
+        validation_machine_v1.ValueInputAssetWitness {
+          source_kind,
+          key,
+          next_schedule_hash,
+          descriptor_cbor,
+          asset_index,
+          policy_id,
+          asset_name,
+          quantity,
+          asset_peaks,
+          asset_siblings,
+          mutation,
+        }
+      = auxiliary
+    validation_machine_v1.verify_value_and_mint_replay_asset_semantics_v1(
+      pre,
+      witness,
+      source_kind,
+      key,
+      next_schedule_hash,
+      descriptor_cbor,
+      asset_index,
+      policy_id,
+      asset_name,
+      quantity,
+      asset_peaks,
+      asset_siblings,
+      mutation,
+    )
+  } else if kind == 4 {
+    validation_machine_v1.verify_value_and_mint_replay_finish_semantics_v1(
+      pre,
+      witness,
+    )
+  } else if kind == 5 {
+    expect
+        validation_machine_v1.ValueOutputDescriptorWitness {
+          output_index,
+          descriptor_cbor,
+          siblings,
+        }
+      = auxiliary
+    validation_machine_v1.verify_value_and_mint_output_descriptor_semantics_v1(
+      pre,
+      witness,
+      output_index,
+      descriptor_cbor,
+      siblings,
+    )
+  } else if kind == 6 {
+    expect
+        validation_machine_v1.ValueOutputAssetWitness {
+          output_index,
+          descriptor_cbor,
+          asset_index,
+          policy_id,
+          asset_name,
+          quantity,
+          asset_peaks,
+          asset_siblings,
+          mutation,
+        }
+      = auxiliary
+    validation_machine_v1.verify_value_and_mint_output_asset_semantics_v1(
+      pre,
+      witness,
+      output_index,
+      descriptor_cbor,
+      asset_index,
+      policy_id,
+      asset_name,
+      quantity,
+      asset_peaks,
+      asset_siblings,
+      mutation,
+    )
+  } else if kind == 7 {
+    validation_machine_v1.verify_value_and_mint_output_finish_semantics_v1(
+      pre,
+      witness,
+    )
+  } else if kind == 8 {
+    expect
+        validation_machine_v1.ValueMintAssetWitness {
+          mint_index,
+          policy_id,
+          asset_name,
+          quantity,
+          siblings,
+          mutation,
+        }
+      = auxiliary
+    validation_machine_v1.verify_value_and_mint_mint_asset_semantics_v1(
+      pre,
+      witness,
+      mint_index,
+      policy_id,
+      asset_name,
+      quantity,
+      siblings,
+      mutation,
+    )
+  } else if kind == 9 {
+    validation_machine_v1.verify_value_and_mint_mint_finish_semantics_v1(
+      pre,
+      witness,
+    )
+  } else {
+    validation_machine_v1.verify_value_and_mint_finalize_semantics_v1(
+      pre,
+      witness,
+    )
+  }
+}
+
+fn value_and_mint_aggregate_route(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: validation_machine_v1.ValidationOneStepWitnessV1,
+  auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  validation_machine_v1.verify_value_and_mint_one_step_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: witness,
+      auxiliary,
+    },
+  )
+}
+
+fn value_and_mint_kind_routes_agree(f: ValueAndMintKindFixtureV1) -> Bool {
+  let witness = f.evidence.transition
+  let auxiliary = f.evidence.auxiliary
+  and {
+    stage_routes_agree(
+      value_and_mint_kind_route(f.kind, f.pre, witness, auxiliary),
+      value_and_mint_aggregate_route(f.pre, witness, auxiliary),
+      True,
+    ),
+    stage_routes_agree(
+      value_and_mint_kind_route(
+        f.kind,
+        f.pre,
+        work_root_mutated(witness),
+        auxiliary,
+      ),
+      value_and_mint_aggregate_route(
+        f.pre,
+        work_root_mutated(witness),
+        auxiliary,
+      ),
+      False,
+    ),
+  }
+}
+
+test value_and_mint_begin_route_agrees_with_the_aggregate() {
+  value_and_mint_kind_routes_agree(value_and_mint_begin_kind_fixture())
+}
+
+test value_and_mint_replay_begin_route_agrees_with_the_aggregate() {
+  value_and_mint_kind_routes_agree(value_and_mint_replay_begin_kind_fixture())
+}
+
+test value_and_mint_replay_input_route_agrees_with_the_aggregate() {
+  value_and_mint_kind_routes_agree(value_and_mint_replay_input_kind_fixture())
+}
+
+test value_and_mint_replay_asset_route_agrees_with_the_aggregate() {
+  value_and_mint_kind_routes_agree(value_and_mint_replay_asset_kind_fixture())
+}
+
+test value_and_mint_replay_finish_route_agrees_with_the_aggregate() {
+  value_and_mint_kind_routes_agree(value_and_mint_replay_finish_kind_fixture())
+}
+
+test value_and_mint_output_descriptor_route_agrees_with_the_aggregate() {
+  value_and_mint_kind_routes_agree(
+    value_and_mint_output_descriptor_kind_fixture(),
+  )
+}
+
+test value_and_mint_output_asset_route_agrees_with_the_aggregate() {
+  value_and_mint_kind_routes_agree(value_and_mint_output_asset_kind_fixture())
+}
+
+test value_and_mint_output_finish_route_agrees_with_the_aggregate() {
+  value_and_mint_kind_routes_agree(value_and_mint_output_finish_kind_fixture())
+}
+
+test value_and_mint_mint_asset_route_agrees_with_the_aggregate() {
+  value_and_mint_kind_routes_agree(value_and_mint_mint_asset_kind_fixture())
+}
+
+test value_and_mint_mint_finish_route_agrees_with_the_aggregate() {
+  value_and_mint_kind_routes_agree(value_and_mint_mint_finish_kind_fixture())
+}
+
+test value_and_mint_finalize_route_agrees_with_the_aggregate() {
+  value_and_mint_kind_routes_agree(value_and_mint_finalize_kind_fixture())
+}
+
+/// Every ValueAndMint wrapper refuses every other kind's honest step (same
+/// construction as the cek partition control above: own auxiliary shape,
+/// other kind's pre-state and transition).
+test value_and_mint_kinds_partition_the_value_and_mint_step_space() {
+  let fixtures = value_and_mint_kind_fixtures()
+  list.all(
+    fixtures,
+    fn(own) {
+      list.all(
+        fixtures,
+        fn(other) {
+          or {
+            own.kind == other.kind,
+            !value_and_mint_kind_route(
+              own.kind,
+              other.pre,
+              other.evidence.transition,
+              own.evidence.auxiliary,
+            ),
+          }
+        },
+      )
+    },
   )
 }

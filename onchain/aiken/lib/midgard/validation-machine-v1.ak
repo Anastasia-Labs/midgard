@@ -16872,12 +16872,27 @@ fn verify_cek_context_step(
   }
 }
 
-fn verify_cek(
-  pre: validation_trace_v1.ValidationMachineStateV1,
+/// The decoded cek work witness. `cek_witness_is_well_formed_v1` applies the
+/// checks every cek step shares: the native transaction proof source (whose
+/// `expect`s are load-bearing), the transaction commitment, the validation
+/// context, the native control's well-formedness, the cursor/budget bounds
+/// and the exact re-encoding of the witness. Each semantic resolver runs both
+/// so no wrapper can skip a guard the aggregate `verify_cek` applies.
+type CekWitnessControlV1 {
+  control: NativeScriptsControlV1,
+  context_control_cbor: ByteArray,
+  execution_cursor: Int,
+  completed_cpu: Int,
+  completed_memory: Int,
+  active_state_hash: ByteArray,
+  program_envelope_hash: ByteArray,
+  execution_cpu_limit: Int,
+  execution_memory_limit: Int,
+}
+
+fn cek_witness_control_v1(
   witness: ValidationOneStepWitnessV1,
-  auxiliary: ValidationAuxiliaryWitnessV1,
-  door: field_door.MachineFieldDoorV1,
-) -> Bool {
+) -> CekWitnessControlV1 {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
   expect
       [
@@ -16887,16 +16902,27 @@ fn verify_cek(
         execution_cpu_limit_data, execution_memory_limit_data,
       ]
     = builtin.un_list_data(data)
-  let native_control_cbor = builtin.un_b_data(native_control_cbor_data)
-  let context_control_cbor = builtin.un_b_data(context_control_cbor_data)
-  let execution_cursor = builtin.un_i_data(execution_cursor_data)
-  let completed_cpu = builtin.un_i_data(completed_cpu_data)
-  let completed_memory = builtin.un_i_data(completed_memory_data)
-  let active_state_hash = builtin.un_b_data(active_state_hash_data)
-  let execution_cpu_limit = builtin.un_i_data(execution_cpu_limit_data)
-  let execution_memory_limit = builtin.un_i_data(execution_memory_limit_data)
-  let program_envelope_hash = builtin.un_b_data(program_envelope_hash_data)
-  let control = native_scripts_control_from_witness(native_control_cbor)
+  CekWitnessControlV1 {
+    control: native_scripts_control_from_witness(
+      builtin.un_b_data(native_control_cbor_data),
+    ),
+    context_control_cbor: builtin.un_b_data(context_control_cbor_data),
+    execution_cursor: builtin.un_i_data(execution_cursor_data),
+    completed_cpu: builtin.un_i_data(completed_cpu_data),
+    completed_memory: builtin.un_i_data(completed_memory_data),
+    active_state_hash: builtin.un_b_data(active_state_hash_data),
+    program_envelope_hash: builtin.un_b_data(program_envelope_hash_data),
+    execution_cpu_limit: builtin.un_i_data(execution_cpu_limit_data),
+    execution_memory_limit: builtin.un_i_data(execution_memory_limit_data),
+  }
+}
+
+fn cek_witness_is_well_formed_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  cek: CekWitnessControlV1,
+) -> Bool {
+  let control = cek.control
   let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
     control.compact_cbor,
@@ -16913,96 +16939,243 @@ fn verify_cek(
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
     native_scripts_control_is_well_formed(control),
     control.execution_cursor == control.execution_count,
-    execution_cursor >= 0,
-    execution_cursor <= control.execution_count,
-    completed_cpu >= 0,
-    completed_memory >= 0,
+    cek.execution_cursor >= 0,
+    cek.execution_cursor <= control.execution_count,
+    cek.completed_cpu >= 0,
+    cek.completed_memory >= 0,
     witness.work_witness_cbor == encode_cek_witness_v1(
       control,
-      context_control_cbor,
-      execution_cursor,
-      completed_cpu,
-      completed_memory,
-      active_state_hash,
-      execution_cpu_limit,
-      execution_memory_limit,
-      program_envelope_hash,
+      cek.context_control_cbor,
+      cek.execution_cursor,
+      cek.completed_cpu,
+      cek.completed_memory,
+      cek.active_state_hash,
+      cek.execution_cpu_limit,
+      cek.execution_memory_limit,
+      cek.program_envelope_hash,
     ),
-    if active_state_hash == #"" {
-      if context_control_cbor == #"" {
-        and {
-          execution_cpu_limit == 0,
-          execution_memory_limit == 0,
-          program_envelope_hash == #"",
-          if or {
-            execution_cursor == control.execution_count,
-            control.language_bitmap == 0,
-          } {
-            and {
-              auxiliary == NoAuxiliaryWitness,
-              witness.claimed_successor.phase == validation_trace_v1.ValueAndMint,
-              witness.claimed_successor.execution_cpu == pre.execution_cpu,
-              witness.claimed_successor.execution_memory == pre.execution_memory,
-              witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-                validation_trace_v1.ValueAndMint,
-                pre.program_counter + 1,
-                encode_value_and_mint_witness_v1(control),
-              ),
-            }
-          } else {
-            verify_cek_execution_selection(
-              pre,
-              witness,
-              auxiliary,
-              control,
-              execution_cursor,
-              completed_cpu,
-              completed_memory,
-            )
-          },
-        }
-      } else {
-        let context_control = cek_context_control_from_cbor(
-          context_control_cbor,
-        )
-        and {
-          execution_cursor < control.execution_count,
-          execution_cpu_limit == 0,
-          execution_memory_limit == 0,
-          program_envelope_hash == context_control.program_envelope_hash,
-          context_control_cbor == encode_cek_context_control_v1(context_control),
-          cek_context_control_is_well_formed(control, context_control),
-          verify_cek_context_step(
-            pre,
-            witness,
-            auxiliary,
-            control,
-            context_control,
-            execution_cursor,
-            completed_cpu,
-            completed_memory,
-            door,
-          ),
-        }
-      }
-    } else {
-      and {
-        context_control_cbor == #"",
-        verify_cek_core_step(
-          pre,
-          witness,
-          auxiliary,
-          control,
-          execution_cursor,
-          completed_cpu,
-          completed_memory,
-          active_state_hash,
-          execution_cpu_limit,
-          execution_memory_limit,
-          program_envelope_hash,
-        ),
-      }
+  }
+}
+
+/// A cek step whose control carries no active state and no context control
+/// is either the hand-off to ValueAndMint (`cek_control_is_finish_v1`) or an
+/// execution selection; the two are told apart by whether any execution is
+/// still pending.
+fn cek_control_is_selecting_v1(cek: CekWitnessControlV1) -> Bool {
+  and {
+    cek.active_state_hash == #"",
+    cek.context_control_cbor == #"",
+  }
+}
+
+fn cek_control_is_finish_v1(cek: CekWitnessControlV1) -> Bool {
+  and {
+    cek_control_is_selecting_v1(cek),
+    or {
+      cek.execution_cursor == cek.control.execution_count,
+      cek.control.language_bitmap == 0,
     },
+  }
+}
+
+fn cek_control_is_execution_selection_v1(cek: CekWitnessControlV1) -> Bool {
+  and {
+    cek_control_is_selecting_v1(cek),
+    cek.execution_cursor != cek.control.execution_count,
+    cek.control.language_bitmap != 0,
+  }
+}
+
+fn cek_control_is_context_step_v1(cek: CekWitnessControlV1) -> Bool {
+  and {
+    cek.active_state_hash == #"",
+    cek.context_control_cbor != #"",
+  }
+}
+
+fn cek_control_is_core_step_v1(cek: CekWitnessControlV1) -> Bool {
+  cek.active_state_hash != #""
+}
+
+fn cek_finish_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  cek: CekWitnessControlV1,
+) -> Bool {
+  let control = cek.control
+  and {
+    cek_control_is_finish_v1(cek),
+    cek.execution_cpu_limit == 0,
+    cek.execution_memory_limit == 0,
+    cek.program_envelope_hash == #"",
+    auxiliary == NoAuxiliaryWitness,
+    witness.claimed_successor.phase == validation_trace_v1.ValueAndMint,
+    witness.claimed_successor.execution_cpu == pre.execution_cpu,
+    witness.claimed_successor.execution_memory == pre.execution_memory,
+    witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      pre.program_counter + 1,
+      encode_value_and_mint_witness_v1(control),
+    ),
+  }
+}
+
+fn cek_execution_selection_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  cek: CekWitnessControlV1,
+) -> Bool {
+  and {
+    cek_control_is_execution_selection_v1(cek),
+    cek.execution_cpu_limit == 0,
+    cek.execution_memory_limit == 0,
+    cek.program_envelope_hash == #"",
+    verify_cek_execution_selection(
+      pre,
+      witness,
+      auxiliary,
+      cek.control,
+      cek.execution_cursor,
+      cek.completed_cpu,
+      cek.completed_memory,
+    ),
+  }
+}
+
+fn cek_context_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  cek: CekWitnessControlV1,
+  door: field_door.MachineFieldDoorV1,
+) -> Bool {
+  let control = cek.control
+  let context_control = cek_context_control_from_cbor(cek.context_control_cbor)
+  and {
+    cek_control_is_context_step_v1(cek),
+    cek.execution_cursor < control.execution_count,
+    cek.execution_cpu_limit == 0,
+    cek.execution_memory_limit == 0,
+    cek.program_envelope_hash == context_control.program_envelope_hash,
+    cek.context_control_cbor == encode_cek_context_control_v1(context_control),
+    cek_context_control_is_well_formed(control, context_control),
+    verify_cek_context_step(
+      pre,
+      witness,
+      auxiliary,
+      control,
+      context_control,
+      cek.execution_cursor,
+      cek.completed_cpu,
+      cek.completed_memory,
+      door,
+    ),
+  }
+}
+
+fn cek_core_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  cek: CekWitnessControlV1,
+) -> Bool {
+  and {
+    cek_control_is_core_step_v1(cek),
+    cek.context_control_cbor == #"",
+    verify_cek_core_step(
+      pre,
+      witness,
+      auxiliary,
+      cek.control,
+      cek.execution_cursor,
+      cek.completed_cpu,
+      cek.completed_memory,
+      cek.active_state_hash,
+      cek.execution_cpu_limit,
+      cek.execution_memory_limit,
+      cek.program_envelope_hash,
+    ),
+  }
+}
+
+fn verify_cek(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
+) -> Bool {
+  let cek = cek_witness_control_v1(witness)
+  and {
+    cek_witness_is_well_formed_v1(pre, witness, cek),
+    if cek_control_is_core_step_v1(cek) {
+      cek_core_v1(pre, witness, auxiliary, cek)
+    } else if cek_control_is_context_step_v1(cek) {
+      cek_context_v1(pre, witness, auxiliary, cek, door)
+    } else if cek_control_is_finish_v1(cek) {
+      cek_finish_v1(pre, witness, auxiliary, cek)
+    } else {
+      cek_execution_selection_v1(pre, witness, auxiliary, cek)
+    },
+  }
+}
+
+/// Per-kind cek semantic resolvers (R5 item 1). Each one re-runs the shared
+/// cek control decode, pins its own discriminator and calls the same branch
+/// the aggregate `verify_cek` would have taken, so the four resolvers
+/// partition the cek step space exactly.
+pub fn verify_cek_finish_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let cek = cek_witness_control_v1(witness)
+  and {
+    cek_witness_is_well_formed_v1(pre, witness, cek),
+    cek_finish_v1(pre, witness, NoAuxiliaryWitness, cek),
+  }
+}
+
+pub fn verify_cek_execution_selection_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  let cek = cek_witness_control_v1(witness)
+  and {
+    cek_witness_is_well_formed_v1(pre, witness, cek),
+    cek_execution_selection_v1(pre, witness, auxiliary, cek),
+  }
+}
+
+pub fn verify_cek_context_step_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  door: field_door.MachineFieldDoorV1,
+) -> Bool {
+  let cek = cek_witness_control_v1(witness)
+  and {
+    cek_witness_is_well_formed_v1(pre, witness, cek),
+    // Pinned here as well as inside `cek_context_v1`: the branch decodes the
+    // context control before it tests the discriminator, so without this
+    // pin a non-context witness would abort on the empty control bytes
+    // instead of being refused, and the four resolvers would not partition
+    // the step space by a clean `False`.
+    cek_control_is_context_step_v1(cek),
+    cek_context_v1(pre, witness, auxiliary, cek, door),
+  }
+}
+
+pub fn verify_cek_core_step_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  step: cek_machine_v1.CoreStepEvidenceV1,
+) -> Bool {
+  let cek = cek_witness_control_v1(witness)
+  and {
+    cek_witness_is_well_formed_v1(pre, witness, cek),
+    cek_core_v1(pre, witness, CekCoreStepWitness { step }, cek),
   }
 }
 
@@ -17484,52 +17657,13 @@ fn verify_value_and_mint(
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
-  let native_control = control.native_control
-  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
-    pre.transaction_id,
-    native_control.compact_cbor,
-    native_control.witness_set_compact_cbor,
-    native_control.field_preimage_lengths_cbor,
+  let Pair(body, control_is_well_formed) = value_and_mint_verified_body_v1(
+    pre,
+    witness,
+    control,
   )
   and {
-    native_tx_proof_commitment_v1(
-      native_control.compact_cbor,
-      native_control.witness_set_compact_cbor,
-      native_control.field_preimage_lengths_cbor,
-    ) == pre.transaction_commitment,
-    validation_trace_v1.hash_validation_context(native_control.context_cbor) == pre.validation_context_hash,
-    native_scripts_control_is_well_formed(native_control),
-    native_control.execution_cursor == native_control.execution_count,
-    bytearray.length(control.replay_schedule_hash) == 32,
-    bytearray.length(control.replay_value_hash) == 32,
-    bytearray.length(control.replay_accumulator) == 32,
-    bytearray.length(control.replay_remaining_schedule_hash) == 32,
-    control.replay_cursor >= 0,
-    control.replay_cursor <= native_control.resolved_input_count,
-    control.replay_asset_cursor >= 0,
-    control.replay_asset_cursor <= ledger_output_v1.max_distinct_asset_count,
-    if or {
-      control.stage == 2 && control.replay_asset_cursor > 0,
-      control.stage == 3 && control.output_asset_cursor > 0,
-    } {
-      True
-    } else {
-      control.replay_value_hash == no_rejection_code_hash
-    },
-    control.output_cursor >= 0,
-    control.output_cursor <= native_control.output_count,
-    control.output_asset_cursor >= 0,
-    control.output_asset_cursor <= ledger_output_v1.max_distinct_asset_count,
-    bytearray.length(control.value_accumulator.asset_root) == 32,
-    control.value_accumulator.seen_asset_count >= 0,
-    control.value_accumulator.seen_asset_count <= ledger_output_v1.max_distinct_asset_count,
-    control.value_accumulator.nonzero_asset_count >= 0,
-    control.value_accumulator.nonzero_asset_count <= control.value_accumulator.seen_asset_count,
-    control.mint_cursor >= 0,
-    control.mint_cursor <= native_control.mint_count,
-    control.stage >= 0,
-    control.stage <= 5,
-    witness.work_witness_cbor == encode_value_and_mint_control_v1(control),
+    control_is_well_formed,
     if control.stage == 0 {
       value_and_mint_stage_zero(pre, witness, auxiliary, control)
     } else if control.stage == 1 {
@@ -17541,14 +17675,360 @@ fn verify_value_and_mint(
     } else if control.stage == 4 {
       value_and_mint_stage_four(pre, witness, auxiliary, control)
     } else {
-      value_and_mint_stage_five(
-        pre,
-        witness,
-        auxiliary,
-        control,
-        verified_source.tx_compact.body,
-      )
+      value_and_mint_stage_five(pre, witness, auxiliary, control, body)
     },
+  }
+}
+
+/// The checks every ValueAndMint step shares, single-sourced so the
+/// aggregate `verify_value_and_mint` and the per-kind semantic resolvers
+/// cannot drift: the native transaction proof source (whose `expect`s are
+/// load-bearing, which is why every caller receives the verified body from
+/// here rather than re-deriving it), the transaction commitment, the
+/// validation context, the native control, every cursor and hash bound and
+/// the exact re-encoding of the control.
+fn value_and_mint_verified_body_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ValueAndMintControlV1,
+) -> Pair<NativeTxBodyCompact, Bool> {
+  let native_control = control.native_control
+  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    native_control.compact_cbor,
+    native_control.witness_set_compact_cbor,
+    native_control.field_preimage_lengths_cbor,
+  )
+  Pair(verified_source.tx_compact.body, and {
+      native_tx_proof_commitment_v1(
+        native_control.compact_cbor,
+        native_control.witness_set_compact_cbor,
+        native_control.field_preimage_lengths_cbor,
+      ) == pre.transaction_commitment,
+      validation_trace_v1.hash_validation_context(native_control.context_cbor) == pre.validation_context_hash,
+      native_scripts_control_is_well_formed(native_control),
+      native_control.execution_cursor == native_control.execution_count,
+      bytearray.length(control.replay_schedule_hash) == 32,
+      bytearray.length(control.replay_value_hash) == 32,
+      bytearray.length(control.replay_accumulator) == 32,
+      bytearray.length(control.replay_remaining_schedule_hash) == 32,
+      control.replay_cursor >= 0,
+      control.replay_cursor <= native_control.resolved_input_count,
+      control.replay_asset_cursor >= 0,
+      control.replay_asset_cursor <= ledger_output_v1.max_distinct_asset_count,
+      if or {
+        control.stage == 2 && control.replay_asset_cursor > 0,
+        control.stage == 3 && control.output_asset_cursor > 0,
+      } {
+        True
+      } else {
+        control.replay_value_hash == no_rejection_code_hash
+      },
+      control.output_cursor >= 0,
+      control.output_cursor <= native_control.output_count,
+      control.output_asset_cursor >= 0,
+      control.output_asset_cursor <= ledger_output_v1.max_distinct_asset_count,
+      bytearray.length(control.value_accumulator.asset_root) == 32,
+      control.value_accumulator.seen_asset_count >= 0,
+      control.value_accumulator.seen_asset_count <= ledger_output_v1.max_distinct_asset_count,
+      control.value_accumulator.nonzero_asset_count >= 0,
+      control.value_accumulator.nonzero_asset_count <= control.value_accumulator.seen_asset_count,
+      control.mint_cursor >= 0,
+      control.mint_cursor <= native_control.mint_count,
+      control.stage >= 0,
+      control.stage <= 5,
+      witness.work_witness_cbor == encode_value_and_mint_control_v1(control),
+    })
+}
+
+/// Per-kind ValueAndMint semantic resolvers (R5 item 1). Each one decodes
+/// the control, runs the shared guard list, pins its stage and the auxiliary
+/// discriminator the stage body branches on, and calls that stage body with
+/// the auxiliary it reconstructs from the validator's action fields, so the
+/// eleven resolvers partition the ValueAndMint step space exactly.
+pub fn verify_value_and_mint_begin_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
+  let Pair(_, control_is_well_formed) = value_and_mint_verified_body_v1(
+    pre,
+    witness,
+    control,
+  )
+  and {
+    control_is_well_formed,
+    control.stage == 0,
+    value_and_mint_stage_zero(pre, witness, NoAuxiliaryWitness, control),
+  }
+}
+
+pub fn verify_value_and_mint_replay_begin_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
+  let Pair(_, control_is_well_formed) = value_and_mint_verified_body_v1(
+    pre,
+    witness,
+    control,
+  )
+  and {
+    control_is_well_formed,
+    control.stage == 1,
+    value_and_mint_stage_one(pre, witness, NoAuxiliaryWitness, control),
+  }
+}
+
+pub fn verify_value_and_mint_replay_input_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  source_kind: Int,
+  key: ByteArray,
+  next_schedule_hash: ByteArray,
+  value: ByteArray,
+) -> Bool {
+  let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
+  let Pair(_, control_is_well_formed) = value_and_mint_verified_body_v1(
+    pre,
+    witness,
+    control,
+  )
+  and {
+    control_is_well_formed,
+    control.stage == 2,
+    control.replay_remaining_schedule_hash != empty_resolution_schedule_hash(),
+    control.replay_asset_cursor == 0,
+    value_and_mint_stage_two(
+      pre,
+      witness,
+      ResolvedInputReplayWitness { source_kind, key, next_schedule_hash, value },
+      control,
+    ),
+  }
+}
+
+pub fn verify_value_and_mint_replay_asset_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  source_kind: Int,
+  key: ByteArray,
+  next_schedule_hash: ByteArray,
+  descriptor_cbor: ByteArray,
+  asset_index: Int,
+  policy_id: ByteArray,
+  asset_name: ByteArray,
+  quantity: Int,
+  asset_peaks: List<validation_merkle_v1.FrontierPeak>,
+  asset_siblings: List<ByteArray>,
+  mutation: ValueAssetMutationWitnessV1,
+) -> Bool {
+  let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
+  let Pair(_, control_is_well_formed) = value_and_mint_verified_body_v1(
+    pre,
+    witness,
+    control,
+  )
+  and {
+    control_is_well_formed,
+    control.stage == 2,
+    control.replay_remaining_schedule_hash != empty_resolution_schedule_hash(),
+    control.replay_asset_cursor > 0,
+    value_and_mint_stage_two(
+      pre,
+      witness,
+      ValueInputAssetWitness {
+        source_kind,
+        key,
+        next_schedule_hash,
+        descriptor_cbor,
+        asset_index,
+        policy_id,
+        asset_name,
+        quantity,
+        asset_peaks,
+        asset_siblings,
+        mutation,
+      },
+      control,
+    ),
+  }
+}
+
+pub fn verify_value_and_mint_replay_finish_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
+  let Pair(_, control_is_well_formed) = value_and_mint_verified_body_v1(
+    pre,
+    witness,
+    control,
+  )
+  and {
+    control_is_well_formed,
+    control.stage == 2,
+    control.replay_remaining_schedule_hash == empty_resolution_schedule_hash(),
+    value_and_mint_stage_two(pre, witness, NoAuxiliaryWitness, control),
+  }
+}
+
+pub fn verify_value_and_mint_output_descriptor_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  output_index: Int,
+  descriptor_cbor: ByteArray,
+  siblings: List<ByteArray>,
+) -> Bool {
+  let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
+  let Pair(_, control_is_well_formed) = value_and_mint_verified_body_v1(
+    pre,
+    witness,
+    control,
+  )
+  and {
+    control_is_well_formed,
+    control.stage == 3,
+    control.output_cursor < control.native_control.output_count,
+    control.output_asset_cursor == 0,
+    value_and_mint_stage_three(
+      pre,
+      witness,
+      ValueOutputDescriptorWitness { output_index, descriptor_cbor, siblings },
+      control,
+    ),
+  }
+}
+
+pub fn verify_value_and_mint_output_asset_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  output_index: Int,
+  descriptor_cbor: ByteArray,
+  asset_index: Int,
+  policy_id: ByteArray,
+  asset_name: ByteArray,
+  quantity: Int,
+  asset_peaks: List<validation_merkle_v1.FrontierPeak>,
+  asset_siblings: List<ByteArray>,
+  mutation: ValueAssetMutationWitnessV1,
+) -> Bool {
+  let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
+  let Pair(_, control_is_well_formed) = value_and_mint_verified_body_v1(
+    pre,
+    witness,
+    control,
+  )
+  and {
+    control_is_well_formed,
+    control.stage == 3,
+    control.output_cursor < control.native_control.output_count,
+    control.output_asset_cursor > 0,
+    value_and_mint_stage_three(
+      pre,
+      witness,
+      ValueOutputAssetWitness {
+        output_index,
+        descriptor_cbor,
+        asset_index,
+        policy_id,
+        asset_name,
+        quantity,
+        asset_peaks,
+        asset_siblings,
+        mutation,
+      },
+      control,
+    ),
+  }
+}
+
+pub fn verify_value_and_mint_output_finish_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
+  let Pair(_, control_is_well_formed) = value_and_mint_verified_body_v1(
+    pre,
+    witness,
+    control,
+  )
+  and {
+    control_is_well_formed,
+    control.stage == 3,
+    control.output_cursor == control.native_control.output_count,
+    value_and_mint_stage_three(pre, witness, NoAuxiliaryWitness, control),
+  }
+}
+
+pub fn verify_value_and_mint_mint_asset_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  mint_index: Int,
+  policy_id: ByteArray,
+  asset_name: ByteArray,
+  quantity: Int,
+  siblings: List<ByteArray>,
+  mutation: ValueAssetMutationWitnessV1,
+) -> Bool {
+  let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
+  let Pair(_, control_is_well_formed) = value_and_mint_verified_body_v1(
+    pre,
+    witness,
+    control,
+  )
+  and {
+    control_is_well_formed,
+    control.stage == 4,
+    control.mint_cursor < control.native_control.mint_count,
+    value_and_mint_stage_four(
+      pre,
+      witness,
+      ValueMintAssetWitness {
+        mint_index,
+        policy_id,
+        asset_name,
+        quantity,
+        siblings,
+        mutation,
+      },
+      control,
+    ),
+  }
+}
+
+pub fn verify_value_and_mint_mint_finish_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
+  let Pair(_, control_is_well_formed) = value_and_mint_verified_body_v1(
+    pre,
+    witness,
+    control,
+  )
+  and {
+    control_is_well_formed,
+    control.stage == 4,
+    control.mint_cursor == control.native_control.mint_count,
+    value_and_mint_stage_four(pre, witness, NoAuxiliaryWitness, control),
+  }
+}
+
+pub fn verify_value_and_mint_finalize_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
+  let Pair(body, control_is_well_formed) = value_and_mint_verified_body_v1(
+    pre,
+    witness,
+    control,
+  )
+  and {
+    control_is_well_formed,
+    control.stage == 5,
+    value_and_mint_stage_five(pre, witness, NoAuxiliaryWitness, control, body),
   }
 }
 
