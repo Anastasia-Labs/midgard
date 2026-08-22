@@ -1877,6 +1877,30 @@ test begin_validator_refuses_a_wrong_award_output() fail {
   )
 }
 
+/// `pre.transaction_commitment` is what binds the ValueAndMint control's
+/// native transaction proof to the transaction under dispute; it is checked
+/// once, in the verified-body preamble every stage shares, so an otherwise
+/// honest step whose pre-state commits to a different transaction must be
+/// refused.
+test begin_validator_refuses_a_foreign_transaction_commitment() fail {
+  let f = begin_fixture()
+  let forged = StepFixtureV1 {
+    ..f,
+    pre: validation_trace_v1.ValidationMachineStateV1 {
+      ..f.pre,
+      transaction_commitment: zero,
+    },
+    transition: ValidationOneStepWitnessV1 {
+      ..f.transition,
+      claimed_successor: validation_trace_v1.ValidationMachineStateV1 {
+        ..f.transition.claimed_successor,
+        transaction_commitment: zero,
+      },
+    },
+  }
+  run_begin(prepared(forged), forged.transition)
+}
+
 /// Sanity on the fixtures themselves: every honest step is accepted by the
 /// aggregate evidence route the machine defines, so a validator that
 /// accepts it agrees with the machine and not with a broken vector.

@@ -1382,6 +1382,172 @@ test finish_validator_refuses_a_wrong_award_output() fail {
   )
 }
 
+/// The shared cek guards -- the discriminator each wrapper pins and the
+/// well-formedness of the cek witness against the pre-state -- are what the
+/// kind partition above cannot see: every fixture it runs is honest in all
+/// of them. The negatives below break exactly one of those shared guards
+/// each.
+///
+/// A control that still has an execution to select (`execution_cursor 0 <
+/// execution_count 1` with `language_bitmap 1`, the selection fixture's
+/// control) is an execution selection and not the hand-off, so the finish
+/// validator must refuse it however well formed the claimed successor is.
+fn pending_execution_control(tx: MidgardTransaction) -> NativeScriptsControlV1 {
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: one_node_envelope(),
+  }
+  let script_cbor = encode_midgard_versioned_script(script)
+  let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
+  let script_hash = script_proof_v1.versioned_script_hash(script)
+  let source_leaf = script_proof_v1.source_descriptor_leaf_hash(
+    0,
+    #"00",
+    3,
+    script_hash,
+    bytearray.length(script_cbor),
+    script_item_commitment,
+  )
+  let purpose_leaf = script_proof_v1.purpose_leaf_hash(0, 0, script_hash, #"00")
+  let execution_leaf = script_proof_v1.execution_leaf_hash(
+    3,
+    purpose_leaf,
+    source_leaf,
+    h_c,
+  )
+  let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
+  let execution_frontier = validation_merkle_v1.build_frontier([execution_leaf])
+  NativeScriptsControlV1 {
+    ..empty_native_control(tx),
+    source_count: 1,
+    source_peaks: source_frontier.peaks,
+    purpose_count: 1,
+    purpose_peaks: purpose_frontier.peaks,
+    execution_count: 1,
+    execution_peaks: execution_frontier.peaks,
+    execution_cursor: 1,
+    language_bitmap: 1,
+  }
+}
+
+test finish_validator_refuses_a_hand_off_with_pending_executions() fail {
+  let tx = empty_v1_transaction()
+  let control = pending_execution_control(tx)
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    control,
+    #"",
+    0,
+    #"",
+    0,
+    0,
+    #"",
+    40,
+    0,
+    0,
+  )
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    phase: validation_trace_v1.ValueAndMint,
+    program_counter: 41,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      41,
+      validation_machine_v1.encode_value_and_mint_witness_v1(control),
+    ),
+  }
+  let f = step_fixture(
+    0,
+    pre,
+    work_witness_cbor,
+    post,
+    NoAuxiliaryWitness,
+    NoCekMaterial,
+  )
+  run_finish(prepared(f), f.transition)
+}
+
+/// `pre.transaction_commitment` is what binds the cek control's native
+/// transaction proof to the transaction under dispute; a hand-off that is
+/// honest in every other field but whose pre-state commits to a different
+/// transaction must be refused.
+test finish_validator_refuses_a_foreign_transaction_commitment() fail {
+  let f = finish_fixture()
+  let forged = CekStepFixtureV1 {
+    ..f,
+    pre: validation_trace_v1.ValidationMachineStateV1 {
+      ..f.pre,
+      transaction_commitment: zero,
+    },
+    transition: ValidationOneStepWitnessV1 {
+      ..f.transition,
+      claimed_successor: validation_trace_v1.ValidationMachineStateV1 {
+        ..f.transition.claimed_successor,
+        transaction_commitment: zero,
+      },
+    },
+  }
+  run_finish(prepared(forged), forged.transition)
+}
+
+/// The cek cursor is bounded by the control's execution count, and the two
+/// places that bound lives are what make this vector awkward to build:
+/// `encode_cek_witness_v1` refuses to *encode* an out-of-bound cursor, so an
+/// honest encode cannot produce the witness, and the well-formedness guard
+/// refuses to *accept* one. The vector is therefore the honest hand-off
+/// witness with its encoded cursor byte bumped by hand -- the last seven
+/// bytes of a hand-off witness are `cursor, completed_cpu,
+/// completed_memory, active_state_hash, program_envelope_hash,
+/// execution_cpu_limit, execution_memory_limit`, all empty or zero, so the
+/// cursor is the byte at `length - 7`. The positive below pins that layout;
+/// without it the negative could start bumping some other byte and still
+/// look like a refusal.
+///
+/// The accept path re-encodes the witness through that same encoder, so the
+/// well-formedness bound is defence in depth rather than the sole gate:
+/// drop it and this vector is refused by the encoder's own `expect`
+/// instead, a crash where there was a `False`. What the negative pins is
+/// the refusal, which is the property the machine needs.
+test finish_witness_tail_layout_is_pinned() {
+  let witness_cbor = finish_fixture().transition.work_witness_cbor
+  let length = bytearray.length(witness_cbor)
+  bytearray.slice(witness_cbor, length - 7, length - 1) == #"00000040400000"
+}
+
+fn witness_with_cursor_past_the_execution_count(
+  witness_cbor: ByteArray,
+) -> ByteArray {
+  let length = bytearray.length(witness_cbor)
+  bytearray.take(witness_cbor, length - 7)
+    |> bytearray.concat(#"01")
+    |> bytearray.concat(bytearray.drop(witness_cbor, length - 6))
+}
+
+test finish_validator_refuses_a_cek_cursor_past_the_execution_count() fail {
+  let honest = finish_fixture()
+  let work_witness_cbor = witness_with_cursor_past_the_execution_count(
+    honest.transition.work_witness_cbor,
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..honest.pre,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Cek,
+      40,
+      work_witness_cbor,
+    ),
+  }
+  let f = step_fixture(
+    0,
+    pre,
+    work_witness_cbor,
+    honest.transition.claimed_successor,
+    NoAuxiliaryWitness,
+    NoCekMaterial,
+  )
+  run_finish(prepared(f), f.transition)
+}
+
 /// Sanity on the fixtures themselves: every honest step is accepted by the
 /// aggregate evidence route the machine defines, so a validator that
 /// accepts it is agreeing with the machine and not with a broken vector.
