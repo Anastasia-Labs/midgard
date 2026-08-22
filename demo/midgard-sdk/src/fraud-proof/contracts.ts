@@ -2257,8 +2257,10 @@ const buildValidationTraceDisputeChain = ({
      * authority on both the count and the order: a resolver that grows a
      * parameter is served automatically if the name is known, and refused
      * loudly if it is not. A count-only rule could not work here anyway — the
-     * canonical-decode item resolver declares three parameters that are a
-     * different set entirely, not `award_script_hash` plus one.
+     * canonical-decode item resolver declares a parameter set that is
+     * different entirely, not `award_script_hash` plus one (three names
+     * before #620's transition-only subtraction dropped
+     * `proof_item_script_hash`, two after).
      */
     const semanticResolverParameterValues = new Map<string, Data>([
       ["award_script_hash", award.spendingScriptHash],

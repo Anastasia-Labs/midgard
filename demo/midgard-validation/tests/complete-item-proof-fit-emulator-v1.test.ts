@@ -526,6 +526,15 @@ const setupEmulator = async (
   };
 };
 
+// #620 (Option B): this harness deliberately still speaks the DEPLOYED wire —
+// the four-field `Verify`, the `VerifyReference` arm, and the
+// carriage-committed evidence hash — because it executes the compiled scripts
+// from the committed `plutus.json`, which moves once, in the wave's single
+// blueprint regeneration. When that regeneration lands, this suite must flip
+// to the transition-only pipeline: the prepare commitment becomes
+// `hash_one_step_evidence(transition, NoAuxiliaryWitness)`, `Verify` drops to
+// `(input_index, output_index, transition)`, the reference arm is retired, and
+// content is proven at the observe stage's §8.8 door instead.
 const submitSemanticProof = async ({
   harness,
   itemCase,

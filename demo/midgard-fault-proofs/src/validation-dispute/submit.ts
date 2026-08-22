@@ -1334,9 +1334,14 @@ const requireStagedOneStepArgumentV1 = (
       argument.resolverIndex,
       semanticResolverIndex,
     ),
+    // Option B (#620): the canonical-decode resolver commits to the transition
+    // alone — the auxiliary hashed into `evidence_hash` is `NoAuxiliaryWitness`
+    // whatever carriage the auxiliary witness names, because the carriage is
+    // dereferenced (and content-checked) only at the observe stage's §8.8 door.
+    // Every other resolver still freezes its auxiliary into the commitment.
     evidenceHash: validationOneStepEvidenceHashFromDataV1(
       transitionData,
-      auxiliaryData,
+      argument.resolverIndex === 0 ? new Constr(0, []) : auxiliaryData,
     ),
   };
 };
@@ -3145,20 +3150,20 @@ const makePrepareSelectedRedeemer = ({
   outputAddress,
   outputDatum,
   threadUnit,
+  resolverIndex,
   semanticResolverIndex,
   transition,
   auxiliary,
-  evidenceHash,
   onLayout,
 }: {
   readonly threadUtxo: UTxO;
   readonly outputAddress: string;
   readonly outputDatum: string;
   readonly threadUnit: string;
+  readonly resolverIndex: number;
   readonly semanticResolverIndex: number;
   readonly transition: ValidationOneStepWitnessV1;
   readonly auxiliary: ValidationAuxiliaryWitnessV1Data;
-  readonly evidenceHash?: string;
   readonly onLayout: (layout: ContinueLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -3190,23 +3195,19 @@ const makePrepareSelectedRedeemer = ({
       semantic_resolver_index: BigInt(semanticResolverIndex),
       transition,
     };
-    return evidenceHash === undefined
+    // Option B (#620): the canonical-decode resolver's `PrepareSelected` is
+    // transition-only — the validator computes the evidence hash on-chain from
+    // `(transition, NoAuxiliaryWitness)`, so neither the auxiliary nor a
+    // prover-supplied hash rides in the redeemer. Every other resolver keeps
+    // the five-field aux-bearing shape.
+    return resolverIndex === 0
       ? encodeWithRuntimeSchema(
-          { Continue: [{ ...base, auxiliary }] },
-          validationPrepareSelectedSpendRedeemerV1RuntimeSchema,
+          { Continue: [base] },
+          validationCanonicalDecodePrepareSelectedSpendRedeemerV1RuntimeSchema,
         )
       : encodeWithRuntimeSchema(
-          {
-            Continue: [
-              {
-                PrepareSelectedByEvidenceHash: {
-                  ...base,
-                  evidence_hash: evidenceHash,
-                },
-              },
-            ],
-          },
-          validationCanonicalDecodePrepareSelectedSpendRedeemerV1RuntimeSchema,
+          { Continue: [{ ...base, auxiliary }] },
+          validationPrepareSelectedSpendRedeemerV1RuntimeSchema,
         );
   }) satisfies BuildTxWithRedeemer;
 
@@ -3240,18 +3241,19 @@ const semanticActionFieldsV1 = ({
     ) {
       return base;
     }
+    // Option B (#620): the item-semantic stage re-checks the transition-only
+    // commitment and takes no carriage in any form — the carriage is
+    // dereferenced once, at the observe stage's §8.8 door. The retired
+    // four-field `Verify` was the only wire a chunk-shaped auxiliary could
+    // ever have ridden, so a chunk here is now a refusal, not a route.
     if (
       semanticResolverIndex === 1 &&
-      (hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShapeV1(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk,
-      ) ||
-        hasValidationAuxiliaryShapeV1(
-          auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
-        ))
+        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
+      )
     ) {
-      return [...base, auxiliary];
+      return base;
     }
     throw new Error(
       "CanonicalDecode auxiliary witness cannot construct the selected semantic redeemer",
@@ -3702,69 +3704,21 @@ export const encodeValidationSemanticResolutionRedeemerV1 = ({
   oneStepArgument,
   inputIndex,
   outputIndex,
-  proofItemReferenceInputIndex,
 }: {
   readonly oneStepArgument: ValidationOneStepSubmissionArgumentV1;
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
-  readonly proofItemReferenceInputIndex?: bigint;
 }): Buffer => {
   if (inputIndex < 0n || outputIndex < 0n) {
     throw new Error(
       "Validation semantic redeemer indexes must be non-negative",
     );
   }
+  // Option B (#620): the item-semantic `Verify` is transition-only — no
+  // carriage field and no retired `VerifyReference` arm — so the CanonicalDecode
+  // complete item flows through the generic `semanticActionFieldsV1` shape like
+  // every other semantic action.
   const staged = requireStagedOneStepArgumentV1(oneStepArgument);
-  if (proofItemReferenceInputIndex !== undefined) {
-    if (
-      proofItemReferenceInputIndex < 0n ||
-      oneStepArgument.resolverIndex !== 0 ||
-      staged.semanticResolverIndex !== 1 ||
-      !hasValidationAuxiliaryShapeV1(
-        staged.auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
-      )
-    ) {
-      throw new Error(
-        "Validation proof-item reference route requires a non-negative reference-input index and a CanonicalDecode complete item",
-      );
-    }
-    return Buffer.from(
-      Data.to(
-        new Constr(1, [
-          new Constr(1, [
-            inputIndex,
-            outputIndex,
-            staged.transitionData,
-            proofItemReferenceInputIndex,
-          ]),
-        ]),
-      ),
-      "hex",
-    );
-  }
-  if (
-    oneStepArgument.resolverIndex === 0 &&
-    staged.semanticResolverIndex === 1 &&
-    hasValidationAuxiliaryShapeV1(
-      staged.auxiliary,
-      VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
-    )
-  ) {
-    return Buffer.from(
-      Data.to(
-        new Constr(1, [
-          new Constr(0, [
-            inputIndex,
-            outputIndex,
-            staged.transitionData,
-            staged.auxiliary.fields[0]!,
-          ]),
-        ]),
-      ),
-      "hex",
-    );
-  }
   const fields = semanticActionFieldsV1({
     resolverIndex: oneStepArgument.resolverIndex,
     semanticResolverIndex: staged.semanticResolverIndex,
@@ -3788,7 +3742,6 @@ const makeSemanticResolutionRedeemer = ({
   semanticResolverIndex,
   transition,
   auxiliary,
-  proofItemReferenceUtxo,
   onLayout,
 }: {
   readonly threadUtxo: UTxO;
@@ -3799,7 +3752,6 @@ const makeSemanticResolutionRedeemer = ({
   readonly semanticResolverIndex: number;
   readonly transition: PlutusDataValue;
   readonly auxiliary: Constr<PlutusDataValue>;
-  readonly proofItemReferenceUtxo?: UTxO;
   readonly onLayout: (layout: ContinueLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -3825,53 +3777,9 @@ const makeSemanticResolutionRedeemer = ({
       ),
     };
     onLayout(layout);
-    if (proofItemReferenceUtxo !== undefined) {
-      if (
-        resolverIndex !== 0 ||
-        semanticResolverIndex !== 1 ||
-        !hasValidationAuxiliaryShapeV1(
-          auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
-        )
-      ) {
-        throw new Error(
-          "Validation proof-item reference route requires a CanonicalDecode complete item",
-        );
-      }
-      return Data.to(
-        new Constr(1, [
-          new Constr(1, [
-            layout.inputIndex,
-            layout.outputIndex,
-            transition,
-            requireReferenceInputIndex(
-              ctx,
-              proofItemReferenceUtxo,
-              "validation complete proof item",
-            ),
-          ]),
-        ]),
-      );
-    }
-    if (
-      resolverIndex === 0 &&
-      semanticResolverIndex === 1 &&
-      hasValidationAuxiliaryShapeV1(
-        auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
-      )
-    ) {
-      return Data.to(
-        new Constr(1, [
-          new Constr(0, [
-            layout.inputIndex,
-            layout.outputIndex,
-            transition,
-            auxiliary.fields[0]!,
-          ]),
-        ]),
-      );
-    }
+    // Option B (#620): the item-semantic `Verify` is transition-only, so the
+    // CanonicalDecode complete item takes the generic shape below and the
+    // retired proof-item reference route has no arm to target.
     const fields = semanticActionFieldsV1({
       resolverIndex,
       semanticResolverIndex,
@@ -4278,22 +4186,11 @@ export const submitValidationDisputePrepareSelected = async ({
       staged.auxiliary,
       VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
     );
-  // #597: `TransactionFieldItemWitness` carries one field — a `FieldCarriageV1`
-  // — so the size this step budgets the prepare-selected redeemer against is
-  // the tier-1 `Inline` preimage inside the carriage, never a retired second
-  // field. Tiers 2-3 name reference inputs and carry no bytes, so embedding
-  // them directly never needs the by-hash route.
-  const prepareCompleteItemCarriage = isPrepareCompleteCanonicalItem
-    ? midgardFieldCarriageFromDataV1(
-        staged.auxiliary.fields[0]!,
-        "Validation prepare-selected complete item §8 carriage",
-      )
-    : undefined;
-  const prepareCompleteItemByHash =
-    prepareCompleteItemCarriage?.carriage === "Inline" &&
-    selectValidationCompleteItemCarriageV1(
-      prepareCompleteItemCarriage.preimage.length,
-    ) === "reference";
+  // Option B (#620): the prepare-selected redeemer never carries the auxiliary
+  // — the canonical-decode validator computes the transition-only evidence hash
+  // itself — so no preimage bytes ride in this transaction on any tier and the
+  // retired by-hash escape (#597's envelope-pressure valve) has nothing left to
+  // relieve.
   const prepareContract =
     contracts.validationTraceDispute.prepareResolvers[
       validationPrepareResolverDeploymentIndexV1(resolverIndex)
@@ -4311,10 +4208,10 @@ export const submitValidationDisputePrepareSelected = async ({
     );
   }
   // The complete-canonical-item step transaction sources the prepare-resolver
-  // validator from the published reference script: its redeemer already
-  // carries the tier-1 §5.1 preimage (direct carriage), so the ~5.6 KiB
-  // applied validator body must not ride inside the 16,384-byte L1 envelope
-  // beside it (#617 follow-up to #597 ruling a).
+  // validator from the published reference script (#617 follow-up to #597
+  // ruling a). Option B removed the tier-1 preimage from this redeemer, but
+  // the ~5.6 KiB applied validator body still must not ride inside the
+  // 16,384-byte L1 envelope.
   const prepareReferenceScriptUtxo = isPrepareCompleteCanonicalItem
     ? await requireValidationCanonicalDecodePrepareReferenceScriptUtxo({
         lucid,
@@ -4346,12 +4243,10 @@ export const submitValidationDisputePrepareSelected = async ({
         outputAddress: semanticContract.spendingScriptAddress,
         outputDatum,
         threadUnit: token.unit,
+        resolverIndex,
         semanticResolverIndex: staged.semanticResolverIndex,
         transition: staged.transition,
         auxiliary: staged.auxiliaryWitness,
-        ...(prepareCompleteItemByHash
-          ? { evidenceHash: staged.evidenceHash }
-          : {}),
         onLayout: (resolvedLayout) => {
           layout = resolvedLayout;
         },
@@ -6061,35 +5956,18 @@ export const submitValidationDisputeSemanticResolution = async ({
       outputContract: stages.source,
       stageOutputDatum: authenticatedDatum,
       label: "Validation canonical item authentication",
-      proofReference: proofItemReferenceUtxo,
       scriptReference: semanticReferenceScriptUtxo,
       awaitStage: true,
-      // #592's `Verify` is `(input_index, output_index, transition, carriage)`.
-      // The carriage is the auxiliary's single field, forwarded verbatim so the
-      // `hash_one_step_evidence` equality the stage checks is over the bytes
-      // PrepareSelected committed and not over a re-encoding of them.
-      encode: ({ inputIndex, outputIndex, referenceInputIndex }) =>
-        proofItemReferenceUtxo === undefined
-          ? Data.to(
-              new Constr(1, [
-                new Constr(0, [
-                  inputIndex,
-                  outputIndex,
-                  staged.transitionData,
-                  staged.auxiliary.fields[0]!,
-                ]),
-              ]),
-            )
-          : Data.to(
-              new Constr(1, [
-                new Constr(1, [
-                  inputIndex,
-                  outputIndex,
-                  staged.transitionData,
-                  referenceInputIndex!,
-                ]),
-              ]),
-            ),
+      // Option B (#620): `Verify` is `(input_index, output_index, transition)`.
+      // The stage re-checks the transition-only commitment — the carriage is
+      // neither forwarded nor referenced here; it is dereferenced once, at the
+      // observe stage's §8.8 door, whichever route delivers it there.
+      encode: ({ inputIndex, outputIndex }) =>
+        Data.to(
+          new Constr(1, [
+            new Constr(0, [inputIndex, outputIndex, staged.transitionData]),
+          ]),
+        ),
     });
     const source = await submitStage({
       inputUtxo: authenticate.nextThreadUtxo!,
@@ -6240,7 +6118,6 @@ export const submitValidationDisputeSemanticResolution = async ({
         semanticResolverIndex: staged.semanticResolverIndex,
         transition: staged.transitionData,
         auxiliary: staged.auxiliary,
-        proofItemReferenceUtxo,
         onLayout: (resolvedLayout) => {
           layout = resolvedLayout;
         },

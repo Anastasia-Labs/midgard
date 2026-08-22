@@ -212,25 +212,23 @@ const findFieldItemStep = (
 };
 
 /**
- * The deployed `canonical_decode_item_semantic_v1` spend ABI takes the item's
- * source as one exact `Verify` field — a §8 `FieldCarriageV1` (#597, tracking
- * #592's move off `collection_proof`/`item_cbor`). The production submit path
- * constructs this shape inside `makeSemanticResolutionRedeemer`; this mirror
- * keeps the measured redeemer byte-identical to the deployed ABI without a live
- * transaction context.
+ * Option B (#620): the item-semantic `Verify` is transition-only, so the
+ * redeemer that embeds the item's §8 `FieldCarriageV1` — and therefore the one
+ * whose envelope fit the direct frontier measures — is now the observe stage's
+ * inline `Observe` arm, `(input_index, output_index, carriage)`. The
+ * production submit path constructs this shape inside `submitStage`'s observe
+ * encode; this mirror keeps the measured redeemer byte-identical to the
+ * deployed ABI without a live transaction context.
  */
-const encodeDirectCompleteItemVerifyRedeemer = ({
-  transitionCbor,
+const encodeInlineCompleteItemObserveRedeemer = ({
   auxiliaryCbor,
   inputIndex,
   outputIndex,
 }: {
-  readonly transitionCbor: Buffer;
   readonly auxiliaryCbor: Buffer;
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
 }): Buffer => {
-  const transition = Data.from(transitionCbor.toString("hex"));
   const auxiliary = Data.from(auxiliaryCbor.toString("hex"));
   if (
     !(auxiliary instanceof Constr) ||
@@ -238,18 +236,13 @@ const encodeDirectCompleteItemVerifyRedeemer = ({
     auxiliary.fields.length !== 1
   ) {
     throw new Error(
-      "direct complete-item redeemer requires a TransactionFieldItemWitness auxiliary",
+      "inline complete-item observation requires a TransactionFieldItemWitness auxiliary",
     );
   }
   return Buffer.from(
     Data.to(
       new Constr(1, [
-        new Constr(0, [
-          inputIndex,
-          outputIndex,
-          transition,
-          auxiliary.fields[0]!,
-        ]),
+        new Constr(0, [inputIndex, outputIndex, auxiliary.fields[0]!]),
       ]),
     ),
     "hex",
@@ -644,7 +637,7 @@ describe("complete-item proof fit V1", () => {
     }
   }, 240_000);
 
-  it("encodes ABI-exact direct and reference complete-item proof redeemers for the maximum shapes", async () => {
+  it("encodes ABI-exact transition-only and observe complete-item redeemers for the maximum shapes", async () => {
     const directMax =
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
     const item = makeExactSizeOutputItem(directMax);
@@ -658,41 +651,40 @@ describe("complete-item proof fit V1", () => {
     expect(oneStepArgument.semanticResolverIndex).toBe(1);
     expect(selectValidationCompleteItemCarriageV1(directMax)).toBe("direct");
 
-    const directRedeemer = encodeDirectCompleteItemVerifyRedeemer({
-      transitionCbor: oneStepArgument.transitionCbor,
+    const observeRedeemer = encodeInlineCompleteItemObserveRedeemer({
       auxiliaryCbor: oneStepArgument.auxiliaryCbor,
       inputIndex: 1n,
       outputIndex: 0n,
     });
-    const referenceRedeemer = encodeValidationSemanticResolutionRedeemerV1({
+    const semanticRedeemer = encodeValidationSemanticResolutionRedeemerV1({
       oneStepArgument,
       inputIndex: 1n,
       outputIndex: 0n,
-      proofItemReferenceInputIndex: 0n,
     });
-    // The `VerifyReference` route is unmoved by #597 — it names a reference
-    // input, not a carriage — so it still parses against the committed
-    // blueprint exactly.
+    // The observe `Observe` arm is unmoved by #620 — the subtraction deleted a
+    // body conjunct, not a redeemer field — so the preimage-bearing redeemer
+    // still parses against the committed blueprint exactly, before and after
+    // the wave's regeneration.
     parseExactAikenDataCbor({
       blueprint: validationDisputeBlueprint,
       definitionName:
-        "fraud_proofs/validation_trace/canonical_decode_item_semantic_v1/SpendRedeemer",
-      cbor: referenceRedeemer.toString("hex"),
+        "fraud_proofs/validation_trace/canonical_decode_item_observe_v1/SpendRedeemer",
+      cbor: observeRedeemer.toString("hex"),
       maxBytes: 16 * 1024 - 1,
     });
-    // The `Verify` route is not parsed against the blueprint, and the reason is
-    // recorded rather than worked around: #592 reshaped it from
-    // `(input_index, output_index, transition, collection_proof, item_cbor)` to
-    // `(input_index, output_index, transition, carriage)` in the Aiken source,
-    // and left `plutus.json` byte-identical because blueprints move once, in
-    // #579's single regeneration (#587's precedent). That regeneration has now
-    // run, so the blueprint and the deployed source agree at four fields:
-    // #592's rebind dropped `collection_proof`/`item_cbor` from `ActionV1.Verify`
-    // in favour of `carriage: FieldCarriageV1` (recorded in #592's round-4
-    // correction, quoted on #579), and this row now asserts that agreement
-    // rather than measuring its absence.
-    // `complete-item-carriage-policy-v1.test.ts` pins the same shape from the
-    // Aiken side.
+    // The item-semantic `Verify` is not parsed against the blueprint, and the
+    // reason is recorded rather than worked around: #620 reshaped it from
+    // `(input_index, output_index, transition, carriage)` to the
+    // transition-only `(input_index, output_index, transition)` in the Aiken
+    // source and retired the `VerifyReference` arm, leaving `plutus.json`
+    // byte-identical because blueprints move once, in the wave's single
+    // regeneration (#587's precedent, as at #592/#579). Until that
+    // regeneration runs, this row pins the committed blueprint's frozen
+    // four-field list; the regeneration flips it to the one-arm
+    // ["input_index", "output_index", "transition"].
+    // `complete-item-carriage-policy-v1.test.ts` pins the new shape from the
+    // Aiken side, and the raw wire pin below holds the emitted bytes
+    // meanwhile.
     const frozenVerify = (
       validationDisputeBlueprint as {
         readonly definitions: Record<
@@ -713,22 +705,24 @@ describe("complete-item proof fit V1", () => {
       "transition",
       "carriage",
     ]);
-    // #579 has regenerated: the list is the four-field form and this redeemer
-    // parses against it, so the divergence this row used to measure is closed.
-    const directAction = Data.from(directRedeemer.toString("hex"));
-    expect(directAction).toBeInstanceOf(Constr);
-    const directContinue = (directAction as Constr<unknown>).fields[0];
-    expect(directContinue).toBeInstanceOf(Constr);
-    expect((directContinue as Constr<unknown>).index).toBe(0);
-    expect((directContinue as Constr<unknown>).fields).toHaveLength(4);
+    // Raw wire pin for the transition-only `Verify`: three fields under
+    // constructor 0, no carriage.
+    const semanticAction = Data.from(semanticRedeemer.toString("hex"));
+    expect(semanticAction).toBeInstanceOf(Constr);
+    const semanticContinue = (semanticAction as Constr<unknown>).fields[0];
+    expect(semanticContinue).toBeInstanceOf(Constr);
+    expect((semanticContinue as Constr<unknown>).index).toBe(0);
+    expect((semanticContinue as Constr<unknown>).fields).toHaveLength(3);
 
-    expect(directRedeemer.length).toBeGreaterThan(directMax);
-    expect(directRedeemer.length).toBeLessThan(16 * 1024);
-    expect(referenceRedeemer.length).toBeLessThan(2_048);
+    expect(observeRedeemer.length).toBeGreaterThan(directMax);
+    expect(observeRedeemer.length).toBeLessThan(16 * 1024);
+    expect(semanticRedeemer.length).toBeLessThan(2_048);
+    // Option B: the staged commitment is transition-only —
+    // `hash_one_step_evidence(transition, NoAuxiliaryWitness)`.
     expect(
       validationOneStepEvidenceHashV1({
         transitionCbor: oneStepArgument.transitionCbor,
-        auxiliaryCbor: oneStepArgument.auxiliaryCbor,
+        auxiliaryCbor: Buffer.from(Data.to(new Constr(0, [])), "hex"),
       }),
     ).toMatch(/^[0-9a-f]{64}$/u);
 

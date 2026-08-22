@@ -28,6 +28,9 @@ const submitSource = read(
 const itemSemanticAiken = read(
   "../../../onchain/aiken/validators/fraud-proofs/validation-trace/canonical-decode-item-semantic-v1.ak",
 );
+const itemObserveAiken = read(
+  "../../../onchain/aiken/validators/fraud-proofs/validation-trace/canonical-decode-item-observe-v1.ak",
+);
 const proofItemAiken = read(
   "../../../onchain/aiken/validators/fraud-proofs/validation-trace/proof-item-v1.ak",
 );
@@ -174,24 +177,45 @@ describe("C21 complete-item carriage production searches", () => {
   });
 
   it("keeps both deployed complete-item routes and the append-only publication lock", () => {
+    // #620 (Option B): the staged commitment is transition-only —
+    // `hash_one_step_evidence(transition, NoAuxiliaryWitness)` — so the
+    // item-semantic stage re-checks the transition alone: one `Verify` arm,
+    // no carriage field, no reference arm. The carriage is dereferenced once,
+    // at the observe stage's §8.8 door.
     expect(itemSemanticAiken).toContain("Verify {");
-    // #592: the direct route names a §8 `FieldCarriageV1` where it used to name
-    // an item and a per-item opening. Under §4 the unit that authenticates is
-    // the field's whole §5.1 preimage — the door hashes it once against the flat
-    // commitment — so a redeemer naming an item alone had nothing to be checked
-    // against. The route is unchanged in kind: the prover still says where the
-    // bytes are and the validator still resolves them here, which is what this
-    // row exists to keep; what moved is that tier 1 hands over the preimage and
-    // tiers 2–3 hand over reference-input indices.
-    expect(itemSemanticAiken).toContain("carriage: FieldCarriageV1");
-    expect(itemSemanticAiken).toContain("VerifyReference {");
-    expect(itemSemanticAiken).toContain("reference_input_index: Int");
-    expect(itemSemanticAiken).toContain("proof_item_from_reference");
+    expect(itemSemanticAiken).toContain(
+      "transition: ValidationOneStepWitnessV1",
+    );
+    expect(itemSemanticAiken).not.toContain("carriage: FieldCarriageV1");
+    expect(itemSemanticAiken).not.toContain("VerifyReference {");
+    expect(itemSemanticAiken).not.toContain("proof_item_from_reference");
+    // Both complete-item routes survive at the observe stage — which is what
+    // this row exists to keep. The route is unchanged in kind: the prover
+    // still says where the bytes are and the validator still resolves them —
+    // tier 1 hands over the preimage inline, tiers 2–3 hand over
+    // reference-input indices, and the published complete item is read back
+    // through a reference input whose §8.1 `Inline` carriage the door
+    // constructs itself from the publication's own datum.
+    expect(itemObserveAiken).toContain(
+      "Observe { input_index: Int, output_index: Int, carriage: FieldCarriageV1 }",
+    );
+    expect(itemObserveAiken).toContain("ObserveReference {");
+    expect(itemObserveAiken).toContain("reference_input_index: Int");
+    expect(itemObserveAiken).toContain("proof_item_from_reference");
     // The proof-item lock is a bare fail: published complete items are
     // append-only L1 evidence resolved through reference inputs.
     expect(proofItemAiken).toMatch(/else\(_\)\s*\{[\s\S]*fail[\s\S]*\}/u);
     expect(proofItemAiken).not.toContain("spend");
 
+    // The blueprint rows below read the **committed** `plutus.json`. #620
+    // reshaped the item-semantic ABI in the Aiken source (asserted above) and
+    // left `plutus.json` byte-identical, because blueprints move once, in the
+    // wave's single regeneration (#587's precedent, exactly as #592 recorded
+    // ahead of #579's pass). Until that regeneration runs, the disagreement
+    // below is the recorded state rather than a drift: the committed
+    // definition still lists the retired four-field `Verify` and the
+    // `VerifyReference` arm. The regeneration flips it to the one-arm
+    // ["input_index", "output_index", "transition"] list.
     const action =
       blueprint.definitions[
         "fraud_proofs/validation_trace/canonical_decode_item_semantic_v1/ActionV1"
@@ -200,16 +224,6 @@ describe("C21 complete-item carriage production searches", () => {
       "Verify",
       "VerifyReference",
     ]);
-    // The blueprint rows below read the **committed** `plutus.json`. #592 left
-    // it byte-identical and recorded that `Verify` still read
-    // `collection_proof`/`item_cbor` here while the Aiken source asserted above
-    // already read `carriage` — a disagreement that was the recorded state
-    // rather than a drift, and that #579's single regeneration pass (#587's
-    // precedent) was predicted to close. #579 has now regenerated
-    // (`onchain/aiken/plutus.json` md5 b20c9a14a8fe445cdddbe5305b3857c1, 398
-    // validators, aiken v1.1.23+2a78108) and the prediction held exactly: the
-    // list below is now the four-field carriage form, so blueprint and source
-    // agree again.
     expect(action?.anyOf?.[0]?.fields?.map((field) => field.title)).toEqual([
       "input_index",
       "output_index",
@@ -222,6 +236,23 @@ describe("C21 complete-item carriage production searches", () => {
       "transition",
       "reference_input_index",
     ]);
+    // The observe ActionV1 is unmoved by #620 (a body conjunct was deleted,
+    // not a redeemer field), so its committed definition holds before and
+    // after the regeneration.
+    const observeAction =
+      blueprint.definitions[
+        "fraud_proofs/validation_trace/canonical_decode_item_observe_v1/ActionV1"
+      ];
+    expect(observeAction?.anyOf?.map((ctor) => ctor.title)).toEqual([
+      "Observe",
+      "ObserveReference",
+    ]);
+    expect(
+      observeAction?.anyOf?.[0]?.fields?.map((field) => field.title),
+    ).toEqual(["input_index", "output_index", "carriage"]);
+    expect(
+      observeAction?.anyOf?.[1]?.fields?.map((field) => field.title),
+    ).toEqual(["input_index", "output_index", "reference_input_index"]);
   });
 
   it("proves the scans fire on hostile sources", () => {

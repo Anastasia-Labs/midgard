@@ -2,7 +2,7 @@ import {
   buildMidgardValidationTraceTree,
   openMidgardValidationDispute,
 } from "@al-ft/midgard-core";
-import { Data } from "@lucid-evolution/lucid";
+import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -237,29 +237,43 @@ describe("validation dispute ABI", () => {
         ValidationPrepareSelectedSpendRedeemerV1,
       ),
     ).toEqual(prepareSelected);
-    const prepareSelectedByHash: ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Data =
+    // Option B (#620): the canonical-decode prepare redeemer is transition-only
+    // — one four-field constructor, no auxiliary, and no retired by-hash arm.
+    const canonicalDecodePrepareSelected: ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Data =
       {
         Continue: [
           {
-            PrepareSelectedByEvidenceHash: {
-              input_index: 0n,
-              output_index: 0n,
-              semantic_resolver_index: 0n,
-              transition,
-              evidence_hash: "0b".repeat(32),
-            },
+            input_index: 0n,
+            output_index: 0n,
+            semantic_resolver_index: 0n,
+            transition,
           },
         ],
       };
+    const canonicalDecodePrepareSelectedCbor = Data.to(
+      canonicalDecodePrepareSelected,
+      ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1,
+    );
     expect(
       Data.from(
-        Data.to(
-          prepareSelectedByHash,
-          ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1,
-        ),
+        canonicalDecodePrepareSelectedCbor,
         ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1,
       ),
-    ).toEqual(prepareSelectedByHash);
+    ).toEqual(canonicalDecodePrepareSelected);
+    // Wire pin: `Continue(PrepareSelected{input, output, resolver, transition})`
+    // — constructor 1 wrapping constructor 0 with exactly four fields.
+    expect(canonicalDecodePrepareSelectedCbor).toBe(
+      Data.to(
+        new Constr(1, [
+          new Constr(0, [
+            0n,
+            0n,
+            0n,
+            Data.from(Data.to(transition, ValidationOneStepWitnessV1)),
+          ]),
+        ]),
+      ),
+    );
 
     const direct: ValidationDirectResolveSpendRedeemerV1Data = {
       Continue: [

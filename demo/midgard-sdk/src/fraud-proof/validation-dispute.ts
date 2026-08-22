@@ -561,13 +561,6 @@ const ValidationPrepareSelectedFieldsV1Schema = Data.Object({
   transition: ValidationOneStepWitnessV1Schema,
   auxiliary: ValidationAuxiliaryWitnessV1Schema,
 });
-const ValidationPrepareSelectedByEvidenceHashFieldsV1Schema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  semantic_resolver_index: Data.Integer(),
-  transition: ValidationOneStepWitnessV1Schema,
-  evidence_hash: H32Schema,
-});
 export const ValidationPrepareSelectedActionV1Schema =
   ValidationPrepareSelectedFieldsV1Schema;
 export type ValidationPrepareSelectedActionV1 = Data.Static<
@@ -588,17 +581,19 @@ export type ValidationPrepareSelectedSpendRedeemerV1 = Data.Static<
 export const ValidationPrepareSelectedSpendRedeemerV1 =
   ValidationPrepareSelectedSpendRedeemerV1Schema as unknown as ValidationPrepareSelectedSpendRedeemerV1;
 
-export const ValidationCanonicalDecodePrepareSelectedActionV1Schema = Data.Enum(
-  [
-    Data.Object({
-      PrepareSelected: ValidationPrepareSelectedFieldsV1Schema,
-    }),
-    Data.Object({
-      PrepareSelectedByEvidenceHash:
-        ValidationPrepareSelectedByEvidenceHashFieldsV1Schema,
-    }),
-  ],
-);
+// Option B (#620): the canonical-decode preparation commits to the transition
+// alone — the validator computes `hash_one_step_evidence(transition,
+// NoAuxiliaryWitness)` on-chain, so its `PrepareSelected` carries no auxiliary
+// and the retired `PrepareSelectedByEvidenceHash` arm is gone. Single Aiken
+// constructor: modeled as Data.Object (Lucid unwraps a one-member Data.Enum),
+// which still emits the required constructor-0 wire shape.
+export const ValidationCanonicalDecodePrepareSelectedActionV1Schema =
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    semantic_resolver_index: Data.Integer(),
+    transition: ValidationOneStepWitnessV1Schema,
+  });
 export type ValidationCanonicalDecodePrepareSelectedActionV1 = Data.Static<
   typeof ValidationCanonicalDecodePrepareSelectedActionV1Schema
 >;

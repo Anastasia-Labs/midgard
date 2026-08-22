@@ -800,26 +800,6 @@ describe("validation-dispute transaction validity", () => {
         ),
       },
       {
-        definition:
-          "fraud_proofs/validation_trace/canonical_decode_v1/SpendRedeemer",
-        cbor: encodeRuntimeSchema(
-          {
-            Continue: [
-              {
-                PrepareSelectedByEvidenceHash: {
-                  input_index: 0n,
-                  output_index: 0n,
-                  semantic_resolver_index: 0n,
-                  transition,
-                  evidence_hash: "09".repeat(32),
-                },
-              },
-            ],
-          },
-          ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema,
-        ),
-      },
-      {
         definition: "midgard/validation_resolver_v1/SpendRedeemer",
         cbor: encodeValidationDirectResolveSpendRedeemerV1({
           input_index: 0n,
@@ -855,6 +835,38 @@ describe("validation-dispute transaction validity", () => {
       ).toBeInstanceOf(Constr);
     }
 
+    // Option B (#620): the canonical-decode prepare redeemer is the single
+    // four-field transition-only arm — the by-evidence-hash arm is retired.
+    // The checked-in blueprint still carries the pre-#620 definition until the
+    // wave's blueprint regeneration lands (plutus.json is never regenerated in
+    // this lane), so pin the exact wire bytes instead of parsing against the
+    // stale definition; the Aiken twin pins the decode side of the same wire.
+    const canonicalDecodePrepareCbor = encodeRuntimeSchema(
+      {
+        Continue: [
+          {
+            input_index: 0n,
+            output_index: 0n,
+            semantic_resolver_index: 0n,
+            transition,
+          },
+        ],
+      },
+      ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema,
+    );
+    expect(canonicalDecodePrepareCbor).toBe(
+      Data.to(
+        new Constr(1, [
+          new Constr(0, [
+            0n,
+            0n,
+            0n,
+            Data.from(Data.to(transition, ValidationOneStepWitnessV1)),
+          ]),
+        ]),
+      ),
+    );
+
     const cekRedeemer = Data.from(
       encodeValidationCekSpendRedeemerV1({
         input_index: 0n,
@@ -889,28 +901,34 @@ describe("validation-dispute transaction validity", () => {
       Data.to(new Constr(30, [completeItemCarriage]) as never),
       "hex",
     );
-    for (const proofItemReferenceInputIndex of [undefined, 0n] as const) {
-      const cbor = encodeValidationSemanticResolutionRedeemerV1({
-        oneStepArgument: {
-          resolverIndex: 0,
-          semanticResolverIndex: 1,
-          transitionCbor,
-          auxiliaryCbor: completeItemAuxiliaryCbor,
-        },
-        inputIndex: 0n,
-        outputIndex: 0n,
-        proofItemReferenceInputIndex,
-      });
-      expect(
-        parseExactAikenDataCbor({
-          blueprint,
-          definitionName:
-            "fraud_proofs/validation_trace/canonical_decode_item_semantic_v1/SpendRedeemer",
-          cbor: cbor.toString("hex"),
-          maxBytes: 16 * 1024 - 1,
-        }),
-      ).toBeInstanceOf(Constr);
-    }
+    // Option B (#620): the item-semantic redeemer is the single three-field
+    // transition-only `Verify` — the carriage argument and the
+    // `VerifyReference` arm are retired, so there is no reference-input route
+    // to request any more. The checked-in blueprint still carries the
+    // pre-#620 two-arm definition until the wave's blueprint regeneration
+    // lands, so pin the exact wire bytes; the Aiken twin pins the decode side.
+    const itemSemanticCbor = encodeValidationSemanticResolutionRedeemerV1({
+      oneStepArgument: {
+        resolverIndex: 0,
+        semanticResolverIndex: 1,
+        transitionCbor,
+        auxiliaryCbor: completeItemAuxiliaryCbor,
+      },
+      inputIndex: 0n,
+      outputIndex: 0n,
+    });
+    expect(itemSemanticCbor.toString("hex")).toBe(
+      Data.to(
+        new Constr(1, [
+          new Constr(0, [
+            0n,
+            0n,
+            Data.from(Data.to(transition, ValidationOneStepWitnessV1)),
+          ]),
+        ]),
+      ),
+    );
+    // A non-item auxiliary refuses at the ingress shape gate.
     expect(() =>
       encodeValidationSemanticResolutionRedeemerV1({
         oneStepArgument: {
@@ -921,16 +939,39 @@ describe("validation-dispute transaction validity", () => {
         },
         inputIndex: 0n,
         outputIndex: 0n,
-        proofItemReferenceInputIndex: 0n,
       }),
-    ).toThrow(/complete item/u);
+    ).toThrow(/must carry an authenticated chunk or complete item/u);
+    // Option B (#620): a chunk-shaped auxiliary passes the ingress shape gate
+    // (chunk-or-item) but has no wire to ride at the item-semantic stage —
+    // the retired four-field `Verify` was the only shape it could ever have
+    // targeted — so redeemer construction refuses it fail-closed.
+    expect(() =>
+      encodeValidationSemanticResolutionRedeemerV1({
+        oneStepArgument: {
+          resolverIndex: 0,
+          semanticResolverIndex: 1,
+          transitionCbor,
+          auxiliaryCbor: Buffer.from(
+            // A well-typed `TransactionFieldChunkWitness`:
+            // (field_index, item_index, tier-1 `Inline` carriage).
+            Data.to(new Constr(1, [0n, 0n, new Constr(0, ["00"])]) as never),
+            "hex",
+          ),
+        },
+        inputIndex: 0n,
+        outputIndex: 0n,
+      }),
+    ).toThrow(/cannot construct the selected semantic redeemer/u);
 
     // C21-STAGE4 Option B′ disposition: resolver 8 / semantic resolver 0
     // does not consume a TransactionFieldItemWitness any more. Option A made
     // the stage-four fold proof-only (tag 29), so admitting the proof-item
     // datum's tag-30 item through a reference-input ABI would create a route
-    // that cannot be semantically equivalent to the direct proof. Keep the
-    // direct deployed ABI parseable and fail closed on that reference route.
+    // that cannot be semantically equivalent to the direct proof. #620 then
+    // deleted the reference-route encoder entirely (the retired
+    // `VerifyReference` arm was its only consumer), so the fail-closed
+    // refusal is now structural: the encoder takes no reference-input index.
+    // Keep the direct deployed ABI parseable.
     const stageFourAuxiliaryCbor = Buffer.from(
       Data.to(new Constr(29, [completeItemCarriage]) as never),
       "hex",
@@ -954,19 +995,6 @@ describe("validation-dispute transaction validity", () => {
         maxBytes: 16 * 1024 - 1,
       }),
     ).toBeInstanceOf(Constr);
-    expect(() =>
-      encodeValidationSemanticResolutionRedeemerV1({
-        oneStepArgument: {
-          resolverIndex: 8,
-          semanticResolverIndex: 0,
-          transitionCbor,
-          auxiliaryCbor: stageFourAuxiliaryCbor,
-        },
-        inputIndex: 0n,
-        outputIndex: 0n,
-        proofItemReferenceInputIndex: 0n,
-      }),
-    ).toThrow(/CanonicalDecode complete item/u);
 
     const sourceFields = [
       0n,
@@ -1458,12 +1486,15 @@ describe("validation-dispute transaction validity", () => {
     ).toThrow(/FoldMap or FinalizeFrame/u);
   });
 
-  it("emits the deployed 4-field complete-item Verify redeemer with the carriage as its own field", () => {
-    // C21-DISPUTE-SUBMIT defect 1, superseded by #597: the deployed
-    // canonical_decode_item_semantic_v1 ABI's `Verify` arm takes 4 fields —
-    // input_index, output_index, transition, and the item's own §8
-    // `FieldCarriageV1` — not the retired collection_proof/item_cbor pair.
-    // Pin the exact emitted shape and its blueprint parse.
+  it("emits the transition-only 3-field complete-item Verify redeemer", () => {
+    // Option B (#620, superseding #597's 4-field carriage form): the
+    // canonical_decode_item_semantic_v1 ABI's `Verify` arm takes 3 fields —
+    // input_index, output_index, transition. The carriage is no longer a
+    // redeemer field (content is proven once, at the observe stage's §8.8
+    // door) and the `VerifyReference` arm is retired. The checked-in
+    // blueprint still carries the pre-#620 definition until the wave's
+    // blueprint regeneration lands, so pin the exact emitted wire; the Aiken
+    // twin pins the decode side.
     const state: ValidationMachineStateV1 = {
       machine_version: 1n,
       event_key_hash: "01".repeat(32),
@@ -1514,48 +1545,12 @@ describe("validation-dispute transaction validity", () => {
     const directAction = directOuter.fields[0] as Constr<unknown>;
     expect(directAction).toBeInstanceOf(Constr);
     expect(directAction.index).toBe(0);
-    expect(directAction.fields).toHaveLength(4);
+    expect(directAction.fields).toHaveLength(3);
     expect(directAction.fields[0]).toBe(5n);
     expect(directAction.fields[1]).toBe(7n);
     expect(directAction.fields[2]).toEqual(
       Data.from(transitionCbor.toString("hex")),
     );
-    expect(directAction.fields[3]).toEqual(itemCarriage);
-    expect(
-      parseExactAikenDataCbor({
-        blueprint,
-        definitionName:
-          "fraud_proofs/validation_trace/canonical_decode_item_semantic_v1/SpendRedeemer",
-        cbor: directRedeemer.toString("hex"),
-        maxBytes: 16 * 1024 - 1,
-      }),
-    ).toBeInstanceOf(Constr);
-
-    const referenceRedeemer = encodeValidationSemanticResolutionRedeemerV1({
-      oneStepArgument,
-      inputIndex: 5n,
-      outputIndex: 7n,
-      proofItemReferenceInputIndex: 2n,
-    });
-    const reference = Data.from(referenceRedeemer.toString("hex"));
-    const referenceOuter = reference as Constr<unknown>;
-    expect(referenceOuter.index).toBe(1);
-    expect(referenceOuter.fields).toHaveLength(1);
-    const referenceAction = referenceOuter.fields[0] as Constr<unknown>;
-    expect(referenceAction.index).toBe(1);
-    expect(referenceAction.fields).toHaveLength(4);
-    expect(referenceAction.fields[0]).toBe(5n);
-    expect(referenceAction.fields[1]).toBe(7n);
-    expect(referenceAction.fields[3]).toBe(2n);
-    expect(
-      parseExactAikenDataCbor({
-        blueprint,
-        definitionName:
-          "fraud_proofs/validation_trace/canonical_decode_item_semantic_v1/SpendRedeemer",
-        cbor: referenceRedeemer.toString("hex"),
-        maxBytes: 16 * 1024 - 1,
-      }),
-    ).toBeInstanceOf(Constr);
   });
 
   it("encodes resolver-7 non-membership evidence into the exact semantic ABI", () => {
