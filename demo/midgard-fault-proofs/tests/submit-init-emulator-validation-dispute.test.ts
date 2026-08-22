@@ -830,16 +830,21 @@ describe("fault-proof emulator integration", () => {
       // The semantic-resolution (authentication) proof transaction sources
       // the item-semantic validator from the published reference script, and
       // the observation transaction sources the item-observe validator from
-      // its published reference script (#597 ruling a / #617): authenticate
-      // carries one reference input beside the direct route (two beside the
-      // published proof item on the reference route), and observe carries
-      // one (two on the reference route, beside the proof item).
+      // its published reference script (#597 ruling a / #617). Since Option B
+      // (#620/#621) the published proof item is dereferenced exactly once, at
+      // the observe stage's §8.8 door: authenticate re-checks the
+      // transition-only commitment and carries only its own script reference
+      // on either route, and observe carries one reference input on the
+      // direct route (two on the reference route, beside the proof item).
+      // The pre-#620 pin expected the proof item beside authenticate too —
+      // that value was recorded while the row was red-before-this-point and
+      // #620 retired the forwarding it described.
       expect(
         semanticSubmission.measurements.map(
           (measurement) => measurement.referenceInputCount,
         ),
       ).toEqual(
-        expectedCarriage === "reference" ? [0, 2, 0, 2, 0, 0] : [1, 0, 1, 0, 0],
+        expectedCarriage === "reference" ? [0, 1, 0, 2, 0, 0] : [1, 0, 1, 0, 0],
       );
       expect(
         semanticSubmission.measurements.every(
