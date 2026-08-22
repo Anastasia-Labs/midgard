@@ -1569,6 +1569,10 @@ describe("Q02 generated shape matches the deployed families", () => {
     // Exactly the three modules issue #626 carries deviate, and no others. When
     // #626 is ruled in and they are reordered, this list empties and the
     // constant above goes with it.
+    // The exception list may only shrink: growing it would let a newly
+    // deviating family ride in under the #626 citation, so its size is pinned
+    // here as well as its members.
+    expect(TERMINAL_ARGS_EXCEPTIONS_ISSUE_626).toHaveLength(3);
     expect(deviating).toEqual([...TERMINAL_ARGS_EXCEPTIONS_ISSUE_626]);
     // Decision 0005 R7: `no-input/step-04` is normalized inside the #617 wave,
     // so the generator now covers it with no per-family special case.
