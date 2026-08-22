@@ -299,8 +299,8 @@ export const neSubmitStep04 = async ({
           {
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
-            non_membership_in_txs: carriage,
             fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
+            non_membership_in_txs: carriage,
           },
         ],
       },

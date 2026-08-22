@@ -179,8 +179,8 @@ export const NonExistentInputStep04Datum =
 export const NonExistentInputStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  non_membership_in_txs: NonMembershipCarriageSchema,
   fraud_proof_mint_redeemer_index: Data.Integer(),
+  non_membership_in_txs: NonMembershipCarriageSchema,
 });
 export type NonExistentInputStep04Args = Data.Static<
   typeof NonExistentInputStep04ArgsSchema

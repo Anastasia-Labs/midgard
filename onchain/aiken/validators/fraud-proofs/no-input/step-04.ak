@@ -40,8 +40,8 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
-        non_membership_in_txs,
         fraud_proof_mint_redeemer_index,
+        non_membership_in_txs,
       }) -> {
         let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = tx
 
@@ -147,8 +147,8 @@ fn run_finalize_with(
       Args {
         input_index: 0,
         output_index: 0,
-        non_membership_in_txs: carriage,
         fraud_proof_mint_redeemer_index: 0,
+        non_membership_in_txs: carriage,
       },
     ),
     fixture.own_out_ref(),

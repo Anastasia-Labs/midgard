@@ -125,10 +125,10 @@
         "fields": [
           "input_index",
           "output_index",
-          "non_membership_in_txs",
-          "fraud_proof_mint_redeemer_index"
+          "fraud_proof_mint_redeemer_index",
+          "non_membership_in_txs"
         ],
-        "note": "The second absence claim, against the same counted `transactions_root` step-01 authenticated, plus the mint redeemer index the terminal step needs to finalize."
+        "note": "The second absence claim, against the same counted `transactions_root` step-01 authenticated, plus the mint redeemer index the terminal step needs to finalize. Normalized onto the shipped terminal pattern — positional indices, then the mint redeemer index, then the family's own arguments — by decision 0005 R7 inside the #617 regeneration wave; before the wave this record trailed `fraud_proof_mint_redeemer_index` behind `non_membership_in_txs`, which is the sanctioned ABI movement this row records."
       }
     ],
     "measuredFamilyArgsRecordCount": 3,
@@ -515,7 +515,7 @@
       "output": 2,
       "title": "Canonical evidence schema and strict TypeScript/Aiken codec agreement",
       "status": "LOCAL_PASS",
-      "evidence": "Four records are parsed out of both sides and measured field-for-field identical in the same positional order. The shared inclusion record step-01 rides: `NativeTxInclusionArgs`, 9 fields from `input_index` through `inclusion_proof_script_withdraw_redeemer_index`, in onchain/aiken/lib/midgard/fraud-proofs/common.ak and demo/midgard-sdk/src/fraud-proof/native.ts — reached by this family through two measured alias bindings, the Aiken `pub type Args = NativeTxInclusionCarriage` and the SDK's re-export of the same codec under `NonExistentInputTxInclusionArgsSchema`. Then the family's own three step Args records: step-02's 4 fields including the §8.8 `spend_inputs_opening` door, step-03's 3 including `non_membership_in_ledger`, and step-04's 4 including `non_membership_in_txs` and the mint redeemer index — each measured against its `NonExistentInputStep0NArgsSchema` twin in demo/midgard-sdk/src/fraud-proof/non-existent-input.ts. Positional agreement is the property that matters, because these records reach the chain as Plutus data where a swapped pair of same-typed fields type-checks on both sides, and three of the four open with the same two `Int` fields. The Q03 canonical-evidence gate is measured 32 of 32 passing, 0 failures, with the four no-input-relevant titles required by name — the barrel export of this family's DA-first builder, the per-family emission from native-root-authenticated evidence, the diagnostic-grade refusal ahead of every gated builder, and the CLI-verb refusal that covers `prepare-non-existent-input`.",
+      "evidence": "Four records are parsed out of both sides and measured field-for-field identical in the same positional order. The shared inclusion record step-01 rides: `NativeTxInclusionArgs`, 9 fields from `input_index` through `inclusion_proof_script_withdraw_redeemer_index`, in onchain/aiken/lib/midgard/fraud-proofs/common.ak and demo/midgard-sdk/src/fraud-proof/native.ts — reached by this family through two measured alias bindings, the Aiken `pub type Args = NativeTxInclusionCarriage` and the SDK's re-export of the same codec under `NonExistentInputTxInclusionArgsSchema`. Then the family's own three step Args records: step-02's 4 fields including the §8.8 `spend_inputs_opening` door, step-03's 3 including `non_membership_in_ledger`, and step-04's 4 — the mint redeemer index in the shipped terminal position ahead of the family's own `non_membership_in_txs`, normalized there by decision 0005 R7 — each measured against its `NonExistentInputStep0NArgsSchema` twin in demo/midgard-sdk/src/fraud-proof/non-existent-input.ts. Positional agreement is the property that matters, because these records reach the chain as Plutus data where a swapped pair of same-typed fields type-checks on both sides, and three of the four open with the same two `Int` fields. The Q03 canonical-evidence gate is measured 32 of 32 passing, 0 failures, with the four no-input-relevant titles required by name — the barrel export of this family's DA-first builder, the per-family emission from native-root-authenticated evidence, the diagnostic-grade refusal ahead of every gated builder, and the CLI-verb refusal that covers `prepare-non-existent-input`.",
       "owner": "Q00/Q03/Q11"
     },
     {
