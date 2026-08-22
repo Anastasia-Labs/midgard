@@ -582,8 +582,12 @@ export const resolveCertificateReferenceIndexV1 = ({
  * than its carriage — the published spending validator arrives the same way
  * (`readFrom`) and sorts into the same list. Passing only the carriage produces
  * indices that are right until the first transaction that references anything
- * else, which is every real one. {@link
- * assertMidgardFieldCarriageResolvesAtDoorV1} is the check that catches it.
+ * else, which is every real one.
+ *
+ * Since Option B (#619/#621) this resolver **is** the production seam: the
+ * dispute builder resolves the plan against the door transaction's own
+ * reference-input set at build time and puts the result on the observe wire,
+ * so no earlier transaction's index survives to disagree with it.
  */
 export const resolveMidgardFieldCarriageAgainstReferenceInputsV1 = ({
   plan,
@@ -641,37 +645,26 @@ export const resolveMidgardFieldCarriageAgainstReferenceInputsV1 = ({
 
 /**
  * Refuses a carriage whose positional indices would not resolve to the same
- * UTxOs in the transaction that actually runs the §8.8 door (#600, ruling D3-A).
+ * UTxOs in the transaction that actually runs the §8.8 door (#600 ruling
+ * D3-A, re-scoped by #619/#621).
  *
- * A carriage is fixed one transaction *before* the door reads it: the auxiliary
- * is hashed into `evidence_hash` by the PrepareSelected transaction
- * (`onchain/aiken/lib/midgard/validation-resolution-v1.ak:163-182`) and only
- * dereferenced later, at the stage where the door runs — for the complete-item
- * route that is `canonical_decode_item_observe_v1`, three transactions further
- * on. Between those points a builder can change the reference-input set without
- * noticing, and the failure is silent in the worst way: the indices are
- * well-formed, they simply name the wrong UTxOs, and the step fails on L1 after
- * the evidence hash is already staged and can only be re-staged.
+ * When this guard was written, the auxiliary — carriage included — was hashed
+ * into `evidence_hash` at PrepareSelected and dereferenced three transactions
+ * later, so a reference-input set that moved in between failed on L1 after
+ * the evidence was already staged; re-checking the frozen indices here, off
+ * chain, was the one defense. Since Option B the committed evidence is
+ * transition-only and the production builder
+ * (`submitValidationDisputeSemanticResolution` in
+ * `demo/midgard-fault-proofs/src/validation-dispute/submit.ts`) calls
+ * {@link resolveMidgardFieldCarriageAgainstReferenceInputsV1} at build time
+ * and puts the freshly-resolved carriage on the observe wire itself — there
+ * is no committed index left to re-check, so this guard is no longer on the
+ * production path.
  *
- * So the indices are re-resolved against the door transaction's final set and
- * any difference refuses here, off-chain, while re-staging is still free.
- *
- * **Its production call site is the observe-stage dispute builder**, in
- * `submitValidationDisputeSemanticResolution`
- * (`demo/midgard-fault-proofs/src/validation-dispute/submit.ts`), immediately
- * before the `Validation canonical item observation` stage is built. That stage
- * is the one place the §8.8 door runs for the complete-item path
- * (`validators/fraud-proofs/validation-trace/canonical-decode-item-observe-v1.ak`),
- * and its builder is the only caller that holds both the committed carriage —
- * read straight out of the staged auxiliary the PrepareSelected transaction
- * hashed into `evidence_hash` — and the complete reference-input set that
- * transaction will read. The guard is called there with exactly the UTxOs the
- * stage `readFrom`s, so a divergence refuses before a submission burns the
- * staged evidence.
- *
- * It is additionally pinned by its own unit tests
- * (`demo/midgard-sdk/tests/field-preimage-carriage-door-v1.test.ts`) and driven
- * over real ledger-resolved carriage by the tiers-2/3 emulator leg
+ * It remains the re-checker for any caller that carries a *pre-resolved*
+ * carriage to a door transaction: it is pinned by its own unit tests
+ * (`demo/midgard-sdk/tests/field-preimage-carriage-door-v1.test.ts`) and
+ * driven over real ledger-resolved carriage by the tiers-2/3 emulator leg
  * (`demo/midgard-validation/tests/complete-item-carriage-tiers-emulator-v1.test.ts`),
  * which submits the same door transaction the guard admits and the one it
  * refuses.
@@ -723,8 +716,10 @@ export const assertMidgardFieldCarriageResolvesAtDoorV1 = ({
   if (disagreement !== null) {
     throw new Error(
       `${label} §8 carriage does not resolve at the door-running transaction: ${disagreement}. ` +
-        "The committed evidence hash binds the indices, so the reference-input set the door " +
-        "sees must be the one they were resolved against (§8.7 content addressing, #600).",
+        "Positional indices are §8.7 content addresses into one concrete transaction's " +
+        "reference-input set, so a carriage resolved against a different set names different " +
+        "UTxOs; resolve against the set the door will read (#600, re-scoped by #619/#621: " +
+        "production builds resolve at build time and put the fresh carriage on the wire).",
     );
   }
 };

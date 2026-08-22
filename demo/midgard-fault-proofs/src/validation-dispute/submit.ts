@@ -36,7 +36,6 @@ import {
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { midgardV1TxFieldCommitmentsFromSourceV1 } from "@al-ft/midgard-core/consensus-validation-v1";
 import {
-  assertMidgardFieldCarriageResolvesAtDoorV1,
   AuthenticatedCanonicalDecodeItemDatumV1,
   buildUnsignedValidationProofItemPublicationV1Program,
   deriveCekProgramMaterialPublicationsV1,
@@ -64,6 +63,7 @@ import {
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
+  resolveMidgardFieldCarriageAgainstReferenceInputsV1,
   ValidationAuxiliaryWitnessV1,
   type ValidationAuxiliaryWitnessV1 as ValidationAuxiliaryWitnessV1Data,
   ValidationAwardSpendRedeemerV1,
@@ -148,6 +148,18 @@ export const VALIDATION_DISPUTE_VALIDITY_LEEWAY_MS = 60_000;
 export const MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES = 16 * 1024;
 const VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE = "V1 validation-trace dispute";
 
+/**
+ * Build-time delivery cost heuristic for a tier-1 complete item (#619/#621).
+ *
+ * "direct" carries the §5.1 preimage in the observe redeemer; "reference"
+ * routes it through a §8 proof-item publication and delivers by reference.
+ * Since Option B the committed evidence is transition-only, so either route
+ * can deliver any tier-1 item: this pin steers cost — one transaction versus
+ * two — never soundness, and a stale pin degrades fees and latency, not
+ * liveness. `maxReliableDirectCompleteItemBytes` is an owner-signed consensus
+ * measurement; re-measuring the direct frontier and rebinding this heuristic
+ * is #622's owner table, so the number is read here and never changed here.
+ */
 export const selectValidationCompleteItemCarriageV1 = (
   itemBytes: number,
 ): "direct" | "reference" => {
@@ -334,6 +346,167 @@ const requireL1ProofEnvelope = (
       `${label} transaction is ${bytes.toString()} bytes; the complete signed L1 proof transaction must be no larger than ${MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES.toString()} bytes`,
     );
   }
+};
+
+/**
+ * A deterministic, known-valid ed25519 public key (CML's own documentation
+ * example), used only to project a signed transaction's exact byte length
+ * before any signature exists. A vkey witness's size is fixed — 32 key bytes
+ * plus 64 signature bytes plus CBOR framing — so which key fills the slot
+ * cannot change the projection.
+ */
+const PROJECTION_PLACEHOLDER_VKEY_BECH32 =
+  "ed25519_pk1dgaagyh470y66p899txcl3r0jaeaxu6yd7z2dxyk55qcycdml8gszkxze2";
+
+/**
+ * Projects the exact byte length the unsigned transaction will have once the
+ * prover's signature is attached, without signing anything (#621).
+ *
+ * The inline observe route decides pre-sign whether its redeemer-carried
+ * preimage still fits the L1 proof envelope; deciding on the unsigned bytes
+ * alone would under-count by one vkey witness, and guessing a delta is a
+ * measurement smell. So the witness slot is filled with a placeholder key and
+ * a zeroed 64-byte signature — byte-for-byte the size of the real ones — and
+ * the assembled transaction is measured. `requireL1ProofEnvelope` still runs
+ * on the actually-signed bytes afterwards, so a projection defect can never
+ * ship an oversized transaction; the projection only decides routing.
+ */
+export const projectSignedL1ProofTransactionBytesV1 = (
+  unsignedTransactionCbor: string,
+): number => {
+  const transaction = CML.Transaction.from_cbor_hex(unsignedTransactionCbor);
+  const witnessSet = transaction.witness_set();
+  const vkeyWitnesses = CML.VkeywitnessList.new();
+  vkeyWitnesses.add(
+    CML.Vkeywitness.new(
+      CML.PublicKey.from_bech32(PROJECTION_PLACEHOLDER_VKEY_BECH32),
+      CML.Ed25519Signature.from_raw_bytes(new Uint8Array(64)),
+    ),
+  );
+  witnessSet.set_vkeywitnesses(vkeyWitnesses);
+  const assembled = CML.Transaction.new(
+    transaction.body(),
+    witnessSet,
+    transaction.is_valid(),
+    transaction.auxiliary_data(),
+  );
+  return assembled.to_cbor_hex().length / 2;
+};
+
+/**
+ * The pre-sign refusal of an inline observe build whose projected signed
+ * bytes exceed the L1 proof envelope (#621). The staged-chain orchestration
+ * catches exactly this error to fall back to the reference route, so it is a
+ * distinct class rather than a message pattern.
+ */
+export class ValidationInlineDeliveryEnvelopeRefusedErrorV1 extends Error {
+  readonly projectedSignedBytes: number;
+  readonly maxTransactionBytes: number;
+
+  constructor({
+    label,
+    projectedSignedBytes,
+    maxTransactionBytes,
+  }: {
+    readonly label: string;
+    readonly projectedSignedBytes: number;
+    readonly maxTransactionBytes: number;
+  }) {
+    super(
+      `${label} would sign at ${projectedSignedBytes.toString()} bytes, over the ` +
+        `${maxTransactionBytes.toString()}-byte L1 proof envelope; refusing pre-sign. ` +
+        "Inline delivery carries the §5.1 preimage in the observe redeemer, so an item " +
+        "this large rides the §8 publication route instead.",
+    );
+    this.projectedSignedBytes = projectedSignedBytes;
+    this.maxTransactionBytes = maxTransactionBytes;
+  }
+}
+
+/** How a tier-1 complete item's preimage reaches the §8.8 door (#621). */
+export type ValidationProofItemDeliveryV1 = "inline" | "reference";
+
+/**
+ * Resolves the delivery route for the CanonicalDecode complete-item path at
+ * build time (#619/#621).
+ *
+ * Since Option B the committed evidence is transition-only, so nothing staged
+ * on chain constrains how the preimage reaches the observe stage's §8.8 door:
+ * inline in the redeemer or by reference to a §8 proof-item publication, both
+ * of which the door authenticates by content. The choice is therefore a
+ * builder-local cost decision, resolved here in precedence order — an
+ * explicit `proofItemDelivery` request, then a supplied publication out-ref,
+ * then the measured `selectValidationCompleteItemCarriageV1` heuristic.
+ *
+ * The routing choice exists only inside tier 1. Above §8.3's tier-1 cap the
+ * §8.4 partition already names reference inputs of its own, so a delivery
+ * request there is a refusal, not a preference — and no routing input can
+ * brick an in-flight dispute: an inline build that outgrows the L1 envelope
+ * falls back to the reference route pre-sign
+ * ({@link ValidationInlineDeliveryEnvelopeRefusedErrorV1}).
+ *
+ * Returns the tier-1 route, or `undefined` when the argument is not a tier-1
+ * complete item (tiers 2-3 and every other resolver path, where no such route
+ * exists).
+ */
+export const resolveValidationProofItemDeliveryRouteV1 = ({
+  requestedDelivery,
+  hasProofItemReferenceOutRef,
+  committedCarriage,
+  preimageByteLength,
+}: {
+  readonly requestedDelivery: ValidationProofItemDeliveryV1 | undefined;
+  readonly hasProofItemReferenceOutRef: boolean;
+  /**
+   * The staged auxiliary's §8.1 carriage constructor on the complete-item
+   * path, `undefined` on every other resolver path.
+   */
+  readonly committedCarriage: "Inline" | "RawUtxo" | "Certified" | undefined;
+  /** The tier-1 preimage's byte length; required when the carriage is `Inline`. */
+  readonly preimageByteLength?: number;
+}): ValidationProofItemDeliveryV1 | undefined => {
+  if (committedCarriage === undefined) {
+    if (requestedDelivery !== undefined) {
+      throw new Error(
+        "Validation proof-item delivery routing (`proofItemDelivery`) exists only on the " +
+          "CanonicalDecode complete-item path (#621)",
+      );
+    }
+    return undefined;
+  }
+  if (committedCarriage !== "Inline") {
+    if (requestedDelivery !== undefined) {
+      throw new Error(
+        "Validation proof-item delivery routing is a tier-1 choice between the observe " +
+          `redeemer and the §8 publication; tier-${committedCarriage === "RawUtxo" ? "2" : "3"} ` +
+          `\`${committedCarriage}\` already names reference inputs (§8.4) and admits no ` +
+          "routing override (#621)",
+      );
+    }
+    return undefined;
+  }
+  if (requestedDelivery === "inline") {
+    if (hasProofItemReferenceOutRef) {
+      throw new Error(
+        'Validation proof-item delivery "inline" contradicts `proofItemReferenceOutRef`: ' +
+          "inline delivery carries the preimage in the observe redeemer and reads no " +
+          "publication (#621)",
+      );
+    }
+    return "inline";
+  }
+  if (requestedDelivery === "reference" || hasProofItemReferenceOutRef) {
+    return "reference";
+  }
+  if (preimageByteLength === undefined) {
+    throw new Error(
+      "Validation proof-item delivery route needs the tier-1 preimage length to apply the " +
+        "measured cost heuristic",
+    );
+  }
+  return selectValidationCompleteItemCarriageV1(preimageByteLength) === "direct"
+    ? "inline"
+    : "reference";
 };
 
 const findUniqueInlineDatumOutputIndex = ({
@@ -796,20 +969,22 @@ export type ValidatedCekSubmissionEvidenceV1 = {
 };
 
 /**
- * The §8 carriage a tiers-2/3 one-step argument already committed to, together
- * with the ledger UTxOs its positional indices name (#600, ruling D3-A).
+ * The §8 carriage material for a tiers-2/3 one-step argument: the producer's
+ * carriage plan together with the ledger UTxOs that hold its published bytes
+ * (#600 ruling D3-A, re-scoped by #619/#621).
  *
  * A tier-1 argument needs none of this: `Inline` carries its own bytes and
- * indexes nothing. Above §8.3's 14,336-byte cap the auxiliary is *only*
- * indices, so a submitter has to hand the builder the material those indices
- * point at — otherwise the door-running transaction cannot reference the
- * carriage at all, and nothing off chain can tell whether the committed indices
- * still resolve.
+ * indexes nothing. Above §8.3's 14,336-byte cap the carriage is *only*
+ * positional reference-input indices, so a submitter has to hand the builder
+ * the material those indices will name — otherwise the door-running
+ * transaction cannot reference the carriage at all.
  *
  * `plan` is the producer's own `planMidgardFieldCarriageV1` output, never a
- * hand-assembled record: it is what lets the builder re-resolve the indices by
- * content (§8.7) against the door's final reference-input set and refuse a
- * divergence while re-staging is still free.
+ * hand-assembled record. Since Option B the committed evidence is
+ * transition-only, so no index is frozen anywhere on chain: the builder
+ * resolves the plan by content (§8.7) against the door transaction's own
+ * reference-input set at build time and puts *that* carriage on the wire —
+ * the plan is the content source the resolution works from.
  */
 export type ValidationFieldCarriageMaterialV1 = {
   readonly plan: MidgardFieldCarriagePlanV1;
@@ -823,13 +998,14 @@ export type ValidationFieldCarriageMaterialV1 = {
 };
 
 /**
- * The committed carriage, read back out of the staged auxiliary as the
+ * The staged auxiliary's carriage, read back out as the
  * `MidgardFieldCarriageV1` the SDK resolvers speak.
  *
  * Constructor order is the frozen §8.1 one — `Inline` 0, `RawUtxo` 1,
- * `Certified` 2 — and every arm is checked for arity rather than pattern-matched
- * loosely, because this value is the one `evidence_hash` already committed and a
- * misread here would be a silently different carriage.
+ * `Certified` 2 — and every arm is checked for arity rather than
+ * pattern-matched loosely. Since Option B the evidence hash no longer commits
+ * this value; what a misread would silently corrupt is the §8.4 tier the
+ * builder routes by and, at tier 1, the preimage bytes the delivery carries.
  */
 const midgardFieldCarriageFromDataV1 = (
   value: PlutusDataValue,
@@ -873,6 +1049,31 @@ const midgardFieldCarriageFromDataV1 = (
     };
   }
   throw new Error(`${label} is not a §8 FieldCarriageV1 constructor`);
+};
+
+/**
+ * Encodes a resolved `MidgardFieldCarriageV1` back onto the frozen §8.1 wire —
+ * `Inline` 0, `RawUtxo` 1, `Certified` 2, mirroring
+ * `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak:168` — for the
+ * observe redeemer. Since Option B the carriage on the wire is the one the
+ * builder resolved against the door transaction's own reference inputs at
+ * build time (#621), not a value replayed from the staged auxiliary, so the
+ * encoder is the inverse of {@link midgardFieldCarriageFromDataV1} above.
+ */
+const midgardFieldCarriageToDataV1 = (
+  carriage: MidgardFieldCarriageV1,
+): PlutusDataValue => {
+  switch (carriage.carriage) {
+    case "Inline":
+      return new Constr(0, [carriage.preimage.toString("hex")]);
+    case "RawUtxo":
+      return new Constr(1, [BigInt(carriage.refInputIndex)]);
+    case "Certified":
+      return new Constr(2, [
+        BigInt(carriage.certRefInputIndex),
+        carriage.chunkRefInputIndices.map((index) => BigInt(index)),
+      ]);
+  }
 };
 
 const exactPlutusDataFromCbor = (
@@ -4298,6 +4499,15 @@ export type SubmitValidationDisputeSemanticResolutionResult = {
   readonly nextThreadOutRef: string;
   readonly proofItemCarriage: "direct" | "reference";
   readonly proofItemReferenceOutRef?: string;
+  /**
+   * Present when an inline observe build was refused pre-sign for exceeding
+   * the L1 proof envelope and the builder fell back to the reference route
+   * (#621). The refused transaction was never signed or submitted.
+   */
+  readonly proofItemInlineEnvelopeRefusal?: {
+    readonly projectedSignedBytes: number;
+    readonly maxTransactionBytes: number;
+  };
   readonly proofItemPublication?: {
     readonly txHash: string;
     readonly outRef: string;
@@ -4327,6 +4537,12 @@ export type SubmitValidationDisputeSemanticResolutionResult = {
     readonly txHash: string;
     readonly nextThreadOutRef: string;
     readonly completeSignedBytes: number;
+    /**
+     * The pre-sign envelope projection this stage was admitted under, when
+     * the inline delivery route projected it (#621). Signed bytes equal to
+     * the projection are the projection's own correctness pin.
+     */
+    readonly projectedSignedBytes?: number;
   }[];
 };
 
@@ -5229,6 +5445,7 @@ export const submitValidationDisputeSemanticResolution = async ({
   threadOutRef,
   oneStepArgument,
   proofItemReferenceOutRef,
+  proofItemDelivery,
   carriageMaterial,
   validityRange,
   awaitConfirmation = true,
@@ -5241,7 +5458,17 @@ export const submitValidationDisputeSemanticResolution = async ({
   readonly threadOutRef: string;
   readonly oneStepArgument: ValidationOneStepSubmissionArgumentV1;
   readonly proofItemReferenceOutRef?: string;
-  /** Required when the committed carriage is tier 2 or tier 3 (#600). */
+  /**
+   * Tier-1 complete-item delivery preference (#621): "inline" carries the
+   * §5.1 preimage in the observe redeemer, "reference" routes it through a
+   * §8 proof-item publication. Omitted, the builder routes by
+   * {@link selectValidationCompleteItemCarriageV1}'s measured cost heuristic
+   * (a supplied `proofItemReferenceOutRef` implies "reference"). A
+   * preference steers cost, never liveness: an inline build over the L1
+   * envelope is refused pre-sign and falls back to the reference route.
+   */
+  readonly proofItemDelivery?: ValidationProofItemDeliveryV1;
+  /** Required when the staged carriage is tier 2 or tier 3 (#600). */
   readonly carriageMaterial?: ValidationFieldCarriageMaterialV1;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
@@ -5318,7 +5545,7 @@ export const submitValidationDisputeSemanticResolution = async ({
   // submitter must supply the material those indices name — that is what
   // `carriageMaterial` is, and its absence is a refusal rather than a
   // transaction that references nothing.
-  const committedItemCarriage = isCompleteCanonicalItem
+  const stagedItemCarriage = isCompleteCanonicalItem
     ? midgardFieldCarriageFromDataV1(
         staged.auxiliary.fields[0]!,
         "Validation complete proof-item §8 carriage",
@@ -5328,33 +5555,33 @@ export const submitValidationDisputeSemanticResolution = async ({
     | ValidationFieldCarriageMaterialV1
     | undefined => {
     if (
-      committedItemCarriage === undefined ||
-      committedItemCarriage.carriage === "Inline"
+      stagedItemCarriage === undefined ||
+      stagedItemCarriage.carriage === "Inline"
     ) {
       return undefined;
     }
     if (carriageMaterial === undefined) {
       throw new Error(
         `Validation complete proof-item carriage is tier-${
-          committedItemCarriage.carriage === "RawUtxo" ? "2" : "3"
-        } \`${committedItemCarriage.carriage}\`, which names reference inputs and carries no ` +
+          stagedItemCarriage.carriage === "RawUtxo" ? "2" : "3"
+        } \`${stagedItemCarriage.carriage}\`, which names reference inputs and carries no ` +
           "bytes, so the submission must supply the §8 carriage material those indices name (#600)",
       );
     }
-    if (carriageMaterial.plan.tier !== committedItemCarriage.carriage) {
+    if (carriageMaterial.plan.tier !== stagedItemCarriage.carriage) {
       throw new Error(
         `Validation complete proof-item carriage material plans tier \`${carriageMaterial.plan.tier}\` ` +
-          `while the committed evidence names \`${committedItemCarriage.carriage}\``,
+          `while the staged auxiliary names \`${stagedItemCarriage.carriage}\``,
       );
     }
     return carriageMaterial;
   })();
   const completeFieldPreimage = ((): string | undefined => {
-    if (committedItemCarriage === undefined) {
+    if (stagedItemCarriage === undefined) {
       return undefined;
     }
-    if (committedItemCarriage.carriage === "Inline") {
-      return committedItemCarriage.preimage.toString("hex");
+    if (stagedItemCarriage.carriage === "Inline") {
+      return stagedItemCarriage.preimage.toString("hex");
     }
     // §8.4's split is positional and exhaustive, so the plan's own publications
     // concatenate back to exactly the preimage the door will materialise. Taking
@@ -5393,34 +5620,64 @@ export const submitValidationDisputeSemanticResolution = async ({
             .spendingScriptHash,
       })
     : undefined;
+  // #619/#621: how a tier-1 complete item's preimage reaches the §8.8 door is
+  // decided here, at build time — explicit request, then a supplied
+  // publication out-ref, then the measured cost heuristic. The committed
+  // evidence is transition-only, so this is a routing decision and nothing
+  // staged on chain can disagree with it.
+  const proofItemDeliveryRoute = resolveValidationProofItemDeliveryRouteV1({
+    requestedDelivery: proofItemDelivery,
+    hasProofItemReferenceOutRef: proofItemReferenceOutRef !== undefined,
+    committedCarriage: stagedItemCarriage?.carriage,
+    ...(stagedItemCarriage?.carriage === "Inline"
+      ? {
+          preimageByteLength: Buffer.from(
+            completeFieldPreimage as string,
+            "hex",
+          ).length,
+        }
+      : {}),
+  });
   let resolvedProofItemReferenceOutRef = proofItemReferenceOutRef;
-  let proofItemReferenceUtxo =
-    proofItemReferenceOutRef === undefined
-      ? undefined
-      : await fetchUtxoByOutRef({
-          lucid,
-          outRef: parseOutRef(
-            proofItemReferenceOutRef,
-            "--proof-item-reference-out-ref",
-          ),
-          label: "validation complete proof-item reference UTxO",
-        });
+  let proofItemReferenceUtxo: UTxO | undefined;
+  if (proofItemReferenceOutRef !== undefined) {
+    try {
+      proofItemReferenceUtxo = await fetchUtxoByOutRef({
+        lucid,
+        outRef: parseOutRef(
+          proofItemReferenceOutRef,
+          "--proof-item-reference-out-ref",
+        ),
+        label: "validation complete proof-item reference UTxO",
+      });
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      // A spent or missing publication is a routing setback, never a loss of
+      // the dispute: the §8 publication is content-addressed (§8.7), so any
+      // fresh copy of the same bytes serves, and tier-1 bytes also fit the
+      // observe redeemer directly. Refuse here, before any stage transaction
+      // exists, and name both recoveries (#621).
+      throw new Error(
+        `Validation complete proof-item publication ${proofItemReferenceOutRef} is spent or ` +
+          `missing on chain (${detail}). The publication is content-addressed, so recover by ` +
+          "either (a) re-publishing: omit `proofItemReferenceOutRef` and the builder publishes " +
+          "a fresh publication and routes by reference, or (b) inline delivery: pass " +
+          '`proofItemDelivery: "inline"` to carry the preimage in the observe redeemer when ' +
+          "it fits the L1 envelope.",
+      );
+    }
+  }
   let proofItemPublication:
     | SubmitValidationDisputeSemanticResolutionResult["proofItemPublication"]
     | undefined;
-  if (
-    proofItemReferenceUtxo === undefined &&
-    isCompleteCanonicalItem &&
-    // The publication route reconstructs tier-1 `Inline` from a datum, so it
-    // exists only inside tier 1 — as a redeemer-size optimisation, never as a
-    // fourth rung (#600 Ruling 1, Q4). Above the cap the carriage already names
-    // reference inputs of its own and a second one would be an unbound copy of
-    // the same bytes.
-    committedItemCarriage?.carriage === "Inline" &&
-    selectValidationCompleteItemCarriageV1(
-      Buffer.from(completeFieldPreimage as string, "hex").length,
-    ) === "reference"
-  ) {
+  // The publication route reconstructs tier-1 `Inline` from a datum, so it
+  // exists only inside tier 1 — as a redeemer-size optimisation, never as a
+  // fourth rung (#600 Ruling 1, Q4). Above the cap the carriage already names
+  // reference inputs of its own and a second one would be an unbound copy of
+  // the same bytes. Factored into a function because two call sites route
+  // through it: the up-front reference route, and the observe stage's
+  // pre-sign fallback when an inline build outgrows the L1 envelope (#621).
+  const publishProofItemPublication = async (): Promise<UTxO> => {
     const publication = deriveValidationProofItemPublicationV1({
       transactionId: inputDatum.data.resolution.pre_state.transaction_id,
       transactionCommitment:
@@ -5454,7 +5711,7 @@ export const submitValidationDisputeSemanticResolution = async ({
     // visible, even when the caller elects not to await the later resolution.
     await lucid.awaitTx(publicationTxHash, DEFAULT_CONFIRMATION_POLL_MS);
     resolvedProofItemReferenceOutRef = `${publicationTxHash}#${publicationOutputIndex.toString()}`;
-    proofItemReferenceUtxo = await fetchUtxoByOutRef({
+    const publishedUtxo = await fetchUtxoByOutRef({
       lucid,
       outRef: {
         txHash: publicationTxHash,
@@ -5467,9 +5724,16 @@ export const submitValidationDisputeSemanticResolution = async ({
       outRef: resolvedProofItemReferenceOutRef,
       outputIndex: publicationOutputIndex,
       completeSignedBytes: publicationCbor.length / 2,
-      lovelace: proofItemReferenceUtxo.assets.lovelace ?? 0n,
+      lovelace: publishedUtxo.assets.lovelace ?? 0n,
       awaitedConfirmation: true,
     };
+    return publishedUtxo;
+  };
+  if (
+    proofItemReferenceUtxo === undefined &&
+    proofItemDeliveryRoute === "reference"
+  ) {
+    proofItemReferenceUtxo = await publishProofItemPublication();
   }
   if (proofItemReferenceUtxo !== undefined) {
     if (!isCompleteCanonicalItem) {
@@ -5477,7 +5741,7 @@ export const submitValidationDisputeSemanticResolution = async ({
         "Validation complete proof-item reference is only valid for a CanonicalDecode complete item",
       );
     }
-    if (committedItemCarriage?.carriage !== "Inline") {
+    if (stagedItemCarriage?.carriage !== "Inline") {
       throw new Error(
         "Validation complete proof-item reference reconstructs tier-1 `Inline` carriage and is not available above §8.3's tier-1 cap",
       );
@@ -5827,6 +6091,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       readonly completeSignedBytes: number;
       readonly layout: ContinueLayout;
       readonly nextThreadUtxo?: UTxO;
+      readonly projectedSignedBytes?: number;
     };
     const submitStage = async ({
       inputUtxo,
@@ -5838,6 +6103,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       scriptReference,
       carriageReferences,
       awaitStage,
+      projectEnvelopePreSign = false,
       encode,
     }: {
       readonly inputUtxo: UTxO;
@@ -5847,9 +6113,17 @@ export const submitValidationDisputeSemanticResolution = async ({
       readonly label: string;
       readonly proofReference?: UTxO;
       readonly scriptReference?: UTxO;
-      /** §8 tiers 2-3: the carriage UTxOs the committed indices name. */
+      /** §8 tiers 2-3: the carriage UTxOs the resolved indices name. */
       readonly carriageReferences?: readonly UTxO[];
       readonly awaitStage: boolean;
+      /**
+       * Inline delivery's pre-sign envelope gate (#621): project the signed
+       * byte length before signing and throw
+       * {@link ValidationInlineDeliveryEnvelopeRefusedErrorV1} — signing and
+       * submitting nothing — when it exceeds the L1 proof envelope, so the
+       * caller can fall back to the reference route.
+       */
+      readonly projectEnvelopePreSign?: boolean;
       readonly encode: (layout: {
         readonly inputIndex: bigint;
         readonly outputIndex: bigint;
@@ -5918,12 +6192,46 @@ export const submitValidationDisputeSemanticResolution = async ({
         unsigned = await stageTx.complete({ localUPLCEval: true });
       } catch (cause) {
         const detail = cause instanceof Error ? cause.message : String(cause);
+        // On any chain whose protocol `maxTxSize` sits at or under the
+        // Midgard envelope — today's L1 parameters exactly — an
+        // over-envelope inline build never reaches the dummy-witness
+        // projection below: CML's fee-calculation build refuses it first,
+        // with its own size message (the same signature midgard-node's
+        // reference-script publisher pins). That is still a pre-sign
+        // refusal of the same build for the same reason, so on the
+        // envelope-projection path it converts to the routing refusal and
+        // the caller's publication fallback, not a hard failure (#621).
+        const builderCeiling = projectEnvelopePreSign
+          ? /Max transaction size of (\d+) exceeded\. Found: (\d+)/iu.exec(
+              detail,
+            )
+          : null;
+        if (builderCeiling !== null) {
+          throw new ValidationInlineDeliveryEnvelopeRefusedErrorV1({
+            label,
+            projectedSignedBytes: Number(builderCeiling[2]),
+            maxTransactionBytes: Number(builderCeiling[1]),
+          });
+        }
         throw new Error(`${label} local evaluation failed: ${detail}`);
       }
       if (stageLayout === undefined) {
         throw new Error(`BuildTxWithRedeemer did not resolve ${label} layout`);
       }
       const resolvedLayout = stageLayout as ContinueLayout;
+      let projectedSignedBytes: number | undefined;
+      if (projectEnvelopePreSign) {
+        projectedSignedBytes = projectSignedL1ProofTransactionBytesV1(
+          unsigned.toCBOR(),
+        );
+        if (projectedSignedBytes > MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES) {
+          throw new ValidationInlineDeliveryEnvelopeRefusedErrorV1({
+            label,
+            projectedSignedBytes,
+            maxTransactionBytes: MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES,
+          });
+        }
+      }
       const signed = await unsigned.sign.withWallet().complete();
       const signedCbor = signed.toCBOR();
       requireL1ProofEnvelope(signedCbor, label);
@@ -5947,9 +6255,44 @@ export const submitValidationDisputeSemanticResolution = async ({
         completeSignedBytes: signedCbor.length / 2,
         layout: resolvedLayout,
         ...(nextThreadUtxo === undefined ? {} : { nextThreadUtxo }),
+        ...(projectedSignedBytes === undefined ? {} : { projectedSignedBytes }),
       };
     };
     const stages = contracts.validationTraceDispute.canonicalDecodeItemStages;
+    // Build-time carriage resolution (#619/#621, re-scoping #600 ruling
+    // D3-A's committed-index re-check). Since Option B no index is frozen
+    // into `evidence_hash`, so there is nothing committed left to re-check:
+    // tiers 2-3 resolve the producer's plan by content (§8.7) against the
+    // complete reference-input set the door transaction will read — the
+    // published observe validator rides that same canonically-sorted list —
+    // and the resolved carriage is what goes on the observe wire. Tier 1
+    // carries the delivered preimage itself. Either way, material whose
+    // content the door will not see refuses here, before any stage
+    // transaction exists, where re-staging is still free.
+    const observeCarriageReferences =
+      completeItemCarriageMaterial === undefined
+        ? undefined
+        : completeItemCarriageMaterial.referenceUtxos;
+    const observeCarriageData: PlutusDataValue =
+      completeItemCarriageMaterial !== undefined
+        ? midgardFieldCarriageToDataV1(
+            resolveMidgardFieldCarriageAgainstReferenceInputsV1({
+              plan: completeItemCarriageMaterial.plan,
+              referenceInputs: [
+                ...(observeReferenceScriptUtxo === undefined
+                  ? []
+                  : [observeReferenceScriptUtxo]),
+                ...completeItemCarriageMaterial.referenceUtxos,
+              ],
+              ...(completeItemCarriageMaterial.certificatePolicyId === undefined
+                ? {}
+                : {
+                    certificatePolicyId:
+                      completeItemCarriageMaterial.certificatePolicyId,
+                  }),
+            }),
+          )
+        : new Constr(0, [completeFieldPreimage as string]);
     const authenticate = await submitStage({
       inputUtxo: threadUtxo,
       inputContract: semanticContract,
@@ -5979,76 +6322,80 @@ export const submitValidationDisputeSemanticResolution = async ({
       encode: ({ inputIndex, outputIndex }) =>
         Data.to(new Constr(1, [new Constr(0, [inputIndex, outputIndex])])),
     });
-    // **The §8.8 door's own transaction (#600, ruling D3-A).** The observe stage
-    // is the one stage that dereferences the carriage — every earlier stage only
-    // hashes it — so it is the one that has to read the carriage UTxOs, and the
-    // one whose reference-input set the committed positional indices are indices
-    // into.
-    //
-    // The indices were resolved by content (§8.7) against a reference-input set
-    // chosen three transactions ago and frozen into `evidence_hash` at
-    // PrepareSelected. Nothing since then has held the builder to that set. So
-    // they are re-resolved here against exactly the list this stage will read,
-    // and a disagreement refuses off chain — where re-staging is still free —
-    // rather than on L1, where the staged evidence is already spent.
-    const observeCarriageReferences =
-      completeItemCarriageMaterial === undefined
-        ? undefined
-        : completeItemCarriageMaterial.referenceUtxos;
-    if (
-      committedItemCarriage !== undefined &&
-      completeItemCarriageMaterial !== undefined
-    ) {
-      assertMidgardFieldCarriageResolvesAtDoorV1({
-        carriage: committedItemCarriage,
-        plan: completeItemCarriageMaterial.plan,
-        // The complete set this stage reads, in the order it will hand it to
-        // the ledger; the guard sorts canonically itself.
-        doorReferenceInputs: [
-          ...(proofItemReferenceUtxo === undefined
-            ? []
-            : [proofItemReferenceUtxo]),
-          ...(observeCarriageReferences ?? []),
-        ],
-        ...(completeItemCarriageMaterial.certificatePolicyId === undefined
-          ? {}
-          : {
-              certificatePolicyId:
-                completeItemCarriageMaterial.certificatePolicyId,
-            }),
-        label: `Validation canonical item field ${completeItemCarriageMaterial.plan.fieldIndex.toString()}`,
+    // **The §8.8 door's own transaction (#600 ruling D3-A, #619/#621).** The
+    // observe stage is the one stage that dereferences the carriage — every
+    // earlier stage only re-checks the transition-only commitment — so it is
+    // the one that reads the carriage UTxOs, and the sole content gate on
+    // this path. The carriage on its wire is the one resolved at build time
+    // above, never a replay of the staged auxiliary; on the tier-1 inline
+    // route the redeemer carries the preimage itself, and a build whose
+    // projected signed bytes outgrow the L1 envelope is refused pre-sign and
+    // falls back to the §8 publication route — no routing input can strand
+    // the staged thread (#621).
+    let proofItemInlineEnvelopeRefusal:
+      | SubmitValidationDisputeSemanticResolutionResult["proofItemInlineEnvelopeRefusal"]
+      | undefined;
+    const observeByReference = (
+      proofReference: UTxO,
+    ): Promise<SubmittedStage> =>
+      submitStage({
+        inputUtxo: source.nextThreadUtxo!,
+        inputContract: stages.observe,
+        outputContract: stages.proof,
+        stageOutputDatum: observedDatum,
+        label: "Validation canonical item observation",
+        proofReference,
+        scriptReference: observeReferenceScriptUtxo,
+        awaitStage: true,
+        encode: ({ inputIndex, outputIndex, referenceInputIndex }) =>
+          Data.to(
+            new Constr(1, [
+              new Constr(1, [inputIndex, outputIndex, referenceInputIndex!]),
+            ]),
+          ),
       });
-    }
-    const observe = await submitStage({
-      inputUtxo: source.nextThreadUtxo!,
-      inputContract: stages.observe,
-      outputContract: stages.proof,
-      stageOutputDatum: observedDatum,
-      label: "Validation canonical item observation",
-      proofReference: proofItemReferenceUtxo,
-      scriptReference: observeReferenceScriptUtxo,
-      ...(observeCarriageReferences === undefined
-        ? {}
-        : { carriageReferences: observeCarriageReferences }),
-      awaitStage: true,
-      // #592's `Observe` is `(input_index, output_index, carriage)`.
-      encode: ({ inputIndex, outputIndex, referenceInputIndex }) =>
-        proofItemReferenceUtxo === undefined
-          ? Data.to(
+    let observe: SubmittedStage;
+    if (proofItemReferenceUtxo !== undefined) {
+      observe = await observeByReference(proofItemReferenceUtxo);
+    } else {
+      try {
+        observe = await submitStage({
+          inputUtxo: source.nextThreadUtxo!,
+          inputContract: stages.observe,
+          outputContract: stages.proof,
+          stageOutputDatum: observedDatum,
+          label: "Validation canonical item observation",
+          scriptReference: observeReferenceScriptUtxo,
+          ...(observeCarriageReferences === undefined
+            ? {}
+            : { carriageReferences: observeCarriageReferences }),
+          awaitStage: true,
+          projectEnvelopePreSign: proofItemDeliveryRoute === "inline",
+          // #592's `Observe` is `(input_index, output_index, carriage)`.
+          encode: ({ inputIndex, outputIndex }) =>
+            Data.to(
               new Constr(1, [
-                new Constr(0, [
-                  inputIndex,
-                  outputIndex,
-                  staged.auxiliary.fields[0]!,
-                ]),
-              ]),
-            )
-          : Data.to(
-              new Constr(1, [
-                new Constr(1, [inputIndex, outputIndex, referenceInputIndex!]),
+                new Constr(0, [inputIndex, outputIndex, observeCarriageData]),
               ]),
             ),
-    });
+        });
+      } catch (cause) {
+        if (
+          !(cause instanceof ValidationInlineDeliveryEnvelopeRefusedErrorV1)
+        ) {
+          throw cause;
+        }
+        // The refused build was never signed; the same staged thread and
+        // datums serve the reference route unchanged, because the route
+        // decides only how the door's bytes travel (#621).
+        proofItemInlineEnvelopeRefusal = {
+          projectedSignedBytes: cause.projectedSignedBytes,
+          maxTransactionBytes: cause.maxTransactionBytes,
+        };
+        proofItemReferenceUtxo = await publishProofItemPublication();
+        observe = await observeByReference(proofItemReferenceUtxo);
+      }
+    }
     const proof = await submitStage({
       inputUtxo: observe.nextThreadUtxo!,
       inputContract: stages.proof,
@@ -6075,12 +6422,21 @@ export const submitValidationDisputeSemanticResolution = async ({
       { kind: "observe" as const, ...observe },
       { kind: "proof" as const, ...proof },
       { kind: "settle" as const, ...settle },
-    ].map(({ kind, txHash, nextThreadOutRef, completeSignedBytes }) => ({
-      kind,
-      txHash,
-      nextThreadOutRef,
-      completeSignedBytes,
-    }));
+    ].map(
+      ({
+        kind,
+        txHash,
+        nextThreadOutRef,
+        completeSignedBytes,
+        projectedSignedBytes,
+      }) => ({
+        kind,
+        txHash,
+        nextThreadOutRef,
+        completeSignedBytes,
+        ...(projectedSignedBytes === undefined ? {} : { projectedSignedBytes }),
+      }),
+    );
     return {
       txHash: settle.txHash,
       threadOutRef,
@@ -6090,6 +6446,9 @@ export const submitValidationDisputeSemanticResolution = async ({
       ...(resolvedProofItemReferenceOutRef === undefined
         ? {}
         : { proofItemReferenceOutRef: resolvedProofItemReferenceOutRef }),
+      ...(proofItemInlineEnvelopeRefusal === undefined
+        ? {}
+        : { proofItemInlineEnvelopeRefusal }),
       ...(proofItemPublication === undefined ? {} : { proofItemPublication }),
       resolverIndex,
       semanticResolverIndex: staged.semanticResolverIndex,
