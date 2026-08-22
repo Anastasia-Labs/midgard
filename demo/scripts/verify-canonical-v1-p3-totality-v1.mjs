@@ -19,7 +19,7 @@
  *      `resolverPhaseIndex` in validation-machine-data.ts) each have a
  *      concrete `verify_<phase>_one_step_v1` Aiken selector
  *      (validation-machine-v1.ak) and a resolver title
- *      (`prepares`/`directResolvers` in contracts.ts).
+ *      (`prepares` in contracts.ts; no direct resolvers remain).
  *   2. The two onchain semantic-resolver cardinality guards
  *      (validation-resolver-v1.ak) reconcile against the TypeScript
  *      registry's own per-phase semantic-resolver grouping
@@ -28,12 +28,12 @@
  *      is reachable, via a source-derived call graph, from at least one
  *      phase's one-step verifier. A code reachable from no phase is an
  *      unprovable gap.
- *   4. The two direct-resolver phases (`cek`, `valueAndMint`) carry no
+ *   4. The two formerly-direct phases (`cek`, `valueAndMint`) keep their
  *      semantic-resolver decomposition: `validationSemanticResolverIndexV1`
- *      returns null for them, and `semanticResolverOffsetsV1` pins -1 at
- *      their resolver indices. This is read live specifically so the finding
- *      disappears the day C48/C49 split those aggregates, rather than being
- *      asserted as permanent.
+ *      must not return null for them and `semanticResolverOffsetsV1` must
+ *      not pin -1 at their resolver indices. Both facts are read live; the
+ *      #617 wave split the aggregates (decision 0005 R5), and either fact
+ *      regressing is reported as a reopened totality hole.
  *   5. The cross-language vector: the Aiken test count in
  *      validation-one-step-cross-language.test.ak, and whether the
  *      TypeScript fixture generator that feeds it exists.
@@ -138,17 +138,18 @@ const sliceNamedBlock = (label, text) => {
 
 const preparesBlock = sliceNamedBlock("prepares", contractsText);
 const preparesEntries = extractOrderedStringPairs(preparesBlock);
-if (preparesEntries.length !== PHASE_COUNT - 2) {
+// Every phase is a prepare + semantic decomposition since the #617 wave split
+// the cek and ValueAndMint direct resolvers (decision 0005 R5); a
+// `directResolvers` block reappearing in contracts.ts is a regression of that
+// split, not a shape this verifier tolerates.
+if (preparesEntries.length !== PHASE_COUNT) {
   internalError(
-    `prepares declares ${String(preparesEntries.length)} entries; expected ${String(PHASE_COUNT - 2)} (the ${String(PHASE_COUNT)} phases minus the 2 direct resolvers)`,
+    `prepares declares ${String(preparesEntries.length)} entries; expected ${String(PHASE_COUNT)} (one prepare resolver per phase)`,
   );
 }
-
-const directResolversBlock = sliceNamedBlock("directResolvers", contractsText);
-const directResolversEntries = extractOrderedStringPairs(directResolversBlock);
-if (directResolversEntries.length !== 2) {
+if (/directResolvers\s*:/.test(contractsText)) {
   internalError(
-    `directResolvers declares ${String(directResolversEntries.length)} entries; expected exactly 2`,
+    "contracts.ts declares a directResolvers block; every phase must be a prepare + semantic decomposition",
   );
 }
 
@@ -354,27 +355,22 @@ for (const phaseName of phaseNames) {
     reachable = reachableFrom([oneStepSelector, gateName]);
   }
 
-  const isDirect = phaseName === "cek" || phaseName === "valueAndMint";
-  const resolverTitle = isDirect
-    ? (directResolversEntries.find(({ key }) => key === phaseName)?.value ??
-      null)
-    : (preparesEntries.find(({ key }) => key === phaseName)?.value ?? null);
+  const resolverTitle =
+    preparesEntries.find(({ key }) => key === phaseName)?.value ?? null;
   if (resolverTitle === null) {
     findings.push(
-      `phase "${phaseName}" has no resolver title in contracts.ts (${isDirect ? "directResolvers" : "prepares"})`,
+      `phase "${phaseName}" has no resolver title in contracts.ts (prepares)`,
     );
   }
-  const semanticResolverCount = isDirect
-    ? 0
-    : (semanticResolverGroupSizes[
-        preparesEntries.findIndex(({ key }) => key === phaseName)
-      ] ?? null);
+  const semanticResolverCount =
+    semanticResolverGroupSizes[
+      preparesEntries.findIndex(({ key }) => key === phaseName)
+    ] ?? null;
 
   phaseRows.push({
     phaseName,
     resolverTitle,
     semanticResolverCount,
-    isDirect,
     oneStepSelector,
     selectorPresent,
     gateName,
@@ -586,12 +582,12 @@ lines.push(
 );
 for (const row of phaseRows) {
   lines.push(
-    `phase-row: ${row.phaseName} | ${row.isDirect ? "direct:" : "prepare:"}${String(row.resolverTitle)} | ${String(row.semanticResolverCount)} | ${row.oneStepSelector} (present=${String(row.selectorPresent)}) | ${String(row.gateName)} | ${String(row.reachableCount)}`,
+    `phase-row: ${row.phaseName} | prepare:${String(row.resolverTitle)} | ${String(row.semanticResolverCount)} | ${row.oneStepSelector} (present=${String(row.selectorPresent)}) | ${String(row.gateName)} | ${String(row.reachableCount)}`,
   );
 }
 lines.push("");
 lines.push(
-  `contracts-registry: prepares=${String(preparesEntries.length)}, semantics=${String(semanticsEntries.length)}, directResolvers=${String(directResolversEntries.length)}, canonicalDecodeItemStages=${String(canonicalDecodeItemStagesCount)}, VALIDATION_TRACE_RESOLVER_COUNT_V1=${String(VALIDATION_TRACE_RESOLVER_COUNT_V1)}`,
+  `contracts-registry: prepares=${String(preparesEntries.length)}, semantics=${String(semanticsEntries.length)}, canonicalDecodeItemStages=${String(canonicalDecodeItemStagesCount)}, VALIDATION_TRACE_RESOLVER_COUNT_V1=${String(VALIDATION_TRACE_RESOLVER_COUNT_V1)}`,
 );
 lines.push("");
 lines.push("cardinality-reconciliation:");
