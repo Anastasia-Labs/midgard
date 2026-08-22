@@ -43,7 +43,7 @@
     "measuredNonEnforcementMentions": [
       {
         "file": "demo/midgard-validation/src/validation-machine.ts",
-        "line": 2703,
+        "line": 2702,
         "call": "RejectCodes.EmptyInputs",
         "text": "rejectionCode !== RejectCodes.EmptyInputs",
         "role": "A cross-check comparison, not a rejection: it reads a rejection code that phase A already produced. Published so that \"the count above is an enforcement count\" rests on a measured exclusion rather than only on the openers of the sites that were counted."
@@ -805,7 +805,7 @@
       "title": "Normative rule statement and its violation identifier(s)",
       "status": "LOCAL_PASS",
       "owner": "this artifact",
-      "evidence": "The rule is stated, and its identifier `E_EMPTY_INPUTS` is re-derived from the declared key in demo/midgard-validation/src/types.ts rather than quoted. Enforcement is measured, not counted from prose: exactly one site in demo/midgard-validation/src/phase-a.ts (line 201), whose line is required to BEGIN the `return reject(` call that makes it an enforcement site, inside the measured declaration `const validateInputSets = (tx: MidgardLedgerTx): RejectedTx | null => {`. The one further occurrence of the identifier in the validation package (validation-machine.ts line 2703) is measured to be a comparison rather than a rejection, so the site count is an enforcement count from both directions. The deployed identifier is re-derived as the 4-byte encoding of the append-only catalogue index — `zeroInput` at index 5 of 11 gives `00000005` — rather than read from a constant, so inserting a category instead of appending one cannot pass unnoticed."
+      "evidence": "The rule is stated, and its identifier `E_EMPTY_INPUTS` is re-derived from the declared key in demo/midgard-validation/src/types.ts rather than quoted. Enforcement is measured, not counted from prose: exactly one site in demo/midgard-validation/src/phase-a.ts (line 201), whose line is required to BEGIN the `return reject(` call that makes it an enforcement site, inside the measured declaration `const validateInputSets = (tx: MidgardLedgerTx): RejectedTx | null => {`. The one further occurrence of the identifier in the validation package (validation-machine.ts line 2702) is measured to be a comparison rather than a rejection, so the site count is an enforcement count from both directions. The deployed identifier is re-derived as the 4-byte encoding of the append-only catalogue index — `zeroInput` at index 5 of 11 gives `00000005` — rather than read from a constant, so inserting a category instead of appending one cannot pass unnoticed."
     },
     {
       "output": 2,
