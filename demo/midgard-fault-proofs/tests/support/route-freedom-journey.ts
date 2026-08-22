@@ -62,6 +62,7 @@ import {
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
   cloneBlueprint,
+  type CompleteSignedTransactionMeasurement,
   EMULATOR_PROTOCOL_PARAMETERS,
   expectSingleUtxoWithUnit,
   network,
@@ -123,6 +124,16 @@ type SemanticResolutionResult = Awaited<
   ReturnType<typeof submitValidationDisputeSemanticResolution>
 >;
 
+/**
+ * One staged lifecycle stage's captured submissions (#622): the stage label
+ * the journey already logs, plus every transaction the stage submitted, in
+ * submission order, measured by `captureEmulatorSubmission`.
+ */
+export type CapturedLifecycleStageV1 = {
+  readonly label: string;
+  readonly measurements: readonly CompleteSignedTransactionMeasurement[];
+};
+
 export type RouteFreedomJourneyV1 = {
   readonly emulator: Emulator;
   readonly realBlueprint: Blueprint;
@@ -133,6 +144,15 @@ export type RouteFreedomJourneyV1 = {
   >;
   /** The measured §5.1 complete-item byte length the fixture staged. */
   readonly completeItemBytes: number;
+  /**
+   * Per-stage measurements for everything staged before the semantic leg
+   * (#622's measurement campaign): setup, the reference-script publications,
+   * init, open, source, every bisection reveal, enter-resolution,
+   * prepare-resolution, and prepare-selected — labels as logged, one entry
+   * per staged call, in staging order. The semantic-resolution and award
+   * legs are captured by their own submit functions.
+   */
+  readonly lifecycleMeasurements: readonly CapturedLifecycleStageV1[];
   /**
    * One semantic-resolution attempt against the staged thread, with this
    * call's routing inputs. A refusal leaves the thread untouched, so failed
@@ -161,6 +181,92 @@ export type RouteFreedomJourneyV1 = {
   readonly expectStagedThreadUnspent: () => Promise<void>;
   /** An out-ref this journey genuinely created and then spent on chain. */
   readonly spentOutRef: string;
+};
+
+/**
+ * #622: one-line JSON dump of a campaign journey's complete measured table —
+ * every staged lifecycle transaction plus the semantic leg, bytes, pre-sign
+ * projections, and execution units — gated on MIDGARD_PRINT_PROOF_FIT=1 like
+ * every other proof-fit print. The measurement-campaign suites call this
+ * BEFORE their pins, so one red run still surrenders every number; the
+ * committed pins were read off exactly this print, and re-measuring after a
+ * shape change is one env var away.
+ */
+export const printRouteFreedomCampaignTableV1 = (
+  headline: string,
+  journey: RouteFreedomJourneyV1,
+  semantic: CapturedSemanticSubmission,
+): void => {
+  if (process.env["MIDGARD_PRINT_PROOF_FIT"] !== "1") {
+    return;
+  }
+  const measurementRow = (
+    measurement: CompleteSignedTransactionMeasurement,
+  ) => ({
+    bytes: measurement.completeSignedBytes,
+    mem: measurement.executionMemory.toString(),
+    cpu: measurement.executionSteps.toString(),
+    refInputs: measurement.referenceInputCount,
+  });
+  const table = {
+    completeItemBytes: journey.completeItemBytes,
+    lifecycle: journey.lifecycleMeasurements.map((stage) => ({
+      label: stage.label,
+      transactions: stage.measurements.map(measurementRow),
+    })),
+    stages: (semantic.result.stageTransactions ?? []).map((stage) => ({
+      kind: stage.kind,
+      bytes: stage.completeSignedBytes,
+      projected: stage.projectedSignedBytes,
+    })),
+    transactions: semantic.measurements.map(measurementRow),
+    refusal:
+      semantic.result.proofItemInlineEnvelopeRefusal === undefined
+        ? undefined
+        : {
+            projectedSignedBytes:
+              semantic.result.proofItemInlineEnvelopeRefusal
+                .projectedSignedBytes,
+            maxTransactionBytes:
+              semantic.result.proofItemInlineEnvelopeRefusal
+                .maxTransactionBytes,
+          },
+  };
+  console.log(`${headline} ${JSON.stringify(table)}`);
+};
+
+/**
+ * #622: execution-unit band pin for stages whose bill is run-dependent. The
+ * journey ledger's txids and addresses vary run to run (the emulator starts
+ * at wall-clock time and the accounts are generated), and on-chain out-ref
+ * lookups compare those values byte by byte, short-circuiting at the first
+ * difference — so stages that walk reference inputs by out-ref bill within
+ * a small band rather than exactly (measured on the reference route:
+ * authenticate 163,390 vs 166,458 memory units, the by-reference observe
+ * door 931,806 vs 928,938, in consecutive runs). The sweep fixture pins
+ * exactly because its basis fixes `now`; journey suites pin such stages to
+ * a measured anchor with 3% tolerance — wide enough for the observed <2%
+ * wobble, regression-tight against Option B's 40-70% deltas.
+ */
+export const expectExecutionWithinBandV1 = (
+  label: string,
+  measurement: CompleteSignedTransactionMeasurement,
+  anchor: { readonly memoryUnits: bigint; readonly stepUnits: bigint },
+): void => {
+  const within = (actual: bigint, expected: bigint): boolean => {
+    const delta = actual > expected ? actual - expected : expected - actual;
+    return delta * 100n <= expected * 3n;
+  };
+  expect(
+    within(measurement.executionMemory, anchor.memoryUnits),
+    `${label} memory ${measurement.executionMemory.toString()} strays more ` +
+      `than 3% from the measured anchor ${anchor.memoryUnits.toString()}`,
+  ).toBe(true);
+  expect(
+    within(measurement.executionSteps, anchor.stepUnits),
+    `${label} steps ${measurement.executionSteps.toString()} strays more ` +
+      `than 3% from the measured anchor ${anchor.stepUnits.toString()}`,
+  ).toBe(true);
 };
 
 /**
@@ -220,6 +326,25 @@ export const prepareRouteFreedomJourneyV1 = async ({
     walletSeedPhrase: challenger.seedPhrase,
   });
   const validityRange = () => validationDisputeValidityRange(emulator.now());
+  // #622: every staged lifecycle stage is measured through the same
+  // `captureEmulatorSubmission` seam the semantic leg already uses, so the
+  // measurement campaign reads per-stage complete signed bytes and execution
+  // units off the same journeys the #621 suites drive — capture only, no
+  // transaction is shaped by it.
+  const lifecycleMeasurements: CapturedLifecycleStageV1[] = [];
+  const runCapturedLifecycleStage = async <T>(
+    label: string,
+    operation: () => Promise<T>,
+  ): Promise<T> => {
+    const captured = await runEmulatorLifecycleStage(label, () =>
+      captureEmulatorSubmission(emulator, operation),
+    );
+    lifecycleMeasurements.push({
+      label,
+      measurements: captured.measurements,
+    });
+    return captured.result;
+  };
 
   await registerPhasMembershipRewardAccount(operatorLucid, realBlueprint);
   const nonceUtxo = (await operatorLucid.wallet().getUtxos())[0];
@@ -271,7 +396,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
     inlineDatumPayloadBytes,
     minimumCompleteItemBytes,
   });
-  const setup = await runEmulatorLifecycleStage("setup", () =>
+  const setup = await runCapturedLifecycleStage("setup", () =>
     submitSetupTx({
       lucid: operatorLucid,
       contracts,
@@ -295,7 +420,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
     slotConfig: publicationSlotConfig,
   });
   referenceScriptPublisherLucid.selectWallet.fromSeed(operator.seedPhrase);
-  const validationDisputePublication = await runEmulatorLifecycleStage(
+  const validationDisputePublication = await runCapturedLifecycleStage(
     "reference-script.publish-authenticated",
     async () => {
       try {
@@ -324,7 +449,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
       emulator.protocolParameters = setupProtocolParameters;
     }
   };
-  const itemSemanticPublication = await runEmulatorLifecycleStage(
+  const itemSemanticPublication = await runCapturedLifecycleStage(
     "reference-script.publish-item-semantic",
     () =>
       publishPlain(
@@ -332,7 +457,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
         itemSemanticContract.spendingScript,
       ),
   );
-  const itemObservePublication = await runEmulatorLifecycleStage(
+  const itemObservePublication = await runCapturedLifecycleStage(
     "reference-script.publish-item-observe",
     () =>
       publishPlain(
@@ -340,7 +465,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
         itemObserveContract.spendingScript,
       ),
   );
-  const canonicalDecodePreparePublication = await runEmulatorLifecycleStage(
+  const canonicalDecodePreparePublication = await runCapturedLifecycleStage(
     "reference-script.publish-canonical-decode-prepare",
     () =>
       publishPlain(
@@ -365,7 +490,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
       utxo: canonicalDecodePreparePublication.utxo,
     },
   );
-  const initResult = await runEmulatorLifecycleStage("init", () =>
+  const initResult = await runCapturedLifecycleStage("init", () =>
     submitInit({
       lucid: challengerLucid,
       blueprint: realBlueprint,
@@ -401,7 +526,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
     initResult.firstStepAddress,
     initResult.computationThreadUnit,
   );
-  const openResult = await runEmulatorLifecycleStage("open", () =>
+  const openResult = await runCapturedLifecycleStage("open", () =>
     submitValidationDisputeOpen({
       lucid: targetChallengerLucid,
       blueprint: realBlueprint,
@@ -416,7 +541,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
       awaitConfirmation: true,
     }),
   );
-  const sourceResult = await runEmulatorLifecycleStage("source", () =>
+  const sourceResult = await runCapturedLifecycleStage("source", () =>
     submitValidationDisputeVerifySource({
       lucid: targetChallengerLucid,
       blueprint: realBlueprint,
@@ -431,7 +556,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
 
   let threadOutRef = sourceResult.nextThreadOutRef;
   for (const move of fixture.evidence.moves) {
-    const revealResult = await runEmulatorLifecycleStage(
+    const revealResult = await runCapturedLifecycleStage(
       `reveal.${move.role}`,
       () =>
         submitValidationDisputeReveal({
@@ -453,7 +578,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
     threadOutRef = revealResult.nextThreadOutRef;
   }
 
-  const resolutionResult = await runEmulatorLifecycleStage(
+  const resolutionResult = await runCapturedLifecycleStage(
     "enter-resolution",
     () =>
       submitValidationDisputeEnterResolution({
@@ -468,7 +593,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
       }),
   );
   const { lowIndex, highIndex } = fixture.evidence.finalDispute;
-  const prepareResult = await runEmulatorLifecycleStage(
+  const prepareResult = await runCapturedLifecycleStage(
     "prepare-resolution",
     () =>
       submitValidationDisputePrepareResolution({
@@ -491,7 +616,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
         awaitConfirmation: true,
       }),
   );
-  const selectedResult = await runEmulatorLifecycleStage(
+  const selectedResult = await runCapturedLifecycleStage(
     "prepare-selected",
     () =>
       submitValidationDisputePrepareSelected({
@@ -523,6 +648,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
     stagedThreadOutRef,
     validityRange,
     completeItemBytes: fixture.completeItemBytes,
+    lifecycleMeasurements,
     submitSemanticResolution: (routing = {}) =>
       runEmulatorLifecycleStage("semantic-resolution", () =>
         captureEmulatorSubmission(emulator, () =>
