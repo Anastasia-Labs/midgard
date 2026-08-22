@@ -155,7 +155,7 @@ export const mintDeltaToScriptMintValue = (
 
 // C49 (#540). Mirrors `min_ada_output_overhead_bytes`/`min_ada_lovelace_v1`/
 // `output_meets_min_ada_v1` in
-// onchain/aiken/lib/midgard/validation-machine-v1.ak:2168-2203 verbatim: the
+// onchain/aiken/lib/midgard/validation-machine-v1.ak:2168-2216 verbatim: the
 // Cardano minimum-Ada floor for one ledger output is linear in its serialized
 // size, with a fixed 160-byte UTxO entry overhead and no additional Midgard
 // margin at any size.

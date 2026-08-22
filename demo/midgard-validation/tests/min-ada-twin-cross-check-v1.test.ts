@@ -19,11 +19,11 @@ import {
  * two hand-written copies -- `min_ada_lovelace_v1`/`output_meets_min_ada_v1` in
  * `onchain/aiken/lib/midgard/validation-machine-v1.ak` and
  * `minAdaLovelaceV1`/`outputMeetsMinAdaV1` in `../src/value-accounting.ts`.
- * Nothing forced them to agree: both sides' existing boundary tests compute
- * the expected floor with the same formula they are checking and take the
- * serialized size from their own encoder, so every assertion held relative to
- * whatever each side happened to compute. A slope, intercept, or comparison
- * change on one side alone kept both suites green.
+ * Nothing forced them to agree: both sides' existing boundary tests exercise
+ * a single rate and a single output shape, state their slope and comparison
+ * legs relative to the formula under test, and pin nothing across the language
+ * boundary -- so the two copies could drift apart (or one could ignore the
+ * rate entirely) with every per-side assertion still holding.
  *
  * This suite closes that by pinning ABSOLUTE lovelace values. Each vector is a
  * concrete `(coins_per_utxo_byte, serialized_output_bytes)` pair whose floor is

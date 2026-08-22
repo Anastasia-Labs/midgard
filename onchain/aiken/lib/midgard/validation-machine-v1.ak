@@ -2170,11 +2170,24 @@ fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1 {
 // Cardano rule verbatim -- `coins_per_utxo_byte * (overhead + serialized output
 // bytes)` -- where `min_ada_output_overhead_bytes` is the fixed 160-byte UTxO
 // entry overhead the target ledger adds to every output before pricing it. The
-// TypeScript twin computes the same quantity through `CML.min_ada_required` in
-// `minimumLovelaceForValidationProofItemPublicationV1`
-// (demo/midgard-sdk/src/fraud-proof/validation-proof-item-v1.ts:57), and the
 // `coins_per_utxo_byte` this is instantiated at is the C70 target snapshot
 // (`PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.coinsPerUtxoByte == 4_310`).
+//
+// THE TYPESCRIPT TWIN IS A HAND MIRROR, NOT A LEDGER-LIBRARY CALL:
+// `MIN_ADA_OUTPUT_OVERHEAD_BYTES_V1`/`minAdaLovelaceV1`/`outputMeetsMinAdaV1` in
+// demo/midgard-validation/src/value-accounting.ts. An earlier version of this
+// comment claimed the twin computed the floor through `CML.min_ada_required` in
+// `minimumLovelaceForValidationProofItemPublicationV1`
+// (demo/midgard-sdk/src/fraud-proof/validation-proof-item-v1.ts); that call
+// funds a _proof publication output_ on L1 and is not this consensus quantity
+// (decision 0003, Q27). Because both copies are written by hand, they are bound
+// to each other on pinned absolute lovelace vectors -- including the
+// exactly-at-the-floor accept and the one-lovelace-below reject legs -- by
+// demo/midgard-validation/tests/min-ada-twin-cross-check-v1.test.ts and by
+// `min_ada_absolute_vectors_match_the_typescript_twin` in the adjacent test
+// module. The TypeScript suite parses this declaration and the two functions
+// below out of this file as source text, so a slope, an intercept, a comparison or a
+// reshaped declaration on either side alone fails loudly (D-S4, #618).
 //
 // NO ARBITRARY SUB-CAP. The floor is exactly the target-network limit: it is
 // linear in the serialized size with slope `coins_per_utxo_byte` and carries no

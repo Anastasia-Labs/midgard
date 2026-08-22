@@ -14230,6 +14230,164 @@ test parameterized_min_ada_boundary_matches_target_snapshot() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// D-S4 (#618) -- the Aiken half of the min-Ada twin cross-check.
+//
+// `parameterized_min_ada_boundary_matches_target_snapshot` above exercises one
+// rate (the C70 snapshot's 4,310) and one output shape, and its slope and
+// comparison legs are stated relative to the formula under test. It does catch
+// a moved intercept, slope or comparison, but it cannot see the rate being
+// ignored altogether (a hard-coded `4_310 *` passes it), and it binds nothing
+// to the TypeScript side. The vectors below are the same seven
+// the TypeScript twin pins in
+// demo/midgard-validation/tests/min-ada-twin-cross-check-v1.test.ts, carried
+// here as ABSOLUTE lovelace literals: nothing in this module derives them, so
+// they can only agree with the TypeScript side or fail.
+//
+// Two of the seven are anchored harder still. The 41-byte and 196-byte sizes
+// are not written as bare integers but measured from two canonical outputs
+// whose `encode_midgard_tx_output` bytes are pinned as absolute CBOR -- the
+// same two fixtures, byte for byte, that the TypeScript suite pins against
+// `encodeMidgardTxOutput`. A codec change on either side therefore breaks the
+// byte pin here before it can silently re-price an output.
+// ---------------------------------------------------------------------------
+
+/// One pinned vector: the absolute floor, and the four boundary legs around it.
+///
+/// `floor - 1` must be refused and `floor` accepted -- that adjacency is the
+/// whole content of the `>=` in `output_meets_min_ada_v1`, and it is what a
+/// weakening to `>` would break. A zero-funded output is refused at every
+/// vector here because no vector's floor is zero.
+fn min_ada_absolute_vector_is_exact(
+  coins_per_utxo_byte: Int,
+  serialized_output_bytes: Int,
+  floor: Int,
+) -> Bool {
+  and {
+    validation_machine_v1.min_ada_lovelace_v1(
+      coins_per_utxo_byte,
+      serialized_output_bytes,
+    ) == floor,
+    validation_machine_v1.output_meets_min_ada_v1(
+      coins_per_utxo_byte,
+      serialized_output_bytes,
+      floor,
+    ),
+    !validation_machine_v1.output_meets_min_ada_v1(
+      coins_per_utxo_byte,
+      serialized_output_bytes,
+      floor - 1,
+    ),
+    validation_machine_v1.output_meets_min_ada_v1(
+      coins_per_utxo_byte,
+      serialized_output_bytes,
+      floor + 1,
+    ),
+    !validation_machine_v1.output_meets_min_ada_v1(
+      coins_per_utxo_byte,
+      serialized_output_bytes,
+      0,
+    ),
+  }
+}
+
+/// The first shared canonical output: an unprotected network-0 enterprise
+/// pub-key address over `0xaa * 28`, holding exactly 2 ADA and no assets.
+fn min_ada_probe_enterprise_output() -> MidgardTxOutput {
+  MidgardTxOutput {
+    address: MidgardAddress {
+      protected: False,
+      network_id: 0,
+      payment_credential: PubKeyCredential(h_28_a),
+      stake_credential: None,
+    },
+    value: MidgardValue { lovelace: 2_000_000, assets: [] },
+    datum_cbor: None,
+    script_ref: None,
+  }
+}
+
+/// The second shared canonical output: the same payment credential under an
+/// `0xbb * 28` stake credential, carrying three assets across two policies, an
+/// inline datum and a PlutusV3 reference script.
+fn min_ada_probe_rich_output() -> MidgardTxOutput {
+  MidgardTxOutput {
+    address: MidgardAddress {
+      protected: False,
+      network_id: 0,
+      payment_credential: PubKeyCredential(h_28_a),
+      stake_credential: Some(PubKeyCredential(h_28_b)),
+    },
+    value: MidgardValue {
+      lovelace: 9_999_999,
+      assets: [
+        Pair(#"11111111111111111111111111111111111111111111111111111111abcd", 7),
+        Pair(
+          #"11111111111111111111111111111111111111111111111111111111ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          1,
+        ), Pair(#"22222222222222222222222222222222222222222222222222222222", 42),
+      ],
+    },
+    datum_cbor: Some(#"d87980"),
+    script_ref: Some(
+      MidgardVersionedScript {
+        language: PlutusV3Script,
+        script_bytes: #"4d01000033222220051200120011",
+      },
+    ),
+  }
+}
+
+test min_ada_shared_canonical_outputs_serialize_to_their_pinned_bytes() {
+  let enterprise = encode_midgard_tx_output(min_ada_probe_enterprise_output())
+  let rich = encode_midgard_tx_output(min_ada_probe_rich_output())
+  and {
+    enterprise == #"a200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a0",
+    bytearray.length(enterprise) == 41,
+    rich == #"a400583900aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb01821a0098967fa2581c11111111111111111111111111111111111111111111111111111111a242abcd075820ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff01581c22222222222222222222222222222222222222222222222222222222a140182a0243d879800382034e4d01000033222220051200120011",
+    bytearray.length(rich) == 196,
+    // The two floors those exact fixtures fund, as absolute lovelace.
+    validation_machine_v1.min_ada_lovelace_v1(
+      target_snapshot_coins_per_utxo_byte,
+      bytearray.length(enterprise),
+    ) == 866_310,
+    validation_machine_v1.min_ada_lovelace_v1(
+      target_snapshot_coins_per_utxo_byte,
+      bytearray.length(rich),
+    ) == 1_534_360,
+  }
+}
+
+test min_ada_absolute_vectors_match_the_typescript_twin() {
+  let enterprise_bytes = bytearray.length(
+    encode_midgard_tx_output(min_ada_probe_enterprise_output()),
+  )
+  let rich_bytes = bytearray.length(
+    encode_midgard_tx_output(min_ada_probe_rich_output()),
+  )
+  and {
+    target_snapshot_coins_per_utxo_byte == 4_310,
+    validation_machine_v1.min_ada_output_overhead_bytes == 160,
+    // 1. C70 snapshot rate, zero-byte intercept.
+    min_ada_absolute_vector_is_exact(4_310, 0, 689_600),
+    // 2. C70 snapshot rate, the 41-byte enterprise output holding 2 ADA.
+    min_ada_absolute_vector_is_exact(4_310, enterprise_bytes, 866_310),
+    min_ada_absolute_vector_is_exact(4_310, 41, 866_310),
+    // 3. C70 snapshot rate, the 196-byte multi-asset/datum/script_ref output.
+    min_ada_absolute_vector_is_exact(4_310, rich_bytes, 1_534_360),
+    min_ada_absolute_vector_is_exact(4_310, 196, 1_534_360),
+    // 4. Unit rate, zero-byte intercept -- the overhead standing alone.
+    min_ada_absolute_vector_is_exact(1, 0, 160),
+    // 5. Unit rate at the 41-byte canonical output.
+    min_ada_absolute_vector_is_exact(1, 41, 201),
+    // 6. A synthetic 5_000 rate at the 196-byte canonical output: the rate is a
+    //    free parameter, so moving it moves the floor.
+    min_ada_absolute_vector_is_exact(5_000, 196, 1_780_000),
+    // 7. C70 snapshot rate at a 5_000-byte output -- no sub-cap at size.
+    min_ada_absolute_vector_is_exact(4_310, 5_000, 22_239_600),
+  }
+}
+
 // The conservation vector's transaction. `fee = 1` is the TypeScript twin's
 // fee, and stage five reads it straight off the authenticated body.
 fn conservation_transaction() -> MidgardTransaction {
