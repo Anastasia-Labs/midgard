@@ -283,7 +283,7 @@ describe.skipIf(!optionB)(
 
       const award = await journey.submitAward(result.nextThreadOutRef);
       expectWholeJourneyProofFit(
-        "#622 exact-frontier+1 item 14,019",
+        "#622 exact-frontier+1 item 14,005",
         journey,
         semantic.measurements,
         award.measurement,

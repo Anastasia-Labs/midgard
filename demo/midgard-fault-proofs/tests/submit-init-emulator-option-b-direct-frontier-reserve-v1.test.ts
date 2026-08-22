@@ -75,7 +75,7 @@ const RESERVE_FRONTIER_PAYLOAD_BYTES = 13_062;
 /**
  * The item-size-INDEPENDENT rows of the measured six-stage table, identical
  * at items 13,522 and 13,523 here and re-pinned identically in files 2-3 at
- * 14,018 / 14,019 / 14,336 / 8,277 — the measured form of #619's "prepare
+ * 14,004 / 14,005 / 14,336 / 8,277 — the measured form of #619's "prepare
  * and authenticate become item-size-independent". Observe, the sole
  * item-bound stage, is pinned per journey.
  */
