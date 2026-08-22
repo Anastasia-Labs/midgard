@@ -37,21 +37,20 @@ import {
 } from "../src/validation-dispute/from-files.js";
 import {
   encodeScriptSourcesStageOneSpendRedeemerV1,
-  encodeValidationCekSpendRedeemerV1,
-  encodeValidationDirectResolveSpendRedeemerV1,
   encodeValidationSemanticResolutionRedeemerV1,
   openValidationDisputeAfterSourceVerification,
   refreshExpiredValidationDisputeValidityRange,
   requireValidationCanonicalDecodePrepareReferenceScriptOutRef,
-  requireValidationCekDirectResolverReferenceScriptOutRef,
+  requireValidationCekSemanticReferenceScriptOutRef,
   requireValidationItemObserveReferenceScriptOutRef,
   requireValidationItemSemanticReferenceScriptOutRef,
   selectValidationCompleteItemCarriageV1,
   validateCekSubmissionEvidenceV1,
   VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
-  VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
+  VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1,
   VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
+  validationCekSemanticReferenceScriptDeploymentEntryV1,
   validationDisputeTimeoutValidityRange,
   validationDisputeValidityRange,
   validationOneStepEvidenceHashV1,
@@ -576,53 +575,92 @@ describe("validation-dispute transaction validity", () => {
     ).toThrow(/script hash mismatch/u);
   });
 
-  it("requires the published authenticated CEK direct-resolver reference script from deployment info", () => {
+  it("requires the published CEK semantic-resolver reference scripts from deployment info", () => {
     const scriptHash = "ab".repeat(28);
     const otherScriptHash = "cd".repeat(28);
     const refScriptUTxO = { txHash: "12".repeat(32), outputIndex: 3 };
     expect(
-      requireValidationCekDirectResolverReferenceScriptOutRef({
-        deploymentInfo: {
-          [VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
-            scriptHash,
-            refScriptUTxO,
-          },
-        },
-        expectedScriptHash: scriptHash,
-      }),
-    ).toEqual(refScriptUTxO);
+      VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1,
+    ).toEqual({
+      1: "validationTraceDisputeCekExecutionSelectionSemantic",
+      2: "validationTraceDisputeCekContextStepSemantic",
+      3: "validationTraceDisputeCekCoreStepSemantic",
+    });
+    // The finish resolver fits the envelope and attaches inline.
+    expect(validationCekSemanticReferenceScriptDeploymentEntryV1(0)).toBe(
+      undefined,
+    );
+    expect(validationCekSemanticReferenceScriptDeploymentEntryV1(4)).toBe(
+      undefined,
+    );
     expect(() =>
-      requireValidationCekDirectResolverReferenceScriptOutRef({
+      requireValidationCekSemanticReferenceScriptOutRef({
         deploymentInfo: {},
+        semanticResolverIndex: 0,
         expectedScriptHash: scriptHash,
       }),
-    ).toThrow(
-      /missing "validationTraceDisputeCekDirectResolver"; publish the authenticated V1 CEK direct-resolver reference script/u,
-    );
-    expect(() =>
-      requireValidationCekDirectResolverReferenceScriptOutRef({
-        deploymentInfo: {
-          [VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
-            scriptHash,
-            refScriptUTxO: null,
+    ).toThrow(/CEK semantic resolver 0 is not published by reference/u);
+    for (const semanticResolverIndex of [1, 2, 3] as const) {
+      const entryName =
+        VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1[
+          semanticResolverIndex
+        ];
+      expect(
+        validationCekSemanticReferenceScriptDeploymentEntryV1(
+          semanticResolverIndex,
+        ),
+      ).toBe(entryName);
+      expect(
+        requireValidationCekSemanticReferenceScriptOutRef({
+          deploymentInfo: {
+            [entryName]: {
+              scriptHash,
+              refScriptUTxO,
+            },
           },
-        },
-        expectedScriptHash: scriptHash,
-      }),
-    ).toThrow(
-      /is missing refScriptUTxO; publish the authenticated V1 CEK direct-resolver/u,
-    );
-    expect(() =>
-      requireValidationCekDirectResolverReferenceScriptOutRef({
-        deploymentInfo: {
-          [VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
-            scriptHash: otherScriptHash,
-            refScriptUTxO,
+          semanticResolverIndex,
+          expectedScriptHash: scriptHash,
+        }),
+      ).toEqual(refScriptUTxO);
+      expect(() =>
+        requireValidationCekSemanticReferenceScriptOutRef({
+          deploymentInfo: {},
+          semanticResolverIndex,
+          expectedScriptHash: scriptHash,
+        }),
+      ).toThrow(
+        new RegExp(
+          `missing "${entryName}"; publish the V1 CEK semantic-resolver reference script`,
+          "u",
+        ),
+      );
+      expect(() =>
+        requireValidationCekSemanticReferenceScriptOutRef({
+          deploymentInfo: {
+            [entryName]: {
+              scriptHash,
+              refScriptUTxO: null,
+            },
           },
-        },
-        expectedScriptHash: scriptHash,
-      }),
-    ).toThrow(/script hash mismatch/u);
+          semanticResolverIndex,
+          expectedScriptHash: scriptHash,
+        }),
+      ).toThrow(
+        /is missing refScriptUTxO; publish the V1 CEK semantic-resolver/u,
+      );
+      expect(() =>
+        requireValidationCekSemanticReferenceScriptOutRef({
+          deploymentInfo: {
+            [entryName]: {
+              scriptHash: otherScriptHash,
+              refScriptUTxO,
+            },
+          },
+          semanticResolverIndex,
+          expectedScriptHash: scriptHash,
+        }),
+      ).toThrow(/script hash mismatch/u);
+    }
   });
 
   it("plumbs caller-confirmed CEK publication outrefs through the file-backed tooling", () => {
@@ -757,7 +795,7 @@ describe("validation-dispute transaction validity", () => {
     ).toThrow(/strictly below the L1 proof envelope/u);
   });
 
-  it("matches the exact prepare, direct, and award Aiken redeemer ABIs", () => {
+  it("matches the exact prepare, semantic, and award Aiken redeemer ABIs", () => {
     const state: ValidationMachineStateV1 = {
       machine_version: 1n,
       event_key_hash: "01".repeat(32),
@@ -798,15 +836,6 @@ describe("validation-dispute transaction validity", () => {
           },
           ValidationPrepareSelectedSpendRedeemerV1Schema,
         ),
-      },
-      {
-        definition: "midgard/validation_resolver_v1/SpendRedeemer",
-        cbor: encodeValidationDirectResolveSpendRedeemerV1({
-          input_index: 0n,
-          output_index: 0n,
-          fraud_proof_mint_redeemer_index: 0n,
-          challenger_evidence: { transition, auxiliary },
-        }),
       },
       {
         definition: "midgard/validation_award_v1/SpendRedeemer",
@@ -867,32 +896,207 @@ describe("validation-dispute transaction validity", () => {
       ),
     );
 
-    const cekRedeemer = Data.from(
-      encodeValidationCekSpendRedeemerV1({
-        input_index: 0n,
-        output_index: 0n,
-        fraud_proof_mint_redeemer_index: 0n,
-        challenger_evidence: { transition, auxiliary },
-        material_route: {
+    const transitionCbor = Buffer.from(
+      Data.to(transition, ValidationOneStepWitnessV1),
+      "hex",
+    );
+    const transitionData = Data.from(
+      Data.to(transition, ValidationOneStepWitnessV1),
+    );
+    // R5 item 1: the cek index is a `prepare_selected` family. Semantic 0
+    // (finish) is transition-only; semantic 1 (execution selection) carries
+    // the auxiliary plus the material route as its last field; semantics 2/3
+    // (context step, core step) carry the auxiliary / the core step only.
+    const cekSelection = cekSelectionFixture();
+    const cekSelectionAuxiliary = Data.from(
+      cekSelection.auxiliaryCbor.toString("hex"),
+    ) as Constr<unknown>;
+    expect(cekSelectionAuxiliary.index).toBe(11);
+    expect(cekSelectionAuxiliary.fields).toHaveLength(16);
+    const cekSelectionRedeemer = Data.from(
+      encodeValidationSemanticResolutionRedeemerV1({
+        oneStepArgument: {
+          resolverIndex: 11,
+          semanticResolverIndex: 1,
+          transitionCbor,
+          auxiliaryCbor: cekSelection.auxiliaryCbor,
+          cekRouteMaterial: cekSelection.routeMaterial,
+        },
+        inputIndex: 0n,
+        outputIndex: 0n,
+        materialRoute: {
           MinimumMultiOutputCekMaterial: {
             envelope_cbor: "0102",
             reference_input_indices: [7n, 2n],
           },
         },
-      }),
+      }).toString("hex"),
     ) as Constr<unknown>;
-    expect(cekRedeemer.index).toBe(1);
-    const cekAction = cekRedeemer.fields[0] as Constr<unknown>;
-    expect(cekAction.index).toBe(0);
-    expect(cekAction.fields).toHaveLength(5);
-    const cekRoute = cekAction.fields[4] as Constr<unknown>;
+    expect(cekSelectionRedeemer.index).toBe(1);
+    const cekSelectionAction = cekSelectionRedeemer
+      .fields[0] as Constr<unknown>;
+    expect(cekSelectionAction.index).toBe(0);
+    expect(cekSelectionAction.fields).toHaveLength(5);
+    expect(cekSelectionAction.fields[2]).toEqual(transitionData);
+    expect(cekSelectionAction.fields[3]).toEqual(cekSelectionAuxiliary);
+    const cekRoute = cekSelectionAction.fields[4] as Constr<unknown>;
     expect(cekRoute.index).toBe(3);
     expect(cekRoute.fields[1]).toEqual([7n, 2n]);
-
-    const transitionCbor = Buffer.from(
-      Data.to(transition, ValidationOneStepWitnessV1),
+    // The route is mandatory for 11/1 and refused everywhere else.
+    expect(() =>
+      encodeValidationSemanticResolutionRedeemerV1({
+        oneStepArgument: {
+          resolverIndex: 11,
+          semanticResolverIndex: 1,
+          transitionCbor,
+          auxiliaryCbor: cekSelection.auxiliaryCbor,
+          cekRouteMaterial: cekSelection.routeMaterial,
+        },
+        inputIndex: 0n,
+        outputIndex: 0n,
+      }),
+    ).toThrow(/requires a material route/u);
+    const noAuxiliaryCbor = Buffer.from(Data.to(new Constr(0, [])), "hex");
+    expect(() =>
+      encodeValidationSemanticResolutionRedeemerV1({
+        oneStepArgument: {
+          resolverIndex: 11,
+          semanticResolverIndex: 0,
+          transitionCbor,
+          auxiliaryCbor: noAuxiliaryCbor,
+        },
+        inputIndex: 0n,
+        outputIndex: 0n,
+        materialRoute: "NoCekMaterial",
+      }),
+    ).toThrow(/permitted only for the CEK execution-selection/u);
+    const cekFinishRedeemer = encodeValidationSemanticResolutionRedeemerV1({
+      oneStepArgument: {
+        resolverIndex: 11,
+        semanticResolverIndex: 0,
+        transitionCbor,
+        auxiliaryCbor: noAuxiliaryCbor,
+      },
+      inputIndex: 0n,
+      outputIndex: 0n,
+    });
+    expect(cekFinishRedeemer.toString("hex")).toBe(
+      Data.to(new Constr(1, [new Constr(0, [0n, 0n, transitionData])])),
+    );
+    // `cek_core_step_semantic_v1.VerifyCoreStep { …, step }` spreads the
+    // single `CekCoreStepWitness` field.
+    const cekMachineState = new Constr(0, [0n, 0n, "", "", "", 0n, 0n, 0n]);
+    const coreStepEvidence = new Constr(0, [
+      cekMachineState,
+      cekMachineState,
+      new Constr(0, [0n]),
+    ]);
+    const coreStepWitness = new Constr(12, [coreStepEvidence]);
+    const cekCoreStepRedeemer = Data.from(
+      encodeValidationSemanticResolutionRedeemerV1({
+        oneStepArgument: {
+          resolverIndex: 11,
+          semanticResolverIndex: 3,
+          transitionCbor,
+          auxiliaryCbor: Buffer.from(Data.to(coreStepWitness as never), "hex"),
+        },
+        inputIndex: 0n,
+        outputIndex: 0n,
+      }).toString("hex"),
+    ) as Constr<unknown>;
+    const cekCoreStepAction = cekCoreStepRedeemer.fields[0] as Constr<unknown>;
+    expect(cekCoreStepAction.fields).toHaveLength(4);
+    expect(cekCoreStepAction.fields[3]).toEqual(coreStepEvidence);
+    // A context-step witness is refused by the core-step resolver and
+    // accepted by the context-step resolver (tag 14 `CekOutputContextItem`).
+    const contextFinalizeWitness = Buffer.from(
+      Data.to(new Constr(14, [0n, "00", []]) as never),
       "hex",
     );
+    expect(() =>
+      encodeValidationSemanticResolutionRedeemerV1({
+        oneStepArgument: {
+          resolverIndex: 11,
+          semanticResolverIndex: 3,
+          transitionCbor,
+          auxiliaryCbor: contextFinalizeWitness,
+        },
+        inputIndex: 0n,
+        outputIndex: 0n,
+      }),
+    ).toThrow(/validation Cek auxiliary witness/u);
+    const cekContextStepRedeemer = Data.from(
+      encodeValidationSemanticResolutionRedeemerV1({
+        oneStepArgument: {
+          resolverIndex: 11,
+          semanticResolverIndex: 2,
+          transitionCbor,
+          auxiliaryCbor: contextFinalizeWitness,
+        },
+        inputIndex: 0n,
+        outputIndex: 0n,
+      }).toString("hex"),
+    ) as Constr<unknown>;
+    const cekContextStepAction = cekContextStepRedeemer
+      .fields[0] as Constr<unknown>;
+    expect(cekContextStepAction.fields).toHaveLength(4);
+    expect(cekContextStepAction.fields[3]).toEqual(
+      new Constr(14, [0n, "00", []]),
+    );
+
+    // R5 item 1: the ValueAndMint index is a `prepare_selected` family whose
+    // eleven semantics follow the control-stage order; the witness-carrying
+    // stages spread their auxiliary fields, the others are transition-only.
+    const valueAndMintShapes = [
+      { semantic: 0, auxiliary: new Constr(0, []), fields: 3 },
+      { semantic: 1, auxiliary: new Constr(0, []), fields: 3 },
+      {
+        semantic: 2,
+        auxiliary: new Constr(7, [0n, "00", "11".repeat(32), "22"]),
+        fields: 7,
+      },
+      { semantic: 4, auxiliary: new Constr(0, []), fields: 3 },
+      {
+        semantic: 5,
+        auxiliary: new Constr(38, [0n, "00", []]),
+        fields: 6,
+      },
+      { semantic: 7, auxiliary: new Constr(0, []), fields: 3 },
+      { semantic: 9, auxiliary: new Constr(0, []), fields: 3 },
+      { semantic: 10, auxiliary: new Constr(0, []), fields: 3 },
+    ] as const;
+    for (const shape of valueAndMintShapes) {
+      const redeemer = Data.from(
+        encodeValidationSemanticResolutionRedeemerV1({
+          oneStepArgument: {
+            resolverIndex: 12,
+            semanticResolverIndex: shape.semantic,
+            transitionCbor,
+            auxiliaryCbor: Buffer.from(
+              Data.to(shape.auxiliary as never),
+              "hex",
+            ),
+          },
+          inputIndex: 0n,
+          outputIndex: 0n,
+        }).toString("hex"),
+      ) as Constr<unknown>;
+      const action = redeemer.fields[0] as Constr<unknown>;
+      expect(action.fields).toHaveLength(shape.fields);
+    }
+    expect(() =>
+      encodeValidationSemanticResolutionRedeemerV1({
+        oneStepArgument: {
+          resolverIndex: 12,
+          semanticResolverIndex: 2,
+          transitionCbor,
+          auxiliaryCbor: noAuxiliaryCbor,
+        },
+        inputIndex: 0n,
+        outputIndex: 0n,
+      }),
+    ).toThrow(/validation ValueAndMint auxiliary witness/u);
+
     // #597: the tag-30 `TransactionFieldItemWitness` carries one field — a
     // `FieldCarriageV1` — so a fitting fixture is a tier-1 `Inline` carriage,
     // `Constr(0, [preimage])`, not the retired collection-proof pair.
@@ -1293,7 +1497,10 @@ describe("validation-dispute transaction validity", () => {
   });
 
   it("maps and encodes the split ScriptSources stage-one route without replacing the legacy route", () => {
-    expect(validationSemanticResolverGlobalIndexV1(8, 28)).toBe(75);
+    // The stage-one redeemer envelope is the last semantic resolver, after
+    // the fourteen indices' 90 kind resolvers (75 before R5 item 1 added the
+    // four cek and eleven ValueAndMint kinds).
+    expect(validationSemanticResolverGlobalIndexV1(8, 28)).toBe(90);
     expect(validationSemanticResolverGlobalIndexV1(8, 15)).toBe(47);
 
     const state: ValidationMachineStateV1 = {
@@ -1669,7 +1876,7 @@ describe("validation-dispute transaction validity", () => {
     const receiptSet = necessityReceiptSet(fixture.program.envelopeHash);
     const argument = {
       resolverIndex: 11,
-      semanticResolverIndex: null,
+      semanticResolverIndex: 1,
       transitionCbor: Buffer.from("d87980", "hex"),
       auxiliaryCbor: fixture.auxiliaryCbor,
       cekRouteMaterial: fixture.routeMaterial,
@@ -1694,7 +1901,7 @@ describe("validation-dispute transaction validity", () => {
     expect(
       validateCekSubmissionEvidenceV1({
         resolverIndex: 11,
-        semanticResolverIndex: null,
+        semanticResolverIndex: 0,
         transitionCbor: argument.transitionCbor,
         auxiliaryCbor: noAuxiliaryCbor,
       }),
@@ -1709,6 +1916,14 @@ describe("validation-dispute transaction validity", () => {
         }),
       ).toThrow(/permitted only for an exact program-selection witness/u);
     }
+    // Route material rides only the execution-selection semantic (11/1): the
+    // same selection witness under another cek semantic index is refused.
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        semanticResolverIndex: 2,
+      }),
+    ).toThrow(/permitted only for an exact program-selection witness/u);
 
     expect(() =>
       validateCekSubmissionEvidenceV1({
@@ -2111,7 +2326,7 @@ describe("validation-dispute transaction validity", () => {
       validationTransitionCborPath: paths.transition,
       validationAuxiliaryCborPath: paths.auxiliary,
       validationResolverIndex: 11,
-      validationSemanticResolverIndex: null,
+      validationSemanticResolverIndex: 1,
     } as const;
     await expect(
       validationOneStepArgumentFromFiles({

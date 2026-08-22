@@ -41,6 +41,7 @@ import {
   buildValidationMachineLedgerInsertOpV1,
   buildValidationMachineLedgerMutationSteps,
   buildValidationOneStepArgumentV1,
+  cekKindV1,
   type DeterministicValidationMachineTrace,
   encodeValidationAuxiliaryWitnessCborV1,
   encodeValidationBoundaryEvidenceCborV1,
@@ -54,6 +55,7 @@ import {
   type ValidationMachineFieldCarriagePlanInputV1,
   type ValidationMachineWorkWitness,
   validationSemanticResolverIndexV1,
+  valueAndMintKindV1,
 } from "../src/index.js";
 import { exerciseMidgardRetainedDaCanonicalBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 import {
@@ -146,6 +148,21 @@ const semanticResolverDefinitionsV1 = [
   "script_integrity_compact_semantic_v1",
   "script_integrity_witness_set_semantic_v1",
   "script_integrity_finalize_semantic_v1",
+  "cek_finish_semantic_v1",
+  "cek_execution_selection_semantic_v1",
+  "cek_context_step_semantic_v1",
+  "cek_core_step_semantic_v1",
+  "value_and_mint_begin_semantic_v1",
+  "value_and_mint_replay_begin_semantic_v1",
+  "value_and_mint_replay_input_semantic_v1",
+  "value_and_mint_replay_asset_semantic_v1",
+  "value_and_mint_replay_finish_semantic_v1",
+  "value_and_mint_output_descriptor_semantic_v1",
+  "value_and_mint_output_asset_semantic_v1",
+  "value_and_mint_output_finish_semantic_v1",
+  "value_and_mint_mint_asset_semantic_v1",
+  "value_and_mint_mint_finish_semantic_v1",
+  "value_and_mint_finalize_semantic_v1",
   "ledger_delta_operation_semantic_v1",
   "ledger_delta_replay_semantic_v1",
   "ledger_delta_replay_finish_semantic_v1",
@@ -156,8 +173,104 @@ const semanticResolverDefinitionsV1 = [
   "ledger_delta_terminal_semantic_v1",
 ] as const;
 const semanticResolverOffsetsV1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32, 60, 63, -1, -1, 67,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, 60, 63, 67, 71, 82,
 ] as const;
+// R5 item 1: the cek and ValueAndMint indices decompose into semantic kinds
+// in `cek_v1` / `value_and_mint_v1` prepare order. The index function is total
+// over every witness a deterministic trace emits; these tables pin the
+// kind → semantic-resolver-index map the builders and the totality verifier
+// both read.
+const cekSemanticIndexByKindV1 = {
+  finish: 0,
+  selection: 1,
+  context: 2,
+  core: 3,
+} as const;
+const valueAndMintSemanticIndexByKindV1 = {
+  begin: 0,
+  replayBegin: 1,
+  replayInput: 2,
+  replayAsset: 3,
+  replayFinish: 4,
+  outputDescriptor: 5,
+  outputAsset: 6,
+  outputFinish: 7,
+  mintAsset: 8,
+  mintFinish: 9,
+  finalize: 10,
+} as const;
+const expectCekAndValueAndMintTotalityV1 = (
+  trace: DeterministicValidationMachineTrace,
+) => {
+  const cekWitnesses = trace.witnesses.filter(
+    (witness) => witness.phase === "cek",
+  );
+  const cekKinds = cekWitnesses.map(cekKindV1);
+  expect(cekWitnesses.map(validationSemanticResolverIndexV1)).toEqual(
+    cekKinds.map((kind) => cekSemanticIndexByKindV1[kind]),
+  );
+  for (const [index, witness] of cekWitnesses.entries()) {
+    const kind = cekKinds[index];
+    const auxiliaryKind = witness.auxiliary?.kind ?? null;
+    if (kind === "finish") {
+      // The stand-alone hand-off exists only when there is nothing to
+      // select (`cek_control_is_finish_v1`): a Plutus trace hands off from
+      // its last core step, a native selection from its last selection.
+      expect(auxiliaryKind).toBeNull();
+      expect(cekWitnesses).toHaveLength(1);
+    } else if (kind === "selection") {
+      expect(auxiliaryKind).toBe("nativeExecutionScan");
+    } else if (kind === "core") {
+      expect(auxiliaryKind).toBe("cekCoreStep");
+    } else {
+      expect(auxiliaryKind).not.toBe("cekCoreStep");
+      expect(auxiliaryKind).not.toBe("nativeExecutionScan");
+    }
+  }
+  const valueAndMintWitnesses = trace.witnesses.filter(
+    (witness) => witness.phase === "valueAndMint",
+  );
+  const valueAndMintKinds = valueAndMintWitnesses.map(valueAndMintKindV1);
+  expect(valueAndMintWitnesses.map(validationSemanticResolverIndexV1)).toEqual(
+    valueAndMintKinds.map((kind) => valueAndMintSemanticIndexByKindV1[kind]),
+  );
+  expect(valueAndMintKinds[0]).toBe("begin");
+  expect(valueAndMintKinds[1]).toBe("replayBegin");
+  expect(valueAndMintKinds.at(-1)).toBe("finalize");
+  expect(valueAndMintKinds.at(-2)).toBe("mintFinish");
+  for (const [index, witness] of valueAndMintWitnesses.entries()) {
+    const kind = valueAndMintKinds[index];
+    const auxiliaryKind = witness.auxiliary?.kind ?? null;
+    const expectedAuxiliaryKind = {
+      begin: null,
+      replayBegin: null,
+      replayInput: "resolvedInputReplay",
+      replayAsset: "valueInputAsset",
+      replayFinish: null,
+      outputDescriptor: "valueOutputDescriptor",
+      outputAsset: "valueOutputAsset",
+      outputFinish: null,
+      mintAsset: "valueMintAsset",
+      mintFinish: null,
+      finalize: null,
+    }[kind];
+    expect(auxiliaryKind).toBe(expectedAuxiliaryKind);
+  }
+  // Every witness in the trace names a semantic resolver inside its index's
+  // count (the totality property the verifier reads live).
+  const counts = [2, 1, 1, 2, 4, 14, 2, 6, 29, 3, 4, 4, 11, 8] as const;
+  for (const oneStep of trace.states
+    .slice(0, -1)
+    .map((_state, stateIndex) =>
+      buildValidationOneStepArgumentV1({ trace, stateIndex }),
+    )) {
+    expect(oneStep.semanticResolverIndex).toBeGreaterThanOrEqual(0);
+    expect(oneStep.semanticResolverIndex).toBeLessThan(
+      counts[oneStep.resolverIndex]!,
+    );
+  }
+  return { cekKinds, valueAndMintKinds };
+};
 
 describe("V1 purpose-kind to redeemer-pointer mapping", () => {
   it("matches the exhaustive canonical vector and rejects adjacent values", () => {
@@ -404,10 +517,6 @@ const validateBoundaryAbiAndCollectAuxiliaryKinds = (
               "midgard/validation_machine_v1/ValidationAuxiliaryWitnessV1",
               oneStepArgument.auxiliaryCbor,
             ],
-            [
-              "midgard/validation_machine_v1/ValidationOneStepEvidenceV1",
-              oneStepArgument.evidenceCbor,
-            ],
           ] as const)),
     ] as const) {
       parseExactAikenDataCbor({
@@ -423,10 +532,7 @@ const validateBoundaryAbiAndCollectAuxiliaryKinds = (
       oneStepArgument.auxiliaryCbor.length,
       oneStepArgument.evidenceCbor.length,
     );
-    if (
-      !auxiliaryIsFrozenStale &&
-      oneStepArgument.semanticResolverIndex !== null
-    ) {
+    if (!auxiliaryIsFrozenStale) {
       const globalIndex =
         semanticResolverOffsetsV1[oneStepArgument.resolverIndex]! +
         oneStepArgument.semanticResolverIndex;
@@ -436,10 +542,33 @@ const validateBoundaryAbiAndCollectAuxiliaryKinds = (
           `semantic resolver ${globalIndex.toString()} has no ABI definition`,
         );
       }
+      // The CEK execution-selection action carries the material route the
+      // submitter chose; the direct route is the one every selection in these
+      // traces can take (the selection of a native execution names no
+      // material and rides `NoCekMaterial`).
+      const materialRoute =
+        oneStepArgument.resolverIndex === 11 &&
+        oneStepArgument.semanticResolverIndex === 1
+          ? oneStepArgument.cekRouteMaterial === undefined
+            ? ("NoCekMaterial" as const)
+            : {
+                DirectCekMaterial: {
+                  envelope_cbor:
+                    oneStepArgument.cekRouteMaterial.envelopeCbor.toString(
+                      "hex",
+                    ),
+                  sidecar_cbor:
+                    oneStepArgument.cekRouteMaterial.programMaterialSidecarCbor.toString(
+                      "hex",
+                    ),
+                },
+              }
+          : undefined;
       const semanticRedeemer = encodeValidationSemanticResolutionRedeemerV1({
         oneStepArgument,
         inputIndex: 0n,
         outputIndex: 0n,
+        ...(materialRoute === undefined ? {} : { materialRoute }),
       });
       parseExactAikenDataCbor({
         blueprint: validationDisputeBlueprint,
@@ -635,6 +764,21 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     expect(valueAndMintWitnesses).toHaveLength(8);
     expect(valueAndMintWitnesses[0]?.auxiliary).toBeNull();
+    // A native-only transaction still walks the cek index: the single
+    // finish step hands off to ValueAndMint, which then runs every stage.
+    expect(expectCekAndValueAndMintTotalityV1(trace)).toEqual({
+      cekKinds: ["finish"],
+      valueAndMintKinds: [
+        "begin",
+        "replayBegin",
+        "replayInput",
+        "replayFinish",
+        "outputDescriptor",
+        "outputFinish",
+        "mintFinish",
+        "finalize",
+      ],
+    });
     expect(
       valueAndMintWitnesses.map((witness) => witness.auxiliary?.kind ?? null),
     ).not.toContain("transactionFieldPairPreimage");
@@ -807,6 +951,15 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const cekWitnesses = trace.witnesses.filter(
       (witness) => witness.phase === "cek",
     );
+    const totality = expectCekAndValueAndMintTotalityV1(trace);
+    expect(totality.cekKinds[0]).toBe("selection");
+    expect(totality.cekKinds).toContain("context");
+    expect(totality.cekKinds).toContain("core");
+    // The last core step claims the ValueAndMint successor itself
+    // (`verify_cek_core_step`, `next_cursor == control.execution_count`), so
+    // a Plutus trace has no stand-alone `finish` step.
+    expect(totality.cekKinds.at(-1)).toBe("core");
+    expect(totality.cekKinds).not.toContain("finish");
     const scriptSourceWitnesses = trace.witnesses.filter(
       (witness) => witness.phase === "scriptSources",
     );

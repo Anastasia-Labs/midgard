@@ -378,9 +378,8 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
       "boundary",
       "timeout",
       "award",
-      ...Array.from({ length: 76 }, (_, index) => `semantic-resolver-${index}`),
-      ...Array.from({ length: 12 }, (_, index) => `prepare-resolver-${index}`),
-      ...Array.from({ length: 2 }, (_, index) => `direct-resolver-${index}`),
+      ...Array.from({ length: 91 }, (_, index) => `semantic-resolver-${index}`),
+      ...Array.from({ length: 14 }, (_, index) => `prepare-resolver-${index}`),
     ]);
     const appliedSpendingScripts = [
       ...output.doubleSpend.steps.map((step) => ({
@@ -448,7 +447,6 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
       contracts.validationTraceDispute.award,
       ...contracts.validationTraceDispute.semanticResolvers,
       ...contracts.validationTraceDispute.prepareResolvers,
-      ...contracts.validationTraceDispute.directResolvers,
     ];
     expect(appliedSpendingScripts).toHaveLength(
       selectedParameterizedValidators.length,

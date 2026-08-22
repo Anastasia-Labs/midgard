@@ -14,10 +14,6 @@ import {
   type ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1 as ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Data,
   ValidationCekMaterialRouteV1,
   type ValidationCekMaterialRouteV1 as ValidationCekMaterialRouteV1Data,
-  ValidationCekSpendRedeemerV1,
-  type ValidationCekSpendRedeemerV1 as ValidationCekSpendRedeemerV1Data,
-  ValidationDirectResolveSpendRedeemerV1,
-  type ValidationDirectResolveSpendRedeemerV1 as ValidationDirectResolveSpendRedeemerV1Data,
   validationDisputeDataFromCore,
   ValidationDisputeTurnV1Schema,
   ValidationDisputeV1,
@@ -275,76 +271,6 @@ describe("validation dispute ABI", () => {
       ),
     );
 
-    const direct: ValidationDirectResolveSpendRedeemerV1Data = {
-      Continue: [
-        {
-          input_index: 0n,
-          output_index: 0n,
-          fraud_proof_mint_redeemer_index: 0n,
-          challenger_evidence: evidence,
-        },
-      ],
-    };
-    expect(
-      Data.from(
-        Data.to(direct, ValidationDirectResolveSpendRedeemerV1),
-        ValidationDirectResolveSpendRedeemerV1,
-      ),
-    ).toEqual(direct);
-    const cekRoutes = [
-      "NoCekMaterial",
-      {
-        DirectCekMaterial: {
-          envelope_cbor: "0102",
-          sidecar_cbor: "0304",
-        },
-      },
-      {
-        SinglePublicationCekMaterial: {
-          envelope_cbor: "0102",
-          reference_input_index: 2n,
-        },
-      },
-      {
-        MinimumMultiOutputCekMaterial: {
-          envelope_cbor: "0102",
-          reference_input_indices: [4n, 1n],
-        },
-      },
-      {
-        IncrementalCekMaterial: {
-          program_envelope_hash: "0c".repeat(32),
-        },
-      },
-    ] satisfies readonly ValidationCekMaterialRouteV1Data[];
-    for (const [tag, material_route] of cekRoutes.entries()) {
-      const cek: ValidationCekSpendRedeemerV1Data = {
-        Continue: [
-          {
-            input_index: 0n,
-            output_index: 0n,
-            fraud_proof_mint_redeemer_index: 0n,
-            challenger_evidence: evidence,
-            material_route,
-          },
-        ],
-      };
-      const cbor = Data.to(cek, ValidationCekSpendRedeemerV1);
-      expect(Data.from(cbor, ValidationCekSpendRedeemerV1)).toEqual(cek);
-      const outer = Data.from(cbor) as { readonly fields: readonly unknown[] };
-      const action = outer.fields[0] as {
-        readonly fields: readonly unknown[];
-      };
-      const route = action.fields[4] as { readonly index: number };
-      expect(route.index).toBe(tag);
-    }
-    expect(
-      Data.from(
-        Data.to(direct, ValidationDirectResolveSpendRedeemerV1),
-        ValidationDirectResolveSpendRedeemerV1,
-      ),
-    ).toEqual(direct);
-
     const materialRouteVectors = [
       ["NoCekMaterial", "d87980"],
       [
@@ -393,29 +319,6 @@ describe("validation dispute ABI", () => {
       );
     }
 
-    const cancel: ValidationCekSpendRedeemerV1Data = {
-      Cancel: {
-        input_index: 1n,
-        computation_thread_mint_redeemer_index: 2n,
-      },
-    };
-    expect(Data.to(cancel, ValidationCekSpendRedeemerV1)).toBe("d8799f0102ff");
-    const cekDirect = {
-      Continue: [
-        {
-          input_index: 0n,
-          output_index: 0n,
-          fraud_proof_mint_redeemer_index: 0n,
-          challenger_evidence: evidence,
-          material_route: "NoCekMaterial",
-        },
-      ],
-    } satisfies ValidationCekSpendRedeemerV1Data;
-    const evidenceCbor = Data.to(evidence, ValidationOneStepEvidenceV1);
-    expect(Data.to(cekDirect, ValidationCekSpendRedeemerV1)).toBe(
-      `d87a9fd8799f000000${evidenceCbor}d87980ffff`,
-    );
-
     for (const malformed of [
       "d87e80", // adjacent route tag 5
       "d87a9f420102ff", // DirectCekMaterial wrong arity
@@ -423,15 +326,6 @@ describe("validation dispute ABI", () => {
     ]) {
       expect(() =>
         Data.from(malformed, ValidationCekMaterialRouteV1),
-      ).toThrow();
-    }
-    for (const malformed of [
-      "d87b80", // adjacent outer StepRedeemer tag 2
-      "d8799f01ff", // Cancel wrong arity
-      "d87a80", // Continue wrong arity
-    ]) {
-      expect(() =>
-        Data.from(malformed, ValidationCekSpendRedeemerV1),
       ).toThrow();
     }
     expect(

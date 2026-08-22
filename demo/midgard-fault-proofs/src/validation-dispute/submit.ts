@@ -70,9 +70,8 @@ import {
   ValidationBoundarySpendRedeemerV1,
   ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema,
   type ValidationCekMaterialRouteV1,
-  ValidationCekSpendRedeemerV1Schema,
+  ValidationCekMaterialRouteV1Schema,
   type ValidationClaimWitnessV1,
-  ValidationDirectResolveSpendRedeemerV1Schema,
   validationDisputeCoreFromData,
   validationDisputeDataFromCore,
   ValidationDisputeDatumV1,
@@ -80,7 +79,6 @@ import {
   ValidationDisputeOpenSpendRedeemerV1,
   ValidationGameSpendRedeemerV1,
   type ValidationMachineStateV1,
-  ValidationOneStepEvidenceV1,
   ValidationOneStepWitnessV1,
   ValidationPrepareSelectedSpendRedeemerV1Schema,
   ValidationProofItemDatumV1,
@@ -797,99 +795,104 @@ const requireValidationCanonicalDecodePrepareReferenceScriptUtxo = async ({
 };
 
 /**
- * Auth-role name minted onto the published CEK direct-resolver
- * reference-script UTxO (`REFERENCE_SCRIPT_AUTH_TOKEN_NAMES` in
- * `@al-ft/midgard-sdk`).
+ * Deployment-info entries that publish the applied cek semantic resolvers
+ * whose bodies can never ride inside the 16,384-byte L1 proof envelope
+ * (`MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES`): the execution selection
+ * (~45 KiB applied), the context step (~94 KiB) and the core step (~68 KiB).
+ * R5 item 1 split the retired `cek_v1` direct resolver (whose ~156 KiB body
+ * was consumed the same way through `validationTraceDisputeCekDirectResolver`)
+ * into four semantic resolvers under a `prepare_selected` validator; the
+ * finish resolver fits the envelope and attaches inline like every other
+ * small semantic, the three below are consumed by reference the way
+ * `validationTraceDisputeItemSemantic` is (hash-checked against the applied
+ * contract, no auth-role token).
  */
-export const VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_ROLE =
-  "V1 validation-trace CEK direct resolver";
+export const VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1 = {
+  1: "validationTraceDisputeCekExecutionSelectionSemantic",
+  2: "validationTraceDisputeCekContextStepSemantic",
+  3: "validationTraceDisputeCekCoreStepSemantic",
+} as const satisfies Partial<Record<number, string>>;
 
-/**
- * Deployment-info entry that publishes the applied `cek_v1` direct resolver
- * (direct resolver 0) as an authenticated L1 reference script. Every CEK
- * finalization transaction must consume the resolver by reference: the
- * applied resolver body is 156,467 bytes, so embedding it in the proof
- * transaction can never fit the 16,384-byte L1 envelope
- * (`MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES`).
- */
-export const VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY =
-  "validationTraceDisputeCekDirectResolver";
+export type ValidationCekSemanticReferenceScriptIndexV1 =
+  keyof typeof VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1;
 
-export const requireValidationCekDirectResolverReferenceScriptOutRef = ({
+export const validationCekSemanticReferenceScriptDeploymentEntryV1 = (
+  semanticResolverIndex: number,
+): string | undefined =>
+  semanticResolverIndex === 1 ||
+  semanticResolverIndex === 2 ||
+  semanticResolverIndex === 3
+    ? VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1[
+        semanticResolverIndex
+      ]
+    : undefined;
+
+export const requireValidationCekSemanticReferenceScriptOutRef = ({
   deploymentInfo,
+  semanticResolverIndex,
   expectedScriptHash,
 }: {
   readonly deploymentInfo: ContractDeploymentInfo;
+  readonly semanticResolverIndex: number;
   readonly expectedScriptHash: string;
 }): { readonly txHash: string; readonly outputIndex: number } => {
-  const entry =
-    deploymentInfo[
-      VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY
-    ];
+  const entryName = validationCekSemanticReferenceScriptDeploymentEntryV1(
+    semanticResolverIndex,
+  );
+  if (entryName === undefined) {
+    throw new Error(
+      `CEK semantic resolver ${semanticResolverIndex.toString()} is not published by reference`,
+    );
+  }
+  const entry = deploymentInfo[entryName];
   if (entry === undefined) {
     throw new Error(
-      `Deployment info is missing "${VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY}"; publish the authenticated V1 CEK direct-resolver reference script and regenerate deployment info before submitting a CEK direct resolution`,
+      `Deployment info is missing "${entryName}"; publish the V1 CEK semantic-resolver reference script and regenerate deployment info before submitting a CEK semantic resolution`,
     );
   }
   if (entry.refScriptUTxO == null) {
     throw new Error(
-      `Deployment info entry "${VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY}" is missing refScriptUTxO; publish the authenticated V1 CEK direct-resolver reference script and regenerate deployment info before submitting a CEK direct resolution`,
+      `Deployment info entry "${entryName}" is missing refScriptUTxO; publish the V1 CEK semantic-resolver reference script and regenerate deployment info before submitting a CEK semantic resolution`,
     );
   }
   if (entry.scriptHash !== expectedScriptHash) {
     throw new Error(
-      `Deployment entry "${VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY}" script hash mismatch: deployment=${entry.scriptHash}, derived=${expectedScriptHash}`,
+      `Deployment entry "${entryName}" script hash mismatch: deployment=${entry.scriptHash}, derived=${expectedScriptHash}`,
     );
   }
   return entry.refScriptUTxO;
 };
 
-export const requireValidationCekDirectResolverReferenceScriptUtxo = async ({
+export const requireValidationCekSemanticReferenceScriptUtxo = async ({
   lucid,
   deploymentInfo,
+  semanticResolverIndex,
   expectedScriptHash,
-  authPolicyId,
 }: {
   readonly lucid: LucidEvolution;
   readonly deploymentInfo: ContractDeploymentInfo;
+  readonly semanticResolverIndex: number;
   readonly expectedScriptHash: string;
-  readonly authPolicyId: string;
 }): Promise<UTxO> => {
-  const outRef = requireValidationCekDirectResolverReferenceScriptOutRef({
+  const outRef = requireValidationCekSemanticReferenceScriptOutRef({
     deploymentInfo,
+    semanticResolverIndex,
     expectedScriptHash,
   });
   const utxo = await fetchUtxoByOutRef({
     lucid,
     outRef,
-    label: "CEK direct-resolver reference-script UTxO",
+    label: "CEK semantic-resolver reference-script UTxO",
   });
   if (utxo.scriptRef == null) {
     throw new Error(
-      `CEK direct-resolver reference UTxO ${outRefLabel(utxo)} does not carry a reference script`,
+      `CEK semantic-resolver reference UTxO ${outRefLabel(utxo)} does not carry a reference script`,
     );
   }
   const actualScriptHash = validatorToScriptHash(utxo.scriptRef);
   if (actualScriptHash !== expectedScriptHash) {
     throw new Error(
-      `CEK direct-resolver reference script hash mismatch: actual=${actualScriptHash}, expected=${expectedScriptHash}`,
-    );
-  }
-  const expectedRoleUnit = referenceScriptAuthUnit(
-    authPolicyId,
-    VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_ROLE,
-  );
-  const authPolicyAssets = Object.entries(utxo.assets).filter(
-    ([unit, amount]) =>
-      unit.slice(0, authPolicyId.length) === authPolicyId && amount !== 0n,
-  );
-  if (
-    authPolicyAssets.length !== 1 ||
-    authPolicyAssets[0]![0] !== expectedRoleUnit ||
-    authPolicyAssets[0]![1] !== 1n
-  ) {
-    throw new Error(
-      `CEK direct-resolver reference UTxO ${outRefLabel(utxo)} must carry exactly one ${expectedRoleUnit} auth-role token`,
+      `CEK semantic-resolver reference script hash mismatch: actual=${actualScriptHash}, expected=${expectedScriptHash}`,
     );
   }
   return utxo;
@@ -916,46 +919,29 @@ type RuntimeSchemaEncoder = (
  * declaration mismatch at this runtime-schema boundary.
  */
 const encodeWithRuntimeSchema = Data.to as unknown as RuntimeSchemaEncoder;
-const validationDirectResolveSpendRedeemerV1RuntimeSchema =
-  ValidationDirectResolveSpendRedeemerV1Schema as unknown as PlutusDataSchema;
-const validationCekSpendRedeemerV1RuntimeSchema =
-  ValidationCekSpendRedeemerV1Schema as unknown as PlutusDataSchema;
+const validationCekMaterialRouteV1RuntimeSchema =
+  ValidationCekMaterialRouteV1Schema as unknown as PlutusDataSchema;
 const validationPrepareSelectedSpendRedeemerV1RuntimeSchema =
   ValidationPrepareSelectedSpendRedeemerV1Schema as unknown as PlutusDataSchema;
 const validationCanonicalDecodePrepareSelectedSpendRedeemerV1RuntimeSchema =
   ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema as unknown as PlutusDataSchema;
 
-type ValidationDirectResolveActionV1Input = {
-  readonly input_index: bigint;
-  readonly output_index: bigint;
-  readonly fraud_proof_mint_redeemer_index: bigint;
-  readonly challenger_evidence: ValidationOneStepEvidenceV1;
-};
-
-export const encodeValidationDirectResolveSpendRedeemerV1 = (
-  action: ValidationDirectResolveActionV1Input,
-): ReturnType<typeof Data.to> =>
-  encodeWithRuntimeSchema(
-    { Continue: [action] },
-    validationDirectResolveSpendRedeemerV1RuntimeSchema,
-  );
-
-type ValidationCekResolveActionV1Input =
-  ValidationDirectResolveActionV1Input & {
-    readonly material_route: ValidationCekMaterialRouteV1;
-  };
-
-export const encodeValidationCekSpendRedeemerV1 = (
-  action: ValidationCekResolveActionV1Input,
-): ReturnType<typeof Data.to> =>
-  encodeWithRuntimeSchema(
-    { Continue: [action] },
-    validationCekSpendRedeemerV1RuntimeSchema,
+/**
+ * The `material_route` field of the CEK execution-selection semantic action
+ * (`cek_execution_selection_semantic_v1.VerifyExecutionSelection`), as Plutus
+ * data. The route is resolver evidence — it names the consuming transaction's
+ * own reference inputs — so it is never part of the committed evidence hash.
+ */
+export const validationCekMaterialRouteDataV1 = (
+  route: ValidationCekMaterialRouteV1,
+): PlutusDataValue =>
+  Data.from(
+    encodeWithRuntimeSchema(route, validationCekMaterialRouteV1RuntimeSchema),
   );
 
 export type ValidationOneStepSubmissionArgumentV1 = {
   readonly resolverIndex: number;
-  readonly semanticResolverIndex: number | null;
+  readonly semanticResolverIndex: number;
   readonly transitionCbor: Uint8Array;
   readonly auxiliaryCbor: Uint8Array;
   readonly cekRouteMaterial?: CekRouteMaterialV1;
@@ -1099,8 +1085,10 @@ const exactPlutusDataFromCbor = (
 
 /**
  * Enforces the selection-only C28 evidence ABI before any transaction builder
- * uses it. A Plutus/Midgard CEK selection must carry complete route material;
- * later CEK steps, ValueAndMint, and every staged phase must not carry it.
+ * uses it. A Plutus/Midgard CEK selection (resolver 11, semantic resolver 1 —
+ * `cek_execution_selection_semantic_v1`) must carry complete route material;
+ * later CEK steps, ValueAndMint, and every other staged phase must not carry
+ * it.
  */
 export const validateCekSubmissionEvidenceV1 = (
   argument: ValidationOneStepSubmissionArgumentV1,
@@ -1121,7 +1109,7 @@ export const validateCekSubmissionEvidenceV1 = (
       : undefined;
   const isProgramSelection =
     argument.resolverIndex === 11 &&
-    argument.semanticResolverIndex === null &&
+    argument.semanticResolverIndex === 1 &&
     selection !== undefined &&
     (selection.language_tag === 3n || selection.language_tag === 128n);
   if (!isProgramSelection) {
@@ -1212,10 +1200,10 @@ export const validationOneStepEvidenceHashV1 = ({
   );
 
 const VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1 = [
-  2, 1, 1, 2, 4, 14, 2, 6, 29, 3, 4, 0, 0, 8,
+  2, 1, 1, 2, 4, 14, 2, 6, 29, 3, 4, 4, 11, 8,
 ] as const;
 const VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32, 60, 63, -1, -1, 67,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, 60, 63, 67, 71, 82,
 ] as const;
 
 const VALIDATION_AUXILIARY_SHAPES_V1 = {
@@ -1248,7 +1236,72 @@ const VALIDATION_AUXILIARY_SHAPES_V1 = {
   ledgerDeltaOperation: [35, 4],
   scriptSourceHashBlock: [36, 2],
   nativeExecutionDescriptor: [37, 17],
+  // R5 item 1: the cek and ValueAndMint auxiliary families, now that both
+  // phases route through prepare + per-kind semantic resolvers.
+  nativeExecutionScan: [11, 16],
+  cekCoreStep: [12, 1],
+  cekResolvedContextItem: [13, 5],
+  cekOutputContextItem: [14, 3],
+  cekSignerContextItem: [15, 4],
+  cekMintContextItem: [16, 5],
+  cekRedeemerContextSelect: [17, 12],
+  cekContextFinalize: [19, 1],
+  cekContextFinalizeSpend: [20, 5],
+  cekContextAssemble: [21, 1],
+  cekTxInfoFinalize: [22, 1],
+  cekContextSeed: [23, 1],
+  valueInputAsset: [24, 11],
+  valueOutputAsset: [25, 9],
+  valueMintAsset: [26, 6],
+  valueOutputDescriptor: [38, 3],
 } as const satisfies Record<string, readonly [number, number]>;
+
+/**
+ * The auxiliary constructors the cek context step
+ * (`cek_context_step_semantic_v1`) accepts: every `Cek*Context*Witness`, the
+ * redeemer-selection witnesses (`RedeemerScanBeginWitness` /
+ * `RedeemerItemStepWitness`), the observer stage's authenticated field chunk,
+ * plus the empty witness that the context-only stages (seed/assemble/finalize
+ * without items, observer-empty fields) step on. The resolver takes the whole
+ * auxiliary and branches inside `verify_cek_context_step_semantics_v1`, so the
+ * builder pins the family rather than one shape.
+ */
+const VALIDATION_CEK_CONTEXT_STEP_AUXILIARY_SHAPES_V1 = [
+  VALIDATION_AUXILIARY_SHAPES_V1.none,
+  VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk,
+  VALIDATION_AUXILIARY_SHAPES_V1.redeemerScanBegin,
+  VALIDATION_AUXILIARY_SHAPES_V1.cekResolvedContextItem,
+  VALIDATION_AUXILIARY_SHAPES_V1.cekOutputContextItem,
+  VALIDATION_AUXILIARY_SHAPES_V1.cekSignerContextItem,
+  VALIDATION_AUXILIARY_SHAPES_V1.cekMintContextItem,
+  VALIDATION_AUXILIARY_SHAPES_V1.cekRedeemerContextSelect,
+  VALIDATION_AUXILIARY_SHAPES_V1.redeemerItemStep,
+  VALIDATION_AUXILIARY_SHAPES_V1.cekContextFinalize,
+  VALIDATION_AUXILIARY_SHAPES_V1.cekContextFinalizeSpend,
+  VALIDATION_AUXILIARY_SHAPES_V1.cekContextAssemble,
+  VALIDATION_AUXILIARY_SHAPES_V1.cekTxInfoFinalize,
+  VALIDATION_AUXILIARY_SHAPES_V1.cekContextSeed,
+] as const;
+
+/**
+ * Auxiliary shape per ValueAndMint semantic resolver
+ * (`value_and_mint_v1` prepare order): the stage-entry, replay-finish,
+ * output-finish, mint-finish and finalize resolvers step with no auxiliary;
+ * the item resolvers carry the stage body's witness.
+ */
+const VALIDATION_VALUE_AND_MINT_AUXILIARY_SHAPES_V1 = [
+  VALIDATION_AUXILIARY_SHAPES_V1.none,
+  VALIDATION_AUXILIARY_SHAPES_V1.none,
+  VALIDATION_AUXILIARY_SHAPES_V1.resolvedInputReplay,
+  VALIDATION_AUXILIARY_SHAPES_V1.valueInputAsset,
+  VALIDATION_AUXILIARY_SHAPES_V1.none,
+  VALIDATION_AUXILIARY_SHAPES_V1.valueOutputDescriptor,
+  VALIDATION_AUXILIARY_SHAPES_V1.valueOutputAsset,
+  VALIDATION_AUXILIARY_SHAPES_V1.none,
+  VALIDATION_AUXILIARY_SHAPES_V1.valueMintAsset,
+  VALIDATION_AUXILIARY_SHAPES_V1.none,
+  VALIDATION_AUXILIARY_SHAPES_V1.none,
+] as const;
 
 const hasValidationAuxiliaryShapeV1 = (
   auxiliary: Constr<PlutusDataValue>,
@@ -1417,6 +1470,48 @@ const auxiliaryShapeV1 = ({
     }
     return outputAuxiliary;
   }
+  if (resolverIndex === 11) {
+    if (semanticResolverIndex === 2) {
+      if (
+        auxiliary instanceof Constr &&
+        VALIDATION_CEK_CONTEXT_STEP_AUXILIARY_SHAPES_V1.some((shape) =>
+          hasValidationAuxiliaryShapeV1(auxiliary, shape),
+        )
+      ) {
+        return auxiliary;
+      }
+      throw new Error(
+        "validation Cek context-step auxiliary witness must carry a cek context witness or no auxiliary",
+      );
+    }
+    const expected =
+      semanticResolverIndex === 0
+        ? VALIDATION_AUXILIARY_SHAPES_V1.none
+        : semanticResolverIndex === 1
+          ? VALIDATION_AUXILIARY_SHAPES_V1.nativeExecutionScan
+          : VALIDATION_AUXILIARY_SHAPES_V1.cekCoreStep;
+    return requireConstr({
+      value: auxiliary,
+      index: expected[0],
+      fields: expected[1],
+      label: "validation Cek auxiliary witness",
+    });
+  }
+  if (resolverIndex === 12) {
+    const expected =
+      VALIDATION_VALUE_AND_MINT_AUXILIARY_SHAPES_V1[semanticResolverIndex];
+    if (expected === undefined) {
+      throw new Error(
+        "validation ValueAndMint semantic resolver index is out of range",
+      );
+    }
+    return requireConstr({
+      value: auxiliary,
+      index: expected[0],
+      fields: expected[1],
+      label: "validation ValueAndMint auxiliary witness",
+    });
+  }
   if (resolverIndex === 9) {
     const expected =
       semanticResolverIndex === 0
@@ -1479,8 +1574,10 @@ const requireStagedOneStepArgumentV1 = (
   readonly semanticResolverIndex: number;
   readonly semanticResolverGlobalIndex: number;
   readonly evidenceHash: string;
+  readonly cekRouteMaterial?: CekRouteMaterialV1;
+  readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSetV1;
 } => {
-  validateCekSubmissionEvidenceV1(argument);
+  const validatedCekEvidence = validateCekSubmissionEvidenceV1(argument);
   if (
     !Number.isSafeInteger(argument.resolverIndex) ||
     argument.resolverIndex < 0 ||
@@ -1494,7 +1591,6 @@ const requireStagedOneStepArgumentV1 = (
   const semanticResolverCount =
     VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1[argument.resolverIndex]!;
   if (
-    semanticResolverIndex === null ||
     !Number.isSafeInteger(semanticResolverIndex) ||
     semanticResolverIndex < 0 ||
     semanticResolverIndex >= semanticResolverCount
@@ -1544,6 +1640,7 @@ const requireStagedOneStepArgumentV1 = (
       transitionData,
       argument.resolverIndex === 0 ? new Constr(0, []) : auxiliaryData,
     ),
+    ...validatedCekEvidence,
   };
 };
 
@@ -1552,7 +1649,7 @@ export const validationSemanticResolverGlobalIndexV1 = (
   semanticResolverIndex: number,
 ): number =>
   resolverIndex === 8 && semanticResolverIndex === 28
-    ? 75
+    ? 90
     : VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1[resolverIndex]! +
       semanticResolverIndex;
 
@@ -1631,44 +1728,6 @@ export const encodeScriptSourcesStageOneSpendRedeemerV1 = ({
     ];
   }
   return Data.to(new Constr(1, [new Constr(0, [...fields])]));
-};
-
-const requireDirectOneStepArgumentV1 = (
-  argument: ValidationOneStepSubmissionArgumentV1,
-): {
-  readonly evidence: ValidationOneStepEvidenceV1;
-  readonly cekRouteMaterial?: CekRouteMaterialV1;
-  readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSetV1;
-} => {
-  const validatedCekEvidence = validateCekSubmissionEvidenceV1(argument);
-  if (
-    !Number.isSafeInteger(argument.resolverIndex) ||
-    argument.resolverIndex < 11 ||
-    argument.resolverIndex > 12 ||
-    argument.semanticResolverIndex !== null
-  ) {
-    throw new Error(
-      "Direct validation one-step argument must select resolver 11 or 12",
-    );
-  }
-  const transitionData = exactPlutusDataFromCbor(
-    argument.transitionCbor,
-    "validation transition",
-  );
-  const auxiliaryData = exactPlutusDataFromCbor(
-    argument.auxiliaryCbor,
-    "validation auxiliary witness",
-  );
-  Data.from(
-    Buffer.from(argument.transitionCbor).toString("hex"),
-    ValidationOneStepWitnessV1,
-  );
-  const evidenceData = new Constr(0, [transitionData, auxiliaryData]);
-  const evidenceCbor = Data.to(evidenceData);
-  return {
-    evidence: Data.from(evidenceCbor, ValidationOneStepEvidenceV1),
-    ...validatedCekEvidence,
-  };
 };
 
 type ContinueLayout = {
@@ -3098,31 +3157,22 @@ export const validationResolverIndexV1 = (
   return resolverIndex;
 };
 
+/**
+ * Every one of the fourteen resolver indices is a `prepare_selected`
+ * validator since R5 item 1 split the cek and ValueAndMint direct resolvers,
+ * so the prepare-resolver deployment order is the resolver order itself.
+ */
 const validationPrepareResolverDeploymentIndexV1 = (
   resolverIndex: number,
 ): number => {
-  if (resolverIndex >= 0 && resolverIndex <= 8) {
+  if (
+    resolverIndex >= 0 &&
+    resolverIndex < VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1.length
+  ) {
     return resolverIndex;
-  }
-  if (resolverIndex === 9 || resolverIndex === 10) {
-    return resolverIndex;
-  }
-  if (resolverIndex === 13) {
-    return 11;
   }
   throw new Error(
     `Validation resolver ${resolverIndex.toString()} is not staged`,
-  );
-};
-
-const validationDirectResolverDeploymentIndexV1 = (
-  resolverIndex: number,
-): number => {
-  if (resolverIndex >= 11 && resolverIndex <= 12) {
-    return resolverIndex - 11;
-  }
-  throw new Error(
-    `Validation resolver ${resolverIndex.toString()} is not direct`,
   );
 };
 
@@ -3419,6 +3469,7 @@ const semanticActionFieldsV1 = ({
   outputIndex,
   transition,
   auxiliary,
+  materialRoute,
 }: {
   readonly resolverIndex: number;
   readonly semanticResolverIndex: number;
@@ -3426,12 +3477,91 @@ const semanticActionFieldsV1 = ({
   readonly outputIndex: bigint;
   readonly transition: PlutusDataValue;
   readonly auxiliary: Constr<PlutusDataValue>;
+  /**
+   * The CEK execution-selection material route
+   * (`validationCekMaterialRouteDataV1`); required by, and only by, resolver
+   * 11 semantic resolver 1.
+   */
+  readonly materialRoute?: PlutusDataValue;
 }): readonly PlutusDataValue[] => {
   const base: readonly PlutusDataValue[] = [
     inputIndex,
     outputIndex,
     transition,
   ];
+  if (resolverIndex !== 11 || semanticResolverIndex !== 1) {
+    if (materialRoute !== undefined) {
+      throw new Error(
+        "CEK material route is permitted only for the CEK execution-selection semantic resolver",
+      );
+    }
+  }
+  if (resolverIndex === 11) {
+    // `cek_v1` prepare order: finish (no auxiliary), execution selection
+    // (`VerifyExecutionSelection { …, auxiliary, material_route }`), context
+    // step (`VerifyContextStep { …, auxiliary }`) and core step
+    // (`VerifyCoreStep { …, step }`).
+    if (
+      semanticResolverIndex === 0 &&
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.none,
+      )
+    ) {
+      return base;
+    }
+    if (
+      semanticResolverIndex === 1 &&
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.nativeExecutionScan,
+      )
+    ) {
+      if (materialRoute === undefined) {
+        throw new Error(
+          "CEK execution-selection semantic redeemer requires a material route",
+        );
+      }
+      return [...base, auxiliary, materialRoute];
+    }
+    if (
+      semanticResolverIndex === 2 &&
+      VALIDATION_CEK_CONTEXT_STEP_AUXILIARY_SHAPES_V1.some((shape) =>
+        hasValidationAuxiliaryShapeV1(auxiliary, shape),
+      )
+    ) {
+      return [...base, auxiliary];
+    }
+    if (
+      semanticResolverIndex === 3 &&
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.cekCoreStep,
+      )
+    ) {
+      return [...base, ...auxiliary.fields];
+    }
+    throw new Error(
+      "Cek auxiliary witness cannot construct the selected semantic redeemer",
+    );
+  }
+  if (resolverIndex === 12) {
+    // `value_and_mint_v1` prepare order; every item resolver flattens its
+    // witness into the action (`ledger_output_index` stands in for the
+    // witness's `output_index` on the output-descriptor and output-asset
+    // actions, which is a field rename on the wire-identical position).
+    const expected =
+      VALIDATION_VALUE_AND_MINT_AUXILIARY_SHAPES_V1[semanticResolverIndex];
+    if (
+      expected !== undefined &&
+      hasValidationAuxiliaryShapeV1(auxiliary, expected)
+    ) {
+      return expected[0] === 0 ? base : [...base, ...auxiliary.fields];
+    }
+    throw new Error(
+      "ValueAndMint auxiliary witness cannot construct the selected semantic redeemer",
+    );
+  }
   if (resolverIndex === 0) {
     if (
       semanticResolverIndex === 0 &&
@@ -3905,10 +4035,13 @@ export const encodeValidationSemanticResolutionRedeemerV1 = ({
   oneStepArgument,
   inputIndex,
   outputIndex,
+  materialRoute,
 }: {
   readonly oneStepArgument: ValidationOneStepSubmissionArgumentV1;
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
+  /** Required by, and only by, the CEK execution-selection resolver (11/1). */
+  readonly materialRoute?: ValidationCekMaterialRouteV1;
 }): Buffer => {
   if (inputIndex < 0n || outputIndex < 0n) {
     throw new Error(
@@ -3927,11 +4060,23 @@ export const encodeValidationSemanticResolutionRedeemerV1 = ({
     outputIndex,
     transition: staged.transitionData,
     auxiliary: staged.auxiliary,
+    ...(materialRoute === undefined
+      ? {}
+      : { materialRoute: validationCekMaterialRouteDataV1(materialRoute) }),
   });
   return Buffer.from(
     Data.to(new Constr(1, [new Constr(0, [...fields])])),
     "hex",
   );
+};
+
+/**
+ * The semantic-resolution spend layout: the thread input, the award output
+ * and — for the CEK execution selection only — the canonical indices of the
+ * CEK program-material reference inputs, in the supplied (root) order.
+ */
+type SemanticResolutionLayout = ContinueLayout & {
+  readonly materialReferenceInputIndices: readonly bigint[];
 };
 
 const makeSemanticResolutionRedeemer = ({
@@ -3943,6 +4088,8 @@ const makeSemanticResolutionRedeemer = ({
   semanticResolverIndex,
   transition,
   auxiliary,
+  materialReferenceUtxos = [],
+  materialRoute,
   onLayout,
 }: {
   readonly threadUtxo: UTxO;
@@ -3953,7 +4100,13 @@ const makeSemanticResolutionRedeemer = ({
   readonly semanticResolverIndex: number;
   readonly transition: PlutusDataValue;
   readonly auxiliary: Constr<PlutusDataValue>;
-  readonly onLayout: (layout: ContinueLayout) => void;
+  /** CEK program-material UTxOs the route names, in root order. */
+  readonly materialReferenceUtxos?: readonly UTxO[];
+  /** Builds the CEK material route once the reference-input indices are known. */
+  readonly materialRoute?: (
+    layout: SemanticResolutionLayout,
+  ) => ValidationCekMaterialRouteV1;
+  readonly onLayout: (layout: SemanticResolutionLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
     requireOwnSpendPurpose(
@@ -3961,7 +4114,7 @@ const makeSemanticResolutionRedeemer = ({
       threadUtxo,
       "validation dispute semantic resolution",
     );
-    const layout: ContinueLayout = {
+    const layout: SemanticResolutionLayout = {
       inputIndex: requireInputIndex(
         ctx,
         threadUtxo,
@@ -3976,6 +4129,13 @@ const makeSemanticResolutionRedeemer = ({
         }),
         "validation dispute semantic resolution",
       ),
+      materialReferenceInputIndices: materialReferenceUtxos.map((utxo) =>
+        requireReferenceInputIndex(
+          ctx,
+          utxo,
+          "validation dispute semantic resolution CEK material",
+        ),
+      ),
     };
     onLayout(layout);
     // Option B (#620): the item-semantic `Verify` is transition-only, so the
@@ -3988,6 +4148,13 @@ const makeSemanticResolutionRedeemer = ({
       outputIndex: layout.outputIndex,
       transition,
       auxiliary,
+      ...(materialRoute === undefined
+        ? {}
+        : {
+            materialRoute: validationCekMaterialRouteDataV1(
+              materialRoute(layout),
+            ),
+          }),
     });
     return Data.to(new Constr(1, [new Constr(0, [...fields])]));
   }) satisfies BuildTxWithRedeemer;
@@ -4493,6 +4660,62 @@ export const submitValidationDisputePrepareSelected = async ({
   };
 };
 
+export type ValidationCekProgramMaterialReferenceOutRefsV1 = {
+  /** Exact immutable complete-material datum outref. */
+  readonly singlePublication?: string;
+  /** Exact entry datums in strict material-root order. */
+  readonly minimumMultiOutput?: readonly string[];
+};
+
+export type ValidationCekRejectedLocalRouteAttemptV1 = {
+  readonly route:
+    | "directProof"
+    | "completeSinglePublicationReference"
+    | "minimumMultiOutputReconstruction";
+  readonly failure: string;
+};
+
+const errorMessageV1 = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
+
+const isDeterministicLocalCekFitFailureV1 = (cause: unknown): boolean => {
+  const message = errorMessageV1(cause);
+  return /(?:complete signed L1 proof transaction must be no larger|maximum transaction size|maxTxSize|transaction.{0,24}(?:too large|too big)|maxValueSize|maximum value size|value.{0,24}(?:too large|too big)|maximum execution|execution (?:memory|cpu|units).{0,24}(?:exceed|too (?:large|big))|ExUnitsTooBig)/iu.test(
+    message,
+  );
+};
+
+const requireConfirmedCekMaterialReferenceUtxo = async ({
+  lucid,
+  outRef,
+  expectedAddress,
+  expectedDatum,
+  label,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly outRef: string;
+  readonly expectedAddress: string;
+  readonly expectedDatum: string;
+  readonly label: string;
+}): Promise<UTxO> => {
+  const utxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef: parseOutRef(outRef, label),
+    label,
+  });
+  if (utxo.address !== expectedAddress) {
+    throw new Error(
+      `${label} ${outRefLabel(utxo)} is locked at ${utxo.address}, expected immutable CEK material address ${expectedAddress}`,
+    );
+  }
+  if (utxo.datum !== expectedDatum) {
+    throw new Error(
+      `${label} ${outRefLabel(utxo)} does not carry the exact expected inline datum`,
+    );
+  }
+  return utxo;
+};
+
 export type SubmitValidationDisputeSemanticResolutionResult = {
   readonly txHash: string;
   readonly threadOutRef: string;
@@ -4544,7 +4767,24 @@ export type SubmitValidationDisputeSemanticResolutionResult = {
      */
     readonly projectedSignedBytes?: number;
   }[];
+  /**
+   * Present for a CEK execution selection (resolver 11, semantic resolver 1):
+   * the program-material route the submitted transaction carried, the
+   * material reference inputs it named (root order, canonical indices), and
+   * every local route attempt refused pre-sign for a deterministic fit
+   * failure before the selected route fit.
+   */
+  readonly cekRoute?: ValidationCekSelectedRouteV1;
+  readonly cekMaterialReferenceInputOutRefs?: readonly string[];
+  readonly cekMaterialReferenceInputIndices?: readonly number[];
+  readonly cekRejectedLocalRouteAttempts?: readonly ValidationCekRejectedLocalRouteAttemptV1[];
 };
+
+export type ValidationCekSelectedRouteV1 =
+  | "noCekMaterial"
+  | "directProof"
+  | "completeSinglePublicationReference"
+  | "minimumMultiOutputReconstruction";
 
 const exactSafeCborInteger = (value: unknown, label: string): number => {
   const integer =
@@ -5447,6 +5687,7 @@ export const submitValidationDisputeSemanticResolution = async ({
   proofItemReferenceOutRef,
   proofItemDelivery,
   carriageMaterial,
+  cekProgramMaterialReferenceOutRefs,
   validityRange,
   awaitConfirmation = true,
 }: {
@@ -5457,6 +5698,12 @@ export const submitValidationDisputeSemanticResolution = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly oneStepArgument: ValidationOneStepSubmissionArgumentV1;
+  /**
+   * Already-confirmed CEK program-material publications for the
+   * execution-selection route ladder (resolver 11, semantic resolver 1):
+   * consulted only after the direct-proof route is refused for size.
+   */
+  readonly cekProgramMaterialReferenceOutRefs?: ValidationCekProgramMaterialReferenceOutRefsV1;
   readonly proofItemReferenceOutRef?: string;
   /**
    * Tier-1 complete-item delivery preference (#621): "inline" carries the
@@ -5524,6 +5771,32 @@ export const submitValidationDisputeSemanticResolution = async ({
   if (threadUtxo.address !== semanticContract.spendingScriptAddress) {
     throw new Error(
       `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at semantic resolver ${staged.semanticResolverGlobalIndex.toString()}`,
+    );
+  }
+  // The CEK execution-selection, context-step and core-step semantic bodies
+  // can never fit the L1 proof envelope, so their resolutions consume the
+  // published reference script instead of attaching the validator. Resolved
+  // up front so a missing deployment entry fails fast.
+  const cekSemanticReferenceScriptUtxo =
+    resolverIndex === 11 &&
+    validationCekSemanticReferenceScriptDeploymentEntryV1(
+      staged.semanticResolverIndex,
+    ) !== undefined
+      ? await requireValidationCekSemanticReferenceScriptUtxo({
+          lucid,
+          deploymentInfo: parsedDeploymentInfo,
+          semanticResolverIndex: staged.semanticResolverIndex,
+          expectedScriptHash: semanticContract.spendingScriptHash,
+        })
+      : undefined;
+  const isCekExecutionSelection =
+    resolverIndex === 11 && staged.semanticResolverIndex === 1;
+  if (
+    !isCekExecutionSelection &&
+    cekProgramMaterialReferenceOutRefs !== undefined
+  ) {
+    throw new Error(
+      "CEK program-material publication outrefs are permitted only for the CEK execution-selection semantic resolver",
     );
   }
   const isCompleteCanonicalItem =
@@ -6459,71 +6732,318 @@ export const submitValidationDisputeSemanticResolution = async ({
       stageTransactions,
     };
   }
-  let layout: ContinueLayout | undefined;
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  let tx = lucid
-    .newTx()
-    .collectFrom([feeInput])
-    .collectFrom(
-      [threadUtxo],
-      makeSemanticResolutionRedeemer({
-        threadUtxo,
-        outputAddress:
-          contracts.validationTraceDispute.award.spendingScriptAddress,
-        outputDatum,
-        threadUnit: token.unit,
-        resolverIndex,
-        semanticResolverIndex: staged.semanticResolverIndex,
-        transition: staged.transitionData,
-        auxiliary: staged.auxiliary,
-        onLayout: (resolvedLayout) => {
-          layout = resolvedLayout;
-        },
+  // One semantic-resolution transaction, signed and envelope-checked but not
+  // yet submitted. Factored so the CEK execution selection can ladder through
+  // its program-material routes — each a complete build refused pre-sign on a
+  // deterministic fit failure before the next is tried — while every other
+  // resolver builds exactly once.
+  const prepareSemanticResolution = async ({
+    label,
+    materialReferenceUtxos = [],
+    materialRoute,
+  }: {
+    readonly label: string;
+    readonly materialReferenceUtxos?: readonly UTxO[];
+    readonly materialRoute?: (
+      layout: SemanticResolutionLayout,
+    ) => ValidationCekMaterialRouteV1;
+  }): Promise<{
+    readonly signed: TxSigned;
+    readonly layout: SemanticResolutionLayout;
+  }> => {
+    let layout: SemanticResolutionLayout | undefined;
+    signer.selectWallet(lucid);
+    const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+    let tx = lucid
+      .newTx()
+      .collectFrom([feeInput])
+      .collectFrom(
+        [threadUtxo],
+        makeSemanticResolutionRedeemer({
+          threadUtxo,
+          outputAddress:
+            contracts.validationTraceDispute.award.spendingScriptAddress,
+          outputDatum,
+          threadUnit: token.unit,
+          resolverIndex,
+          semanticResolverIndex: staged.semanticResolverIndex,
+          transition: staged.transitionData,
+          auxiliary: staged.auxiliary,
+          materialReferenceUtxos,
+          ...(materialRoute === undefined ? {} : { materialRoute }),
+          onLayout: (resolvedLayout) => {
+            layout = resolvedLayout;
+          },
+        }),
+      );
+    if (proofItemReferenceUtxo !== undefined) {
+      tx = tx.readFrom([proofItemReferenceUtxo]);
+    }
+    if (materialReferenceUtxos.length > 0) {
+      tx = tx.readFrom([...materialReferenceUtxos]);
+    }
+    tx = tx.pay
+      .ToContract(
+        contracts.validationTraceDispute.award.spendingScriptAddress,
+        { kind: "inline", value: outputDatum },
+        threadAssets(threadUtxo, token.unit),
+      )
+      .validFrom(range.validFrom)
+      .validTo(range.validTo)
+      .addSignerKey(signer.paymentKeyHash);
+    // The published reference script supplies the oversized CEK semantic
+    // validators; every other semantic validator rides inline.
+    const readiedTx =
+      cekSemanticReferenceScriptUtxo === undefined
+        ? tx.attach.SpendingValidator(semanticContract.spendingScript)
+        : tx.readFrom([cekSemanticReferenceScriptUtxo]);
+    const unsigned = await readiedTx.complete({ localUPLCEval: true });
+    if (layout === undefined) {
+      throw new Error(
+        "BuildTxWithRedeemer did not resolve validation semantic resolution layout",
+      );
+    }
+    const signed = await unsigned.sign.withWallet().complete();
+    requireL1ProofEnvelope(signed.toCBOR(), label);
+    return { signed, layout };
+  };
+  const submitPreparedSemanticResolution = async (
+    prepared: Awaited<ReturnType<typeof prepareSemanticResolution>>,
+    cekRoute?: {
+      readonly route: ValidationCekSelectedRouteV1;
+      readonly materialReferenceUtxos: readonly UTxO[];
+      readonly rejectedLocalRouteAttempts: readonly ValidationCekRejectedLocalRouteAttemptV1[];
+    },
+  ): Promise<SubmitValidationDisputeSemanticResolutionResult> => {
+    const txHash = await prepared.signed.submit();
+    if (awaitConfirmation) {
+      await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+    }
+    return {
+      txHash,
+      threadOutRef,
+      nextThreadOutRef: `${txHash}#${prepared.layout.outputIndex.toString()}`,
+      proofItemCarriage:
+        proofItemReferenceUtxo === undefined ? "direct" : "reference",
+      ...(resolvedProofItemReferenceOutRef === undefined
+        ? {}
+        : { proofItemReferenceOutRef: resolvedProofItemReferenceOutRef }),
+      ...(proofItemPublication === undefined ? {} : { proofItemPublication }),
+      resolverIndex,
+      semanticResolverIndex: staged.semanticResolverIndex,
+      semanticResolverGlobalIndex: staged.semanticResolverGlobalIndex,
+      inputIndex: Number(prepared.layout.inputIndex),
+      outputIndex: Number(prepared.layout.outputIndex),
+      awaitedConfirmation: awaitConfirmation,
+      ...(cekRoute === undefined
+        ? {}
+        : {
+            cekRoute: cekRoute.route,
+            cekMaterialReferenceInputOutRefs:
+              cekRoute.materialReferenceUtxos.map(outRefLabel),
+            cekMaterialReferenceInputIndices:
+              prepared.layout.materialReferenceInputIndices.map(Number),
+            cekRejectedLocalRouteAttempts: cekRoute.rejectedLocalRouteAttempts,
+          }),
+    };
+  };
+  if (!isCekExecutionSelection) {
+    return await submitPreparedSemanticResolution(
+      await prepareSemanticResolution({
+        label: "Validation semantic resolution",
       }),
     );
-  if (proofItemReferenceUtxo !== undefined) {
-    tx = tx.readFrom([proofItemReferenceUtxo]);
   }
-  tx = tx.pay
-    .ToContract(
-      contracts.validationTraceDispute.award.spendingScriptAddress,
-      { kind: "inline", value: outputDatum },
-      threadAssets(threadUtxo, token.unit),
-    )
-    .validFrom(range.validFrom)
-    .validTo(range.validTo)
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(semanticContract.spendingScript);
-  const unsigned = await tx.complete({ localUPLCEval: true });
-  if (layout === undefined) {
-    throw new Error(
-      "BuildTxWithRedeemer did not resolve validation semantic resolution layout",
+  // CEK execution selection: `VerifyExecutionSelection` carries the
+  // program-material route (`CekMaterialRouteV1`) beside the committed
+  // evidence, and `verify_cek_route_v1` authenticates the material it names
+  // against the immutable CEK program-material publications. A native-script
+  // selection carries no material; a Plutus/Midgard selection ladders
+  // direct proof → single publication → minimum multi-output, each refused
+  // pre-sign on a deterministic fit failure, exactly as the retired direct
+  // resolver did.
+  const routeMaterial = staged.cekRouteMaterial;
+  if (routeMaterial === undefined) {
+    return await submitPreparedSemanticResolution(
+      await prepareSemanticResolution({
+        label: "Validation-dispute CEK execution selection (no material)",
+        materialRoute: () => "NoCekMaterial",
+      }),
+      {
+        route: "noCekMaterial",
+        materialReferenceUtxos: [],
+        rejectedLocalRouteAttempts: [],
+      },
     );
   }
-  const signed = await unsigned.sign.withWallet().complete();
-  requireL1ProofEnvelope(signed.toCBOR(), "Validation semantic resolution");
-  const txHash = await signed.submit();
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
-  return {
-    txHash,
-    threadOutRef,
-    nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
-    proofItemCarriage:
-      proofItemReferenceUtxo === undefined ? "direct" : "reference",
-    ...(resolvedProofItemReferenceOutRef === undefined
-      ? {}
-      : { proofItemReferenceOutRef: resolvedProofItemReferenceOutRef }),
-    ...(proofItemPublication === undefined ? {} : { proofItemPublication }),
-    resolverIndex,
-    semanticResolverIndex: staged.semanticResolverIndex,
-    semanticResolverGlobalIndex: staged.semanticResolverGlobalIndex,
-    inputIndex: Number(layout.inputIndex),
-    outputIndex: Number(layout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
+  const rejectedLocalRouteAttempts: ValidationCekRejectedLocalRouteAttemptV1[] =
+    [];
+  const prepareCekRoute = async ({
+    route,
+    materialReferenceUtxos = [],
+    materialRoute,
+  }: {
+    readonly route: ValidationCekRejectedLocalRouteAttemptV1["route"];
+    readonly materialReferenceUtxos?: readonly UTxO[];
+    readonly materialRoute: (
+      layout: SemanticResolutionLayout,
+    ) => ValidationCekMaterialRouteV1;
+  }): Promise<
+    Awaited<ReturnType<typeof prepareSemanticResolution>> | undefined
+  > => {
+    try {
+      return await prepareSemanticResolution({
+        label: `Validation-dispute CEK ${route}`,
+        materialReferenceUtxos,
+        materialRoute,
+      });
+    } catch (cause) {
+      if (!isDeterministicLocalCekFitFailureV1(cause)) {
+        throw cause;
+      }
+      rejectedLocalRouteAttempts.push({
+        route,
+        failure: errorMessageV1(cause),
+      });
+      return undefined;
+    }
   };
+  const submitSelectedRoute = (
+    prepared: Awaited<ReturnType<typeof prepareSemanticResolution>>,
+    route: ValidationCekSelectedRouteV1,
+    materialReferenceUtxos: readonly UTxO[],
+  ): Promise<SubmitValidationDisputeSemanticResolutionResult> =>
+    submitPreparedSemanticResolution(prepared, {
+      route,
+      materialReferenceUtxos,
+      rejectedLocalRouteAttempts,
+    });
+
+  const directPrepared = await prepareCekRoute({
+    route: "directProof",
+    materialRoute: () => ({
+      DirectCekMaterial: {
+        envelope_cbor: routeMaterial.envelopeCbor.toString("hex"),
+        sidecar_cbor: routeMaterial.programMaterialSidecarCbor.toString("hex"),
+      },
+    }),
+  });
+  if (directPrepared !== undefined) {
+    return await submitSelectedRoute(directPrepared, "directProof", []);
+  }
+
+  const materialAddress =
+    contracts.validationTraceDispute.cekProgramMaterial.spendingScriptAddress;
+  const singlePublication = deriveCekSinglePublicationV1({
+    envelopeCbor: routeMaterial.envelopeCbor,
+    sidecarCbor: routeMaterial.programMaterialSidecarCbor,
+  });
+  const singleOutRef = cekProgramMaterialReferenceOutRefs?.singlePublication;
+  if (singleOutRef === undefined) {
+    throw new Error(
+      "CEK direct proof did not fit; provide an already-confirmed exact single-publication material outref before selecting a more complex route",
+    );
+  }
+  const singleReferenceUtxo = await requireConfirmedCekMaterialReferenceUtxo({
+    lucid,
+    outRef: singleOutRef,
+    expectedAddress: materialAddress,
+    expectedDatum: singlePublication.datumCbor,
+    label: "CEK single-publication reference outref",
+  });
+  const singlePrepared = await prepareCekRoute({
+    route: "completeSinglePublicationReference",
+    materialReferenceUtxos: [singleReferenceUtxo],
+    materialRoute: (layout) => {
+      const reference_input_index = layout.materialReferenceInputIndices[0];
+      if (reference_input_index === undefined) {
+        throw new Error(
+          "CEK single-publication reference is missing from final layout",
+        );
+      }
+      return {
+        SinglePublicationCekMaterial: {
+          envelope_cbor: routeMaterial.envelopeCbor.toString("hex"),
+          reference_input_index,
+        },
+      };
+    },
+  });
+  if (singlePrepared !== undefined) {
+    return await submitSelectedRoute(
+      singlePrepared,
+      "completeSinglePublicationReference",
+      [singleReferenceUtxo],
+    );
+  }
+
+  const entries = decodeMidgardCekProgramMaterialSidecarV1(
+    routeMaterial.programMaterialSidecarCbor,
+  );
+  const expectedMultiPublications =
+    deriveCekProgramMaterialPublicationsV1(entries);
+  const multiOutRefs = cekProgramMaterialReferenceOutRefs?.minimumMultiOutput;
+  if (multiOutRefs === undefined) {
+    throw new Error(
+      "CEK single-publication route did not fit; provide already-confirmed exact multi-output material outrefs in root order before selecting incremental traversal",
+    );
+  }
+  if (multiOutRefs.length !== expectedMultiPublications.length) {
+    throw new Error(
+      `CEK minimum-multi route requires exactly ${expectedMultiPublications.length.toString()} root-ordered material outrefs, got ${multiOutRefs.length.toString()}`,
+    );
+  }
+  if (new Set(multiOutRefs).size !== multiOutRefs.length) {
+    throw new Error("CEK minimum-multi material outrefs must be unique");
+  }
+  const multiReferenceUtxos = await Promise.all(
+    expectedMultiPublications.map((publication, index) =>
+      requireConfirmedCekMaterialReferenceUtxo({
+        lucid,
+        outRef: multiOutRefs[index]!,
+        expectedAddress: materialAddress,
+        expectedDatum: publication.datumCbor,
+        label: `CEK minimum-multi root-order outref ${index.toString()}`,
+      }),
+    ),
+  );
+  const multiPrepared = await prepareCekRoute({
+    route: "minimumMultiOutputReconstruction",
+    materialReferenceUtxos: multiReferenceUtxos,
+    materialRoute: (layout) => ({
+      MinimumMultiOutputCekMaterial: {
+        envelope_cbor: routeMaterial.envelopeCbor.toString("hex"),
+        reference_input_indices: [...layout.materialReferenceInputIndices],
+      },
+    }),
+  });
+  if (multiPrepared !== undefined) {
+    return await submitSelectedRoute(
+      multiPrepared,
+      "minimumMultiOutputReconstruction",
+      multiReferenceUtxos,
+    );
+  }
+
+  if (staged.cekIncrementalNecessityReceiptSet === undefined) {
+    throw new Error(
+      "CEK direct, single-publication, and minimum-multi routes did not fit; incremental traversal requires an exact receipt-bound necessity set",
+    );
+  }
+  // The incremental route fails closed on L1. `IncrementalCekMaterial` in
+  // `onchain/aiken/lib/midgard/validation-resolver-v1.ak` rejects
+  // unconditionally: its former predicate compared the redeemer's
+  // `program_envelope_hash` against a value derived from the disputer's own
+  // selected envelope, so it verified no program material at all, and the
+  // off-chain grammar it was specified against orders `proofContinuation`
+  // transactions AFTER the `proofConsumption` finalization that mints the
+  // fraud proof. Refuse here rather than construct a resolution that cannot
+  // validate. The receipt-set machinery above and the ABI variant are retained
+  // for the lease that adds the authenticated cross-transaction traversal
+  // accumulator the sound route needs.
+  throw new Error(
+    "CEK incremental traversal is not verifiable on L1: the on-chain IncrementalCekMaterial route fails closed until an authenticated cross-transaction material-traversal accumulator is deployed. Publish the complete program material and resolve through the direct, single-publication, or minimum-multi-output route.",
+  );
 };
 
 export type SubmitValidationDisputeAwardResult = ValidationFinalizationResult;
@@ -6604,397 +7124,6 @@ export const submitValidationDisputeAward = async ({
     validityRange: range,
     awaitConfirmation,
   });
-};
-
-export type SubmitValidationDisputeDirectResolutionResult =
-  ValidationFinalizationResult & {
-    readonly resolverIndex: number;
-    readonly selectedRoute:
-      | "valueAndMint"
-      | "noCekMaterial"
-      | "directProof"
-      | "completeSinglePublicationReference"
-      | "minimumMultiOutputReconstruction"
-      | "incrementalTraversal";
-    readonly rejectedLocalRouteAttempts: readonly ValidationCekRejectedLocalRouteAttemptV1[];
-  };
-
-export type ValidationCekProgramMaterialReferenceOutRefsV1 = {
-  /** Exact immutable complete-material datum outref. */
-  readonly singlePublication?: string;
-  /** Exact entry datums in strict material-root order. */
-  readonly minimumMultiOutput?: readonly string[];
-};
-
-export type ValidationCekRejectedLocalRouteAttemptV1 = {
-  readonly route:
-    | "directProof"
-    | "completeSinglePublicationReference"
-    | "minimumMultiOutputReconstruction";
-  readonly failure: string;
-};
-
-const errorMessageV1 = (cause: unknown): string =>
-  cause instanceof Error ? cause.message : String(cause);
-
-const isDeterministicLocalCekFitFailureV1 = (cause: unknown): boolean => {
-  const message = errorMessageV1(cause);
-  return /(?:complete signed L1 proof transaction must be no larger|maximum transaction size|maxTxSize|transaction.{0,24}(?:too large|too big)|maxValueSize|maximum value size|value.{0,24}(?:too large|too big)|maximum execution|execution (?:memory|cpu|units).{0,24}(?:exceed|too (?:large|big))|ExUnitsTooBig)/iu.test(
-    message,
-  );
-};
-
-const requireConfirmedCekMaterialReferenceUtxo = async ({
-  lucid,
-  outRef,
-  expectedAddress,
-  expectedDatum,
-  label,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly outRef: string;
-  readonly expectedAddress: string;
-  readonly expectedDatum: string;
-  readonly label: string;
-}): Promise<UTxO> => {
-  const utxo = await fetchUtxoByOutRef({
-    lucid,
-    outRef: parseOutRef(outRef, label),
-    label,
-  });
-  if (utxo.address !== expectedAddress) {
-    throw new Error(
-      `${label} ${outRefLabel(utxo)} is locked at ${utxo.address}, expected immutable CEK material address ${expectedAddress}`,
-    );
-  }
-  if (utxo.datum !== expectedDatum) {
-    throw new Error(
-      `${label} ${outRefLabel(utxo)} does not carry the exact expected inline datum`,
-    );
-  }
-  return utxo;
-};
-
-export const submitValidationDisputeDirectResolution = async ({
-  lucid,
-  blueprint,
-  deploymentInfo,
-  network,
-  signer,
-  threadOutRef,
-  oneStepArgument,
-  cekProgramMaterialReferenceOutRefs,
-  validityRange = validationDisputeValidityRange(Date.now()),
-  awaitConfirmation = true,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly blueprint: unknown;
-  readonly deploymentInfo: unknown;
-  readonly network: Network;
-  readonly signer: ResolvedProverSigner;
-  readonly threadOutRef: string;
-  readonly oneStepArgument: ValidationOneStepSubmissionArgumentV1;
-  readonly cekProgramMaterialReferenceOutRefs?: ValidationCekProgramMaterialReferenceOutRefsV1;
-  readonly validityRange?: ValidationDisputeValidityRange;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitValidationDisputeDirectResolutionResult> => {
-  const range = requireValidityRange(validityRange);
-  const {
-    deploymentInfo: parsedDeploymentInfo,
-    referenceScriptAuthPolicyId,
-    validationTraceDisputeCategory,
-    contracts,
-  } = await resolveValidationTraceDisputeDeploymentContracts({
-    blueprint,
-    deploymentInfo,
-    network,
-    requireFraudProofSpend: true,
-  });
-  const threadUtxo = await fetchUtxoByOutRef({
-    lucid,
-    outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
-    label: "validation direct-resolver UTxO",
-  });
-  const token = requireComputationThreadToken({
-    utxo: threadUtxo,
-    computationThreadPolicyId: contracts.computationThread.policyId,
-    categoryId: validationTraceDisputeCategory.categoryId,
-    categoryLabel: "validation-trace-dispute",
-  });
-  const inputDatum = requireResolutionDatum(threadUtxo);
-  if (inputDatum.fraud_prover !== signer.paymentKeyHash) {
-    throw new Error(
-      `Direct validation resolution requires fraud prover ${inputDatum.fraud_prover}, got ${signer.paymentKeyHash}`,
-    );
-  }
-  const resolverIndex = validationResolverIndexV1(
-    inputDatum.data.pre_state.phase,
-  );
-  if (resolverIndex !== oneStepArgument.resolverIndex) {
-    throw new Error(
-      "Validation one-step argument does not match the direct phase resolver",
-    );
-  }
-  const direct = requireDirectOneStepArgumentV1(oneStepArgument);
-  const directContract =
-    contracts.validationTraceDispute.directResolvers[
-      validationDirectResolverDeploymentIndexV1(resolverIndex)
-    ];
-  if (directContract === undefined) {
-    throw new Error("Validation direct resolver deployment is incomplete");
-  }
-  if (threadUtxo.address !== directContract.spendingScriptAddress) {
-    throw new Error(
-      `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at direct resolver ${resolverIndex.toString()}`,
-    );
-  }
-  // Resolver 11 (Cek) is direct resolver 0: its applied validator body can
-  // never fit the L1 proof envelope, so every CEK finalization must consume
-  // the published authenticated reference script instead of attaching it.
-  const cekDirectResolverReferenceUtxo =
-    resolverIndex === 11
-      ? await requireValidationCekDirectResolverReferenceScriptUtxo({
-          lucid,
-          deploymentInfo: parsedDeploymentInfo,
-          expectedScriptHash: directContract.spendingScriptHash,
-          authPolicyId: referenceScriptAuthPolicyId,
-        })
-      : undefined;
-  const baseAction = (layout: ValidationFinalizingSpendLayout) => ({
-    input_index: layout.inputIndex,
-    output_index: layout.outputIndex,
-    fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
-    challenger_evidence: direct.evidence,
-  });
-  if (resolverIndex === 12) {
-    const finalized = await submitValidationFinalizationTransaction({
-      lucid,
-      contracts,
-      signer,
-      threadUtxo,
-      threadOutRef,
-      token,
-      spendingScript: directContract,
-      spendLabel: "Validation-dispute ValueAndMint direct resolution",
-      encodeSpendRedeemer: (layout) =>
-        encodeValidationDirectResolveSpendRedeemerV1(baseAction(layout)),
-      validityRange: range,
-      awaitConfirmation,
-    });
-    return {
-      ...finalized,
-      resolverIndex,
-      selectedRoute: "valueAndMint",
-      rejectedLocalRouteAttempts: [],
-    };
-  }
-  if (direct.cekRouteMaterial === undefined) {
-    const finalized = await submitValidationFinalizationTransaction({
-      lucid,
-      contracts,
-      signer,
-      threadUtxo,
-      threadOutRef,
-      token,
-      spendingScript: directContract,
-      spendingScriptReferenceUtxo: cekDirectResolverReferenceUtxo,
-      spendLabel: "Validation-dispute CEK direct resolution",
-      encodeSpendRedeemer: (layout) =>
-        encodeValidationCekSpendRedeemerV1({
-          ...baseAction(layout),
-          material_route: "NoCekMaterial",
-        }),
-      validityRange: range,
-      awaitConfirmation,
-    });
-    return {
-      ...finalized,
-      resolverIndex,
-      selectedRoute: "noCekMaterial",
-      rejectedLocalRouteAttempts: [],
-    };
-  }
-
-  const routeMaterial = direct.cekRouteMaterial;
-  const rejectedLocalRouteAttempts: ValidationCekRejectedLocalRouteAttemptV1[] =
-    [];
-  const prepareCekRoute = async ({
-    route,
-    materialReferenceUtxos = [],
-    materialRoute,
-  }: {
-    readonly route: ValidationCekRejectedLocalRouteAttemptV1["route"];
-    readonly materialReferenceUtxos?: readonly UTxO[];
-    readonly materialRoute: (
-      layout: ValidationFinalizingSpendLayout,
-    ) => ValidationCekMaterialRouteV1;
-  }): Promise<PreparedValidationFinalizationTransaction | undefined> => {
-    try {
-      return await prepareValidationFinalizationTransaction({
-        lucid,
-        contracts,
-        signer,
-        threadUtxo,
-        threadOutRef,
-        token,
-        spendingScript: directContract,
-        spendingScriptReferenceUtxo: cekDirectResolverReferenceUtxo,
-        spendLabel: `Validation-dispute CEK ${route}`,
-        encodeSpendRedeemer: (layout) =>
-          encodeValidationCekSpendRedeemerV1({
-            ...baseAction(layout),
-            material_route: materialRoute(layout),
-          }),
-        materialReferenceUtxos,
-        validityRange: range,
-      });
-    } catch (cause) {
-      if (!isDeterministicLocalCekFitFailureV1(cause)) {
-        throw cause;
-      }
-      rejectedLocalRouteAttempts.push({
-        route,
-        failure: errorMessageV1(cause),
-      });
-      return undefined;
-    }
-  };
-  const submitSelectedRoute = async (
-    prepared: PreparedValidationFinalizationTransaction,
-    selectedRoute: SubmitValidationDisputeDirectResolutionResult["selectedRoute"],
-  ): Promise<SubmitValidationDisputeDirectResolutionResult> => ({
-    ...(await submitPreparedValidationFinalizationTransaction({
-      prepared,
-      awaitConfirmation,
-    })),
-    resolverIndex,
-    selectedRoute,
-    rejectedLocalRouteAttempts,
-  });
-
-  const directPrepared = await prepareCekRoute({
-    route: "directProof",
-    materialRoute: () => ({
-      DirectCekMaterial: {
-        envelope_cbor: routeMaterial.envelopeCbor.toString("hex"),
-        sidecar_cbor: routeMaterial.programMaterialSidecarCbor.toString("hex"),
-      },
-    }),
-  });
-  if (directPrepared !== undefined) {
-    return await submitSelectedRoute(directPrepared, "directProof");
-  }
-
-  const materialAddress =
-    contracts.validationTraceDispute.cekProgramMaterial.spendingScriptAddress;
-  const singlePublication = deriveCekSinglePublicationV1({
-    envelopeCbor: routeMaterial.envelopeCbor,
-    sidecarCbor: routeMaterial.programMaterialSidecarCbor,
-  });
-  const singleOutRef = cekProgramMaterialReferenceOutRefs?.singlePublication;
-  if (singleOutRef === undefined) {
-    throw new Error(
-      "CEK direct proof did not fit; provide an already-confirmed exact single-publication material outref before selecting a more complex route",
-    );
-  }
-  const singleReferenceUtxo = await requireConfirmedCekMaterialReferenceUtxo({
-    lucid,
-    outRef: singleOutRef,
-    expectedAddress: materialAddress,
-    expectedDatum: singlePublication.datumCbor,
-    label: "CEK single-publication reference outref",
-  });
-  const singlePrepared = await prepareCekRoute({
-    route: "completeSinglePublicationReference",
-    materialReferenceUtxos: [singleReferenceUtxo],
-    materialRoute: (layout) => {
-      const reference_input_index = layout.materialReferenceInputIndices[0];
-      if (reference_input_index === undefined) {
-        throw new Error(
-          "CEK single-publication reference is missing from final layout",
-        );
-      }
-      return {
-        SinglePublicationCekMaterial: {
-          envelope_cbor: routeMaterial.envelopeCbor.toString("hex"),
-          reference_input_index,
-        },
-      };
-    },
-  });
-  if (singlePrepared !== undefined) {
-    return await submitSelectedRoute(
-      singlePrepared,
-      "completeSinglePublicationReference",
-    );
-  }
-
-  const entries = decodeMidgardCekProgramMaterialSidecarV1(
-    routeMaterial.programMaterialSidecarCbor,
-  );
-  const expectedMultiPublications =
-    deriveCekProgramMaterialPublicationsV1(entries);
-  const multiOutRefs = cekProgramMaterialReferenceOutRefs?.minimumMultiOutput;
-  if (multiOutRefs === undefined) {
-    throw new Error(
-      "CEK single-publication route did not fit; provide already-confirmed exact multi-output material outrefs in root order before selecting incremental traversal",
-    );
-  }
-  if (multiOutRefs.length !== expectedMultiPublications.length) {
-    throw new Error(
-      `CEK minimum-multi route requires exactly ${expectedMultiPublications.length.toString()} root-ordered material outrefs, got ${multiOutRefs.length.toString()}`,
-    );
-  }
-  if (new Set(multiOutRefs).size !== multiOutRefs.length) {
-    throw new Error("CEK minimum-multi material outrefs must be unique");
-  }
-  const multiReferenceUtxos = await Promise.all(
-    expectedMultiPublications.map((publication, index) =>
-      requireConfirmedCekMaterialReferenceUtxo({
-        lucid,
-        outRef: multiOutRefs[index]!,
-        expectedAddress: materialAddress,
-        expectedDatum: publication.datumCbor,
-        label: `CEK minimum-multi root-order outref ${index.toString()}`,
-      }),
-    ),
-  );
-  const multiPrepared = await prepareCekRoute({
-    route: "minimumMultiOutputReconstruction",
-    materialReferenceUtxos: multiReferenceUtxos,
-    materialRoute: (layout) => ({
-      MinimumMultiOutputCekMaterial: {
-        envelope_cbor: routeMaterial.envelopeCbor.toString("hex"),
-        reference_input_indices: [...layout.materialReferenceInputIndices],
-      },
-    }),
-  });
-  if (multiPrepared !== undefined) {
-    return await submitSelectedRoute(
-      multiPrepared,
-      "minimumMultiOutputReconstruction",
-    );
-  }
-
-  if (direct.cekIncrementalNecessityReceiptSet === undefined) {
-    throw new Error(
-      "CEK direct, single-publication, and minimum-multi routes did not fit; incremental traversal requires an exact receipt-bound necessity set",
-    );
-  }
-  // The incremental route fails closed on L1. `IncrementalCekMaterial` in
-  // `onchain/aiken/lib/midgard/validation-resolver-v1.ak` rejects
-  // unconditionally: its former predicate compared the redeemer's
-  // `program_envelope_hash` against a value derived from the disputer's own
-  // selected envelope, so it verified no program material at all, and the
-  // off-chain grammar it was specified against orders `proofContinuation`
-  // transactions AFTER the `proofConsumption` finalization that mints the
-  // fraud proof. Refuse here rather than construct a finalization that cannot
-  // validate. The receipt-set machinery above and the ABI variant are retained
-  // for the lease that adds the authenticated cross-transaction traversal
-  // accumulator the sound route needs.
-  throw new Error(
-    "CEK incremental traversal is not verifiable on L1: the on-chain IncrementalCekMaterial route fails closed until an authenticated cross-transaction material-traversal accumulator is deployed. Publish the complete program material and resolve through the direct, single-publication, or minimum-multi-output route.",
-  );
 };
 
 export const validationDisputeDescriptorData =

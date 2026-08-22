@@ -39,6 +39,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   buildFaultProofContracts,
+  CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
   FAULT_PROOF_SHARED_TITLES,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
 } from "@al-ft/midgard-sdk";
@@ -176,6 +177,16 @@ describe("zz605/zz609 validation-trace resolver parameter arity", () => {
           dispute.canonicalDecodeItemStages.source.spendingScriptHash,
         ],
         ["proof_item_script_hash", dispute.proofItem.spendingScriptHash],
+        [
+          "cek_program_material_script_hash",
+          // The immutable CEK program-material validator declares no
+          // parameters either (R5 item 1 moved the parameter from the retired
+          // cek direct resolver onto the execution-selection semantic), so its
+          // hash is likewise a pure function of the blueprint.
+          scriptHashOf(
+            requireValidator(CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1).compiledCode,
+          ),
+        ],
       ]);
 
       const rows: string[] = [];

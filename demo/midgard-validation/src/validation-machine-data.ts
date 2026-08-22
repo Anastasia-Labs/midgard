@@ -57,11 +57,12 @@ import type {
   MidgardCekDataSequenceSummaryV1,
   MidgardCekDataSummaryV1,
 } from "./script-context-proof.js";
-import type {
-  DeterministicValidationMachineTrace,
-  ValidationMachineFieldCarriagePlanInputV1,
-  ValidationMachineSignerSetProof,
-  ValidationMachineWorkWitness,
+import {
+  type DeterministicValidationMachineTrace,
+  emptyMidgardInputResolutionScheduleV1,
+  type ValidationMachineFieldCarriagePlanInputV1,
+  type ValidationMachineSignerSetProof,
+  type ValidationMachineWorkWitness,
 } from "./validation-machine.js";
 
 type PlutusData = unknown;
@@ -992,6 +993,187 @@ const ledgerDeltaControlStatus = (
   return { stage, pendingStage };
 };
 
+/**
+ * The four cek semantic resolvers, in their `semantic_resolver_script_hashes`
+ * order under the `cek_v1` prepare validator (lib `verify_cek`): the
+ * ValueAndMint hand-off (`cek_finish_semantic_v1`), the execution selection
+ * (`cek_execution_selection_semantic_v1`), the context step
+ * (`cek_context_step_semantic_v1`) and the core step
+ * (`cek_core_step_semantic_v1`).
+ */
+export type CekStepKindV1 = "finish" | "selection" | "context" | "core";
+
+/**
+ * The cek work witness is the nine-field list
+ * `[native_control, context_control, execution_cursor, completed_cpu,
+ * completed_memory, active_state_hash, program_envelope_hash,
+ * execution_cpu_limit, execution_memory_limit]` that
+ * `encodeMidgardCekValidationWitnessV1` writes and the on-chain
+ * `cek_witness_control_v1` decodes. The four cek semantic resolvers partition
+ * the step space on the control alone, in the order the on-chain
+ * discriminators are consulted (`cek_control_is_core_step_v1`,
+ * `cek_control_is_context_step_v1`, `cek_control_is_finish_v1`, else the
+ * execution selection): a core step carries an active state, a context step
+ * carries a context control and no active state, and a step with neither is
+ * the ValueAndMint hand-off when no execution is left to select (cursor at
+ * the execution count, or no Plutus language in the bitmap) and an execution
+ * selection otherwise. The auxiliary is not consulted: each on-chain semantic
+ * resolver `expect`s the auxiliary shape of its own kind (none, a
+ * `NativeExecutionScanWitness`, a cek context witness, a
+ * `CekCoreStepWitness`), so a witness whose auxiliary does not match the kind
+ * its control names is refused at the submission encoder, exactly as the
+ * resolver would refuse it. Note that a Plutus trace never emits a `finish`
+ * step: the hand-off to ValueAndMint is claimed by the last core step (or the
+ * last native selection) itself, and `finish` is the stand-alone hand-off of
+ * a trace with nothing left to select.
+ */
+export const cekKindV1 = (
+  witness: ValidationMachineWorkWitness,
+): CekStepKindV1 => {
+  const control = asArray(decodeSingleCbor(witness.cbor), "cek_witness");
+  if (control.length !== 9) {
+    throw new Error("cek_witness has an invalid field count");
+  }
+  const nativeControl = asArray(
+    decodeSingleCbor(asBytes(control[0], "cek_witness.native_control")),
+    "cek_witness.native_control",
+  );
+  if (nativeControl.length !== 26) {
+    throw new Error("cek_witness native control has an invalid field count");
+  }
+  const executionCount = asBigInt(
+    nativeControl[21],
+    "cek_witness.native_control.execution_count",
+  );
+  const languageBitmap = asBigInt(
+    nativeControl[24],
+    "cek_witness.native_control.language_bitmap",
+  );
+  const executionCursor = asBigInt(control[2], "cek_witness.execution_cursor");
+  const hasContextControl =
+    asBytes(control[1], "cek_witness.context_control").length > 0;
+  const hasActiveState =
+    asBytes(control[5], "cek_witness.active_state_hash").length > 0;
+  const selectionExhausted =
+    executionCursor === executionCount || languageBitmap === 0n;
+  if (hasActiveState) {
+    return "core";
+  }
+  if (hasContextControl) {
+    return "context";
+  }
+  return selectionExhausted ? "finish" : "selection";
+};
+
+/**
+ * The eleven ValueAndMint semantic resolvers, in their
+ * `semantic_resolver_script_hashes` order under the `value_and_mint_v1`
+ * prepare validator (lib `verify_value_and_mint`), one per reachable
+ * `(stage, auxiliary)` pair of the stage bodies.
+ */
+export type ValueAndMintStepKindV1 =
+  | "begin"
+  | "replayBegin"
+  | "replayInput"
+  | "replayAsset"
+  | "replayFinish"
+  | "outputDescriptor"
+  | "outputAsset"
+  | "outputFinish"
+  | "mintAsset"
+  | "mintFinish"
+  | "finalize";
+
+/**
+ * `ValueAndMintControlV1` is the twelve-field list the machine writes for
+ * every ValueAndMint step; its stage (field 1) and the cursor facts the stage
+ * bodies branch on select the semantic resolver, exactly as each on-chain
+ * `verify_value_and_mint_<kind>_semantics_v1` pins them (stage, then the
+ * remaining replay schedule / replay-asset cursor for stage 2, the output and
+ * output-asset cursors for stage 3 and the mint cursor for stage 4). The
+ * auxiliary is not consulted: every kind's resolver reconstructs the
+ * auxiliary of its own shape from its action fields, so a witness whose
+ * auxiliary does not match the kind its control names is refused at the
+ * submission encoder, exactly as the resolver would refuse it.
+ */
+export const valueAndMintKindV1 = (
+  witness: ValidationMachineWorkWitness,
+): ValueAndMintStepKindV1 => {
+  const control = asArray(
+    decodeSingleCbor(witness.cbor),
+    "value_and_mint_control",
+  );
+  if (control.length !== 12) {
+    throw new Error("value_and_mint_control has an invalid field count");
+  }
+  const nativeControl = asArray(
+    decodeSingleCbor(
+      asBytes(control[0], "value_and_mint_control.native_control"),
+    ),
+    "value_and_mint_control.native_control",
+  );
+  if (nativeControl.length !== 26) {
+    throw new Error(
+      "value_and_mint_control native control has an invalid field count",
+    );
+  }
+  const stage = Number(asBigInt(control[1], "value_and_mint_control.stage"));
+  if (!Number.isSafeInteger(stage) || stage < 0 || stage > 5) {
+    throw new Error("value_and_mint_control stage is invalid");
+  }
+  switch (stage) {
+    case 0:
+      return "begin";
+    case 1:
+      return "replayBegin";
+    case 2: {
+      const remainingScheduleEmpty = asBytes(
+        control[7],
+        "value_and_mint_control.replay_remaining_schedule_hash",
+      ).equals(emptyMidgardInputResolutionScheduleV1());
+      if (remainingScheduleEmpty) {
+        return "replayFinish";
+      }
+      const replayAssetCursor = asBigInt(
+        control[4],
+        "value_and_mint_control.replay_asset_cursor",
+      );
+      return replayAssetCursor === 0n ? "replayInput" : "replayAsset";
+    }
+    case 3: {
+      const outputCursor = asBigInt(
+        control[8],
+        "value_and_mint_control.output_cursor",
+      );
+      const outputCount = asBigInt(
+        nativeControl[16],
+        "value_and_mint_control.native_control.output_count",
+      );
+      if (outputCursor === outputCount) {
+        return "outputFinish";
+      }
+      const outputAssetCursor = asBigInt(
+        control[9],
+        "value_and_mint_control.output_asset_cursor",
+      );
+      return outputAssetCursor === 0n ? "outputDescriptor" : "outputAsset";
+    }
+    case 4: {
+      const mintCursor = asBigInt(
+        control[10],
+        "value_and_mint_control.mint_cursor",
+      );
+      const mintCount = asBigInt(
+        nativeControl[19],
+        "value_and_mint_control.native_control.mint_count",
+      );
+      return mintCursor === mintCount ? "mintFinish" : "mintAsset";
+    }
+    default:
+      return "finalize";
+  }
+};
+
 const nativeScanCursor = (
   witness: ValidationMachineWorkWitness,
 ): {
@@ -1065,7 +1247,7 @@ const nativePayloadChildCount = ({
 
 export const validationSemanticResolverIndexV1 = (
   witness: ValidationMachineWorkWitness,
-): number | null => {
+): number => {
   const auxiliary = witness.auxiliary;
   switch (witness.phase) {
     case "canonicalDecode":
@@ -1275,9 +1457,44 @@ export const validationSemanticResolverIndexV1 = (
         return auxiliary.languageTag === 0 ? 1 : 2;
       }
       break;
+    // Both kind switches below are exhaustive over their kind unions and
+    // return on every arm, so neither needs (nor may carry) a trailing break.
     case "cek":
+      switch (cekKindV1(witness)) {
+        case "core":
+          return 3;
+        case "context":
+          return 2;
+        case "selection":
+          return 1;
+        case "finish":
+          return 0;
+      }
     case "valueAndMint":
-      return null;
+      switch (valueAndMintKindV1(witness)) {
+        case "begin":
+          return 0;
+        case "replayBegin":
+          return 1;
+        case "replayInput":
+          return 2;
+        case "replayAsset":
+          return 3;
+        case "replayFinish":
+          return 4;
+        case "outputDescriptor":
+          return 5;
+        case "outputAsset":
+          return 6;
+        case "outputFinish":
+          return 7;
+        case "mintAsset":
+          return 8;
+        case "mintFinish":
+          return 9;
+        case "finalize":
+          return 10;
+      }
     case "terminal":
       break;
   }
@@ -1288,7 +1505,7 @@ export const validationSemanticResolverIndexV1 = (
 
 export type ValidationOneStepArgumentV1 = {
   readonly resolverIndex: number;
-  readonly semanticResolverIndex: number | null;
+  readonly semanticResolverIndex: number;
   readonly transitionCbor: Buffer;
   readonly auxiliaryCbor: Buffer;
   readonly evidenceCbor: Buffer;

@@ -58,7 +58,6 @@ import { submitZeroInputStep01FromFiles } from "./submit-zero-input-step-01.js";
 import { submitZeroInputStep02FromFiles } from "./submit-zero-input-step-02.js";
 import {
   submitValidationDisputeAwardFromFiles,
-  submitValidationDisputeDirectResolutionFromFiles,
   submitValidationDisputeEnterResolutionFromFiles,
   submitValidationDisputeEnterTimeoutFromFiles,
   submitValidationDisputeOpenFromFiles,
@@ -162,10 +161,9 @@ const usage = `Usage:
   midgard-fault-proofs submit-validation-dispute-reveal --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-dispute-role <operator|challenger> --validation-trace-proof-cbor <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-validation-dispute-enter-resolution --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-validation-dispute-prepare-resolution --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-boundary-evidence-cbor <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs submit-validation-dispute-prepare-selected --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-transition-cbor <path> --validation-auxiliary-cbor <path> --validation-resolver-index <0..10|13> --validation-semantic-resolver-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
-  midgard-fault-proofs submit-validation-dispute-semantic-resolution --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-transition-cbor <path> --validation-auxiliary-cbor <path> --validation-resolver-index <0..10|13> --validation-semantic-resolver-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
+  midgard-fault-proofs submit-validation-dispute-prepare-selected --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-transition-cbor <path> --validation-auxiliary-cbor <path> --validation-resolver-index <0..13> --validation-semantic-resolver-index <n> [--validation-cek-envelope-cbor <path> --validation-cek-program-material-sidecar-cbor <path>] [--validation-cek-incremental-necessity-receipt-set <path>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
+  midgard-fault-proofs submit-validation-dispute-semantic-resolution --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-transition-cbor <path> --validation-auxiliary-cbor <path> --validation-resolver-index <0..13> --validation-semantic-resolver-index <n> [--validation-cek-envelope-cbor <path> --validation-cek-program-material-sidecar-cbor <path>] [--validation-cek-incremental-necessity-receipt-set <path>] [--validation-cek-single-publication-out-ref <txHash#outputIndex>] [--validation-cek-multi-output-out-ref <txHash#outputIndex> ...] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
   midgard-fault-proofs submit-validation-dispute-award --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
-  midgard-fault-proofs submit-validation-dispute-direct-resolution --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-transition-cbor <path> --validation-auxiliary-cbor <path> --validation-resolver-index <11..12> [--validation-cek-envelope-cbor <path> --validation-cek-program-material-sidecar-cbor <path>] [--validation-cek-incremental-necessity-receipt-set <path>] [--validation-cek-single-publication-out-ref <txHash#outputIndex>] [--validation-cek-multi-output-out-ref <txHash#outputIndex> ...] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
   midgard-fault-proofs submit-validation-dispute-enter-timeout --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-validation-dispute-timeout --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-zero-input-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -640,7 +638,7 @@ const writeJson = (value: unknown): void => {
 
 const requireValidationOneStepCliArguments = (
   args: ParsedArgs,
-  staged: boolean,
+  semanticResolution: boolean,
 ) => {
   if (args.validationTransitionCborPath === undefined) {
     throw new Error(
@@ -663,51 +661,42 @@ const requireValidationOneStepCliArguments = (
   const resolverIndex = Number(args.validationResolverIndex);
   const semanticText = args.validationSemanticResolverIndex;
   if (
-    staged &&
-    (semanticText === undefined || !/^(?:0|[1-9][0-9]*)$/u.test(semanticText))
+    semanticText === undefined ||
+    !/^(?:0|[1-9][0-9]*)$/u.test(semanticText)
   ) {
     throw new Error(
       `Missing or invalid --validation-semantic-resolver-index <n>.\n${usage}`,
     );
   }
-  if (!staged && semanticText !== undefined) {
-    throw new Error(
-      "Direct validation resolution must not select a semantic resolver",
-    );
-  }
   if (
-    staged &&
-    (args.validationCekEnvelopeCborPath !== undefined ||
-      args.validationCekProgramMaterialSidecarCborPath !== undefined ||
-      args.validationCekIncrementalNecessityReceiptSetPath !== undefined ||
-      args.validationCekSinglePublicationOutRef !== undefined ||
+    !semanticResolution &&
+    (args.validationCekSinglePublicationOutRef !== undefined ||
       args.validationCekMinimumMultiOutputOutRefs.length > 0)
   ) {
     throw new Error(
-      "CEK route material, necessity receipts, and publication outrefs are permitted only for submit-validation-dispute-direct-resolution",
+      "CEK publication outrefs are permitted only for submit-validation-dispute-semantic-resolution",
     );
   }
   return {
     validationTransitionCborPath: args.validationTransitionCborPath,
     validationAuxiliaryCborPath: args.validationAuxiliaryCborPath,
     validationResolverIndex: resolverIndex,
-    validationSemanticResolverIndex:
-      semanticText === undefined ? null : Number(semanticText),
-    ...(staged
-      ? {}
-      : {
-          validationCekEnvelopeCborPath: args.validationCekEnvelopeCborPath,
-          validationCekProgramMaterialSidecarCborPath:
-            args.validationCekProgramMaterialSidecarCborPath,
-          validationCekIncrementalNecessityReceiptSetPath:
-            args.validationCekIncrementalNecessityReceiptSetPath,
+    validationSemanticResolverIndex: Number(semanticText),
+    validationCekEnvelopeCborPath: args.validationCekEnvelopeCborPath,
+    validationCekProgramMaterialSidecarCborPath:
+      args.validationCekProgramMaterialSidecarCborPath,
+    validationCekIncrementalNecessityReceiptSetPath:
+      args.validationCekIncrementalNecessityReceiptSetPath,
+    ...(semanticResolution
+      ? {
           validationCekSinglePublicationOutRef:
             args.validationCekSinglePublicationOutRef,
           validationCekMinimumMultiOutputOutRefs:
             args.validationCekMinimumMultiOutputOutRefs.length === 0
               ? undefined
               : args.validationCekMinimumMultiOutputOutRefs,
-        }),
+        }
+      : {}),
   };
 };
 
@@ -803,7 +792,6 @@ export const main = async (): Promise<void> => {
     args.command !== "submit-validation-dispute-prepare-selected" &&
     args.command !== "submit-validation-dispute-semantic-resolution" &&
     args.command !== "submit-validation-dispute-award" &&
-    args.command !== "submit-validation-dispute-direct-resolution" &&
     args.command !== "submit-validation-dispute-enter-timeout" &&
     args.command !== "submit-validation-dispute-timeout" &&
     args.command !== "remove-fraudulent-block"
@@ -1054,17 +1042,17 @@ export const main = async (): Promise<void> => {
 
   if (
     args.command === "submit-validation-dispute-prepare-selected" ||
-    args.command === "submit-validation-dispute-semantic-resolution" ||
-    args.command === "submit-validation-dispute-direct-resolution"
+    args.command === "submit-validation-dispute-semantic-resolution"
   ) {
     if (args.threadOutRef === undefined) {
       throw new Error(
         `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
       );
     }
-    const staged =
-      args.command !== "submit-validation-dispute-direct-resolution";
-    const oneStep = requireValidationOneStepCliArguments(args, staged);
+    const oneStep = requireValidationOneStepCliArguments(
+      args,
+      args.command === "submit-validation-dispute-semantic-resolution",
+    );
     const config = {
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -1085,9 +1073,7 @@ export const main = async (): Promise<void> => {
     const output =
       args.command === "submit-validation-dispute-prepare-selected"
         ? await submitValidationDisputePrepareSelectedFromFiles(config)
-        : args.command === "submit-validation-dispute-semantic-resolution"
-          ? await submitValidationDisputeSemanticResolutionFromFiles(config)
-          : await submitValidationDisputeDirectResolutionFromFiles(config);
+        : await submitValidationDisputeSemanticResolutionFromFiles(config);
     writeJson(output);
     return;
   }

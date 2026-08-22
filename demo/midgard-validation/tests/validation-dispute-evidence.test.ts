@@ -173,18 +173,17 @@ const expectExactBundle = (
     cbor: bundle.oneStepArgument.auxiliaryCbor.toString("hex"),
     maxBytes: 16 * 1024 - 1,
   });
-  parseExactAikenDataCbor({
-    blueprint,
-    definitionName: "midgard/validation_machine_v1/ValidationOneStepEvidenceV1",
-    cbor: bundle.oneStepArgument.evidenceCbor.toString("hex"),
-    maxBytes: 16 * 1024 - 1,
-  });
+  // R5 item 1 retired the last direct resolvers, so
+  // `ValidationOneStepEvidenceV1` is no longer any validator's redeemer
+  // surface and the blueprint carries no definition for it: the evidence is
+  // the hashed `(transition, auxiliary)` preimage, pinned below its envelope.
+  expect(bundle.oneStepArgument.evidenceCbor.length).toBeLessThan(16 * 1024);
   expect(bundle.oneStepArgument.resolverIndex).toBeGreaterThanOrEqual(0);
   expect(bundle.oneStepArgument.resolverIndex).toBeLessThan(14);
-  expect(bundle.oneStepArgument.semanticResolverIndex === null).toBe(
-    bundle.oneStepArgument.resolverIndex === 9 ||
-      bundle.oneStepArgument.resolverIndex === 11 ||
-      bundle.oneStepArgument.resolverIndex === 12,
+  // Every index is a prepare + semantic family now: the semantic resolver
+  // index is always selected (never null).
+  expect(bundle.oneStepArgument.semanticResolverIndex).toBeGreaterThanOrEqual(
+    0,
   );
 };
 

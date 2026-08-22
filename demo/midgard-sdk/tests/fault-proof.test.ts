@@ -1281,7 +1281,7 @@ describe("fault-proof contract builder", () => {
     expect(contracts.validationTraceDispute.firstStep).toBe(
       contracts.validationTraceDispute.steps[0],
     );
-    expect(contracts.validationTraceDispute.steps).toHaveLength(106);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(121);
     expect(contracts.validationTraceDispute.resolvers).toHaveLength(
       VALIDATION_TRACE_RESOLVER_COUNT_V1,
     );
@@ -1303,8 +1303,10 @@ describe("fault-proof contract builder", () => {
       // internal stage hashes to the applied proof surface; the four
       // `reference_input_no_idx` steps add two more distinct hashes, since its
       // steps 03-04 are the same UPLC as `input_no_idx`'s; the two
-      // `invalid_signature` steps are distinct from every other family.
-    ).toBe(135);
+      // `invalid_signature` steps are distinct from every other family. R5
+      // item 1 replaced the two cek/ValueAndMint direct resolvers with two
+      // prepare resolvers plus fifteen semantic resolvers (+15 distinct).
+    ).toBe(150);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {
@@ -1761,10 +1763,9 @@ describe("fault-proof contract builder", () => {
     expect(
       rawBlueprint.validators?.find(
         ({ title }) =>
-          title ===
-          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers.cek,
+          title === VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares.cek,
       )?.parameters,
-    ).toHaveLength(4);
+    ).toHaveLength(2);
     const blueprint = filterBlueprint(loadBlueprint(), [
       ...Object.values(FAULT_PROOF_SHARED_TITLES),
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.proofItem,
@@ -1782,9 +1783,6 @@ describe("fault-proof contract builder", () => {
       ),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
-      ...Object.values(
-        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers,
-      ),
       CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
     ]);
 
@@ -1967,7 +1965,7 @@ describe("fault-proof contract builder", () => {
         expectedSemanticResolvers[57]!,
         expectedSemanticResolvers[58]!,
         expectedSemanticResolvers[59]!,
-        expectedSemanticResolvers[75]!,
+        expectedSemanticResolvers[90]!,
       ],
       [
         expectedSemanticResolvers[60]!,
@@ -1985,10 +1983,29 @@ describe("fault-proof contract builder", () => {
         expectedSemanticResolvers[68]!,
         expectedSemanticResolvers[69]!,
         expectedSemanticResolvers[70]!,
+      ],
+      [
         expectedSemanticResolvers[71]!,
         expectedSemanticResolvers[72]!,
         expectedSemanticResolvers[73]!,
         expectedSemanticResolvers[74]!,
+        expectedSemanticResolvers[75]!,
+        expectedSemanticResolvers[76]!,
+        expectedSemanticResolvers[77]!,
+        expectedSemanticResolvers[78]!,
+        expectedSemanticResolvers[79]!,
+        expectedSemanticResolvers[80]!,
+        expectedSemanticResolvers[81]!,
+      ],
+      [
+        expectedSemanticResolvers[82]!,
+        expectedSemanticResolvers[83]!,
+        expectedSemanticResolvers[84]!,
+        expectedSemanticResolvers[85]!,
+        expectedSemanticResolvers[86]!,
+        expectedSemanticResolvers[87]!,
+        expectedSemanticResolvers[88]!,
+        expectedSemanticResolvers[89]!,
       ],
     ] as const;
     const resolverHashesSchema = Data.Array(Data.Bytes());
@@ -2013,32 +2030,6 @@ describe("fault-proof contract builder", () => {
       blueprint,
       CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
     );
-    const expectedDirectResolvers = [
-      applyParamsToScript(
-        compiledScript(
-          blueprint,
-          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers.cek,
-        ),
-        [
-          contracts.computationThread.policyId,
-          contracts.fraudProof.policyId,
-          fraudProofTokenAddressData,
-          spendingScriptHash(expectedCekProgramMaterial),
-        ],
-      ),
-      applyParamsToScript(
-        compiledScript(
-          blueprint,
-          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers
-            .valueAndMint,
-        ),
-        [
-          contracts.computationThread.policyId,
-          contracts.fraudProof.policyId,
-          fraudProofTokenAddressData,
-        ],
-      ),
-    ];
     const expectedResolvers = [
       expectedPrepareResolvers[0]!,
       expectedPrepareResolvers[1]!,
@@ -2051,9 +2042,9 @@ describe("fault-proof contract builder", () => {
       expectedPrepareResolvers[8]!,
       expectedPrepareResolvers[9]!,
       expectedPrepareResolvers[10]!,
-      expectedDirectResolvers[0]!,
-      expectedDirectResolvers[1]!,
       expectedPrepareResolvers[11]!,
+      expectedPrepareResolvers[12]!,
+      expectedPrepareResolvers[13]!,
     ];
     expect(expectedResolvers).toHaveLength(VALIDATION_TRACE_RESOLVER_COUNT_V1);
     const resolverHashesData = Data.from(
@@ -2131,7 +2122,7 @@ describe("fault-proof contract builder", () => {
       ).toBeLessThan(14 * 1024);
     }
 
-    expect(contracts.validationTraceDispute.steps).toHaveLength(106);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(121);
     expect(contracts.validationTraceDispute.award.spendingScriptCBOR).toBe(
       expectedAward,
     );
@@ -2157,11 +2148,6 @@ describe("fault-proof contract builder", () => {
         ({ spendingScriptCBOR }) => spendingScriptCBOR,
       ),
     ).toEqual(expectedPrepareResolvers);
-    expect(
-      contracts.validationTraceDispute.directResolvers.map(
-        ({ spendingScriptCBOR }) => spendingScriptCBOR,
-      ),
-    ).toEqual(expectedDirectResolvers);
     expect(
       contracts.validationTraceDispute.cekProgramMaterial.spendingScriptCBOR,
     ).toBe(expectedCekProgramMaterial);

@@ -24,8 +24,6 @@ import {
 import {
   submitValidationDisputeAward,
   type SubmitValidationDisputeAwardResult,
-  submitValidationDisputeDirectResolution,
-  type SubmitValidationDisputeDirectResolutionResult,
   submitValidationDisputeEnterResolution,
   type SubmitValidationDisputeEnterResolutionResult,
   submitValidationDisputeEnterTimeout,
@@ -118,7 +116,7 @@ export type ValidationOneStepArgumentFromFiles = {
   readonly validationTransitionCborPath: string;
   readonly validationAuxiliaryCborPath: string;
   readonly validationResolverIndex: number;
-  readonly validationSemanticResolverIndex: number | null;
+  readonly validationSemanticResolverIndex: number;
   readonly validationCekEnvelopeCborPath?: string;
   readonly validationCekProgramMaterialSidecarCborPath?: string;
   readonly validationCekIncrementalNecessityReceiptSetPath?: string;
@@ -137,12 +135,11 @@ export const validationOneStepArgumentFromFiles = async (
     );
   }
   if (
-    config.validationSemanticResolverIndex !== null &&
-    (!Number.isSafeInteger(config.validationSemanticResolverIndex) ||
-      config.validationSemanticResolverIndex < 0)
+    !Number.isSafeInteger(config.validationSemanticResolverIndex) ||
+    config.validationSemanticResolverIndex < 0
   ) {
     throw new Error(
-      "validation semantic resolver index must be null or a non-negative integer",
+      "validation semantic resolver index must be a non-negative integer",
     );
   }
   const hasEnvelopePath = config.validationCekEnvelopeCborPath !== undefined;
@@ -349,8 +346,12 @@ export const submitValidationDisputePrepareSelectedFromFiles = async (
 };
 
 export const submitValidationDisputeSemanticResolutionFromFiles = async (
-  config: ValidationDisputeFromFilesBase & ValidationOneStepArgumentFromFiles,
+  config: ValidationDisputeFromFilesBase &
+    ValidationOneStepArgumentFromFiles &
+    ValidationCekPublicationOutRefsFromFiles,
 ): Promise<SubmitValidationDisputeSemanticResolutionResult> => {
+  const cekProgramMaterialReferenceOutRefs =
+    validationCekProgramMaterialReferenceOutRefsFromFiles(config);
   const [runtime, oneStepArgument] = await Promise.all([
     runtimeFromFiles(config),
     validationOneStepArgumentFromFiles(config),
@@ -360,6 +361,9 @@ export const submitValidationDisputeSemanticResolutionFromFiles = async (
     network: config.network,
     threadOutRef: config.threadOutRef,
     oneStepArgument,
+    ...(cekProgramMaterialReferenceOutRefs === undefined
+      ? {}
+      : { cekProgramMaterialReferenceOutRefs }),
     awaitConfirmation: config.awaitConfirmation,
   });
 };
@@ -415,29 +419,6 @@ export const validationCekProgramMaterialReferenceOutRefsFromFiles = (
       ? {}
       : { minimumMultiOutput: [...minimumMultiOutput] }),
   };
-};
-
-export const submitValidationDisputeDirectResolutionFromFiles = async (
-  config: ValidationDisputeFromFilesBase &
-    ValidationOneStepArgumentFromFiles &
-    ValidationCekPublicationOutRefsFromFiles,
-): Promise<SubmitValidationDisputeDirectResolutionResult> => {
-  const cekProgramMaterialReferenceOutRefs =
-    validationCekProgramMaterialReferenceOutRefsFromFiles(config);
-  const [runtime, oneStepArgument] = await Promise.all([
-    runtimeFromFiles(config),
-    validationOneStepArgumentFromFiles(config),
-  ]);
-  return await submitValidationDisputeDirectResolution({
-    ...runtime,
-    network: config.network,
-    threadOutRef: config.threadOutRef,
-    oneStepArgument,
-    ...(cekProgramMaterialReferenceOutRefs === undefined
-      ? {}
-      : { cekProgramMaterialReferenceOutRefs }),
-    awaitConfirmation: config.awaitConfirmation,
-  });
 };
 
 export const submitValidationDisputeEnterTimeoutFromFiles = async (

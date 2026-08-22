@@ -597,9 +597,6 @@ describe("fault-proof deployment contract resolution", () => {
       ),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
-      ...Object.values(
-        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers,
-      ),
       CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
     ]);
     const contracts = await Effect.runPromise(
@@ -638,16 +635,13 @@ describe("fault-proof deployment contract resolution", () => {
       network: "Preprod",
     });
     expect(resolved.validationTraceDisputeCategory.categoryId).toBe("00000006");
-    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(106);
+    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(121);
     expect(
       resolved.contracts.validationTraceDispute.semanticResolvers,
-    ).toHaveLength(76);
+    ).toHaveLength(91);
     expect(
       resolved.contracts.validationTraceDispute.prepareResolvers,
-    ).toHaveLength(12);
-    expect(
-      resolved.contracts.validationTraceDispute.directResolvers,
-    ).toHaveLength(2);
+    ).toHaveLength(14);
     expect(resolved.contracts.validationTraceDispute.resolvers).toHaveLength(
       14,
     );

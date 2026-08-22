@@ -616,34 +616,11 @@ export type ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1 =
 export const ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1 =
   ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema as unknown as ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1;
 
-export const ValidationDirectResolveActionV1Schema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  fraud_proof_mint_redeemer_index: Data.Integer(),
-  challenger_evidence: ValidationOneStepEvidenceV1Schema,
-});
-export type ValidationDirectResolveActionV1 = Data.Static<
-  typeof ValidationDirectResolveActionV1Schema
->;
-export const ValidationDirectResolveActionV1 =
-  ValidationDirectResolveActionV1Schema as unknown as ValidationDirectResolveActionV1;
-
-export const ValidationDirectResolveSpendRedeemerV1Schema = Data.Enum([
-  cancelActionSchema,
-  Data.Object({
-    Continue: Data.Tuple([ValidationDirectResolveActionV1Schema]),
-  }),
-]);
-export type ValidationDirectResolveSpendRedeemerV1 = Data.Static<
-  typeof ValidationDirectResolveSpendRedeemerV1Schema
->;
-export const ValidationDirectResolveSpendRedeemerV1 =
-  ValidationDirectResolveSpendRedeemerV1Schema as unknown as ValidationDirectResolveSpendRedeemerV1;
-
 /**
- * CEK-only complete-material carriage selected by the immutable CEK direct
- * resolver. Keep this schema separate from the generic direct resolver ABI:
- * ValueAndMint continues to use ValidationDirectResolveSpendRedeemerV1.
+ * CEK complete-material carriage named by the `material_route` field of the
+ * CEK execution-selection semantic action
+ * (`cek_execution_selection_semantic_v1.VerifyExecutionSelection`). The route
+ * is resolver evidence, never part of the hashed step witness.
  */
 export const ValidationCekMaterialRouteV1Schema = Data.Enum([
   Data.Literal("NoCekMaterial"),
@@ -676,31 +653,6 @@ export type ValidationCekMaterialRouteV1 = Data.Static<
 >;
 export const ValidationCekMaterialRouteV1 =
   ValidationCekMaterialRouteV1Schema as unknown as ValidationCekMaterialRouteV1;
-
-export const ValidationCekResolveActionV1Schema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  fraud_proof_mint_redeemer_index: Data.Integer(),
-  challenger_evidence: ValidationOneStepEvidenceV1Schema,
-  material_route: ValidationCekMaterialRouteV1Schema,
-});
-export type ValidationCekResolveActionV1 = Data.Static<
-  typeof ValidationCekResolveActionV1Schema
->;
-export const ValidationCekResolveActionV1 =
-  ValidationCekResolveActionV1Schema as unknown as ValidationCekResolveActionV1;
-
-export const ValidationCekSpendRedeemerV1Schema = Data.Enum([
-  cancelActionSchema,
-  Data.Object({
-    Continue: Data.Tuple([ValidationCekResolveActionV1Schema]),
-  }),
-]);
-export type ValidationCekSpendRedeemerV1 = Data.Static<
-  typeof ValidationCekSpendRedeemerV1Schema
->;
-export const ValidationCekSpendRedeemerV1 =
-  ValidationCekSpendRedeemerV1Schema as unknown as ValidationCekSpendRedeemerV1;
 
 export const ValidationAwardArgsV1Schema = Data.Object({
   input_index: Data.Integer(),

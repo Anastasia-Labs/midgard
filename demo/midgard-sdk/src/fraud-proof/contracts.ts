@@ -177,6 +177,8 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
     nativeScripts: "fraud_proofs/validation_trace/native_scripts_v1.main.spend",
     scriptIntegrity:
       "fraud_proofs/validation_trace/script_integrity_v1.main.spend",
+    cek: "fraud_proofs/validation_trace/cek_v1.main.spend",
+    valueAndMint: "fraud_proofs/validation_trace/value_and_mint_v1.main.spend",
     ledgerDelta: "fraud_proofs/validation_trace/ledger_delta_v1.main.spend",
   },
   semantics: {
@@ -314,6 +316,36 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/script_integrity_witness_set_semantic_v1.main.spend",
     scriptIntegrityFinalize:
       "fraud_proofs/validation_trace/script_integrity_finalize_semantic_v1.main.spend",
+    cekFinish:
+      "fraud_proofs/validation_trace/cek_finish_semantic_v1.main.spend",
+    cekExecutionSelection:
+      "fraud_proofs/validation_trace/cek_execution_selection_semantic_v1.main.spend",
+    cekContextStep:
+      "fraud_proofs/validation_trace/cek_context_step_semantic_v1.main.spend",
+    cekCoreStep:
+      "fraud_proofs/validation_trace/cek_core_step_semantic_v1.main.spend",
+    valueAndMintBegin:
+      "fraud_proofs/validation_trace/value_and_mint_begin_semantic_v1.main.spend",
+    valueAndMintReplayBegin:
+      "fraud_proofs/validation_trace/value_and_mint_replay_begin_semantic_v1.main.spend",
+    valueAndMintReplayInput:
+      "fraud_proofs/validation_trace/value_and_mint_replay_input_semantic_v1.main.spend",
+    valueAndMintReplayAsset:
+      "fraud_proofs/validation_trace/value_and_mint_replay_asset_semantic_v1.main.spend",
+    valueAndMintReplayFinish:
+      "fraud_proofs/validation_trace/value_and_mint_replay_finish_semantic_v1.main.spend",
+    valueAndMintOutputDescriptor:
+      "fraud_proofs/validation_trace/value_and_mint_output_descriptor_semantic_v1.main.spend",
+    valueAndMintOutputAsset:
+      "fraud_proofs/validation_trace/value_and_mint_output_asset_semantic_v1.main.spend",
+    valueAndMintOutputFinish:
+      "fraud_proofs/validation_trace/value_and_mint_output_finish_semantic_v1.main.spend",
+    valueAndMintMintAsset:
+      "fraud_proofs/validation_trace/value_and_mint_mint_asset_semantic_v1.main.spend",
+    valueAndMintMintFinish:
+      "fraud_proofs/validation_trace/value_and_mint_mint_finish_semantic_v1.main.spend",
+    valueAndMintFinalize:
+      "fraud_proofs/validation_trace/value_and_mint_finalize_semantic_v1.main.spend",
     ledgerDeltaOperation:
       "fraud_proofs/validation_trace/ledger_delta_operation_semantic_v1.main.spend",
     ledgerDeltaReplay:
@@ -330,10 +362,6 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/ledger_delta_finalize_semantic_v1.main.spend",
     ledgerDeltaTerminal:
       "fraud_proofs/validation_trace/ledger_delta_terminal_semantic_v1.main.spend",
-  },
-  directResolvers: {
-    cek: "fraud_proofs/validation_trace/cek_v1.main.spend",
-    valueAndMint: "fraud_proofs/validation_trace/value_and_mint_v1.main.spend",
   },
 } as const;
 
@@ -572,6 +600,8 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
     ];
     readonly semanticResolvers: readonly [
       SpendingValidator,
@@ -650,8 +680,22 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
     ];
-    readonly directResolvers: readonly [SpendingValidator, SpendingValidator];
     readonly resolvers: readonly [
       SpendingValidator,
       SpendingValidator,
@@ -2274,6 +2318,10 @@ const buildValidationTraceDisputeChain = ({
         canonicalDecodeItemSource.spendingScriptHash,
       ],
       ["proof_item_script_hash", proofItem.spendingScriptHash],
+      [
+        "cek_program_material_script_hash",
+        cekProgramMaterial.spendingScriptHash,
+      ],
     ]);
     const semanticResolverParams = (title: string): readonly Data[] =>
       declaredParameters(getBlueprintValidator(blueprint, title)).map(
@@ -2307,7 +2355,7 @@ const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtSemanticResolvers.length !== 75) {
+    if (builtSemanticResolvers.length !== 90) {
       return yield* Effect.fail(
         new Error("Validation-trace semantic resolver set is incomplete"),
       );
@@ -2388,6 +2436,21 @@ const buildValidationTraceDisputeChain = ({
       builtSemanticResolvers[72]!,
       builtSemanticResolvers[73]!,
       builtSemanticResolvers[74]!,
+      builtSemanticResolvers[75]!,
+      builtSemanticResolvers[76]!,
+      builtSemanticResolvers[77]!,
+      builtSemanticResolvers[78]!,
+      builtSemanticResolvers[79]!,
+      builtSemanticResolvers[80]!,
+      builtSemanticResolvers[81]!,
+      builtSemanticResolvers[82]!,
+      builtSemanticResolvers[83]!,
+      builtSemanticResolvers[84]!,
+      builtSemanticResolvers[85]!,
+      builtSemanticResolvers[86]!,
+      builtSemanticResolvers[87]!,
+      builtSemanticResolvers[88]!,
+      builtSemanticResolvers[89]!,
     ] as const;
     const semanticResolvers = [
       ...baseSemanticResolvers,
@@ -2458,7 +2521,7 @@ const buildValidationTraceDisputeChain = ({
         semanticResolvers[57],
         semanticResolvers[58],
         semanticResolvers[59],
-        semanticResolvers[75],
+        semanticResolvers[90],
       ],
       [semanticResolvers[60], semanticResolvers[61], semanticResolvers[62]],
       [
@@ -2472,10 +2535,29 @@ const buildValidationTraceDisputeChain = ({
         semanticResolvers[68],
         semanticResolvers[69],
         semanticResolvers[70],
+      ],
+      [
         semanticResolvers[71],
         semanticResolvers[72],
         semanticResolvers[73],
         semanticResolvers[74],
+        semanticResolvers[75],
+        semanticResolvers[76],
+        semanticResolvers[77],
+        semanticResolvers[78],
+        semanticResolvers[79],
+        semanticResolvers[80],
+        semanticResolvers[81],
+      ],
+      [
+        semanticResolvers[82],
+        semanticResolvers[83],
+        semanticResolvers[84],
+        semanticResolvers[85],
+        semanticResolvers[86],
+        semanticResolvers[87],
+        semanticResolvers[88],
+        semanticResolvers[89],
       ],
     ] as const;
     const semanticResolverHashesSchema = Data.Array(Data.Bytes());
@@ -2512,7 +2594,7 @@ const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtPrepareResolvers.length !== 12) {
+    if (builtPrepareResolvers.length !== 14) {
       return yield* Effect.fail(
         new Error("Validation-trace prepare resolver set is incomplete"),
       );
@@ -2530,47 +2612,10 @@ const buildValidationTraceDisputeChain = ({
       builtPrepareResolvers[9]!,
       builtPrepareResolvers[10]!,
       builtPrepareResolvers[11]!,
+      builtPrepareResolvers[12]!,
+      builtPrepareResolvers[13]!,
     ] as const;
 
-    const cekDirectResolver = yield* tryBuild(
-      "Failed to build validation-trace CEK direct resolver",
-      () =>
-        makeSpendingValidator(
-          network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers.cek,
-            [
-              computationThread.policyId,
-              fraudProof.policyId,
-              fraudProofTokenAddressData,
-              cekProgramMaterial.spendingScriptHash,
-              fieldPreimageCertificatePolicyId,
-            ],
-          ),
-        ),
-    );
-    const valueAndMintDirectResolver = yield* tryBuild(
-      "Failed to build validation-trace ValueAndMint direct resolver",
-      () =>
-        makeSpendingValidator(
-          network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers
-              .valueAndMint,
-            [
-              computationThread.policyId,
-              fraudProof.policyId,
-              fraudProofTokenAddressData,
-            ],
-          ),
-        ),
-    );
-    const directResolvers = [
-      cekDirectResolver,
-      valueAndMintDirectResolver,
-    ] as const;
     const resolvers = [
       prepareResolvers[0],
       prepareResolvers[1],
@@ -2583,9 +2628,9 @@ const buildValidationTraceDisputeChain = ({
       prepareResolvers[8],
       prepareResolvers[9],
       prepareResolvers[10],
-      directResolvers[0],
-      directResolvers[1],
       prepareResolvers[11],
+      prepareResolvers[12],
+      prepareResolvers[13],
     ] as const;
     if (
       new Set(resolvers.map(({ spendingScriptHash }) => spendingScriptHash))
@@ -2700,7 +2745,6 @@ const buildValidationTraceDisputeChain = ({
         stageOneRedeemerSettlement,
         ...Object.values(canonicalDecodeItemStages),
         ...prepareResolvers,
-        ...directResolvers,
       ],
       opener: dispute,
       source,
@@ -2714,7 +2758,6 @@ const buildValidationTraceDisputeChain = ({
       scriptSourcesStageOneRedeemerStages,
       prepareResolvers,
       semanticResolvers,
-      directResolvers,
       resolvers,
     };
   });

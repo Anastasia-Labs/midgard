@@ -240,8 +240,7 @@ export type InspectContractsStepOutput = {
     | "timeout"
     | "award"
     | `semantic-resolver-${number}`
-    | `prepare-resolver-${number}`
-    | `direct-resolver-${number}`;
+    | `prepare-resolver-${number}`;
   readonly scriptHash: string;
   readonly address: string;
   readonly standaloneScriptBytes: number;
@@ -1158,10 +1157,6 @@ export const inspectContracts = ({
         ...contracts.validationTraceDispute.prepareResolvers.map(
           (resolver, resolverIndex) =>
             stepOutput(`prepare-resolver-${resolverIndex}`, resolver),
-        ),
-        ...contracts.validationTraceDispute.directResolvers.map(
-          (resolver, resolverIndex) =>
-            stepOutput(`direct-resolver-${resolverIndex}`, resolver),
         ),
       ];
     const categorizedAppliedSpendingScripts: readonly {

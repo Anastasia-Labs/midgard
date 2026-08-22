@@ -767,33 +767,27 @@ describe.skipIf(!REGENERATE)(
           `resolvers length ${String(dispute.resolvers.length)} !== ${String(VALIDATION_TRACE_RESOLVER_COUNT_V1)}`,
         );
       }
-      if (dispute.prepareResolvers.length !== 12) {
+      if (dispute.prepareResolvers.length !== 14) {
         throw new Error(
-          `prepareResolvers length ${String(dispute.prepareResolvers.length)} !== 12`,
+          `prepareResolvers length ${String(dispute.prepareResolvers.length)} !== 14`,
         );
       }
-      if (dispute.semanticResolvers.length !== 76) {
+      if (dispute.semanticResolvers.length !== 91) {
         throw new Error(
-          `semanticResolvers length ${String(dispute.semanticResolvers.length)} !== 76`,
+          `semanticResolvers length ${String(dispute.semanticResolvers.length)} !== 91`,
         );
       }
 
       const prepareTitles = Object.values(
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares,
       );
-      const directTitles = Object.values(
-        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers,
-      );
-      const topLevelTitles = [
-        ...prepareTitles.slice(0, 11),
-        directTitles[0],
-        directTitles[1],
-        prepareTitles[11],
-      ];
+      const topLevelTitles = prepareTitles;
       const semanticTitles = Object.values(
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
       );
-      const prepareResolverIndexOf = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13];
+      const prepareResolverIndexOf = [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+      ];
 
       // --- run the two harness-reachable scenarios ------------------------
       const canonicalDecodeItem = await runResolverScenario({
@@ -969,11 +963,11 @@ describe.skipIf(!REGENERATE)(
         rows.push(row as never);
       }
 
-      // 12 prepare resolvers — copied from the matching topLevel row where
+      // 14 prepare resolvers — copied from the matching topLevel row where
       // the underlying compiled script is literally the same object
-      // (`resolvers[i] === prepareResolvers[i]` for every non-direct
-      // resolverIndex; confirmed in demo/midgard-sdk/src/fraud-proof/contracts.ts).
-      for (let prepareIndex = 0; prepareIndex < 12; prepareIndex += 1) {
+      // (`resolvers[i] === prepareResolvers[i]` for every resolverIndex;
+      // confirmed in demo/midgard-sdk/src/fraud-proof/contracts.ts).
+      for (let prepareIndex = 0; prepareIndex < 14; prepareIndex += 1) {
         const resolverIndex = prepareResolverIndexOf[prepareIndex]!;
         const source = topLevelRows[resolverIndex]!;
         const label = `prepare ${prepareTitles[prepareIndex]}`;
@@ -999,8 +993,8 @@ describe.skipIf(!REGENERATE)(
         }
       }
 
-      // 75 semantic resolvers.
-      for (let globalIndex = 0; globalIndex < 75; globalIndex += 1) {
+      // 90 semantic resolvers.
+      for (let globalIndex = 0; globalIndex < 90; globalIndex += 1) {
         const title = semanticTitles[globalIndex] as string;
         const scriptHash =
           dispute.semanticResolvers[globalIndex]!.spendingScriptHash;
@@ -1069,8 +1063,8 @@ describe.skipIf(!REGENERATE)(
         );
       }
 
-      if (rows.length !== 105) {
-        throw new Error(`built ${rows.length.toString()} rows, expected 105`);
+      if (rows.length !== 122) {
+        throw new Error(`built ${rows.length.toString()} rows, expected 122`);
       }
 
       const unfit = rows

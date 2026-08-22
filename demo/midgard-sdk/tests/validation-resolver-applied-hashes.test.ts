@@ -12,8 +12,6 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  AddressData,
-  addressDataFromBech32,
   buildFaultProofContracts,
   CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
   FAULT_PROOF_SHARED_TITLES,
@@ -112,8 +110,8 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
         ({ spendingScriptHash }) => spendingScriptHash,
       );
 
-    expect(deployedSemanticHashes).toHaveLength(76);
-    expect(contracts.validationTraceDispute.prepareResolvers).toHaveLength(12);
+    expect(deployedSemanticHashes).toHaveLength(91);
+    expect(contracts.validationTraceDispute.prepareResolvers).toHaveLength(14);
     expect(
       extractResolverGroup(
         "phase_a_script_precondition_resolvers",
@@ -124,7 +122,7 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
       extractResolverGroup("script_source_resolvers", "script_address"),
     ).toEqual([
       ...deployedSemanticHashes.slice(32, 60),
-      deployedSemanticHashes[75]!,
+      deployedSemanticHashes[90]!,
     ]);
     expect(
       contracts.validationTraceDispute.prepareResolvers[6].spendingScriptHash,
@@ -141,7 +139,7 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
     ).toBe(
       appliedPrepareHash(
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares.scriptSources,
-        [...deployedSemanticHashes.slice(32, 60), deployedSemanticHashes[75]!],
+        [...deployedSemanticHashes.slice(32, 60), deployedSemanticHashes[90]!],
         contracts.computationThread.policyId,
       ),
     );
@@ -185,26 +183,38 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
     );
   });
 
-  it("applies immutable CEK material identity as the exact fourth direct-resolver parameter", async () => {
+  it("applies immutable CEK material identity as the exact third parameter of the CEK execution-selection semantic resolver", async () => {
     const currentTreeBlueprint = parseFaultProofBlueprint(
       JSON.parse(readFileSync(currentTreeBlueprintPath, "utf8")) as unknown,
     );
-    const cekValidator = currentTreeBlueprint.validators.find(
+    const selectionValidator = currentTreeBlueprint.validators.find(
       (entry) =>
         entry.title ===
-        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers.cek,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+          .cekExecutionSelection,
+    );
+    const contextStepValidator = currentTreeBlueprint.validators.find(
+      (entry) =>
+        entry.title ===
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics.cekContextStep,
     );
     const materialValidator = currentTreeBlueprint.validators.find(
       (entry) => entry.title === CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
     );
-    if (cekValidator === undefined || materialValidator === undefined) {
-      throw new Error("CEK direct or program-material validator is missing");
+    if (
+      selectionValidator === undefined ||
+      contextStepValidator === undefined ||
+      materialValidator === undefined
+    ) {
+      throw new Error("CEK semantic or program-material validator is missing");
     }
-    // Five since #592 added `field_preimage_certificate_policy_id`. This row
-    // asserted four while the blueprint declared five and the builder applied
-    // five — a stale expectation that never ran, because this leg was dormant
-    // without MIDGARD_REAL_BLUEPRINT_PATH (#609).
-    expect(cekValidator.parameters).toHaveLength(5);
+    // The CEK direct resolver (five parameters since #592) was split into a
+    // prepare validator plus four semantic resolvers. Complete program
+    // material is admitted only at the execution-selection boundary, so the
+    // material identity is that resolver's third parameter; the field-access
+    // door's certificate policy belongs to the context-step resolver alone.
+    expect(selectionValidator.parameters).toHaveLength(3);
+    expect(contextStepValidator.parameters).toHaveLength(3);
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
         blueprint: currentTreeBlueprint,
@@ -213,14 +223,6 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
         fraudProofCataloguePolicyId: "cc".repeat(28),
       }),
     );
-    const fraudProofAddressData = Data.from(
-      Data.to(
-        await Effect.runPromise(
-          addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
-        ),
-        AddressData,
-      ),
-    );
     const materialHash = validatorToScriptHash({
       type: "PlutusV3",
       script: materialValidator.compiledCode,
@@ -228,43 +230,48 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
     expect(
       contracts.validationTraceDispute.cekProgramMaterial.spendingScriptHash,
     ).toBe(materialHash);
-    expect(
-      contracts.validationTraceDispute.directResolvers[0].spendingScriptHash,
-    ).toBe(
+    const awardHash = contracts.validationTraceDispute.award.spendingScriptHash;
+    const selectionSemantic =
+      contracts.validationTraceDispute.semanticResolvers[68];
+    const contextStepSemantic =
+      contracts.validationTraceDispute.semanticResolvers[69];
+    expect(selectionSemantic.spendingScriptHash).toBe(
       validatorToScriptHash({
         type: "PlutusV3",
-        script: applyParamsToScript(cekValidator.compiledCode, [
+        script: applyParamsToScript(selectionValidator.compiledCode, [
+          awardHash,
           contracts.computationThread.policyId,
-          contracts.fraudProof.policyId,
-          fraudProofAddressData,
           materialHash,
+        ]),
+      }),
+    );
+    expect(contextStepSemantic.spendingScriptHash).toBe(
+      validatorToScriptHash({
+        type: "PlutusV3",
+        script: applyParamsToScript(contextStepValidator.compiledCode, [
+          awardHash,
+          contracts.computationThread.policyId,
           fieldPreimageCertificatePolicyId(currentTreeBlueprint),
         ]),
       }),
     );
-    // Both shorter applications are always-succeeds scripts under Plutus V3
+    // Every shorter application is an always-succeeds script under Plutus V3
     // (#605): the deployment must be neither.
-    for (const shortParams of [
-      [
-        contracts.computationThread.policyId,
-        contracts.fraudProof.policyId,
-        fraudProofAddressData,
-      ],
-      [
-        contracts.computationThread.policyId,
-        contracts.fraudProof.policyId,
-        fraudProofAddressData,
-        materialHash,
-      ],
-    ]) {
-      expect(
-        contracts.validationTraceDispute.directResolvers[0].spendingScriptHash,
-      ).not.toBe(
-        validatorToScriptHash({
-          type: "PlutusV3",
-          script: applyParamsToScript(cekValidator.compiledCode, shortParams),
-        }),
-      );
+    for (const [validator, deployed] of [
+      [selectionValidator, selectionSemantic],
+      [contextStepValidator, contextStepSemantic],
+    ] as const) {
+      for (const shortParams of [
+        [awardHash],
+        [awardHash, contracts.computationThread.policyId],
+      ]) {
+        expect(deployed.spendingScriptHash).not.toBe(
+          validatorToScriptHash({
+            type: "PlutusV3",
+            script: applyParamsToScript(validator.compiledCode, shortParams),
+          }),
+        );
+      }
     }
   });
 });
