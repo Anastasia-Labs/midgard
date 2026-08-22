@@ -1,34 +1,20 @@
-use aiken/collection/list
 use aiken/crypto.{ScriptHash}
-use cardano/address.{Script}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction,
-}
+use cardano/transaction.{OutputReference, Transaction}
 use midgard/canonical_decode_item_staging_v1 as staging
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/native_tx_field_access_v1.{FieldCarriageV1, Inline}
 use midgard/validation_machine_v1.{
-  TransactionFieldItemWitness, ValidationAuxiliaryWitnessV1,
-  ValidationOneStepWitnessV1, ValidationProofItemDatumV1,
+  NoAuxiliaryWitness, ValidationOneStepWitnessV1,
 }
 use midgard/validation_resolution_v1.{hash_one_step_evidence}
 use midgard/validation_semantic_v1.{Datum}
-use midgard/validation_trace_v1.{ValidationMachineStateV1}
 
 pub type ActionV1 {
   Verify {
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
-    carriage: FieldCarriageV1,
-  }
-  VerifyReference {
-    input_index: Int,
-    output_index: Int,
-    transition: ValidationOneStepWitnessV1,
-    reference_input_index: Int,
   }
 }
 
@@ -38,7 +24,6 @@ pub type SpendRedeemer =
 validator main(
   source_binder_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
-  proof_item_script_hash: ScriptHash,
 ) {
   spend(
     datum: Option<Datum>,
@@ -56,7 +41,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Verify { input_index, output_index, transition, carriage }) ->
+      ct.Continue(Verify { input_index, output_index, transition }) ->
         bind_item_source(
           source_binder_script_hash,
           computation_thread_policy_id,
@@ -64,36 +49,9 @@ validator main(
           input_index,
           output_index,
           transition,
-          TransactionFieldItemWitness { carriage },
           own_out_ref,
           tx,
         )
-      ct.Continue(VerifyReference {
-        input_index,
-        output_index,
-        transition,
-        reference_input_index,
-      }) -> {
-        let pre = datum |> semantic_pre_state
-        let auxiliary = proof_item_from_reference(
-          proof_item_script_hash,
-          pre,
-          reference_input_index,
-          tx.reference_inputs,
-        )
-        expect TransactionFieldItemWitness { carriage } = auxiliary
-        bind_item_source(
-          source_binder_script_hash,
-          computation_thread_policy_id,
-          datum,
-          input_index,
-          output_index,
-          transition,
-          TransactionFieldItemWitness { carriage },
-          own_out_ref,
-          tx,
-        )
-      }
     }
   }
 
@@ -102,6 +60,13 @@ validator main(
   }
 }
 
+/// Option B (#620): the commitment this stage re-checks is transition-only —
+/// `hash_one_step_evidence(transition, NoAuxiliaryWitness)` — so no carriage
+/// reaches this stage in any form and it is item-size-independent on every
+/// route. Content is proven later, once, at the observe stage's §8.8 field
+/// door; what this stage contributes is installing the transition into the
+/// typed staging chain under its own script hash, which is the provenance the
+/// downstream stages rely on.
 fn bind_item_source(
   source_binder_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
@@ -109,14 +74,13 @@ fn bind_item_source(
   input_index: Int,
   output_index: Int,
   transition: ValidationOneStepWitnessV1,
-  auxiliary: ValidationAuxiliaryWitnessV1,
   own_out_ref: OutputReference,
   tx: Transaction,
 ) -> Bool {
   let Transaction { inputs, outputs, .. } = tx
   expect Some(step_datum) = datum
   let transition_data: Data = transition
-  let auxiliary_data: Data = auxiliary
+  let auxiliary_data: Data = NoAuxiliaryWitness
   continue(
     computation_thread_policy_id,
     step_datum,
@@ -142,40 +106,4 @@ fn bind_item_source(
       }
     },
   )
-}
-
-fn proof_item_from_reference(
-  proof_item_script_hash: ScriptHash,
-  pre: ValidationMachineStateV1,
-  reference_input_index: Int,
-  reference_inputs: List<Input>,
-) -> ValidationAuxiliaryWitnessV1 {
-  expect
-      Some(Input {
-        output: Output {
-          address,
-          datum: InlineDatum(item_data),
-          reference_script: None,
-          ..
-        },
-        ..
-      })
-    = reference_inputs |> list.at(reference_input_index)
-  expect Script(actual_script_hash) = address.payment_credential
-  expect actual_script_hash == proof_item_script_hash
-  expect proof_item: ValidationProofItemDatumV1 = item_data
-  expect proof_item.version == 1
-  expect proof_item.transaction_id == pre.transaction_id
-  expect proof_item.transaction_commitment == pre.transaction_commitment
-  // §8.1 `Inline` is constructed here, from bytes read off the publication's
-  // own datum: the consuming step names a reference input, not a tier, so no
-  // prover can name a carriage the door was not going to hash itself.
-  TransactionFieldItemWitness {
-    carriage: Inline { preimage: proof_item.field_preimage },
-  }
-}
-
-fn semantic_pre_state(datum: Option<Datum>) {
-  expect Some(ct.StepDatum { data: Some(state), .. }) = datum
-  state.resolution.pre_state
 }

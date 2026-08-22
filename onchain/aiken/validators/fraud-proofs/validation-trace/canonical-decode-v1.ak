@@ -1,12 +1,11 @@
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
-use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/validation_machine_v1.{
-  ValidationOneStepWitnessV1, structural_transition_is_valid,
+  NoAuxiliaryWitness, ValidationOneStepWitnessV1, structural_transition_is_valid,
 }
 use midgard/validation_resolution_v1.{
   PreparedValidationResolutionStateV1, hash_one_step_evidence,
@@ -21,23 +20,22 @@ pub type ActionV1 {
     output_index: Int,
     semantic_resolver_index: Int,
     transition: ValidationOneStepWitnessV1,
-    auxiliary: Data,
-  }
-  PrepareSelectedByEvidenceHash {
-    input_index: Int,
-    output_index: Int,
-    semantic_resolver_index: Int,
-    transition: ValidationOneStepWitnessV1,
-    evidence_hash: ByteArray,
   }
 }
 
 pub type SpendRedeemer =
   ct.StepRedeemer<ActionV1>
 
-/// Canonical complete-item preparation binds the already-published item by
-/// hash without widening the shared preparation ABI for every other phase.
-fn prepare_selected_with_evidence_hash(
+/// Option B (#620): the canonical-decode preparation commits to the transition
+/// alone — `hash_one_step_evidence(transition, NoAuxiliaryWitness)`, computed
+/// on-chain. The delivery wrapper is no longer part of the committed preimage,
+/// so the carriage tier stays free until the observe stage dereferences it and
+/// the §8.8 field door there is the sole content gate. The retired
+/// `PrepareSelectedByEvidenceHash` arm existed only to keep auxiliary bytes out
+/// of the prepare transaction; with the transition never carrying field
+/// preimage bytes, the on-chain hash is cheap and a second arm would be a
+/// dead-arm hazard (9f191e9a).
+fn prepare_selected(
   semantic_resolver_script_hashes: List<ScriptHash>,
   computation_thread_policy_id: PolicyId,
   datum: Option<Datum>,
@@ -45,7 +43,6 @@ fn prepare_selected_with_evidence_hash(
   output_index: Int,
   semantic_resolver_index: Int,
   transition: ValidationOneStepWitnessV1,
-  evidence_hash: ByteArray,
   own_out_ref: OutputReference,
   tx: Transaction,
 ) -> Bool {
@@ -55,6 +52,9 @@ fn prepare_selected_with_evidence_hash(
     semantic_resolver_script_hashes,
     semantic_resolver_index,
   )
+  let transition_data: Data = transition
+  let auxiliary_data: Data = NoAuxiliaryWitness
+  let evidence_hash = hash_one_step_evidence(transition_data, auxiliary_data)
   continue(
     computation_thread_policy_id,
     step_datum,
@@ -76,7 +76,6 @@ fn prepare_selected_with_evidence_hash(
       expect
         hash_machine_state(transition.claimed_successor) == state.challenger_successor_hash
       expect structural_transition_is_valid(state.pre_state, transition)
-      expect bytearray.length(evidence_hash) == 32
       let expected_output_state: Data = PreparedValidationResolutionStateV1 {
         version: prepared_resolution_version,
         resolution: state,
@@ -119,30 +118,8 @@ validator main(
         output_index,
         semantic_resolver_index,
         transition,
-        auxiliary,
-      }) -> {
-        let transition_data: Data = transition
-        prepare_selected_with_evidence_hash(
-          semantic_resolver_script_hashes,
-          computation_thread_policy_id,
-          datum,
-          input_index,
-          output_index,
-          semantic_resolver_index,
-          transition,
-          hash_one_step_evidence(transition_data, auxiliary),
-          own_out_ref,
-          tx,
-        )
-      }
-      ct.Continue(PrepareSelectedByEvidenceHash {
-        input_index,
-        output_index,
-        semantic_resolver_index,
-        transition,
-        evidence_hash,
       }) ->
-        prepare_selected_with_evidence_hash(
+        prepare_selected(
           semantic_resolver_script_hashes,
           computation_thread_policy_id,
           datum,
@@ -150,7 +127,6 @@ validator main(
           output_index,
           semantic_resolver_index,
           transition,
-          evidence_hash,
           own_out_ref,
           tx,
         )

@@ -14,7 +14,6 @@ use midgard/validation_machine_v1.{
   TransactionFieldItemWitness, ValidationAuxiliaryWitnessV1,
   ValidationProofItemDatumV1, observe_canonical_decode_item_v1,
 }
-use midgard/validation_resolution_v1.{hash_one_step_evidence}
 use midgard/validation_trace_v1.{ValidationMachineStateV1}
 
 pub type Datum =
@@ -112,7 +111,6 @@ fn observe_item(
 ) -> Bool {
   let Transaction { inputs, outputs, .. } = tx
   expect Some(step_datum) = datum
-  let auxiliary_data: Data = auxiliary
   continue(
     computation_thread_policy_id,
     step_datum,
@@ -131,11 +129,15 @@ fn observe_item(
     ) {
       expect Some(prepared) = input_state
       expect TransactionFieldItemWitness { carriage } = auxiliary
-      let transition_data: Data = prepared.authenticated.transition
-      // The one place the §8.8 door runs for the complete-item path. Everything
-      // downstream of this stage consumes the numbers it recorded; see
-      // `CanonicalDecodeItemObservationV1` on why a later stage cannot re-check
-      // them from a datum alone.
+      // The one place the §8.8 door runs for the complete-item path — and,
+      // since Option B (#620) narrowed the prepare-time commitment to the
+      // transition alone, the sole content gate on this path: the retired
+      // evidence-hash equality here re-checked a commitment that froze the
+      // delivery wrapper three transactions early, while the door binds the
+      // carriage's bytes to the challenged block's own field commitment
+      // whichever tier delivers them. Everything downstream of this stage
+      // consumes the numbers it recorded; see `CanonicalDecodeItemObservationV1`
+      // on why a later stage cannot re-check them from a datum alone.
       let expected_output_state: Data = staging.observe(
         prepared,
         observe_canonical_decode_item_v1(
@@ -150,7 +152,6 @@ fn observe_item(
       )
       and {
         staging.prepared_is_well_formed(prepared),
-        hash_one_step_evidence(transition_data, auxiliary_data) == prepared.authenticated.base.evidence_hash,
         output_script_hash == proof_verifier_script_hash,
         output_state == expected_output_state,
       }
