@@ -18,6 +18,12 @@
  *   permissive construct, a vacuously-passing test, a dropped schema field, a
  *   dropped declared test, or a pre-claimed closure row; and
  * - the writer refuses to overwrite an implemented family.
+ *
+ * The one positive control is the mirror sweep at the end: the terminal-args
+ * pattern the generator emits is compared against EVERY shipped family's
+ * terminal step module (decision 0005 R7), so a generator that drifts from the
+ * deployed families — or a family that drifts from the generator — is caught in
+ * one place rather than per family.
  */
 import { existsSync, globSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
@@ -159,6 +165,87 @@ const artifact = (
   }
   return found;
 };
+
+const FRAUD_PROOF_LIB_ROOT = join(
+  REPO_ROOT,
+  "onchain/aiken/lib/midgard/fraud-proofs",
+);
+
+/**
+ * Field names of an Aiken record declaration, in declared order.
+ *
+ * Same idiom the Q11 family gate already parses with
+ * (`demo/scripts/verify-canonical-v1-proof-family-q11.mjs`): `aiken fmt` — which
+ * the pre-commit hook and CI both enforce — puts every field of a `pub type`
+ * record at exactly two spaces of indentation, so a two-space `name:` line is a
+ * field while a `///` doc line and the continuation lines of a multi-line
+ * generic type are not.
+ */
+const aikenRecordFieldNames = (
+  source: string,
+  type: string,
+): readonly string[] => {
+  const header = `pub type ${type} {`;
+  const start = source.indexOf(header);
+  if (start < 0) {
+    throw new Error(`source does not declare ${type}`);
+  }
+  const body = source.slice(start + header.length);
+  const end = body.indexOf("\n}");
+  if (end < 0) {
+    throw new Error(`declaration of ${type} is unterminated`);
+  }
+  return [...body.slice(0, end).matchAll(/^ {2}([a-z_][a-z0-9_]*):/gmu)].map(
+    (match) => match[1] as string,
+  );
+};
+
+/** `<family>/step-NN.ak` of the last numbered step every shipped family ships. */
+const shippedTerminalStepModules = (): readonly {
+  readonly id: string;
+  readonly family: string;
+  readonly path: string;
+}[] => {
+  const lastPerFamily = new Map<string, string>();
+  for (const absolute of globSync(
+    `${FRAUD_PROOF_LIB_ROOT}/*/step-[0-9][0-9].ak`,
+  ).sort()) {
+    const relative = absolute.slice(FRAUD_PROOF_LIB_ROOT.length + 1);
+    const family = relative.slice(0, relative.indexOf("/"));
+    // The glob is sorted and step numbers are zero-padded, so the last entry
+    // seen for a family is its terminal step.
+    lastPerFamily.set(family, absolute);
+  }
+  return [...lastPerFamily.entries()].map(([family, path]) => ({
+    id: `${family}/${path.slice(path.lastIndexOf("/") + 1)}`,
+    family,
+    path,
+  }));
+};
+
+/**
+ * Terminal step modules that still trail `fraud_proof_mint_redeemer_index`
+ * behind their family-specific arguments instead of leading with it.
+ *
+ * Escalated as issue #626 and deliberately NOT reordered here: an `Args`
+ * reorder moves a validator's redeemer encoding on chain, so it is only ever
+ * done inside a sanctioned regeneration wave (decision 0005 R5). `no-input`'s
+ * terminal step was the fourth member of this list and was normalized under
+ * decision 0005 R7 inside the #617 wave; these three empty the list the moment
+ * #626 is ruled in, and no other exemption may join it.
+ */
+const TERMINAL_ARGS_EXCEPTIONS_ISSUE_626: readonly string[] = [
+  "invalid-signature/step-02.ak",
+  "no-reference-input/step-04.ak",
+  "withdrawn-reference-input/step-03.ak",
+];
+
+const startsWithPrefix = (
+  fields: readonly string[],
+  prefix: readonly string[],
+): boolean =>
+  fields.length >= prefix.length &&
+  prefix.every((name, index) => fields[index] === name);
 
 describe("Q02 spec parsing is strict and fail-closed", () => {
   it("parses a complete family specification", () => {
@@ -1413,5 +1500,123 @@ describe("Q02 generated shape matches the deployed families", () => {
     expect(sdk.indexOf("fraud_proof_mint_redeemer_index")).toBeLessThan(
       sdk.indexOf("spend_inputs_opening"),
     );
+  });
+
+  it("mirrors the terminal-args pattern in every shipped family, not only zero-input", async () => {
+    // The pattern is read back out of the generator's own emitted module rather
+    // than restated here, so this sweep moves with the generator instead of
+    // pinning a second, drifting copy of its rule. A sentinel family-specific
+    // argument marks where the boilerplate prefix ends.
+    const sentinel = "sentinel_family_argument";
+    const sentinelSpec: FraudProofFamilyScaffoldSpecV1 =
+      parseFraudProofFamilyScaffoldSpecV1(
+        mutatedSpec((raw) => {
+          const steps = raw.steps as Record<string, unknown>[];
+          steps[1].argsFields = [
+            { name: sentinel, type: "int", doc: "Sentinel family argument." },
+          ];
+        }),
+      );
+    const generated = aikenRecordFieldNames(
+      artifact(
+        generateFraudProofFamilyScaffoldV1({ spec: sentinelSpec }),
+        `onchain/aiken/lib/midgard/fraud-proofs/${sentinelSpec.family}/step-02.ak`,
+      ).contents,
+      "Args",
+    );
+    expect(generated.at(-1)).toBe(sentinel);
+    const prefix = generated.slice(0, -1);
+    // The shipped standard: positional indices, then the mint-redeemer index,
+    // then whatever the family itself needs.
+    expect(prefix).toEqual([
+      "input_index",
+      "output_index",
+      "fraud_proof_mint_redeemer_index",
+    ]);
+
+    const terminals = shippedTerminalStepModules();
+    // Control against a sweep that measures nothing: every family that ships
+    // numbered step modules must be reached, including the deep one.
+    expect(terminals.length).toBeGreaterThanOrEqual(17);
+    expect(terminals.map((terminal) => terminal.id)).toEqual(
+      expect.arrayContaining([
+        "zero-input/step-02.ak",
+        "double-spend/step-04.ak",
+        "no-input/step-04.ak",
+        "missing-native-script-tx/step-06.ak",
+        ...TERMINAL_ARGS_EXCEPTIONS_ISSUE_626,
+      ]),
+    );
+
+    const deviating: string[] = [];
+    const conforming: string[] = [];
+    for (const terminal of terminals) {
+      const fields = aikenRecordFieldNames(
+        await readFile(terminal.path, "utf8"),
+        "Args",
+      );
+      // A parser that quietly stopped finding fields would report every module
+      // conforming, so an empty field list is a failure, never a pass.
+      expect(
+        fields.length,
+        `${terminal.id} declares no Args fields`,
+      ).toBeGreaterThan(0);
+      (startsWithPrefix(fields, prefix) ? conforming : deviating).push(
+        terminal.id,
+      );
+    }
+
+    // Exactly the three modules issue #626 carries deviate, and no others. When
+    // #626 is ruled in and they are reordered, this list empties and the
+    // constant above goes with it.
+    expect(deviating).toEqual([...TERMINAL_ARGS_EXCEPTIONS_ISSUE_626]);
+    // Decision 0005 R7: `no-input/step-04` is normalized inside the #617 wave,
+    // so the generator now covers it with no per-family special case.
+    expect(conforming).toContain("no-input/step-04.ak");
+
+    // Hostile control: the pre-normalization `no-input/step-04` order must
+    // still be measured as a deviation. A checker that accepted it would call
+    // this sweep green while the divergence R7 exists to close was still there.
+    const preNormalizationNoInputStep04 = [
+      "pub type Args {",
+      "  input_index: Int,",
+      "  output_index: Int,",
+      "  /// The prover's chosen carriage for the transactions-root absence proof.",
+      "  non_membership_in_txs: NonMembershipCarriage,",
+      "  fraud_proof_mint_redeemer_index: Int,",
+      "}",
+    ].join("\n");
+    expect(
+      aikenRecordFieldNames(preNormalizationNoInputStep04, "Args"),
+    ).toEqual([
+      "input_index",
+      "output_index",
+      "non_membership_in_txs",
+      "fraud_proof_mint_redeemer_index",
+    ]);
+    expect(
+      startsWithPrefix(
+        aikenRecordFieldNames(preNormalizationNoInputStep04, "Args"),
+        prefix,
+      ),
+    ).toBe(false);
+
+    // Control on the parser itself: a multi-line generic argument contributes
+    // its own field name and none of its type arguments, so the family this
+    // shape belongs to is judged on its fields rather than on line noise.
+    expect(
+      aikenRecordFieldNames(
+        await readFile(
+          join(FRAUD_PROOF_LIB_ROOT, "withdrawn-reference-input/step-03.ak"),
+          "utf8",
+        ),
+        "Args",
+      ),
+    ).toEqual([
+      "input_index",
+      "output_index",
+      "withdrawal_membership",
+      "fraud_proof_mint_redeemer_index",
+    ]);
   });
 });
