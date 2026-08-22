@@ -324,12 +324,11 @@ export const countedMachineFieldChunkStepsV1 = (
  * exists.
  *
  * The tier is therefore decided at the one place that has a transaction:
- * `buildValidationOneStepArgumentV1`, which is also where the auxiliary is first
- * hashed into committed evidence (`prepare_semantic_resolution` in
- * `onchain/aiken/lib/midgard/validation-resolution-v1.ak:163-182`, staged by the
- * PrepareSelected transaction). Nothing is committed before that point, so
- * resolving there is not a late substitution — it is the first moment a tier can
- * honestly be named.
+ * `buildValidationOneStepArgumentV1`. The committed `evidence_hash` is
+ * transition-only (#619) — no carriage is ever hashed into it — so resolving
+ * there is not a late substitution: the observe-stage field door verifies
+ * whatever carriage arrives by content, and the tier is honestly named at the
+ * first moment one can be.
  *
  * **This is why the producer never refuses.** It is not only the dispute path
  * that builds traces: the operator's block-build routine runs this exact

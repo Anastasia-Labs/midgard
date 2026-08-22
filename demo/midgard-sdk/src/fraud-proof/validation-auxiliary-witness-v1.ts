@@ -1257,7 +1257,7 @@ export const ValidationAuxiliaryWitnessV1 =
  * opening them against the field commitment — an opening §4 made unsatisfiable
  * (#592). Under §8 the unit that authenticates is the whole preimage, so the
  * whole preimage is what a publication carries;
- * `canonical_decode_item_semantic_v1`'s `VerifyReference` route wraps it as
+ * `canonical_decode_item_observe_v1`'s `ObserveReference` arm wraps it as
  * `Inline` carriage and the door hashes it once against the committed field
  * hash. `transaction_id` and `transaction_commitment` are what stop a look-alike
  * UTxO passing a preimage off as belonging to a different dispute.

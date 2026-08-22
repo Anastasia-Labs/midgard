@@ -163,11 +163,10 @@ const fieldCarriageData = (carriage: MidgardFieldCarriageV1): PlutusData => {
  * This is the seam. A trace records *which field a step read*; a carriage says
  * *how those bytes reach the consuming transaction*, and tiers 2–3 answer that
  * with positional reference-input indices §8.7 requires to be resolved by
- * content against a concrete transaction. So the tier is named here, at the
- * point where the auxiliary is first hashed into committed evidence
- * (`prepare_semantic_resolution`,
- * `onchain/aiken/lib/midgard/validation-resolution-v1.ak:163-182`), and not one
- * step earlier.
+ * content against a concrete transaction. The committed `evidence_hash` is
+ * transition-only (#619), so the tier named here is a delivery decision the
+ * observe-stage field door verifies by content — it is never part of what
+ * `prepare_semantic_resolution` commits.
  *
  * A resolver is supplied by the dispute submitter, which holds the reference
  * inputs; `resolveMidgardFieldCarriageAgainstReferenceInputsV1` in
@@ -183,11 +182,11 @@ export type ValidationMachineFieldCarriageResolverV1 = (
  *
  * **This is not the retired trace-time refusal.** Nothing refuses while a trace
  * is built — the block-build path depends on that (#600). What refuses is
- * *encoding committed evidence without the context that evidence needs*: above
- * §8.3's tier-1 cap the carriage is reference-input indices, and a caller that
+ * *encoding an auxiliary without the context its carriage needs*: above §8.3's
+ * tier-1 cap the carriage is reference-input indices, and a caller that
  * supplied no reference inputs has nothing for them to point at. Emitting tier-1
  * `Inline` anyway would name a carriage §8.4 does not admit for that length, and
- * inventing indices would commit an `evidence_hash` no transaction can satisfy.
+ * inventing indices would name references no transaction can satisfy.
  */
 export class ValidationMachineCarriageResolutionRequiredErrorV1 extends Error {
   override readonly name = "ValidationMachineCarriageResolutionRequiredErrorV1";
@@ -250,9 +249,9 @@ export const inlineFieldCarriageResolverV1: ValidationMachineFieldCarriageResolv
  * pick a tier: §8.4 is a *partition*, so the preimage's own length names
  * exactly one admissible carriage and there is no choice to delegate (#597
  * Ruling 1). Without this check the seam would encode whatever came back — a
- * tier-1 `Inline` above §8.3's cap, or an index tier below it — into the
- * `evidence_hash` that `prepare_semantic_resolution` commits, which is a
- * carriage §8.4 does not admit committed as though it did.
+ * tier-1 `Inline` above §8.3's cap, or an index tier below it — a carriage the
+ * observe-stage door's §8.4 partition refuses on-chain, discovered only at
+ * submission.
  */
 export class ValidationMachineCarriageTierMismatchErrorV1 extends Error {
   override readonly name = "ValidationMachineCarriageTierMismatchErrorV1";
@@ -277,8 +276,8 @@ export class ValidationMachineCarriageTierMismatchErrorV1 extends Error {
         `which §8.4's partition carries as \`${expectedTier}\`, but the supplied carriage ` +
         `resolver returned \`${returnedTier}\`. §8.4 admits exactly one tier per length, so a ` +
         "resolver names indices for the tier the length selects and never chooses the tier " +
-        "itself; encoding this carriage would commit an `evidence_hash` for a carriage the " +
-        "spec does not admit.",
+        "itself; encoding this carriage would build a step the observe-stage door's §8.4 " +
+        "partition refuses.",
     );
     this.fieldIndex = fieldIndex;
     this.preimageLength = preimageLength;
@@ -295,10 +294,10 @@ export class ValidationMachineCarriageTierMismatchErrorV1 extends Error {
  * carried the right *bytes*. Only tier 1 can get this wrong, because only tier 1
  * carries bytes at all — tiers 2 and 3 carry positional indices, and what is
  * behind those indices is §8.7's content-addressed problem rather than this
- * seam's. The auxiliary **is** the committed evidence, so an `Inline` preimage
- * that diverges from the trace's own is an `evidence_hash` over bytes the trace
- * never read: true by a caller's convention rather than by construction, which
- * is the same class as the tier substitution.
+ * seam's. An `Inline` preimage that diverges from the trace's own carries bytes
+ * the observe-stage door's field-commitment hash refuses: true by a caller's
+ * convention rather than by construction, which is the same class as the tier
+ * substitution.
  */
 export class ValidationMachineCarriagePreimageSubstitutedErrorV1 extends Error {
   override readonly name =
@@ -320,8 +319,8 @@ export class ValidationMachineCarriagePreimageSubstitutedErrorV1 extends Error {
       `V1 field ${fieldIndex.toString()} read a ${preimageLength.toString()}-byte §5.1 preimage, ` +
         `but the supplied carriage resolver returned tier-1 \`Inline\` carrying ` +
         `${returnedPreimageLength.toString()} substituted bytes. A resolver decides how a step's ` +
-        "preimage travels, never which bytes they are; committing this carriage would hash an " +
-        "`evidence_hash` over bytes the trace never read.",
+        "preimage travels, never which bytes they are; carrying these bytes would build a step " +
+        "the observe-stage door's field-commitment hash refuses.",
     );
     this.fieldIndex = fieldIndex;
     this.preimageLength = preimageLength;
