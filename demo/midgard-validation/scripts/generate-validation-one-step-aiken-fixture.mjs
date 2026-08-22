@@ -29,7 +29,7 @@ import {
   fieldPreimagePublicationDatumCborV1,
   resolveMidgardFieldCarriageAgainstReferenceInputsV1,
 } from "../../midgard-sdk/dist/index.js";
-import { CML, Data } from "@lucid-evolution/lucid";
+import { CML, Constr, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -484,6 +484,51 @@ const evidenceHash = computeHash32(
     ),
   ]),
 );
+// Option B (#620): the complete-item pipeline commits to the transition alone —
+// `hash_one_step_evidence(transition, NoAuxiliaryWitness)` — whatever carriage
+// the item auxiliary names. Pin both halves of that rule cross-language: the
+// transition-only hash over this vector's transition is exactly `evidenceHash`
+// (the auxiliary hashed is the same `NoAuxiliaryWitness` constant), and the
+// retired carriage-committed preimage yields a different hash both sides agree
+// on, so the two commitments can never collide.
+const itemAuxiliaryData = new Constr(30, [
+  new Constr(0, [fieldChunkPreimage.toString("hex")]),
+]);
+const itemAuxiliaryCbor = Buffer.from(Data.to(itemAuxiliaryData), "hex");
+const transitionOnlyEvidenceHash = computeHash32(
+  Buffer.concat([
+    Buffer.from("MidgardValidationOneStepEvidenceV1", "ascii"),
+    Buffer.from(
+      Data.to([
+        Data.from(oneStepArgument.transitionCbor.toString("hex")),
+        new Constr(0, []),
+      ]),
+      "hex",
+    ),
+  ]),
+);
+if (!transitionOnlyEvidenceHash.equals(evidenceHash)) {
+  throw new Error(
+    "transition-only evidence hash diverged from the NoAuxiliaryWitness vector",
+  );
+}
+const retiredItemEvidenceHash = computeHash32(
+  Buffer.concat([
+    Buffer.from("MidgardValidationOneStepEvidenceV1", "ascii"),
+    Buffer.from(
+      Data.to([
+        Data.from(oneStepArgument.transitionCbor.toString("hex")),
+        itemAuxiliaryData,
+      ]),
+      "hex",
+    ),
+  ]),
+);
+if (retiredItemEvidenceHash.equals(evidenceHash)) {
+  throw new Error(
+    "retired carriage-committed evidence hash collided with the transition-only commitment",
+  );
+}
 const scriptDiscoveryControlCbor = encodeScriptDiscoveryControlCborV1({
   purposeCursor: 1,
   sourceCursor: 2,
@@ -533,7 +578,8 @@ use aiken/primitive/bytearray
 use midgard/native_tx_field_access_v1.{Certified, Inline, RawUtxo}
 use midgard/validation_dispute_v1
 use midgard/validation_machine_v1.{
-  TransactionFieldChunkWitness, ValidationAuxiliaryWitnessV1,
+  TransactionFieldChunkWitness, TransactionFieldItemWitness,
+  ValidationAuxiliaryWitnessV1,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1
@@ -561,6 +607,12 @@ const certified_auxiliary_cbor = #"${certifiedVector.auxiliaryCbor.toString("hex
 
 const evidence_hash =
   #"${evidenceHash.toString("hex")}"
+
+const item_auxiliary_cbor =
+  #"${itemAuxiliaryCbor.toString("hex")}"
+
+const retired_item_evidence_hash =
+  #"${retiredItemEvidenceHash.toString("hex")}"
 
 const script_discovery_control_cbor =
   #"${scriptDiscoveryControlCbor.toString("hex")}"
@@ -693,6 +745,38 @@ test typescript_generated_certified_carriage_auxiliary_is_exact() {
       cert_ref_input_index: ${certifiedVector.carriage.certRefInputIndex.toString()},
       chunk_ref_input_indices: [${certifiedVector.carriage.chunkRefInputIndices.join(", ")}],
     },
+  }
+}
+
+/// Option B (#620). The complete-item pipeline commits to the transition alone:
+/// \`hash_one_step_evidence(transition, NoAuxiliaryWitness)\`, whatever carriage
+/// the item auxiliary names. Both halves of that rule are pinned here with
+/// TypeScript-computed hashes: the transition-only commitment over this
+/// vector's transition is byte-identical to \`evidence_hash\` on both sides, and
+/// the retired carriage-committed preimage — the same transition beside a
+/// \`TransactionFieldItemWitness\` — lands on a hash both languages agree on and
+/// agree is *different*, so a datum committed under the retired rule can never
+/// satisfy the narrowed recompute. The carriage reuses the field-chunk vector's
+/// §5.1 preimage; the door never runs here — this vector is about the
+/// commitment arithmetic, not delivery.
+test typescript_generated_complete_item_commitment_is_transition_only() {
+  expect Some(item_auxiliary_data) = cbor.deserialise(item_auxiliary_cbor)
+  expect item_auxiliary: ValidationAuxiliaryWitnessV1 = item_auxiliary_data
+  expect TransactionFieldItemWitness { carriage } = item_auxiliary
+  expect Some(transition_data) = cbor.deserialise(transition_cbor)
+  let no_auxiliary_data: Data = validation_machine_v1.NoAuxiliaryWitness
+  and {
+    bytearray.length(item_auxiliary_cbor) == ${itemAuxiliaryCbor.length.toString()},
+    carriage == Inline { preimage: field_chunk_preimage },
+    validation_resolution_v1.hash_one_step_evidence(
+      transition_data,
+      no_auxiliary_data,
+    ) == evidence_hash,
+    validation_resolution_v1.hash_one_step_evidence(
+      transition_data,
+      item_auxiliary_data,
+    ) == retired_item_evidence_hash,
+    retired_item_evidence_hash != evidence_hash,
   }
 }
 

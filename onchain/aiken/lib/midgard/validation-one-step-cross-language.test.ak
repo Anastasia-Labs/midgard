@@ -6,7 +6,8 @@ use aiken/primitive/bytearray
 use midgard/native_tx_field_access_v1.{Certified, Inline, RawUtxo}
 use midgard/validation_dispute_v1
 use midgard/validation_machine_v1.{
-  TransactionFieldChunkWitness, ValidationAuxiliaryWitnessV1,
+  TransactionFieldChunkWitness, TransactionFieldItemWitness,
+  ValidationAuxiliaryWitnessV1,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1
@@ -34,6 +35,12 @@ const certified_auxiliary_cbor = #"d87a9f0200d87b9f039f0102ffffff"
 
 const evidence_hash =
   #"dcb7713a8cde102bf249fba3f62aaac6f7871fbf7101040ee4c1e2920f4dbd7f"
+
+const item_auxiliary_cbor =
+  #"d905179fd8799f58298158268258201111111111111111111111111111111111111111111111111111111111111111190000ffff"
+
+const retired_item_evidence_hash =
+  #"3a22e3cdb0beaabf7a5f3c9516168215aa18dd1a282746db72a5876ebd2b6cef"
 
 const script_discovery_control_cbor =
   #"8f010203000441aa41bb050341cc060741dd0881820941ee"
@@ -166,6 +173,38 @@ test typescript_generated_certified_carriage_auxiliary_is_exact() {
       cert_ref_input_index: 3,
       chunk_ref_input_indices: [1, 2],
     },
+  }
+}
+
+/// Option B (#620). The complete-item pipeline commits to the transition alone:
+/// `hash_one_step_evidence(transition, NoAuxiliaryWitness)`, whatever carriage
+/// the item auxiliary names. Both halves of that rule are pinned here with
+/// TypeScript-computed hashes: the transition-only commitment over this
+/// vector's transition is byte-identical to `evidence_hash` on both sides, and
+/// the retired carriage-committed preimage — the same transition beside a
+/// `TransactionFieldItemWitness` — lands on a hash both languages agree on and
+/// agree is *different*, so a datum committed under the retired rule can never
+/// satisfy the narrowed recompute. The carriage reuses the field-chunk vector's
+/// §5.1 preimage; the door never runs here — this vector is about the
+/// commitment arithmetic, not delivery.
+test typescript_generated_complete_item_commitment_is_transition_only() {
+  expect Some(item_auxiliary_data) = cbor.deserialise(item_auxiliary_cbor)
+  expect item_auxiliary: ValidationAuxiliaryWitnessV1 = item_auxiliary_data
+  expect TransactionFieldItemWitness { carriage } = item_auxiliary
+  expect Some(transition_data) = cbor.deserialise(transition_cbor)
+  let no_auxiliary_data: Data = validation_machine_v1.NoAuxiliaryWitness
+  and {
+    bytearray.length(item_auxiliary_cbor) == 52,
+    carriage == Inline { preimage: field_chunk_preimage },
+    validation_resolution_v1.hash_one_step_evidence(
+      transition_data,
+      no_auxiliary_data,
+    ) == evidence_hash,
+    validation_resolution_v1.hash_one_step_evidence(
+      transition_data,
+      item_auxiliary_data,
+    ) == retired_item_evidence_hash,
+    retired_item_evidence_hash != evidence_hash,
   }
 }
 
