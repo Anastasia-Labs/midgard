@@ -55,8 +55,9 @@ pub const max_validity_range_length: PosixTimeDuration = 8 * 60 * 1000
 /// 2026-08-23 on #627, option B). The rate that convicts a block is not the
 /// block producer's to declare, so it is neither a `HeaderV1` field nor a
 /// `ValidationContextV1` element: it is compiled into the validators and is
-/// bound, with the rest of the compiled constant set, by the `profile_id`
-/// inside the hashed validation context. Changing the rate is therefore a
+/// bound, with the rest of the compiled constant set, by the validator
+/// script hashes themselves (a rate change moves every validator that reads
+/// it, as the #617 regeneration records). Changing the rate is therefore a
 /// redeploy event, exactly as for `max_distinct_asset_count`
 /// (lib/midgard/ledger-output-v1.ak). It lives in `env/` rather than beside
 /// `max_distinct_asset_count` because it is a per-network protocol parameter of
