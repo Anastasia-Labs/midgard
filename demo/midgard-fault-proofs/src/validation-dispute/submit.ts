@@ -5942,7 +5942,8 @@ export const submitValidationDisputeSemanticResolution = async ({
       : undefined;
   if (
     valueAndMintSemanticReferenceEntryName !== undefined &&
-    parsedDeploymentInfo[valueAndMintSemanticReferenceEntryName] === undefined &&
+    parsedDeploymentInfo[valueAndMintSemanticReferenceEntryName] ===
+      undefined &&
     semanticContract.spendingScript.script.length / 2 >
       MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES
   ) {

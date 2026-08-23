@@ -15,13 +15,13 @@ import {
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   Proof,
+  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
   ValidationAuxiliaryWitnessV1,
   ValidationAwardSpendRedeemerV1,
   ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema,
   type ValidationMachineStateV1,
   ValidationOneStepWitnessV1,
   ValidationPrepareSelectedSpendRedeemerV1Schema,
-  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
 } from "@al-ft/midgard-sdk";
 import {
   buildMidgardCanonicalCekProgramV1,
@@ -719,9 +719,7 @@ describe("validation-dispute transaction validity", () => {
     // None stray: the roster covers exactly the ValueAndMint block of the
     // blueprint's semantic vector, no neighbouring phase's slot.
     const valueAndMintTitleCount = semanticTitles.filter((title) =>
-      title.startsWith(
-        "fraud_proofs/validation_trace/value_and_mint_",
-      ),
+      title.startsWith("fraud_proofs/validation_trace/value_and_mint_"),
     ).length;
     expect(rosterKeys.length).toBe(valueAndMintTitleCount);
     expect(
@@ -733,9 +731,13 @@ describe("validation-dispute transaction validity", () => {
     expect(
       validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(1.5),
     ).toBe(undefined);
-    expect(new Set(Object.values(
-      VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1,
-    )).size).toBe(11);
+    expect(
+      new Set(
+        Object.values(
+          VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1,
+        ),
+      ).size,
+    ).toBe(11);
   });
 
   it("requires the published ValueAndMint semantic-resolver reference scripts from deployment info", () => {
