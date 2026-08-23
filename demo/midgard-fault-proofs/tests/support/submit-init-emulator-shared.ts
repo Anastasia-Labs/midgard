@@ -172,6 +172,7 @@ import {
   requireSingletonUtxo,
   resolveFraudulentHeaderHash,
   resolveProverSigner,
+  resolveValidationTraceDisputeDeploymentContracts,
   submitRemoveFraudulentBlock,
   submitValidationDisputeAward,
   submitValidationDisputeEnterResolution,
@@ -4213,9 +4214,17 @@ export const runForcedValidationDisputeScenario = async (
   const stagedResolverIndex = fixture.evidence.oneStepArgument.resolverIndex;
   const stagedSemanticIndex =
     fixture.evidence.oneStepArgument.semanticResolverIndex;
+  // Resolved through the very helper the submit path uses, so the published
+  // body is byte-identical to the one the resolution will hash-check.
   const valueAndMintSemanticContract =
     stagedResolverIndex === VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX_V1
-      ? contracts.validationTraceDispute.semanticResolvers[
+      ? (
+          await resolveValidationTraceDisputeDeploymentContracts({
+            blueprint: realBlueprint,
+            deploymentInfo,
+            network,
+          })
+        ).contracts.validationTraceDispute.semanticResolvers[
           validationSemanticResolverGlobalIndexV1(
             stagedResolverIndex,
             stagedSemanticIndex,
@@ -4302,20 +4311,21 @@ export const runForcedValidationDisputeScenario = async (
       highIndex,
       semanticResult,
       semanticMeasurement: semanticCapture.measurement,
-      ...(valueAndMintSemanticPublication === undefined
-        ? {}
-        : {
-            valueAndMintSemanticReferencePublication: {
-              entryName: valueAndMintSemanticEntryName!,
+      valueAndMintSemanticReferencePublication:
+        valueAndMintSemanticPublication === undefined ||
+        valueAndMintSemanticContract === undefined ||
+        valueAndMintSemanticEntryName === undefined
+          ? undefined
+          : {
+              entryName: valueAndMintSemanticEntryName,
               appliedResolverBytes:
-                valueAndMintSemanticContract!.spendingScript.script.length / 2,
+                valueAndMintSemanticContract.spendingScript.script.length / 2,
               appliedResolverHash:
-                valueAndMintSemanticContract!.spendingScriptHash,
+                valueAndMintSemanticContract.spendingScriptHash,
               utxo: valueAndMintSemanticPublication.utxo,
               publicationMeasurement:
                 valueAndMintSemanticPublication.publicationMeasurement,
             },
-          }),
     };
   }
   const awardResult = await runEmulatorLifecycleStage("award", () =>
