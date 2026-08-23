@@ -1,4 +1,5 @@
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 
 import type { MidgardLedgerMint } from "./ledger-tx/types.js";
 import type { ScriptMintValue } from "./script-context.js";
@@ -185,3 +186,46 @@ export const outputMeetsMinAdaV1 = (
   lovelace: bigint,
 ): boolean =>
   lovelace >= minAdaLovelaceV1(coinsPerUtxoByte, serializedOutputBytes);
+
+/**
+ * The deployment rate the two twins above are instantiated at.
+ *
+ * The floor itself stays parameterized -- both twins take
+ * `coinsPerUtxoByte` as an argument and remain linear in the serialized size,
+ * which is what decision 0003 protects when it forbids replacing the floor
+ * with a flat constant. What is compiled is only the *rate's source*: per the
+ * owner ruling on #627 (option B), `coins_per_utxo_byte` is a deployment
+ * constant rather than a block-header field or a validation-context element,
+ * because the rate that convicts a block is not the block producer's to
+ * declare. Its Aiken counterpart is `env.coins_per_utxo_byte`
+ * (onchain/aiken/env/default.ak, onchain/aiken/env/testnet.ak), and
+ * `tests/min-ada-twin-cross-check-v1.test.ts` holds the two production pins
+ * equal to each other and to the C70 snapshot.
+ */
+export const MIDGARD_COINS_PER_UTXO_BYTE_V1 = BigInt(
+  MIDGARD_CONSENSUS_LIMITS_V1.coinsPerUtxoByte,
+);
+
+/**
+ * `E_MIN_ADA` (MIN-ADA-TX) over one canonical serialized transaction output.
+ *
+ * The off-chain twin of the ValueAndMint stage-3 output-descriptor conjunct in
+ * onchain/aiken/lib/midgard/validation-machine-v1.ak: the on-chain step reads
+ * `descriptor.total_length` and `descriptor.lovelace` off the authenticated
+ * output descriptor, and `total_length` is by construction the length of these
+ * very bytes (`buildMidgardLedgerOutputMaterialV1` sets it from the canonical
+ * output CBOR).
+ */
+export const outputCborMeetsMinAdaV1 = (
+  outputCbor: Uint8Array,
+  lovelace: bigint,
+): boolean =>
+  outputMeetsMinAdaV1(
+    MIDGARD_COINS_PER_UTXO_BYTE_V1,
+    BigInt(outputCbor.length),
+    lovelace,
+  );
+
+/** The absolute floor, in lovelace, that `outputCborMeetsMinAdaV1` compares against. */
+export const outputCborMinAdaLovelaceV1 = (outputCbor: Uint8Array): bigint =>
+  minAdaLovelaceV1(MIDGARD_COINS_PER_UTXO_BYTE_V1, BigInt(outputCbor.length));

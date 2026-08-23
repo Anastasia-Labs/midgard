@@ -31,6 +31,7 @@ export const RejectCodes = {
   InvalidValidityIntervalFormat: "E_INVALID_VALIDITY_INTERVAL_FORMAT",
   ValidityIntervalMismatch: "E_VALIDITY_INTERVAL_MISMATCH",
   MinFee: "E_MIN_FEE",
+  MinAda: "E_MIN_ADA",
   ValueNotPreserved: "E_VALUE_NOT_PRESERVED",
   MissingRequiredWitness: "E_MISSING_REQUIRED_WITNESS",
   InvalidSignature: "E_INVALID_SIGNATURE",

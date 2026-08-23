@@ -174,6 +174,29 @@ const MAX_OUTPUT_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 const MAX_ADDRESS_WITNESS_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 const MAX_REQUIRED_SIGNER_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 const MAX_REQUIRED_OBSERVER_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
+// C49/C70 (#618, #627). The target network's `coins_per_utxo_byte` protocol
+// parameter, the only free parameter of the minimum-Ada floor
+// `coins_per_utxo_byte * (160 + serialized canonical output bytes)`
+// (`minAdaLovelaceV1`/`outputMeetsMinAdaV1` in
+// demo/midgard-validation/src/value-accounting.ts, and their Aiken twin
+// `min_ada_lovelace_v1`/`output_meets_min_ada_v1` in
+// onchain/aiken/lib/midgard/validation-machine-v1.ak).
+//
+// Provenance: the C70 target-parameter snapshot, preprod epoch 303, pinned as
+// `PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.coinsPerUtxoByte === 4_310n`
+// (demo/midgard-validation/tests/helpers/ordered-collection-boundary-v1.ts).
+// That helper is a test corpus; this is the production pin the validator half
+// mirrors, and its Aiken counterpart is `env.coins_per_utxo_byte`, held
+// identical in onchain/aiken/env/default.ak and onchain/aiken/env/testnet.ak.
+// demo/midgard-validation/tests/min-ada-twin-cross-check-v1.test.ts reads all
+// three as source text and fails if any pair disagrees.
+//
+// A COMPILED DEPLOYMENT CONSTANT, NOT A DECLARED FIELD (owner ruling
+// 2026-08-23 on #627, option B): the rate that convicts a block is not the
+// block producer's to declare, so it is neither a block-header field nor an
+// element of the hashed validation context. Changing it is a redeploy event,
+// exactly as for `maxDistinctAssetCount` below.
+const TARGET_COINS_PER_UTXO_BYTE = 4_310;
 const VALIDATION_DISPUTE_RESPONSE_WINDOW_MS = 300_000;
 const MAX_VALIDATION_BISECTION_ROUNDS = 32;
 const PROOF_BLOCK_MATURITY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -277,6 +300,7 @@ export const MIDGARD_CONSENSUS_LIMITS_V1 = Object.freeze({
   maxScriptExecutionCount: MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT,
   maxRequiredObserverCount: MAX_REQUIRED_OBSERVER_COUNT,
   maxDistinctAssetCount: MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT,
+  coinsPerUtxoByte: TARGET_COINS_PER_UTXO_BYTE,
   maxL2TransactionCount: 10_000,
   maxWithdrawalCount: 10_000,
   maxForcedTransactionCount: 10_000,

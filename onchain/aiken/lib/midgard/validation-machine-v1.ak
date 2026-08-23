@@ -5,6 +5,7 @@ use aiken/crypto.{blake2b_224, blake2b_256, verify_ed25519_signature}
 use aiken/merkle_patricia_forestry.{Proof}
 use aiken/merkle_patricia_forestry/merkling.{null_hash}
 use aiken/primitive/bytearray
+use env
 use midgard/blake2b_224_trace_v1
 use midgard/bounded_collection_v1
 use midgard/bounded_item_v1
@@ -1193,6 +1194,16 @@ const reject_native_script_depth = #"455f4e41544956455f5343524950545f4445505448"
 const reject_native_script_node_count =
   #"455f4e41544956455f5343524950545f4e4f44455f434f554e54"
 
+/// `E_MIN_ADA` (#618 ruling 1, R8; decision 0003 Q27). The stable rejection
+/// code the parameterized minimum-Ada floor binds to. Raised by the ValueAndMint
+/// stage-3 output-descriptor step when the authenticated descriptor of one
+/// transaction output does not fund
+/// `min_ada_lovelace_v1(env.coins_per_utxo_byte, descriptor.total_length)` --
+/// the MIN-ADA-TX violation shape of technical-spec §5. MIN-ADA-UTXO, the
+/// post-block UTxO-set shape of the same floor, is Q27's own membership shape
+/// and is not raised here.
+const reject_min_ada = #"455f4d494e5f414441"
+
 fn canonical_argument_header_size(value: Int) -> Int {
   expect value >= 0
   if value < 24 {
@@ -2170,8 +2181,10 @@ fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1 {
 // Cardano rule verbatim -- `coins_per_utxo_byte * (overhead + serialized output
 // bytes)` -- where `min_ada_output_overhead_bytes` is the fixed 160-byte UTxO
 // entry overhead the target ledger adds to every output before pricing it. The
-// `coins_per_utxo_byte` this is instantiated at is the C70 target snapshot
-// (`PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.coinsPerUtxoByte == 4_310`).
+// `coins_per_utxo_byte` this is instantiated at is `env.coins_per_utxo_byte`,
+// the compiled deployment pin of the C70 target snapshot
+// (`PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.coinsPerUtxoByte == 4_310`), held
+// identical in `env/default.ak` and `env/testnet.ak`.
 //
 // THE TYPESCRIPT TWIN IS A HAND MIRROR, NOT A LEDGER-LIBRARY CALL:
 // `MIN_ADA_OUTPUT_OVERHEAD_BYTES_V1`/`minAdaLovelaceV1`/`outputMeetsMinAdaV1` in
@@ -2192,10 +2205,16 @@ fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1 {
 // NO ARBITRARY SUB-CAP. The floor is exactly the target-network limit: it is
 // linear in the serialized size with slope `coins_per_utxo_byte` and carries no
 // additional Midgard margin, so an output the target network funds adequately
-// is never rejected here for carrying too little Ada. The counterpart duty --
-// binding this floor to a machine rejection code on the ValueAndMint output
-// descriptor scan -- is the wiring step; this is the formula that step must
-// consume, pinned here so the two cannot drift.
+// is never rejected here for carrying too little Ada.
+//
+// WIRED (#618 ruling 1; R8 of decision 0005). The counterpart duty -- binding
+// this floor to a machine rejection code -- is discharged in
+// `value_and_mint_stage_three` below: the ValueAndMint output-descriptor step
+// evaluates `output_meets_min_ada_v1` over the descriptor it has just
+// authenticated and, on failure, takes the exact rejecting terminal carrying
+// `reject_min_ada` (`E_MIN_ADA`). The rate is a compiled deployment constant,
+// not an operator-declared field, per the owner ruling on #627 (option B): a
+// rate change is a redeploy event.
 pub const min_ada_output_overhead_bytes = 160
 
 pub fn min_ada_lovelace_v1(
@@ -17441,25 +17460,60 @@ fn value_and_mint_stage_three(
       ),
     } {
       let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-      let next_value = ValueAccumulatorV1 {
-        ..control.value_accumulator,
-        lovelace_delta: control.value_accumulator.lovelace_delta - descriptor.lovelace,
-      }
-      let next_control = if descriptor.asset_count == 0 {
-        ValueAndMintControlV1 {
-          ..control,
-          output_cursor: control.output_cursor + 1,
-          value_accumulator: next_value,
-        }
+      // E_MIN_ADA (#618 ruling 1; R8 of decision 0005; decision 0003 Q27).
+      // The parameterized minimum-Ada floor, bound to a machine rejection code
+      // at the first step that sees the whole output. Both operands are facts
+      // of the descriptor the membership conjunct above just authenticated
+      // against `output_descriptor_peaks`: `total_length` is the length of the
+      // canonical serialized output (`descriptor_is_well_formed` in
+      // lib/midgard/ledger-output-commitment-v1.ak binds it to the bounded item
+      // the output scan chunked), and `lovelace` is that output's Ada. Neither
+      // is re-derived here, so this step convicts on authenticated bytes alone.
+      //
+      // The floor is evaluated BEFORE the output's Ada is folded into the value
+      // accumulator, and before the per-asset cursor opens: an under-funded
+      // output is convictable from the single descriptor step, with no asset
+      // steps and no dependence on the rest of the transaction. This is the
+      // MIN-ADA-TX shape of technical-spec §5 (5-ledger-rules); MIN-ADA-UTXO,
+      // the same floor over a member of the post-block UTxO set, is Q27's own
+      // membership shape and is deliberately not reachable from here.
+      //
+      // The rate is `env.coins_per_utxo_byte`, a compiled deployment constant
+      // (owner ruling 2026-08-23 on #627, option B) rather than a header field
+      // or a context element: the rate that convicts a block is not the block
+      // producer's to declare. Its TypeScript mirror is
+      // `MIDGARD_CONSENSUS_LIMITS_V1.coinsPerUtxoByte`.
+      if !output_meets_min_ada_v1(
+        env.coins_per_utxo_byte,
+        descriptor.total_length,
+        descriptor.lovelace,
+      ) {
+        rejected_successor_is_exact(
+          pre,
+          witness.claimed_successor,
+          reject_min_ada,
+        )
       } else {
-        ValueAndMintControlV1 {
-          ..control,
-          output_asset_cursor: 1,
-          replay_value_hash: blake2b_256(descriptor_cbor),
-          value_accumulator: next_value,
+        let next_value = ValueAccumulatorV1 {
+          ..control.value_accumulator,
+          lovelace_delta: control.value_accumulator.lovelace_delta - descriptor.lovelace,
         }
+        let next_control = if descriptor.asset_count == 0 {
+          ValueAndMintControlV1 {
+            ..control,
+            output_cursor: control.output_cursor + 1,
+            value_accumulator: next_value,
+          }
+        } else {
+          ValueAndMintControlV1 {
+            ..control,
+            output_asset_cursor: 1,
+            replay_value_hash: blake2b_256(descriptor_cbor),
+            value_accumulator: next_value,
+          }
+        }
+        value_and_mint_successor_is_exact(pre, witness, next_control)
       }
-      value_and_mint_successor_is_exact(pre, witness, next_control)
     } else {
       False
     }

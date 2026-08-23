@@ -412,6 +412,7 @@ export const redeemerPointerMatchesPurposeV1 = (input: {
   );
 };
 import { RejectCodes } from "./types.js";
+import { outputCborMeetsMinAdaV1 } from "./value-accounting.js";
 
 type ValidationControlDataV1 =
   | bigint
@@ -7123,6 +7124,30 @@ export const buildDeterministicValidationMachineTrace = (
                 },
               );
               const decodedValue = decodeMidgardTxOutput(outputCbor).value;
+              // E_MIN_ADA / MIN-ADA-TX (#618 ruling 1; R8 of decision 0005).
+              // The mirror of the ValueAndMint stage-3 output-descriptor
+              // conjunct in
+              // onchain/aiken/lib/midgard/validation-machine-v1.ak, evaluated
+              // in the same place: after the descriptor step's witness is
+              // committed, before this output's Ada is folded into the
+              // accumulator and before the asset cursor opens. `outputCbor` is
+              // the canonical output preimage the descriptor's `total_length`
+              // binds, so both halves price the same bytes.
+              if (!outputCborMeetsMinAdaV1(outputCbor, decodedValue.lovelace)) {
+                if (
+                  rejection === null ||
+                  terminalPhase !== "valueAndMint" ||
+                  rejection.code !== RejectCodes.MinAda
+                ) {
+                  return yield* Effect.fail(
+                    new Error(
+                      `V1 output[${outputIndex.toString()}] is below the minimum-Ada floor but validation did not reject it with ${RejectCodes.MinAda} in ValueAndMint (rejected at ${terminalPhase}/${rejectionCode ?? "none"})`,
+                    ),
+                  );
+                }
+                stoppedAtRejection = true;
+                break;
+              }
               valueAccumulator.lovelaceDelta -= decodedValue.lovelace;
               const assets = midgardValueAssets(decodedValue);
               const assetMaterial =

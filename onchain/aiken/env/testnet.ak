@@ -34,6 +34,37 @@ pub const max_inactivity_strikes: Int = 5
 
 pub const max_validity_range_length: PosixTimeDuration = 8 * 60 * 1000
 
+/// C49/C70 (#618, #627). The target network's `coins_per_utxo_byte` protocol
+/// parameter: the rate the minimum-Ada floor
+/// `min_ada_lovelace_v1(coins_per_utxo_byte, serialized_output_bytes)`
+/// (lib/midgard/validation-machine-v1.ak) is instantiated at when the
+/// ValueAndMint output-descriptor scan convicts an under-funded output with
+/// `E_MIN_ADA`.
+///
+/// Provenance: the C70 target-parameter snapshot, preprod epoch 303, pinned as
+/// `PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.coinsPerUtxoByte == 4_310n`
+/// (demo/midgard-validation/tests/helpers/ordered-collection-boundary-v1.ts).
+/// The TypeScript mirror of this very constant is
+/// `MIDGARD_CONSENSUS_LIMITS_V1.coinsPerUtxoByte`
+/// (demo/midgard-core/src/consensus-profile-v1.ts); the two are held equal, and
+/// held equal to the snapshot, by
+/// demo/midgard-validation/tests/min-ada-twin-cross-check-v1.test.ts, which
+/// reads both production pins as source text.
+///
+/// A COMPILED DEPLOYMENT CONSTANT, NOT A DECLARED FIELD (owner ruling
+/// 2026-08-23 on #627, option B). The rate that convicts a block is not the
+/// block producer's to declare, so it is neither a `HeaderV1` field nor a
+/// `ValidationContextV1` element: it is compiled into the validators and is
+/// bound, with the rest of the compiled constant set, by the `profile_id`
+/// inside the hashed validation context. Changing the rate is therefore a
+/// redeploy event, exactly as for `max_distinct_asset_count`
+/// (lib/midgard/ledger-output-v1.ak). It lives in `env/` rather than beside
+/// `max_distinct_asset_count` because it is a per-network protocol parameter of
+/// the target chain rather than a Midgard-internal structural bound; it is
+/// pinned identically in `env/default.ak` and `env/testnet.ak` because both
+/// deployments target the same C70 snapshot.
+pub const coins_per_utxo_byte: Int = 4_310
+
 pub const empty: Empty = ""
 
 pub const empty_data: Data = empty |> builtin.b_data()

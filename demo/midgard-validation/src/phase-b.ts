@@ -65,9 +65,62 @@ import {
   describeValueDelta,
   isZeroValueDelta,
   mintDeltaToScriptMintValue,
+  outputCborMeetsMinAdaV1,
+  outputCborMinAdaLovelaceV1,
   sumMidgardValues,
   valuePreservationDelta,
 } from "./value-accounting.js";
+
+/**
+ * `E_MIN_ADA` / MIN-ADA-TX (#618 ruling 1; R8 of decision 0005): the first
+ * output of this transaction that does not fund the parameterized minimum-Ada
+ * floor, or `null` when every output does.
+ *
+ * The bytes measured here are `graph.produced[i][LedgerColumns.OUTPUT]` -- the
+ * canonical output encoding Phase A already committed to the ledger entry, and
+ * therefore exactly the bytes the on-chain output descriptor's `total_length`
+ * binds (`buildMidgardLedgerOutputMaterialV1` sets `totalLength` from them).
+ * Re-encoding the output here would risk measuring a different serialization
+ * than the one the L1 machine convicts on.
+ *
+ * WHY THIS RUNS IN PHASE B, AND HERE. The on-chain twin rejects on the
+ * ValueAndMint stage-3 output-descriptor step, so this rejection must carry the
+ * `valueAndMint` consensus phase; and because `orderedPhases` in
+ * ./validation-machine.ts places `valueAndMint` after `resolveInputs`,
+ * `scriptSources`, `nativeScripts`, `scriptIntegrity` and `cek`, the check has
+ * to run after everything those phases decide, and before the stage-5
+ * value-preservation conjunct that shares the phase. Hoisting it into Phase A
+ * admission -- where the rule would also be computable, since it is stateless
+ * -- would invert the phase order and make the operator's claimed terminal
+ * unprovable against the machine.
+ */
+const minAdaViolation = (
+  candidate: PhaseAValidatedTx,
+): { readonly index: number; readonly detail: string } | null => {
+  const outputs = candidate.ledgerTx.outputs;
+  const produced = candidate.graph.produced;
+  for (let index = 0; index < produced.length; index += 1) {
+    const outputCbor = produced[index]![LedgerColumns.OUTPUT];
+    const lovelace = outputs[index]?.value.lovelace;
+    if (lovelace === undefined) {
+      // Phase A builds one produced entry per output; a mismatch is a
+      // construction bug, not a transaction fault, and must not be silently
+      // read as "meets the floor".
+      throw new Error(
+        `phase B min-Ada scan: produced entry ${index.toString()} has no matching ledger output`,
+      );
+    }
+    if (!outputCborMeetsMinAdaV1(outputCbor, lovelace)) {
+      return {
+        index,
+        detail: `output[${index.toString()}] ${lovelace.toString()} < ${outputCborMinAdaLovelaceV1(
+          outputCbor,
+        ).toString()} for ${outputCbor.length.toString()} serialized bytes`,
+      };
+    }
+  }
+  return null;
+};
 
 type UTxOState = Map<string, Buffer>;
 type PreState = readonly LedgerEntry[] | UTxOState;
@@ -1050,6 +1103,11 @@ const validateCandidateAgainstState = (
       }
     }
 
+    const underFundedOutput = minAdaViolation(candidate);
+    if (underFundedOutput !== null) {
+      return fail(RejectCodes.MinAda, underFundedOutput.detail, "valueAndMint");
+    }
+
     const delta = valuePreservationDelta(
       sumMidgardValues(inputValues),
       ledgerTx.fee,
@@ -1147,6 +1205,11 @@ const validatePlainCandidateAgainstState = (
         `failed to decode input output: ${String(error)}`,
       );
     }
+  }
+
+  const underFundedOutput = minAdaViolation(candidate);
+  if (underFundedOutput !== null) {
+    return fail(RejectCodes.MinAda, underFundedOutput.detail, "valueAndMint");
   }
 
   const delta = valuePreservationDelta(
