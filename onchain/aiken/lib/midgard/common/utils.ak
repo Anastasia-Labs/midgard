@@ -6,7 +6,6 @@ use aiken/crypto.{
   ScriptHash, VerificationKey, VerificationKeyHash, blake2b_224, blake2b_256,
 }
 use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
-use aiken_design_patterns/merkelized_validator
 use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value, tokens}
@@ -779,31 +778,6 @@ pub fn get_unique_withdraw_redeemer(
         },
       )
   redeemer
-}
-
-pub fn plutarch_pdelete(
-  merkle_root_before_delete: MerkleRoot<key, value>,
-  key: Data<key>,
-  value: Data<value>,
-  membership_proof: Proof,
-  redeemers: Pairs<ScriptPurpose, Redeemer>,
-  withdraw_redeemer_index: Int,
-) -> MerkleRoot<key, value> {
-  let proof_data: Data = membership_proof
-  let function_input: List<Data> = [
-    builtin.b_data(merkle_root_before_delete),
-    key,
-    value,
-    proof_data,
-  ]
-  merkelized_validator.delegated_compute(
-    function_input: function_input,
-    staking_validator: env.plutarch_pdelete_validator_hash,
-    redeemers: redeemers,
-    redeemer_index: withdraw_redeemer_index,
-    input_data_coercer: builtin.un_list_data,
-    output_data_coercer: builtin.un_b_data,
-  )
 }
 
 pub fn get_verification_key_hash(key: VerificationKey) -> VerificationKeyHash {

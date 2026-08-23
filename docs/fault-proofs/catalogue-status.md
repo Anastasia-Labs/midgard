@@ -100,7 +100,7 @@ evidence rather than a disabled protocol branch.
 | Fault-proof token (`validators/fraud-proof.ak`)                                               | ✅     | Permanent; requires 1:1 thread-burn/proof-mint (`:45-54`); no one-shot-UTxO uniqueness                                                                                                                                  |
 | State-queue removal (`validators/state-queue.ak:524-712`)                                     | 🟠     | Works for same-operator chains; **cross-operator descendant check (`:661`) deadlocks cascades**; token is reference-input (reusable across removal txs) ✅                                                              |
 | Operator slashing (`lib/midgard/operator-directory.ak:220-356`)                               | 🟠     | Wiring real (active/retired/already-slashed); **economics all zero**; penalty only enforced as `fee >= env.slashing_penalty`; bond-remainder routing to prover unenforced                                               |
-| MPF primitives (`validators/phas.ak`, `pexcludes.ak`; Plutarch legacy in `onchain/plutarch/`) | ✅     | Aiken-native scripts are the deployed ones (env hashes match `plutus.json`); Plutarch package is legacy/parallel (`onchain/plutarch/README.md:1-8`). `plutarch_pdelete` unusable — env hash empty (`env/default.ak:68`) |
+| MPF primitives (`validators/phas.ak`, `pexcludes.ak`; Plutarch legacy in `onchain/plutarch/`) | ✅     | Aiken-native scripts are the deployed ones (env hashes match `plutus.json`); Plutarch package is legacy/parallel (`onchain/plutarch/README.md:1-8`)                                                                     |
 | Counted/domain-tagged roots (`lib/midgard/transition-trace.ak:64-80`)                         | ✅     | Landed via PR #458 (commit `5169b7f7`); consumed by settlement + no-input proof                                                                                                                                         |
 | Native-tx CBOR codec (`lib/midgard/fraud-proofs/native-tx/`)                                  | ✅     | Real byte-offset decoders, hash-checked; vkey+timelock witnesses only (no Plutus)                                                                                                                                       |
 | SDK catalogue deployment (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`)                    | 🟠     | exactly 8 positional categories, also accepted by `submit-init` and required by `inspect-contracts`; final §9.1 launch scope and six unregistered validator directories remain Q50/Q55 work                             |
@@ -125,8 +125,7 @@ evidence rather than a disabled protocol branch.
 - **Delivered, native-V1-bound, but still unregistered/untooled**: invalid-signature,
   missing-signature, missing-native-script-tx, no-reference-input, and
   withdrawn-reference-input (Q15–Q19).
-- **Delivered but inert**: min-fee (stub), slashing economics (zeroed),
-  `plutarch_pdelete` (empty env hash).
+- **Delivered but inert**: min-fee (stub), slashing economics (zeroed).
 - **Q13 local lifecycle complete**: input-no-idx (`nonExistentInputNoIndex`), including
   preparation, submit/init/steps, inspection, and emulator removal. This does not settle
   Q50/Q55 launch integration.

@@ -63,8 +63,6 @@ pub const plutarch_phas_validator_hash: ScriptHash =
 pub const plutarch_pexcludes_validator_hash: ScriptHash =
   #"03adaadf3154dafde48eea40030cecf5690b07c495f4c74029e4ab6a"
 
-pub const plutarch_pdelete_validator_hash: ScriptHash = #""
-
 /// Merkelized verifier of published-chunk MPF proof carriage (issue #545).
 /// Compiled from `validators/mpf-chunked-verify.ak` in this very project,
 /// so this constant is the blueprint hash of
