@@ -14,6 +14,7 @@ use aiken/merkle_patricia_forestry/helpers.{combine, nibble, suffix}
 use cardano/address
 use cardano/assets
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
+use env
 use midgard/fraud_proofs/chunked_inclusion_v1.{PublishedProofCarriage}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/mpf_chunked_proof_v1
@@ -241,4 +242,75 @@ test chunked_inclusion_v1_rejects_a_present_key_as_non_membership() {
   let steps = deep_proof(22)
   let published = publish(steps)
   !non_membership(published, deep_root(steps), all_indices(published))
+}
+
+// ## Empty-trie sentinel translation (#625)
+//
+// The three selectors `validators/pexcludes.ak` carries for the direct route,
+// re-run through this route's terminal. The sentinel positive is the
+// route-parity gap this module's header used to record as open: until #625
+// `mpf_proof_v1.does_not_have` compared against the untranslated root, so a
+// first block over a genesis confirmed state was unprovable through
+// published-chunk carriage while the direct route proved it. Both arms of the
+// translation carry a positive, because a positive on only one of them leaves
+// the other free to be mutated silently.
+
+/// A root the prover offers no proof for.
+const unproven_root =
+  #"1111111111111111111111111111111111111111111111111111111111111111"
+
+/// A genuinely populated trie, borrowed verbatim from
+/// `validators/pexcludes.ak`: the MPF library's own 29-element "fruits"
+/// fixture with `apple[uid: 58]` removed, i.e. its `without_apple` root, and
+/// the three-step absence witness the library's own `example_insert` selector
+/// proves is its real pair.
+const fruits_root =
+  #"cb7812785c2f6b56e3dba69923e37625e94953257915d25f1041f43cefd5cb62"
+
+/// The key absent from `fruits_root`.
+const fruits_absent_key = "apple[uid: 58]"
+
+const fruits_absence_proof: mpf.Proof =
+  [
+    mpf.Branch {
+      skip: 0,
+      neighbors: #"c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb47238ba5d16031b6bace4aee22156f5028b0ca56dc24f7247d6435292e82c039c3490a825d2e8deddf8679ce2f95f7e3a59d9c3e1af4a49b410266d21c9344d6d79519b8cdfbd053e5a86cf28a781debae71638cd77f85aad4b88869373d9dcfd",
+    },
+    mpf.Leaf {
+      skip: 0,
+      key: #"5cddcd30a0a388cf6feb3fd6e112c96e9daf23e3a9c8a334e7044650471aaa9e",
+      value: #"f429821ddf89c9df3c7fbb5aa6fadb6c246d75ceede53173ce59d70dde375d14",
+    },
+    mpf.Leaf {
+      skip: 0,
+      key: #"5e7ccfedd44c90423b191ecca1eb21dfbac865d561bace8c0f3e94ae7edf4440",
+      value: #"7c3715aba2db74d565a6ce6cc72f20d9cb4652ddb29efe6268be15b105e40911",
+    },
+  ]
+
+/// The sentinel arm. An empty Midgard trie commits `env.empty_merkle_tree_root`
+/// and can produce only the zero-step witness, which on this route is a
+/// carriage naming no chunk at all.
+test chunked_inclusion_v1_verifies_non_membership_against_the_empty_sentinel() {
+  non_membership([], env.empty_merkle_tree_root, [])
+}
+
+/// The production arm: a populated trie reached through `mpf.from_root`, with
+/// a real three-step absence witness published as one chunk.
+test chunked_inclusion_v1_verifies_non_membership_over_a_populated_trie() {
+  let published = publish(fruits_absence_proof)
+  and {
+    list.length(published) == 1,
+    chunked_inclusion_v1.published_chunk_non_membership(
+      published,
+      carriage([0]),
+      fruits_root,
+      fruits_absent_key,
+    ),
+  }
+}
+
+/// The translation stays a translation: an unproven root is still refused.
+test chunked_inclusion_v1_rejects_an_unproven_root_as_non_membership() {
+  !non_membership([], unproven_root, [])
 }

@@ -11,6 +11,7 @@ use cardano/assets
 use cardano/transaction.{
   DatumHash, InlineDatum, Input, NoDatum, Output, OutputReference,
 }
+use env
 use midgard/mpf_chunked_proof_v1.{
   FinalizeProofRedeemer, Membership, NonMembership, ProofChallengeDatum,
   ProofChunkDatum,
@@ -562,4 +563,57 @@ test mpf_chunked_proof_v1_rejects_membership_against_an_empty_trie() {
       ProofChallengeDatum { ..challenge, expected_leaf_count: -1 },
     ),
   }
+}
+
+// ## Empty-trie sentinel translation (#625)
+//
+// The three selectors `validators/pexcludes.ak` carries for the direct route,
+// re-run through this terminal — `verify_published_proof`'s `NonMembership`
+// arm, which is what `fraud_proofs/mpf_chunked_proof/challenge.ak` compiles.
+// Until #625 `mpf_proof_v1.does_not_have` compared against the untranslated
+// root, so an absence claim against an empty Midgard trie was unprovable here
+// while the direct route proved it. Both arms of the translation carry a
+// positive: a positive on only one of them leaves the other free to be mutated
+// silently.
+
+/// A root the prover offers no proof for.
+const unproven_root =
+  #"1111111111111111111111111111111111111111111111111111111111111111"
+
+/// A challenge over an empty trie: the sentinel root Midgard commits, and the
+/// zero leaves it holds. `challenge_datum_is_well_formed` requires a positive
+/// leaf count only of a membership claim.
+fn empty_trie_challenge(expected_root: ByteArray) -> ProofChallengeDatum {
+  ProofChallengeDatum {
+    ..non_membership_challenge(expected_root),
+    expected_leaf_count: 0,
+  }
+}
+
+/// The sentinel arm. The only witness an empty trie can produce is the
+/// zero-step proof, which here is a finalizing transaction naming no chunk.
+test mpf_chunked_proof_v1_verifies_non_membership_against_the_empty_sentinel() {
+  verify([], empty_trie_challenge(env.empty_merkle_tree_root), [])
+}
+
+/// The production arm: a populated trie reached through `mpf.from_root`, with
+/// a real six-step absence witness carried by a single publication UTxO — a
+/// different carriage shape from the two-chunk depth-17 selector above, so the
+/// `else` arm is covered at both chunk counts.
+test mpf_chunked_proof_v1_verifies_non_membership_over_a_populated_trie() {
+  let steps = list.concat(branch_steps(5), [divergent_terminal_leaf()])
+  let reference_inputs = publish(steps)
+  and {
+    list.length(reference_inputs) == 1,
+    verify(
+      reference_inputs,
+      non_membership_challenge(non_membership_root(0, steps)),
+      indices_of(reference_inputs),
+    ),
+  }
+}
+
+/// The translation stays a translation: an unproven root is still refused.
+test mpf_chunked_proof_v1_rejects_an_unproven_root_as_non_membership() {
+  !verify([], empty_trie_challenge(unproven_root), [])
 }

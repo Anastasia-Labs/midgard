@@ -5,6 +5,7 @@ use aiken/merkle_patricia_forestry as mpf
 use aiken/merkle_patricia_forestry/helpers.{combine, nibble, suffix}
 use aiken/merkle_patricia_forestry/merkling.{null_hash}
 use aiken/primitive/bytearray
+use env
 use midgard/mpf_proof_v1
 
 const key = #"010203"
@@ -220,5 +221,101 @@ test mpf_proof_v1_total_root_mutations_do_not_call_partial_paths_first() {
       null_hash,
     ),
     mpf_proof_v1.delete_root(null_hash, key, value, []) == None,
+  }
+}
+
+// ## Empty-trie sentinel translation (#625)
+//
+// `does_not_have` translates `env.empty_merkle_tree_root` — the root Midgard
+// commits for an empty MPF — to the library's own empty root before comparing
+// (`library_root`), and `insert_root` folds in the same translation. These
+// mirror the three selectors `validators/pexcludes.ak` already carries for the
+// redeemer-carried route, because the two arms of the translation each need a
+// positive: a positive on only one of them leaves the other free to be mutated
+// silently.
+
+/// A root the prover offers no proof for. `do_excluding(path, 0, [])` is the
+/// library's empty root, which is not this, so it must be rejected — the
+/// sentinel branch must not become a way to wave an arbitrary root through.
+const unproven_root =
+  #"1111111111111111111111111111111111111111111111111111111111111111"
+
+/// A genuinely populated trie, borrowed verbatim from
+/// `validators/pexcludes.ak`: the MPF library's own 29-element "fruits"
+/// fixture with `apple[uid: 58]` removed, i.e. its `without_apple` root. The
+/// library's `example_insert` selector proves this root and the witness below
+/// are a real pair, so nothing here rests on this module's own arithmetic, and
+/// a genuine multi-step absence witness cannot otherwise be written by hand.
+const fruits_root =
+  #"cb7812785c2f6b56e3dba69923e37625e94953257915d25f1041f43cefd5cb62"
+
+/// The key absent from `fruits_root`.
+const fruits_absent_key = "apple[uid: 58]"
+
+/// Three steps — a branch and two leaf neighbours — so this exercises the real
+/// recursion rather than the empty-proof base case the sentinel arm takes.
+const fruits_absence_proof: mpf.Proof =
+  [
+    mpf.Branch {
+      skip: 0,
+      neighbors: #"c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb47238ba5d16031b6bace4aee22156f5028b0ca56dc24f7247d6435292e82c039c3490a825d2e8deddf8679ce2f95f7e3a59d9c3e1af4a49b410266d21c9344d6d79519b8cdfbd053e5a86cf28a781debae71638cd77f85aad4b88869373d9dcfd",
+    },
+    mpf.Leaf {
+      skip: 0,
+      key: #"5cddcd30a0a388cf6feb3fd6e112c96e9daf23e3a9c8a334e7044650471aaa9e",
+      value: #"f429821ddf89c9df3c7fbb5aa6fadb6c246d75ceede53173ce59d70dde375d14",
+    },
+    mpf.Leaf {
+      skip: 0,
+      key: #"5e7ccfedd44c90423b191ecca1eb21dfbac865d561bace8c0f3e94ae7edf4440",
+      value: #"7c3715aba2db74d565a6ce6cc72f20d9cb4652ddb29efe6268be15b105e40911",
+    },
+  ]
+
+/// The sentinel arm, and the path #608 found dead on this route: a Midgard
+/// header carries `env.empty_merkle_tree_root` for an empty MPF, and the empty
+/// proof is the only witness an empty trie can produce. Before #625 this
+/// answered `False`, so non-membership over an empty Midgard trie was
+/// unprovable through every caller of this function.
+test mpf_proof_v1_accepts_non_membership_against_the_empty_sentinel() {
+  mpf_proof_v1.does_not_have(env.empty_merkle_tree_root, key, [])
+}
+
+/// The production arm: a populated trie reached through `mpf.from_root`, with
+/// a real three-step absence witness. Every root but a genesis one takes this
+/// arm, so without this selector a mutation collapsing the `else` branch onto
+/// the sentinel would be silent under `aiken check`.
+test mpf_proof_v1_accepts_non_membership_over_a_populated_trie() {
+  mpf_proof_v1.does_not_have(
+    fruits_root,
+    fruits_absent_key,
+    fruits_absence_proof,
+  )
+}
+
+/// The translation stays a translation: an unproven root is still refused.
+test mpf_proof_v1_rejects_an_unproven_root_as_non_membership() {
+  !mpf_proof_v1.does_not_have(unproven_root, key, [])
+}
+
+/// `insert_root`'s fold-in, which is what keeps the opened gate from turning
+/// into a live abort: `mpf.insert`'s own `excluding(key, proof) == self.root`
+/// precondition would fail on exactly the sentinel roots `does_not_have` now
+/// admits. The successor is the one-leaf root this module computes
+/// independently from the MPF helpers, and is the same root the library's own
+/// empty root produces — an insert never yields an empty trie, so the
+/// successor is never itself the sentinel.
+test mpf_proof_v1_inserts_from_the_empty_sentinel() {
+  and {
+    mpf_proof_v1.insert_root(env.empty_merkle_tree_root, key, value, []) == Some(
+      singleton_root(),
+    ),
+    mpf_proof_v1.insert_root(env.empty_merkle_tree_root, key, value, []) == mpf_proof_v1.insert_root(
+      null_hash,
+      key,
+      value,
+      [],
+    ),
+    singleton_root() != env.empty_merkle_tree_root,
   }
 }
