@@ -1,12 +1,14 @@
 {
   "schemaVersion": "midgard-canonical-v1-cg4-fund-safety-classification-gate-v1",
-  "goalIds": ["CG4"],
+  "goalIds": [
+    "CG4"
+  ],
   "goalSpecAnchors": [
     "GOAL_SPEC.md 8.4 P4 forced execution and classification, row CG4",
     "GOAL_SPEC.md 9.4 Shared correction lifecycle, row QG1",
     "GOAL_SPEC.md 11 IG1 and IG2, bound here as the ABI half of the consolidated review"
   ],
-  "sourceRevision": "1a94c00a11b6f3ad8ca04d655dbe5e74a3e6c007",
+  "sourceRevision": "a8a2c6c5 + the #617 blueprint regeneration re-pins (the working tree that became this commit)",
   "gateStatus": "BLOCKED",
   "waivers": [],
   "createsC70Snapshots": false,
@@ -20,7 +22,9 @@
       "classification": "normal source, valid and effectful",
       "expectedTerminal": "the accepted ledger delta is applied exactly; a valid static-rules transition cannot be proven rejected",
       "status": "BLOCKED",
-      "blockedOn": ["CG3"],
+      "blockedOn": [
+        "CG3"
+      ],
       "prescribedSurfaces": [
         "onchain/aiken/lib/midgard/validation-machine-v1.ak",
         "onchain/aiken/lib/midgard/validation-machine-v1.test.ak",
@@ -37,7 +41,9 @@
       "classification": "forced source, valid and effectful",
       "expectedTerminal": "the same validation and delta as the equivalent normal source; the transition can be neither skipped, rejected nor turned into a no-op",
       "status": "BLOCKED",
-      "blockedOn": ["CG3"],
+      "blockedOn": [
+        "CG3"
+      ],
       "prescribedSurfaces": [
         "onchain/aiken/lib/midgard/transaction-root-v1-golden.test.ak",
         "demo/midgard-validation/tests/helpers/retained-da-boundary-v1.ts",
@@ -56,7 +62,9 @@
       "classification": "forced source, invalid",
       "expectedTerminal": "the exact forced-order effect is consumed and no invalid ledger delta is applied",
       "status": "BLOCKED",
-      "blockedOn": ["CG3"],
+      "blockedOn": [
+        "CG3"
+      ],
       "prescribedSurfaces": [
         "onchain/aiken/lib/midgard/validation-trace-v1.ak",
         "onchain/aiken/lib/midgard/validation-trace-v1.test.ak",
@@ -73,7 +81,9 @@
       "classification": "forced source, specified no-op",
       "expectedTerminal": "an exact authenticated no-op that remains provable as such",
       "status": "BLOCKED",
-      "blockedOn": ["CG3"],
+      "blockedOn": [
+        "CG3"
+      ],
       "prescribedSurfaces": [
         "onchain/aiken/lib/midgard/validation-tail-controls-v1-abi.test.ak",
         "demo/midgard-validation/src/forced-specified-noop-v1.ts",
@@ -93,7 +103,12 @@
       "classification": "normal source misclassified as forced",
       "expectedTerminal": "a single deterministic proof and correction path",
       "status": "BLOCKED",
-      "blockedOn": ["C60", "C61", "C62", "C63"],
+      "blockedOn": [
+        "C60",
+        "C61",
+        "C62",
+        "C63"
+      ],
       "prescribedSurfaces": [
         "demo/midgard-fault-proofs/src/transition-trace/detect.ts",
         "demo/midgard-fault-proofs/tests/normal-misclassified-as-forced-v1.test.ts"
@@ -110,7 +125,12 @@
       "classification": "forced source misclassified as normal",
       "expectedTerminal": "a single deterministic proof and correction path",
       "status": "BLOCKED",
-      "blockedOn": ["C60", "C61", "C62", "C63"],
+      "blockedOn": [
+        "C60",
+        "C61",
+        "C62",
+        "C63"
+      ],
       "prescribedSurfaces": [
         "demo/midgard-fault-proofs/src/transition-trace/witnesses.ts",
         "demo/midgard-fault-proofs/tests/forced-misclassified-as-normal-v1.test.ts"
@@ -127,7 +147,12 @@
       "classification": "accepted source paired with the wrong delta",
       "expectedTerminal": "detection and correction for both normal and forced sources",
       "status": "BLOCKED",
-      "blockedOn": ["C60", "C61", "C62", "C63"],
+      "blockedOn": [
+        "C60",
+        "C61",
+        "C62",
+        "C63"
+      ],
       "prescribedSurfaces": [
         "demo/midgard-fault-proofs/src/accepted-source-wrong-delta-v1.ts",
         "demo/midgard-fault-proofs/tests/accepted-source-wrong-delta-v1.test.ts",
@@ -146,7 +171,15 @@
       "classification": "single-party proof regression across the direct families",
       "expectedTerminal": "the existing self-contained families stay direct and keep passing their soundness tests",
       "status": "BLOCKED",
-      "blockedOn": ["C60", "C61", "C62", "C63", "C64", "C65", "C66"],
+      "blockedOn": [
+        "C60",
+        "C61",
+        "C62",
+        "C63",
+        "C64",
+        "C65",
+        "C66"
+      ],
       "prescribedSurfaces": [
         "onchain/aiken/lib/midgard/fraud-proofs/common.ak",
         "onchain/aiken/lib/midgard/fraud-proofs/common.test.ak",
@@ -165,7 +198,16 @@
       "classification": "both interactive verdict directions",
       "expectedTerminal": "operator-valid/challenger-invalid and operator-invalid/challenger-valid lifecycles, including withholding timeout, complete through award and removal",
       "status": "BLOCKED",
-      "blockedOn": ["C60", "C61", "C62", "C63", "C64", "C65", "C66", "C67"],
+      "blockedOn": [
+        "C60",
+        "C61",
+        "C62",
+        "C63",
+        "C64",
+        "C65",
+        "C66",
+        "C67"
+      ],
       "prescribedSurfaces": [
         "onchain/aiken/lib/midgard/validation-dispute-v1.ak",
         "onchain/aiken/lib/midgard/validation-dispute-v1.test.ak",
@@ -186,12 +228,8 @@
     "status": "BLOCKED",
     "verifierPath": "demo/scripts/verify-canonical-v1-qg1-local-coverage-gate.mjs",
     "verifierPresent": false,
-    "acceptance": "No `PARTIAL`, documented-missing, required-undocumented, unreachable, stub, untooled, or untested fund-safety row remains. QG1 is the local-closure gate: it requires §9.1 `LOCAL_PASS`, never live evidence.",
+    "acceptance": "No `PARTIAL`, documented-missing, required-undocumented, unreachable, stub, untooled, or untested fund-safety row remains. QG1 is the local-closure gate: it requires \u00a79.1 `LOCAL_PASS`, never live evidence.",
     "blockedOn": [
-      "Q10",
-      "Q11",
-      "Q12",
-      "Q14",
       "Q15",
       "Q16",
       "Q17",
@@ -244,13 +282,13 @@
   },
   "abiFreezeBinding": {
     "artifactPath": "docs/exec-plans/evidence/canonical-v1-abi-freeze-v1.json",
-    "artifactSha256": "d4e334281cd2c19a8fbaea4b8d17ad5c589568b8e1d62b7b1b4d6c9b106f25f4",
+    "artifactSha256": "11444381670578c12a99faffdd8932e0b281625e867fcc6dbbdf49ed66eaf7e9",
     "verifierPath": "demo/scripts/verify-canonical-v1-abi-freeze.mjs",
-    "verifierSha256": "e92176d5f3781212cf3b3e36b3530835a54c04c4994819813c81dac943579ddf",
+    "verifierSha256": "568e2f7a387c1875330a7de46ebe26e956f6fcc458f284f5a1cfc6077ba14d5c",
     "freezeStatus": "BLOCKED",
     "ig2Status": "BLOCKED",
     "ig2Violations": 11,
-    "driftFindings": 0
+    "driftFindings": 1
   },
   "zeroDebt": {
     "missingFundSafetyRows": 6,
