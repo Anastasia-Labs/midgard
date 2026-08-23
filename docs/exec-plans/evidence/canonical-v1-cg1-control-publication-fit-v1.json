@@ -1,12 +1,18 @@
 {
   "schemaVersion": "midgard-canonical-v1-cg1-control-publication-fit-v1",
-  "goalIds": ["CG1"],
+  "goalIds": [
+    "CG1"
+  ],
   "acceptance": "Every parameterized hub/control validator fits a real 16,384-byte publication transaction; evidence is bound to final validator hashes.",
   "waivers": [],
   "createsC70Snapshots": false,
   "liveOrReadinessClaims": 0,
   "dependencyFreshness": {
-    "dependsOn": ["C11", "C12", "C13"],
+    "dependsOn": [
+      "C11",
+      "C12",
+      "C13"
+    ],
     "recordedIn": {
       "path": "GOAL_PROGRESS.md",
       "heading": "## #479 (B02, C10-C13 + CG1) measured: four sub-gates PASS, CG1's aggregate verifier was never built (2026-08-17)"
@@ -14,38 +20,38 @@
     "rows": {
       "C11": {
         "status": "PASS",
-        "quote": "**C11 PASS** — dispute-hub fit suites 11/11 (pin was 9/9: growth, the"
+        "quote": "**C11 PASS** \u2014 dispute-hub fit suites 11/11 (pin was 9/9: growth, the"
       },
       "C12": {
         "status": "PASS",
-        "quote": "**C12 PASS** — resolver routing totality 8/8 + dispute totality 1/1 +"
+        "quote": "**C12 PASS** \u2014 resolver routing totality 8/8 + dispute totality 1/1 +"
       },
       "C13": {
         "status": "PASS",
-        "quote": "**C13 PASS modulo the accepted #597 red** — ABI selectors 7/7 and 11/11"
+        "quote": "**C13 PASS modulo the accepted #597 red** \u2014 ABI selectors 7/7 and 11/11"
       }
     },
     "priorCg1Status": {
-      "quote": "**CG1 MEASUREMENT-BLOCKED, structurally** — CG1's manifest row names",
+      "quote": "**CG1 MEASUREMENT-BLOCKED, structurally** \u2014 CG1's manifest row names",
       "meaning": "GOAL_PROGRESS.md recorded CG1 as measurement-blocked purely because this artifact and its verifier did not exist yet; that same ledger entry names the CG1 aggregate fit verifier and pinned evidence artifact as the next advanceable item. This artifact and demo/scripts/verify-canonical-v1-cg1-control-publication-fit.mjs are that discharge."
     }
   },
   "hashBasis": {
     "blueprintPath": "onchain/aiken/plutus.json",
     "blueprintTrackedInGit": false,
-    "blueprintSha256": "f49cae224f24cfab577f1ed10b5340384b75e541851eb7b77b507a79cb7d5e00",
-    "blueprintMd5": "5e38d7c6ccb7987d0aca710307dcaea7",
-    "validatorCount": 398,
+    "blueprintSha256": "c55917de0f9b479046f601431ea3e088879b2ebfed3150dbe87dd98933b80f00",
+    "blueprintMd5": "66426a3af44236a2ad3ded1b03f8fdcf",
+    "validatorCount": 444,
     "freezeStatus": "PRE_FREEZE",
     "note": "onchain/aiken/plutus.json is gitignored and not committed to git; every applied hash, script byte length and transaction measurement in this artifact is bound to this specific working-tree blueprint. Reproducibility (not git tracking) is what makes the pin honest: an independent scratch rebuild with the pinned Aiken fork reproduced it byte-identically (see reproduction below).",
-    "invalidationTrigger": "Issue #510's blueprint freeze-event regeneration changes onchain/aiken/plutus.json's bytes and therefore re-pins every applied hash, script byte length and transaction measurement this artifact carries. CG1's acceptance clause 'evidence is bound to final validator hashes' is fully discharged only once #510 lands and this artifact is re-measured against the frozen blueprint; until then the hashes below are bound to the current pre-freeze blueprint, not to a final one.",
+    "invalidationTrigger": "Issue #510's blueprint freeze-event regeneration changes onchain/aiken/plutus.json's bytes and therefore re-pins every applied hash, script byte length and transaction measurement this artifact carries. That regeneration is the #617 ABI wave's single sanctioned rebuild and it has now happened: this artifact was re-measured against it, so every roster hash below is bound to the regenerated blueprint rather than to the pre-freeze one. CG1's acceptance clause \"evidence is bound to final validator hashes\" is fully discharged only once the wave's blueprint is signed off as final; until then these hashes are bound to the regenerated but not yet signed-off blueprint.",
     "crossCheckedAgainst": "demo/midgard-sdk/tests/validation-resolver-applied-hashes.test.ts, which also hashes onchain/aiken/plutus.json directly (via MIDGARD_REAL_BLUEPRINT_PATH override or its default) rather than a cached copy; a silent blueprint drift would desynchronize that suite's pinned applied hashes from this artifact's the same way it would desynchronize this artifact from the working tree.",
     "reproduction": {
-      "command": "rsync -a --exclude=.git --exclude=plutus.json --exclude=build onchain/aiken/ <scratch>/aiken-build-repro/ && cd <scratch>/aiken-build-repro && /home/gumbo/playground/aiken/target/release/aiken build --env testnet -o <scratch>/aiken-build-repro-out",
-      "aikenBinaryPath": "/home/gumbo/playground/aiken/target/release/aiken",
-      "aikenBinaryMd5": "b3acfdf348235798cb6b921d0f87750a",
+      "command": "rsync -a --exclude=.git --exclude=plutus.json --exclude=build onchain/aiken/ <scratch>/cg1-repro/ && cd <scratch>/cg1-repro && ~/.aiken-fork/bin/aiken build --env testnet -o <scratch>/cg1-repro-out/plutus.json",
+      "aikenBinaryPath": "~/.aiken-fork/bin/aiken",
+      "aikenBinaryMd5": "50890fe36b3d8ebea58e3f370e9ca479",
       "aikenVersion": "aiken v1.1.23+2a78108",
-      "result": "Byte-identical reproduction: md5 5e38d7c6ccb7987d0aca710307dcaea7, sha256 f49cae224f24cfab577f1ed10b5340384b75e541851eb7b77b507a79cb7d5e00 (matches the working tree onchain/aiken/plutus.json exactly)."
+      "result": "Byte-identical reproduction: md5 66426a3af44236a2ad3ded1b03f8fdcf, sha256 c55917de0f9b479046f601431ea3e088879b2ebfed3150dbe87dd98933b80f00 (matches the working tree onchain/aiken/plutus.json exactly; re-run 2026-08-23 for the #617 regeneration)."
     }
   },
   "rosterSource": {
@@ -69,13 +75,11 @@
     "policyId": "61fe99d6bc736007a58457927151c9b2e21df96ba1d8dfb670f7aa70",
     "mintingScriptCBOR": "8205193840",
     "expiresAtSlot": 14400,
-    "expiresAtUnixTime": 1787044031444,
-    "timelockDurationMs": 14400000,
-    "note": "A fresh deployer-chosen native timelock policy created for this measurement run via createReferenceScriptAuthPolicy. It authenticates reference-script UTxOs off-chain and is not a Plutus parameter for any roster entry except da-attestation (both spending and minting), whose applied hash embeds this policy's policyId. A different deployer-chosen policy changes da-attestation's applied hash but not its byte size or fit; every other roster entry's applied hash is independent of this policy."
+    "expiresAtUnixTime": 1787528387554,
+    "timelockDurationMs": 14400000
   },
   "measurement": {
-    "commit": "1ec5e12552ec0c558c7a006279cef896d03d8a52",
-    "date": "2026-08-18",
+    "date": "2026-08-23",
     "nodeVersion": "v24.13.1",
     "vitestVersion": "3.0.7",
     "network": "Preprod",
@@ -87,8 +91,9 @@
       "outputIndex": 0
     },
     "method": "For every roster target: select funding UTxOs (selectReferenceScriptFundingUtxos), build a single-target reference-script publication transaction via completeReferenceScriptPublicationTxProgram (the same builder demo/midgard-node's production reference-script publication path calls), sign it with the wallet, measure the complete signed CBOR (byte length, fee) against PROTOCOL_PARAMETERS_DEFAULT.maxTxSize (16,384), then submit and await confirmation on a Lucid Emulator constructed with maxTxSize explicitly pinned to that real 16,384-byte L1 limit (not the emulator's relaxed default), and confirm exactly one live reference-script UTxO exists at the expected output index. Targets are processed sequentially so each publication's funding selection sees the prior one's confirmed wallet UTxOs.",
-    "driver": "A temporary scratch vitest file (demo/midgard-node/tests/scratch-cg1-publication-fit.test.ts), deleted after the run; it is not part of this change. It imports only already-tracked production/test-helper code: nodeRuntimeReferenceScriptTargets, loadRealMidgardContractsForTest, and the @al-ft/midgard-sdk reference-script publication builder.",
-    "reproductionCommand": "pnpm --dir demo/midgard-node exec vitest run tests/scratch-cg1-publication-fit.test.ts"
+    "driver": "demo/midgard-node/tests/scratch-cg1-publication-fit.test.ts, a committed driver. The original 2026-08-18 run used a throwaway scratch file of the same name that was deleted afterwards, so this artifact's own reproductionCommand named a path that did not exist. The driver was re-derived from this artifact's roster, hashBasis and method fields and committed, so CG1 is re-measurable after any blueprint regeneration. It pins nothing: the roster comes from nodeRuntimeReferenceScriptTargets, the contracts from loadRealMidgardContractsForTest against the working-tree blueprint, and every hash, byte count and fee is measured. MIDGARD_CG1_EMIT=<path> writes the measured roster in this artifact's own shape.",
+    "reproductionCommand": "pnpm --dir demo/midgard-node exec vitest run tests/scratch-cg1-publication-fit.test.ts",
+    "commit": "a8a2c6c5 + the #617 blueprint regeneration re-pins (the working tree that became this commit)"
   },
   "roster": [
     {
@@ -100,7 +105,7 @@
       "l1ByteMarginBytes": 15882,
       "feeLovelace": 177645,
       "fits": true,
-      "txHash": "94a32dd76a1df5458dc51bfbee92f019d775a7ad73854e195bcdc0b0aa05015c",
+      "txHash": "00bd02402c85191364521e6cfd41a5b86a816f933056f50c1391ea93a2294152",
       "outputIndex": 1
     },
     {
@@ -112,7 +117,7 @@
       "l1ByteMarginBytes": 15417,
       "feeLovelace": 198105,
       "fits": true,
-      "txHash": "be92b7ad598d4428c83efed44c3eab9276b3653f4df3d8088b179a002eb467ea",
+      "txHash": "5c6a0fb79256209c59871d17eeadc70ac42a8fea31efa5e7632acaf8012046da",
       "outputIndex": 1
     },
     {
@@ -124,7 +129,7 @@
       "l1ByteMarginBytes": 13633,
       "feeLovelace": 276601,
       "fits": true,
-      "txHash": "914882ce363ee6424aacfc4f2d8896740c862d2cbd88c5c4e5e094ba3b3b02ee",
+      "txHash": "104f371739655b3f82f3b5fa9d0f6f4d76007955963efddd48d83919b6d54fcb",
       "outputIndex": 1
     },
     {
@@ -136,7 +141,7 @@
       "l1ByteMarginBytes": 13635,
       "feeLovelace": 276513,
       "fits": true,
-      "txHash": "9603445d104b4a6f42cc27e595390272b1ab73b5e5ca2910d9c0e9928df4bdc8",
+      "txHash": "62f3780d5ce6ef729861de44c6abeeb7e68a51e280bb206ea1471e6d71bda8d8",
       "outputIndex": 1
     },
     {
@@ -148,7 +153,7 @@
       "l1ByteMarginBytes": 9692,
       "feeLovelace": 450005,
       "fits": true,
-      "txHash": "59c22770aacee50923aa41864558c5259366916c7ff6bea72abb7d6d6ecf2ee6",
+      "txHash": "5df8b77a4e7ca901a67362dd28e2676d0bee1b2f6a2d7fe949d3b95359d05154",
       "outputIndex": 1
     },
     {
@@ -160,7 +165,7 @@
       "l1ByteMarginBytes": 9694,
       "feeLovelace": 449917,
       "fits": true,
-      "txHash": "58c7cac4b204cf377cc43df798d4f957327aefed5b3ed9fba572a6b9cafd6474",
+      "txHash": "e3af1658de7937907325d941edd7ae9ae69200a56be643d2db76193165daadfc",
       "outputIndex": 1
     },
     {
@@ -172,7 +177,7 @@
       "l1ByteMarginBytes": 6949,
       "feeLovelace": 570697,
       "fits": true,
-      "txHash": "df117d2525d94bb66506f8e18ae93653cbb3136dc0506ffb2babe38c75b4259e",
+      "txHash": "122d301f331f95e618b810e4d6900e8247ac2e5186929e1815addd612ffba764",
       "outputIndex": 1
     },
     {
@@ -184,7 +189,7 @@
       "l1ByteMarginBytes": 15360,
       "feeLovelace": 200613,
       "fits": true,
-      "txHash": "4193f844d5a3c94691a89c751278d46f3ca5b3bc88b1b44ab5a91a03bab29d61",
+      "txHash": "ceb15d71f3a526e0abfd6b8c7752198dbdf17eba11c5cdb64d80d833001ab017",
       "outputIndex": 1
     },
     {
@@ -196,7 +201,7 @@
       "l1ByteMarginBytes": 15104,
       "feeLovelace": 211877,
       "fits": true,
-      "txHash": "19be0ab48e33b11800220a85517bdd93c5d9c1d8b61f40653b36f563371a9dbe",
+      "txHash": "04368a7cf1bfc05e10b2859b161ca4cb06e5f7e2545cd6bfbbf9bac058b66f16",
       "outputIndex": 1
     },
     {
@@ -208,7 +213,7 @@
       "l1ByteMarginBytes": 3779,
       "feeLovelace": 710177,
       "fits": true,
-      "txHash": "7ec60591092d3479ee21679c4ad6e9df58de20edc298a9b7b438cc15921e4523",
+      "txHash": "552b7f131eccfe9d32baedcbda409ef1bb3e1a70bfb6998be59c1f676e512af5",
       "outputIndex": 1
     },
     {
@@ -220,7 +225,7 @@
       "l1ByteMarginBytes": 15649,
       "feeLovelace": 187897,
       "fits": true,
-      "txHash": "a886444fa474b4dd709acbf4355e5842c9a885df269a39781ea491ae2c457a34",
+      "txHash": "ba2a0f4b0677533adf76205c4b6bf8cbc1d9d050741b9ed384a438d99ddc852a",
       "outputIndex": 1
     },
     {
@@ -232,7 +237,7 @@
       "l1ByteMarginBytes": 8985,
       "feeLovelace": 481113,
       "fits": true,
-      "txHash": "331331eefa814b06853bfb483bdc1c5afb3e83b14261d793a2ece0940933f767",
+      "txHash": "928578146c90db7981948565b671d81ff2761c2474cc28b41eef63a666913145",
       "outputIndex": 1
     },
     {
@@ -244,7 +249,7 @@
       "l1ByteMarginBytes": 10651,
       "feeLovelace": 407809,
       "fits": true,
-      "txHash": "1a7aa898d86efbcaa6cd9862ebbce1db651ebf8cabad36083c24c10efdf0dab4",
+      "txHash": "4144f8f57e505ca6919dadfece4d8920487ed7c8bb74a91bcfb5458598f2263f",
       "outputIndex": 1
     },
     {
@@ -256,7 +261,7 @@
       "l1ByteMarginBytes": 6419,
       "feeLovelace": 594017,
       "fits": true,
-      "txHash": "3c1df23f65c498761e6f81a6d4f9d26ad0b90d132738040f4cf2592466d74d13",
+      "txHash": "2d499c4c9e398e65743b8c7ea99df9be0ee5b14cfa271b082757a616b9009dec",
       "outputIndex": 1
     },
     {
@@ -268,7 +273,7 @@
       "l1ByteMarginBytes": 15657,
       "feeLovelace": 187545,
       "fits": true,
-      "txHash": "ed3e585715c756516766a3c28393236bce42929ca8d90fd03fdb79ed7deb972e",
+      "txHash": "752c57d4ae1674cdb462b436a8b709767cd3b722629cdc590155929ad4630c1c",
       "outputIndex": 1
     },
     {
@@ -280,7 +285,7 @@
       "l1ByteMarginBytes": 8152,
       "feeLovelace": 517765,
       "fits": true,
-      "txHash": "edf8319d76ba5bd4ad0799ecaf0ae216bae3f9ff8b2ee6d019c5908a9e8630c6",
+      "txHash": "9189d03d2672e38b4f7cdff38d6c93ebc67f0970f5e40bd4c892a3136eb00f85",
       "outputIndex": 1
     },
     {
@@ -292,19 +297,19 @@
       "l1ByteMarginBytes": 15522,
       "feeLovelace": 193485,
       "fits": true,
-      "txHash": "e72b1be39eb5c39c829dcd20603c80e6543e2e5280ae3d3a4d6edce778d4a28c",
+      "txHash": "f1a5f1a38b914ed670ad941204d0796542f8ffaab0d802865ae5a962ea78e20f",
       "outputIndex": 1
     },
     {
       "name": "deposit minting",
       "scriptType": "PlutusV3",
-      "appliedScriptHash": "0d20449908dea780ca9e8fbc46d5df69309ce748700be5f6ab7fbb51",
-      "serializedScriptBytes": 4400,
-      "completeSignedTransactionBytes": 4875,
-      "l1ByteMarginBytes": 11509,
-      "feeLovelace": 370057,
+      "appliedScriptHash": "f128302aebd294bb3a574e932a57ccf18ad6682c55456ac85113c7f8",
+      "serializedScriptBytes": 4440,
+      "completeSignedTransactionBytes": 4915,
+      "l1ByteMarginBytes": 11469,
+      "feeLovelace": 371817,
       "fits": true,
-      "txHash": "e5b7c3142058cebaa7c8b3bb0955157d291745267429aa944aed19cd45aebf9e",
+      "txHash": "04496f31ce287fa50fcea8dc8c5570995f3522ec3fb84e9d8d26e1c28f995ef1",
       "outputIndex": 1
     },
     {
@@ -316,19 +321,19 @@
       "l1ByteMarginBytes": 11749,
       "feeLovelace": 359497,
       "fits": true,
-      "txHash": "92aebe99f9fa0ea6970201b90f105c99be6f3e12e0c6f467a7263d419acc4eaa",
+      "txHash": "efe3b99dac874159ddb1fdb2108dbed03a591d1326ed8ed3c5171b082a2744ca",
       "outputIndex": 1
     },
     {
       "name": "withdrawal minting",
       "scriptType": "PlutusV3",
-      "appliedScriptHash": "4be5a741803d47f3cf0014812cc607b2e2ee8187b41a983a82951dfe",
-      "serializedScriptBytes": 4674,
-      "completeSignedTransactionBytes": 5155,
-      "l1ByteMarginBytes": 11229,
-      "feeLovelace": 382377,
+      "appliedScriptHash": "d8c7dbba1900a9f9cee76d7587bd1a122d1d76dd37cd63414fe52cc1",
+      "serializedScriptBytes": 4714,
+      "completeSignedTransactionBytes": 5195,
+      "l1ByteMarginBytes": 11189,
+      "feeLovelace": 384137,
       "fits": true,
-      "txHash": "c9ac03ae0a5b530a39388086e7ebbd1d44ba2f68f51d4eb6ca7bf5967c8289b9",
+      "txHash": "5ea538b3919f91c89328b245854dba2e492ada0f675363fd549b1ceab43b7830",
       "outputIndex": 1
     },
     {
@@ -340,7 +345,7 @@
       "l1ByteMarginBytes": 9755,
       "feeLovelace": 447233,
       "fits": true,
-      "txHash": "6968fbf5f99db49cd612c63f080e8ac573f7f8b83d88a4f7058297808d1915f8",
+      "txHash": "247d1402991d0bd0dcb290f03bc49f9fd106c33ce8a3a41e757b18e6d66af04e",
       "outputIndex": 1
     },
     {
@@ -352,7 +357,7 @@
       "l1ByteMarginBytes": 12755,
       "feeLovelace": 315233,
       "fits": true,
-      "txHash": "b5b2b214e5593fc8b0c84fd9a341664d3c31127791aca4b69b6fb06a46c66fbc",
+      "txHash": "cc207a4fdc9b0d175ed36e5aa95cc6ad5cc7cec058c22e61aa5bfbe75c9f30f5",
       "outputIndex": 1
     },
     {
@@ -364,7 +369,7 @@
       "l1ByteMarginBytes": 13329,
       "feeLovelace": 289977,
       "fits": true,
-      "txHash": "245c923d93764b491d8637636a99395a39fdd07ef984cca5c2504dc8c09023e6",
+      "txHash": "db631f0e36265935fb2eff04eb2a18867325d03460457f2b24df6814a34e00bb",
       "outputIndex": 1
     },
     {
@@ -376,7 +381,7 @@
       "l1ByteMarginBytes": 13592,
       "feeLovelace": 278405,
       "fits": true,
-      "txHash": "fbfea18a722acdf145c176baea9165b98ea91b607c2b1fa52201556028790e80",
+      "txHash": "1c2efe8016d75188a4678d9cc0aa2a3d7ae54b793d70b37f648bdb256a832009",
       "outputIndex": 1
     },
     {
@@ -388,7 +393,7 @@
       "l1ByteMarginBytes": 15885,
       "feeLovelace": 177513,
       "fits": true,
-      "txHash": "088513d969e5c27630e0d00f8008a14fb66b2739fc725416c960c83a0b9c8d39",
+      "txHash": "1d09f2e245fa55f1240dfc98e508758c5cd4a85e8b9bd6ed675b001a46503be6",
       "outputIndex": 1
     },
     {
@@ -400,7 +405,7 @@
       "l1ByteMarginBytes": 10831,
       "feeLovelace": 399889,
       "fits": true,
-      "txHash": "0a02b84b9dd92b62cf52edc718854df46ca335a965b3463eb6d3a6d08de0d7f2",
+      "txHash": "2d8297c7b4f561b178f16dcafa098b675ab09353d7bfc6cc84d8b2462098056d",
       "outputIndex": 1
     },
     {
@@ -412,7 +417,7 @@
       "l1ByteMarginBytes": 12390,
       "feeLovelace": 331293,
       "fits": true,
-      "txHash": "f8e63958194fd65c8bf6f2b72349f282587b9c9b75f97cffc21ff40f888c8bd3",
+      "txHash": "de2009e16680dafb10ff1c8916e1e66c279b45dbad3512ce13463315ddb0d523",
       "outputIndex": 1
     },
     {
@@ -424,55 +429,55 @@
       "l1ByteMarginBytes": 15784,
       "feeLovelace": 181957,
       "fits": true,
-      "txHash": "4b3ebebcd608885f6cd9a5814b0c57d993626021764183ec741395b8c6c305df",
+      "txHash": "3717c1dadb92f7e337ef08d1742e282e01a5a0eb3b9b11ae76482a402c7982bf",
       "outputIndex": 1
     },
     {
       "name": "V1 validation-trace dispute",
       "scriptType": "PlutusV3",
-      "appliedScriptHash": "b945e8f96463291be62ba5d766e0579d5d74825ebed724c8697c7fb6",
+      "appliedScriptHash": "50ecec0cf7f50a20b92a78e9e15d196fee799cabac8d311f4350e65c",
       "serializedScriptBytes": 12814,
       "completeSignedTransactionBytes": 13317,
       "l1ByteMarginBytes": 3067,
       "feeLovelace": 741505,
       "fits": true,
-      "txHash": "7702edea461c6fbea27f1d6febfdf301f4d3c46448bcfcd9b4f493200f71c584",
+      "txHash": "4aee8df48969bb60bc76fad47de8a384bc61652bf2a54ee163eec197e1af6b9a",
       "outputIndex": 1
     },
     {
       "name": "V1 validation-trace source",
       "scriptType": "PlutusV3",
-      "appliedScriptHash": "f6a5ff5e5b0ba4ac57cb624bc997a0b9cd5d361edd560471ac2fc0fc",
+      "appliedScriptHash": "03e8dd17b9824f828e61d816dd2e9fd67f514a8de5b12db58163c8be",
       "serializedScriptBytes": 11917,
       "completeSignedTransactionBytes": 12416,
       "l1ByteMarginBytes": 3968,
       "feeLovelace": 701861,
       "fits": true,
-      "txHash": "2fbbab5ef8363bb0b1c856902715a8244c095e3d3cd2b40dbc4bff6a90478193",
+      "txHash": "30029dbc5dedb23af36d9ce41f0996d72e615e830e3c99f2a10ac0240dd63f01",
       "outputIndex": 1
     },
     {
       "name": "V1 validation-trace game",
       "scriptType": "PlutusV3",
-      "appliedScriptHash": "0b2e86672ca5196cc0654cd917726bb0e72df2af1f03b1b572c25454",
+      "appliedScriptHash": "c45080bf0c70918990ad6634e27d7ec4a65994ea495e68ed77987f20",
       "serializedScriptBytes": 4308,
       "completeSignedTransactionBytes": 4803,
       "l1ByteMarginBytes": 11581,
       "feeLovelace": 366889,
       "fits": true,
-      "txHash": "994c1f7938f650a05be82ac41645dfb5a2ad0ae2923a0aa51d5df43972d43015",
+      "txHash": "2f82d8a7492ff615fffd82775d493b763b35903a4899dca9a98e00bcf4d1b155",
       "outputIndex": 1
     },
     {
       "name": "V1 validation-trace boundary",
       "scriptType": "PlutusV3",
-      "appliedScriptHash": "29389747365a84db4f0d36bbd349a509874bf41031b5f3990cf4d030",
+      "appliedScriptHash": "ab32e18b8a38af5001ddee241013df3492e4233409c3d321ec636352",
       "serializedScriptBytes": 5314,
       "completeSignedTransactionBytes": 5819,
       "l1ByteMarginBytes": 10565,
       "feeLovelace": 411593,
       "fits": true,
-      "txHash": "e6850da6e73d3a2635879aa3e73e24a959f2c6a036d959b465d8e98cf342674d",
+      "txHash": "3eaa2d804fd25dbc045da6a083f9b1fd11c170b5f0a3503f9dee175e49ab266a",
       "outputIndex": 1
     },
     {
@@ -484,7 +489,7 @@
       "l1ByteMarginBytes": 13781,
       "feeLovelace": 270089,
       "fits": true,
-      "txHash": "e85567597ab815a2570279c95a0c4be12f892c883f1e71c386488dc1d3f30ea8",
+      "txHash": "c51c4eec27e61e1d77b7edd9bae0cdc5a03205dd0306d9a971e7800ca545f4dc",
       "outputIndex": 1
     },
     {
@@ -496,7 +501,7 @@
       "l1ByteMarginBytes": 14320,
       "feeLovelace": 246373,
       "fits": true,
-      "txHash": "ef26dfffb5b4d497e5740578b9267c3588e4dc8fd1ebaf6c58684bdf481edd95",
+      "txHash": "055c44491a4620c83205976076738346a3db2088ea0dc78b6c5d1804cc1dad7a",
       "outputIndex": 1
     }
   ],
@@ -519,7 +524,7 @@
         },
         {
           "path": "GOAL_PROGRESS.md",
-          "quote": "**162,660 signed bytes, L1 margin −146,276**"
+          "quote": "**162,660 signed bytes, L1 margin \u2212146,276**"
         },
         {
           "path": "docs/exec-plans/evidence/necessity/cek-program-material-v1.md",
@@ -540,5 +545,14 @@
     "staleBlueprintPins": 0,
     "dependencyRowsNotPass": 0
   },
-  "gateStatus": "PASS"
+  "gateStatus": "PASS",
+  "openItems": [
+    {
+      "id": "cg1-exclusion-bound-to-the-pre-620-cek-body",
+      "surface": "exclusions[0] (V1 validation-trace CEK direct resolver) and docs/exec-plans/evidence/necessity/cek-program-material-v1.md",
+      "measured": "The exclusion's justification -- an applied cek_v1 direct-resolver body of 162,145 bytes that no 16,384-byte publication transaction can carry -- is bound to the pre-wave blueprint. #620 retired the direct wire and fraud_proofs/validation_trace/cek_v1.main.spend collapsed from 161,957 unapplied bytes (hash 0405be42...) to 5,307 unapplied bytes (hash bc0d94d5...) before this regeneration ran, so an applied body of that size now fits the L1 envelope with room to spare. The pinned appliedScriptHash a4bfbd01... and the 162,145/162,660/-146,276 byte triple are therefore stale.",
+      "whyNotRepairedHere": "Correcting it is not a mechanical re-pin. This gate requires the single exclusion to measure above 16,384 bytes 'otherwise it belongs in the roster, not the exclusions', so the correct value decides whether the role joins nodeRuntimeReferenceScriptTargets -- a runtime roster and deployment-manifest change -- and the same numbers are pinned in an owner-signed necessity document. Both belong to the #617 sign-off, not to the mechanical regeneration pass.",
+      "owner": "#617 sign-off (CG1 / P1 oversized-validator gate / cek-program-material necessity doc)"
+    }
+  ]
 }
