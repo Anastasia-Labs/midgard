@@ -322,9 +322,23 @@ describe("V1 deployment manifest", () => {
   //     them here completes off-chain what #587 did on-chain. The catalogue
   //     category order is again untouched — none of the three is a category.
   //     `a5f80592...` -> `d9c811ab...`.
+  //  9. Issue #627 (with #618) added ONE compiled constant. 2c7fd3bb put
+  //     `coinsPerUtxoByte: 4_310` into `MIDGARD_CONSENSUS_LIMITS_V1` as the
+  //     free parameter of the minimum-Ada floor, under the owner's 2026-08-23
+  //     option-B ruling that the rate which convicts a block is a redeploy
+  //     event rather than a declared block field. The identity embeds
+  //     `MIDGARD_CONSENSUS_PROFILE_V1`, so the digest moves with it. Nothing
+  //     positional changed: `contracts` stays at 54 entries, the reference
+  //     script roles at 36 and the token names at 37, no catalogue category
+  //     was added, removed or renumbered, and the derived catalogue root in
+  //     this fixture is built from synthetic script bytes and so is untouched
+  //     by the blueprint regeneration that carries this re-pin. 2c7fd3bb left
+  //     every pin to the single #617 regeneration by design, which is why
+  //     this row was already red at a8a2c6c5.
+  //     `d9c811ab...` -> `29a6a7e6...`.
   it("accepts the sole exact authenticated V1 manifest", () => {
     expect(canonicalManifest().manifestId).toBe(
-      "d9c811abd62e8acc619181d1836b749e3fb2e295e0a309f9cf09b03d996813ef",
+      "29a6a7e6a0b57bb38a313043a148451021339775886db131e91f1f87dd488d9a",
     );
     expect(parseDeploymentManifestV1Value(canonicalManifest())).toEqual(
       canonicalManifest(),
