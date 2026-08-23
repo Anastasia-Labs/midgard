@@ -729,15 +729,24 @@ network's $coins\_per\_utxo\_byte$ protocol parameter:
 where $|\T{serialised\_output}(o)|$ is the length in bytes of the canonical
 output encoding of $o$ used throughout this specification.
 
-The rate is not a constant of this specification: $coins\_per\_utxo\_byte$ is
-read from the pinned target-parameter snapshot (C70), so a snapshot change
-re-derives every floor and invalidates the pinned vectors and proof-fit
-evidence that depend on it. The floor is exactly the target-network limit: it
-is linear in the serialized size with slope $coins\_per\_utxo\_byte$ and
-carries no additional Midgard margin at any size, so an output the target
-network funds adequately is never rejected by this rule. There is no arbitrary
-sub-cap, and no substitution of an off-chain wallet check or a constant for the
-parameterized floor.
+The floor is parameterized in the rate, and the rate is materialized as a
+compiled deployment constant: $coins\_per\_utxo\_byte$ is taken from the pinned
+target-parameter snapshot (C70) and compiled into the validators, pinned
+identically across deployment environments and mirrored by the off-chain
+consensus profile. It is deliberately neither a block-header field nor an
+element of the hashed validation context: the rate that convicts a block is not
+the block producer's to declare. A rate change is therefore a redeploy event,
+not a per-block declaration --- it re-derives every floor and invalidates the
+pinned vectors and proof-fit evidence that depend on it. What is forbidden is
+replacing the size-linear floor with a constant; storing the rate as a constant
+is not that substitution, since both implementations still take the rate as a
+parameter and the cross-check below exercises them at several distinct rates.
+
+The floor is exactly the target-network limit: it is linear in the serialized
+size with slope $coins\_per\_utxo\_byte$ and carries no additional Midgard
+margin at any size, so an output the target network funds adequately is never
+rejected by this rule. There is no arbitrary sub-cap, and no substitution of an
+off-chain wallet check or a constant for the parameterized floor.
 
 Both violations below evaluate this same $min\_ada\_value$: MIN-ADA-TX over an
 output of a transaction in the block, and MIN-ADA-UTXO over a UTxO of the
