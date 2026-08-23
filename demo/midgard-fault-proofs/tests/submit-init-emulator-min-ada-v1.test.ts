@@ -29,14 +29,19 @@ import {
 // (src/validation-dispute/submit.ts) published reference scripts for the CEK
 // decomposition's oversized semantics only and had no ValueAndMint
 // counterpart; and eight of the eleven ValueAndMint semantic bodies are over
-// the envelope on their own, before any redeemer: replay_input 21,203,
-// replay_asset 21,881, replay_finish 20,962, output_descriptor 20,958,
-// output_asset 21,583, output_finish 20,740, mint_asset 18,458 and mint_finish
-// 17,767 bytes. Only begin (11,473), replay_begin (11,013) and finalize
-// (11,987) fit -- exactly the set the existing journeys in
-// submit-init-emulator-cek-value-and-mint-v1.test.ts exercise. The E_MIN_ADA
-// wiring adds 78 bytes to the output-descriptor body (20,958 -> 21,036); it
-// neither created that gap nor materially widened it.
+// the envelope on their own, before any redeemer. Applied bodies measured in
+// THIS tree (#634, 2026-08-23) by resolving each semantic through
+// `resolveValidationTraceDisputeDeploymentContracts` -- the same route the
+// resolution hash-checks -- against a blueprint built from this tree's
+// `onchain/`: replay_input 21,367, replay_asset 22,046, replay_finish 21,138,
+// output_descriptor 21,207, output_asset 21,823, output_finish 20,987,
+// mint_asset 18,622 and mint_finish 17,931 bytes. Only begin (11,545),
+// replay_begin (11,085) and finalize (12,059) fit -- exactly the set the
+// existing journeys in submit-init-emulator-cek-value-and-mint-v1.test.ts
+// exercise. The output-descriptor body is 21,207 bytes with the E_MIN_ADA
+// wiring in place -- 4,823 bytes past the envelope on the body alone: the gap
+// is structural to the ValueAndMint decomposition, not something E_MIN_ADA
+// created.
 //
 // #634 gave the eleven ValueAndMint semantics the reference-script deployment
 // role the CEK ones already had

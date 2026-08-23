@@ -905,11 +905,18 @@ export const requireValidationCekSemanticReferenceScriptUtxo = async ({
  * semantic resolvers — but only the CEK side ever had the reference-script
  * deployment role, so every ValueAndMint semantic attached inline. Eight of
  * the eleven applied bodies exceed `MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES`
- * on their own, before any redeemer: at #634's measurement replay_input
- * 21,203, replay_asset 21,881, replay_finish 20,962, output_descriptor 20,958,
- * output_asset 21,583, output_finish 20,740, mint_asset 18,458 and
- * mint_finish 17,767 bytes; begin (11,473), replay_begin (11,013) and finalize
- * (11,987) fit. A ValueAndMint semantic dispute was therefore provable at the
+ * on their own, before any redeemer. Applied bodies measured in THIS tree
+ * (#634, 2026-08-23) by resolving each semantic through
+ * `resolveValidationTraceDisputeDeploymentContracts` — the same route the
+ * resolution hash-checks — against a blueprint built from this tree's
+ * `onchain/`, and taking the serialized script length: replay_input 21,367,
+ * replay_asset 22,046, replay_finish 21,138, output_descriptor 21,207,
+ * output_asset 21,823, output_finish 20,987, mint_asset 18,622 and
+ * mint_finish 17,931 bytes; begin (11,545), replay_begin (11,085) and finalize
+ * (12,059) fit. (Parameter application adds 72-73 bytes over the unapplied
+ * `compiledCode` in every case; figures predating #618 were unapplied sizes
+ * mislabelled as applied and have been dropped.) A ValueAndMint semantic
+ * dispute was therefore provable at the
  * validator level but not carriable on L1 — the #627 min-Ada journey's
  * output-descriptor resolution measured 21,576 complete signed bytes.
  *
