@@ -174,6 +174,24 @@ describe("Midgard output codec", () => {
     ).toThrow(/Unsupported Midgard versioned script tag/u);
   });
 
+  it("rejects structurally invalid tag-0 native reference-script bytes (#633 probe)", () => {
+    // The #633 probe: language_tag 0 with payload de ad ff, which is not
+    // Midgard native-script CBOR. The staged on-chain machine and this codec
+    // reject it; the one-shot `ledger_output_v1.parse_script_ref` accepts it
+    // until decision 0005 R5 item 9 lands with the #617 regeneration wave.
+    expect(() =>
+      decodeMidgardVersionedScript(Buffer.from("820043deadff", "hex")),
+    ).toThrow(/Reserved CBOR additional-info value/u);
+
+    const probeOutput = Buffer.from(
+      `a300581d60${"aa".repeat(28)}018200a003820043deadff`,
+      "hex",
+    );
+    expect(() => decodeMidgardTxOutput(probeOutput)).toThrow(
+      /Reserved CBOR additional-info value/u,
+    );
+  });
+
   it("rejects non-canonical value policy ordering", () => {
     const assetMap = (quantity: bigint) =>
       encodeCborMapRaw([
