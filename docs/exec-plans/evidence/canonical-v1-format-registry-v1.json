@@ -12880,7 +12880,7 @@
           "path": "demo/midgard-fault-proofs/tests/validation-dispute-submit.test.ts",
           "testNames": [
             "hashes exact canonical one-step evidence and rejects ambiguous data",
-            "matches the exact prepare, direct, and award Aiken redeemer ABIs"
+            "matches the exact prepare, semantic, and award Aiken redeemer ABIs"
           ]
         },
         {
@@ -12911,7 +12911,7 @@
           {
             "path": "demo/midgard-fault-proofs/tests/validation-dispute-submit.test.ts",
             "testNames": [
-              "matches the exact prepare, direct, and award Aiken redeemer ABIs"
+              "matches the exact prepare, semantic, and award Aiken redeemer ABIs"
             ]
           },
           {
