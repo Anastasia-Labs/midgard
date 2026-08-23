@@ -6,6 +6,7 @@ use aiken/merkle_patricia_forestry/merkling.{
   merkle_16, null_hash, sparse_merkle_16,
 }
 use aiken/primitive/bytearray
+use env
 
 /// Canonical Midgard V1 MPF proof helpers.
 const digest_byte_count: Int = 32
@@ -322,36 +323,50 @@ pub fn has_value_hash(
   }
 }
 
+/// The root the MPF library gives to the trie a Midgard root names.
+///
+/// Midgard commits `env.empty_merkle_tree_root = blake2b_256("")` for an empty
+/// MPF — `state-queue.ak` forces a first block over a genesis confirmed state
+/// to carry exactly that value as `prev_utxos_root` — while the library
+/// reconstructs its empty trie as `merkling.null_hash` (32 zero bytes). The
+/// sentinel therefore has to be translated before a reconstructed root is
+/// compared against a Midgard-committed one.
+///
+/// This is the adapter `validators/pexcludes.ak` and
+/// `transition-trace/proof.ak`'s `ledger_trie` already apply, expressed on the
+/// root rather than on the trie so that `does_not_have` (which compares roots)
+/// and `insert_root` (which needs a trie) translate through one place and
+/// cannot drift apart: `mpf.from_root(null_hash)` is `mpf.empty` by
+/// construction.
+fn library_root(root: ByteArray) -> ByteArray {
+  if root == env.empty_merkle_tree_root {
+    null_hash
+  } else {
+    root
+  }
+}
+
 /// Total, fail-closed non-membership verification. This deliberately exposes
 /// the MPF `excluding` check as a Boolean instead of using `insert`, whose
 /// invalid-proof branch aborts script evaluation.
 ///
-/// **Known residual — the Midgard empty-trie sentinel is not translated here
-/// (#606/#608, unrepaired).** `do_excluding` reconstructs the empty trie as the
-/// library's `merkling.null_hash` (32 zero bytes), while Midgard commits
-/// `env.empty_merkle_tree_root = blake2b_256("")` for an empty MPF. So for
-/// `root == env.empty_merkle_tree_root` this answers `False` for the empty
-/// proof — the only witness an empty trie can produce — and non-membership over
-/// an empty Midgard trie is unprovable through every caller of this function:
-/// `mpf_chunked_proof_v1`/`chunked_inclusion_v1`'s published-chunk carriage,
-/// `validators/mpf-chunked-verify.ak`, `insert_root` below, and
-/// `validation_machine_v1.resolve_non_membership_step` against an empty
-/// `prior_ledger_root`. It is liveness-only: nothing false is accepted.
+/// The claimed root is translated through the Midgard empty-trie sentinel
+/// (`library_root` above) before the reconstructed root is compared against it.
+/// Until #625 it was not, so for `root == env.empty_merkle_tree_root` this
+/// answered `False` for the empty proof — the only witness an empty trie can
+/// produce — and non-membership over an empty Midgard trie was unprovable
+/// through every caller of this function: `chunked_inclusion_v1`'s
+/// published-chunk carriage, `validators/mpf-chunked-verify.ak`,
+/// `mpf_chunked_proof_v1.proof_reaches_challenged_terminal`, `insert_root`
+/// below, and `validation_machine_v1.resolve_non_membership_step` against an
+/// empty `prior_ledger_root`. The gap was liveness-only — nothing false was
+/// ever accepted — and it is closed here, so the published-chunk route now
+/// answers the same question the redeemer-carried route already answered.
 ///
-/// The repair is the same one-line adapter #606 landed in
-/// `validators/pexcludes.ak` for the redeemer-carried route
-/// (`if root == env.empty_merkle_tree_root { mpf.empty } else { … }`, the
-/// pattern at `transition-trace/proof.ak:644-650`). It is **not** applied here
-/// because #606's scope rider (owner ruling on #608, 2026-08-15) authorised
-/// placement (a) — `pexcludes.ak` — and nothing else; this module is imported
-/// by validators, so translating it moves `plutus.json` and the applied-identity
-/// cascade past the five-validator movement that ruling costed. The repair is
-/// DECIDED (owner approval 2026-08-17), not awaiting a ticket: it executes
-/// inside #510's single freeze-event regeneration — land the translation here,
-/// fold the same translation into `insert_root` below (unreachable today,
-/// a live hazard once `does_not_have` accepts the sentinel), regenerate once,
-/// then measure and freeze. `chunked-inclusion-v1.ak`'s module header records
-/// the user-visible consequence.
+/// Provenance: owner-approved 2026-08-17 and pinned to the single blueprint
+/// regeneration event, ruled into that event as R5 item 6 by the owner ruling
+/// of 2026-08-23 on #625 (decision 0005, wave #617). The `insert_root` fold-in
+/// below travels with it — both, or neither.
 pub fn does_not_have(root: ByteArray, key: ByteArray, proof: mpf.Proof) -> Bool {
   let path = blake2b_256(key)
   let well_formed = and {
@@ -364,7 +379,7 @@ pub fn does_not_have(root: ByteArray, key: ByteArray, proof: mpf.Proof) -> Bool 
     ),
   }
   if well_formed {
-    do_excluding(path, 0, proof) == root
+    do_excluding(path, 0, proof) == library_root(root)
   } else {
     False
   }
@@ -372,6 +387,16 @@ pub fn does_not_have(root: ByteArray, key: ByteArray, proof: mpf.Proof) -> Bool 
 
 /// Returns a new root only after a total non-membership check has made the
 /// library's partial `insert` precondition true.
+///
+/// The sentinel translation is folded in here as well (#625). `does_not_have`
+/// is the gate, so the moment it accepts `env.empty_merkle_tree_root` this
+/// function is handed a root the library does not recognise as its empty trie
+/// and `mpf.insert`'s own `excluding(key, proof) == self.root` precondition
+/// aborts script evaluation on exactly the inputs the gate has just admitted.
+/// The two translations move together or neither does.
+///
+/// The returned root is the library's, untranslated: an insert never yields an
+/// empty trie, so a successor root is never the sentinel.
 pub fn insert_root(
   root: ByteArray,
   key: ByteArray,
@@ -380,7 +405,7 @@ pub fn insert_root(
 ) -> Option<ByteArray> {
   if does_not_have(root, key, proof) {
     Some(
-      mpf.insert(mpf.from_root(root), key, value, proof)
+      mpf.insert(mpf.from_root(library_root(root)), key, value, proof)
         |> mpf.root,
     )
   } else {
