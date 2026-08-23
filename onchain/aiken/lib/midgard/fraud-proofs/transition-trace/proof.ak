@@ -21,6 +21,7 @@ use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/components as native_components
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/hub_oracle as hub
+use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
 use midgard/native_tx_field_access_v1
 use midgard/transition_trace
@@ -875,6 +876,10 @@ fn deposit_datum_cbor(datum: Option<Data>) -> Option<ByteArray> {
   }
 }
 
+/// The canonical L2 output bytes a valid deposit projects into the ledger.
+///
+/// These are the bytes the descriptor is derived from, not the value inserted
+/// into `utxos_root`; see `apply_l2_outputs` for why the two differ.
 fn projected_deposit_output_cbor(
   deposit_info: ledger_state.DepositInfo,
   deposit_value: Value,
@@ -953,6 +958,21 @@ fn apply_l2_spends(
   }
 }
 
+/// Replays the inserts one L2 transaction makes into `utxos_root`.
+///
+/// The inserted value is the output's `LedgerOutputCommitmentV1` descriptor,
+/// never the full output bytes. Spec section 5.3 fixes the descriptor as the
+/// MPT value ("recomputed with that descriptor as the MPT value, not with the
+/// full output bytes") and every other producer of the ledger trie -- the node,
+/// the validation machine, the watcher's block replay and DA reconstruction --
+/// commits the descriptor. Replaying the full output bytes here would recompute
+/// a root that an honest descriptor-built block can never equal, and the fault
+/// condition is a root mismatch, so the arm would mint against honest blocks
+/// and could never prove a real one.
+///
+/// The descriptor is derived from the output rather than taken from the
+/// witness. A challenger who could name the inserted value could name the post
+/// root, which is the whole fault.
 fn apply_l2_outputs(
   root: ByteArray,
   tx_id: ByteArray,
@@ -970,7 +990,10 @@ fn apply_l2_outputs(
       let expected_key = native_components.encode_midgard_tx_input(
         native_types.MidgardTxInput { tx_id, output_index },
       )
-      let expected_value = native_components.encode_midgard_tx_output(output)
+      expect Some(expected_value) = ledger_output_descriptor_v1.ledger_value_v1(
+        output_index,
+        native_components.encode_midgard_tx_output(output),
+      )
       expect witness.key == expected_key
       expect witness.value == expected_value
       apply_l2_outputs(
@@ -1087,11 +1110,14 @@ fn validate_valid_deposit_transition(
     event_ref_input_index,
   )
   let expected_key = ledger_outref_key(source_membership.key)
-  let expected_value = projected_deposit_output_cbor(
-    source_membership.value,
-    value,
-    hub_datum.deposit,
-    event_asset_name,
+  expect Some(expected_value) = ledger_output_descriptor_v1.ledger_value_v1(
+    source_membership.key.output_index,
+    projected_deposit_output_cbor(
+      source_membership.value,
+      value,
+      hub_datum.deposit,
+      event_asset_name,
+    ),
   )
   let checked_projected_utxo = LedgerInsertWitness {
     key: expected_key,

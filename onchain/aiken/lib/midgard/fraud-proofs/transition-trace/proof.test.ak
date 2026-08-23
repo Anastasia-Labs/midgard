@@ -15,6 +15,7 @@ use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/transition_trace/proof
 use midgard/hub_oracle
+use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
 use midgard/native_tx_field_access_v1
 use midgard/transition_trace
@@ -405,6 +406,26 @@ fn native_output() -> native_types.MidgardTxOutput {
 
 fn native_output_cbor() -> ByteArray {
   native_components.encode_midgard_tx_output(native_output())
+}
+
+/// The exact bytes one output occupies in `utxos_root`.
+///
+/// Section 5.3 fixes the MPT value as the output's `LedgerOutputCommitmentV1`
+/// descriptor, "not ... the full output bytes". Every ledger fixture below is
+/// produced through this function rather than pinned as a literal, so a
+/// descriptor that stopped agreeing with what `apply_l2_outputs` and
+/// `validate_valid_deposit_transition` derive shows up as a failing root
+/// comparison instead of a stale wire format that quietly still matches.
+fn ledger_value(output_index: Int, output_cbor: ByteArray) -> ByteArray {
+  expect Some(value) = ledger_output_descriptor_v1.ledger_value_v1(
+    output_index,
+    output_cbor,
+  )
+  value
+}
+
+fn native_output_ledger_value(output_index: Int) -> ByteArray {
+  ledger_value(output_index, native_output_cbor())
 }
 
 fn sample_deposit_info(network_id: Int) -> ledger_state.DepositInfo {
@@ -1126,7 +1147,7 @@ fn valid_withdrawal_info() -> ledger_state.WithdrawalInfo {
 test accepts_valid_withdrawal_delete_transition_fault() {
   let event_key = withdrawal_event_key(0)
   let spent_key = ledger_outref_key(out_ref(9))
-  let spent_value = native_output_cbor()
+  let spent_value = native_output_ledger_value(out_ref(9).output_index)
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
   let expected_post_root = proof.delete_root(
     pre_root,
@@ -1167,7 +1188,7 @@ test accepts_valid_withdrawal_delete_transition_fault() {
 test rejects_valid_withdrawal_delete_when_trace_matches_expected_post_root() {
   let event_key = withdrawal_event_key(0)
   let spent_key = ledger_outref_key(out_ref(9))
-  let spent_value = native_output_cbor()
+  let spent_value = native_output_ledger_value(out_ref(9).output_index)
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
   let expected_post_root = proof.delete_root(
     pre_root,
@@ -1476,7 +1497,10 @@ test accepts_valid_deposit_transition_fault() {
   let deposit_info = sample_deposit_info(0)
   let event_key = ledger_state.DepositEventKey { deposit_id }
   let projected_key = ledger_outref_key(deposit_id)
-  let projected_value = native_deposit_output_cbor(0)
+  let projected_value = ledger_value(
+    deposit_id.output_index,
+    native_deposit_output_cbor(0),
+  )
   let expected_post_root = proof.insert_root(
     env.empty_merkle_tree_root,
     projected_key,
@@ -1584,7 +1608,10 @@ test rejects_valid_deposit_transition_with_wrong_network_id() {
   let deposit_info = sample_deposit_info(0)
   let event_key = ledger_state.DepositEventKey { deposit_id }
   let projected_key = ledger_outref_key(deposit_id)
-  let wrong_network_projected_value = native_deposit_output_cbor(1)
+  let wrong_network_projected_value = ledger_value(
+    deposit_id.output_index,
+    native_deposit_output_cbor(1),
+  )
   let opened_step = step(
     0,
     event_key,
@@ -1633,6 +1660,83 @@ test rejects_valid_deposit_transition_with_wrong_network_id() {
   )
 }
 
+/// Closing the unilateral slashing hole, stated as a test.
+///
+/// Until this repoint `validate_valid_deposit_transition` compared the
+/// challenger's witness value against the deposit's full projected output
+/// bytes, while every producer of `utxos_root` -- the node, the validation
+/// machine, the watcher's block replay and DA reconstruction -- inserts the
+/// section 5.3 descriptor. So the replayed insert could never reproduce an
+/// honest block's post-root, the fault condition is exactly a post-root
+/// mismatch, and the deposit arm has no descriptor-correct fallback: any
+/// challenger could mint against an honest operator, and an honest deposit
+/// dispute could not be proven at all.
+///
+/// The arm now derives the descriptor itself, so the full-output witness is
+/// refused on `projected_utxo.value == expected_value` before any root is
+/// computed. The honest twin below mints over the same block, which is what
+/// makes this a value check and not an unrelated failure.
+test rejects_deposit_transition_replaying_full_output_bytes() {
+  let deposit_id = out_ref(0)
+  let deposit_info = sample_deposit_info(0)
+  let event_key = ledger_state.DepositEventKey { deposit_id }
+  let projected_key = ledger_outref_key(deposit_id)
+  let full_output_bytes = native_deposit_output_cbor(0)
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.Deposit,
+    env.empty_merkle_tree_root,
+    h32_b,
+  )
+  let trace_proof = trace_membership(opened_step)
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.Deposit,
+  )
+  let source_membership = deposit_source_membership(deposit_id, deposit_info)
+  let event_asset_name = #"01"
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    deposits_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    deposit_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+
+  // The full output bytes and the descriptor are genuinely different values;
+  // without this the test could pass on an accidental equality.
+  expect
+    full_output_bytes != ledger_value(
+      deposit_id.output_index,
+      native_deposit_output_cbor(0),
+    )
+  !proof.validate_transition_fault_proof(
+    prove(
+      header,
+      proof.InvalidOneStepTransition {
+        witness: proof.ValidDepositTransition {
+          trace_proof,
+          event_to_step,
+          source_membership,
+          event_ref_input_index: 0,
+          event_asset_name,
+          projected_utxo: ledger_insert_witness(
+            projected_key,
+            full_output_bytes,
+          ),
+        },
+      },
+    ),
+    asset_name_for(header),
+    dummy_hub_datum(),
+    [deposit_reference_input(deposit_id, deposit_info, event_asset_name)],
+  )
+}
+
 // Q43 structural-N/A adversarial control: a canonical valid normal L2
 // transaction must apply its exact delete/insert transition. Reusing its
 // authenticated pre-root as the claimed post-root makes the transition a
@@ -1640,10 +1744,11 @@ test rejects_valid_deposit_transition_with_wrong_network_id() {
 test accepts_valid_l2_transaction_no_op_transition_fault() {
   let spent_input = native_input(h32_a, 0)
   let spent_key = native_components.encode_midgard_tx_input(spent_input)
-  let spent_value = native_output_cbor()
+  let spent_value = native_output_ledger_value(spent_input.output_index)
   let produced_output = native_output()
-  let produced_value = native_components.encode_midgard_tx_output(
-    produced_output,
+  let produced_value = ledger_value(
+    0,
+    native_components.encode_midgard_tx_output(produced_output),
   )
   let spend_inputs_preimage = native_preimages.encode_input_preimage(
     [spent_input],
@@ -1711,13 +1816,120 @@ test accepts_valid_l2_transaction_no_op_transition_fault() {
   )
 }
 
+/// The same hole on the L2 arm, and the reason the ruling calls it live.
+///
+/// `apply_l2_outputs` replays the challenger's insert values into
+/// `utxos_root`; it verifies insert-key non-membership only, so before the
+/// repoint a challenger could hand it the full output bytes, watch the replay
+/// diverge from every honest descriptor-built post-root, and mint. Every
+/// witness in this pair is constructible from real DA -- the delete path is
+/// format-agnostic -- which is what made the hole unilateral rather than
+/// theoretical.
+///
+/// The arm now derives the descriptor from the authenticated output, so the
+/// full-output value is refused before any root is computed. This test is
+/// `fail` rather than a `False` verdict because `apply_l2_outputs` binds the
+/// value with `expect`; the honest twin below proves the rest of the witness
+/// is sound, so the abort is the value check and nothing else.
+test l2_full_output_replay_against_a_descriptor_ledger_cannot_mint() fail {
+  let Pair(header, fault) = descriptor_ledger_l2_dispute(
+    native_components.encode_midgard_tx_output(native_output()),
+  )
+  proof.validate_accepted_transaction_fault_proof(
+    prove(header, fault),
+    asset_name_for(header),
+  )
+}
+
+/// The honest half: the same block, the same fault, the descriptor as the
+/// inserted value. This is the dispute the stale arm could not prove.
+test l2_descriptor_dispute_over_a_descriptor_ledger_mints() {
+  let Pair(header, fault) = descriptor_ledger_l2_dispute(
+    ledger_value(0, native_components.encode_midgard_tx_output(native_output())),
+  )
+  proof.validate_accepted_transaction_fault_proof(
+    prove(header, fault),
+    asset_name_for(header),
+  )
+}
+
+/// One descriptor-built ledger and one genuine no-op fault, parameterised by
+/// the value the challenger claims was inserted. Everything else -- the
+/// authenticated transaction, the pre-root, the trace and event-to-step
+/// bindings, the delete witness -- is identical between the two tests above,
+/// so the only difference under test is the wire format of the inserted value.
+fn descriptor_ledger_l2_dispute(
+  produced_witness_value: ByteArray,
+) -> Pair<ledger_state.HeaderV1, proof.TransitionFault> {
+  let spent_input = native_input(h32_a, 0)
+  let spent_key = native_components.encode_midgard_tx_input(spent_input)
+  let spent_value = native_output_ledger_value(spent_input.output_index)
+  let produced_output = native_output()
+  let spend_inputs_preimage = native_preimages.encode_input_preimage(
+    [spent_input],
+  )
+  let outputs_preimage = native_preimages.encode_output_preimage(
+    [produced_output],
+  )
+  let compact_cbor = native_l2_compact_cbor(
+    spend_inputs_preimage,
+    outputs_preimage,
+  )
+  let tx_id = native_l2_tx_id(compact_cbor)
+  let produced_key = native_components.encode_midgard_tx_input(
+    native_input(tx_id, 0),
+  )
+  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
+  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
+  let event_key = ledger_state.L2TransactionEventKey { tx_id }
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.L2Transaction,
+    pre_root,
+    pre_root,
+  )
+  let trace_proof = trace_membership(opened_step)
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.L2Transaction,
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transactions_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    l2_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+  Pair(
+    header,
+    proof.InvalidOneStepTransition {
+      witness: proof.L2TransactionTransition {
+        trace_proof,
+        event_to_step,
+        source_membership,
+        spend_inputs_preimage,
+        outputs_preimage,
+        spent_utxos: [ledger_delete_witness(spent_key, spent_value)],
+        produced_utxos: [
+          ledger_insert_witness(produced_key, produced_witness_value),
+        ],
+      },
+    },
+  )
+}
+
 test rejects_l2_transaction_when_trace_matches_expected_post_root() {
   let spent_input = native_input(h32_a, 0)
   let spent_key = native_components.encode_midgard_tx_input(spent_input)
-  let spent_value = native_output_cbor()
+  let spent_value = native_output_ledger_value(spent_input.output_index)
   let produced_output = native_output()
-  let produced_value = native_components.encode_midgard_tx_output(
-    produced_output,
+  let produced_value = ledger_value(
+    0,
+    native_components.encode_midgard_tx_output(produced_output),
   )
   let spend_inputs_preimage = native_preimages.encode_input_preimage(
     [spent_input],
@@ -1787,10 +1999,11 @@ test rejects_l2_transaction_when_trace_matches_expected_post_root() {
 test rejects_l2_transaction_with_wrong_authenticated_transaction_id() fail {
   let spent_input = native_input(h32_a, 0)
   let spent_key = native_components.encode_midgard_tx_input(spent_input)
-  let spent_value = native_output_cbor()
+  let spent_value = native_output_ledger_value(spent_input.output_index)
   let produced_output = native_output()
-  let produced_value = native_components.encode_midgard_tx_output(
-    produced_output,
+  let produced_value = ledger_value(
+    0,
+    native_components.encode_midgard_tx_output(produced_output),
   )
   let spend_inputs_preimage = native_preimages.encode_input_preimage(
     [spent_input],
@@ -1853,10 +2066,11 @@ test rejects_l2_transaction_with_wrong_authenticated_transaction_id() fail {
 test rejects_l2_transaction_with_uncommitted_spend_preimage() fail {
   let spent_input = native_input(h32_a, 0)
   let spent_key = native_components.encode_midgard_tx_input(spent_input)
-  let spent_value = native_output_cbor()
+  let spent_value = native_output_ledger_value(spent_input.output_index)
   let produced_output = native_output()
-  let produced_value = native_components.encode_midgard_tx_output(
-    produced_output,
+  let produced_value = ledger_value(
+    0,
+    native_components.encode_midgard_tx_output(produced_output),
   )
   let committed_spend_inputs_preimage = native_preimages.encode_input_preimage(
     [spent_input],
@@ -1961,9 +2175,12 @@ fn substituted_preimage_l2_fault(
   let spent_key = native_components.encode_midgard_tx_input(
     supplied_spend_input,
   )
-  let spent_value = native_output_cbor()
-  let produced_value = native_components.encode_midgard_tx_output(
-    supplied_output,
+  let spent_value = native_output_ledger_value(
+    supplied_spend_input.output_index,
+  )
+  let produced_value = ledger_value(
+    0,
+    native_components.encode_midgard_tx_output(supplied_output),
   )
   let tx_id = native_l2_tx_id(compact_cbor)
   let produced_key = native_components.encode_midgard_tx_input(
