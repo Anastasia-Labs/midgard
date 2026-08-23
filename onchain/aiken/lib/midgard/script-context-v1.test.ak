@@ -777,3 +777,42 @@ test bignum_datums_are_declined_by_the_materialisation_path() {
     declines(#"c349010000000000000000"),
   }
 }
+
+/// The consolidated entry point is not a second statement of the three
+/// summaries, it is the same three. Proved over every output shape the module
+/// pins -- no datum and no script, datum only, script only, both -- plus the
+/// two declining shapes, so a future divergence in either direction is a red
+/// test rather than a silently different ledger value.
+test consolidated_ledger_output_summaries_match_the_separate_entry_points() {
+  let agrees = fn(candidate_output_cbor: ByteArray) -> Bool {
+    script_context_v1.ledger_output_summaries_v1(candidate_output_cbor) == when
+      script_context_v1.tx_out_summary_v1(candidate_output_cbor, False)
+    is {
+      None -> None
+      Some(cardano_tx_out) ->
+        when
+          script_context_v1.tx_out_summary_v1(candidate_output_cbor, True)
+        is {
+          None -> None
+          Some(midgard_tx_out) ->
+            when
+              script_context_v1.spend_datum_summary_v1(candidate_output_cbor)
+            is {
+              None -> None
+              Some(cardano_spend_datum) ->
+                Some((cardano_tx_out, midgard_tx_out, cardano_spend_datum))
+            }
+        }
+    }
+  }
+  and {
+    agrees(simple_output_cbor),
+    agrees(datum_output_cbor),
+    agrees(reference_output_cbor),
+    agrees(output_cbor),
+    // A canonical datum in a section 6.2 re-pinned form: all four decline.
+    agrees(output_with_datum(#"c249010000000000000000")),
+    // Not a canonical output at all.
+    agrees(#"00"),
+  }
+}

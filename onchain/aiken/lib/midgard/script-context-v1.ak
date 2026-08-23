@@ -189,6 +189,90 @@ pub fn tx_out_summary_v1(
   }
 }
 
+/// The spend `ScriptInfo` datum summary read straight off the `TxOut` datum
+/// field `datum_data` already derived.
+///
+/// `datum_data` is total on the two constructors it emits -- `NoOutputDatum`
+/// (0, no fields) and `OutputDatum` (2, one field) -- and the `ScriptInfo`
+/// field is the `Option` of the same datum, so the summary follows from the
+/// tag without re-reading, re-screening or re-materialising the datum bytes.
+fn spend_datum_summary_of_field(datum_field: Data) -> cek_data_v1.DataSummaryV1 {
+  let Pair(constructor, fields) = builtin.un_constr_data(datum_field)
+  if constructor == 0 {
+    none_summary()
+  } else {
+    expect [datum] = fields
+    small_constr_summary(0, [cek_data_v1.semantic_data_summary_v1(datum)])
+  }
+}
+
+/// Every `TxOut`-shaped summary one canonical ledger output contributes to its
+/// compact descriptor -- the PlutusV3 `TxOut`, the MidgardV1 `TxOut` and the
+/// PlutusV3 spend `ScriptInfo` datum -- from a single canonical decode.
+///
+/// Identical, value for value, to calling `tx_out_summary_v1` twice and
+/// `spend_datum_summary_v1` once: the same decode, the same section 6.2
+/// materialisability screen and the same three commitments, arranged so the
+/// output is decoded once instead of three times and the datum materialised
+/// once instead of twice. A one-step rule that has to derive a ledger MPF value
+/// inside a single transaction pays for the whole descriptor at once, so the
+/// duplicated preludes are the difference between an arm that fits its
+/// execution budget and one that does not; the staged admission machine keeps
+/// the separate entry points because it reaches them from separate steps.
+///
+/// `None` exactly where those three are `None`: non-canonical output bytes, or
+/// a canonical datum in a section 6.2 re-pinned form that cannot be
+/// materialised.
+pub fn ledger_output_summaries_v1(
+  output_cbor: ByteArray,
+) -> Option<
+  (
+    cek_data_v1.DataSummaryV1,
+    cek_data_v1.DataSummaryV1,
+    cek_data_v1.DataSummaryV1,
+  ),
+> {
+  when ledger_output_v1.decode_canonical_output(output_cbor) is {
+    None -> None
+    Some(output) ->
+      when cbor.deserialise(output_cbor) is {
+        None -> None
+        Some(output_data) ->
+          when output_value_data(output_data) is {
+            None -> None
+            Some(value_data) ->
+              when datum_data(output) is {
+                None -> None
+                Some(datum_field) -> {
+                  let value = script_value_data(value_data)
+                  let reference_script = reference_script_data(output)
+                  let tx_out_summary = fn(midgard_encoding: Bool) {
+                    cek_data_v1.semantic_data_summary_v1(
+                      builtin.constr_data(
+                        0,
+                        [
+                          address_data(output, midgard_encoding),
+                          value,
+                          datum_field,
+                          reference_script,
+                        ],
+                      ),
+                    )
+                  }
+                  Some(
+                    (
+                      tx_out_summary(False),
+                      tx_out_summary(True),
+                      spend_datum_summary_of_field(datum_field),
+                    ),
+                  )
+                }
+              }
+          }
+      }
+  }
+}
+
 fn tx_out_ref_data(input: MidgardTxInput) -> Data {
   builtin.constr_data(
     0,

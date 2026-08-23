@@ -14,6 +14,10 @@ pub const version: Int = 1
 
 pub const output_field_index: Int = 2
 
+/// §5.3 spells the output index as a fixed CBOR uint16, so this is the whole
+/// index domain a ledger value can name.
+pub const max_output_index: Int = 65535
+
 pub const max_cardano_value_cbor_bytes: Int = 5000
 
 const uint64_max = 18446744073709551615
@@ -104,11 +108,13 @@ fn reference_script_is_well_formed(descriptor: LedgerOutputCommitmentV1) -> Bool
   }
 }
 
-fn descriptor_is_well_formed(descriptor: LedgerOutputCommitmentV1) -> Bool {
+/// The descriptor domain, `pub` so a builder can decide whether it produced a
+/// value at all instead of aborting inside `encode`.
+pub fn descriptor_is_well_formed(descriptor: LedgerOutputCommitmentV1) -> Bool {
   and {
     descriptor.version == version,
     descriptor.output_index >= 0,
-    descriptor.output_index <= 65535,
+    descriptor.output_index <= max_output_index,
     descriptor.total_length >= 0,
     bytearray.length(descriptor.item_commitment) == 32,
     ledger_output_v1.decode_canonical_address_bytes(descriptor.address) != None,

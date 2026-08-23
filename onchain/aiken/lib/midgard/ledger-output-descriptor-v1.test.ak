@@ -1,0 +1,157 @@
+use midgard/ledger_output_commitment_v1
+use midgard/ledger_output_descriptor_v1
+use midgard/ledger_output_v1
+
+// Cross-language descriptor vectors. Every pair below is the exact output
+// preimage and the exact `utxos_root` value the off-chain encoder
+// (`buildCanonicalMidgardLedgerOutputMaterialV1`,
+// `demo/midgard-validation/src/ledger-output-descriptor.ts`) produced for it,
+// pinned unchanged on both sides -- see the twin literals in
+// `demo/midgard-validation/tests/ledger-output-descriptor.test.ts`. They are
+// the channel that keeps the on-chain one-shot builder byte-identical to the
+// producer whose output actually sits in DA and in every committed ledger
+// trie, so a fraud proof that re-derives a ledger root re-derives the
+// operator's root and not a second, private one.
+
+// A minimal canonical output: protected script address, zero lovelace,
+// no assets, no datum, no reference script.
+const no_reference_output_cbor =
+  #"a200581d7811111111111111111111111111111111111111111111111111111111018200a0"
+
+const no_reference_output_descriptor =
+  #"90010018255820855089c279a2084237bfc980ad11c3cb72bd80055b3d89fdf9105faff6b9d3ec581d781111111111111111111111111111111111111111111111111111111100005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd012040004083582068221e2117402083ee82606dd1c3296b6b06d69d71bd1417555a0f1848ab7f731834183c83582023656d4d955fd1968ba6d1d923f25fda39fe3bbc3c9a8e474b16c9340ab32a081834183c8358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304"
+
+// The same output carrying an inline datum, so the `cardano_spend_datum`
+// summary leaves its `None` shape.
+const small_datum_output_cbor =
+  #"a300581d7811111111111111111111111111111111111111111111111111111111018200a00243d87980"
+
+const small_datum_output_descriptor =
+  #"900100182a5820831569d49cdf1d62af52a7ba84294373584f80bafa4b90aafb97dd9070ddbe41581d781111111111111111111111111111111111111111111111111111111100005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd01204000408358200a2e786d1965b870e307b60f251e29f6653560d7dbf72fa5ece0c5c44bbfd03c18381840835820ad9e3605aefc6d2070c186504f4e16ec0afef0f6c1342f7f423fa47f569e93421838184083582029f8b517a22889be5795b8b91050155dbc935ce541d077fd7124de5af8dd664c0708"
+
+// A PlutusV3 reference script: exercises the reference-script language,
+// blake2b-224 digest, item length and bounded-item commitment together.
+const small_reference_output_cbor =
+  #"a300581d7811111111111111111111111111111111111111111111111111111111018200a0038203436b6b6b"
+
+const small_reference_output_descriptor =
+  #"900100182c582022477a156a6db4a27cd5c7af0cda47026474f4a97dbd31f3baabeb17b5064b78581d781111111111111111111111111111111111111111111111111111111100005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd0103581c556f006134510d3f7f607d251bd0e49aae300988b3fcfc0756c568e2065820e03a1cdbe9503904744a34d1163c1b22985c89586a997faa8c152a440043c34283582038d29cb45b5ac7901e51036d0fac974140394ebbd34ca5f70320e724380187521853185c835820bc293befa4e0e81021c3b002707d83cc1350338be43fc26303aa9acd600a55791853185c8358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304"
+
+// A native (Cardano) reference script at the top of the output-index
+// domain, so the index the bounded-item commitment is salted with is the
+// widest §5.3 admits.
+const native_reference_script_output_cbor =
+  #"a300581d7811111111111111111111111111111111111111111111111111111111018200a003820058208200581c33333333333333333333333333333333333333333333333333333333"
+
+const native_reference_script_output_descriptor =
+  #"900119ffff184a58209cc398e4f08855f03f791f3e43d1d00fa55b196c2aa8432c8558e3c8df3dc9cf581d781111111111111111111111111111111111111111111111111111111100005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd0100581cc78b7b4b696fffb06ba43034b2ddb692c43a88ea824ddfdf455b93721824582057e1c7765325cfa3e8676ca5c28b3477b878a1637cc3348d1027245a30a414978358204ccd01eb52febe88afa3b3be5af0a74c8936116264b85db97508b5cb88605d0c1853185c835820a06f11972ff408d3ca430a373f274af65377a84ed13bb21bd75008505ea71ec11853185c8358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304"
+
+// A multi-chunk output: two policies (three assets, one with a 32-byte
+// name and a quantity above 2^32), a 56-byte base address, a 2 KiB inline
+// datum and a PlutusV3 reference script. The only vector whose bounded item
+// spans more than one 4,095-byte chunk and whose Cardano value size is not
+// the bare-coin form.
+const rich_multi_chunk_output_cbor =
+  #"a400583900111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111101821a007a1200a2581c55555555555555555555555555555555555555555555555555555555a24001420102182a581c66666666666666666666666666666666666666666666666666666666a15820abababababababababababababababababababababababababababababababab1b000000044b82fa09025908115f5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab5840abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab50ababababababababababababababababff03820358646b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b"
+
+const rich_multi_chunk_output_descriptor =
+  #"90010719093358201d44e4026471138e8ee55364b7f5edfb548bbcb418ef6158fb2234dc604aebf758390011111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111a007a120003582008059de11e25e694627ded37fc07251446b431d0b0f01ad7988b50fae7b37cd2187703581c22c0e1c50c8393c705226fd7578a859b9049b24e0c9eb6c1a5f7b2bb18685820fa4940294dd31f0806fb59218d53fe245a6717649bf8785e8eba6e7fddf755fc8358205f721c66e18ad314fbda580939ed42add1cd7476d78918ff074a579a441407341909041908f78358205f721c66e18ad314fbda580939ed42add1cd7476d78918ff074a579a441407341909041908f7835820b0396a03f113d1587164a43e74652ff1f1054dd2e54d8c6ab7628031346a65a21908151907d8"
+
+test builds_no_reference_output_exactly() {
+  ledger_output_descriptor_v1.ledger_value_v1(0, no_reference_output_cbor) == Some(
+    no_reference_output_descriptor,
+  )
+}
+
+test builds_small_datum_output_exactly() {
+  ledger_output_descriptor_v1.ledger_value_v1(0, small_datum_output_cbor) == Some(
+    small_datum_output_descriptor,
+  )
+}
+
+test builds_small_reference_output_exactly() {
+  ledger_output_descriptor_v1.ledger_value_v1(0, small_reference_output_cbor) == Some(
+    small_reference_output_descriptor,
+  )
+}
+
+test builds_native_reference_script_output_exactly() {
+  ledger_output_descriptor_v1.ledger_value_v1(
+    65535,
+    native_reference_script_output_cbor,
+  ) == Some(native_reference_script_output_descriptor)
+}
+
+test builds_rich_multi_chunk_output_exactly() {
+  ledger_output_descriptor_v1.ledger_value_v1(7, rich_multi_chunk_output_cbor) == Some(
+    rich_multi_chunk_output_descriptor,
+  )
+}
+
+/// The pinned descriptors are the *only* thing the on-chain decoder accepts
+/// back, so the channel is closed in both directions rather than only proving
+/// that the builder emits some canonical bytes.
+test every_pinned_descriptor_round_trips_through_the_decoder() {
+  and {
+    ledger_output_commitment_v1.encode(
+      ledger_output_commitment_v1.decode(no_reference_output_descriptor),
+    ) == no_reference_output_descriptor,
+    ledger_output_commitment_v1.encode(
+      ledger_output_commitment_v1.decode(small_datum_output_descriptor),
+    ) == small_datum_output_descriptor,
+    ledger_output_commitment_v1.encode(
+      ledger_output_commitment_v1.decode(small_reference_output_descriptor),
+    ) == small_reference_output_descriptor,
+    ledger_output_commitment_v1.encode(
+      ledger_output_commitment_v1.decode(
+        native_reference_script_output_descriptor,
+      ),
+    ) == native_reference_script_output_descriptor,
+    ledger_output_commitment_v1.encode(
+      ledger_output_commitment_v1.decode(rich_multi_chunk_output_descriptor),
+    ) == rich_multi_chunk_output_descriptor,
+  }
+}
+
+/// The output index is salted into the bounded-item commitment, so the same
+/// bytes at a different index are a different ledger value. A rule that
+/// inserted at the wrong index would otherwise re-derive an honest operator's
+/// root as if it were faulty.
+test the_output_index_is_bound_into_the_value() {
+  ledger_output_descriptor_v1.ledger_value_v1(1, no_reference_output_cbor) != Some(
+    no_reference_output_descriptor,
+  )
+}
+
+/// §5.3 spells the output index as a CBOR uint16. Nothing above that domain
+/// has a descriptor, so nothing above it has a ledger value.
+test an_out_of_domain_output_index_has_no_value() {
+  and {
+    ledger_output_descriptor_v1.ledger_value_v1(65536, no_reference_output_cbor) == None,
+    ledger_output_descriptor_v1.ledger_value_v1(-1, no_reference_output_cbor) == None,
+  }
+}
+
+/// A non-minimal map header is not canonical §6.1 output bytes. The ledger
+/// never held such an output, so the builder declines rather than inventing a
+/// value for it.
+test non_canonical_output_bytes_have_no_value() {
+  ledger_output_descriptor_v1.ledger_value_v1(
+    0,
+    #"b80200581d7811111111111111111111111111111111111111111111111111111111018200a0",
+  ) == None
+}
+
+/// A canonical output whose datum is a §6.2 re-pinned form -- here a tag-102
+/// constructor -- is canonical but not materialisable, so no `TxOut` summary
+/// exists for it and neither does a descriptor. This is the one shape where
+/// the builder declines an output the §6.1 decoder accepts, and the assertion
+/// is stated as that pair so it cannot quietly become a second non-canonical
+/// case.
+test an_unmaterialisable_canonical_datum_has_no_value() {
+  let output_cbor = #"a300581d7811111111111111111111111111111111111111111111111111111111018200a00246d8668218ff80"
+  and {
+    ledger_output_v1.decode_canonical_output(output_cbor) != None,
+    ledger_output_descriptor_v1.ledger_value_v1(0, output_cbor) == None,
+  }
+}
