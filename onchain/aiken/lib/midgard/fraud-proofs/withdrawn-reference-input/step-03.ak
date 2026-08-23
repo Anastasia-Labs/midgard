@@ -15,13 +15,13 @@ pub type Datum =
 pub type Args {
   input_index: Int,
   output_index: Int,
+  fraud_proof_mint_redeemer_index: Int,
   /// Counted-root membership witness for the withdrawal event under the
   /// header's `withdrawals_root` (`WithdrawalsRootDomain`).
   withdrawal_membership: transition_trace.RootMembershipProof<
     WithdrawalId,
     WithdrawalInfo,
   >,
-  fraud_proof_mint_redeemer_index: Int,
 }
 
 pub type SpendRedeemer =

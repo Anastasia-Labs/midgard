@@ -36,8 +36,8 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
-        withdrawal_membership,
         fraud_proof_mint_redeemer_index,
+        withdrawal_membership,
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
 
@@ -184,8 +184,8 @@ fn run_finalize(withdrawn_outref: OutputReference) -> Bool {
       Args {
         input_index: 0,
         output_index: 0,
-        withdrawal_membership: membership,
         fraud_proof_mint_redeemer_index: 0,
+        withdrawal_membership: membership,
       },
     ),
     fixture.own_out_ref(),

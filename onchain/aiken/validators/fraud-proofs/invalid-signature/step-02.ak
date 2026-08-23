@@ -45,9 +45,9 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
+        fraud_proof_mint_redeemer_index,
         addr_tx_wits_opening,
         bad_addr_tx_wit_index,
-        fraud_proof_mint_redeemer_index,
       }) -> {
         let Transaction { inputs, outputs, redeemers, reference_inputs, .. } = tx
 
@@ -158,13 +158,13 @@ fn run_finalize_against(
       Args {
         input_index: 0,
         output_index: 0,
+        fraud_proof_mint_redeemer_index: 0,
         addr_tx_wits_opening: fixture.inline_witness_opening(
           opened_block.compact_cbor,
           opened_block.witness_set_compact,
           carried_witnesses |> list.map(encode_midgard_address_witness),
         ),
         bad_addr_tx_wit_index,
-        fraud_proof_mint_redeemer_index: 0,
       },
     ),
     fixture.own_out_ref(),

@@ -223,23 +223,6 @@ const shippedTerminalStepModules = (): readonly {
   }));
 };
 
-/**
- * Terminal step modules that still trail `fraud_proof_mint_redeemer_index`
- * behind their family-specific arguments instead of leading with it.
- *
- * Escalated as issue #626 and deliberately NOT reordered here: an `Args`
- * reorder moves a validator's redeemer encoding on chain, so it is only ever
- * done inside a sanctioned regeneration wave (decision 0005 R5). `no-input`'s
- * terminal step was the fourth member of this list and was normalized under
- * decision 0005 R7 inside the #617 wave; these three empty the list the moment
- * #626 is ruled in, and no other exemption may join it.
- */
-const TERMINAL_ARGS_EXCEPTIONS_ISSUE_626: readonly string[] = [
-  "invalid-signature/step-02.ak",
-  "no-reference-input/step-04.ak",
-  "withdrawn-reference-input/step-03.ak",
-];
-
 const startsWithPrefix = (
   fields: readonly string[],
   prefix: readonly string[],
@@ -1544,7 +1527,9 @@ describe("Q02 generated shape matches the deployed families", () => {
         "double-spend/step-04.ak",
         "no-input/step-04.ak",
         "missing-native-script-tx/step-06.ak",
-        ...TERMINAL_ARGS_EXCEPTIONS_ISSUE_626,
+        "invalid-signature/step-02.ak",
+        "no-reference-input/step-04.ak",
+        "withdrawn-reference-input/step-03.ak",
       ]),
     );
 
@@ -1566,14 +1551,9 @@ describe("Q02 generated shape matches the deployed families", () => {
       );
     }
 
-    // Exactly the three modules issue #626 carries deviate, and no others. When
-    // #626 is ruled in and they are reordered, this list empties and the
-    // constant above goes with it.
-    // The exception list may only shrink: growing it would let a newly
-    // deviating family ride in under the #626 citation, so its size is pinned
-    // here as well as its members.
-    expect(TERMINAL_ARGS_EXCEPTIONS_ISSUE_626).toHaveLength(3);
-    expect(deviating).toEqual([...TERMINAL_ARGS_EXCEPTIONS_ISSUE_626]);
+    // Issue #626 reordered the last three deviating terminals, so the generator
+    // now covers every shipped family with no exception list at all.
+    expect(deviating).toEqual([]);
     // Decision 0005 R7: `no-input/step-04` is normalized inside the #617 wave,
     // so the generator now covers it with no per-family special case.
     expect(conforming).toContain("no-input/step-04.ak");
@@ -1619,8 +1599,8 @@ describe("Q02 generated shape matches the deployed families", () => {
     ).toEqual([
       "input_index",
       "output_index",
-      "withdrawal_membership",
       "fraud_proof_mint_redeemer_index",
+      "withdrawal_membership",
     ]);
   });
 });

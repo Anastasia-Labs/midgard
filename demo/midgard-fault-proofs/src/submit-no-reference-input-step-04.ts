@@ -254,10 +254,10 @@ export const submitNoReferenceInputStep04 = async ({
           {
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
+            fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
             non_membership_proof_in_txs: proof,
             non_membership_proof_script_redeemer_index:
               layout.nonMembershipProofScriptRedeemerIndex,
-            fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
           },
         ],
       },

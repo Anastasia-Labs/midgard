@@ -264,9 +264,9 @@ const makeInvalidSignatureStep02SpendRedeemer = ({
           {
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
+            fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
             addr_tx_wits_opening: addrTxWitsOpening,
             bad_addr_tx_wit_index: badAddrTxWitIndex,
-            fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
           },
         ],
       },

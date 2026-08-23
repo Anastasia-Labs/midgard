@@ -359,9 +359,9 @@ export const InvalidSignatureStep02Datum =
 export const InvalidSignatureStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
+  fraud_proof_mint_redeemer_index: Data.Integer(),
   addr_tx_wits_opening: FieldOpeningV1Schema,
   bad_addr_tx_wit_index: Data.Integer(),
-  fraud_proof_mint_redeemer_index: Data.Integer(),
 });
 export type InvalidSignatureStep02Args = Data.Static<
   typeof InvalidSignatureStep02ArgsSchema

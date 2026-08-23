@@ -546,6 +546,7 @@ describe("fault-proof ABI", () => {
     const step02Args = {
       input_index: 0n,
       output_index: 0n,
+      fraud_proof_mint_redeemer_index: 1n,
       // Field 7 is a witness-set field, so the opening is the `WitnessFieldOpening`
       // arm and carries the transaction's compact witness set. Tier 3 is
       // admissible for this arm since #606's welded-hash repair, which is
@@ -562,7 +563,6 @@ describe("fault-proof ABI", () => {
         },
       },
       bad_addr_tx_wit_index: 1n,
-      fraud_proof_mint_redeemer_index: 1n,
     };
     expect(
       roundTrip(

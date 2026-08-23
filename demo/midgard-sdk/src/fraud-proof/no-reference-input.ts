@@ -184,9 +184,9 @@ export const NoReferenceInputStep04Datum =
 export const NoReferenceInputStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
+  fraud_proof_mint_redeemer_index: Data.Integer(),
   non_membership_proof_in_txs: ProofSchema,
   non_membership_proof_script_redeemer_index: Data.Integer(),
-  fraud_proof_mint_redeemer_index: Data.Integer(),
 });
 export type NoReferenceInputStep04Args = Data.Static<
   typeof NoReferenceInputStep04ArgsSchema
