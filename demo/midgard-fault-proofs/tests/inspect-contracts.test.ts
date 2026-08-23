@@ -84,8 +84,25 @@ const Q13_APPLIED_STEP_HASHES = [
 // every folded leaf and the root with it: 61f11db3… -> 53f5fc3a…. Derived by
 // this suite's own producer with `MIDGARD_PRINT_PROOF_FIT=1`
 // (`q13AppliedIdentities.catalogueRoot`).
+// Re-pinned 2026-08-23 (#617 IG1, the wave's one sanctioned blueprint
+// regeneration): 53f5fc3a… -> f117b833…. The regeneration moved 27 validators
+// and none of the eleven catalogue categories was added, removed or
+// renumbered, so this is a fold move, not a shape move. Six categories' own
+// step-01 validators moved outright with the `mpf_chunked_verify_validator_hash`
+// env re-pin that #625's empty-trie sentinel forced (double_spend/step_01,
+// no_input/step_01, invalid_range/step_01, zero_input/step_01,
+// canonical_decodability/step_01, committed_field_shape/step_01 are all
+// native-binding-fixture readers), and the remaining openers chain over applied
+// parameters that #625/#627's ValueAndMint semantic resolvers, #629's cek
+// discriminators, #626's three terminal reorders and #628's transition-trace
+// descriptor repoint moved. `Q13_APPLIED_STEP_HASHES` above is measured
+// UNCHANGED — the input-no-idx family reads none of them — and that was checked
+// independently rather than assumed, because a stale pin hiding behind another
+// failing pin is how #579 lost one. Derived by this suite's own producer with
+// `MIDGARD_PRINT_PROOF_FIT=1` (`q13AppliedIdentities.catalogueRoot`), and it
+// agrees with the live catalogue derivation asserted on the preceding line.
 const Q13_CATALOGUE_ROOT =
-  "53f5fc3aab9ddd758ad82a4d27321c2b3c8213312e71bbe5636dfec22de21c52";
+  "f117b8336315fe4c462b67746fc69933aa3319ee2fb7c38379649d2568ea53aa";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,

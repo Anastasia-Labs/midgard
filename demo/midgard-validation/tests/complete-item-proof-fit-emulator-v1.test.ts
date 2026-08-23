@@ -918,13 +918,35 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
   // against the welded-`field_hash` door, so the applied hash moves again:
   // f492660e… -> 69fd502b…. The resolver COUNT (76) and the proof-item hash
   // below are measured unchanged.
+  // Re-pinned 2026-08-23 (#617 IG1, the wave's one sanctioned blueprint
+  // regeneration, `onchain/aiken/plutus.json` md5
+  // 66426a3af44236a2ad3ded1b03f8fdcf, 444 validators, same fork). Two of the
+  // three identities move, for two different reasons, and neither is the
+  // regeneration itself:
+  //   - COUNT 76 -> 91. Lane A's cek/ValueAndMint prepare+semantic split
+  //     appends fifteen semantic resolvers (cek 4, ValueAndMint 11). They are
+  //     APPENDED, so index 1 still names the canonical-decode item semantic
+  //     resolver -- checked, not assumed, because a positional pin silently
+  //     re-pointed at another validator would be absorbed by this very
+  //     re-pin: the C53 sweep measures
+  //     `canonical_decode_item_semantic_v1.main.spend` at applied hash
+  //     81b42c84... through its own emulator run, and that is the value this
+  //     row receives at index 1.
+  //   - resolver[1] applied hash 69fd502b... -> 81b42c84.... This is #620
+  //     (7da3eba0) retiring the direct-resolver premise -- it changed the
+  //     resolver body and dropped a parameter -- and the move reproduces at
+  //     02365110, i.e. BEFORE Lane A. It is neither the regeneration's nor
+  //     Lane A's.
+  // The proof-item hash below is measured UNCHANGED, and independently: it is
+  // the same value `inspect-contracts.test.ts` prints as
+  // `q13AppliedIdentities.fraudProofSpendingScriptHash`.
   // Measured by `loadContracts()` here, the same producer this row asserts on.
   it("pins the applied §3.2 necessity identities on the measurement deployment", async () => {
     const contracts = await loadContracts();
-    expect(contracts.validationTraceDispute.semanticResolvers).toHaveLength(76);
+    expect(contracts.validationTraceDispute.semanticResolvers).toHaveLength(91);
     expect(
       contracts.validationTraceDispute.semanticResolvers[1]!.spendingScriptHash,
-    ).toBe("69fd502baf0a512c3275671515da07aaa6c049cec2fd430e55d61cc9");
+    ).toBe("81b42c84e294a579b20b4a635a135f12dea7893e4e202632ff6c2976");
     expect(contracts.validationTraceDispute.proofItem.spendingScriptHash).toBe(
       "22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab",
     );
