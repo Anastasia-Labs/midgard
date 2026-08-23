@@ -945,3 +945,125 @@ pub fn structure_terminal_is_exact_v1(
     control.stage == structure_stage_terminal,
   }
 }
+
+/// One-shot mirror of the staged token stage. `token_at_v1` and the node and
+/// depth bounds are the staged machine's own, so the admission set is the same
+/// set `structure_token_step_v1` admits; the only thing dropped is the
+/// authenticated-continuation device (the frame hash chain), which a one-shot
+/// caller does not need because it can carry the frame preimages itself.
+fn one_shot_token_v1(
+  payload: ByteArray,
+  end_offset: Int,
+  cursor: Int,
+  stack: List<NativeScriptFrameV1>,
+  stack_depth: Int,
+  node_count: Int,
+) -> Bool {
+  if cursor >= end_offset {
+    False
+  } else {
+    when token_at_v1(payload, cursor, cursor) is {
+      None -> False
+      Some(token) ->
+        if or {
+          token.next_offset <= cursor,
+          token.next_offset > end_offset,
+        } {
+          False
+        } else {
+          let next_node_count = node_count + 1
+          if next_node_count > max_native_script_nodes {
+            False
+          } else if and {
+            token.kind >= all_node,
+            token.kind <= at_least_node,
+            token.child_count > 0,
+          } {
+            let next_depth = stack_depth + 1
+            if next_depth > max_native_script_depth {
+              False
+            } else {
+              when frame_for_token_v1(token, #"") is {
+                None -> False
+                Some(frame) ->
+                  one_shot_token_v1(
+                    payload,
+                    end_offset,
+                    token.next_offset,
+                    [frame, ..stack],
+                    next_depth,
+                    next_node_count,
+                  )
+              }
+            }
+          } else {
+            one_shot_frame_v1(
+              payload,
+              end_offset,
+              token.next_offset,
+              stack,
+              stack_depth,
+              next_node_count,
+            )
+          }
+        }
+    }
+  }
+}
+
+/// One-shot mirror of the staged frame and finalize stages. Child validity is
+/// ignored exactly as `structure_frame_step_v1` ignores it: this is a syntax
+/// scan, not an evaluation.
+fn one_shot_frame_v1(
+  payload: ByteArray,
+  end_offset: Int,
+  cursor: Int,
+  stack: List<NativeScriptFrameV1>,
+  stack_depth: Int,
+  node_count: Int,
+) -> Bool {
+  when stack is {
+    [] -> and {
+        stack_depth == 0,
+        cursor == end_offset,
+        node_count > 0,
+      }
+    [frame, ..rest] ->
+      when apply_child_v1(frame, False) is {
+        None -> False
+        Some(NativeFramePending { frame: next_frame }) ->
+          one_shot_token_v1(
+            payload,
+            end_offset,
+            cursor,
+            [next_frame, ..rest],
+            stack_depth,
+            node_count,
+          )
+        Some(NativeFrameComplete { .. }) ->
+          one_shot_frame_v1(
+            payload,
+            end_offset,
+            cursor,
+            rest,
+            stack_depth - 1,
+            node_count,
+          )
+      }
+  }
+}
+
+/// Total structural predicate for a complete native-script payload, admitting
+/// exactly the payloads the staged `ledger_output_proof_v1` scan drives to an
+/// exact terminal: the same `token_at_v1` tokens, the same 16,384-node and
+/// 16,384-depth bounds, the same exact-consumption finalize. It is deliberately
+/// NOT `native_script_v1.check_native_script`, whose 16/32 evaluator bounds
+/// would refuse payloads the staged machine admits.
+pub fn payload_structure_is_canonical_v1(payload: ByteArray) -> Bool {
+  let end_offset = bytearray.length(payload)
+  if end_offset <= 0 {
+    False
+  } else {
+    one_shot_token_v1(payload, end_offset, 0, [], 0, 0)
+  }
+}
