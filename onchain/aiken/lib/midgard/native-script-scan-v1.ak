@@ -946,11 +946,21 @@ pub fn structure_terminal_is_exact_v1(
   }
 }
 
-/// One-shot mirror of the staged token stage. `token_at_v1` and the node and
-/// depth bounds are the staged machine's own, so the admission set is the same
-/// set `structure_token_step_v1` admits; the only thing dropped is the
-/// authenticated-continuation device (the frame hash chain), which a one-shot
-/// caller does not need because it can carry the frame preimages itself.
+/// One-shot mirror of the staged token stage. `token_at_v1` is the staged
+/// machine's own, and `node_bound` / `depth_bound` are the staged machine's own
+/// whenever the caller comes through `payload_structure_is_canonical_v1`, so
+/// the admission set is the same set `structure_token_step_v1` admits; the only
+/// thing dropped is the authenticated-continuation device (the frame hash
+/// chain), which a one-shot caller does not need because it can carry the frame
+/// preimages itself.
+///
+/// The bounds are parameters rather than the module constants read directly
+/// because a refusal at the bound edge is otherwise untestable: the staged
+/// bounds are 16,384 and a node costs three bytes, so driving `node_count` or
+/// `stack_depth` past either one takes a 49,152-byte payload -- three times the
+/// largest payload this arm can ever see, and, at the measured ~197 K memory
+/// units per node, roughly 3.2 billion memory units to evaluate. See
+/// `payload_structure_is_canonical_at_bounds_v1`.
 fn one_shot_token_v1(
   payload: ByteArray,
   end_offset: Int,
@@ -958,6 +968,8 @@ fn one_shot_token_v1(
   stack: List<NativeScriptFrameV1>,
   stack_depth: Int,
   node_count: Int,
+  node_bound: Int,
+  depth_bound: Int,
 ) -> Bool {
   if cursor >= end_offset {
     False
@@ -972,7 +984,7 @@ fn one_shot_token_v1(
           False
         } else {
           let next_node_count = node_count + 1
-          if next_node_count > max_native_script_nodes {
+          if next_node_count > node_bound {
             False
           } else if and {
             token.kind >= all_node,
@@ -980,7 +992,7 @@ fn one_shot_token_v1(
             token.child_count > 0,
           } {
             let next_depth = stack_depth + 1
-            if next_depth > max_native_script_depth {
+            if next_depth > depth_bound {
               False
             } else {
               when frame_for_token_v1(token, #"") is {
@@ -993,6 +1005,8 @@ fn one_shot_token_v1(
                     [frame, ..stack],
                     next_depth,
                     next_node_count,
+                    node_bound,
+                    depth_bound,
                   )
               }
             }
@@ -1004,6 +1018,8 @@ fn one_shot_token_v1(
               stack,
               stack_depth,
               next_node_count,
+              node_bound,
+              depth_bound,
             )
           }
         }
@@ -1021,6 +1037,8 @@ fn one_shot_frame_v1(
   stack: List<NativeScriptFrameV1>,
   stack_depth: Int,
   node_count: Int,
+  node_bound: Int,
+  depth_bound: Int,
 ) -> Bool {
   when stack is {
     [] -> and {
@@ -1039,6 +1057,8 @@ fn one_shot_frame_v1(
             [next_frame, ..rest],
             stack_depth,
             node_count,
+            node_bound,
+            depth_bound,
           )
         Some(NativeFrameComplete { .. }) ->
           one_shot_frame_v1(
@@ -1048,8 +1068,28 @@ fn one_shot_frame_v1(
             rest,
             stack_depth - 1,
             node_count,
+            node_bound,
+            depth_bound,
           )
       }
+  }
+}
+
+/// The one-shot driver at explicit bounds. It exists so the node-limit and
+/// depth-limit refusals are testable at the edge on a payload small enough to
+/// evaluate (see `one_shot_token_v1`'s note); every non-test caller goes
+/// through `payload_structure_is_canonical_v1`, which supplies the staged
+/// machine's own `max_native_script_nodes` / `max_native_script_depth`.
+pub fn payload_structure_is_canonical_at_bounds_v1(
+  payload: ByteArray,
+  node_bound: Int,
+  depth_bound: Int,
+) -> Bool {
+  let end_offset = bytearray.length(payload)
+  if end_offset <= 0 {
+    False
+  } else {
+    one_shot_token_v1(payload, end_offset, 0, [], 0, 0, node_bound, depth_bound)
   }
 }
 
@@ -1059,11 +1099,45 @@ fn one_shot_frame_v1(
 /// 16,384-depth bounds, the same exact-consumption finalize. It is deliberately
 /// NOT `native_script_v1.check_native_script`, whose 16/32 evaluator bounds
 /// would refuse payloads the staged machine admits.
+///
+/// It collapses the staged machine's three distinct refusal outcomes --
+/// `NativeScriptStructureInvalid`, `NativeScriptStructureNodeLimit` and
+/// `NativeScriptStructureDepthLimit`, which `ledger_output_proof_v1`'s
+/// `map_native_result` (`ledger-output-proof-v1.ak:609-614`) carries as three
+/// separate step results -- into a single `False`, per decision 0005 A3's
+/// "refusal, not error render" for the one-shot arm; whether the follow-up must
+/// preserve the distinction is an open question for the re-ruling.
+///
+/// **DO NOT WIRE.** This function is deliberately dead code, reachable from no
+/// validator, and wiring it into `ledger_output_v1.parse_script_ref`'s tag-0
+/// arm is blocked on a re-ruling of issue #633 / decision 0005 amendment A3.
+///
+/// *Cause.* A3 gates wave item 9 on an R3-style ExUnits precondition measured
+/// before any on-chain commitment. That precondition FAILED. Against the frozen
+/// `GOAL_SPEC_EXECUTION_BASIS_V1` of 13,200,000 memory units
+/// (`scripts/exec-ledger-within-basis-v1.mjs`, GOAL_SPEC §3.3), the largest
+/// payload this arm can ever see -- 16,341 bytes, 5,447 nodes -- costs about
+/// 1.07 billion memory units, **81x over** the basis with nothing else in the
+/// transaction. The basis is exhausted at **67 nodes** on the deep shape and
+/// **76** on the wide one; the readings, the derivation and the gate are
+/// `scripts/native-script-scan-exec-ledger-v1.json` and
+/// `scripts/verify-native-script-scan-exec-ledger-v1.mjs`. No cheaper faithful
+/// driver rescues it: `native_script_v1.inspect_native_script`, the alternative
+/// A3 names, exhausts the same basis at about 100 nodes, and even a bare
+/// `cbor.deserialise` of the payload exhausts it at about 250.
+///
+/// *Blast radius if wired anyway.* Measured by wiring it and diffing a scratch
+/// blueprint: three validators move, not the two A3 predicts --
+/// `fraud_proofs/transition_trace/accepted_transaction_v1`,
+/// `fraud_proofs/transition_trace/deposit_v1`, and
+/// `fraud_proofs/validation_trace/cek_context_step_semantic_v1`, the last of
+/// which reaches the arm through `validation_machine_v1` ->
+/// `script_context_v1.tx_out_data_v1` -> `decode_canonical_output` and is a
+/// live runtime reach A3 does not name.
 pub fn payload_structure_is_canonical_v1(payload: ByteArray) -> Bool {
-  let end_offset = bytearray.length(payload)
-  if end_offset <= 0 {
-    False
-  } else {
-    one_shot_token_v1(payload, end_offset, 0, [], 0, 0)
-  }
+  payload_structure_is_canonical_at_bounds_v1(
+    payload,
+    max_native_script_nodes,
+    max_native_script_depth,
+  )
 }
