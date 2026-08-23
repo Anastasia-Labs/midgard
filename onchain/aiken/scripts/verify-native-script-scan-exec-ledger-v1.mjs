@@ -66,29 +66,45 @@
  *      ledger, and a reader who cannot recompute them is taking them on trust.
  *   7. Every measured module declares neutralisation selectors and they all ran,
  *      in the same invocation as the rows they guard.
- *   8. The run measured at least one row and derived at least one claim. An
+ *   8. Every `derivedRows` entry — a cost published for a vector this lane
+ *      cannot drive inside the tree run — is recomputed here from the fresh
+ *      curve, never read from the file, and is held to everything a measured
+ *      row is held to: declared `nodes`, a declared `basisFit` the arithmetic
+ *      must agree with in both directions, and a declared `infeasibility` plus
+ *      `ruling` when it exceeds. It must additionally carry `derivation` prose
+ *      recording how the figure was obtained, what direct readings it was
+ *      checked against, and how to reproduce one. A derived row may not share a
+ *      name with a measured row, and its `nodes` must lie past the curve it is
+ *      projected from, so it can never silently become an interpolation.
+ *   9. The run measured at least one row and derived at least one claim. An
  *      execution pin that measures nothing passes for free — the "gate that
  *      cannot fail" shape of issues #519 and #523.
  *
- * **The `nodes`-per-module memory constraint.** Each module in the ledger is
- * measured in its own `run-focused-check.mjs` invocation, which is not an
- * accident of the shared measurer: the deep worst case peaks around 12.6 GB of
- * host memory, and Aiken evaluates a module's selected tests in PARALLEL, so the
- * deep and wide worst cases in one invocation exhaust a 16 GiB address space.
- * That is why they live in separate modules
- * (`native-script-scan-worst-case-{deep,wide}-v1.test.ak`) rather than beside
- * the curve. A full `aiken check` over the whole tree evaluates all three
- * modules in one process and needs `RAYON_NUM_THREADS=1` to stay under 16 GiB;
- * see the ledger's `note`.
+ * **Why one row is derived rather than measured.** Host memory tracks the
+ * evaluator's recursion depth while execution units track node count, so the
+ * deep worst case -- 5,446 nested containers -- peaks around 12.6 GB of host
+ * memory, while its wide twin, one node smaller but at stack depth 1, peaks at
+ * 0.6 GB. A live deep test took the whole-tree `aiken check` to a 14.62 GB peak
+ * and aborted it with SIGABRT against the 16 GiB guardrail cap even with
+ * `RAYON_NUM_THREADS=1`; with that one test absent the same run is green at
+ * 10.97 GB. The ruling was to keep the tree runnable and derive the deep
+ * figure, so the headline MEASURED worst case is the wide one (71.9x over the
+ * basis) and the deep one is a `derivedRows` entry recomputed here from the
+ * deep curve. The verdict does not lean on which it is: the live wide row alone
+ * fails A3's precondition, and so does the bare `cbor.deserialise` floor. Each
+ * module is still measured in its own invocation, because Aiken evaluates a
+ * module's selected tests in PARALLEL and `run-focused-check.mjs` puts every
+ * selector it is handed into one process; see the ledger's `note`.
  *
  * Usage, from `onchain/aiken/`:
  *
  *   MIDGARD_AIKEN_BIN=<fork> node scripts/verify-native-script-scan-exec-ledger-v1.mjs
  *   MIDGARD_AIKEN_BIN=<fork> node scripts/verify-native-script-scan-exec-ledger-v1.mjs --update
  *
- * `--update` rewrites the raw rows and the recomputed derived integers from the
- * measurement, and is the only way to record a legitimate re-take. It never
- * rewrites `basisFit`, `infeasibility`, `ruling`, `nodes` or any `claim` prose:
+ * `--update` rewrites the raw rows, the recomputed derived integers and each
+ * derived row's recomputed `mem` from the measurement, and is the only way to
+ * record a legitimate re-take. It never rewrites `basisFit`, `infeasibility`,
+ * `ruling`, `nodes`, `derivation` prose or any `claim` prose:
  * those are judgements, and a re-take must not be able to launder one into the
  * ledger. It is not a bypass — a selector that did not run, a row that did not
  * run, a missing exception declaration, or a fresh reading that contradicts a
@@ -141,6 +157,43 @@ const extrapolateBasisExhaustion = (low, high, basis) => {
     largestWithinBasisNodes: Number(largest),
     basisExhaustedAtNodes: Number(largest + 1n),
   };
+};
+
+/**
+ * The memory cost a two-point linear extrapolation of `mem` against `nodes`
+ * predicts at `nodes`.
+ *
+ * The inverse of `extrapolateBasisExhaustion`, for the one row this lane cannot
+ * measure in-tree: driving the predicate over the full deep vector peaks around
+ * 12.6 GB of host memory and aborts the whole-tree `aiken check` at the
+ * guardrail cap, so its cost is derived from the deep curve rows -- which do
+ * run -- rather than read off a live test. Exact integer arithmetic, and
+ * extrapolation only: `nodes` must lie beyond the curve it is projected from,
+ * so this can never quietly become an interpolation between two rows that
+ * happen to bracket it.
+ *
+ * @param {{nodes: number, mem: number}} low
+ * @param {{nodes: number, mem: number}} high
+ * @param {number} nodes
+ * @returns {number}
+ */
+const extrapolateMemAtNodes = (low, high, nodes) => {
+  const dn = BigInt(high.nodes - low.nodes);
+  const dm = BigInt(high.mem - low.mem);
+  if (dn <= 0n || dm <= 0n) {
+    throw new RangeError(
+      "a two-point cost extrapolation needs the higher row to carry both more nodes and more memory",
+    );
+  }
+  if (nodes <= high.nodes) {
+    throw new RangeError(
+      `a derived row must be an extrapolation past the curve it is derived from: ` +
+        `nodes=${String(nodes)} is not beyond the higher row's ${String(high.nodes)}`,
+    );
+  }
+  return Number(
+    BigInt(low.mem) + (BigInt(nodes) - BigInt(low.nodes)) * dm / dn,
+  );
 };
 
 /**
@@ -368,6 +421,112 @@ const checkNativeScriptScanExecLedger = ({
     }
   }
 
+  // Derived ROWS: costs this lane publishes for a vector it cannot drive
+  // in-tree. They are held to every discipline a measured row is held to —
+  // declared `nodes`, a declared `basisFit` that the arithmetic must agree
+  // with in both directions, and a declared exception when it exceeds — and to
+  // one more: the figure itself is recomputed here, so it can never be edited
+  // into the ledger by hand. What separates them from a measured row is only
+  // that `mem` comes from the curve instead of from the evaluator, and the
+  // ledger labels them so no reader can mistake one for the other.
+  let derivedRowCount = 0;
+  const derivedRows = Array.isArray(ledger.derivedRows) ? ledger.derivedRows : [];
+  for (const row of derivedRows) {
+    const name = typeof row.row === "string" ? row.row : "<unnamed derived row>";
+    if (measured.has(name)) {
+      fail(
+        `derived row '${name}' collides with a measured row of the same name — ` +
+          "a figure is either read from a live test or derived from the curve, never both",
+      );
+      continue;
+    }
+    const low = measured.get(row.from);
+    const high = measured.get(row.to);
+    if (low === undefined || high === undefined) {
+      fail(
+        `derived row '${name}' names rows '${String(row.from)}' and ` +
+          `'${String(row.to)}', and at least one is not a measured row here`,
+      );
+      continue;
+    }
+    if (!Number.isInteger(row.nodes) || row.nodes <= 0) {
+      fail(`derived row '${name}' declares no positive integer \`nodes\``);
+      continue;
+    }
+    let recomputedMem;
+    try {
+      recomputedMem = extrapolateMemAtNodes(low, high, row.nodes);
+    } catch (error) {
+      fail(`derived row '${name}': ${error.message}`);
+      continue;
+    }
+    derivedRowCount += 1;
+
+    const within = recomputedMem <= declaredBasis.memoryUnits;
+    if (row.basisFit !== "within" && row.basisFit !== "exceeds") {
+      fail(
+        `derived row '${name}' has unexpected basisFit '${String(row.basisFit)}'`,
+      );
+      continue;
+    }
+    if (row.basisFit === "within" && !within) {
+      fail(
+        `derived row '${name}' is recorded 'within' but the curve derives ` +
+          `mem=${String(recomputedMem)}, over the basis mem=${String(declaredBasis.memoryUnits)}`,
+      );
+      continue;
+    }
+    if (row.basisFit === "exceeds" && within) {
+      fail(
+        `derived row '${name}' is recorded 'exceeds' but the curve derives ` +
+          `mem=${String(recomputedMem)}, which is WITHIN the basis — a recorded ` +
+          "infeasibility that became feasible is not drift. Wave item 9 may be back; " +
+          "re-read the ledger's note and #633.",
+      );
+      continue;
+    }
+    if (row.basisFit === "exceeds") {
+      if (
+        typeof row.infeasibility !== "string" ||
+        row.infeasibility.trim() === ""
+      ) {
+        fail(
+          `derived row '${name}' exceeds the basis and declares no \`infeasibility\``,
+        );
+        continue;
+      }
+      if (typeof row.ruling !== "string" || row.ruling.trim() === "") {
+        fail(
+          `derived row '${name}' exceeds the basis and declares no \`ruling\` ` +
+            "cross-reference naming who owns the resolution",
+        );
+        continue;
+      }
+    }
+    // A derived row's whole claim to being evidence is that a reader can see
+    // where the number came from and reproduce the direct reading. Without that
+    // prose it is an unsourced figure wearing a gate's clothes.
+    if (typeof row.derivation !== "string" || row.derivation.trim() === "") {
+      fail(
+        `derived row '${name}' declares no \`derivation\` prose — a derived ` +
+          "figure must record how it was obtained, what direct readings it was " +
+          "checked against, and how to reproduce one",
+      );
+      continue;
+    }
+
+    if (update) {
+      row.mem = recomputedMem;
+      continue;
+    }
+    if (row.mem !== recomputedMem) {
+      drifted(
+        `derived row '${name}': recorded mem=${String(row.mem)}, recomputed from ` +
+          `the fresh readings of '${row.from}' and '${row.to}' as ${String(recomputedMem)}`,
+      );
+    }
+  }
+
   // Two ways to reach here having judged nothing: an empty `modules` array, and
   // one whose every entry carries an empty `rows` object. Both walk the loops
   // above without a comparison and would otherwise reach the success write
@@ -424,6 +583,7 @@ const checkNativeScriptScanExecLedger = ({
         status: "pass",
         rows: rowCount,
         derived: derivedCount,
+        derivedRows: derivedRowCount,
         basis: {
           memoryUnits: declaredBasis.memoryUnits,
           cpuUnits: declaredBasis.cpuUnits,

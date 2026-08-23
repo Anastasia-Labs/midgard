@@ -3,14 +3,19 @@
 //// validator, and nothing here belongs in one.
 ////
 //// It is a module rather than a block of helpers inside one test file because
-//// three test modules share it. The two reachable worst cases have to live in
-//// separate modules from each other and from the cost curve, so that
+//// four test modules share it. The reachable worst cases live in modules of
+//// their own, apart from each other and from the cost curve, so that
 //// `scripts/run-focused-check.mjs` -- which puts every selector it is given
-//// into ONE `aiken check` invocation -- can take a reading from one of them
-//// without evaluating the other in the same process. Aiken evaluates a
-//// module's selected tests in PARALLEL, and the deep worst case alone peaks
-//// around 12.6 GB of host memory, so the two in one invocation exhaust a
-//// 16 GiB address space; separated, each is measurable.
+//// into ONE `aiken check` invocation -- can take a reading from one without
+//// evaluating the other in the same process; Aiken evaluates a module's
+//// selected tests in PARALLEL. Only the WIDE worst case is driven live, at
+//// around 0.6 GB of host memory. The deep one is not: host cost tracks
+//// recursion depth, its 5,446 nested containers cost around 12.6 GB, and a
+//// live deep test aborts the whole-tree `aiken check` at the 16 GiB guardrail
+//// cap. Its cost is published as a gate-recomputed extrapolation off the deep
+//// curve instead -- see `derivedRows` in
+//// `scripts/native-script-scan-exec-ledger-v1.json` -- which is why the deep
+//// builders below still have to be exact.
 ////
 //// Every payload is built by doubling concatenation, never written down: a
 //// 16 KiB source literal is what wedges the compiler, which is guardrail 3 of

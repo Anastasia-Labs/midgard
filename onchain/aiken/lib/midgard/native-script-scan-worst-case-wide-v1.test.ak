@@ -1,19 +1,23 @@
 //// The reachable WIDE worst case for the #633 one-shot tag-0 structural
-//// predicate, alone in its own module for the reason its deep twin gives:
-//// `scripts/run-focused-check.mjs` puts every selector it is handed into ONE
-//// `aiken check` invocation, and the two worst cases cannot share a process
-//// under the session's 16 GiB address-space guardrail.
+//// predicate, and **the headline MEASURED reading the verdict rests on**:
+//// 16,340 bytes, 5,446 nodes, 949,469,452 memory units against a
+//// 13,200,000-unit basis -- **71.9x over**. It fails decision 0005 A3's ExUnits
+//// precondition on its own, with nothing else in the transaction.
 ////
-//// It is cheap on its own -- about 0.6 GB of host memory against the deep
-//// case's 12.6 GB, because host cost tracks recursion depth while execution
-//// units track node count -- but it is the deep case it must not share an
-//// invocation with, so it lives here.
+//// It carries that role because it is affordable to drive: about 0.6 GB of
+//// host memory, against roughly 12.6 GB for its deep twin. Host cost tracks
+//// the evaluator's recursion depth while execution units track node count, and
+//// this vector puts 5,446 nodes at a stack depth of 1, where the deep shape
+//// puts 5,447 at a depth of 5,446. A live deep test aborts the whole-tree
+//// `aiken check` at the 16 GiB guardrail cap, so the deep figure (81.6x) is
+//// gate-derived from the cost curve instead; this one is read off a running
+//// test. The two together are also what establishes that cost tracks node
+//// count and not depth, so nothing about the verdict turns on which shape an
+//// operator picks.
 ////
-//// It is the SECOND-worst case, and it is measured anyway because it is the
-//// other extreme of the scan's stack: 5,446 nodes at a stack depth of 1,
-//// against the deep shape's 5,447 nodes at a depth of 5,446. Cost tracks node
-//// count and not depth -- that is what the pair establishes -- so nothing about
-//// the verdict turns on which shape an operator picks.
+//// It lives alone in its own module because `scripts/run-focused-check.mjs`
+//// puts every selector it is handed into ONE `aiken check` invocation and
+//// Aiken evaluates a module's selected tests in PARALLEL.
 ////
 //// The reading is pinned in `scripts/native-script-scan-exec-ledger-v1.json`
 //// and judged by `scripts/verify-native-script-scan-exec-ledger-v1.mjs`.

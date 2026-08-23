@@ -1115,11 +1115,22 @@ pub fn payload_structure_is_canonical_at_bounds_v1(
 /// *Cause.* A3 gates wave item 9 on an R3-style ExUnits precondition measured
 /// before any on-chain commitment. That precondition FAILED. Against the frozen
 /// `GOAL_SPEC_EXECUTION_BASIS_V1` of 13,200,000 memory units
-/// (`scripts/exec-ledger-within-basis-v1.mjs`, GOAL_SPEC §3.3), the largest
-/// payload this arm can ever see -- 16,341 bytes, 5,447 nodes -- costs about
-/// 1.07 billion memory units, **81x over** the basis with nothing else in the
-/// transaction. The basis is exhausted at **67 nodes** on the deep shape and
-/// **76** on the wide one; the readings, the derivation and the gate are
+/// (`scripts/exec-ledger-within-basis-v1.mjs`, GOAL_SPEC §3.3):
+///
+/// - the largest payload this arm can ever see -- 16,341 bytes, 5,447 nodes,
+///   the deep shape -- costs about 1.08 billion memory units, **81.6x over**
+///   the basis with nothing else in the transaction. This figure is
+///   **gate-derived from the measured curve**, not a live measured row; the
+///   direct one-off reading of the same vector matched it to 0.0007%. Driving
+///   it in-tree costs ~12.6 GB of host memory and aborts the whole-tree
+///   `aiken check`, which is why it is derived. See the ledger's `derivedRows`.
+/// - the largest payload in the WIDE shape -- 16,340 bytes, 5,446 nodes -- is
+///   the headline **measured** row, live at 949,469,452 memory units, **71.9x
+///   over**. It fails the precondition on its own, so the verdict stands
+///   without the derived figure.
+///
+/// The basis is exhausted at **67 nodes** on the deep shape and **76** on the
+/// wide one; the readings, the derivations and the gate are
 /// `scripts/native-script-scan-exec-ledger-v1.json` and
 /// `scripts/verify-native-script-scan-exec-ledger-v1.mjs`. No cheaper faithful
 /// driver rescues it: `native_script_v1.inspect_native_script`, the alternative

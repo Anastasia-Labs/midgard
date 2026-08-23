@@ -17,8 +17,15 @@
 //// 11,200,000 figure earlier benches used). Against it:
 ////
 //// * the deep worst case -- 16,341 bytes, 5,447 nodes, the largest payload the
-////   arm can ever see -- costs about 1.07 billion memory units, **81x over**
-////   the basis with nothing else in the transaction;
+////   arm can ever see -- costs about 1.08 billion memory units, **81.6x over**
+////   the basis with nothing else in the transaction. That figure is
+////   **gate-derived from the curve in this module**, not a live measured row:
+////   driving the vector costs ~12.6 GB of host memory and aborts the
+////   whole-tree `aiken check`. The direct one-off reading of the same vector
+////   matched the derivation to 0.0007%; see the ledger's `derivedRows`;
+//// * the WIDE worst case -- 16,340 bytes, 5,446 nodes -- is the headline
+////   **measured** row, live at 949,469,452 memory units, **71.9x over**, and
+////   fails the precondition on its own;
 //// * the basis is exhausted at **67 nodes** on the deep shape and **76** on the
 ////   wide one;
 //// * `native_script_v1.inspect_native_script`, the ready predicate A3 names,
@@ -55,13 +62,17 @@
 //// vector is built programmatically by
 //// `midgard/native_script_payload_vectors_v1`.
 ////
-//// **Memory.** Aiken evaluates a module's selected tests in PARALLEL. The deep
-//// worst case peaks around 12.6 GB of host memory on its own, so a full
-//// `aiken check` over the whole tree -- which evaluates all three of these
-//// modules in one process -- needs `RAYON_NUM_THREADS=1` to stay under 16 GiB.
-//// It passes there at a 12.5 GB peak. No single test in this family needs more
-//// than that; the exhaustion is the evaluator's concurrency, not any one
-//// vector.
+//// **Memory.** Host cost tracks the evaluator's recursion depth; execution
+//// units track node count. Driving the deep worst-case vector therefore costs
+//// around 12.6 GB of host memory while its wide twin costs 0.6 GB, and a live
+//// deep test took the whole-tree `aiken check --env testnet` to a 14.62 GB
+//// peak and aborted it against the 16 GiB guardrail cap even under
+//// `RAYON_NUM_THREADS=1`. That is why the deep figure is derived from the
+//// curve in this module rather than measured: with it absent the same run is
+//// green at 10.97 GB over 2,174 tests. Everything still live here is
+//// affordable. `run-focused-check.mjs` is nonetheless called once per module,
+//// because Aiken evaluates a module's selected tests in PARALLEL and the
+//// measurer puts every selector it is handed into one invocation.
 
 use aiken/cbor
 use aiken/primitive/bytearray
