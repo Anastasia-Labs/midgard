@@ -21,6 +21,7 @@ import {
   type ValidationMachineStateV1,
   ValidationOneStepWitnessV1,
   ValidationPrepareSelectedSpendRedeemerV1Schema,
+  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
 } from "@al-ft/midgard-sdk";
 import {
   buildMidgardCanonicalCekProgramV1,
@@ -44,17 +45,21 @@ import {
   requireValidationCekSemanticReferenceScriptOutRef,
   requireValidationItemObserveReferenceScriptOutRef,
   requireValidationItemSemanticReferenceScriptOutRef,
+  requireValidationValueAndMintSemanticReferenceScriptOutRef,
   selectValidationCompleteItemCarriageV1,
   validateCekSubmissionEvidenceV1,
   VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1,
   VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
+  VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX_V1,
+  VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1,
   validationCekSemanticReferenceScriptDeploymentEntryV1,
   validationDisputeTimeoutValidityRange,
   validationDisputeValidityRange,
   validationOneStepEvidenceHashV1,
   validationSemanticResolverGlobalIndexV1,
+  validationValueAndMintSemanticReferenceScriptDeploymentEntryV1,
 } from "../src/validation-dispute/submit.js";
 
 const blueprintPath =
@@ -655,6 +660,138 @@ describe("validation-dispute transaction validity", () => {
               scriptHash: otherScriptHash,
               refScriptUTxO,
             },
+          },
+          semanticResolverIndex,
+          expectedScriptHash: scriptHash,
+        }),
+      ).toThrow(/script hash mismatch/u);
+    }
+  });
+
+  // #634. The ValueAndMint roster is the whole eleven, and it is enumerated
+  // against the blueprint's own semantic titles rather than restated by hand:
+  // every ValueAndMint title at its global slot has exactly one deployment
+  // entry, and there is no entry for a slot the blueprint does not have. The
+  // entry name is derived from the title, so a renamed or reordered validator
+  // fails here instead of silently deploying the wrong body.
+  it("gives every ValueAndMint semantic resolver a reference-script deployment entry", () => {
+    const semanticTitles = Object.values(
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
+    );
+    const rosterKeys = Object.keys(
+      VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1,
+    ).map(Number);
+    expect(rosterKeys).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+    // None missing: each of the eleven slots resolves to a title and to an
+    // entry whose name is that title's camel-cased module.
+    const titleToEntryName = (title: string): string => {
+      const module = title.replace(
+        /^fraud_proofs\/validation_trace\/(.+)_semantic_v1\.main\.spend$/u,
+        "$1",
+      );
+      expect(module).not.toBe(title);
+      const camel = module.replace(/_([a-z0-9])/gu, (_all, character: string) =>
+        character.toUpperCase(),
+      );
+      return `validationTraceDispute${
+        camel.charAt(0).toUpperCase() + camel.slice(1)
+      }Semantic`;
+    };
+    for (const semanticResolverIndex of rosterKeys) {
+      const title =
+        semanticTitles[
+          validationSemanticResolverGlobalIndexV1(
+            VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX_V1,
+            semanticResolverIndex,
+          )
+        ];
+      expect(title).toMatch(
+        /^fraud_proofs\/validation_trace\/value_and_mint_.+_semantic_v1\.main\.spend$/u,
+      );
+      expect(
+        validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(
+          semanticResolverIndex,
+        ),
+      ).toBe(titleToEntryName(title!));
+    }
+
+    // None stray: the roster covers exactly the ValueAndMint block of the
+    // blueprint's semantic vector, no neighbouring phase's slot.
+    const valueAndMintTitleCount = semanticTitles.filter((title) =>
+      title.startsWith(
+        "fraud_proofs/validation_trace/value_and_mint_",
+      ),
+    ).length;
+    expect(rosterKeys.length).toBe(valueAndMintTitleCount);
+    expect(
+      validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(-1),
+    ).toBe(undefined);
+    expect(
+      validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(11),
+    ).toBe(undefined);
+    expect(
+      validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(1.5),
+    ).toBe(undefined);
+    expect(new Set(Object.values(
+      VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1,
+    )).size).toBe(11);
+  });
+
+  it("requires the published ValueAndMint semantic-resolver reference scripts from deployment info", () => {
+    const scriptHash = "ab".repeat(28);
+    const otherScriptHash = "cd".repeat(28);
+    const refScriptUTxO = { txHash: "12".repeat(32), outputIndex: 3 };
+    expect(() =>
+      requireValidationValueAndMintSemanticReferenceScriptOutRef({
+        deploymentInfo: {},
+        semanticResolverIndex: 11,
+        expectedScriptHash: scriptHash,
+      }),
+    ).toThrow(
+      /ValueAndMint semantic resolver 11 is not published by reference/u,
+    );
+    for (const semanticResolverIndex of [
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    ] as const) {
+      const entryName =
+        VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1[
+          semanticResolverIndex
+        ];
+      expect(
+        requireValidationValueAndMintSemanticReferenceScriptOutRef({
+          deploymentInfo: { [entryName]: { scriptHash, refScriptUTxO } },
+          semanticResolverIndex,
+          expectedScriptHash: scriptHash,
+        }),
+      ).toEqual(refScriptUTxO);
+      expect(() =>
+        requireValidationValueAndMintSemanticReferenceScriptOutRef({
+          deploymentInfo: {},
+          semanticResolverIndex,
+          expectedScriptHash: scriptHash,
+        }),
+      ).toThrow(
+        new RegExp(
+          `missing "${entryName}"; publish the V1 ValueAndMint semantic-resolver reference script`,
+          "u",
+        ),
+      );
+      expect(() =>
+        requireValidationValueAndMintSemanticReferenceScriptOutRef({
+          deploymentInfo: {
+            [entryName]: { scriptHash, refScriptUTxO: null },
+          },
+          semanticResolverIndex,
+          expectedScriptHash: scriptHash,
+        }),
+      ).toThrow(
+        /is missing refScriptUTxO; publish the V1 ValueAndMint semantic-resolver/u,
+      );
+      expect(() =>
+        requireValidationValueAndMintSemanticReferenceScriptOutRef({
+          deploymentInfo: {
+            [entryName]: { scriptHash: otherScriptHash, refScriptUTxO },
           },
           semanticResolverIndex,
           expectedScriptHash: scriptHash,

@@ -3,6 +3,7 @@ import { RejectCodes } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
 
 import {
+  MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES,
   validationResolverIndexV1,
   validationSemanticResolverGlobalIndexV1,
 } from "../src/index.js";
@@ -19,37 +20,44 @@ import {
 // prepare-selected, which routes the disputed step to semantic slot 5,
 // `value_and_mint_output_descriptor_semantic_v1`.
 //
-// MEASURED FRONTIER, NOT AN ASSUMPTION -- WHY THIS STOPS AT prepare-selected.
-// The semantic-resolution transaction that follows does not fit the literal
-// 16,384-byte L1 proof envelope: running this same journey through to the
-// award measures a complete transaction of 21,576 bytes. The cause is not
-// min-Ada and is not this fixture. The ValueAndMint semantic resolvers are
-// attached INLINE, because
-// `VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1`
-// (src/validation-dispute/submit.ts) publishes reference scripts for the CEK
-// decomposition's oversized semantics only and has no ValueAndMint
+// WHY THIS NOW REACHES SEMANTIC RESOLUTION (#634, re-authored 2026-08-23).
+// This journey previously stopped at `prepare-selected`: the resolution
+// transaction that follows measured 21,576 complete signed bytes against the
+// literal 16,384-byte L1 proof envelope. The cause was never min-Ada and never
+// this fixture -- the ValueAndMint semantic resolvers were attached INLINE,
+// because `VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1`
+// (src/validation-dispute/submit.ts) published reference scripts for the CEK
+// decomposition's oversized semantics only and had no ValueAndMint
 // counterpart; and eight of the eleven ValueAndMint semantic bodies are over
-// the envelope on their own at parent HEAD 55f59529, before any redeemer:
-// replay_input 21,203, replay_asset 21,881, replay_finish 20,962,
-// output_descriptor 20,958, output_asset 21,583, output_finish 20,740,
-// mint_asset 18,458 and mint_finish 17,767 bytes. Only begin (11,473),
-// replay_begin (11,013) and finalize (11,987) fit, which is exactly the set
-// the existing journeys in submit-init-emulator-cek-value-and-mint-v1.test.ts
-// exercise. The E_MIN_ADA wiring adds 78 bytes to the output-descriptor body
-// (20,958 -> 21,036); it neither creates this gap nor materially widens it.
-// Giving the ValueAndMint semantics the reference-script role the CEK
-// semantics already have is an R3-class deployment change (new deployment-info
-// roles, new publication steps, moving deployment identity) and is escalated
-// rather than taken here.
+// the envelope on their own, before any redeemer: replay_input 21,203,
+// replay_asset 21,881, replay_finish 20,962, output_descriptor 20,958,
+// output_asset 21,583, output_finish 20,740, mint_asset 18,458 and mint_finish
+// 17,767 bytes. Only begin (11,473), replay_begin (11,013) and finalize
+// (11,987) fit -- exactly the set the existing journeys in
+// submit-init-emulator-cek-value-and-mint-v1.test.ts exercise. The E_MIN_ADA
+// wiring adds 78 bytes to the output-descriptor body (20,958 -> 21,036); it
+// neither created that gap nor materially widened it.
+//
+// #634 gave the eleven ValueAndMint semantics the reference-script deployment
+// role the CEK ones already had
+// (`VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1`),
+// so the conviction is now carriable: the harness publishes the
+// output-descriptor resolver as a reference script at deployment time -- a
+// publication that is itself necessarily oversized, exactly as the CEK ones
+// are -- and the resolution reads it instead of embedding it. What this test
+// measures is the whole distance the E_MIN_ADA conviction travels on L1: open,
+// source, bisection, enter-resolution, prepare-resolution,
+// `value_and_mint_v1`'s prepare-selected, and the output-descriptor semantic
+// resolution itself, inside the real envelope.
 describe("validation-dispute journey to the E_MIN_ADA output-descriptor conviction", () => {
-  it("bisects an Accepted claim over a min-Ada rejection onto the output-descriptor semantic resolver", async () => {
+  it("resolves an Accepted claim over a min-Ada rejection on the output-descriptor semantic resolver", async () => {
     const result = await runForcedValidationDisputeScenario(
       ({ operatorVkey, now }) =>
         buildAcceptedClaimOverMinAdaRejectingTransactionFixture({
           operatorVkey,
           now,
         }),
-      { stopAfter: "prepare-selected" },
+      { stopAfter: "semantic-resolution" },
     );
     const { fixture, lowIndex, highIndex } = result;
 
@@ -73,9 +81,9 @@ describe("validation-dispute journey to the E_MIN_ADA output-descriptor convicti
     expect(fixture.challengerTrace.tree.descriptor.verdict).toBe("rejected");
     expect(fixture.evidence.moves.length).toBeGreaterThan(0);
 
-    // prepare-selected completing on the emulator is the on-chain half of this
-    // measurement: `value_and_mint_v1` accepted the disputed step and routed
-    // it to slot 5, the output-descriptor semantic resolver -- not to a
+    // prepare-selected completing on the emulator is the first on-chain half
+    // of this measurement: `value_and_mint_v1` accepted the disputed step and
+    // routed it to slot 5, the output-descriptor semantic resolver -- not to a
     // neighbouring kind, and not to the retired direct resolver.
     const resolverIndex = validationResolverIndexV1("ValueAndMint");
     // Stage 3's descriptor step: `validationSemanticResolverIndexV1` maps the
@@ -95,5 +103,71 @@ describe("validation-dispute journey to the E_MIN_ADA output-descriptor convicti
     ).toBe(
       "fraud_proofs/validation_trace/value_and_mint_output_descriptor_semantic_v1.main.spend",
     );
+
+    // #634. The deployment-time publication is honestly oversized: the applied
+    // output-descriptor body alone is over the L1 proof envelope, which is
+    // precisely why it cannot ride inline and why its own publication cannot
+    // fit either.
+    const publication = result.valueAndMintSemanticReferencePublication;
+    expect(publication).toBeDefined();
+    expect(publication!.entryName).toBe(
+      "validationTraceDisputeValueAndMintOutputDescriptorSemantic",
+    );
+    expect(publication!.appliedResolverBytes).toBeGreaterThan(
+      MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES,
+    );
+    expect(publication!.publicationMeasurement.l1ByteMargin).toBeLessThan(0);
+    expect(publication!.utxo.scriptRef).toBeDefined();
+
+    // THE OUTCOME, NOT JUST THE FIT. The semantic resolution transaction was
+    // built, signed, submitted and confirmed on the emulator: the disputed
+    // output-descriptor step was resolved against the output-descriptor
+    // semantic resolver at its global slot, and the dispute thread moved on to
+    // the award stage.
+    const semantic = result.semanticResult;
+    expect(semantic).toBeDefined();
+    expect(semantic!.semanticValidatorCarriage).toBe("reference");
+    expect(semantic!.resolverIndex).toBe(resolverIndex);
+    expect(semantic!.semanticResolverIndex).toBe(semanticResolverIndex);
+    expect(semantic!.semanticResolverGlobalIndex).toBe(
+      validationSemanticResolverGlobalIndexV1(
+        resolverIndex,
+        semanticResolverIndex,
+      ),
+    );
+    expect(semantic!.txHash).toHaveLength(64);
+    expect(semantic!.awaitedConfirmation).toBe(true);
+    expect(semantic!.nextThreadOutRef.startsWith(`${semantic!.txHash}#`)).toBe(
+      true,
+    );
+
+    // THE FIT. Reference carriage is what buys it: the same transaction
+    // measured 21,576 bytes when the resolver rode inline.
+    const measurement = result.semanticMeasurement;
+    expect(measurement).toBeDefined();
+    expect(measurement!.completeSignedBytes).toBeLessThan(
+      MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES,
+    );
+    expect(measurement!.l1ByteMargin).toBeGreaterThan(0);
+    // The resolver body is not in the witness set at all -- it is read from
+    // the published reference input.
+    expect(measurement!.referenceInputCount).toBeGreaterThan(0);
+    if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
+      console.info(
+        JSON.stringify(
+          {
+            valueAndMintOutputDescriptorSemanticResolution: {
+              entryName: publication!.entryName,
+              appliedResolverBytes: publication!.appliedResolverBytes,
+              publication: publication!.publicationMeasurement,
+              resolution: measurement,
+            },
+          },
+          (_key, value: unknown) =>
+            typeof value === "bigint" ? value.toString() : value,
+          2,
+        ),
+      );
+    }
   }, 900_000);
 });

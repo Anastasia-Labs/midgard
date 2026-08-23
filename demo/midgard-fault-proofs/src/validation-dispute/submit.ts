@@ -898,6 +898,135 @@ export const requireValidationCekSemanticReferenceScriptUtxo = async ({
   return utxo;
 };
 
+/**
+ * Deployment-info entries that publish the applied ValueAndMint semantic
+ * resolvers (#634). The ValueAndMint decomposition is the CEK decomposition's
+ * sibling — one `value_and_mint_v1` prepare validator over eleven per-kind
+ * semantic resolvers — but only the CEK side ever had the reference-script
+ * deployment role, so every ValueAndMint semantic attached inline. Eight of
+ * the eleven applied bodies exceed `MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES`
+ * on their own, before any redeemer: at #634's measurement replay_input
+ * 21,203, replay_asset 21,881, replay_finish 20,962, output_descriptor 20,958,
+ * output_asset 21,583, output_finish 20,740, mint_asset 18,458 and
+ * mint_finish 17,767 bytes; begin (11,473), replay_begin (11,013) and finalize
+ * (11,987) fit. A ValueAndMint semantic dispute was therefore provable at the
+ * validator level but not carriable on L1 — the #627 min-Ada journey's
+ * output-descriptor resolution measured 21,576 complete signed bytes.
+ *
+ * The roster is all eleven, not just the oversized eight. Which bodies clear
+ * the envelope is a compilation fact that moves with every regeneration; the
+ * deployment role is a property of the resolver, so every ValueAndMint
+ * semantic is *deployable* by reference and the submit path picks the route
+ * from what the deployment info actually carries (see
+ * `validationValueAndMintSemanticReferenceScriptDeploymentEntryV1`'s call site
+ * in the semantic-resolution builder). These entries are consumed the way
+ * `validationTraceDisputeItemSemantic` and the CEK entries are: hash-checked
+ * against the applied contract, no auth-role token.
+ */
+export const VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1 =
+  {
+    0: "validationTraceDisputeValueAndMintBeginSemantic",
+    1: "validationTraceDisputeValueAndMintReplayBeginSemantic",
+    2: "validationTraceDisputeValueAndMintReplayInputSemantic",
+    3: "validationTraceDisputeValueAndMintReplayAssetSemantic",
+    4: "validationTraceDisputeValueAndMintReplayFinishSemantic",
+    5: "validationTraceDisputeValueAndMintOutputDescriptorSemantic",
+    6: "validationTraceDisputeValueAndMintOutputAssetSemantic",
+    7: "validationTraceDisputeValueAndMintOutputFinishSemantic",
+    8: "validationTraceDisputeValueAndMintMintAssetSemantic",
+    9: "validationTraceDisputeValueAndMintMintFinishSemantic",
+    10: "validationTraceDisputeValueAndMintFinalizeSemantic",
+  } as const satisfies Partial<Record<number, string>>;
+
+export type ValidationValueAndMintSemanticReferenceScriptIndexV1 =
+  keyof typeof VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1;
+
+/** The ValueAndMint phase's resolver index (`VALUE_AND_MINT` = 12). */
+export const VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX_V1 = 12;
+
+export const validationValueAndMintSemanticReferenceScriptDeploymentEntryV1 = (
+  semanticResolverIndex: number,
+): string | undefined =>
+  Number.isInteger(semanticResolverIndex) &&
+  semanticResolverIndex >= 0 &&
+  semanticResolverIndex <= 10
+    ? VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1[
+        semanticResolverIndex as ValidationValueAndMintSemanticReferenceScriptIndexV1
+      ]
+    : undefined;
+
+export const requireValidationValueAndMintSemanticReferenceScriptOutRef = ({
+  deploymentInfo,
+  semanticResolverIndex,
+  expectedScriptHash,
+}: {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly semanticResolverIndex: number;
+  readonly expectedScriptHash: string;
+}): { readonly txHash: string; readonly outputIndex: number } => {
+  const entryName =
+    validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(
+      semanticResolverIndex,
+    );
+  if (entryName === undefined) {
+    throw new Error(
+      `ValueAndMint semantic resolver ${semanticResolverIndex.toString()} is not published by reference`,
+    );
+  }
+  const entry = deploymentInfo[entryName];
+  if (entry === undefined) {
+    throw new Error(
+      `Deployment info is missing "${entryName}"; publish the V1 ValueAndMint semantic-resolver reference script and regenerate deployment info before submitting a ValueAndMint semantic resolution`,
+    );
+  }
+  if (entry.refScriptUTxO == null) {
+    throw new Error(
+      `Deployment info entry "${entryName}" is missing refScriptUTxO; publish the V1 ValueAndMint semantic-resolver reference script and regenerate deployment info before submitting a ValueAndMint semantic resolution`,
+    );
+  }
+  if (entry.scriptHash !== expectedScriptHash) {
+    throw new Error(
+      `Deployment entry "${entryName}" script hash mismatch: deployment=${entry.scriptHash}, derived=${expectedScriptHash}`,
+    );
+  }
+  return entry.refScriptUTxO;
+};
+
+export const requireValidationValueAndMintSemanticReferenceScriptUtxo = async ({
+  lucid,
+  deploymentInfo,
+  semanticResolverIndex,
+  expectedScriptHash,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly semanticResolverIndex: number;
+  readonly expectedScriptHash: string;
+}): Promise<UTxO> => {
+  const outRef = requireValidationValueAndMintSemanticReferenceScriptOutRef({
+    deploymentInfo,
+    semanticResolverIndex,
+    expectedScriptHash,
+  });
+  const utxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef,
+    label: "ValueAndMint semantic-resolver reference-script UTxO",
+  });
+  if (utxo.scriptRef == null) {
+    throw new Error(
+      `ValueAndMint semantic-resolver reference UTxO ${outRefLabel(utxo)} does not carry a reference script`,
+    );
+  }
+  const actualScriptHash = validatorToScriptHash(utxo.scriptRef);
+  if (actualScriptHash !== expectedScriptHash) {
+    throw new Error(
+      `ValueAndMint semantic-resolver reference script hash mismatch: actual=${actualScriptHash}, expected=${expectedScriptHash}`,
+    );
+  }
+  return utxo;
+};
+
 const VALIDATION_ONE_STEP_EVIDENCE_DOMAIN_V1 = Buffer.from(
   "MidgardValidationOneStepEvidenceV1",
   "ascii",
@@ -4721,6 +4850,13 @@ export type SubmitValidationDisputeSemanticResolutionResult = {
   readonly threadOutRef: string;
   readonly nextThreadOutRef: string;
   readonly proofItemCarriage: "direct" | "reference";
+  /**
+   * How the semantic *validator itself* rode on the single resolution
+   * transaction: attached inline, or supplied by a published reference script
+   * (the CEK entries, and since #634 the ValueAndMint ones). Absent on the
+   * staged-chain routes, which have no single semantic-validator attachment.
+   */
+  readonly semanticValidatorCarriage?: "inline" | "reference";
   readonly proofItemReferenceOutRef?: string;
   /**
    * Present when an inline observe build was refused pre-sign for exceeding
@@ -5789,6 +5925,47 @@ export const submitValidationDisputeSemanticResolution = async ({
           expectedScriptHash: semanticContract.spendingScriptHash,
         })
       : undefined;
+  // #634. The ValueAndMint semantics get the same reference-script deployment
+  // role, but their route is chosen by what the deployment info carries rather
+  // than by a frozen sub-roster: eight of the eleven applied bodies are over
+  // the envelope today and three are not, and which is which moves with every
+  // regeneration. So a published entry is consumed by reference, an absent one
+  // attaches inline as before — except when the applied body alone already
+  // exceeds the envelope, where no redeemer can make the transaction fit and
+  // the honest failure is a precise "publish it" instead of Lucid's
+  // "Max transaction size of 16384 exceeded" from deep inside `complete()`.
+  const valueAndMintSemanticReferenceEntryName =
+    resolverIndex === VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX_V1
+      ? validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(
+          staged.semanticResolverIndex,
+        )
+      : undefined;
+  if (
+    valueAndMintSemanticReferenceEntryName !== undefined &&
+    parsedDeploymentInfo[valueAndMintSemanticReferenceEntryName] === undefined &&
+    semanticContract.spendingScript.script.length / 2 >
+      MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES
+  ) {
+    throw new Error(
+      `Applied ValueAndMint semantic resolver ${staged.semanticResolverIndex.toString()} is ${(
+        semanticContract.spendingScript.script.length / 2
+      ).toString()} bytes and cannot ride inline inside the ${MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES.toString()}-byte L1 proof envelope; publish it as "${valueAndMintSemanticReferenceEntryName}" and regenerate deployment info before submitting this semantic resolution`,
+    );
+  }
+  const valueAndMintSemanticReferenceScriptUtxo =
+    valueAndMintSemanticReferenceEntryName !== undefined &&
+    parsedDeploymentInfo[valueAndMintSemanticReferenceEntryName] !== undefined
+      ? await requireValidationValueAndMintSemanticReferenceScriptUtxo({
+          lucid,
+          deploymentInfo: parsedDeploymentInfo,
+          semanticResolverIndex: staged.semanticResolverIndex,
+          expectedScriptHash: semanticContract.spendingScriptHash,
+        })
+      : undefined;
+  // At most one of the two can be set: the two rosters are keyed by disjoint
+  // resolver indices (CEK 11, ValueAndMint 12).
+  const semanticValidatorReferenceScriptUtxo =
+    cekSemanticReferenceScriptUtxo ?? valueAndMintSemanticReferenceScriptUtxo;
   const isCekExecutionSelection =
     resolverIndex === 11 && staged.semanticResolverIndex === 1;
   if (
@@ -6791,12 +6968,13 @@ export const submitValidationDisputeSemanticResolution = async ({
       .validFrom(range.validFrom)
       .validTo(range.validTo)
       .addSignerKey(signer.paymentKeyHash);
-    // The published reference script supplies the oversized CEK semantic
-    // validators; every other semantic validator rides inline.
+    // The published reference script supplies the oversized CEK (#617 R5) and
+    // ValueAndMint (#634) semantic validators; every other semantic validator
+    // rides inline.
     const readiedTx =
-      cekSemanticReferenceScriptUtxo === undefined
+      semanticValidatorReferenceScriptUtxo === undefined
         ? tx.attach.SpendingValidator(semanticContract.spendingScript)
-        : tx.readFrom([cekSemanticReferenceScriptUtxo]);
+        : tx.readFrom([semanticValidatorReferenceScriptUtxo]);
     const unsigned = await readiedTx.complete({ localUPLCEval: true });
     if (layout === undefined) {
       throw new Error(
@@ -6825,6 +7003,10 @@ export const submitValidationDisputeSemanticResolution = async ({
       nextThreadOutRef: `${txHash}#${prepared.layout.outputIndex.toString()}`,
       proofItemCarriage:
         proofItemReferenceUtxo === undefined ? "direct" : "reference",
+      semanticValidatorCarriage:
+        semanticValidatorReferenceScriptUtxo === undefined
+          ? ("inline" as const)
+          : ("reference" as const),
       ...(resolvedProofItemReferenceOutRef === undefined
         ? {}
         : { proofItemReferenceOutRef: resolvedProofItemReferenceOutRef }),

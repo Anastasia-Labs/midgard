@@ -184,7 +184,10 @@ import {
   VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
+  VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX_V1,
   validationDisputeValidityRange,
+  validationSemanticResolverGlobalIndexV1,
+  validationValueAndMintSemanticReferenceScriptDeploymentEntryV1,
 } from "../../src/index.js";
 import type { FabricatedDepositContractsV1 } from "../../src/submit-fabricated-deposit-step-01.js";
 import type { FabricatedWithdrawalContractsV1 } from "../../src/submit-fabricated-withdrawal-step-01.js";
@@ -3668,7 +3671,43 @@ export const buildRemovalDeploymentInfo = (
     readonly utxo: UTxO;
   },
   removalReferenceScripts?: RemovalReferenceScriptPublications,
+  /**
+   * #634. Published ValueAndMint semantic-resolver reference scripts, keyed by
+   * the ValueAndMint-local semantic index (0..10). Splices in the same shape
+   * as the item-semantic / canonical-decode-prepare entries above, so a
+   * journey that publishes one resolver adds exactly one entry.
+   */
+  validationValueAndMintSemanticReferences?: readonly {
+    readonly semanticResolverIndex: number;
+    readonly scriptHash: string;
+    readonly utxo: UTxO;
+  }[],
 ) => {
+  const valueAndMintSemanticEntries = Object.fromEntries(
+    (validationValueAndMintSemanticReferences ?? []).map(
+      ({ semanticResolverIndex, scriptHash, utxo }) => {
+        const entryName =
+          validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(
+            semanticResolverIndex,
+          );
+        if (entryName === undefined) {
+          throw new Error(
+            `ValueAndMint semantic resolver ${semanticResolverIndex.toString()} has no reference-script deployment entry`,
+          );
+        }
+        return [
+          entryName,
+          {
+            scriptHash,
+            refScriptUTxO: {
+              txHash: utxo.txHash,
+              outputIndex: utxo.outputIndex,
+            },
+          },
+        ] as const;
+      },
+    ),
+  );
   const deploymentEntry = (
     scriptHash: string,
     script: Script,
@@ -3695,6 +3734,7 @@ export const buildRemovalDeploymentInfo = (
   };
   return deploymentManifest(
     {
+      ...valueAndMintSemanticEntries,
       ...(validationItemSemanticReference === undefined
         ? {}
         : {
@@ -4160,13 +4200,89 @@ export const runForcedValidationDisputeScenario = async (
   if (stopAfter === "prepare-selected") {
     return { fixture, contracts, initResult, lowIndex, highIndex };
   }
-  const semanticResult = await runEmulatorLifecycleStage(
-    "semantic-resolution",
-    () =>
+  // #634. The ValueAndMint semantic resolvers now hold the same
+  // reference-script deployment role the CEK ones do. Publish exactly the
+  // resolver this fixture's one-step argument routes to, and only when its
+  // applied body cannot ride inside the literal 16,384-byte L1 proof envelope
+  // — eight of the eleven cannot, so without this the resolution transaction
+  // overflows (#634 measured 21,576 bytes for the output-descriptor journey).
+  // The publication itself is necessarily oversized, exactly as the CEK ones
+  // are, so it runs under the emulator's raised deployment-time maxTxSize on
+  // its own publisher Lucid; the consuming resolution stays on
+  // `targetChallengerLucid`, which is pinned to the real L1 limit.
+  const stagedResolverIndex = fixture.evidence.oneStepArgument.resolverIndex;
+  const stagedSemanticIndex =
+    fixture.evidence.oneStepArgument.semanticResolverIndex;
+  const valueAndMintSemanticContract =
+    stagedResolverIndex === VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX_V1
+      ? contracts.validationTraceDispute.semanticResolvers[
+          validationSemanticResolverGlobalIndexV1(
+            stagedResolverIndex,
+            stagedSemanticIndex,
+          )
+        ]
+      : undefined;
+  const valueAndMintSemanticEntryName =
+    valueAndMintSemanticContract === undefined
+      ? undefined
+      : validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(
+          stagedSemanticIndex,
+        );
+  const valueAndMintSemanticPublication =
+    valueAndMintSemanticContract !== undefined &&
+    valueAndMintSemanticEntryName !== undefined &&
+    valueAndMintSemanticContract.spendingScript.script.length / 2 >
+      PROTOCOL_PARAMETERS_DEFAULT.maxTxSize
+      ? await runEmulatorLifecycleStage(
+          `reference-script.publish.${valueAndMintSemanticEntryName}`,
+          async () => {
+            const prePublicationProtocolParameters =
+              emulator.protocolParameters;
+            emulator.protocolParameters = functionalProtocolParameters;
+            try {
+              const oversizedPublisherLucid = await Lucid(emulator, "Custom", {
+                slotConfig: functionalSlotConfig,
+              });
+              oversizedPublisherLucid.selectWallet.fromSeed(
+                operator.seedPhrase,
+              );
+              return await publishPlainReferenceScriptUtxo({
+                lucid: oversizedPublisherLucid,
+                script: valueAndMintSemanticContract.spendingScript,
+                label: valueAndMintSemanticEntryName,
+                oversized: true,
+              });
+            } finally {
+              emulator.protocolParameters = prePublicationProtocolParameters;
+            }
+          },
+        )
+      : undefined;
+  const semanticDeploymentInfo =
+    valueAndMintSemanticPublication === undefined
+      ? deploymentInfo
+      : buildRemovalDeploymentInfo(
+          contracts,
+          catalogue,
+          validationDisputePublication,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          [
+            {
+              semanticResolverIndex: stagedSemanticIndex,
+              scriptHash: valueAndMintSemanticContract!.spendingScriptHash,
+              utxo: valueAndMintSemanticPublication.utxo,
+            },
+          ],
+        );
+  const semanticCapture = await captureEmulatorSubmission(emulator, () =>
+    runEmulatorLifecycleStage("semantic-resolution", () =>
       submitValidationDisputeSemanticResolution({
         lucid: targetChallengerLucid,
         blueprint: realBlueprint,
-        deploymentInfo,
+        deploymentInfo: semanticDeploymentInfo,
         network,
         signer: challengerSigner,
         threadOutRef: selectedResult.nextThreadOutRef,
@@ -4174,9 +4290,33 @@ export const runForcedValidationDisputeScenario = async (
         validityRange: validityRange(),
         awaitConfirmation: true,
       }),
+    ),
   );
+  const semanticResult = semanticCapture.result;
   if (stopAfter === "semantic-resolution") {
-    return { fixture, contracts, initResult, lowIndex, highIndex };
+    return {
+      fixture,
+      contracts,
+      initResult,
+      lowIndex,
+      highIndex,
+      semanticResult,
+      semanticMeasurement: semanticCapture.measurement,
+      ...(valueAndMintSemanticPublication === undefined
+        ? {}
+        : {
+            valueAndMintSemanticReferencePublication: {
+              entryName: valueAndMintSemanticEntryName!,
+              appliedResolverBytes:
+                valueAndMintSemanticContract!.spendingScript.script.length / 2,
+              appliedResolverHash:
+                valueAndMintSemanticContract!.spendingScriptHash,
+              utxo: valueAndMintSemanticPublication.utxo,
+              publicationMeasurement:
+                valueAndMintSemanticPublication.publicationMeasurement,
+            },
+          }),
+    };
   }
   const awardResult = await runEmulatorLifecycleStage("award", () =>
     submitValidationDisputeAward({
