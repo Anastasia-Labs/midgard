@@ -415,6 +415,9 @@ pub fn insert_root(
 
 /// Returns a new root only after a total membership check has made the
 /// library's partial `update` precondition true.
+/// `root` must be a non-empty trie root: membership of `key` cannot hold in
+/// an empty trie, so the `env.empty_merkle_tree_root` sentinel translation of
+/// `library_root` is deliberately not applied here (#625).
 pub fn update_root(
   root: ByteArray,
   key: ByteArray,
@@ -434,6 +437,9 @@ pub fn update_root(
 
 /// Returns a new root only after a total membership check has made the
 /// library's partial `delete` precondition true.
+/// `root` must be a non-empty trie root: membership of `key` cannot hold in
+/// an empty trie, so the `env.empty_merkle_tree_root` sentinel translation of
+/// `library_root` is deliberately not applied here (#625).
 pub fn delete_root(
   root: ByteArray,
   key: ByteArray,

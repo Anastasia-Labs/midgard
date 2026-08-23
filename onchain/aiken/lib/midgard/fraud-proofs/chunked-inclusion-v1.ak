@@ -38,12 +38,12 @@
 //// authenticated root, so which one a prover takes is normally the prover's
 //// business and neither weakens the other.
 ////
-//// ## Where the two routes are **not** interchangeable today (#606/#608)
+//// ## The gap that once broke that parity, and its repair (#606/#608/#625)
 ////
-//// Stated here rather than left implied, because the parity claim above used
-//// to be unqualified and is not:
+//// Stated here rather than left implied, because the parity claim above was
+//// for a while unqualified and untrue:
 ////
-//// **Non-membership over an empty Midgard trie is provable on the direct
+//// **Non-membership over an empty Midgard trie was provable on the direct
 //// route and not on this one.** Midgard commits `env.empty_merkle_tree_root =
 //// blake2b_256("")` for an empty MPF, while the library reconstructs its empty
 //// trie as `merkling.null_hash` (32 zero bytes), so the sentinel has to be
@@ -51,25 +51,25 @@
 //// ruling on #608, 2026-08-15) authorised that translation at exactly one
 //// placement — `validators/pexcludes.ak`, the merkelized verifier the *direct*
 //// route withdraws through. The published-chunk route terminates instead in
-//// `midgard/mpf_proof_v1.does_not_have` (`lib/midgard/mpf-proof-v1.ak:328-344`,
-//// reached from `delegated_chunk_non_membership` below and from
-//// `validators/mpf-chunked-verify.ak`), which still compares
+//// `midgard/mpf_proof_v1.does_not_have`, reached from
+//// `published_chunk_non_membership` below (and so from
+//// `validators/mpf-chunked-verify.ak`) and from
+//// `mpf_chunked_proof_v1.proof_reaches_challenged_terminal`, which compared
 //// `do_excluding(path, 0, proof)` against the caller's root with no sentinel
-//// branch — so for `root == env.empty_merkle_tree_root` it returns `False` for
-//// the empty proof, which is the only witness an empty ledger can produce.
+//// branch — so for `root == env.empty_merkle_tree_root` it returned `False`
+//// for the empty proof, which is the only witness an empty ledger can
+//// produce. Consequence, liveness only and narrow: a `no-input` step-03 whose
+//// `prev_utxos_root` is the empty sentinel — i.e. a first block over a genesis
+//// confirmed state — could not be proved through published-chunk carriage.
+//// Nothing false was accepted either way.
 ////
-//// Consequence, liveness only and narrow: a `no-input` or
-//// `no-reference-input` step-03 whose `prev_utxos_root` is the empty sentinel
-//// — i.e. a first block over a genesis confirmed state — cannot be proved
-//// through published-chunk carriage. Nothing false is accepted either way.
-//// The residual is **unrepaired and out of #606's authorised scope**: this is
-//// a library used by validators, so translating it here would move
-//// `plutus.json` and the applied-identity cascade beyond the five-validator
-//// movement the rider authorised. The repair is DECIDED (owner approval
-//// 2026-08-17) and executes inside #510's single freeze-event regeneration,
-//// together with the matching `insert_root` fold-in. #582 is NOT this
-//// repair's gate — that earlier claim was self-referential, tracing back to
-//// this module's own defect note.
+//// **Repaired.** The translation now lives in `mpf_proof_v1.does_not_have`
+//// itself, with the matching `insert_root` fold-in, so every route — direct,
+//// transition-trace (`transition-trace/proof.ak`'s `ledger_trie`) and
+//// published-chunk — answers the same question about the same root. The
+//// repair was owner-approved 2026-08-17 and pinned to the single blueprint
+//// regeneration event; the 2026-08-23 owner ruling on #625 folded it into that
+//// event as R5 item 6 of decision 0005 (wave #617).
 
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, blake2b_256}
