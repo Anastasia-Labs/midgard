@@ -152,6 +152,7 @@ describe("validation-dispute journey to the E_MIN_ADA output-descriptor convicti
     // The resolver body is not in the witness set at all -- it is read from
     // the published reference input.
     expect(measurement!.referenceInputCount).toBeGreaterThan(0);
+    expect(measurement!.plutusV3ScriptCount).toBe(0);
     if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
       console.info(
         JSON.stringify(
