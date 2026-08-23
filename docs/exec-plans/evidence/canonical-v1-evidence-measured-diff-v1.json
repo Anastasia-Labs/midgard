@@ -27,7 +27,7 @@
       "acknowledgement": "Measured 2026-08-17: no committed state of the subject ever hashed to 17561251...a8e3 - all 19 commits touching it (rename-following) were hashed and neither the prefix nor the suffix matches any of them. The F02-R row records its measurement as 'worktree at 7a952e99': the hash was taken from a session worktree after an in-worktree prettier format whose bytes were never committed (the registry was first prettier-formatted in history at c5e88d75, much later, to a different hash), and re-formatting the committed 7a952e99 bytes under the current pinned prettier yields 73d05836...023c, which does not reproduce the pin either. The F02-R PASS verdict is therefore pinned to an identity that cannot be re-derived from history; whether the row's PASS stands, is re-run against the current registry, or is amended is an owner decision - this claim records the measured fact.",
       "measured": {
         "value": "c08c729b8e80fddf8d9685dd7178e875924dd974847c88cb70dccf54e64f3ac3",
-        "atCommit": "21c0da9778dc4cb27117b2fb2d59852415e09be2",
+        "atCommit": "638c191704920924512181ab1c072fd7b0c9fdc2",
         "status": "NEVER_HELD",
         "movedBy": []
       }
