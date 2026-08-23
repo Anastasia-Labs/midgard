@@ -6,6 +6,22 @@
 //// literal of this size is what wedges the compiler, and the builder cost is
 //// isolated by a paired `*_builder_only` test so the predicate's marginal
 //// ExUnits can be read off the difference.
+////
+//// Reach, measured rather than argued: wiring this predicate into
+//// `ledger_output_v1.parse_script_ref`'s tag-0 arm and diffing a scratch
+//// blueprint against c98cd0bf moves three validators (six rows, each a
+//// `.main.spend` / `.main.else` pair) out of 444 --
+//// `fraud_proofs/transition_trace/accepted_transaction_v1`,
+//// `fraud_proofs/transition_trace/deposit_v1`, and
+//// `fraud_proofs/validation_trace/cek_context_step_semantic_v1`. The first two
+//// are the pair decision 0005 A3 predicted. The third is NOT named in the
+//// ruling and reaches the arm through
+//// `validation_machine_v1` -> `script_context_v1.tx_out_data_v1` ->
+//// `decode_canonical_output`; unlike `deposit_v1` (whose projected output is
+//// built with `script_ref: None`, `transition-trace/proof.ak:901`, so its hash
+//// moves and its behaviour does not) that is a live runtime reach, on a
+//// validator that already spends its budget on a CEK step. It makes the
+//// budget verdict below strictly worse, not better.
 
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec
