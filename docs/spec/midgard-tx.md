@@ -392,6 +392,17 @@ predicate. The group-emptiness and name-width clauses restate conditions
 here because §11.1 reads the same value without materialising it and a
 refusal needs a basis in the field's own grammar, not in field 5's.
 
+A reference script under key `3` inherits the field-6 grammar in full,
+including §5.3's language-specific payload rule: at `language_tag` 0
+(`NativeCardano`) the `script_bytes` payload MUST be canonical Midgard
+native-script CBOR under the structure-scan bounds
+(`native_script_scan_v1` / `native-script.ts`), and
+`decode_canonical_output` is `None` for any output whose tag-0 payload is
+not — no descriptor exists for such an output, and no transaction carrying
+one is admissible into `transactions_root` as valid. (Ruled on #633; the
+one-shot decoder's conformance rides the #617 regeneration wave as
+decision 0005 R5 item 9.)
+
 ### 5.6 Mint items (field 5)
 
 The field-5 preimage is the **enveloped list of per-policy items** under the
