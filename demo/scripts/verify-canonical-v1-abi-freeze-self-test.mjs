@@ -233,7 +233,7 @@ mustReject(
 
 mustReject(
   "validator directory dropped from the catalogue binding",
-  /- catalogueBinding\.validatorDirectories must equal the 18 directories the index carries/u,
+  /- catalogueBinding\.validatorDirectories must equal the 20 directories the index carries/u,
   (candidate) => {
     candidate.catalogueBinding.validatorDirectories =
       candidate.catalogueBinding.validatorDirectories.filter(
@@ -248,9 +248,9 @@ mustReject(
 
 mustReject(
   "understated blueprint validator count",
-  /- blueprintIdentity\.validatorCount is 397 but the built blueprint measures 398/u,
+  /- blueprintIdentity\.validatorCount is 443 but the built blueprint measures 444/u,
   (candidate) => {
-    candidate.blueprintIdentity.validatorCount = 397;
+    candidate.blueprintIdentity.validatorCount = 443;
   },
 );
 
@@ -312,7 +312,7 @@ mustReject(
 
 mustReject(
   "family inventory truncated",
-  /- ig2ProofFamilies\.families must enumerate exactly the 18 directories that carry verifier logic/u,
+  /- ig2ProofFamilies\.families must enumerate exactly the 20 directories that carry verifier logic/u,
   (candidate) => {
     candidate.ig2ProofFamilies.families.pop();
   },
@@ -322,25 +322,19 @@ mustReject(
 /* 19-21: drift findings, waivers and the freeze status itself.        */
 /* ------------------------------------------------------------------ */
 
-// #550 recaptured the F20 inventory, so the gate now measures no drift at all
-// and `driftFindings: []` is the published claim. The seeded defect is
-// therefore the other direction: an artifact that invents a finding the tree
-// does not support is rejected exactly as one that hides a real one was. Both
-// directions are the same equality, so the surviving mutation still measures
-// it.
+// #550 recaptured the F20 inventory and the seeded defect was an invented
+// finding, because the gate then measured none. The #617 regeneration puts a
+// real one back: #482's two `fabricated-*` directories are in the index but
+// not in the reconciliation's binding inventory, so the gate measures
+// `f20-validator-directories-behind-the-index`. The seeded defect is therefore
+// the hiding direction again — an artifact that deletes a finding the tree
+// does support. Both directions are the same equality, so the surviving
+// mutation still measures it.
 mustReject(
-  "invented drift finding",
-  /- driftFindings must equal the 0 findings this gate measures: \(none\)/u,
+  "measured drift finding hidden",
+  /- driftFindings must equal the 1 findings this gate measures: f20-validator-directories-behind-the-index/u,
   (candidate) => {
-    candidate.driftFindings = [
-      {
-        id: "f20-registered-categories-behind-the-frozen-catalogue",
-        surface:
-          "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json:bindingInventory.registeredCategoryNames",
-        measured: "seeded claim of a drift the tree does not carry",
-        owner: "F20",
-      },
-    ];
+    candidate.driftFindings = [];
   },
 );
 

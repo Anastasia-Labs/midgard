@@ -9,10 +9,10 @@
     "GOAL_SPEC.md 11 IG2 \u2014 Proof-family gate",
     "GOAL_SPEC.md 11 IG4 \u2014 Release gate (this freeze is an input to it, never a substitute)"
   ],
-  "sourceRevision": "573a536f (parent of the #579 landing commit; identities derived from the working tree that became that commit)",
+  "sourceRevision": "a8a2c6c5 + the #617 single blueprint regeneration (identities re-derived from the working tree that became this commit; blueprint built with aiken v1.1.23+2a78108 under env testnet)",
   "freezeStatus": "BLOCKED",
   "waivers": [],
-  "reviewNote": "This is the single consolidated IG1 + IG2 ABI review required by the B34 acceptance criteria. It is a binding layer, not a re-pinning: F02 owns the 132-row format registry, the HeaderV1 gate owns the three-way HeaderV1 contract, sdk-abi-fixtures owns the 86 golden encodings and F20 owns the coverage reconciliation, and this artifact binds those surfaces by number instead of copying their contents. Everything published here is re-derived from source by demo/scripts/verify-canonical-v1-abi-freeze.mjs; nothing in this file is its own authority. IG1's structural half is closed: the seven deployment-ABI identities agree across midgard-core, midgard-node and midgard-sdk, the frozen catalogue order is a bijection onto the validator tree, and the blueprint comes from the compiler aiken.toml declares. Two observations are recorded rather than hidden. ABI-04 carries declarationOrder DIVERGENT: midgard-core and midgard-sdk declare the same 37-role token mapping in different key orders. That is not an ABI break because every consumer reads the map by key and midgard-node compares it with requireExactKeys, but it is measured and published so the divergence cannot grow into one unseen. IG2 is BLOCKED: 11 families are registered in the frozen catalogue while none of them carries valid-block rejection, maximum proof-fit or correction evidence, so under GOAL_SPEC 11 IG2 none of them may be integrated on this evidence.",
+  "reviewNote": "This is the single consolidated IG1 + IG2 ABI review required by the B34 acceptance criteria. It is a binding layer, not a re-pinning: F02 owns the 132-row format registry, the HeaderV1 gate owns the three-way HeaderV1 contract, sdk-abi-fixtures owns the 86 golden encodings and F20 owns the coverage reconciliation, and this artifact binds those surfaces by number instead of copying their contents. Everything published here is re-derived from source by demo/scripts/verify-canonical-v1-abi-freeze.mjs; nothing in this file is its own authority. Re-measured at the #617 blueprint regeneration: the blueprint is now 444 validators (was 398) and the validator tree carries 20 fraud-proof directories (was 18). The seven deployment-ABI identities still agree across midgard-core, midgard-node and midgard-sdk and the frozen catalogue order is still a total injection into the validator tree, but it is no longer a bijection: #482's fabricated-deposit and fabricated-withdrawal families carry verifier logic and offchain builders while the deployed catalogue registers neither and the gate's uncategorised set does not declare them, so validator-tree-is-covered-by-the-catalogue-or-declared-uncategorised measures 2 violations. That classification is a deployment decision (a category id is a positional index, so registering one moves the catalogue root and every manifest identity) and is deliberately left to the sign-off, not taken here. Three further observations are recorded rather than hidden. ABI-04 carries declarationOrder DIVERGENT: midgard-core and midgard-sdk declare the same 37-role token mapping in different key orders. That is not an ABI break because every consumer reads the map by key and midgard-node compares it with requireExactKeys, but it is measured and published so the divergence cannot grow into one unseen. The F20 reconciliation's binding inventory records 18 validator directories while the index carries 20, published as the drift finding f20-validator-directories-behind-the-index rather than repaired here, because F20 owns that inventory. And IG2 is BLOCKED: 11 families are registered in the frozen catalogue while none of them carries valid-block rejection, maximum proof-fit or correction evidence, so under GOAL_SPEC 11 IG2 none of them may be integrated on this evidence; the two fabricated-* families measure reachability BLOCKED as well.",
   "crossPackageIdentities": [
     {
       "id": "ABI-01",
@@ -127,8 +127,11 @@
     },
     {
       "id": "validator-tree-is-covered-by-the-catalogue-or-declared-uncategorised",
-      "status": "PASS",
-      "violations": []
+      "status": "BLOCKED",
+      "violations": [
+        "fabricated-deposit",
+        "fabricated-withdrawal"
+      ]
     },
     {
       "id": "declared-directories-still-exist",
@@ -171,6 +174,8 @@
       "committed-field-shape",
       "da-hash-preimage",
       "double-spend",
+      "fabricated-deposit",
+      "fabricated-withdrawal",
       "input-no-idx",
       "invalid-range",
       "invalid-signature",
@@ -211,13 +216,13 @@
   },
   "blueprintIdentity": {
     "path": "onchain/aiken/plutus.json",
-    "validatorCount": 398,
-    "uniqueValidatorTitles": 398,
-    "validatorTitleDigest": "18b27c4a873393784a8039338f1892699212e60589c24af68d3133ed89842da5",
+    "validatorCount": 444,
+    "uniqueValidatorTitles": 444,
+    "validatorTitleDigest": "1909cbd612626595eb06b76185d2757180877d9c84dc692bf0308750326575bf",
     "compilerVersion": "v1.1.23+2a78108",
     "plutusVersion": "v3",
     "declaredCompiler": "v1.1.23",
-    "measuredSha256": "91861fac2d0bcafade6d8e1b4872e669cf9e7b52f5ed75d3b9729e4e02d6dd6b",
+    "measuredSha256": "c55917de0f9b479046f601431ea3e088879b2ebfed3150dbe87dd98933b80f00",
     "measuredEnv": "testnet"
   },
   "boundGates": [
@@ -475,6 +480,107 @@
           "maximum_proof_fit",
           "correction"
         ]
+      },
+      {
+        "directory": "fabricated-deposit",
+        "category": null,
+        "integrated": false,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "BLOCKED",
+            "evidence": "the directory carries 4 validator modules but no catalogue category registers it, so no proof of this family is reachable through the deployed catalogue; the deployed catalogue order is eleven entries long in midgard-core, midgard-sdk and midgard-node and fabricated-deposit appears in none of them",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/fabricated-deposit/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/prepare-fabricated-deposit.ts, with submit-step-01..04 modules and an SDK byte twin behind it",
+            "paths": [
+              "demo/midgard-fault-proofs/src/prepare-fabricated-deposit.ts"
+            ]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "Q39 measures LOCAL_PASS on outputs 1-5 and 7 with 16/16 selectors, but outputs 6, 8 and 9 remain OPEN and no per-family valid-block rejection sweep is recorded; F20 records 49 open coverage rows and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-proof-family-q39-v1.json",
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names fabricated-deposit in the \u00a77 family rows",
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
+          }
+        }
+      },
+      {
+        "directory": "fabricated-withdrawal",
+        "category": null,
+        "integrated": false,
+        "integrable": false,
+        "evidence": {
+          "reachability": {
+            "status": "BLOCKED",
+            "evidence": "the directory carries 4 validator modules but no catalogue category registers it, so no proof of this family is reachable through the deployed catalogue; the deployed catalogue order is eleven entries long in midgard-core, midgard-sdk and midgard-node and fabricated-withdrawal appears in none of them",
+            "paths": [
+              "onchain/aiken/validators/fraud-proofs/fabricated-withdrawal/step-01.ak"
+            ]
+          },
+          "tooling": {
+            "status": "PASS",
+            "evidence": "an offchain builder for this family exists in the index: demo/midgard-fault-proofs/src/prepare-fabricated-withdrawal.ts, with submit-step-01..04 modules and an SDK byte twin behind it",
+            "paths": [
+              "demo/midgard-fault-proofs/src/prepare-fabricated-withdrawal.ts"
+            ]
+          },
+          "valid_block_rejection": {
+            "status": "BLOCKED",
+            "evidence": "Q40 built the family selectors and the prepare/submit surface but no per-family valid-block rejection sweep exists in the tree; F20 records 49 open coverage rows and QG1 is OPEN.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "maximum_proof_fit": {
+            "status": "BLOCKED",
+            "evidence": "C53 (resolver proof-fit sweep) and the per-family maximum-fit rows are non-PASS and CG3 has not closed, so no family carries a validator-hash-bound maximum proof-fit measurement.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "correction": {
+            "status": "BLOCKED",
+            "evidence": "C60-C68 forced-execution and classification rows are non-PASS and QG1 is OPEN, so no family has an emulator lifecycle that completes through corrected state.",
+            "paths": [
+              "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
+            ]
+          },
+          "matrix_evidence": {
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names fabricated-withdrawal in the \u00a77 family rows",
+            "paths": [
+              "docs/fault-proofs/coverage-matrix.md"
+            ]
+          }
+        }
       },
       {
         "directory": "input-no-idx",
@@ -1216,7 +1322,14 @@
       }
     ]
   },
-  "driftFindings": [],
+  "driftFindings": [
+    {
+      "id": "f20-validator-directories-behind-the-index",
+      "surface": "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json:bindingInventory.deployedValidatorDirectories",
+      "measured": "reconciliation records 18 validator directories; the index carries 20",
+      "owner": "F20"
+    }
+  ],
   "focusedCommands": [
     "node demo/scripts/verify-canonical-v1-abi-freeze.mjs",
     "node demo/scripts/verify-canonical-v1-abi-freeze-self-test.mjs",
@@ -1228,6 +1341,8 @@
     "Q10-Q50 per-family valid-block rejection evidence, which every integrated family currently lacks.",
     "C53 and the per-family maximum proof-fit measurements, which CG3 gates.",
     "C60-C68 correction lifecycles, which CG4 gates.",
+    "Classify fabricated-deposit and fabricated-withdrawal: either register them as catalogue categories (a deployment event that moves the catalogue root and the manifest identities) or declare them in the gate's uncategorised set, as #579 did for canonical-decodability and committed-field-shape.",
+    "F20: bring bindingInventory.deployedValidatorDirectories up to the 20 directories the index carries, clearing f20-validator-directories-behind-the-index.",
     "Re-run this gate after any of the above: a family becomes integrable only when all six IG2 dimensions measure PASS."
   ]
 }

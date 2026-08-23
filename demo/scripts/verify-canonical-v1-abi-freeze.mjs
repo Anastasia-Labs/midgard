@@ -600,6 +600,20 @@ const FAMILY_OFFCHAIN_MODULES = new Map([
     ["demo/midgard-fault-proofs/src/prepare-da-hash-preimage.ts"],
   ],
   ["double-spend", ["demo/midgard-fault-proofs/src/prepare-double-spend.ts"]],
+  // #482 landed the two `fabricated-*` families' verifier trees and their
+  // offchain builders, but the #617 ABI wave is the first regeneration to
+  // measure them here, so this table names them now. Both build through a
+  // `midgard-fault-proofs` `prepare-*` builder like the rest of that group;
+  // the four `submit-*-step-0N.ts` modules and the SDK byte twins sit behind
+  // them and are not separately named, exactly as for `double-spend`.
+  [
+    "fabricated-deposit",
+    ["demo/midgard-fault-proofs/src/prepare-fabricated-deposit.ts"],
+  ],
+  [
+    "fabricated-withdrawal",
+    ["demo/midgard-fault-proofs/src/prepare-fabricated-withdrawal.ts"],
+  ],
   ["input-no-idx", ["demo/midgard-fault-proofs/src/prepare-input-no-idx.ts"]],
   ["invalid-range", ["demo/midgard-fault-proofs/src/prepare-invalid-range.ts"]],
   [
