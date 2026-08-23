@@ -127,6 +127,7 @@ import {
   buildValidationMachineLedgerInsertOpV1,
   buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
+  outputCborMeetsMinAdaV1,
   RejectCodes,
 } from "@al-ft/midgard-validation";
 import {
@@ -2025,6 +2026,175 @@ export const buildAcceptedClaimOverRejectingTransactionFixture = async ({
     ),
     evidence,
     claimedLedgerDeltaRoot,
+  };
+};
+
+/**
+ * Lovelace carried by both sides of the min-Ada journey transaction below.
+ * `coins_per_utxo_byte * (160 + |canonical output|)` for an output of that
+ * shape is on the order of a million lovelace, so this is a decisive miss,
+ * and the fixture asserts the miss rather than trusting the arithmetic.
+ */
+const MIN_ADA_JOURNEY_OUTPUT_LOVELACE_V1 = 100_000n;
+
+/**
+ * R8 of decision 0005 (#618) / the #627 ruling: the end-to-end journey for the
+ * `E_MIN_ADA` wiring in the ValueAndMint output ladder.
+ *
+ * The forced source carries `operator_validity: TxIsValid`, which
+ * `validation-claim-v1.ak` forces into an `Accepted` committed descriptor. The
+ * transaction is otherwise impeccable -- one resolved spend input, a real
+ * key witness, zero fee, and the produced output carries exactly the lovelace
+ * the input did, so value is preserved and nothing before stage 3 of
+ * ValueAndMint has anything to say about it. The one rule it breaks is the
+ * produced output's minimum-Ada floor, which the machine convicts on at the
+ * output-descriptor step of stage 3 (`E_MIN_ADA`).
+ *
+ * The operator commits the honest trace with only its terminal replaced by an
+ * `Accepted` one, so the bisection lands on the last step -- the ValueAndMint
+ * output-descriptor instruction whose successor is the rejecting terminal --
+ * and the challenger proves it through `value_and_mint_v1` and
+ * `value_and_mint_output_descriptor_semantic_v1`. That is the only route on
+ * which the new `rejected_successor_is_exact(pre, post, reject_min_ada)`
+ * conjunct executes on L1.
+ *
+ * A rejected transaction commits an exact ledger no-op, so the block's prior
+ * and post UTxO roots are both the root of the honest pre-state ledger and
+ * there are no mutation steps.
+ */
+export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
+  operatorVkey,
+  now,
+}: {
+  readonly operatorVkey: string;
+  readonly now: number;
+}): Promise<
+  ForcedValidationDisputeFixture & { readonly disputedLowIndex: number }
+> => {
+  const txOrderId = transitionTraceOutRef("e6");
+  const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
+  const spendingKey = CML.PrivateKey.generate_ed25519();
+  const spendingAddress = Buffer.from(
+    CML.EnterpriseAddress.new(
+      0,
+      CML.Credential.new_pub_key(spendingKey.to_public().hash()),
+    )
+      .to_address()
+      .to_raw_bytes(),
+  );
+  const spentOutRef = outRefCbor(0x8b);
+  const spentOutput = encodeMidgardTxOutput({
+    address: spendingAddress,
+    value: { lovelace: MIN_ADA_JOURNEY_OUTPUT_LOVELACE_V1, assets: new Map() },
+  });
+  const producedOutput = encodeMidgardTxOutput({
+    address: spendingAddress,
+    value: { lovelace: MIN_ADA_JOURNEY_OUTPUT_LOVELACE_V1, assets: new Map() },
+  });
+  // Measured, not assumed: this fixture only means anything if the produced
+  // output really is below the floor the wiring convicts on.
+  expect(
+    outputCborMeetsMinAdaV1(producedOutput, MIN_ADA_JOURNEY_OUTPUT_LOVELACE_V1),
+  ).toBe(false);
+  const unsignedTx = makeNativeTx({
+    spendInputCbors: [spentOutRef],
+    fee: 0n,
+    outputCbor: producedOutput,
+  });
+  const transactionId = computeMidgardNativeTxIdV1(unsignedTx);
+  const forcedNativeTx = makeNativeTx({
+    spendInputCbors: [spentOutRef],
+    fee: 0n,
+    outputCbor: producedOutput,
+    addrTxWitsPreimageCbor: encodeCbor([
+      Buffer.from(
+        CML.make_vkey_witness(
+          CML.TransactionHash.from_raw_bytes(transactionId),
+          spendingKey,
+        ).to_cbor_bytes(),
+      ),
+    ]),
+  });
+  const forcedCanonicalCbor = encodeMidgardNativeTxCanonicalV1(forcedNativeTx);
+  const forcedSource =
+    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(forcedCanonicalCbor);
+  const forcedTransaction = {
+    tx_id: transactionId.toString("hex"),
+    source: {
+      compact_cbor: forcedSource.compactCbor.toString("hex"),
+      witness_set_compact_cbor:
+        forcedSource.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        forcedSource.fieldPreimageLengthsCbor.toString("hex"),
+    },
+    operator_validity: "TxIsValid" as const,
+  };
+  // The probe deletion is only a way to read the root of the honest pre-state
+  // ledger trie; none of its steps reach the machine, which is given an exact
+  // no-op as a rejected transaction requires.
+  const ledgerRootProbe = await buildValidationMachineLedgerMutationSteps({
+    initialEntries: [{ outRef: spentOutRef, output: spentOutput }],
+    operations: [{ type: "delete", key: spentOutRef }],
+  });
+  const utxosRoot = ledgerRootProbe[0]!.preRoot.toString("hex");
+  const challengerTrace = await Effect.runPromise(
+    buildDeterministicValidationMachineTrace({
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      eventKeyCbor: encodeData(eventKey, EventKeySchema),
+      sourceKind: "forced",
+      blockEndTimeMs: now + 1_000,
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
+      blockSlot: 0n,
+      transactionId,
+      canonicalTransactionCbor: forcedCanonicalCbor,
+      priorUtxosRoot: utxosRoot,
+      postUtxosRoot: utxosRoot,
+      ledgerWitnessEntries: [{ outRef: spentOutRef, output: spentOutput }],
+      expectedLedgerOps: [],
+      ledgerMutationSteps: [],
+      expectedVerdict: "rejected",
+      expectedRejectionCode: RejectCodes.MinAda,
+    }),
+  );
+  const operatorTrace = replaceTerminalState(challengerTrace, {
+    terminal: {
+      ...challengerTrace.states.at(-1)!,
+      verdict: "accepted",
+      rejectionCodeHash: MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
+      workRoot: Buffer.alloc(32, 0x7e),
+    },
+    verdict: "accepted",
+    rejectionCode: null,
+    rejectionCodeHash: MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
+  });
+  const evidence = buildValidationDisputeEvidenceBundleV1({
+    operatorTrace,
+    challengerTrace,
+    currentTime: now + 2_000,
+  });
+  const { header, claim } = await buildForcedValidationDisputeCommitments({
+    operatorVkey,
+    now,
+    txOrderId,
+    eventKey,
+    forcedTransaction,
+    operatorTrace,
+    preUtxosRoot: utxosRoot,
+    postUtxosRoot: utxosRoot,
+  });
+  return {
+    header,
+    claim,
+    operatorTrace,
+    challengerTrace,
+    challengerDescriptor: validationTraceDescriptorDataFromCore(
+      challengerTrace.tree.descriptor,
+    ),
+    evidence,
+    claimedLedgerDeltaRoot: challengerTrace.states[0]!.ledgerDeltaRoot,
+    disputedLowIndex: challengerTrace.states.length - 2,
   };
 };
 

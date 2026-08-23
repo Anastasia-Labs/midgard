@@ -5,7 +5,6 @@ import {
   hashMidgardValidationMachineStateV1,
   MIDGARD_CONSENSUS_PROFILE_V1,
 } from "@al-ft/midgard-core";
-import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
   encodeMidgardFieldPreimageV1,
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
@@ -58,11 +57,12 @@ import {
   type ValidationOneStepArgumentV1,
 } from "../src/index.js";
 import {
+  fundingLovelaceForOutputsV1,
+  makeMinAdaFundedExactSizeOutputItemV1,
   makeNativeTx,
   makeOutput,
   outRefFromByte,
   outRefFromTxId,
-  TEST_ADDRESS_BYTES,
 } from "./validation-fixtures.js";
 
 const blueprintPath =
@@ -90,50 +90,15 @@ const RESERVED_CPU_UNITS = Math.floor(
 const MAX_L1_PROOF_TX_BYTES =
   MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
 
-const encodeBoundedBytesItem = (payload: Buffer): Buffer => {
-  if (payload.length < 24) {
-    return Buffer.concat([Buffer.from([0x40 + payload.length]), payload]);
-  }
-  if (payload.length <= 0xff) {
-    return Buffer.concat([Buffer.from([0x58, payload.length]), payload]);
-  }
-  throw new Error("bounded datum chunk must stay below 256 bytes");
-};
-
-const canonicalDatumFiller = (payloadBytes: number): Buffer => {
-  if (payloadBytes <= 64) {
-    return encodeBoundedBytesItem(Buffer.alloc(payloadBytes, 0xa5));
-  }
-  const items: Buffer[] = [];
-  let remaining = payloadBytes;
-  while (remaining > 0) {
-    const take = Math.min(remaining, 64);
-    items.push(encodeBoundedBytesItem(Buffer.alloc(take, 0xa5)));
-    remaining -= take;
-  }
-  return Buffer.concat([Buffer.from([0x9f]), ...items, Buffer.from([0xff])]);
-};
-
-const makeExactSizeOutputItem = (targetItemBytes: number): Buffer => {
-  const probe = (payloadBytes: number): Buffer =>
-    encodeMidgardTxOutput({
-      address: TEST_ADDRESS_BYTES,
-      value: { lovelace: 10n, assets: new Map() },
-      datum: { kind: "inline", cbor: canonicalDatumFiller(payloadBytes) },
-    });
-  let payload = Math.max(0, targetItemBytes - probe(0).length);
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    const candidate = probe(payload);
-    const delta = targetItemBytes - candidate.length;
-    if (delta === 0) {
-      return candidate;
-    }
-    payload += delta;
-  }
-  throw new Error(
-    `could not converge on an exact ${targetItemBytes.toString()}-byte output item`,
-  );
-};
+/**
+ * RE-AUTHORED, NOT SUPPRESSED (#618 ruling 1; R8 of decision 0005). This file
+ * used to carry its own copy of the exact-size item builder, producing
+ * 10-lovelace items that the ValueAndMint output-descriptor scan now convicts
+ * with `E_MIN_ADA`. The shared builder funds each item at its own minimum-Ada
+ * floor without moving its length, so every carriage measurement below
+ * measures the same number of bytes it did before the wiring.
+ */
+const makeExactSizeOutputItem = makeMinAdaFundedExactSizeOutputItemV1;
 
 /** The §5.1 outputs field, which is the field every case here carries. */
 const OUTPUT_FIELD_INDEX = 2;
@@ -185,7 +150,11 @@ const buildTraceWithOutputs = async (
   outputs: readonly Buffer[],
 ): Promise<DeterministicValidationMachineTrace> => {
   const spent = outRefFromByte(0x11);
-  const spentOutput = makeOutput(10n);
+  // The resolved input has to fund every produced output now that each is
+  // funded at its own minimum-Ada floor, or stage five would convict this
+  // trace with `E_VALUE_NOT_PRESERVED` instead of accepting it. The fee is
+  // zero, so the sum is exact.
+  const spentOutput = makeOutput(fundingLovelaceForOutputsV1(outputs));
   const transaction = makeNativeTx({
     version: 1n,
     spendInputs: [spent],

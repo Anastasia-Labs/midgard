@@ -6,7 +6,6 @@ import {
   commitMidgardBoundedItemV1,
   MIDGARD_CONSENSUS_PROFILE_V1,
 } from "@al-ft/midgard-core";
-import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
   type MidgardFieldCarriagePlanV1,
   planMidgardFieldCarriageV1,
@@ -48,11 +47,12 @@ import {
   type ValidationMachineWorkWitness,
 } from "../src/index.js";
 import {
+  fundingLovelaceForOutputsV1,
+  makeMinAdaFundedExactSizeOutputItemV1,
   makeNativeTx,
   makeOutput,
   outRefFromByte,
   outRefFromTxId,
-  TEST_ADDRESS_BYTES,
 } from "./validation-fixtures.js";
 
 const validationBlueprintPath =
@@ -73,70 +73,17 @@ const traceContext = {
   blockSlot: 100n,
 };
 
-const encodeBoundedBytesItem = (payload: Buffer): Buffer => {
-  if (payload.length < 24) {
-    return Buffer.concat([Buffer.from([0x40 + payload.length]), payload]);
-  }
-  if (payload.length <= 0xff) {
-    return Buffer.concat([Buffer.from([0x58, payload.length]), payload]);
-  }
-  throw new Error("bounded datum chunk must stay below 256 bytes");
-};
-
-/**
- * Canonical Plutus-data filler: a single definite byte string when it fits 64
- * bytes, otherwise an indefinite list of 64-byte-bounded byte strings, which
- * matches Aiken's `cbor.serialise` list convention.
- */
-const canonicalDatumFiller = (payloadBytes: number): Buffer => {
-  if (payloadBytes <= 64) {
-    return encodeBoundedBytesItem(Buffer.alloc(payloadBytes, 0xa5));
-  }
-  const items: Buffer[] = [];
-  let remaining = payloadBytes;
-  while (remaining > 0) {
-    const take = Math.min(remaining, 64);
-    items.push(encodeBoundedBytesItem(Buffer.alloc(take, 0xa5)));
-    remaining -= take;
-  }
-  return Buffer.concat([Buffer.from([0x9f]), ...items, Buffer.from([0xff])]);
-};
-
-/**
- * Builds a canonical output item whose exact encoded length equals
- * `targetItemBytes` by sizing an inline-datum payload to close the gap.
- */
-const makeExactSizeOutputItem = (targetItemBytes: number): Buffer => {
-  const probe = (payloadBytes: number): Buffer =>
-    encodeMidgardTxOutput({
-      address: TEST_ADDRESS_BYTES,
-      value: { lovelace: 10n, assets: new Map() },
-      datum: { kind: "inline", cbor: canonicalDatumFiller(payloadBytes) },
-    });
-  let payload = Math.max(0, targetItemBytes - probe(0).length);
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    const candidate = probe(payload);
-    const delta = targetItemBytes - candidate.length;
-    if (delta === 0) {
-      return candidate;
-    }
-    payload += delta;
-    if (payload < 0) {
-      throw new Error(
-        `target item of ${targetItemBytes.toString()} bytes is below the minimum output framing`,
-      );
-    }
-  }
-  throw new Error(
-    `could not converge on an exact ${targetItemBytes.toString()}-byte output item`,
-  );
-};
+const makeExactSizeOutputItem = makeMinAdaFundedExactSizeOutputItemV1;
 
 const buildTraceWithOutputs = async (
   outputs: readonly Buffer[],
 ): Promise<DeterministicValidationMachineTrace> => {
   const spent = outRefFromByte(0x11);
-  const spentOutput = makeOutput(10n);
+  // The resolved input has to fund every produced output now that each is
+  // funded at its own minimum-Ada floor, or stage five would convict this
+  // trace with `E_VALUE_NOT_PRESERVED` instead of accepting it. The fee is
+  // zero, so the sum is exact.
+  const spentOutput = makeOutput(fundingLovelaceForOutputsV1(outputs));
   const transaction = makeNativeTx({
     version: 1n,
     spendInputs: [spent],

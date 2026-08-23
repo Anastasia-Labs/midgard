@@ -5,6 +5,7 @@ import {
   encodeMidgardTxOutput,
   type MidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -66,6 +67,15 @@ const aikenTwinTestSource = read(
 const targetSnapshotSource = read(
   "./helpers/ordered-collection-boundary-v1.ts",
 );
+// The two compiled deployment pins (#627 owner ruling, option B). These are the
+// constants the ValueAndMint output-descriptor step actually convicts with --
+// `env.coins_per_utxo_byte`, held identical across both Aiken environments --
+// and they are what this suite binds, rather than the test-only constant it
+// used to read. `aiken build --env <name>` compiles exactly one of these into
+// every validator, so a rate that differs between them would ship two
+// deployments disagreeing about which outputs are fundable.
+const aikenEnvDefaultSource = read("../../../onchain/aiken/env/default.ak");
+const aikenEnvTestnetSource = read("../../../onchain/aiken/env/testnet.ak");
 
 const parseUnderscoredInt = (text: string): bigint =>
   BigInt(text.replace(/_/gu, ""));
@@ -133,14 +143,35 @@ const AIKEN_PREDICATE_BODY = aikenFunctionBody(
   "the Aiken `output_meets_min_ada_v1` body",
 );
 
-const AIKEN_TARGET_SNAPSHOT_RATE = parseUnderscoredInt(
+const AIKEN_ENV_RATE_PATTERN =
+  /^pub const coins_per_utxo_byte: Int = ([0-9_]+)$/mu;
+
+const AIKEN_ENV_DEFAULT_RATE = parseUnderscoredInt(
   requireMatch(
-    aikenTwinTestSource,
-    /^const target_snapshot_coins_per_utxo_byte = ([0-9_]+)$/mu,
-    "the Aiken target-snapshot `coinsPerUtxoByte`",
+    aikenEnvDefaultSource,
+    AIKEN_ENV_RATE_PATTERN,
+    "the `coins_per_utxo_byte` pin in onchain/aiken/env/default.ak",
   )[1],
 );
 
+const AIKEN_ENV_TESTNET_RATE = parseUnderscoredInt(
+  requireMatch(
+    aikenEnvTestnetSource,
+    AIKEN_ENV_RATE_PATTERN,
+    "the `coins_per_utxo_byte` pin in onchain/aiken/env/testnet.ak",
+  )[1],
+);
+
+// The TypeScript production pin: the mirror carried in the consensus profile,
+// imported as a value (not scraped) so a deleted or renamed field is a type
+// error rather than a silently skipped assertion.
+const TYPESCRIPT_PRODUCTION_RATE = BigInt(
+  MIDGARD_CONSENSUS_LIMITS_V1.coinsPerUtxoByte,
+);
+
+// The C70 target-parameter snapshot the pins are provenanced FROM. It is no
+// longer the binding this suite convicts on -- it is the third, corroborating
+// witness that both production pins still carry the snapshot's value.
 const TYPESCRIPT_TARGET_SNAPSHOT_RATE = parseUnderscoredInt(
   requireMatch(
     targetSnapshotSource,
@@ -479,10 +510,63 @@ describe("min-Ada twin cross-check (D-S4 / C49)", () => {
     );
   });
 
-  it("pins the C70 snapshot rate at 4_310 on both sides", () => {
+  it("pins the C70 snapshot rate at 4_310 across both production pins", () => {
+    // The two compiled Aiken pins, the TypeScript mirror, and the C70 snapshot
+    // they are all provenanced from. Re-pointed 2026-08-23 (#627 owner ruling,
+    // option B) off the Aiken test constant and the TypeScript test helper:
+    // this suite now convicts on the constants the validators are compiled
+    // with, and keeps the snapshot only as a corroborating witness.
+    expect(AIKEN_ENV_DEFAULT_RATE).toBe(4_310n);
+    expect(AIKEN_ENV_TESTNET_RATE).toBe(4_310n);
+    expect(TYPESCRIPT_PRODUCTION_RATE).toBe(4_310n);
     expect(TYPESCRIPT_TARGET_SNAPSHOT_RATE).toBe(4_310n);
-    expect(AIKEN_TARGET_SNAPSHOT_RATE).toBe(4_310n);
-    expect(AIKEN_TARGET_SNAPSHOT_RATE).toBe(TYPESCRIPT_TARGET_SNAPSHOT_RATE);
+
+    // Held equal to each other, not merely equal to a literal: a coordinated
+    // edit that moves every pin at once still has to move them together.
+    expect(AIKEN_ENV_TESTNET_RATE).toBe(AIKEN_ENV_DEFAULT_RATE);
+    expect(TYPESCRIPT_PRODUCTION_RATE).toBe(AIKEN_ENV_DEFAULT_RATE);
+    expect(TYPESCRIPT_TARGET_SNAPSHOT_RATE).toBe(TYPESCRIPT_PRODUCTION_RATE);
+
+    // A zero rate would collapse every floor to zero and silently disable the
+    // whole rule; neither side guards against it at runtime, because at a
+    // compiled constant it cannot arise at runtime. This is that guard.
+    expect(AIKEN_ENV_DEFAULT_RATE > 0n).toBe(true);
+    expect(TYPESCRIPT_PRODUCTION_RATE > 0n).toBe(true);
+  });
+
+  it("binds the Aiken vectors to the env pin rather than a duplicated literal", () => {
+    // The Aiken test module's rate constant must READ the env pin. If it is
+    // ever edited back to a literal, its vectors could pass against a rate the
+    // validators do not use -- which is exactly the drift this suite exists to
+    // catch, and which the old scrape of that literal could not see.
+    expect(aikenTwinTestSource).toContain(
+      "const target_snapshot_coins_per_utxo_byte = env.coins_per_utxo_byte",
+    );
+    expect(
+      /^const target_snapshot_coins_per_utxo_byte = [0-9_]+$/mu.test(
+        aikenTwinTestSource,
+      ),
+    ).toBe(false);
+  });
+
+  it("pins that the env rate is the one the ValueAndMint scan convicts with", () => {
+    // The wiring, as source text (#618 ruling 1; R8 of decision 0005). Without
+    // these three legs the pins above could agree perfectly while the floor
+    // stayed unwired arithmetic, which is the state D-S4 was opened against.
+    expect(aikenTwinSource).toContain(
+      'const reject_min_ada = #"455f4d494e5f414441"',
+    );
+    expect(aikenTwinSource.replace(/\s+/gu, " ")).toContain(
+      "if !output_meets_min_ada_v1( env.coins_per_utxo_byte, descriptor.total_length, descriptor.lovelace, )",
+    );
+    expect(aikenTwinSource.replace(/\s+/gu, " ")).toContain(
+      "rejected_successor_is_exact( pre, witness.claimed_successor, reject_min_ada, )",
+    );
+    // `E_MIN_ADA` is the ASCII preimage of the code the wiring emits: the
+    // TypeScript twin must reject with the same wire bytes.
+    expect(Buffer.from("455f4d494e5f414441", "hex").toString("ascii")).toBe(
+      "E_MIN_ADA",
+    );
   });
 
   it("serializes the two shared canonical outputs to their pinned absolute bytes", () => {
@@ -605,6 +689,37 @@ describe("min-Ada twin cross-check hostile controls", () => {
         body: "min_fee_a * serialized_output_bytes",
       }),
     ).toThrow(/unbound Aiken identifier/u);
+  });
+
+  it("fires when an env pin is absent, reshaped, or disagrees", () => {
+    // The extractor must not silently tolerate a missing or renamed env pin --
+    // that failure mode would make the whole re-pointing vacuous.
+    expect(() =>
+      requireMatch(
+        "pub const other: Int = 1\n",
+        AIKEN_ENV_RATE_PATTERN,
+        "the `coins_per_utxo_byte` pin in onchain/aiken/env/default.ak",
+      ),
+    ).toThrow(/could not locate/u);
+    expect(() =>
+      requireMatch(
+        "pub const coins_per_utxo_byte = 4_310\n",
+        AIKEN_ENV_RATE_PATTERN,
+        "the `coins_per_utxo_byte` pin in onchain/aiken/env/default.ak",
+      ),
+    ).toThrow(/could not locate/u);
+    // And it must read the value, not merely confirm the line exists: a
+    // divergent second environment has to come out as a different number.
+    expect(
+      parseUnderscoredInt(
+        requireMatch(
+          "pub const coins_per_utxo_byte: Int = 4_311\n",
+          AIKEN_ENV_RATE_PATTERN,
+          "a divergent env pin",
+        )[1],
+      ),
+    ).toBe(4_311n);
+    expect(4_311n).not.toBe(AIKEN_ENV_DEFAULT_RATE);
   });
 
   it("refuses to evaluate an absent or reshaped Aiken declaration", () => {

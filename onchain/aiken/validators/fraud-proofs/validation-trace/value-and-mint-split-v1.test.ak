@@ -37,6 +37,7 @@ use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry/helpers.{combine, suffix}
 use aiken/merkle_patricia_forestry/merkling.{null_hash}
 use aiken/primitive/bytearray
+use env
 use fraud_proofs/validation_trace/value_and_mint_begin_semantic_v1 as begin_validator
 use fraud_proofs/validation_trace/value_and_mint_finalize_semantic_v1 as finalize_validator
 use fraud_proofs/validation_trace/value_and_mint_mint_asset_semantic_v1 as mint_asset_validator
@@ -293,10 +294,38 @@ fn empty_summary() -> cek_data_v1.DataSummaryV1 {
   cek_data_v1.DataSummaryV1 { root: h_a, cbor_length: 0, memory: 0 }
 }
 
-/// A ledger output descriptor with three lovelace and `asset_count` (zero or
-/// one) copies of the asset `(h_28_a, "beef", 7)`.
+/// `E_MIN_ADA` in ASCII (#618 ruling 1). Written out here rather than read off
+/// the validator, so the rejection vector below pins the wire bytes a fraud
+/// proof has to carry.
+const reject_min_ada_code: ByteArray = #"455f4d494e5f414441"
+
+/// The serialized canonical length every descriptor fixture in this module
+/// declares, and the exact minimum-Ada floor for it at the production rate.
+/// The floor is derived from `env.coins_per_utxo_byte` rather than written
+/// out, so a rate change moves these fixtures with the rule.
+const descriptor_total_length: Int = 16384
+
+fn descriptor_min_ada_floor() -> Int {
+  validation_machine_v1.min_ada_lovelace_v1(
+    env.coins_per_utxo_byte,
+    descriptor_total_length,
+  )
+}
+
+/// A ledger output descriptor with `lovelace` lovelace and `asset_count`
+/// (zero or one) copies of the asset `(h_28_a, "beef", 7)`.
+///
+/// RE-AUTHORED, NOT SUPPRESSED (#618 ruling 1). `lovelace` became a parameter
+/// when the ValueAndMint output-descriptor step began convicting an
+/// under-funded output with `E_MIN_ADA`: the stage-three output fold now has
+/// to fund the floor, while the stage-two RESOLVED-INPUT replay fixtures keep
+/// their original 3-lovelace descriptor. That asymmetry is the rule, not an
+/// oversight -- the wiring gates outputs a transaction PRODUCES (MIN-ADA-TX),
+/// not inputs it resolves from prior state, whose under-funding is the
+/// separate MIN-ADA-UTXO shape Q27 owns.
 fn descriptor_with_assets(
   asset_count: Int,
+  lovelace: Int,
 ) -> ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
   let asset_frontier = if asset_count == 0 {
     validation_merkle_v1.build_frontier([])
@@ -308,10 +337,10 @@ fn descriptor_with_assets(
   ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
     version: ledger_output_commitment_v1.version,
     output_index: 0,
-    total_length: 16384,
+    total_length: descriptor_total_length,
     item_commitment: h_b,
     address: #"60" |> bytearray.concat(h_28_b),
-    lovelace: 3,
+    lovelace,
     asset_count,
     asset_frontier_commitment: validation_merkle_v1.frontier_commitment(
       asset_frontier.count,
@@ -410,7 +439,7 @@ fn replay_begin_fixture() -> StepFixtureV1 {
 fn replay_input_fixture() -> StepFixtureV1 {
   let tx = empty_v1_transaction()
   let descriptor_cbor = ledger_output_commitment_v1.encode(
-    descriptor_with_assets(0),
+    descriptor_with_assets(0, 3),
   )
   let native_control = single_replayed_input_native_control(tx, descriptor_cbor)
   let control = ValueAndMintControlV1 {
@@ -446,7 +475,7 @@ fn replay_input_fixture() -> StepFixtureV1 {
 fn replay_asset_fixture() -> StepFixtureV1 {
   let tx = empty_v1_transaction()
   let descriptor_cbor = ledger_output_commitment_v1.encode(
-    descriptor_with_assets(1),
+    descriptor_with_assets(1, 3),
   )
   let native_control = single_replayed_input_native_control(tx, descriptor_cbor)
   let unit = h_28_a |> bytearray.concat(#"beef")
@@ -515,14 +544,14 @@ type OutputFoldV1 {
   asset_peaks: List<FrontierPeak>,
 }
 
-fn output_fold() -> OutputFoldV1 {
+fn output_fold_at(output_lovelace: Int) -> OutputFoldV1 {
   let tx = empty_v1_transaction()
   let unit = h_28_a |> bytearray.concat(#"beef")
   let asset_frontier = validation_merkle_v1.build_frontier(
     [ledger_output_commitment_v1.asset_leaf_hash(h_28_a, #"beef", 7)],
   )
   let descriptor_cbor = ledger_output_commitment_v1.encode(
-    descriptor_with_assets(1),
+    descriptor_with_assets(1, output_lovelace),
   )
   let descriptor_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_descriptor_leaf_hash(0, descriptor_cbor)],
@@ -540,7 +569,7 @@ fn output_fold() -> OutputFoldV1 {
     replay_value_hash: blake2b_256(descriptor_cbor),
     value_accumulator: ValueAccumulatorV1 {
       ..initial.value_accumulator,
-      lovelace_delta: -3,
+      lovelace_delta: -output_lovelace,
     },
   }
   let final = ValueAndMintControlV1 {
@@ -549,7 +578,7 @@ fn output_fold() -> OutputFoldV1 {
     output_asset_cursor: 0,
     replay_value_hash: zero,
     value_accumulator: ValueAccumulatorV1 {
-      lovelace_delta: -3,
+      lovelace_delta: -output_lovelace,
       asset_root: singleton_root(unit, cbor.serialise(-7)),
       seen_asset_count: 1,
       nonzero_asset_count: 1,
@@ -565,6 +594,10 @@ fn output_fold() -> OutputFoldV1 {
   }
 }
 
+fn output_fold() -> OutputFoldV1 {
+  output_fold_at(descriptor_min_ada_floor())
+}
+
 fn output_descriptor_fixture() -> StepFixtureV1 {
   let f = output_fold()
   control_step(
@@ -578,6 +611,58 @@ fn output_descriptor_fixture() -> StepFixtureV1 {
       siblings: [],
     },
   )
+}
+
+/// The canonical exact-rejection successor: Terminal, one program counter on,
+/// `Rejected` with `hash_rejection_code(code)`, and the work root
+/// `hash_work_witness(Terminal, pc + 1, encode_terminal_rejection_witness(code,
+/// pre.prior_ledger_root))`. It deliberately carries `pre.ledger_delta_root`
+/// forward (via `..pre`): the claimed delta commitment is immutable context.
+fn exact_rejection_post(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  rejection_code: ByteArray,
+) -> validation_trace_v1.ValidationMachineStateV1 {
+  validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    phase: validation_trace_v1.Terminal,
+    program_counter: pre.program_counter + 1,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Terminal,
+      pre.program_counter + 1,
+      validation_machine_v1.encode_terminal_rejection_witness(
+        rejection_code,
+        pre.prior_ledger_root,
+      ),
+    ),
+    verdict: validation_trace_v1.Rejected,
+    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
+  }
+}
+
+/// E_MIN_ADA at the validator boundary (#618 ruling 1; R8 of decision 0005).
+/// The same pre-state, the same authenticated descriptor and the same
+/// `ValueOutputDescriptorWitness` as `output_descriptor_fixture`, one lovelace
+/// short of the floor -- so the only successor the machine admits is the exact
+/// rejecting terminal rather than the fold. This is the step the deployed
+/// `value_and_mint_output_descriptor_semantic_v1` has to award the challenger
+/// for the wiring to be worth anything on L1, and it is the ONE kind of step
+/// no other fixture in this module exercises: every fixture above advances.
+fn output_descriptor_min_ada_rejection_fixture() -> StepFixtureV1 {
+  let f = output_fold_at(descriptor_min_ada_floor() - 1)
+  let Pair(pre, work_witness_cbor) = state_of(f.tx, f.initial, 40)
+  StepFixtureV1 {
+    kind: 5,
+    pre,
+    transition: ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: exact_rejection_post(pre, reject_min_ada_code),
+    },
+    auxiliary: ValueOutputDescriptorWitness {
+      output_index: 0,
+      descriptor_cbor: f.descriptor_cbor,
+      siblings: [],
+    },
+  }
 }
 
 fn output_asset_fixture() -> StepFixtureV1 {
@@ -1688,6 +1773,10 @@ test replay_finish_validator_wins_the_exhausted_schedule() {
 
 test output_descriptor_validator_wins_the_descriptor_step() {
   run_kind(5, output_descriptor_fixture())
+}
+
+test output_descriptor_validator_wins_the_min_ada_rejection() {
+  run_kind(5, output_descriptor_min_ada_rejection_fixture())
 }
 
 test output_asset_validator_wins_the_output_asset_fold() {

@@ -7,6 +7,7 @@ use aiken/merkle_patricia_forestry as mpf
 use aiken/merkle_patricia_forestry/helpers.{combine, suffix}
 use aiken/merkle_patricia_forestry/merkling.{null_hash}
 use aiken/primitive/bytearray
+use env
 use midgard/blake2b_224_trace_v1
 use midgard/bounded_collection_v1
 use midgard/bounded_item_v1
@@ -130,7 +131,15 @@ const target_snapshot_min_fee_a = 44
 
 const target_snapshot_min_fee_b = 155_381
 
-const target_snapshot_coins_per_utxo_byte = 4_310
+/// Re-pointed 2026-08-23 (owner ruling on #627, option B) off a duplicated
+/// literal onto the production pin. `env.coins_per_utxo_byte` is the compiled
+/// deployment constant the ValueAndMint output-descriptor step actually
+/// convicts with, held identical in `env/default.ak` and `env/testnet.ak` and
+/// mirrored by `MIDGARD_CONSENSUS_LIMITS_V1.coinsPerUtxoByte`. Reading it here
+/// means these vectors cannot pass against a rate the validators do not use;
+/// `min_ada_target_snapshot_rate_is_the_production_pin` below still pins the
+/// absolute 4_310 so the C70 snapshot value itself cannot drift unnoticed.
+const target_snapshot_coins_per_utxo_byte = env.coins_per_utxo_byte
 
 // `validation_context_cbor` re-encoded at the target snapshot. The tuple is
 // [1, "midgard-consensus-v1", 100, 0, 44, 155381, 100] -- identical to the
@@ -140,6 +149,12 @@ const target_snapshot_validation_context_cbor =
   #"8701546d6964676172642d636f6e73656e7375732d7631186400182c1a00025ef51864"
 
 const reject_min_fee_code = #"455f4d494e5f464545"
+
+// `E_MIN_ADA` in ASCII (#618 ruling 1). Written out here independently of the
+// validator's private `reject_min_ada` constant, so the wiring vectors below
+// pin the wire bytes a fraud proof must carry rather than echoing whatever the
+// validator happens to hold.
+const reject_min_ada_code = #"455f4d494e5f414441"
 
 const reject_value_not_preserved_code =
   #"455f56414c55455f4e4f545f505245534552564544"
@@ -13843,7 +13858,33 @@ type ValueOutputDescriptorFixture {
   asset_peaks: List<validation_merkle_v1.FrontierPeak>,
 }
 
-fn value_output_descriptor_fixture() -> ValueOutputDescriptorFixture {
+/// The serialized canonical length this fixture's output declares. It sits on
+/// `max_serialized_output_preimage_bytes`, the largest output the machine
+/// admits, so the min-Ada floor derived from it is the largest this scan can
+/// demand.
+const value_output_descriptor_total_length: Int = 16384
+
+/// The exact minimum-Ada floor for that output, at the production rate.
+/// Derived, never written out: a rate or intercept change moves this fixture
+/// with the rule instead of leaving a stale literal behind.
+/// `min_ada_wiring_floor_is_the_pinned_absolute_value` pins its absolute value.
+fn value_output_descriptor_min_ada_floor() -> Int {
+  validation_machine_v1.min_ada_lovelace_v1(
+    env.coins_per_utxo_byte,
+    value_output_descriptor_total_length,
+  )
+}
+
+/// RE-AUTHORED, NOT SUPPRESSED (#618 ruling 1). This fixture used to fund its
+/// output with 3 lovelace, which was fine while the min-Ada floor was unwired
+/// arithmetic. Now that the ValueAndMint output-descriptor step convicts an
+/// under-funded output with `E_MIN_ADA`, a 3-lovelace output can no longer take
+/// the advancing step at all -- so the fixture funds the exact floor, and the
+/// under-funded leg became its own reject vector below rather than being
+/// deleted.
+fn value_output_descriptor_fixture_at(
+  output_lovelace: Int,
+) -> ValueOutputDescriptorFixture {
   let tx = empty_v1_transaction()
   let policy_id = h_28_a
   let asset_name = #"beef"
@@ -13866,10 +13907,10 @@ fn value_output_descriptor_fixture() -> ValueOutputDescriptorFixture {
   let descriptor = ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
     version: ledger_output_commitment_v1.version,
     output_index: 0,
-    total_length: 16384,
+    total_length: value_output_descriptor_total_length,
     item_commitment: h_b,
     address: #"60" |> bytearray.concat(h_28_b),
-    lovelace: 3,
+    lovelace: output_lovelace,
     asset_count: 1,
     asset_frontier_commitment: validation_merkle_v1.frontier_commitment(
       asset_frontier.count,
@@ -13919,7 +13960,7 @@ fn value_output_descriptor_fixture() -> ValueOutputDescriptorFixture {
     replay_value_hash: blake2b_256(descriptor_cbor),
     value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
       ..initial_control.value_accumulator,
-      lovelace_delta: -3,
+      lovelace_delta: -output_lovelace,
     },
   }
   let final_control = validation_machine_v1.ValueAndMintControlV1 {
@@ -13928,7 +13969,7 @@ fn value_output_descriptor_fixture() -> ValueOutputDescriptorFixture {
     output_asset_cursor: 0,
     replay_value_hash: zero,
     value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
-      lovelace_delta: -3,
+      lovelace_delta: -output_lovelace,
       asset_root: singleton_root(unit, cbor.serialise(-7)),
       seen_asset_count: 1,
       nonzero_asset_count: 1,
@@ -13998,6 +14039,10 @@ fn value_output_descriptor_fixture() -> ValueOutputDescriptorFixture {
     quantity,
     asset_peaks: asset_frontier.peaks,
   }
+}
+
+fn value_output_descriptor_fixture() -> ValueOutputDescriptorFixture {
+  value_output_descriptor_fixture_at(value_output_descriptor_min_ada_floor())
 }
 
 test value_and_mint_authenticates_output_descriptor_on_l1() {
@@ -14414,6 +14459,173 @@ test min_ada_absolute_vectors_match_the_typescript_twin() {
     // 7. C70 snapshot rate at a 5_000-byte output -- no sub-cap at size.
     min_ada_absolute_vector_is_exact(4_310, 5_000, 22_239_600),
   }
+}
+
+// ---------------------------------------------------------------------------
+// E_MIN_ADA wiring (#618 ruling 1; R8 of decision 0005; #627 owner ruling,
+// option B). Everything above this line exercises the floor as ARITHMETIC. The
+// vectors below exercise it as a CONVICTION: the ValueAndMint output-descriptor
+// step, at `output_asset_cursor == 0`, now rejects an under-funded output with
+// `E_MIN_ADA` instead of folding its lovelace into the accumulator.
+// ---------------------------------------------------------------------------
+
+/// The compiled deployment pin itself. The rate the output-descriptor step
+/// convicts with is `env.coins_per_utxo_byte`, held identical in
+/// `env/default.ak` and `env/testnet.ak` and mirrored by
+/// `MIDGARD_CONSENSUS_LIMITS_V1.coinsPerUtxoByte`; no vector above pins its
+/// absolute value now that the local test constant reads it.
+///
+/// ZERO-RATE: no on-chain guard rejects a zero rate, and one must not be added
+/// -- at a compiled constant the rate cannot be zero at runtime, so the guard
+/// would be unreachable code in the hottest loop of the machine (C74). The
+/// hazard is real and is discharged here instead: the last two conjuncts show
+/// that a zero rate silently accepts a zero-lovelace 16 KiB output while the
+/// production rate rejects it, which is exactly what the absolute pin in the
+/// first conjunct prevents from ever being deployed.
+test min_ada_target_snapshot_rate_is_the_production_pin() {
+  and {
+    env.coins_per_utxo_byte == 4_310,
+    target_snapshot_coins_per_utxo_byte == env.coins_per_utxo_byte,
+    env.coins_per_utxo_byte > 0,
+    validation_machine_v1.output_meets_min_ada_v1(0, 16384, 0),
+    !validation_machine_v1.output_meets_min_ada_v1(
+      env.coins_per_utxo_byte,
+      16384,
+      0,
+    ),
+  }
+}
+
+/// The absolute floor the wiring fixture below is funded at:
+/// `4_310 * (160 + 16_384)`. Derived in the fixture, pinned here, so a moved
+/// rate or intercept fails this vector rather than silently re-basing every
+/// conviction vector with it.
+test min_ada_wiring_floor_is_the_pinned_absolute_value() {
+  and {
+    value_output_descriptor_total_length == 16384,
+    value_output_descriptor_min_ada_floor() == 71_304_640,
+  }
+}
+
+/// The advancing output-descriptor step for a fixture: fold the descriptor's
+/// lovelace and open the asset cursor.
+fn value_output_descriptor_advance_evidence(
+  f: ValueOutputDescriptorFixture,
+) -> validation_machine_v1.ValidationOneStepEvidenceV1 {
+  validation_machine_v1.ValidationOneStepEvidenceV1 {
+    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: f.initial_work,
+      claimed_successor: f.active_state,
+    },
+    auxiliary: validation_machine_v1.ValueOutputDescriptorWitness {
+      output_index: 0,
+      descriptor_cbor: f.descriptor_cbor,
+      siblings: [],
+    },
+  }
+}
+
+/// The rejecting output-descriptor step for a fixture, carrying `code`. Same
+/// pre-state and same authenticated descriptor as the advancing step above --
+/// only the claimed successor differs, so these two vectors are a true fork on
+/// the min-Ada predicate and nothing else.
+fn value_output_descriptor_rejection_evidence(
+  f: ValueOutputDescriptorFixture,
+  code: ByteArray,
+) -> validation_machine_v1.ValidationOneStepEvidenceV1 {
+  validation_machine_v1.ValidationOneStepEvidenceV1 {
+    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: f.initial_work,
+      claimed_successor: exact_rejection_post(f.pre, code),
+    },
+    auxiliary: validation_machine_v1.ValueOutputDescriptorWitness {
+      output_index: 0,
+      descriptor_cbor: f.descriptor_cbor,
+      siblings: [],
+    },
+  }
+}
+
+/// FLOOR MET. An output funded at exactly the floor takes the advancing step,
+/// and CANNOT be convicted with `E_MIN_ADA` -- the second conjunct is the
+/// no-false-conviction control, without which the wiring could reject every
+/// output and still pass the reject vectors below.
+test value_and_mint_output_descriptor_admits_exact_min_ada_floor() {
+  let f = value_output_descriptor_fixture_at(
+    value_output_descriptor_min_ada_floor(),
+  )
+  and {
+    validation_machine_v1.verify_one_step_evidence(
+      f.pre,
+      value_output_descriptor_advance_evidence(f),
+      inline_field_door(),
+    ),
+    !validation_machine_v1.verify_one_step_evidence(
+      f.pre,
+      value_output_descriptor_rejection_evidence(f, reject_min_ada_code),
+      inline_field_door(),
+    ),
+  }
+}
+
+/// FLOOR MISSED BY ONE LOVELACE. The adjacent boundary: the same descriptor,
+/// one lovelace short, is convictable with `E_MIN_ADA` and -- second conjunct
+/// -- is no longer provable as an advancing step, which is the clause that
+/// makes the rejection mandatory rather than merely available to a challenger.
+test value_and_mint_output_descriptor_rejects_min_ada_short_by_one_lovelace() {
+  let f = value_output_descriptor_fixture_at(
+    value_output_descriptor_min_ada_floor() - 1,
+  )
+  and {
+    validation_machine_v1.verify_one_step_evidence(
+      f.pre,
+      value_output_descriptor_rejection_evidence(f, reject_min_ada_code),
+      inline_field_door(),
+    ),
+    !validation_machine_v1.verify_one_step_evidence(
+      f.pre,
+      value_output_descriptor_advance_evidence(f),
+      inline_field_door(),
+    ),
+  }
+}
+
+/// ZERO LOVELACE, RE-AUTHORED NOT SUPPRESSED (#618 ruling 1). This is the shape
+/// the output-descriptor fixture used to carry (3 lovelace over a 16 KiB
+/// output) taken to its limit. Before the wiring it advanced; now it convicts.
+test value_and_mint_output_descriptor_rejects_zero_lovelace_output() {
+  let f = value_output_descriptor_fixture_at(0)
+  and {
+    validation_machine_v1.verify_one_step_evidence(
+      f.pre,
+      value_output_descriptor_rejection_evidence(f, reject_min_ada_code),
+      inline_field_door(),
+    ),
+    !validation_machine_v1.verify_one_step_evidence(
+      f.pre,
+      value_output_descriptor_advance_evidence(f),
+      inline_field_door(),
+    ),
+  }
+}
+
+/// THE CODE IS PINNED. An under-funded output is convictable with `E_MIN_ADA`
+/// and with nothing else: a challenger cannot launder a min-Ada violation into
+/// the adjacent `E_VALUE_NOT_PRESERVED` conviction, which would settle the
+/// dispute under the wrong rule and leave the manifest's rejection-code
+/// evidence describing a code the machine never emits.
+test value_and_mint_output_descriptor_min_ada_code_is_not_interchangeable() {
+  let f = value_output_descriptor_fixture_at(
+    value_output_descriptor_min_ada_floor() - 1,
+  )
+  !validation_machine_v1.verify_one_step_evidence(
+    f.pre,
+    value_output_descriptor_rejection_evidence(
+      f,
+      reject_value_not_preserved_code,
+    ),
+    inline_field_door(),
+  )
 }
 
 // The conservation vector's transaction. `fee = 1` is the TypeScript twin's

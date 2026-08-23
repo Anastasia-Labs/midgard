@@ -59,6 +59,7 @@ import {
 } from "../src/index.js";
 import { exerciseMidgardRetainedDaCanonicalBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 import {
+  FUNDED_OUTPUT_LOVELACE_V1,
   hashScriptWitness,
   makeMintPreimageCbor,
   makeNativeTx,
@@ -624,7 +625,7 @@ const buildNonterminatingSelfApplicationProgram = () => {
 describe("deterministic validation machine", { timeout: 60_000 }, () => {
   it("replays an accepted transaction through bounded field-reveal instructions", async () => {
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(10n);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -901,8 +902,11 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const program = buildAcceptingIdentityProgram();
     const script = plutusV3ScriptWitness(program.envelopeCbor);
     const scriptHash = hashScriptWitness(script);
-    const spentOutput = makeProtectedScriptOutput(scriptHash, 10n);
-    const output = makeOutput(10n);
+    const spentOutput = makeProtectedScriptOutput(
+      scriptHash,
+      FUNDED_OUTPUT_LOVELACE_V1,
+    );
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -1227,8 +1231,11 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const program = buildNonterminatingSelfApplicationProgram();
     const script = plutusV3ScriptWitness(program.envelopeCbor);
     const scriptHash = hashScriptWitness(script);
-    const spentOutput = makeProtectedScriptOutput(scriptHash, 10n);
-    const output = makeOutput(10n);
+    const spentOutput = makeProtectedScriptOutput(
+      scriptHash,
+      FUNDED_OUTPUT_LOVELACE_V1,
+    );
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -1301,13 +1308,16 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const program = buildAcceptingIdentityProgram();
     const script = plutusV3ScriptWitness(program.envelopeCbor);
     const scriptHash = hashScriptWitness(script);
-    const spentOutput = makeProtectedScriptOutput(scriptHash, 10n);
+    const spentOutput = makeProtectedScriptOutput(
+      scriptHash,
+      FUNDED_OUTPUT_LOVELACE_V1,
+    );
     const referenceOutput = encodeMidgardTxOutput({
       address: TEST_ADDRESS_BYTES,
       value: { lovelace: 1n, assets: new Map() },
       script_ref: script,
     });
-    const output = makeOutput(10n);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -1425,9 +1435,13 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         [policyId.toString("hex"), new Map([[assetName.toString("hex"), 5n]])],
       ]);
       const spentOutput =
-        quantity > 0n ? makeOutput(10n) : makeOutput(10n, undefined, assets);
+        quantity > 0n
+          ? makeOutput(FUNDED_OUTPUT_LOVELACE_V1)
+          : makeOutput(FUNDED_OUTPUT_LOVELACE_V1, undefined, assets);
       const output =
-        quantity > 0n ? makeOutput(10n, undefined, assets) : makeOutput(10n);
+        quantity > 0n
+          ? makeOutput(FUNDED_OUTPUT_LOVELACE_V1, undefined, assets)
+          : makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
       const mintPreimageCbor = makeMintPreimageCbor(
         new Map([[policyId, new Map([[assetName, quantity]])]]),
       );
@@ -1509,14 +1523,17 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("executes a MidgardV1 protected-output receiving script", async () => {
     const spent = outRefFromByte(0x33);
-    const spentOutput = makeOutput(10n);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const program = buildAcceptingIdentityProgram();
     const script = {
       language: "MidgardV1" as const,
       scriptBytes: program.envelopeCbor,
     };
     const scriptHash = hashScriptWitness(script);
-    const output = makeProtectedScriptOutput(scriptHash, 10n);
+    const output = makeProtectedScriptOutput(
+      scriptHash,
+      FUNDED_OUTPUT_LOVELACE_V1,
+    );
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -1608,8 +1625,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("executes an authenticated PlutusV3 observer", async () => {
     const spent = outRefFromByte(0x34);
-    const spentOutput = makeOutput(10n);
-    const output = makeOutput(10n);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const program = buildAcceptingIdentityProgram();
     const script = plutusV3ScriptWitness(program.envelopeCbor);
     const observerHash = Buffer.from(hashScriptWitness(script), "hex");
@@ -1738,7 +1755,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
-      outputs: [makeOutput(10n)],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
       requiredObserverItems: [observerHash, observerHash],
     });
     const unchangedRoot = root(0x35);
@@ -1777,7 +1794,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("replays signed mint through an authenticated mint leaf", async () => {
     const spent = outRefFromByte(0x21);
-    const spentOutput = makeOutput(10n);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const script = nativeScriptWitness({
       type: "all",
       scripts: [
@@ -1790,7 +1807,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const policyId = Buffer.from(hashScriptWitness(script), "hex");
     const assetName = Buffer.from("cafe", "hex");
     const mintedOutput = makeOutput(
-      10n,
+      FUNDED_OUTPUT_LOVELACE_V1,
       undefined,
       new Map([
         [policyId.toString("hex"), new Map([[assetName.toString("hex"), 5n]])],
@@ -1922,13 +1939,13 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const policyId = Buffer.from(hashScriptWitness(script), "hex");
     const assetName = Buffer.from("beef", "hex");
     const spentOutput = makeOutput(
-      10n,
+      FUNDED_OUTPUT_LOVELACE_V1,
       undefined,
       new Map([
         [policyId.toString("hex"), new Map([[assetName.toString("hex"), 5n]])],
       ]),
     );
-    const burnedOutput = makeOutput(10n);
+    const burnedOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -1993,7 +2010,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("constructs bounded mint proofs across an authenticated chunk boundary", async () => {
     const spent = outRefFromByte(0x23);
-    const spentOutput = makeOutput(10n);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const policyId = Buffer.alloc(28, 0xaa);
     const assets = new Map<Buffer, bigint>();
     for (let assetIndex = 0; assetIndex < 128; assetIndex += 1) {
@@ -2004,7 +2021,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
-      outputs: [makeOutput(10n)],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
       mintPreimageCbor: makeMintPreimageCbor(new Map([[policyId, assets]])),
     });
     const unchangedRoot = root(0x23);
@@ -2056,7 +2073,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("commits an invalid forced transaction as a proved no-op", async () => {
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(10n);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const transaction = makeNativeTx({
       version: 1n,
       invalidVkeyWitness: true,
@@ -2098,7 +2115,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("authenticates a required signer against the streamed signer frontier", async () => {
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(10n);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -2156,7 +2173,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("proves a missing required signer before an invalid-signature rejection", async () => {
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(10n);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const transaction = makeNativeTx({
       version: 1n,
       invalidVkeyWitness: true,
@@ -2209,7 +2226,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         makeNativeTx({
           version: 1n,
           spendInputs: [],
-          outputs: [makeOutput(10n)],
+          outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
         }),
       rejectionCode: RejectCodes.EmptyInputs,
       expectedInputSteps: 1,
@@ -2223,7 +2240,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           version: 1n,
           spendInputs: [input],
           referenceInputs: [input],
-          outputs: [makeOutput(10n)],
+          outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
         });
       },
       rejectionCode: RejectCodes.DuplicateInputInTx,
@@ -2236,7 +2253,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         makeNativeTx({
           version: 1n,
           spendInputs: [outRefFromByte(0x22)],
-          outputs: [makeOutput(10n)],
+          outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
           validityIntervalStart: 10n,
           validityIntervalEnd: 9n,
         }),
@@ -2291,7 +2308,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("carries an aggregate field above 8 KiB as ordered complete-item proofs", async () => {
     const spent = outRefFromByte(0x12);
-    const spentOutput = makeOutput(10n);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const protectedRecipient = Buffer.from(TEST_ADDRESS_BYTES);
     protectedRecipient[1] = protectedRecipient[1]! ^ 0x01;
     const outputs = [
@@ -2360,12 +2377,117 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(trace.verdict).toBe("rejected");
   }, 60_000);
 
+  // E_MIN_ADA / MIN-ADA-TX (#618 ruling 1; R8 of decision 0005). The TypeScript
+  // twin of the ValueAndMint stage-three output-descriptor conviction. The
+  // transaction below is otherwise impeccable -- it is signed, and it preserves
+  // value exactly (10 lovelace in, 10 lovelace out, zero fee) -- so the ONLY
+  // thing this vector can be measuring is the minimum-Ada floor.
+  //
+  // The spent input is under-funded too and that is deliberate: the wiring
+  // gates outputs a transaction PRODUCES, not outputs it resolves from prior
+  // state. If it gated resolved inputs as well, this trace would stop at
+  // stage two and the descriptor assertions below would fail.
+  it("rejects an under-funded produced output with E_MIN_ADA at the ValueAndMint output-descriptor step", async () => {
+    const spent = outRefFromByte(0x11);
+    const output = makeOutput(10n);
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs: [output],
+    });
+    const unchangedRoot = root(3);
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        priorUtxosRoot: unchangedRoot,
+        postUtxosRoot: unchangedRoot,
+        ledgerWitnessEntries: [{ outRef: spent, output }],
+        expectedLedgerOps: [],
+        expectedVerdict: "rejected",
+        expectedRejectionCode: RejectCodes.MinAda,
+      }),
+    );
+
+    expect(trace.verdict).toBe("rejected");
+    expect(trace.rejectionCode).toBe(RejectCodes.MinAda);
+    expect(trace.states.at(-1)).toMatchObject({
+      phase: "terminal",
+      verdict: "rejected",
+    });
+
+    // MEASURED, NOT ASSUMED: the step the rejecting terminal succeeds is the
+    // output-descriptor step of output 0, and an L1 dispute of that step routes
+    // to semantic resolver index 5 --
+    // `value_and_mint_output_descriptor_semantic_v1`. That is what makes the
+    // new rejection reachable through a real fault proof rather than only
+    // through the aggregate resolver.
+    const convicting = trace.witnesses.at(-2)!;
+    expect(trace.witnesses.at(-1)!.phase).toBe("terminal");
+    expect(convicting.phase).toBe("valueAndMint");
+    expect(valueAndMintKindV1(convicting)).toBe("outputDescriptor");
+    expect(validationSemanticResolverIndexV1(convicting)).toBe(5);
+    expect(convicting.auxiliary).toMatchObject({
+      kind: "valueOutputDescriptor",
+      outputIndex: 0,
+    });
+
+    // NO FALSE CONVICTION. The floor is not a blanket refusal of this
+    // transaction shape: the same shape, funded, is accepted end to end and
+    // takes the very output-descriptor step that convicted above. Without this
+    // leg the assertions above would also hold for a wiring that rejected
+    // every output.
+    const fundedOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const fundedTransaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs: [fundedOutput],
+    });
+    const fundedLedgerOps = [
+      { type: "delete" as const, key: spent },
+      buildValidationMachineLedgerInsertOpV1({
+        key: outRefFromTxId(fundedTransaction.txId),
+        outputCbor: fundedOutput,
+      }),
+    ];
+    const fundedMutationSteps = await buildValidationMachineLedgerMutationSteps(
+      {
+        initialEntries: [{ outRef: spent, output: fundedOutput }],
+        operations: fundedLedgerOps,
+      },
+    );
+    const fundedTrace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        transactionId: fundedTransaction.txId,
+        canonicalTransactionCbor: fundedTransaction.txCbor,
+        priorUtxosRoot: fundedMutationSteps[0]!.preRoot.toString("hex"),
+        postUtxosRoot: fundedMutationSteps.at(-1)!.postRoot.toString("hex"),
+        ledgerWitnessEntries: [{ outRef: spent, output: fundedOutput }],
+        expectedLedgerOps: fundedLedgerOps,
+        ledgerMutationSteps: fundedMutationSteps,
+        expectedVerdict: "accepted",
+        expectedRejectionCode: null,
+      }),
+    );
+    expect(fundedTrace.verdict).toBe("accepted");
+    expect(fundedTrace.rejectionCode).toBeNull();
+    expect(
+      fundedTrace.witnesses.some(
+        (witness) =>
+          witness.phase === "valueAndMint" &&
+          valueAndMintKindV1(witness) === "outputDescriptor",
+      ),
+    ).toBe(true);
+  });
+
   it("fails closed before proving a malformed persisted ledger output", async () => {
     const spent = outRefFromByte(0x11);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
-      outputs: [makeOutput(10n)],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
     });
     const unchangedRoot = root(6);
     await expect(
@@ -2390,7 +2512,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("fails closed when the claimed verdict or delta disagrees with replay", async () => {
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(10n);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -2440,7 +2562,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   const buildMaximumRetainedCanonicalSourceV1 = () => {
     const spent = outRefFromByte(0x12);
-    const spentOutput = makeOutput(10n);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const protectedRecipient = Buffer.from(TEST_ADDRESS_BYTES);
     protectedRecipient[1] = protectedRecipient[1]! ^ 0x01;
     const outputs = [

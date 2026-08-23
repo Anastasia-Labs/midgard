@@ -2,6 +2,7 @@ import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/ce
 import {
   computeMidgardNativeTxIdV1,
   computeScriptIntegrityHashForLanguages,
+  decodeMidgardTxOutput,
   deriveMidgardNativeTxBodyCompactV1,
   deriveMidgardNativeTxCompactV1,
   EMPTY_NULL_ROOT,
@@ -36,6 +37,10 @@ import { LedgerColumns, type LedgerEntry } from "../src/ledger.js";
 import { decodeMidgardSubmittedTxFromCanonicalCbor } from "../src/ledger-tx/codec.js";
 import type { PhaseAValidatedTx, QueuedTx } from "../src/types.js";
 import { buildPhaseAValidatedTx } from "../src/validation-candidate.js";
+import {
+  MIDGARD_COINS_PER_UTXO_BYTE_V1,
+  minAdaLovelaceV1,
+} from "../src/value-accounting.js";
 
 export const EMPTY_CBOR_LIST = Buffer.from([0x80]);
 export const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
@@ -100,6 +105,35 @@ export const outRefFromByte = (byte: number, index = 0n): Buffer =>
 export const outRefFromTxId = (txId: Buffer, index = 0n): Buffer =>
   encodeMidgardSpendInputItemV1({ txId, outputIndex: Number(index) });
 
+/**
+ * The lovelace every fixture output that a fixture transaction PRODUCES is
+ * funded with.
+ *
+ * RE-AUTHORED, NOT SUPPRESSED (#618 ruling 1; R8 of decision 0005). These
+ * fixtures used to produce 10-lovelace outputs, which was admissible while the
+ * minimum-Ada floor was unwired arithmetic. The ValueAndMint output-descriptor
+ * scan now convicts an under-funded output with `E_MIN_ADA`, so a 10-lovelace
+ * output is no longer a valid transaction at all and a fixture built from one
+ * measures the min-Ada rejection instead of whatever it was written to
+ * measure.
+ *
+ * 10 ADA is a round number chosen to clear the floor with room to spare rather
+ * than to sit on it: at the pinned rate it funds any canonical output up to
+ * 2,160 serialized bytes, which is far past every shape these fixtures build.
+ * `phase B validation > funds every produced fixture output above the minimum-Ada floor`
+ * measures that headroom rather than asserting it, so a rate or intercept
+ * change fails there instead of scattering `E_MIN_ADA` across unrelated
+ * fixtures. The adjacent boundary itself is pinned where it belongs -- in
+ * min-ada-twin-cross-check-v1.test.ts and in the Aiken wiring vectors -- not
+ * here.
+ *
+ * Pre-state (input and reference) outputs are deliberately NOT re-funded: the
+ * wiring gates outputs a transaction produces (MIN-ADA-TX), not outputs it
+ * resolves from prior state, whose under-funding is the separate
+ * MIN-ADA-UTXO shape Q27 owns.
+ */
+export const FUNDED_OUTPUT_LOVELACE_V1 = 10_000_000n;
+
 export const makeOutput = (
   lovelace: bigint,
   address = TEST_ADDRESS_BYTES,
@@ -114,6 +148,138 @@ export const makeOutput = (
   };
   return encodeMidgardTxOutput(output);
 };
+
+const encodeBoundedDatumChunkV1 = (payload: Buffer): Buffer => {
+  if (payload.length < 24) {
+    return Buffer.concat([Buffer.from([0x40 + payload.length]), payload]);
+  }
+  if (payload.length <= 0xff) {
+    return Buffer.concat([Buffer.from([0x58, payload.length]), payload]);
+  }
+  throw new Error("bounded datum chunk must stay below 256 bytes");
+};
+
+/**
+ * A canonical Plutus-data filler whose ENCODED length is exactly `datumBytes`:
+ * one definite byte string when one fits, otherwise an indefinite list of
+ * bounded byte strings, which matches Aiken's `cbor.serialise` convention.
+ *
+ * Sizing by encoded length rather than by payload length is what makes every
+ * target reachable. A chunk of `take` data bytes costs `(take < 24 ? 1 : 2) +
+ * take` bytes, so a list of 64-byte chunks plus one remainder only reaches
+ * `2 + 66k + c` for `c` in `{0} u {2..24} u {26..66}` -- two lengths in every
+ * 66 are skipped, and a payload-driven search simply fails on them. Handing
+ * one full chunk back and closing the gap with a pair of chunks reaches both
+ * skipped residues, so every length from 67 up is constructible.
+ */
+export const canonicalDatumOfExactLengthV1 = (datumBytes: number): Buffer => {
+  const unreachable = (): never => {
+    throw new Error(
+      `no canonical datum encodes to exactly ${datumBytes.toString()} bytes`,
+    );
+  };
+  const chunkBytes = (take: number): number => (take < 24 ? 1 : 2) + take;
+  if (datumBytes <= 66) {
+    const take = datumBytes <= 24 ? datumBytes - 1 : datumBytes - 2;
+    if (take < 0 || chunkBytes(take) !== datumBytes) {
+      return unreachable();
+    }
+    return encodeBoundedDatumChunkV1(Buffer.alloc(take, 0xa5));
+  }
+  const takes: number[] = [];
+  let remaining = datumBytes - 2;
+  while (remaining > 66) {
+    takes.push(64);
+    remaining -= 66;
+  }
+  if (remaining === 1 || remaining === 25) {
+    if (takes.length === 0) {
+      return unreachable();
+    }
+    takes.pop();
+    takes.push(63);
+    remaining += 66 - chunkBytes(63);
+  }
+  if (remaining > 0) {
+    takes.push(remaining <= 24 ? remaining - 1 : remaining - 2);
+  }
+  return Buffer.concat([
+    Buffer.from([0x9f]),
+    ...takes.map((take) => encodeBoundedDatumChunkV1(Buffer.alloc(take, 0xa5))),
+    Buffer.from([0xff]),
+  ]);
+};
+
+/**
+ * Builds a canonical output item whose exact encoded length equals
+ * `targetItemBytes`, funded at exactly its own minimum-Ada floor.
+ *
+ * RE-AUTHORED, NOT SUPPRESSED (#618 ruling 1; R8 of decision 0005). The four
+ * carriage suites each carried their own copy of this builder, each producing
+ * 10-lovelace items, which the ValueAndMint output-descriptor scan now
+ * convicts with `E_MIN_ADA` -- and it would convict every one of them, since
+ * the whole point of those suites is items at and beyond the carriage
+ * frontiers. The four copies are now this one, so the exact-length algorithm
+ * and the funding rule cannot drift apart between them.
+ *
+ * Funding is at the floor rather than at `FUNDED_OUTPUT_LOVELACE_V1` on
+ * purpose: these items are sized in bytes, and a fixed lovelace amount would
+ * make the item's own length depend on how wide that amount happens to encode.
+ * The floor, `coins_per_utxo_byte * (160 + targetItemBytes)`, is computable up
+ * front precisely because the total length is what this builder pins, so
+ * funding changes no measured length -- every carriage measurement over these
+ * items measures the same number of bytes it did before the wiring.
+ */
+export const makeMinAdaFundedExactSizeOutputItemV1 = (
+  targetItemBytes: number,
+): Buffer => {
+  const lovelace = minAdaLovelaceV1(
+    MIDGARD_COINS_PER_UTXO_BYTE_V1,
+    BigInt(targetItemBytes),
+  );
+  const encodeWithDatum = (datumBytes: number): Buffer =>
+    encodeMidgardTxOutput({
+      address: TEST_ADDRESS_BYTES,
+      value: { lovelace, assets: new Map() },
+      datum: {
+        kind: "inline",
+        cbor: canonicalDatumOfExactLengthV1(datumBytes),
+      },
+    });
+  // The output framing around the datum is a fixed prefix plus one CBOR byte
+  // string header, so the item length is the datum length plus an overhead
+  // that moves only when that header changes width. Measure the overhead at a
+  // reference size, solve for the datum length, and re-solve if the solution
+  // crossed a header boundary -- which converges in one further round.
+  const referenceDatumBytes = 1_024;
+  let datumBytes =
+    targetItemBytes -
+    (encodeWithDatum(referenceDatumBytes).length - referenceDatumBytes);
+  for (let round = 0; round < 4; round += 1) {
+    const candidate = encodeWithDatum(datumBytes);
+    if (candidate.length === targetItemBytes) {
+      return candidate;
+    }
+    datumBytes += targetItemBytes - candidate.length;
+  }
+  throw new Error(
+    `could not size an exact ${targetItemBytes.toString()}-byte output item`,
+  );
+};
+
+/**
+ * The lovelace a resolved input must carry to fund `outputs` exactly, so a
+ * fixture transaction that produces min-Ada-funded outputs still settles to
+ * zero at stage five instead of being convicted with `E_VALUE_NOT_PRESERVED`.
+ * Fixture transactions here pay no fee, so the sum is exact.
+ */
+export const fundingLovelaceForOutputsV1 = (
+  outputs: readonly Buffer[],
+): bigint =>
+  outputs.reduce(
+    (total, output) => total + decodeMidgardTxOutput(output).value.lovelace,
+    0n,
+  );
 
 export const makeProtectedScriptOutput = (
   scriptHash: string,
