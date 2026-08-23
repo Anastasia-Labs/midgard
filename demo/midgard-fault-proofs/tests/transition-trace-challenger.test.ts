@@ -257,6 +257,26 @@ const rawLedgerEntry = (byte: number): SDK.DaPayloadEntry => [
   LEDGER_OUTPUT_CBOR,
 ];
 
+/// The exact bytes one output occupies in `utxos_root`: its
+/// `LedgerOutputCommitmentV1` descriptor, keyed by the out-ref the entry is
+/// filed under (spec §5.3 — "not with the full output bytes"). Fixtures that
+/// feed deliberately malformed or non-canonical output bytes have no
+/// descriptor at all; the challenger refuses those before it reaches MPF
+/// replay, so the trie value it never reads falls back to the raw bytes rather
+/// than making the fixture unbuildable.
+const ledgerTrieValue = (outRef: Buffer, outputCbor: Buffer): Buffer => {
+  try {
+    return Buffer.from(
+      buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+        outRef,
+        outputCbor,
+      }).descriptorCbor,
+    );
+  } catch {
+    return outputCbor;
+  }
+};
+
 const utxoRootWithDescriptors = (
   utxos: readonly SDK.DaPayloadEntry[],
 ): Promise<Awaited<ReturnType<typeof keyValuePhasRootWithCount>>> =>
@@ -540,6 +560,7 @@ const buildL2ReplayFixture = async ({
   outputCbor,
   replayedOutputCbor,
   includeProducedPayloadUtxo = true,
+  producedWitnessValue = "descriptor",
 }: {
   readonly matchingCommittedRoot: boolean;
   readonly withBranchProof?: boolean;
@@ -547,26 +568,35 @@ const buildL2ReplayFixture = async ({
   readonly outputCbor?: Buffer;
   readonly replayedOutputCbor?: Buffer;
   readonly includeProducedPayloadUtxo?: boolean;
+  readonly producedWitnessValue?: "descriptor" | "fullOutputBytes";
 }): Promise<L2ReplayFixture> => {
   const spentKey = spendInputCbor ?? spendInputItem(h32(81), 0);
-  const spentValue = Buffer.from(LEDGER_OUTPUT_CBOR, "hex");
+  const spentOutputCbor = Buffer.from(LEDGER_OUTPUT_CBOR, "hex");
+  const spentValue = ledgerTrieValue(spentKey, spentOutputCbor);
   const sourceOutput = outputCbor ?? Buffer.from(LEDGER_OUTPUT_CBOR, "hex");
-  const producedValue = replayedOutputCbor ?? sourceOutput;
+  const producedOutput = replayedOutputCbor ?? sourceOutput;
   const material = nativeMaterial(82, {
     spendInputsPreimageCbor: encodeCbor([spentKey]),
     outputsPreimageCbor: encodeCbor([sourceOutput]),
   });
   const producedKey = spendInputItem(material.txId, 0);
+  const producedValue = ledgerTrieValue(producedKey, producedOutput);
+  const producedWitnessBytes =
+    producedWitnessValue === "descriptor" ? producedValue : producedOutput;
   const survivors = withBranchProof
-    ? Array.from({ length: 16 }, (_, index) => ({
-        key: spendInputItem(h32(100 + index), index),
-        value: Buffer.from(LEDGER_OUTPUT_CBOR, "hex"),
-      }))
+    ? Array.from({ length: 16 }, (_, index) => {
+        const key = spendInputItem(h32(100 + index), index);
+        return {
+          key,
+          outputCbor: spentOutputCbor,
+          value: ledgerTrieValue(key, spentOutputCbor),
+        };
+      })
     : [];
 
   const ledger = await Trie.fromList([
     { key: spentKey, value: spentValue },
-    ...survivors,
+    ...survivors.map(({ key, value }) => ({ key, value })),
   ]);
   const preRoot = ledger.hash.toString("hex");
   const membershipProof = await ledger.prove(spentKey);
@@ -587,14 +617,14 @@ const buildL2ReplayFixture = async ({
     prevUtxosRoot: preRoot,
     utxos: [
       ...survivors.map(
-        ({ key, value }): SDK.DaPayloadEntry => [
+        ({ key, outputCbor: survivorOutputCbor }): SDK.DaPayloadEntry => [
           key.toString("hex"),
-          value.toString("hex"),
+          survivorOutputCbor.toString("hex"),
         ],
       ),
       ...(includeProducedPayloadUtxo
         ? ([
-            [producedKey.toString("hex"), producedValue.toString("hex")],
+            [producedKey.toString("hex"), producedOutput.toString("hex")],
           ] satisfies SDK.DaPayloadEntry[])
         : []),
     ],
@@ -642,7 +672,7 @@ const buildL2ReplayFixture = async ({
       producedUtxos: [
         {
           key: producedKey.toString("hex"),
-          value: producedValue.toString("hex"),
+          value: producedWitnessBytes.toString("hex"),
           non_membership_proof: encodedInsertProof,
           insert_proof: encodedInsertProof,
         },
@@ -1063,6 +1093,57 @@ describe("transition-trace challenger tooling", () => {
     });
   });
 
+  // The hole this arm used to have, from the challenger side. `utxos_root` is
+  // descriptor-valued everywhere it is produced, so a witness carrying the full
+  // output bytes describes an insert the ledger never performed. It must be
+  // refused here rather than replayed into a post-root no honest block can
+  // equal — on-chain `apply_l2_outputs` binds the same value with `expect`, so
+  // a witness that got past this check could not mint either.
+  it("refuses a full-output-bytes insert witness against a descriptor-built ledger", async () => {
+    const fixture = await buildL2ReplayFixture({
+      matchingCommittedRoot: true,
+      producedWitnessValue: "fullOutputBytes",
+    });
+
+    await expect(
+      detectTransitionTraceFaults(fixture.reconstruction, {
+        l2TransactionTransitions: [fixture.evidence],
+      }),
+    ).rejects.toMatchObject({
+      code: "missingWitnessData",
+      message: expect.stringContaining(
+        "bound to its authenticated transaction output",
+      ),
+    });
+  });
+
+  // The honest half of the pair: byte-for-byte the same block and the same
+  // fault, with the descriptor as the inserted value.
+  it("accepts a descriptor insert witness against the same descriptor-built ledger", async () => {
+    const honest = await buildL2ReplayFixture({
+      matchingCommittedRoot: false,
+    });
+    const replayed = await buildL2ReplayFixture({
+      matchingCommittedRoot: false,
+      producedWitnessValue: "fullOutputBytes",
+    });
+    expect(honest.evidence.producedUtxos[0]!.value).not.toEqual(
+      replayed.evidence.producedUtxos[0]!.value,
+    );
+
+    const detections = await detectTransitionTraceFaults(
+      honest.reconstruction,
+      {
+        l2TransactionTransitions: [honest.evidence],
+      },
+    );
+
+    expectBuildableDetection(detections, {
+      kind: "invalidOneStepTransition",
+      invariant: "l2_transaction_transition_matches_authenticated_replay",
+    });
+  });
+
   it("replays real four-neighbor MPF branch proofs from a multi-leaf ledger", async () => {
     const fixture = await buildL2ReplayFixture({
       matchingCommittedRoot: true,
@@ -1097,21 +1178,28 @@ describe("transition-trace challenger tooling", () => {
     ).toEqual([]);
   });
 
+  // These output shapes survive the authenticated outputs preimage byte for
+  // byte — the Aiken tag-4 encoder neither reorders nor re-canonicalises them,
+  // and the field-commitment check below still passes on them. What they do
+  // not have is a §5.3 ledger value: the canonical ledger-output decoder
+  // refuses a datum that is not canonical Plutus data and a Value whose policy
+  // or asset keys are out of order, in both languages alike. With the trie
+  // valued by the descriptor rather than the full output bytes, an output with
+  // no descriptor is an output `utxos_root` cannot hold, so the replay has
+  // nothing to insert and the challenger must fail closed instead of inventing
+  // a value. On-chain `apply_l2_outputs` binds the same derivation with
+  // `expect`, so the arm aborts on exactly these inputs.
   it.each([
     {
       label: "opaque datum byte ff",
       outputCbor: tag4OutputWithOpaqueDatum(),
     },
     {
-      label: "opaque native-script bytes",
-      outputCbor: tag4OutputWithOpaqueNativeScript(),
-    },
-    {
       label: "unsorted policy and asset order",
       outputCbor: tag4OutputWithPreservedAssetOrder(),
     },
   ])(
-    "preserves the Aiken tag-4 output encoding for $label",
+    "refuses to replay $label, which has no canonical ledger value",
     async ({ outputCbor }) => {
       const fixture = await buildL2ReplayFixture({
         matchingCommittedRoot: true,
@@ -1119,19 +1207,42 @@ describe("transition-trace challenger tooling", () => {
         includeProducedPayloadUtxo: false,
       });
 
-      const detections = await detectTransitionTraceFaults(
-        fixture.reconstruction,
-        { l2TransactionTransitions: [fixture.evidence] },
-      );
-      expect(
-        detections.filter(
-          ({ invariant }) =>
-            invariant ===
-            "l2_transaction_transition_matches_authenticated_replay",
-        ),
-      ).toEqual([]);
+      await expect(
+        detectTransitionTraceFaults(fixture.reconstruction, {
+          l2TransactionTransitions: [fixture.evidence],
+        }),
+      ).rejects.toMatchObject({
+        code: "missingWitnessData",
+        message: expect.stringContaining("no canonical ledger value"),
+      });
     },
   );
+
+  // The one shape where the two ledger-output decoders do not yet agree: Aiken
+  // `ledger_output_v1.parse_script_ref` treats a native script reference as
+  // opaque bytes and builds a descriptor over them, while
+  // `decodeMidgardTxOutput` parses the script structurally and rejects bytes
+  // that are not a well-formed native script. The divergence predates the trie
+  // value moving to the descriptor and is not this arm's to settle; what
+  // matters here is the direction. The challenger declines to build a witness
+  // it cannot value, which is the safe half — it can only cost a fault proof,
+  // never mint one.
+  it("refuses to replay opaque native-script bytes the canonical decoder rejects", async () => {
+    const fixture = await buildL2ReplayFixture({
+      matchingCommittedRoot: true,
+      outputCbor: tag4OutputWithOpaqueNativeScript(),
+      includeProducedPayloadUtxo: false,
+    });
+
+    await expect(
+      detectTransitionTraceFaults(fixture.reconstruction, {
+        l2TransactionTransitions: [fixture.evidence],
+      }),
+    ).rejects.toMatchObject({
+      code: "missingWitnessData",
+      message: expect.stringContaining("no canonical ledger value"),
+    });
+  });
 
   it.each([
     {

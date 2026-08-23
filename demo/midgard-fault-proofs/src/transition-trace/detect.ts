@@ -14,6 +14,7 @@ import {
   readCborInteger,
 } from "@al-ft/midgard-core/codec/cbor";
 import * as SDK from "@al-ft/midgard-sdk";
+import { buildCanonicalMidgardLedgerOutputMaterialV1 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -1436,7 +1437,36 @@ const replayL2TransactionTransition = (
       txId,
       outputIndex: index,
     });
-    if (!key.equals(expectedKey) || !value.equals(outputs[index]!)) {
+    // The ledger trie *value* is the output's LedgerOutputCommitmentV1
+    // descriptor, not the full output bytes (spec §5.3: "recomputed with that
+    // descriptor as the MPT value, not with the full output bytes"). Every
+    // other producer of `utxos_root` — the node, the validation machine, the
+    // watcher's block replay and DA reconstruction — commits the descriptor,
+    // and on-chain `apply_l2_outputs` derives the same descriptor from the
+    // authenticated output. A challenger that submitted full output bytes here
+    // would replay a root an honest block can never equal.
+    let expectedValue: Buffer;
+    try {
+      expectedValue = Buffer.from(
+        buildCanonicalMidgardLedgerOutputMaterialV1({
+          outputIndex: index,
+          outputCbor: outputs[index]!,
+        }).descriptorCbor,
+      );
+    } catch (cause) {
+      // An output the canonical ledger-output decoder refuses has no §5.3
+      // descriptor, so it has no `utxos_root` value at all and this arm cannot
+      // replay the insert. Fail closed with the challenger's own error rather
+      // than letting a codec error escape: on-chain `apply_l2_outputs` binds
+      // the same derivation with `expect`, so the arm aborts on these inputs
+      // too and no witness built here could have minted.
+      throw transitionTraceError(
+        "missingWitnessData",
+        `${label} names a transaction output with no canonical ledger value.`,
+        cause,
+      );
+    }
+    if (!key.equals(expectedKey) || !value.equals(expectedValue)) {
       throw transitionTraceError(
         "missingWitnessData",
         `${label} is not ordered and bound to its authenticated transaction output.`,
