@@ -19,15 +19,21 @@ import {
   buildValidationTraceDisputeFaultProofContracts,
   deriveValidationProofItemPublicationV1,
   minimumLovelaceForValidationProofItemPublicationV1,
+  ObservedCanonicalDecodeItemDatumV1,
   parseFaultProofBlueprint,
+  PreparedCanonicalDecodeItemDatumV1,
   PreparedValidationResolutionDatumV1,
+  type PreparedValidationResolutionDatumV1 as PreparedValidationResolutionDatumV1Data,
   requireInputIndex,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   validationMachineStateDataFromCore,
+  ValidationOneStepWitnessV1,
+  type ValidationOneStepWitnessV1 as ValidationOneStepWitnessV1Data,
   ValidationProofItemDatumV1,
   type ValidationProofItemPublicationV1,
   type ValidationTraceDisputeFaultProofContracts,
+  VerifiedCanonicalDecodeItemDatumV1,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -47,7 +53,10 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { validationOneStepEvidenceHashV1 } from "../../midgard-fault-proofs/src/validation-dispute/submit.js";
+import {
+  deriveCanonicalDecodeItemStageDataV1,
+  validationOneStepEvidenceHashV1,
+} from "../../midgard-fault-proofs/src/validation-dispute/submit.js";
 import {
   buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOpV1,
@@ -102,6 +111,14 @@ const makeExactSizeOutputItem = makeMinAdaFundedExactSizeOutputItemV1;
 
 /** The §5.1 outputs field, which is the field every case here carries. */
 const OUTPUT_FIELD_INDEX = 2;
+
+/**
+ * `NoAuxiliaryWitness` as the committed evidence names it — the Option B
+ * (#620) auxiliary half of the canonical-decode resolver's `evidence_hash`.
+ * Same literal as `complete-item-route-adversarial-emulator-v1.test.ts` and
+ * `complete-item-carriage-tiers-emulator-v1.test.ts`.
+ */
+const NO_AUXILIARY_WITNESS_CBOR = Buffer.from("d87980", "hex");
 
 /**
  * The largest complete item this **tier-1** harness can carry.
@@ -207,6 +224,19 @@ type CanonicalDecodeItemCase = {
   readonly evidenceHash: string;
   readonly preState: ReturnType<typeof validationMachineStateDataFromCore>;
   readonly claimedSuccessorHash: string;
+  /**
+   * The four staged datums the chain hands on, derived by
+   * `deriveCanonicalDecodeItemStageDataV1` — the same producer
+   * `submitValidationDisputeSemanticResolution` uses. Nothing in this file
+   * hand-builds a stage datum any more: post-Option-B the observe stage is
+   * the size-bearing one, and its datum is not a local restatement of the
+   * authenticate stage's.
+   */
+  readonly preparedThreadDatum: string;
+  readonly authenticatedDatum: string;
+  readonly preparedDatum: string;
+  readonly observedDatum: string;
+  readonly verifiedDatum: string;
 };
 
 const buildCanonicalDecodeItemCase = async (
@@ -269,6 +299,54 @@ const buildCanonicalDecodeItemCase = async (
   ) {
     throw new Error("complete-item carriage is not tier-1 Inline");
   }
+  const fieldPreimageHex = carriageData.fields[0];
+  // Option B (#620): the canonical-decode resolver commits to the transition
+  // ALONE — `NoAuxiliaryWitness` is the auxiliary half of `evidence_hash`,
+  // whatever carriage the auxiliary witness names, because the carriage is
+  // dereferenced and content-checked only at the observe stage's §8.8 door.
+  const evidenceHash = validationOneStepEvidenceHashV1({
+    transitionCbor: argument.transitionCbor,
+    auxiliaryCbor: NO_AUXILIARY_WITNESS_CBOR,
+  });
+  const preState = validationMachineStateDataFromCore(
+    trace.states[stateIndex]!,
+  );
+  const claimedSuccessorHash = hashMidgardValidationMachineStateV1(
+    trace.states[stateIndex + 1]!,
+  ).toString("hex");
+  const preparedThreadDatum = Data.to(
+    {
+      fraud_prover: SIGNER_HASH,
+      data: {
+        version: 1n,
+        resolution: {
+          version: 1n,
+          pre_state: preState,
+          operator_successor_hash: claimedSuccessorHash,
+          challenger_successor_hash: claimedSuccessorHash,
+        },
+        evidence_hash: evidenceHash,
+      },
+    },
+    PreparedValidationResolutionDatumV1,
+  );
+  const preparedResolution = (
+    Data.from(
+      preparedThreadDatum,
+      PreparedValidationResolutionDatumV1,
+    ) as PreparedValidationResolutionDatumV1Data
+  ).data;
+  if (preparedResolution === null) {
+    throw new Error("prepared thread datum is missing its state");
+  }
+  const stageData = deriveCanonicalDecodeItemStageDataV1({
+    preparedResolution,
+    transition: Data.from(
+      argument.transitionCbor.toString("hex"),
+      ValidationOneStepWitnessV1,
+    ) as ValidationOneStepWitnessV1Data,
+    fieldPreimage: fieldPreimageHex,
+  });
   return {
     trace,
     stateIndex,
@@ -276,15 +354,27 @@ const buildCanonicalDecodeItemCase = async (
     argument,
     transitionData: Data.from(argument.transitionCbor.toString("hex")),
     carriageData,
-    fieldPreimageHex: carriageData.fields[0],
-    evidenceHash: validationOneStepEvidenceHashV1({
-      transitionCbor: argument.transitionCbor,
-      auxiliaryCbor: argument.auxiliaryCbor,
-    }),
-    preState: validationMachineStateDataFromCore(trace.states[stateIndex]!),
-    claimedSuccessorHash: hashMidgardValidationMachineStateV1(
-      trace.states[stateIndex + 1]!,
-    ).toString("hex"),
+    fieldPreimageHex,
+    evidenceHash,
+    preState,
+    claimedSuccessorHash,
+    preparedThreadDatum,
+    authenticatedDatum: Data.to(
+      { fraud_prover: SIGNER_HASH, data: stageData.authenticated },
+      AuthenticatedCanonicalDecodeItemDatumV1,
+    ),
+    preparedDatum: Data.to(
+      { fraud_prover: SIGNER_HASH, data: stageData.prepared },
+      PreparedCanonicalDecodeItemDatumV1,
+    ),
+    observedDatum: Data.to(
+      { fraud_prover: SIGNER_HASH, data: stageData.observed },
+      ObservedCanonicalDecodeItemDatumV1,
+    ),
+    verifiedDatum: Data.to(
+      { fraud_prover: SIGNER_HASH, data: stageData.verified },
+      VerifiedCanonicalDecodeItemDatumV1,
+    ),
   };
 };
 
@@ -343,6 +433,11 @@ const measureCompleteSignedTransaction = (
   };
 };
 
+type StageContract = {
+  readonly spendingScriptAddress: string;
+  readonly spendingScript: Script;
+};
+
 type EmulatorHarness = {
   readonly lucid: LucidEvolution;
   readonly emulator: Emulator;
@@ -353,68 +448,8 @@ type EmulatorHarness = {
   readonly itemSourceAddress: string;
   readonly semanticScript: Script;
   readonly threadUtxos: readonly UTxO[];
-};
-
-const preparedThreadDatumCbor = (
-  itemCase: CanonicalDecodeItemCase,
-  signerHash: string,
-): string =>
-  Data.to(
-    {
-      fraud_prover: signerHash,
-      data: {
-        version: 1n,
-        resolution: {
-          version: 1n,
-          pre_state: itemCase.preState,
-          operator_successor_hash: itemCase.claimedSuccessorHash,
-          challenger_successor_hash: itemCase.claimedSuccessorHash,
-        },
-        evidence_hash: itemCase.evidenceHash,
-      },
-    },
-    PreparedValidationResolutionDatumV1,
-  );
-
-const authenticatedOutputDatumCbor = (
-  itemCase: CanonicalDecodeItemCase,
-  signerHash: string,
-): string => {
-  const prepared = Data.from(
-    preparedThreadDatumCbor(itemCase, signerHash),
-    PreparedValidationResolutionDatumV1,
-  );
-  if (prepared.data === null) {
-    throw new Error("prepared thread datum is missing its state");
-  }
-  return Data.to(
-    {
-      fraud_prover: signerHash,
-      data: {
-        version: 1n,
-        base: prepared.data,
-        transition: {
-          work_witness_cbor: workWitnessCborHex(itemCase),
-          claimed_successor: validationMachineStateDataFromCore(
-            itemCase.trace.states[itemCase.stateIndex + 1]!,
-          ),
-        },
-      },
-    },
-    AuthenticatedCanonicalDecodeItemDatumV1,
-  );
-};
-
-const workWitnessCborHex = (itemCase: CanonicalDecodeItemCase): string => {
-  const transition = itemCase.transitionData;
-  if (!(transition instanceof Constr) || transition.fields.length !== 2) {
-    throw new Error("one-step transition has an unexpected shape");
-  }
-  const workWitness = transition.fields[0];
-  if (typeof workWitness !== "string") {
-    throw new Error("one-step transition work witness must be bytes");
-  }
-  return workWitness;
+  /** The four staged contracts the complete-item chain walks. */
+  readonly stages: ValidationTraceDisputeFaultProofContracts["validationTraceDispute"]["canonicalDecodeItemStages"];
 };
 
 let cachedContracts: ValidationTraceDisputeFaultProofContracts | undefined;
@@ -492,129 +527,307 @@ const setupEmulator = async (
     itemSourceAddress,
     semanticScript: semanticContract.spendingScript,
     threadUtxos,
+    stages: contracts.validationTraceDispute.canonicalDecodeItemStages,
   };
 };
 
-// #620 (Option B): this harness deliberately still speaks the DEPLOYED wire —
-// the four-field `Verify`, the `VerifyReference` arm, and the
-// carriage-committed evidence hash — because it executes the compiled scripts
-// from the committed `plutus.json`, which moves once, in the wave's single
-// blueprint regeneration. When that regeneration lands, this suite must flip
-// to the transition-only pipeline: the prepare commitment becomes
-// `hash_one_step_evidence(transition, NoAuxiliaryWitness)`, `Verify` drops to
-// `(input_index, output_index, transition)`, the reference arm is retired, and
-// content is proven at the observe stage's §8.8 door instead.
-const submitSemanticProof = async ({
-  harness,
-  itemCase,
-  threadUtxo,
-  proofItemReferenceUtxo,
-  validatorReferenceUtxo,
-}: {
-  readonly harness: EmulatorHarness;
-  readonly itemCase: CanonicalDecodeItemCase;
-  readonly threadUtxo: UTxO;
-  readonly proofItemReferenceUtxo?: UTxO;
-  /**
-   * When set, the semantic resolver is sourced from this reference-script
-   * UTxO instead of being embedded in the witness set — the production
-   * basis: `submitValidationDisputeSemanticResolution`'s authenticate stage
-   * reads the published resolver (one reference input on the direct route)
-   * rather than attaching it.
-   */
-  readonly validatorReferenceUtxo?: UTxO;
-}): Promise<{
+// FLIPPED TO THE OPTION B PIPELINE (#617 wave sign-off, item 1; #620/#621/#622).
+// This harness used to speak the wire #620 retired — the four-field `Verify`,
+// the `VerifyReference` arm, and the two-part evidence hash — and to measure
+// the AUTHENTICATE stage, because that was the stage the §5.1 preimage rode.
+// Since Option B the preimage rides the observe stage's §8.8 door, `Verify` is
+// `(input_index, output_index, transition)`, the semantic reference arm is
+// gone, and `evidence_hash` commits to `(transition, NoAuxiliaryWitness)`. So
+// the size-bearing rows below measure the OBSERVE transaction, and the harness
+// walks the real staged chain (authenticate -> source -> observe) to reach it
+// rather than stopping at the first stage.
+//
+// Framing note (#622 caveat 1, carried deliberately): the byte counts this
+// harness measures are its OWN framing's, not the production journey's. The
+// consensus-profile rows are pinned from the production journey
+// (`demo/midgard-fault-proofs/tests/submit-init-emulator-option-b-*.test.ts`);
+// every assertion here is therefore a RELATION (fits / does not fit / smaller
+// than) against those pins, never an equality restating them.
+
+type StageSubmission = {
+  readonly nextThreadUtxo: UTxO;
   readonly measurement: CompleteSignedTransactionMeasurement;
   readonly outputDatum: string;
   readonly signedCbor: string;
-}> => {
-  const outputDatum = authenticatedOutputDatumCbor(
-    itemCase,
-    harness.signerHash,
-  );
-  const makeRedeemer: BuildTxWithRedeemer = (ctx) => {
-    const inputIndex = requireInputIndex(
-      ctx,
-      threadUtxo,
-      "complete-item semantic proof",
-    );
-    const outputIndex = requireUniqueOutputIndex(
-      ctx.outputs,
-      (output) =>
-        output.address === harness.itemSourceAddress &&
-        output.datum != null &&
-        sameDatumValue(output.datum, outputDatum) &&
-        output.assets[harness.threadUnit] === 1n,
-      "complete-item semantic proof",
-    );
-    if (proofItemReferenceUtxo !== undefined) {
-      return Data.to(
-        new Constr(1, [
-          new Constr(1, [
-            inputIndex,
-            outputIndex,
-            itemCase.transitionData,
-            requireReferenceInputIndex(
-              ctx,
-              proofItemReferenceUtxo,
-              "complete-item semantic proof",
-            ),
-          ]),
-        ]),
-      );
-    }
-    return Data.to(
-      new Constr(1, [
-        new Constr(0, [
-          inputIndex,
-          outputIndex,
-          itemCase.transitionData,
-          itemCase.carriageData,
-        ]),
-      ]),
-    );
-  };
-  const walletUtxos = (await harness.lucid.wallet().getUtxos()).filter(
+};
+
+const feeInputFor = async (harness: EmulatorHarness): Promise<UTxO> => {
+  const candidates = (await harness.lucid.wallet().getUtxos()).filter(
     (utxo) => utxo.assets[harness.threadUnit] === undefined,
   );
-  const feeInput = walletUtxos.reduce((left, right) =>
+  return candidates.reduce((left, right) =>
     (left.assets.lovelace ?? 0n) >= (right.assets.lovelace ?? 0n)
       ? left
       : right,
   );
+};
+
+/**
+ * Publishes a validator as a plain reference script, parked at a salted script
+ * address so several parked scripts stay individually addressable and none of
+ * them is reachable by coin selection. The parking transaction rides the raised
+ * emulator ceiling and is not part of any measurement.
+ */
+const publishReferenceScript = async (
+  harness: EmulatorHarness,
+  script: Script,
+  salt: string,
+): Promise<UTxO> => {
+  const parkAddress = credentialToAddress(
+    "Custom",
+    scriptHashToCredential(salt.repeat(28)),
+  );
+  const unsigned = await harness.lucid
+    .newTx()
+    .pay.ToAddressWithData(
+      parkAddress,
+      undefined,
+      { lovelace: 60_000_000n },
+      script,
+    )
+    .complete();
+  const signed = await unsigned.sign.withWallet().complete();
+  const txHash = await signed.submit();
+  await harness.lucid.awaitTx(txHash);
+  const utxo = (await harness.lucid.utxosAt(parkAddress)).find(
+    (candidate) => candidate.txHash === txHash && candidate.scriptRef != null,
+  );
+  if (utxo === undefined) {
+    throw new Error("reference script failed to park");
+  }
+  return utxo;
+};
+
+/**
+ * One stage of the staged canonical-decode chain, built, signed and submitted
+ * against the applied validators. The thread token and its lovelace are handed
+ * on unchanged, exactly as the production submitter hands them on.
+ */
+const submitStage = async ({
+  harness,
+  inputUtxo,
+  inputContract,
+  outputContract,
+  outputDatum,
+  label,
+  encode,
+  scriptReference,
+  extraReferences,
+}: {
+  readonly harness: EmulatorHarness;
+  readonly inputUtxo: UTxO;
+  readonly inputContract: StageContract;
+  readonly outputContract: StageContract;
+  readonly outputDatum: string;
+  readonly label: string;
+  readonly encode: (layout: {
+    readonly inputIndex: bigint;
+    readonly outputIndex: bigint;
+    readonly referenceInputIndex: (utxo: UTxO) => bigint;
+  }) => string;
+  readonly scriptReference?: UTxO;
+  readonly extraReferences?: readonly UTxO[];
+}): Promise<StageSubmission> => {
+  const makeRedeemer: BuildTxWithRedeemer = (ctx) =>
+    encode({
+      inputIndex: requireInputIndex(ctx, inputUtxo, label),
+      outputIndex: requireUniqueOutputIndex(
+        ctx.outputs,
+        (output) =>
+          output.address === outputContract.spendingScriptAddress &&
+          output.datum != null &&
+          sameDatumValue(output.datum, outputDatum) &&
+          output.assets[harness.threadUnit] === 1n,
+        label,
+      ),
+      referenceInputIndex: (utxo) =>
+        requireReferenceInputIndex(ctx, utxo, label),
+    });
   let tx = harness.lucid
     .newTx()
-    .collectFrom([feeInput])
-    .collectFrom([threadUtxo], makeRedeemer);
-  if (proofItemReferenceUtxo !== undefined) {
-    tx = tx.readFrom([proofItemReferenceUtxo]);
+    .collectFrom([await feeInputFor(harness)])
+    .collectFrom([inputUtxo], makeRedeemer);
+  if (scriptReference !== undefined) {
+    tx = tx.readFrom([scriptReference]);
   }
-  if (validatorReferenceUtxo !== undefined) {
-    tx = tx.readFrom([validatorReferenceUtxo]);
+  if (extraReferences !== undefined && extraReferences.length > 0) {
+    tx = tx.readFrom([...extraReferences]);
   }
   tx = tx.pay
     .ToContract(
-      harness.itemSourceAddress,
+      outputContract.spendingScriptAddress,
       { kind: "inline", value: outputDatum },
       {
-        lovelace: threadUtxo.assets.lovelace ?? 0n,
+        lovelace: inputUtxo.assets.lovelace ?? 0n,
         [harness.threadUnit]: 1n,
       },
     )
     .addSignerKey(harness.signerHash);
-  if (validatorReferenceUtxo === undefined) {
-    tx = tx.attach.SpendingValidator(harness.semanticScript);
+  if (scriptReference === undefined) {
+    tx = tx.attach.SpendingValidator(inputContract.spendingScript);
   }
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  let unsigned;
+  try {
+    unsigned = await tx.complete({ localUPLCEval: true });
+  } catch (cause) {
+    throw new Error(
+      `${label} local evaluation failed: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+    );
+  }
   const signed = await unsigned.sign.withWallet().complete();
   const signedCbor = signed.toCBOR();
   const txHash = await signed.submit();
   await harness.lucid.awaitTx(txHash);
+  const nextThreadUtxo = (
+    await harness.lucid.utxosAt(outputContract.spendingScriptAddress)
+  ).find(
+    (utxo) => utxo.txHash === txHash && utxo.assets[harness.threadUnit] === 1n,
+  );
+  if (nextThreadUtxo === undefined) {
+    throw new Error(`${label} did not hand the thread on`);
+  }
   return {
+    nextThreadUtxo,
     measurement: measureCompleteSignedTransaction(signedCbor),
     outputDatum,
     signedCbor,
   };
+};
+
+/** The `Verify` redeemer, Option B shape. */
+const verifyRedeemer = (
+  transition: Data,
+  layout: {
+    readonly inputIndex: bigint;
+    readonly outputIndex: bigint;
+  },
+): string =>
+  Data.to(
+    new Constr(1, [
+      new Constr(0, [layout.inputIndex, layout.outputIndex, transition]),
+    ]),
+  );
+
+/** The stage-2 `Continue` redeemer (source binding takes indices only). */
+const indicesRedeemer = (layout: {
+  readonly inputIndex: bigint;
+  readonly outputIndex: bigint;
+}): string =>
+  Data.to(
+    new Constr(1, [new Constr(0, [layout.inputIndex, layout.outputIndex])]),
+  );
+
+/**
+ * How the §8.8 door is handed the field's §5.1 preimage: inline in the observe
+ * redeemer (tier-1 `Inline`, the only tier this harness builds), or by
+ * reference to a published proof item.
+ */
+type ObserveDelivery =
+  | { readonly kind: "inline"; readonly fieldPreimageHex?: string }
+  | { readonly kind: "reference"; readonly publication: UTxO };
+
+type CompleteItemJourney = {
+  readonly harness: EmulatorHarness;
+  readonly itemCase: CanonicalDecodeItemCase;
+  readonly authenticate: StageSubmission;
+  readonly source: StageSubmission;
+  readonly observe: StageSubmission;
+};
+
+/**
+ * Walks one thread from the semantic resolver to the observe door. Both
+ * validators that carry a body worth referencing — the semantic resolver and
+ * the observe validator — are sourced from parked reference scripts, the
+ * production basis since the #617 reference-script wiring; embedding either
+ * would put a validator body inside the transaction whose size is the
+ * measurement.
+ */
+const runJourneyToObserve = async ({
+  harness,
+  itemCase,
+  threadUtxo,
+  delivery,
+  observeScriptReference,
+  semanticScriptReference,
+}: {
+  readonly harness: EmulatorHarness;
+  readonly itemCase: CanonicalDecodeItemCase;
+  readonly threadUtxo: UTxO;
+  readonly delivery: ObserveDelivery;
+  /**
+   * Omitted only by the embedded-basis probe, which attaches the observe
+   * validator to its own transaction instead of reading the published copy.
+   */
+  readonly observeScriptReference?: UTxO;
+  readonly semanticScriptReference: UTxO;
+}): Promise<CompleteItemJourney> => {
+  const semanticContract = {
+    spendingScriptAddress: harness.semanticAddress,
+    spendingScript: harness.semanticScript,
+  };
+  const authenticate = await submitStage({
+    harness,
+    inputUtxo: threadUtxo,
+    inputContract: semanticContract,
+    outputContract: harness.stages.source,
+    outputDatum: itemCase.authenticatedDatum,
+    label: "canonical item authentication",
+    scriptReference: semanticScriptReference,
+    encode: (layout) => verifyRedeemer(itemCase.transitionData, layout),
+  });
+  const source = await submitStage({
+    harness,
+    inputUtxo: authenticate.nextThreadUtxo,
+    inputContract: harness.stages.source,
+    outputContract: harness.stages.observe,
+    outputDatum: itemCase.preparedDatum,
+    label: "canonical item source binding",
+    encode: indicesRedeemer,
+  });
+  const observe = await submitStage({
+    harness,
+    inputUtxo: source.nextThreadUtxo,
+    inputContract: harness.stages.observe,
+    outputContract: harness.stages.proof,
+    outputDatum: itemCase.observedDatum,
+    label: "canonical item observation",
+    ...(observeScriptReference === undefined
+      ? {}
+      : { scriptReference: observeScriptReference }),
+    ...(delivery.kind === "reference"
+      ? { extraReferences: [delivery.publication] }
+      : {}),
+    encode: ({ inputIndex, outputIndex, referenceInputIndex }) =>
+      delivery.kind === "inline"
+        ? Data.to(
+            new Constr(1, [
+              new Constr(0, [
+                inputIndex,
+                outputIndex,
+                new Constr(0, [
+                  delivery.fieldPreimageHex ?? itemCase.fieldPreimageHex,
+                ]),
+              ]),
+            ]),
+          )
+        : Data.to(
+            new Constr(1, [
+              new Constr(1, [
+                inputIndex,
+                outputIndex,
+                referenceInputIndex(delivery.publication),
+              ]),
+            ]),
+          ),
+  });
+  return { harness, itemCase, authenticate, source, observe };
 };
 
 type PublishedProofItem = {
@@ -722,84 +935,45 @@ const publishRawProofItemForNegativeControl = async ({
     }),
   });
 
-const measureDirectAt = async (
-  itemBytes: number,
-): Promise<{
-  readonly itemCase: CanonicalDecodeItemCase;
-  readonly measurement: CompleteSignedTransactionMeasurement;
-  readonly outputDatum: string;
-}> => {
-  const itemCase = await buildCanonicalDecodeItemCase(itemBytes);
-  const harness = await setupEmulator([
-    preparedThreadDatumCbor(itemCase, SIGNER_HASH),
-  ]);
-  const result = await submitSemanticProof({
-    harness,
-    itemCase,
-    threadUtxo: harness.threadUtxos[0]!,
-  });
-  return { itemCase, ...result };
-};
-
 /**
- * Parks the applied semantic resolver as a reference script and returns the
- * UTxO that sources it, the way the deployed route publishes the resolver
- * once and reads it thereafter. The parking transaction rides the raised
- * emulator ceiling and is not part of any measurement.
+ * The size-bearing measurement, post-Option-B: one journey from the semantic
+ * resolver to the observe door with the §5.1 preimage delivered INLINE, which
+ * is where the item now rides. Both reference scripts are parked first, so the
+ * measured transactions carry indices rather than validator bodies — the
+ * production basis since the #617 reference-script wiring.
+ *
+ * The whole journey is returned, not just the observe row: the authenticate
+ * and source rows are what make "every non-observe stage is item-size
+ * independent" (#622's finding, the precondition of the lane-level re-pins)
+ * checkable here rather than merely quoted.
  */
-const parkSemanticReferenceScript = async (
-  harness: EmulatorHarness,
-): Promise<UTxO> => {
-  const parkAddress = credentialToAddress(
-    "Custom",
-    scriptHashToCredential("2f".repeat(28)),
+const measureObserveAt = async (
+  itemBytes: number,
+  options: { readonly embedObserveValidator?: boolean } = {},
+): Promise<CompleteItemJourney> => {
+  const itemCase = await buildCanonicalDecodeItemCase(itemBytes);
+  const harness = await setupEmulator([itemCase.preparedThreadDatum]);
+  const semanticScriptReference = await publishReferenceScript(
+    harness,
+    harness.semanticScript,
+    "2f",
   );
-  const parkUnsigned = await harness.lucid
-    .newTx()
-    .pay.ToAddressWithData(
-      parkAddress,
-      undefined,
-      { lovelace: 60_000_000n },
-      harness.semanticScript,
-    )
-    .complete();
-  const parkSigned = await parkUnsigned.sign.withWallet().complete();
-  await harness.lucid.awaitTx(await parkSigned.submit());
-  const validatorReferenceUtxo = (
-    await harness.lucid.utxosAt(parkAddress)
-  ).find((utxo) => utxo.scriptRef != null);
-  if (validatorReferenceUtxo === undefined) {
-    throw new Error("semantic resolver reference script failed to park");
-  }
-  return validatorReferenceUtxo;
-};
-
-/**
- * The deployed-route variant of `measureDirectAt`: the semantic resolver is
- * parked as a reference script and sourced through a reference input, the way
- * `submitValidationDisputeSemanticResolution`'s authenticate stage sources the
- * published `validationTraceDisputeItemSemantic` copy — one reference input on
- * the direct route, no embedded script.
- */
-const measureByReferenceAt = async (
-  itemBytes: number,
-): Promise<{
-  readonly itemCase: CanonicalDecodeItemCase;
-  readonly measurement: CompleteSignedTransactionMeasurement;
-  readonly outputDatum: string;
-}> => {
-  const itemCase = await buildCanonicalDecodeItemCase(itemBytes);
-  const harness = await setupEmulator([
-    preparedThreadDatumCbor(itemCase, SIGNER_HASH),
-  ]);
-  const validatorReferenceUtxo = await parkSemanticReferenceScript(harness);
-  const result = await submitSemanticProof({
+  const observeScriptReference =
+    options.embedObserveValidator === true
+      ? undefined
+      : await publishReferenceScript(
+          harness,
+          harness.stages.observe.spendingScript,
+          "3f",
+        );
+  return await runJourneyToObserve({
     harness,
     itemCase,
     threadUtxo: harness.threadUtxos[0]!,
-    validatorReferenceUtxo,
+    delivery: { kind: "inline" },
+    ...(observeScriptReference === undefined ? {} : { observeScriptReference }),
+    semanticScriptReference,
   });
-  return { itemCase, ...result };
 };
 
 // `measureReferenceAt` lived here and went with the publication-maximum row it
@@ -825,9 +999,7 @@ const measurePublicationFrontierAt = async (
   const itemCase = await buildCanonicalDecodeItemCase(
     TIER1_MAX_COMPLETE_ITEM_BYTES,
   );
-  const harness = await setupEmulator([
-    preparedThreadDatumCbor(itemCase, SIGNER_HASH),
-  ]);
+  const harness = await setupEmulator([itemCase.preparedThreadDatum]);
   const measurements = [];
   for (const itemBytes of itemByteCandidates) {
     measurements.push({
@@ -952,38 +1124,81 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     );
   }, 120_000);
 
-  it("measures applied direct authentication at the staged reliability boundary", async () => {
-    // The authenticate stage is the limiting direct-carriage transaction
-    // since the #617 reference-script wiring (#597 ruling a; dce643b0 +
-    // 0a074421, landing on the branch as cherry-picks): the deployed route
-    // sources the applied resolver from its published reference script, and
-    // the frontier constant is owner-signed on exactly that measured basis
-    // (#597 ruling b, exact 13,294 / reserve 12,810). This narrower validator
-    // test proves the authenticate-shape transaction fits the reliability
-    // budget at the boundary item on the production basis. The
-    // embedded-validator variant this row measured through the counted era
-    // (14,270 signed bytes at the retired 8,273 frontier) cannot fit the
-    // envelope at the rebound frontier — un-binding it is what the wiring
-    // wave was for — so embedding near the boundary is route waste, pinned
-    // by the tier-1 cap row below rather than here.
+  it("measures the applied observe door at the staged reliability boundary", async () => {
+    // FLIPPED ONTO THE OBSERVE STAGE (#617 sign-off item 1). Through the
+    // counted era and the #597 wiring era this row measured the AUTHENTICATE
+    // stage, because that was the stage the §5.1 preimage rode: it double-
+    // carried the item and was therefore the direct route's binder (owner-
+    // signed reserve 12,810 / exact 13,294). Option B (#620) moved the
+    // preimage to the observe stage's §8.8 door and left authenticate
+    // item-size-independent, so the binder moved with it and the owner-signed
+    // frontier rebound to the measured post-change pair (13,522 / 14,004,
+    // #622 ruling (b)). This row now walks the real staged chain to that door
+    // and measures the transaction that actually grows with the item.
+    //
+    // What is asserted is a RELATION, not a restatement: the production
+    // journey's byte table is pinned in
+    // `demo/midgard-fault-proofs/tests/submit-init-emulator-option-b-*.test.ts`,
+    // and #622's caveat 1 says those numbers are framing-relative. This
+    // harness has its own framing, so it asserts that the applied validators
+    // carry the reserve-frontier item through the door inside the reliability
+    // budget, that the door is the binder, and that the §3.3 execution
+    // reserve holds — every one of which is falsifiable here.
     const reliableItemBytes =
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
-    const authentication = await measureByReferenceAt(reliableItemBytes);
-    expect(authentication.measurement.redeemerCount).toBe(1);
-    expect(authentication.measurement.completeSignedBytes).toBeLessThanOrEqual(
+    const journey = await measureObserveAt(reliableItemBytes);
+    const observe = journey.observe.measurement;
+
+    // One spend redeemer; one reference input, and it is the parked observe
+    // validator — the preimage rides inline, so nothing else is referenced.
+    expect(observe.redeemerCount).toBe(1);
+    expect(observe.referenceInputCount).toBe(1);
+    expect(observe.completeSignedBytes).toBeLessThanOrEqual(
       MAX_L1_PROOF_TX_BYTES -
         MIDGARD_V1_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes,
     );
-    expect(
-      Number(authentication.measurement.executionMemory),
-    ).toBeLessThanOrEqual(RESERVED_MEMORY_UNITS);
-    expect(
-      Number(authentication.measurement.executionSteps),
-    ).toBeLessThanOrEqual(RESERVED_CPU_UNITS);
-    expect(authentication.measurement.referenceInputCount).toBe(1);
-    expect(authentication.measurement.completeSignedBytes).toBeLessThanOrEqual(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemAuthenticationTransactionBytes,
+    expect(Number(observe.executionMemory)).toBeLessThanOrEqual(
+      RESERVED_MEMORY_UNITS,
     );
+    expect(Number(observe.executionSteps)).toBeLessThanOrEqual(
+      RESERVED_CPU_UNITS,
+    );
+
+    // The door is the binder: it carries the item, the two stages before it do
+    // not, and every stage of the chain fits the real L1 envelope.
+    const authenticate = journey.authenticate.measurement;
+    const source = journey.source.measurement;
+    expect(observe.completeSignedBytes).toBeGreaterThan(
+      authenticate.completeSignedBytes,
+    );
+    expect(observe.completeSignedBytes).toBeGreaterThan(
+      source.completeSignedBytes,
+    );
+    expect(authenticate.completeSignedBytes).toBeLessThan(reliableItemBytes);
+    for (const [stage, measurement] of [
+      ["authenticate", authenticate],
+      ["source", source],
+      ["observe", observe],
+    ] as const) {
+      expect(measurement.completeSignedBytes, stage).toBeLessThanOrEqual(
+        MAX_L1_PROOF_TX_BYTES,
+      );
+      expect(Number(measurement.executionMemory), stage).toBeLessThanOrEqual(
+        RESERVED_MEMORY_UNITS,
+      );
+      expect(Number(measurement.executionSteps), stage).toBeLessThanOrEqual(
+        RESERVED_CPU_UNITS,
+      );
+    }
+
+    // The door wrote the observation the off-chain staging derived — the row
+    // measures a journey that really completed, not one that merely balanced.
+    expect(
+      sameDatumValue(
+        journey.observe.nextThreadUtxo.datum ?? "",
+        journey.itemCase.observedDatum,
+      ),
+    ).toBe(true);
 
     if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
       const contracts = await loadContracts();
@@ -995,7 +1210,9 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
                 contracts.validationTraceDispute.semanticResolvers[1]!
                   .spendingScriptHash,
               reliableDirectItemBytes: reliableItemBytes,
-              authenticationTransaction: authentication.measurement,
+              authenticateTransaction: authenticate,
+              sourceTransaction: source,
+              observeTransaction: observe,
               reservedMemoryUnits: RESERVED_MEMORY_UNITS,
               reservedCpuUnits: RESERVED_CPU_UNITS,
             },
@@ -1013,63 +1230,67 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     // bytes over the 14,336-byte preimage, 536 unspent inside the 16,383-byte
     // evidence envelope — but no suite built the complete SIGNED step
     // transaction around it, so M2 was narrowed rather than closed. This row
-    // builds and submits that transaction. The production route cannot
-    // produce it: `selectValidationCompleteItemCarriageV1` forces reference
-    // carriage far below the cap (its boundary is 12,810, a deliberately
-    // different axis than §8.4's 14,336 — docs/spec/midgard-tx.md §8.4 note),
-    // so the hand-built authenticate-stage redeemer here is the only producer
-    // of the worst-case inline step transaction — exactly the shape the
-    // tier-1 bound has to hold for, and the shape an adversarial prover is
-    // free to submit.
-    // Production basis: the resolver sourced by reference (authenticate
-    // carries one reference input on the direct route), the at-cap one-step
-    // argument inline in the redeemer.
-    const byReference = await measureByReferenceAt(
-      TIER1_MAX_COMPLETE_ITEM_BYTES,
-    );
+    // builds and submits that transaction.
+    //
+    // MOVED ONTO THE OBSERVE STAGE (#617 sign-off item 1). The at-cap inline
+    // preimage used to ride the authenticate stage's redeemer; since Option B
+    // (#620) it rides the observe stage's §8.8 door, so the worst-case inline
+    // step transaction is the observe one and the M2 reading has to be taken
+    // there. The production route still cannot produce it — build-time
+    // routing (#621) demotes items far below the cap to publication, and the
+    // pre-sign envelope gate refuses the rest — so this hand-driven journey
+    // remains the only producer of the shape an adversarial prover is free to
+    // attempt, which is exactly the shape the tier-1 bound must hold for.
+    const atCap = await measureObserveAt(TIER1_MAX_COMPLETE_ITEM_BYTES);
+    const byReference = atCap.observe.measurement;
     // The carried §5.1 preimage really is the whole tier-1 domain — cap
     // bytes, carried Inline (the case builder throws on any other carriage).
-    expect(
-      Buffer.from(byReference.itemCase.fieldPreimageHex, "hex").length,
-    ).toBe(MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1);
-    expect(byReference.measurement.redeemerCount).toBe(1);
-    expect(byReference.measurement.referenceInputCount).toBe(1);
-    expect(Number(byReference.measurement.executionMemory)).toBeLessThanOrEqual(
+    expect(Buffer.from(atCap.itemCase.fieldPreimageHex, "hex").length).toBe(
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+    );
+    expect(byReference.redeemerCount).toBe(1);
+    expect(byReference.referenceInputCount).toBe(1);
+    expect(Number(byReference.executionMemory)).toBeLessThanOrEqual(
       RESERVED_MEMORY_UNITS,
     );
-    expect(Number(byReference.measurement.executionSteps)).toBeLessThanOrEqual(
+    expect(Number(byReference.executionSteps)).toBeLessThanOrEqual(
       RESERVED_CPU_UNITS,
     );
-    // #557 M2, MEASURED AND FALSIFIED (#611, 2026-08-17): the complete signed
-    // step transaction at the cap does NOT fit maxTxSize even on the deployed
-    // route. The evidence-layer reading (15,848 bytes, 536 unspent in the
-    // 16,383-byte evidence envelope) never included the authenticate stage's
-    // protocol framing — thread input, continuation output and datum,
-    // required signer, reference input, change — which the production shape
-    // cannot shed. This assertion pins the measured overflow so the row
-    // flips of its own accord when the owner reprices the tier-1 bound; it
-    // does NOT accept the state as correct — repricing is parameter churn and
-    // rides the #611 escalation.
-    expect(byReference.measurement.completeSignedBytes).toBeGreaterThan(
+    // #557 M2, MEASURED AND FALSIFIED (#611, 2026-08-17; re-measured on the
+    // observe stage 2026-08-23): the complete signed step transaction at the
+    // cap does NOT fit maxTxSize even on the deployed route. The
+    // evidence-layer reading (15,848 bytes, 536 unspent in the 16,383-byte
+    // evidence envelope) never included a stage's protocol framing — thread
+    // input, continuation output and datum, required signer, reference input,
+    // change — which the production shape cannot shed. This assertion pins the
+    // measured overflow so the row flips of its own accord when the owner
+    // reprices the tier-1 bound; it does NOT accept the state as correct —
+    // repricing is parameter churn and rides the #611 escalation. It is also
+    // the same reading #622 recorded from the production journey: the
+    // contiguous inline frontier ends at 14,004, below the 14,336 cap, and
+    // items past it auto-demote to publication.
+    expect(byReference.completeSignedBytes).toBeGreaterThan(
       MAX_L1_PROOF_TX_BYTES,
     );
 
     // Embedded basis, measured for the record: a prover who attaches the
-    // resolver instead of referencing the published copy adds the whole
-    // resolver body on top — route waste on the prover's side, but it pins
-    // that the published reference script is load-bearing for step liveness
-    // anywhere near the cap.
-    const embedded = await measureDirectAt(TIER1_MAX_COMPLETE_ITEM_BYTES);
-    expect(embedded.measurement.referenceInputCount).toBe(0);
-    expect(embedded.measurement.completeSignedBytes).toBeGreaterThan(
-      byReference.measurement.completeSignedBytes,
+    // observe validator instead of referencing the published copy adds the
+    // whole validator body on top — route waste on the prover's side, but it
+    // pins that the published reference script is load-bearing for step
+    // liveness anywhere near the cap.
+    const embedded = await measureObserveAt(TIER1_MAX_COMPLETE_ITEM_BYTES, {
+      embedObserveValidator: true,
+    });
+    expect(embedded.observe.measurement.referenceInputCount).toBe(0);
+    expect(embedded.observe.measurement.completeSignedBytes).toBeGreaterThan(
+      byReference.completeSignedBytes,
     );
 
-    // The actual fitting frontier, bisected on the deployed route: the
-    // largest complete item whose signed authenticate transaction fits
-    // maxTxSize. `maxReliableDirectCompleteItemBytes` (12,810) is a known
-    // fitting floor; the cap is the measured overflow above. This is the
-    // number a repricing decision needs.
+    // The actual fitting frontier, bisected on the deployed route: the largest
+    // complete item whose signed OBSERVE transaction fits maxTxSize.
+    // `maxReliableDirectCompleteItemBytes` is a known fitting floor (the row
+    // above measures it inside the reliability budget); the cap is the
+    // measured overflow above. This is the number a repricing decision needs.
     // Not every exact item size is constructible — the datum filler's chunk
     // headers make the size ladder skip a byte or two at chunk boundaries —
     // so the bisect walks the nearest constructible size and the frontier is
@@ -1094,7 +1315,7 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     let overflowingItemBytes: number = TIER1_MAX_COMPLETE_ITEM_BYTES;
     const probes: Record<string, number> = {
       [TIER1_MAX_COMPLETE_ITEM_BYTES.toString()]:
-        byReference.measurement.completeSignedBytes,
+        byReference.completeSignedBytes,
     };
     while (overflowingItemBytes - fittingItemBytes > 1) {
       const midpoint = Math.floor(
@@ -1108,18 +1329,21 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
       ) {
         break;
       }
-      const probe = await measureByReferenceAt(candidate);
-      probes[candidate.toString()] = probe.measurement.completeSignedBytes;
-      if (probe.measurement.completeSignedBytes <= MAX_L1_PROOF_TX_BYTES) {
+      const probe = await measureObserveAt(candidate);
+      probes[candidate.toString()] =
+        probe.observe.measurement.completeSignedBytes;
+      if (
+        probe.observe.measurement.completeSignedBytes <= MAX_L1_PROOF_TX_BYTES
+      ) {
         fittingItemBytes = candidate;
       } else {
         overflowingItemBytes = candidate;
       }
     }
     if (probes[fittingItemBytes.toString()] === undefined) {
-      const floorProbe = await measureByReferenceAt(fittingItemBytes);
+      const floorProbe = await measureObserveAt(fittingItemBytes);
       probes[fittingItemBytes.toString()] =
-        floorProbe.measurement.completeSignedBytes;
+        floorProbe.observe.measurement.completeSignedBytes;
     }
     // The frontier is tight to within the constructible-size ladder's gaps.
     expect(overflowingItemBytes - fittingItemBytes).toBeLessThanOrEqual(3);
@@ -1138,9 +1362,9 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
               tier1PreimageCapBytes:
                 MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
               itemBytes: TIER1_MAX_COMPLETE_ITEM_BYTES,
-              evidenceBytes: byReference.itemCase.argument.evidenceCbor.length,
-              byReferenceAuthenticationTransaction: byReference.measurement,
-              embeddedAuthenticationTransaction: embedded.measurement,
+              evidenceBytes: atCap.itemCase.argument.evidenceCbor.length,
+              byReferenceObserveTransaction: byReference,
+              embeddedObserveTransaction: embedded.observe.measurement,
               fittingFrontierItemBytes: fittingItemBytes,
               fittingFrontierSignedBytes: probes[fittingItemBytes.toString()],
               overflowSignedBytes: probes[overflowingItemBytes.toString()],
@@ -1154,7 +1378,7 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
         ),
       );
     }
-  }, 600_000);
+  }, 900_000);
 
   it("pins the exact applied publication frontiers and reliability reserve", async () => {
     const reliable =
@@ -1222,67 +1446,140 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
   // preimage and a 363-byte "publication". See TIER1_MAX_COMPLETE_ITEM_BYTES
   // for the 64-byte overhang this exposed, which #580 owns.
 
-  it("reaches the identical terminal state through direct and reference carriage of the same item", async () => {
-    // Same complete item, both representations, one emulator: the deployed
-    // validator must accept both and bind the identical continuation state.
-    // Both legs source the resolver from its parked reference script — the
-    // production basis since the #617 wiring; at the rebound 12,810-byte
-    // frontier the embedded-validator direct shape no longer fits the
-    // 16,384-byte envelope at all.
+  it("reaches the identical observed state through inline and reference delivery of the same item", async () => {
+    // Same complete item, both deliveries, one emulator: the applied door must
+    // accept each and write the byte-identical observation. MOVED ONTO THE
+    // OBSERVE DOOR (#617 sign-off item 1): before Option B the two deliveries
+    // were two arms of the authenticate stage's `Verify`; #620 retired the
+    // reference arm there and made the observe stage the sole content gate, so
+    // route determinism is a property of that door now. Both legs park and
+    // read the same reference scripts, the production basis since the #617
+    // wiring.
     const itemBytes =
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
     const itemCase = await buildCanonicalDecodeItemCase(itemBytes);
-    const threadDatum = preparedThreadDatumCbor(itemCase, SIGNER_HASH);
-    const harness = await setupEmulator([threadDatum, threadDatum]);
-    const [directThread, referenceThread] = harness.threadUtxos;
-    const validatorReferenceUtxo = await parkSemanticReferenceScript(harness);
+    const harness = await setupEmulator([
+      itemCase.preparedThreadDatum,
+      itemCase.preparedThreadDatum,
+    ]);
+    const [inlineThread, referenceThread] = harness.threadUtxos;
+    const semanticScriptReference = await publishReferenceScript(
+      harness,
+      harness.semanticScript,
+      "2f",
+    );
+    const observeScriptReference = await publishReferenceScript(
+      harness,
+      harness.stages.observe.spendingScript,
+      "3f",
+    );
 
-    const direct = await submitSemanticProof({
+    const inline = await runJourneyToObserve({
       harness,
       itemCase,
-      threadUtxo: directThread!,
-      validatorReferenceUtxo,
+      threadUtxo: inlineThread!,
+      delivery: { kind: "inline" },
+      observeScriptReference,
+      semanticScriptReference,
     });
     const publication = await publishProofItem({ harness, itemCase });
-    const reference = await submitSemanticProof({
+    const reference = await runJourneyToObserve({
       harness,
       itemCase,
       threadUtxo: referenceThread!,
-      proofItemReferenceUtxo: publication.utxo,
-      validatorReferenceUtxo,
+      delivery: { kind: "reference", publication: publication.utxo },
+      observeScriptReference,
+      semanticScriptReference,
     });
 
-    expect(direct.outputDatum).toBe(reference.outputDatum);
-    expect(direct.measurement.completeSignedBytes).toBeLessThanOrEqual(
+    // Both doors wrote the same observation, and both transactions fit the
+    // real L1 envelope.
+    expect(
+      sameDatumValue(
+        inline.observe.nextThreadUtxo.datum ?? "",
+        reference.observe.nextThreadUtxo.datum ?? "",
+      ),
+    ).toBe(true);
+    expect(
+      sameDatumValue(
+        inline.observe.nextThreadUtxo.datum ?? "",
+        itemCase.observedDatum,
+      ),
+    ).toBe(true);
+    expect(inline.observe.measurement.completeSignedBytes).toBeLessThanOrEqual(
       MAX_L1_PROOF_TX_BYTES,
     );
-    expect(reference.measurement.completeSignedBytes).toBeLessThanOrEqual(
-      MAX_L1_PROOF_TX_BYTES,
-    );
-    const directTerminal = (
-      await harness.lucid.utxosAt(harness.itemSourceAddress)
-    ).map((utxo) => utxo.datum ?? "");
-    expect(directTerminal).toHaveLength(2);
-    expect(new Set(directTerminal).size).toBe(1);
-  }, 600_000);
+    expect(
+      reference.observe.measurement.completeSignedBytes,
+    ).toBeLessThanOrEqual(MAX_L1_PROOF_TX_BYTES);
 
-  it("rejects substituted and trailing-byte items through the deployed reference route", async () => {
+    // The whole point of the reference delivery: the item is named, not
+    // serialized again, so its door transaction is far smaller than the inline
+    // one at the same item size.
+    expect(reference.observe.measurement.completeSignedBytes).toBeLessThan(
+      inline.observe.measurement.completeSignedBytes - itemBytes / 2,
+    );
+    expect(reference.observe.measurement.referenceInputCount).toBe(2);
+
+    const terminal = (
+      await harness.lucid.utxosAt(harness.stages.proof.spendingScriptAddress)
+    ).map((utxo) => utxo.datum ?? "");
+    expect(terminal).toHaveLength(2);
+    expect(new Set(terminal).size).toBe(1);
+  }, 900_000);
+
+  it("rejects substituted and trailing-byte items at the observe reference door, and accepts the honest one", async () => {
+    // REWRITTEN ONTO THE OBSERVE DOOR (#617 sign-off item 1). This row used to
+    // drive the authenticate stage's retired `VerifyReference` arm. On the
+    // Option B wire that arm does not exist, so every submission it made —
+    // hostile or honest — was refused for the wrong reason: the row was
+    // VACUOUS, rejecting the honest publication too, which is exactly what an
+    // unfalsifiable negative control looks like. The honest leg below is the
+    // control that keeps it honest: the same machinery, the same door, the
+    // unmutated publication, GREEN. A refusal only counts because that leg
+    // passes.
     const itemBytes = 12_000;
     const itemCase = await buildCanonicalDecodeItemCase(itemBytes);
-    const threadDatum = preparedThreadDatumCbor(itemCase, SIGNER_HASH);
-    const harness = await setupEmulator([threadDatum, threadDatum]);
+    const harness = await setupEmulator([
+      itemCase.preparedThreadDatum,
+      itemCase.preparedThreadDatum,
+      itemCase.preparedThreadDatum,
+    ]);
+    const semanticScriptReference = await publishReferenceScript(
+      harness,
+      harness.semanticScript,
+      "2f",
+    );
+    const observeScriptReference = await publishReferenceScript(
+      harness,
+      harness.stages.observe.spendingScript,
+      "3f",
+    );
+    const observeWith = async (
+      threadUtxo: UTxO,
+      publication: UTxO,
+    ): Promise<CompleteItemJourney> =>
+      await runJourneyToObserve({
+        harness,
+        itemCase,
+        threadUtxo,
+        delivery: { kind: "reference", publication },
+        observeScriptReference,
+        semanticScriptReference,
+      });
 
     // Substitution: same length, one flipped byte deep inside the published
     // field preimage. The door hashes the whole preimage against the committed
-    // field hash, so a single flipped byte anywhere inside it fails closed.
+    // field commitment, so a single flipped byte anywhere inside it fails
+    // closed.
     //
     // #579: the offset is taken from the preimage's OWN length. It used to be
-    // `itemBytes - 100`, an index into a buffer that the selection defect above
-    // had made ~40 bytes long — the write landed past the end, `Buffer` swallowed
-    // it, and the "substituted" preimage was byte-identical to the original. The
-    // row then proved nothing and resolved. The equality guard below is what
-    // keeps that from being silent again: a test that mutates a buffer must show
-    // the mutation took before it can claim the mutation was rejected.
+    // `itemBytes - 100`, an index into a buffer that a selection defect had
+    // made ~40 bytes long — the write landed past the end, `Buffer` swallowed
+    // it, and the "substituted" preimage was byte-identical to the original.
+    // The equality guard below is what keeps that from being silent again: a
+    // test that mutates a buffer must show the mutation took before it can
+    // claim the mutation was rejected.
     const original = Buffer.from(itemCase.fieldPreimageHex, "hex");
     const substituted = Buffer.from(original);
     const flipOffset = substituted.length - 100;
@@ -1296,13 +1593,8 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
       fieldPreimage: substituted.toString("hex"),
     });
     await expect(
-      submitSemanticProof({
-        harness,
-        itemCase,
-        threadUtxo: harness.threadUtxos[0]!,
-        proofItemReferenceUtxo: substitutedPublication.utxo,
-      }),
-    ).rejects.toThrow();
+      observeWith(harness.threadUtxos[0]!, substitutedPublication.utxo),
+    ).rejects.toThrow(/canonical item observation local evaluation failed/u);
 
     // Trailing data: the exact item plus one extra byte.
     const trailingPublication = await publishRawProofItemForNegativeControl({
@@ -1311,12 +1603,22 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
       fieldPreimage: `${itemCase.fieldPreimageHex}00`,
     });
     await expect(
-      submitSemanticProof({
-        harness,
-        itemCase,
-        threadUtxo: harness.threadUtxos[1]!,
-        proofItemReferenceUtxo: trailingPublication.utxo,
-      }),
-    ).rejects.toThrow();
-  }, 600_000);
+      observeWith(harness.threadUtxos[1]!, trailingPublication.utxo),
+    ).rejects.toThrow(/canonical item observation local evaluation failed/u);
+
+    // The control: the honest publication, through the same door, on the same
+    // blueprint. If this leg ever goes red the two refusals above stop meaning
+    // anything, and this row says so instead of staying quietly green.
+    const honestPublication = await publishProofItem({ harness, itemCase });
+    const honest = await observeWith(
+      harness.threadUtxos[2]!,
+      honestPublication.utxo,
+    );
+    expect(
+      sameDatumValue(
+        honest.observe.nextThreadUtxo.datum ?? "",
+        itemCase.observedDatum,
+      ),
+    ).toBe(true);
+  }, 900_000);
 });
