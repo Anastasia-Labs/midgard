@@ -399,9 +399,13 @@ native-script CBOR under the structure-scan bounds
 (`native_script_scan_v1` / `native-script.ts`), and
 `decode_canonical_output` is `None` for any output whose tag-0 payload is
 not — no descriptor exists for such an output, and no transaction carrying
-one is admissible into `transactions_root` as valid. (Ruled on #633; the
-one-shot decoder's conformance rides the #617 regeneration wave as
-decision 0005 R5 item 9.)
+one is admissible into `transactions_root` as valid. (Ruled on #633.
+Delivery: decision 0005 R5 item 9 dropped out of the #617 wave under A3's
+ExUnits precondition — the measured one-shot cost is ~82x the GOAL_SPEC
+§3.3 basis at the reachable worst case — so the shipped one-shot decoder
+does not yet enforce this clause; enforcement rides the #633 re-ruling and
+the next regeneration. The staged machine (`ledger_output_proof_v1` →
+`native_script_scan_v1`) and the off-chain codec enforce it today.)
 
 ### 5.6 Mint items (field 5)
 
