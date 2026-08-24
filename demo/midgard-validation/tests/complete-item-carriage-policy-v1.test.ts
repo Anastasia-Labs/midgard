@@ -208,33 +208,23 @@ describe("C21 complete-item carriage production searches", () => {
     expect(proofItemAiken).not.toContain("spend");
 
     // The blueprint rows below read the **committed** `plutus.json`. #620
-    // reshaped the item-semantic ABI in the Aiken source (asserted above) and
-    // left `plutus.json` byte-identical, because blueprints move once, in the
-    // wave's single regeneration (#587's precedent, exactly as #592 recorded
-    // ahead of #579's pass). Until that regeneration runs, the disagreement
-    // below is the recorded state rather than a drift: the committed
-    // definition still lists the retired four-field `Verify` and the
-    // `VerifyReference` arm. The regeneration flips it to the one-arm
-    // ["input_index", "output_index", "transition"] list.
+    // reshaped the item-semantic ABI in the Aiken source (asserted above);
+    // the #617 wave's single regeneration has now carried that reshape into
+    // the blueprint, so the committed definition is the one-arm transition-
+    // only list this row pinned as the regeneration's outcome. The retired
+    // shape was a two-arm `["Verify", "VerifyReference"]` list whose `Verify`
+    // carried a fourth `carriage` field: under Option B the item's content is
+    // proven only at the observe stage's §8.8 door, so the semantic redeemer
+    // names no carriage and the by-reference arm has no reason to exist.
     const action =
       blueprint.definitions[
         "fraud_proofs/validation_trace/canonical_decode_item_semantic_v1/ActionV1"
       ];
-    expect(action?.anyOf?.map((ctor) => ctor.title)).toEqual([
-      "Verify",
-      "VerifyReference",
-    ]);
+    expect(action?.anyOf?.map((ctor) => ctor.title)).toEqual(["Verify"]);
     expect(action?.anyOf?.[0]?.fields?.map((field) => field.title)).toEqual([
       "input_index",
       "output_index",
       "transition",
-      "carriage",
-    ]);
-    expect(action?.anyOf?.[1]?.fields?.map((field) => field.title)).toEqual([
-      "input_index",
-      "output_index",
-      "transition",
-      "reference_input_index",
     ]);
     // The observe ActionV1 is unmoved by #620 (a body conjunct was deleted,
     // not a redeemer field), so its committed definition holds before and

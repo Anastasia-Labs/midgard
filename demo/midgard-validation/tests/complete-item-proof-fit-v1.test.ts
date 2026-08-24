@@ -619,25 +619,28 @@ describe("complete-item proof fit V1", () => {
       cbor: observeRedeemer.toString("hex"),
       maxBytes: 16 * 1024 - 1,
     });
-    // The item-semantic `Verify` is not parsed against the blueprint, and the
-    // reason is recorded rather than worked around: #620 reshaped it from
-    // `(input_index, output_index, transition, carriage)` to the
-    // transition-only `(input_index, output_index, transition)` in the Aiken
-    // source and retired the `VerifyReference` arm, leaving `plutus.json`
-    // byte-identical because blueprints move once, in the wave's single
-    // regeneration (#587's precedent, as at #592/#579). Until that
-    // regeneration runs, this row pins the committed blueprint's frozen
-    // four-field list; the regeneration flips it to the one-arm
-    // ["input_index", "output_index", "transition"].
-    // `complete-item-carriage-policy-v1.test.ts` pins the new shape from the
-    // Aiken side, and the raw wire pin below holds the emitted bytes
-    // meanwhile.
-    const frozenVerify = (
+    // The item-semantic `Verify` now parses against the blueprint. #620
+    // reshaped it from `(input_index, output_index, transition, carriage)` to
+    // the transition-only `(input_index, output_index, transition)` and
+    // retired the `VerifyReference` arm; the #617 wave's single regeneration
+    // has carried that reshape into the committed `plutus.json`, so the row
+    // no longer pins a frozen four-field list and instead checks the emitted
+    // redeemer against the regenerated definition — the stronger check the
+    // deferral was standing in for.
+    parseExactAikenDataCbor({
+      blueprint: validationDisputeBlueprint,
+      definitionName:
+        "fraud_proofs/validation_trace/canonical_decode_item_semantic_v1/SpendRedeemer",
+      cbor: semanticRedeemer.toString("hex"),
+      maxBytes: 16 * 1024 - 1,
+    });
+    const verifyFields = (
       validationDisputeBlueprint as {
         readonly definitions: Record<
           string,
           {
             readonly anyOf?: readonly {
+              readonly title?: string;
               readonly fields?: readonly { readonly title?: string }[];
             }[];
           }
@@ -645,12 +648,12 @@ describe("complete-item proof fit V1", () => {
       }
     ).definitions[
       "fraud_proofs/validation_trace/canonical_decode_item_semantic_v1/ActionV1"
-    ]?.anyOf?.[0]?.fields?.map((field) => field.title);
-    expect(frozenVerify).toEqual([
+    ]?.anyOf;
+    expect(verifyFields?.map((ctor) => ctor.title)).toEqual(["Verify"]);
+    expect(verifyFields?.[0]?.fields?.map((field) => field.title)).toEqual([
       "input_index",
       "output_index",
       "transition",
-      "carriage",
     ]);
     // Raw wire pin for the transition-only `Verify`: three fields under
     // constructor 0, no carriage.
