@@ -160,6 +160,13 @@ const MAX_L1_TX_BYTES = MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
 /** §2.5 field 2 — the outputs field, the one these traces read complete items of. */
 const OUTPUT_FIELD_INDEX = 2;
 
+/**
+ * `NoAuxiliaryWitness` as the committed evidence names it — the Option B
+ * (#620) auxiliary half of the canonical-decode resolver's `evidence_hash`.
+ * Same literal as `complete-item-route-adversarial-emulator-v1.test.ts`.
+ */
+const NO_AUXILIARY_WITNESS_CBOR = Buffer.from("d87980", "hex");
+
 // ## The disputed transaction, and the step that reads its field 2
 
 /**
@@ -839,9 +846,16 @@ const runTierJourney = async (
     label: `field ${OUTPUT_FIELD_INDEX.toString()}`,
   });
 
+  // Option B (#620, #617 wave regeneration): the canonical-decode resolver
+  // commits to the transition ALONE. The auxiliary hashed into `evidence_hash`
+  // is `NoAuxiliaryWitness` whatever carriage the auxiliary witness names,
+  // because the carriage is dereferenced — and content-checked — only at the
+  // observe stage's §8.8 door. `submit.ts` computes exactly this for
+  // `resolverIndex === 0`; this file states it as the same constant the #621
+  // adversarial matrix uses, so the two harnesses cannot drift apart silently.
   const evidenceHash = validationOneStepEvidenceHashV1({
     transitionCbor: argument.transitionCbor,
-    auxiliaryCbor: argument.auxiliaryCbor,
+    auxiliaryCbor: NO_AUXILIARY_WITNESS_CBOR,
   });
   const claimedSuccessorHash = hashMidgardValidationMachineStateV1(
     trace.states[stateIndex + 1]!,
@@ -928,7 +942,10 @@ const runTierJourney = async (
     outputContract: stages.source,
     outputDatum: authenticatedDatum,
     label: "canonical item authentication",
-    // §592's `Verify(input_index, output_index, transition, carriage)`.
+    // Option B (#620): `Verify(input_index, output_index, transition)`. The
+    // retired four-field form appended the carriage here; it is now a refusal
+    // (pinned as such by `complete-item-route-adversarial-emulator-v1.test.ts`),
+    // and the carriage reaches the chain only at the observe door below.
     encode: ({ inputIndex, outputIndex }) =>
       Data.to(
         new Constr(1, [
@@ -936,7 +953,6 @@ const runTierJourney = async (
             inputIndex,
             outputIndex,
             Data.from(argument.transitionCbor.toString("hex")),
-            carriageData,
           ]),
         ]),
       ),
