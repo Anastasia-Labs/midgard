@@ -200,9 +200,11 @@ own "Measurements — flat `FieldCarriageV1` scheme" section, re-run this pass
 via the same suites (that file additionally cites
 `complete-item-carriage-policy-v1.test.ts`, 6/6 here too). Carried from
 there rather than re-taken: tier-1 nominal cap 14,336 (item ≤ 14,332),
-**falsified at the signed-transaction layer above a 13,357-byte item /
-13,361-byte preimage (#611, `docs/spec/midgard-tx.md` §8.3, escalated to
-owner authority, not re-priced here)**; tier-2 `K` = 15,148 reliable / 15,644
+**re-derived 2026-08-23 on the post-Option-B route: the signed inline fit
+ends at a 14,004-byte item, above which the builder refuses pre-sign and
+demotes to the publication route, which stages the full 14,336-byte cap by
+reference (#622; the #611 falsification is resolved by the owner-signed R6
+split of 2026-08-22, `docs/spec/midgard-tx.md` §8.3, not by repricing)**; tier-2 `K` = 15,148 reliable / 15,644
 exact, unmoved by #606; tier-3 combined lower bound 16,613 bytes (not the
 P7-pinned 16,579 — #606 welded `field_hash` into the certificate datum,
 `docs/spec/midgard-tx.md` §8.10). The two byte guardrails that make this
@@ -219,7 +221,7 @@ artifact's byte-fit representations 1–2 below inherit it directly.
 
 Two constraints stack, and only one of them moved. **Byte fit** (how the
 mint field's bytes, and one policy's item within it, reach the machine) is
-now the flat ladder cited above: tier 1 to the signed frontier at 13,357
+now the flat ladder cited above: tier 1 to the signed inline frontier at 14,004
 item bytes, tier 2 to `K` = 15,148, tier 3 to the 32,768-byte aggregate cap.
 **Execution fit** (how up to 16,384 distinct assets' conservation mutations
 are folded once the policy's bytes are available) is unmoved: each mutation
@@ -252,7 +254,7 @@ answers separately.
 ### Preserved complete-item path — flat scheme
 
 Mint fields — and the one policy's item within a mint field — that fit
-tier 1 (signed frontier 13,357 bytes) or tier 2 (`K` = 15,148) reach the
+tier 1 (signed inline frontier 14,004 bytes; the 14,336-byte cap itself stages by reference) or tier 2 (`K` = 15,148) reach the
 machine as a complete preimage in one carriage step, exactly as the counted
 era's "small fields fold in a single chunk whose bytes are the complete
 field" did — only the door supplying that preimage changed. Chunked

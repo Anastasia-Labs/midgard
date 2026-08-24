@@ -202,9 +202,11 @@ own "Measurements — flat `FieldCarriageV1` scheme" section, re-run this pass
 via the same suites (that file additionally cites
 `complete-item-carriage-policy-v1.test.ts`, unchanged here). Carried from
 there rather than re-taken: tier-1 nominal cap 14,336 (item ≤ 14,332),
-**falsified at the signed-transaction layer above a 13,357-byte item /
-13,361-byte preimage (#611, `docs/spec/midgard-tx.md` §8.3, escalated to
-owner authority, not re-priced here)**; tier-2 `K` = 15,148 reliable / 15,644
+**re-derived 2026-08-23 on the post-Option-B route: the signed inline fit
+ends at a 14,004-byte item, above which the builder refuses pre-sign and
+demotes to the publication route, which stages the full 14,336-byte cap by
+reference (#622; the #611 falsification is resolved by the owner-signed R6
+split of 2026-08-22, `docs/spec/midgard-tx.md` §8.3, not by repricing)**; tier-2 `K` = 15,148 reliable / 15,644
 exact, unmoved by #606; tier-3 combined lower bound 16,613 bytes (not the
 P7-pinned 16,579 — #606 welded `field_hash` into the certificate datum,
 `docs/spec/midgard-tx.md` §8.10). The recursion guardrails that make the
@@ -222,7 +224,7 @@ artifact's byte-fit representations 1–2 below inherit it directly.
 
 Two constraints stack, and only one of them moved. **Byte fit** (how one
 native-script item's bytes reach the machine) is now the flat ladder cited
-above: tier 1 to the signed frontier at 13,357 item bytes, tier 2 to `K` =
+above: tier 1 to the signed inline frontier at 14,004 item bytes, tier 2 to `K` =
 15,148, tier 3 to the 32,768-byte aggregate cap. **Execution fit** (how the
 script's node tree is scanned and its signer sets checked once the bytes
 are available) is unmoved: native evaluation is inherently recursive, and
@@ -251,7 +253,7 @@ are free through tier 1/2) the byte-carriage question that
 
 ### Preserved complete-item path — flat scheme
 
-Native scripts that fit tier 1 (signed frontier 13,357 bytes) or tier 2
+Native scripts that fit tier 1 (signed inline frontier 14,004 bytes; the 14,336-byte cap itself stages by reference) or tier 2
 (`K` = 15,148) reach the machine as a complete preimage in one carriage
 step through the canonical-decode complete-item route, and single-chunk
 tokens (`chunk_proof` with chunk 0 of a ≤4,095-byte item) still carry the

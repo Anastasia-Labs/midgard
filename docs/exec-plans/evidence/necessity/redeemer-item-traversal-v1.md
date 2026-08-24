@@ -200,9 +200,11 @@ via the same six suites (that file additionally cites
 `complete-item-carriage-policy-v1.test.ts`, 6/6 here too). Carried from
 there rather than re-taken: tier-1 nominal cap
 `MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1` = 14,336 (item ≤ 14,332),
-**falsified at the signed-transaction layer above a 13,357-byte item /
-13,361-byte preimage (#611, `docs/spec/midgard-tx.md` §8.3, escalated to
-owner authority, not re-priced here)**; tier-2 `K` = 15,148 reliable / 15,644
+**re-derived 2026-08-23 on the post-Option-B route: the signed inline fit
+ends at a 14,004-byte item, above which the builder refuses pre-sign and
+demotes to the publication route, which stages the full 14,336-byte cap by
+reference (#622; the #611 falsification is resolved by the owner-signed R6
+split of 2026-08-22, `docs/spec/midgard-tx.md` §8.3, not by repricing)**; tier-2 `K` = 15,148 reliable / 15,644
 exact, unmoved by #606; tier-3 combined lower bound 16,613 bytes (not the
 P7-pinned 16,579 — #606 welded `field_hash` into the certificate datum,
 `docs/spec/midgard-tx.md` §8.10); the 64-byte tier-1/tier-2 overhang, real
@@ -215,7 +217,7 @@ already records, cited here because this artifact's byte-fit representations
 
 Two constraints stack, and only one of them moved. **Byte fit** (how a
 redeemer item's bytes reach the machine) is now the flat ladder cited above:
-tier 1 to the signed frontier at 13,357 item bytes, tier 2 to `K` = 15,148,
+tier 1 to the signed inline frontier at 14,004 item bytes, tier 2 to `K` = 15,148,
 tier 3 to the 32,768-byte aggregate cap. **Execution fit** (how the item's
 nested Plutus-data content is folded once the bytes are available) is
 unmoved: the CEK context still requires typed data summaries (node roots,
@@ -250,7 +252,7 @@ separately.
 
 ### Preserved complete-item path — flat scheme
 
-Redeemer items that fit tier 1 (signed frontier 13,357 bytes) or tier 2
+Redeemer items that fit tier 1 (signed inline frontier 14,004 bytes; the 14,336-byte cap itself stages by reference) or tier 2
 (`K` = 15,148) reach the machine as a complete preimage in one carriage
 step, exactly as the counted era's "small payloads traverse in a single
 begin/step pair" did — only the door supplying that preimage changed.

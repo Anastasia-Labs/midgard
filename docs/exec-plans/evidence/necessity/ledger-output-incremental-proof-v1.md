@@ -215,7 +215,9 @@ shared flat-carriage table, cited rather than re-derived:
 the same suites (that file is the origin of the citation above; nothing
 here is a second, independent derivation of it). Carried from there:
 tier-1 nominal cap 14,336 (item ≤ 14,332), **falsified at the
-signed-transaction layer above a 13,357-byte item / 13,361-byte preimage
+signed-transaction layer above a 14,004-byte item (re-derived 2026-08-23; the
+retired figure was a 13,357-byte item / 13,361-byte preimage on the
+pre-Option-B authenticate route)
 (#611, `docs/spec/midgard-tx.md` §8.3, escalated to owner authority, not
 re-priced here)**; tier-2 `K` = 15,148 reliable / 15,644 exact, unmoved by
 #606; tier-3 combined lower bound 16,613 bytes (not the P7-pinned 16,579 —
@@ -236,7 +238,7 @@ here because representations 1–2 below inherit it directly.
 
 Two constraints stack, and only one of them moved. **Byte fit** (how one
 complete ledger-output item's bytes reach the machine as a field item) is
-now the flat ladder cited above: tier 1 to the signed frontier at 13,357
+now the flat ladder cited above: tier 1 to the signed inline frontier at 14,004
 item bytes, tier 2 to `K` = 15,148, tier 3 to the 32,768-byte aggregate cap
 — none of which reach `maxLedgerOutputPreimageBytes` (16,384) in one
 carriage step, since 16,384 exceeds even tier 3's per-item practical
@@ -270,7 +272,7 @@ separately.
 
 ### Preserved complete-item path — flat scheme
 
-Ledger outputs that fit tier 1 (signed frontier 13,357 bytes) or tier 2
+Ledger outputs that fit tier 1 (signed inline frontier 14,004 bytes; the 14,336-byte cap itself stages by reference) or tier 2
 (`K` = 15,148) reach the machine as a complete preimage in one carriage step
 through the canonical-decode complete-item route — the same
 `TransactionFieldItemWitness` guard `complete-item-carriage-policy-v1.test.ts`
