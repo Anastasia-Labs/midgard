@@ -670,7 +670,7 @@ const measureStep = async (
     l1ByteMargin: MAX_L1_PROOF_TX_BYTES - completeSignedBytes,
   };
   // Logged immediately so a later step's failure cannot lose measured rows.
-   
+
   console.log(
     `[bench] measured ${descriptor.label}: mem=${mem.toString()} cpu=${cpu.toString()} txBytes=${completeSignedBytes.toString()} fee=${measurement.fee.toString()}`,
   );
@@ -768,14 +768,21 @@ const formatReport = (reports: readonly CurvePointReport[]): string => {
   return lines.join("\n");
 };
 
-const CURVE_NODE_COUNTS = (
+/**
+ * Node-count tokens: integers, plus the literal "maxfit" for the largest
+ * payload the whole-output cap admits (resolved per shape at run time).
+ */
+const CURVE_NODE_TOKENS = (
   process.env.MIDGARD_SCAN_BENCH_NODES ?? "65,257,1025"
 )
   .split(",")
-  .filter((part) => part !== "")
-  .map((part) => Number.parseInt(part, 10));
+  .filter((part) => part !== "");
 const INCLUDE_MAX_FIT = process.env.MIDGARD_SCAN_BENCH_MAXFIT !== "0";
-const SHAPES: readonly PayloadShape[] = ["deep", "wide"];
+const SHAPES: readonly PayloadShape[] = (
+  process.env.MIDGARD_SCAN_BENCH_SHAPES ?? "deep,wide"
+)
+  .split(",")
+  .filter((part): part is PayloadShape => part === "deep" || part === "wide");
 
 describe("native-script scan fault-proof step ExUnits baseline (#633)", () => {
   it(
@@ -786,9 +793,15 @@ describe("native-script scan fault-proof step ExUnits baseline (#633)", () => {
       for (const shape of SHAPES) {
         const producedItem = makeMinAdaFundedExactSizeOutputItemV1(160);
         const funding = fundingLovelaceForOutputsV1([producedItem]);
-        const points = INCLUDE_MAX_FIT
-          ? [...CURVE_NODE_COUNTS, maxFitNodes(shape, funding)]
-          : [...CURVE_NODE_COUNTS];
+        const tokens =
+          INCLUDE_MAX_FIT && !CURVE_NODE_TOKENS.includes("maxfit")
+            ? [...CURVE_NODE_TOKENS, "maxfit"]
+            : [...CURVE_NODE_TOKENS];
+        const points = tokens.map((token) =>
+          token === "maxfit"
+            ? maxFitNodes(shape, funding)
+            : Number.parseInt(token, 10),
+        );
         for (const nodes of points) {
           const report = await runCurvePoint(shape, nodes);
           reports.push(report);
