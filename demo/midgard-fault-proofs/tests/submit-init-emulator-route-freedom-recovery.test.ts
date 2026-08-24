@@ -145,7 +145,8 @@ describe.skipIf(!optionB)(
 
       // Recovery (a): drop the out-ref. The publication is content-addressed
       // (§8.7), so a fresh copy of the same bytes serves; the heuristic
-      // routes this >12,810-byte item by reference and publishes up front.
+      // routes this item — larger than the re-pinned 13,522-byte heuristic
+      // (#622 ruling (b)) — by reference and publishes up front.
       const semantic = await journey.submitSemanticResolution();
       const result = semantic.result;
       expect(result.proofItemCarriage).toBe("reference");

@@ -11,8 +11,10 @@
  * route runs the staged chain to settlement and the dispute to award.
  *
  * The heuristic threshold pinned here is the owner-signed
- * `maxReliableDirectCompleteItemBytes` = 12,810 — a cost steer since Option
- * B, not a soundness bound; re-measuring it is #622's owner table.
+ * `maxReliableDirectCompleteItemBytes` = 13,522 — a cost steer since Option
+ * B, not a soundness bound. #622 re-measured it and the owner approved the
+ * lane-level rebind 12,810 -> 13,522 at the #617 wave sign-off (ruling (b),
+ * 2026-08-22); this file reads the constant rather than a literal.
  *
  * Split from `submit-init-emulator-route-freedom-recovery.test.ts` to keep
  * each file's leaked wasm heap far below the ~4 GiB wasm32 ceiling; see

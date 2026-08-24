@@ -31,11 +31,11 @@
  *
  * Every pinned number is a measurement of this suite's own journey — a
  * change in any stage's shape moves a pin and must be re-pinned
- * deliberately, never absorbed. The owner-signed consensus-profile pins
- * (12,810 / 13,294) are NOT rebound here: #619's question (b) — whether
- * post-demotion rebinds of the routing heuristic are lane-level — is still
- * with the owner, and this suite is the measured table that briefing
- * carries.
+ * deliberately, never absorbed. The consensus-profile pins this suite
+ * measured (12,810 / 13,294) were NOT rebound by this file: #619's question
+ * (b) went to the owner, who approved the lane-level rebind to 13,522 /
+ * 14,004 on 2026-08-22, executed at the #617 wave sign-off. This suite
+ * remains the measured table behind those pins.
  *
  * Lives in its own file (two journeys) for the same wasm32-heap reason as
  * the #621 route-freedom split; see tests/support/uplc-heap-guard.ts.

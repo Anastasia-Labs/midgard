@@ -29,8 +29,9 @@
  *
  * Together with file 1 this is the measured post-change frontier pair the
  * owner sign-off table carries: reserve 13,522 / exact 14,004, against the
- * owner-signed pre-change 12,810 / 13,294 — which stay byte-untouched in
- * `consensus-profile-v1.ts` until #619's question (b) is answered.
+ * owner-signed pre-change 12,810 / 13,294. The owner answered #619's
+ * question (b) on 2026-08-22 and those pins now hold 13,522 / 14,004 in
+ * `consensus-profile-v1.ts`, re-pinned at the #617 wave sign-off.
  *
  * Two journeys per file for the wasm32-heap reason; see
  * tests/support/uplc-heap-guard.ts.
