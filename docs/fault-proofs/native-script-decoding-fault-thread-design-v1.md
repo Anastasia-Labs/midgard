@@ -1273,11 +1273,13 @@ Numbered; each with a recommendation.
     per-conjunct coverage mapping — each §4.3 conjunct to the §8.11 door
     check that excludes it — tracked as #641.
 12. **Possibly-dead `ExecutionNativeScript*` structural arms (catalogue
-    §4.4, design note 5).** Kept for totality with the machine as written;
-    every Phase-B native source is pre-scanned by an earlier phase, so the
-    three structural arms are plausibly unreachable. *Recommendation:*
-    attempt the reachability proof; if it closes, drop the three arms in
-    the same format revision (the type shrinks from 47 to 44) and assert
-    the invariant in the machine. `ExecutionNativeScriptFalse` is genuinely
-    reachable and stays. None of the four is an arm this thread consumes,
-    so the outcome does not touch this design's bindings.
+    §4.4, design note 5) — RULED by owner (2026-08-24): keep all 47.**
+    Kept for totality with the machine as written; every Phase-B native
+    source is pre-scanned by an earlier phase, so the three structural arms
+    are plausibly unreachable. The format wave ships the 47-arm type as-is;
+    the reachability proof stays bundled in #641 as non-gating evidence.
+    If it later closes, dropping the three arms (47 → 44, asserting the
+    invariant in the machine) is a subsequent format revision, not part of
+    #640. `ExecutionNativeScriptFalse` is genuinely reachable and stays
+    regardless. None of the four is an arm this thread consumes, so the
+    outcome does not touch this design's bindings.

@@ -852,11 +852,14 @@ Cost classes and single-party status are §3's; phases are §1's.
    earlier phase, so the machine as written should never reach these
    rejections. They are kept because the type must be total over the machine
    as written, not over a reachability argument this audit did not formally
-   close. *Recommendation*: attempt the reachability proof; if it closes,
-   drop the three arms in the same format revision and assert the invariant
-   in the machine (`fail` instead of reject), shrinking the type to 44.
-   `ExecutionNativeScriptFalse` (#39) is genuinely reachable (evaluation
-   depends on the signer set, not structure) and stays regardless.
+   close. **Ruled by owner (2026-08-24): keep all 47** — the format wave
+   ships the type as written; the reachability proof rides #641 as
+   non-gating evidence. If it later closes, dropping the three arms and
+   asserting the invariant in the machine (`fail` instead of reject,
+   shrinking the type to 44) is a subsequent format revision, not part of
+   the #640 wave. `ExecutionNativeScriptFalse` (#39) is genuinely reachable
+   (evaluation depends on the signer set, not structure) and stays
+   regardless.
 6. **The stall question (OPEN C-2) — RESOLVED by owner ruling
    (2026-08-24), exclusion branch.** The forced-order publication path
    (`midgard-tx.md` §8.11) excludes preimages that violate the
