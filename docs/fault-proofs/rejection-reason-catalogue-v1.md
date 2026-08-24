@@ -423,9 +423,10 @@ precisely so that this carve-out contaminates nothing else.
 
 `docs/spec/midgard-tx.md` has **no §12**; its sections end at §11
 ("Intra-item access"). There is no dispute-side rejection-code table in the
-tx-format spec to check against. **OPEN (C-1)**: the spec should gain the
-rejection-code register this catalogue proposes (or reference it) in the same
-format-revision wave.
+tx-format spec to check against. **(C-1) — RULED by owner (2026-08-24)**:
+the spec gains the rejection-code register this catalogue proposes (or
+normatively references this catalogue's §5) in the same format-revision wave
+(#640).
 
 ### 4.2 The mempool code set vs the machine
 

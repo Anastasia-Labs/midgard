@@ -1188,16 +1188,19 @@ Numbered; each with a recommendation.
      stall concern — resolved by owner ruling 2026-08-24, the forced-order
      door excludes stall-class preimages (§8, §9 Q11); the per-conjunct
      coverage mapping remains as a non-gating evidence task (#641).
-2. **Engine ExUnits ledger.** §6 rests on the pinned one-shot rates; the
-   batched engine (§3.3) must be measured with `aiken` (not runnable under
-   this document's constraints) and pinned in a new
+2. **Engine ExUnits ledger — RULED by owner (2026-08-24): measurement
+   authorized.** §6 rests on the pinned one-shot rates; the
+   batched engine (§3.3) must be measured with `aiken` and pinned in a new
    `native-script-decoding-engine-exec-ledger-v1.json` before the family is
-   scheduled. *Recommendation:* gate registration on that ledger existing.
-3. **Breadth of direction A's refusal acceptance.** Accepting any
+   scheduled. The owner authorized building the v2 scan primitives and the
+   batched engine and running the measurement; registration stays gated on
+   that ledger existing.
+3. **Breadth of direction A's refusal acceptance — RULED by owner
+   (2026-08-24): recommendation adopted.** Accepting any
    staged-machine refusal (not just the three scan refusal classes)
    maximizes coverage
    but overlaps the planned output-well-formedness family (D-S10).
-   *Recommendation:* keep the breadth; record the overlap in
+   The breadth is kept as designed; the overlap is recorded in
    `catalogue-status.md` at registration so D-S10's scoping subtracts it.
 4. **PhaseA witness-script twin.** `reject_invalid_field_type` and the limit
    codes are also emitted for *witness-set* native scripts in
@@ -1229,10 +1232,12 @@ Numbered; each with a recommendation.
    whose leaves and descriptors disagree cannot assemble a valid claim
    witness at all — the disagreement is a claim-machinery format fault, and
    this thread need not (and does not) cover it.
-7. **Catalogue id allocation and inventory drift.** Next free index after
-   `0000000b`, but `catalogue.ts` is drifted (8 vs 11). *Recommendation:*
-   allocate in the registration wave only, after the drift is reconciled;
-   this document intentionally names no number.
+7. **Catalogue id allocation and inventory drift — RULED by owner
+   (2026-08-24): recommendation adopted.** Next free index after
+   `0000000b`, but `catalogue.ts` is drifted (8 vs 11). The fresh
+   genesis-level deployment requirement (§8) is accepted; the category id
+   is allocated in the registration wave only, after the drift is
+   reconciled; this document intentionally names no number.
 8. **Fee-price assumptions.** §6's lovelace figures assume current mainnet
    execution prices; the pinned ledger pins ExUnits, not prices.
    *Recommendation:* restate fees at registration time; treat only the
@@ -1249,13 +1254,14 @@ Numbered; each with a recommendation.
    validation-trace fault for the interactive family, and this thread's
    proof is a genuine contradiction within the header's own transition-trace
    commitments either way.
-10. **Dispute-side code register (catalogue OPEN C-1).**
+10. **Dispute-side code register (catalogue OPEN C-1) — RULED by owner
+    (2026-08-24): in the format wave.**
     `docs/spec/midgard-tx.md` carries no dispute-side rejection-code table
     (its sections end at §11 — catalogue §4.1), so nothing normative
-    outside the catalogue names the reason space. *Recommendation:* the
-    format wave adds the register to the tx spec, or has the spec
-    normatively reference `rejection-reason-catalogue-v1.md` §5, so the
-    leaf schema, the machine codes, and the spec cannot drift apart.
+    outside the catalogue names the reason space. The format wave (#640)
+    adds the register to the tx spec (or has the spec normatively reference
+    `rejection-reason-catalogue-v1.md` §5), so the leaf schema, the machine
+    codes, and the spec cannot drift apart.
 11. **Stall conditions vs forced verdicts (catalogue OPEN C-2) —
     RESOLVED by owner ruling (2026-08-24).** Machine guardrails written as
     bare step-relation conjuncts (oversized field-6 script items, the
