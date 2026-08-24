@@ -103,12 +103,12 @@ fn fixture_only(datum_bytes: Int, output_bytes: Int) -> Bool {
 // Neutralisation selectors
 //
 // The rows below are only evidence if the thing they measure can fail. These
-// three run in the same `aiken check` invocation as every reading (the exec
+// four run in the same `aiken check` invocation as every reading (the exec
 // ledger declares them and the verifier refuses a ledger whose selectors did
-// not run), and between them they rule out the three ways a cost row here
-// could be vacuous: a `filler` that quietly built the wrong width, a derivation
-// that accepts anything, and a derivation that ignores the index it is salted
-// with.
+// not run), and between them they rule out the ways a cost row here could be
+// vacuous: a `filler` that quietly built the wrong width, a derivation that
+// accepts anything, and a derivation that ignores the index it is salted with.
+// The fourth pins an observation rather than a guard; see its own comment.
 // ---------------------------------------------------------------------------
 
 test filler_lengths_are_exact() {
