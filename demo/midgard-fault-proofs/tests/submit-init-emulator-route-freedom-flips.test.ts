@@ -119,11 +119,15 @@ describe.skipIf(!optionB)(
 
     it("flips a heuristically-reference item onto the inline route on request, recovering from a missing publication out-ref", async () => {
       const journey = await prepareRouteFreedomJourneyV1({
-        inlineDatumPayloadBytes: 12_900,
+        inlineDatumPayloadBytes: 13_100,
         minimumCompleteItemBytes: RELIABLE_DIRECT_PIN,
       });
-      // The flip's premise: past the owner-signed 12,810-byte measurement the
-      // heuristic rides by reference (the recorded reference row does).
+      // The flip's premise: past the owner-signed 13,522-byte measurement
+      // (#622 ruling (b), re-pinned at the #617 wave sign-off) the heuristic
+      // rides by reference (the recorded reference row does). The payload
+      // tracks the pin — it stages an item just over 13,522 and well inside
+      // the contiguous 14,004 inline fit, so the flip below is a routing
+      // choice rather than an envelope accident.
       expect(journey.completeItemBytes).toBeGreaterThan(RELIABLE_DIRECT_PIN);
 
       // Hostile routing input: an out-ref that never existed. The refusal is

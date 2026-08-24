@@ -236,7 +236,8 @@ describe.skipIf(!optionB)(
       );
 
       // No routing input: the build-time heuristic itself carries anything
-      // past the owner-signed 12,810 by reference.
+      // past the owner-signed direct frontier — re-pinned 12,810 -> 13,522 at
+      // the #617 wave sign-off (#622 ruling (b)) — by reference.
       const semantic = await journey.submitSemanticResolution();
       printRouteFreedomCampaignTableV1(
         "#622 reference-frontier item 14,336",
