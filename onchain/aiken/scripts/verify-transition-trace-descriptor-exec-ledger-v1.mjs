@@ -38,8 +38,9 @@
  * depend on its strictness. This file therefore reuses the two halves that must
  * not be retyped — `measureModule`, the one way a reading is taken, and
  * `GOAL_SPEC_EXECUTION_BASIS_V1`, the one place §3.3 lives — and makes its own
- * judgement, following `verify-native-script-scan-exec-ledger-v1.mjs`, which
- * established this two-sided shape for exactly this situation.
+ * judgement, following the #633 evidence gate on branch `wave/lane-l` (pending
+ * the owner's #633 ruling, so not yet in this tree), which established this
+ * two-sided shape for exactly this situation.
  *
  * **What is checked.**
  *
