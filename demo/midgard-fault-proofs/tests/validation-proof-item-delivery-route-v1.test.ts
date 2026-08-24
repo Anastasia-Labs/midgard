@@ -7,10 +7,11 @@
  * `submit-init-emulator-route-freedom*.test.ts` drive the reachable arms
  * through real staged transactions).
  *
- * The 12,810-byte pin is `maxReliableDirectCompleteItemBytes`, an owner-signed
- * consensus measurement: since Option B it steers cost, not soundness, and
- * re-measuring/rebinding it is #622's owner table — these tests pin that this
- * builder reads it and never overrides it.
+ * The 13,522-byte pin is `maxReliableDirectCompleteItemBytes`, an owner-signed
+ * consensus measurement: since Option B it steers cost, not soundness. #622
+ * re-measured it and the owner approved the lane-level rebind 12,810 → 13,522
+ * at the #617 wave sign-off (ruling (b), 2026-08-22) — these tests pin that
+ * this builder reads it and never overrides it.
  */
 import { MIDGARD_V1_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
@@ -20,10 +21,10 @@ import {
   ValidationInlineDeliveryEnvelopeRefusedErrorV1,
 } from "../src/index.js";
 
-const RELIABLE_DIRECT_PIN = 12_810;
+const RELIABLE_DIRECT_PIN = 13_522;
 
 describe("resolveValidationProofItemDeliveryRouteV1 (#621)", () => {
-  it("pins the heuristic threshold to the owner-signed 12,810-byte measurement", () => {
+  it("pins the heuristic threshold to the owner-signed 13,522-byte measurement", () => {
     expect(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes,
     ).toBe(RELIABLE_DIRECT_PIN);

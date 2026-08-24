@@ -209,11 +209,24 @@ publication until all three complete-graph representations reject.
 
 | Order | Representation | Source-derived fit rule | Executable measurement when it fits | Maximum 67,108,418-byte graph |
 | --- | --- | --- | --- | --- |
-| 1 | Direct proof material | Complete envelope + complete encoded sidecar `<= 8,769` bytes | 15,872-byte direct proof transaction; 853,925 lovelace measured publication fee | Does not fit |
+| 1 | Direct proof material | Complete envelope + complete encoded sidecar `<= 14,004` bytes | 15,872-byte direct proof transaction; 853,925 lovelace measured publication fee | Does not fit |
 | 2 | Authenticated input inline datum | Complete envelope + sidecar `<= 15,624` datum bytes | 15,872-byte complete-item publication transaction; 853,925 lovelace fee | Does not fit |
-| 3 | Authenticated reference-input inline datum | Same complete datum fit as order 2 | 8,275-byte reference proof transaction, one reference input | Does not fit |
+| 3 | Authenticated reference-input inline datum | Same complete datum fit as order 2 | 1,959-byte by-reference observe door, two reference inputs | Does not fit |
 | 4 | Per-node authenticated publication + single-transaction reconstruction (`MinimumMultiOutputCekMaterial`) | Reached only when 1–3 fail and every entry is independently publishable | 4,268-byte maximum datum; 4,369-byte unsigned publication; 3,398,228 memory and 1,209,745,039 CPU receipt bounds | Necessity-justified fallback, bounded by the reconstruction transaction (see below) |
 | 5 | Incremental multi-transaction traversal (`IncrementalCekMaterial`) | Reached only when 1–4 fail | **No measurement. The route is CLOSED on L1** — see "Route 5 is closed" | Necessary in the limit, NOT deployed |
+
+Orders 1 and 3 re-pinned 2026-08-23 at the #617 wave sign-off, from the #622
+measured table under the owner's 2026-08-22 ruling (b) and the #624 fold ruling:
+order 1's fit rule carried the retired counted-era `<= 8,769` exact direct
+frontier and now carries the measured post-Option-B `maxExactDirectCompleteItemBytes`
+(14,004); order 3's executable measurement was the pre-Option-B 8,275-byte
+reference proof transaction with one reference input, and is now the
+1,959-byte by-reference observe door with two reference inputs (its own
+reference script plus the published proof item), the transaction that
+carries the proof with the item resolved by reference since #620 moved the
+item preimage to the observe door. Neither row's disposition changes: the
+67,108,418-byte lower bound is byte-impossible in a 16,384-byte envelope
+either way.
 
 The first three maximum cases are byte-impossible before execution: the
 67,108,418-byte material lower bound exceeds the 16,384-byte target L1

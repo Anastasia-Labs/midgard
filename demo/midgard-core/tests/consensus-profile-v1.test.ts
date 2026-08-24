@@ -149,13 +149,14 @@ describe("canonical V1 consensus profile", () => {
   //
   // Since the #617 reference-script wiring (#597 ruling a; commits dce643b0 +
   // 0a074421, landing on the branch as cherry-picks) the deployed direct
-  // route also sources every validator by reference, but its frontier is
-  // measured end-to-end through the production submitter's five-stage
-  // lifecycle and is limited by the AUTHENTICATE stage, whose dispute-thread
+  // route also sources every validator by reference, and since Option B
+  // (#620) the item preimage rides the OBSERVE door rather than the
+  // authenticate redeemer. The frontier is still measured end-to-end through
+  // the production submitter's five-stage lifecycle, whose dispute-thread
   // continuation, prepare-selected step, and protocol framing the two
-  // single-transaction models above omit — so its reliable frontier stays
-  // below both. Binding either number here selects direct carriage for items
-  // the authenticate transaction cannot reliably carry.
+  // single-transaction models above omit; the re-pinned reliable frontier
+  // (13,522) now sits between them. Binding either number here would replace
+  // an end-to-end measurement with a single-transaction model.
   it("pins the direct complete-item carriage frontier in both directions", () => {
     const reserve =
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes;
@@ -164,16 +165,18 @@ describe("canonical V1 consensus profile", () => {
     const frontier =
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
 
-    // Anchored to the deployed five-stage measurement, authenticate limiting.
-    // Owner-signed rebind 2026-08-18 (#597 ruling b / #617): measured exact
-    // 13,294 / reserve 12,810 on the post-wiring production route
-    // (dce643b0 + 0a074421, landing on the branch as cherry-picks).
+    // Anchored to the deployed five-stage measurement, OBSERVE limiting.
+    // Lane-level re-pin 2026-08-23 at the #617 wave sign-off (owner ruling
+    // (b) on the #622 sign-off table, 2026-08-22): measured exact 14,004 /
+    // reserve 13,522 on the post-Option-B production route, replacing the
+    // 13,294 / 12,810 pair measured while the item still rode the
+    // authenticate redeemer.
     expect(reserve).toBe(512);
     expect(budget).toBe(15_872);
-    expect(frontier).toBe(12_810);
+    expect(frontier).toBe(13_522);
     expect(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactDirectCompleteItemBytes,
-    ).toBe(13_294);
+    ).toBe(14_004);
 
     // Mirrors `selectValidationCompleteItemCarriageV1`. The production selector
     // lives in `@al-ft/midgard-fault-proofs` (importing it here would invert the
@@ -185,14 +188,23 @@ describe("canonical V1 consensus profile", () => {
       itemBytes <= frontier ? "direct" : "reference";
 
     // Direction 1: the frontier item is carried directly.
-    expect(carriage(12_810)).toBe("direct");
-    // Direction 2: one byte over is NOT. Widening this boundary is a soundness
-    // regression, not a fix.
-    expect(carriage(12_811)).toBe("reference");
-    // The two by-reference frontiers must both fall in the reference region.
-    expect(carriage(13_282)).toBe("reference");
+    expect(carriage(13_522)).toBe("direct");
+    // Direction 2: one byte over is NOT. Since Option B (#620) this boundary
+    // steers cost rather than soundness — #622 measured item 13,523
+    // completing to award past it, "a cost line, not a cliff" — but the
+    // builder still refuses to widen it on its own: the pre-sign projection
+    // and the envelope gate are the operative guards, proven live at 14,005.
+    expect(carriage(13_523)).toBe("reference");
+    // The retired single-transaction by-reference frontiers (13,282 from the
+    // necessity evidence, 13,998 from the measurement script's counted-shape
+    // model) no longer straddle the boundary the same way: the re-pinned
+    // five-stage frontier now sits above 13,282 — exactly the band #622
+    // measured as paying an unnecessary ~15K-byte publication before the
+    // rebind — and still below 13,998.
+    expect(carriage(13_282)).toBe("direct");
     expect(carriage(13_998)).toBe("reference");
-    expect(frontier).toBeLessThan(13_282);
+    expect(frontier).toBeGreaterThan(13_282);
+    expect(frontier).toBeLessThan(13_998);
 
     // Why one byte over cannot fit: the limiting direct transaction already
     // sits exactly on the reliability budget at the frontier item size, and
@@ -208,15 +220,17 @@ describe("canonical V1 consensus profile", () => {
     ).toBe(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemProofTransactionBytes,
     );
-    // Authentication, not observation, is the stage that governs the bound
-    // since the #617 reference-script wiring un-bound the observe door
-    // (dce643b0) and the prepare resolver (0a074421): the authenticate stage
-    // carries the whole item preimage inline in its redeemer, so it is the
-    // stage that grows fastest with the item.
+    // Observation, not authentication, is the stage that governs the bound
+    // since Option B (#620) made the canonical-decode item semantic
+    // transition-only: the item preimage left the authenticate redeemer, so
+    // authenticate became item-size-independent (2,656 bytes at every
+    // measured item) and the observe door became the stage that grows with
+    // the item. Re-pinned at the #617 wave sign-off from the #622 measured
+    // table, under the owner's 2026-08-22 ruling (b).
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemAuthenticationTransactionBytes,
-    ).toBeGreaterThan(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemObservationTransactionBytes,
+    ).toBeGreaterThan(
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemAuthenticationTransactionBytes,
     );
 
     // The zero-reserve frontier may exceed the reliable one by at most the
