@@ -5876,3 +5876,51 @@ fixture (parent-owned). Registration (P2 catalogue append of BOTH
 families + common.ts keys, P3 fault-proofs barrel/runtime/bin) stays
 parent-serialized on #617. Remaining on the lane: Q40 §9.1 closure
 surfaces, then Q42, then Q41.
+
+## 2026-08-23 — #617 single batched ABI regeneration wave SEALED at f1c8f321
+
+The wave is sealed on colll78/canonical-v1-watcher-l1-source-checkpoint at
+f1c8f321: c98cd0bf → 80423ea9 (lane K, #634) → ed248917 (nine-commit
+regeneration cascade, lanes E/H/I/J/G/F) → ac3064c6 → 9c971ae7 (spec §5.5
+tag-0 delivery re-point) → 766b8c56 (lane M: harness flip, the pre-ruled
+sign-off re-pins, C53 completion) → f1c8f321 (lane N: CG1 re-measure +
+the #628 gated ExUnits frontier). Blueprint md5 66426a3a, 444 validators,
+fork aiken v1.1.23+2a78108. Every lane implemented in an isolated worktree
+and adversarially reviewed before merge; no new red versus the EMPTY
+accepted suite map at fd941f40.
+
+Re-pins executed at the sign-off point per the 2026-08-22 ruling:
+maxReliableDirectCompleteItemBytes 12,810→13,522 and
+maxExactDirectCompleteItemBytes 13,294→14,004 with both #622 caveats
+verbatim; referenceCompleteItem* (proof 8,275→1,959, auth 5,967→2,656,
+observe 7,296→1,959, refInputs 1→2); §8.3 FALSIFIED→RESOLVED via the R6
+split (direct-path moot at 14,004; general-phase 14,336/14,337). C53
+completed once: sweep pins 105→122 rows / unfit 95→112, generator-current,
+measured set unchanged at 10. C42 twin cross-check 23→26; the 778→784
+check-count lineage resolved (184+594 → 190+594). The stale "162,660 /
+−146,276" CG1 quote in this ledger is superseded by measurement: the
+excluded CEK direct resolver now fits at 5,471 applied / 5,984 signed /
+margin +10,400 — the un-exclusion decision is with the owner on #623's
+trail in the #617 sign-off comment.
+
+R5 item 9 (one-shot tag-0 structural decoder) DROPPED per amendment A3 —
+the reachable worst case measures 71.9x–81.6x the §3.3 basis — and rides
+#633 (ready-for-human: directions (a)–(d) plus the wave/lane-l merge
+disposition). Follow-ups filed: #636, #637, #638, #639. Closed at
+sign-off: #611, #623, #625, #627, #628, #629.
+
+## 2026-08-23 — compiler provenance event: parity twin becomes canonical
+
+The original canonical fork binary (md5 b3acfdf3…) was rebuilt in place at
+21:42 by an unrelated diagnosis session from a dirty tree that modified
+the ExUnits cost model — AFTER every landed wave measurement; both lane
+reviewers had verified the pinned md5 at their run times. The parity
+binary ~/.aiken-fork/bin/aiken (md5 50890fe36b3d8ebea58e3f370e9ca479, a
+clean cargo-install of the same rev 2a78108, proven output-byte-identical:
+both binaries build blueprint md5 8e2ea4d7 at c98cd0bf) is canonical from
+2026-08-23 onward. Lane N's final ledger verification re-ran under the
+twin and reproduced all 63 readings to the unit, confirming cost-model
+identity. Ledger compiler.md5 values stay as historical records of what
+took each reading; whether to add the twin's md5 to the lane N ledger's
+compiler block as a documented parity binary is an owner decision queued
+in the sign-off comment.
