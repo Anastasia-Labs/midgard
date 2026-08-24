@@ -64,17 +64,23 @@ thread binds to.
 
 The family covers **both** fault directions ruled in scope for #633:
 
-- **Direction A — wrongful acceptance.** The header commits, under its
-  `transactions_root`, a Normal-source transaction — a leaf whose own
-  validity field claims acceptance (`MidgardTxCompact.validity`,
-  `ledger-state.ak:473-477`; the scalar `validity_code` embedded in the
-  leaf's compact CBOR,
-  `onchain/aiken/lib/midgard/fraud-proofs/native-tx/compact.ak:291-301`) and
-  which the Rejected ⇒ Forced invariant obliges to be `Accepted` — yet at
+- **Direction A — wrongful acceptance.** The header commits an acceptance
+  claim for a transaction — for a **Normal** source, a `transactions_root`
+  leaf whose own validity field claims acceptance
+  (`MidgardTxCompact.validity == TxIsValid`, `ledger-state.ak:473-477`; the
+  scalar `validity_code` embedded in the leaf's compact CBOR,
+  `onchain/aiken/lib/midgard/fraud-proofs/native-tx/compact.ak:291-301`);
+  for a **Forced** source, a `forced_transactions_root` leaf whose verdict
+  is `ForcedTxValid` (§2.4 target format; today
+  `operator_validity == TxIsValid`, `ledger-state.ak:540-544`) — yet at
   least one output that transaction resolves (spend or reference input)
   carries a tag-0 reference-script payload whose bytes are not a canonical
   native script under the frozen scan semantics — bytes the same header's
-  `prev_utxos_root` itself commits.
+  `prev_utxos_root` itself commits. The source leaf's validity is the
+  binding (follow-up ruling 2026-08-24): the format wave makes it the
+  authoritative per-tx verdict (§2.4.3), and direction A is gated on that
+  wave exactly as direction B is. **No descriptor is opened in either
+  direction, and each proof opens exactly one source root** (§2.1).
 - **Direction B — wrongful rejection.** The header commits, under its
   `forced_transactions_root`, a forced leaf whose operator verdict is
   `ForcedTxInvalid` with a scan-borne reason (`InvalidFieldType`,
@@ -121,24 +127,26 @@ Mirrors the double-spend family
    header and finds a transaction whose committed verdict contradicts the
    frozen scan on the committed pre-state bytes.
 2. **Evidence assembly** (off-chain): collect the counted-root membership
-   witnesses (direction A: the Normal transaction leaf and — interim, §2.2
-   OPEN A-1 — its validation-trace descriptor; direction B: the forced leaf;
-   both: the event-to-step and transition-step leaves that source the
-   pre-state root), the ledger-trie membership proof for the accused resolved
-   outpoint, and the reference-script payload bytes with their chunk proofs.
-   No machine-state preimages are needed (ruled 2026-08-24; §2.1).
+   witness for the faulted event's **one** source leaf (Normal transaction
+   leaf or forced leaf, by source kind — §2.1's one-root-per-proof
+   property), the event-to-step and transition-step leaves that source the
+   pre-state root, the ledger-trie membership proof for the accused
+   resolved outpoint, and the reference-script payload bytes with their
+   chunk proofs. No machine-state preimages and no validation-trace
+   descriptors are needed (rulings 2026-08-24; §2.1).
 3. **Init**: mint one computation-thread unit named
    `category_id(4B) ‖ header_hash(28B)`
    (`onchain/aiken/validators/computation-thread.ak:109-115`) at the step-01
    address with `StepDatum { fraud_prover, data: None }`.
-4. **Steps**: step-01 binds the faulted transaction to the header (direction
-   A) or records the direction (direction B); step-02 binds the committed
-   verdict — the forced leaf's `ForcedTxInvalid` reason for direction B, the
-   Normal leaf plus (interim) descriptor for direction A — and sources the
-   pre-state root from the transition trace; step-03 binds the accused
-   outpoint's descriptor and scans its payload bytes under the pinned
-   per-node budget, as many L1 transactions as needed; step-04
-   concludes via `common.finalize`
+4. **Steps**: step-01 binds a Normal-source transaction and its leaf's
+   acceptance claim to the header (direction A, Normal) or records
+   direction and source kind (forced-source threads); step-02 binds the
+   forced leaf's verdict where one is involved — `ForcedTxInvalid` with a
+   scan-borne reason for direction B, `ForcedTxValid` for direction A's
+   forced arm — and sources the pre-state root from the transition trace;
+   step-03 binds the accused outpoint's descriptor and scans its payload
+   bytes under the pinned per-node budget, as many L1 transactions as
+   needed; step-04 concludes via `common.finalize`
    (`onchain/aiken/lib/midgard/fraud-proofs/common.ak:579-673`), minting the
    permanent `fraud_proof` token at the fraud-proof address.
 5. **Removal**: the `fraud_proof` token authorizes state-queue
@@ -174,8 +182,8 @@ Both directions:
   (`onchain/aiken/lib/midgard/validation-claim-v1.ak:407`). The thread
   performs the same two counted-root openings the claim machinery already
   defines, with no descriptor and no state preimage in the chain:
-  1. `event_to_step_root` at the event key (direction A:
-     `L2TransactionEventKey { tx_id }`; direction B:
+  1. `event_to_step_root` at the event key (by source kind: Normal:
+     `L2TransactionEventKey { tx_id }`; Forced:
      `ForcedTransactionEventKey { tx_order_id }` —
      `ledger-state.ak:553-558`) yields `EventToStepValue { step_index,
      phase }` (`ledger-state.ak:560-563`), opened exactly as
@@ -218,33 +226,53 @@ Both directions:
   position is a different, non-positionally-openable ordering and is **not**
   the leaf coordinate.
 
-Direction A additionally:
+**One root per proof.** The two validation sources open **disjoint** roots:
+the claim machinery's Normal arm opens `header.transactions_root` keyed by
+`tx_id` (`validation-claim-v1.ak:254`), its Forced arm opens
+`header.forced_transactions_root` keyed by `tx_order_id` (`:233`); forced
+transactions do **not** appear in `transactions_root`, and a forced leaf
+carries its transaction's full compact bytes — inline `validity_code`
+included — in its own `source.compact_cbor`. Every proof of this family
+therefore opens exactly one source root, chosen by the faulted event's
+source kind. Direction A covers **both** kinds (a forced transaction can be
+wrongfully accepted too); direction B is forced-only by the Rejected ⇒
+Forced invariant.
 
-- **`transactions_root` / `l2_transaction_count`** (counted, domain-tagged;
-  `commit_counted_root` at
+Direction A additionally, for a **Normal**-source transaction:
+
+- **`transactions_root` / `l2_transaction_count` — the acceptance
+  commitment** (counted, domain-tagged; `commit_counted_root` at
   `onchain/aiken/lib/midgard/transition-trace.ak:67-81`): step-01 proves the
   faulted L2 transaction T is committed by the header, via
   `verify_native_tx_in_state_queue_node_with`
   (`onchain/aiken/lib/midgard/fraud-proofs/common.ak:792-847`; counted-root
-  authentication at `common.ak:831-836`). The committed compact CBOR carries
-  T's own scalar `validity_code`
+  authentication at `common.ak:831-836`), whose returned view exposes the
+  decoded compact — including T's own scalar `validity_code`
   (`onchain/aiken/lib/midgard/fraud-proofs/native-tx/compact.ak:291-301`,
   `:381-390`; type-level `MidgardTxCompact.validity` at
   `ledger-state.ak:473-477`; the V1 leaf wrapper is `L2TransactionSourceV1`,
-  `ledger-state.ak:532-536`). Under the Rejected ⇒ Forced ruling this leaf
-  validity **is** the acceptance claim the fault contradicts; the descriptor
-  opening below is the interim authority only because leaf-validity
-  consistency is not yet independently enforced (OPEN A-1).
-- **Interim: `validation_traces_root` / `validation_trace_count`.** Step-02
-  opens the `ValidationTraceDescriptorV1`
-  (`onchain/aiken/lib/midgard/validation-trace-v1.ak:80-89`) for T, keyed by
-  `L2TransactionEventKey { tx_id }`, exactly as `verify_descriptor_membership`
-  (`validation-claim-v1.ak:147-162`), and requires `verdict == Accepted` —
-  reading the verdict from the **descriptor leaf itself**; no state preimage
-  is opened. This binding is kept until the format wave makes the tx-leaf
-  validity authoritative (OPEN A-1, §9 Q6).
+  `ledger-state.ak:532-536`). Direction A requires `validity_code ==
+  TxIsValid` (code 0, `codec.ak:31-46`) **on this leaf, full stop** — that
+  field is the acceptance claim the fault contradicts (follow-up ruling
+  2026-08-24). Its authority is established by the §2.4.3 authoritativeness
+  predicates, which ride the same format wave direction B is gated on; the
+  thread family ships whole when the wave lands. **No
+  `validation_traces_root` opening exists anywhere in this design**; the
+  descriptor survives only in historical notes and the frozen-format
+  `rejection_code_of` bridge (§2.4.2).
 - T's resolved-outpoint sets, opened from T's own committed bytes through the
   §8.8 field-opening door (fields 0 and 1, coordinate system above).
+
+Direction A additionally, for a **Forced**-source transaction:
+
+- **`forced_transactions_root` / `forced_transaction_count` — the acceptance
+  commitment.** The same forced-leaf opening direction B uses (below), but
+  the verdict match is `ForcedTxValid` (§2.4 target format; today
+  `operator_validity == TxIsValid`). The leaf-internal §2.4.3(e) predicate
+  makes that verdict agree with the `validity_code` inside the leaf's own
+  `source.compact_cbor`, so the acceptance claim, the transaction bytes,
+  and the field-opening door all come from the **same single leaf** — no
+  second root is ever opened.
 
 Direction B additionally:
 
@@ -275,16 +303,17 @@ Direction B additionally:
 
 ### 2.2 OPEN markers (revised 2026-08-24)
 
-- **OPEN (A-1): Normal-tx leaf-validity consistency is not independently
-  enforced.** Nothing on-chain today ties the compact leaf's embedded
-  `validity_code` to the descriptor verdict or to the applied delta for
-  Normal-source transactions: `expect_validity_code` bounds it to `0..5`
-  (`onchain/aiken/lib/midgard/fraud-proofs/native-tx/codec.ak:25-29`) and the
-  claim machinery never reads it (`validation-claim-v1.ak` contains no
-  `validity_code` consumer; its Normal arm constrains only the descriptor,
-  `:311-317`). Until the format wave either makes the tx-leaf validity
-  authoritative or adds the Normal-tx consistency predicate (recommendation,
-  §9 Q6), direction A keeps the descriptor binding as interim design.
+- **FOLDED (A-1 → format wave, follow-up ruling 2026-08-24): leaf-validity
+  authoritativeness.** Nothing on-chain today ties the compact leaf's
+  embedded `validity_code` to anything: `expect_validity_code` bounds it to
+  `0..5` (`onchain/aiken/lib/midgard/fraud-proofs/native-tx/codec.ak:25-29`)
+  and the claim machinery never reads it (`validation-claim-v1.ak` contains
+  no `validity_code` consumer; its Normal arm constrains only the
+  descriptor, `:311-317`). The ruling's disposition is **not** an interim
+  descriptor binding but a specified format-wave work item: the §2.4.3
+  authoritativeness predicates make the tx-leaf validity the authoritative
+  per-tx verdict, and direction A binds to it, gated on the wave exactly as
+  direction B is. No descriptor path exists in the thread design.
 - **DISSOLVED (B-1, ruled 2026-08-24): which-outpoint commitment.** The
   amendment moved off the machine/descriptor and onto the forced leaf, edited
   in place (§2.4). The old marker — no commitment named the accused outpoint,
@@ -471,6 +500,57 @@ hash:
   descriptor.rejection_code_hash`; `ForcedTxValid` ⇒
   `descriptor.verdict == Accepted`.
 
+#### 2.4.3 Leaf-validity authoritativeness (NEW, same wave; follow-up ruling 2026-08-24)
+
+The follow-up ruling replaces the earlier "interim descriptor binding"
+disposition: the format wave carries two additional predicates that make the
+tx-leaf validity the **authoritative per-tx verdict**, and direction A binds
+to it — full stop, no descriptor path, gated on the wave like direction B.
+
+- **(d) Normal-source authoritativeness (NEW).** The claim machinery's
+  Normal arm additionally requires the committed tx leaf's embedded scalar
+  to claim acceptance:
+  `verified.tx_compact.validity_code == 0` (`TxIsValid`; the code map is
+  `validity_from_code`, `codec.ak:31-46`). This extends the existing
+  Normal ⇒ Accepted enforcement (`source_binding_is_exact`'s Normal arm,
+  `validation-claim-v1.ak:311-317`): today the arm constrains only the
+  descriptor; after the wave the leaf itself carries the same obligation,
+  so a Normal leaf under `transactions_root` **is** an acceptance verdict.
+- **(e) Forced-source authoritativeness (NEW, leaf-internal).** The claim
+  machinery requires the forced leaf's verdict to agree with the embedded
+  scalar of the **same leaf's own** `source.compact_cbor`, extending
+  `forced_verdict_matches` (`validation-claim-v1.ak:204-212`) alongside the
+  §2.4.2(c) extension: `ForcedTxValid` ⇒
+  `verified.tx_compact.validity_code == 0`; `ForcedTxInvalid { reason }` ⇒
+  `verified.tx_compact.validity_code ==
+  validity_to_code(coarse_bucket_of(reason))` (`validity_to_code`,
+  `codec.ak:48`; `coarse_bucket_of`, §2.4.2(b)). This is **never a
+  cross-root opening**: the two validation sources open disjoint roots
+  (§2.1, `validation-claim-v1.ak:233` vs `:254`), forced transactions do
+  not appear in `transactions_root`, and the forced leaf is self-contained
+  — verdict and transaction bytes travel together.
+- **Placement.** Both predicates run in `verify_source_authentication`
+  (`validation-claim-v1.ak:215-265`), which executes on every claim via
+  `committed_claim_source_is_authenticated` (`:383-392`) and **already
+  decodes the compact bytes in both arms** — the Forced arm's
+  `verify_native_tx_proof_source_v1` at `:219-224`, the Normal arm's at
+  `:244-249` — but today consumes only `verified.version == 1` (`:239`,
+  `:261`). The additions are constant-cost field equalities on
+  already-decoded values: no new root opening, no new hashing, no format
+  change to any leaf beyond the §2.4 revision itself. This is also the
+  *soundest* placement examined: `source_binding_is_exact` receives the
+  raw membership, not the decoded view, so putting the checks there would
+  re-pay the decode; no cheaper site exists because every claim already
+  passes through this function.
+- **Outcome.** After the wave, the per-tx verdict authority is the one leaf
+  the transaction lives under — `MidgardTxCompact.validity` for Normal
+  sources, `OperatorVerdictV1` (coupled to its own embedded scalar by (e))
+  for Forced sources — and direction A's binding (Normal:
+  `validity_code == TxIsValid`; Forced: `ForcedTxValid`) is sound, one root
+  per proof. The descriptor's verdict becomes a derived commitment,
+  consistency-checked by (c) through the frozen `rejection_code_hash`
+  bridge, and appears nowhere in this thread's bindings.
+
 ---
 
 ## 3. Contract set
@@ -481,7 +561,7 @@ follow the double-spend family's convention.
 | # | Validator (new) | Role |
 |---|---|---|
 | 1 | `validators/fraud-proofs/native-script-decoding/step-01.ak` | Bind the faulted transaction T to the header (direction A); record the direction and pass through (direction B) |
-| 2 | `validators/fraud-proofs/native-script-decoding/step-02.ak` | Bind the committed verdict (forced leaf / Normal leaf + interim descriptor); source the pre-state root from the transition trace; branch on direction |
+| 2 | `validators/fraud-proofs/native-script-decoding/step-02.ak` | Direction B: bind the forced leaf's verdict; both: source the pre-state root from the transition trace; branch on direction |
 | 3 | `validators/fraud-proofs/native-script-decoding/step-03.ak` | Self-looping resolve-and-scan engine (multi-arm redeemer) |
 | 4 | `validators/fraud-proofs/native-script-decoding/step-04.ak` | Conclude: `common.finalize`, mint `fraud_proof` |
 
@@ -510,20 +590,26 @@ Every step carries `ct.Cancel` via `common.cancel`
 `resolve-inputs-membership-step-semantic-v1.ak:37-45` and the double-spend
 steps do. The Continue arms:
 
-- **step-01** `Continue(BindTransaction { direction, carriage })`:
-  - Direction A: verbatim reuse of `pass_native_tx_to_next_step_carried`
-    (`common.ak:149-252`) including the published-chunk carriage duality
-    (#545), as in `double-spend/step-01.ak:57-94` — binds T under
-    `transactions_root`. Under the 2026-08-24 ruling the compact leaf's own
-    `validity_code` **is** the acceptance claim being contradicted; the
-    descriptor opened at step-02 remains the interim verdict authority only
-    because leaf-validity consistency is unenforced today (OPEN A-1, §9 Q6).
-  - Direction B: no `transactions_root` work — the faulted transaction lives
-    under `forced_transactions_root` and is bound at step-02 from the forced
-    leaf itself. This arm only records the direction and passes through.
-  - Output state: `{ direction, verified_tx_id }` (direction B: a sentinel
-    until step-02 authenticates `tx_id` from the forced leaf) at step-02's
-    address.
+- **step-01** `Continue(BindTransaction { direction, source_kind,
+  carriage })` — one source root per thread (§2.1):
+  - Direction A, Normal source: verbatim reuse of
+    `pass_native_tx_to_next_step_carried` (`common.ak:149-252`) including
+    the published-chunk carriage duality (#545), as in
+    `double-spend/step-01.ak:57-94` — binds T under `transactions_root` —
+    **plus** the verdict binding itself (follow-up ruling 2026-08-24): the
+    returned view's decoded compact must claim acceptance,
+    `native_tx_view.tx_compact.validity_code == 0` (`TxIsValid`; view type
+    field at
+    `onchain/aiken/lib/midgard/fraud-proofs/native-tx/types.ak:201`, code
+    map `codec.ak:31-46`). The tx leaf is the verdict authority (§2.4.3);
+    no descriptor is opened at any step.
+  - Direction A, Forced source, and direction B: no `transactions_root`
+    work — the faulted transaction lives under `forced_transactions_root`
+    only and is bound at step-02 from the forced leaf itself. This arm
+    records direction and source kind and passes through.
+  - Output state: `{ direction, source_kind, verified_tx_id }`
+    (forced-source threads: a sentinel until step-02 authenticates `tx_id`
+    from the forced leaf) at step-02's address.
 - **step-02** `Continue(BindVerdict { … })` — redesigned (ruled 2026-08-24):
   no machine-state preimage is opened in either direction.
   1. `common.continue` (`common.ak:501-577`) for thread-token conservation.
@@ -535,28 +621,33 @@ steps do. The Continue arms:
      with the §2.1 cross-checks (the openings of
      `validation-claim-v1.ak:164-201`); freeze `prior_ledger_root :=
      transition_step.pre_utxos_root` into the state.
-  3. Direction A (`BindVerdict { descriptor_membership,
-     event_step_openings }`): descriptor membership as in §2.1 (counted,
-     domain `ValidationTracesRootDomain`, `validation-claim-v1.ak:147-162`),
-     `descriptor key == L2TransactionEventKey { verified_tx_id }`, and
-     `descriptor.verdict == Accepted` — read from the descriptor leaf, no
-     preimage.
-  4. Direction B (`BindVerdict { forced_membership, event_step_openings }`):
-     open the `ForcedInclusionTxV1` leaf at
+  3. Direction A, Normal source (`BindVerdict { event_step_openings }`):
+     nothing beyond item 2 — the acceptance verdict was already bound at
+     step-01 from the tx leaf's own validity field (follow-up ruling
+     2026-08-24), so this arm only sources the pre-state root and freezes
+     the prover-chosen ordinal. No descriptor membership exists in the
+     redeemer.
+  4. Forced-source threads (`BindVerdict { forced_membership,
+     event_step_openings }`): open the `ForcedInclusionTxV1` leaf at
      `ForcedTransactionEventKey { tx_order_id }` (the
      `verify_source_authentication` opening,
      `validation-claim-v1.ak:215-241`), authenticate the source triple
      (`verify_native_tx_proof_source_v1`, `compact.ak:493-514`) and set
-     `verified_tx_id := leaf.tx_id`; pattern-match
-     `ForcedTxInvalid { reason }` (§2.4 target format,
-     pending-format-wave) and require the reason to be one of
-     `InvalidFieldType` / `NativeScriptDepth` / `NativeScriptNodeCount`
-     with `subject == ResolvedOutpointSubject { outpoint_ordinal }`; freeze
-     the reason's constructor tag and `outpoint_ordinal` into the state.
+     `verified_tx_id := leaf.tx_id`; then match by direction (§2.4 target
+     format, pending-format-wave):
+     - Direction A, Forced source: require `verdict == ForcedTxValid` —
+       the acceptance claim, from the same single leaf that carries the
+       transaction bytes.
+     - Direction B: pattern-match `ForcedTxInvalid { reason }` and require
+       the reason to be one of `InvalidFieldType` / `NativeScriptDepth` /
+       `NativeScriptNodeCount` with `subject ==
+       ResolvedOutpointSubject { outpoint_ordinal }`; freeze the reason's
+       constructor tag and `outpoint_ordinal` into the state.
      **No descriptor opening, no terminal-state preimage, no phase check**
      — the constructor arm is the attribution.
   5. Output state: the §4 schema, cursor frozen at the accused ordinal
-     (direction B) or at the prover-chosen ordinal (direction A).
+     (direction B) or at the prover-chosen ordinal (direction A, either
+     source kind).
 - **step-03**, three Continue arms:
   - `BindOutpoint { field_opening, outpoint_index, ledger_membership,
     descriptor_bytes }`: open T's field 0 or 1 through the §8.8 door
@@ -664,9 +755,11 @@ per-transaction against carried commitments.
 pub type ScanThreadStateV1 {
   // -- frozen at step-02 --
   direction: Int,                    // 0 = wrongful acceptance, 1 = wrongful rejection
-  verified_tx_id: ByteArray,         // 32B; direction A: step-01's counted-root binding;
-                                     // direction B: the forced leaf's authenticated tx_id
-  tx_order_id: Int,                  // direction B: the forced leaf's key; -1 for direction A
+  source_kind: Int,                  // 0 = Normal, 1 = Forced (direction B always 1;
+                                     // one source root per thread, §2.1)
+  verified_tx_id: ByteArray,         // 32B; Normal: step-01's counted-root binding;
+                                     // Forced: the forced leaf's authenticated tx_id
+  tx_order_id: Int,                  // Forced: the forced leaf's key; -1 for Normal
   scan_reason_class: Int,            // direction B: 0 = InvalidFieldType, 1 = NativeScriptDepth,
                                      // 2 = NativeScriptNodeCount (the leaf reason's tag);
                                      // -1 for direction A
@@ -919,6 +1012,12 @@ the same hash.
   the coordination caveat noted there.
 - A prover cannot manufacture a refusal on honest bytes: the machine is
   deterministic on (control, authenticated window), and both are pinned.
+- **Forced-source wrongful acceptance is covered** (correction ruling
+  2026-08-24): a forced transaction recorded `ForcedTxValid` whose resolved
+  payloads include a non-canonical tag-0 script is attacked by direction A's
+  forced-source arm — the acceptance claim, the transaction bytes, and the
+  field-opening door all come from the one forced leaf (§2.1, §3.2), so the
+  proof shape is identical to the Normal case from `BindOutpoint` onward.
 
 ---
 
@@ -947,14 +1046,18 @@ nothing is deployed and the house rule is no compat shims — no V2
 side-by-side type), the three consistency predicates
 (`rejection_code_of`, `coarse_bucket_of`, and the `forced_verdict_matches`
 extension, §2.4.2), the 16,384 `total_length` cap folded in from old OPEN
-B-2 (§2.2), and — recommended, not yet ruled — the direction-A leaf-validity
-authority or Normal-tx consistency predicate (OPEN A-1, §9 Q6). The
-descriptor format (`ValidationTraceDescriptorV1`) and the machine-state
-format (`ValidationMachineStateV1`) stay **frozen**; the only bridge to them
-is `hash_rejection_code(rejection_code_of(reason)) ==
-descriptor.rejection_code_hash` (`validation-trace-v1.ak:239-243`).
-Direction B of this family is specified against the target leaf and is gated
-on that wave landing (§9 Q1 residuals).
+B-2 (§2.2), and the two **leaf-validity authoritativeness predicates**
+(§2.4.3, follow-up ruling 2026-08-24: Normal-source `validity_code ==
+TxIsValid` and Forced-source `validity_code ==
+validity_to_code(coarse_bucket_of(reason))`, both in
+`verify_source_authentication`). The descriptor format
+(`ValidationTraceDescriptorV1`) and the machine-state format
+(`ValidationMachineStateV1`) stay **frozen**; the only bridge to them is
+`hash_rejection_code(rejection_code_of(reason)) ==
+descriptor.rejection_code_hash` (`validation-trace-v1.ak:239-243`). Both
+directions of this family are specified against the target formats and gated
+on that wave landing — the thread family ships whole when the wave lands
+(§9 Q1 residuals).
 
 **Catalogue immutability consequence — checked and reported honestly.** The
 fraud-proof catalogue is an MPF root in a datum
@@ -994,13 +1097,12 @@ Numbered; each with a recommendation.
    outpoint's ordinal, and direction B binds one outpoint and inherits
    direction A's ~100-transaction bound (§2.4, §6). OPEN B-1 and B-3
    dissolved; B-2's 16,384 `total_length` cap folded into the same format
-   wave. Residual opens:
-   - **format-wave scheduling** — direction B is specified against the
-     target leaf format and is gated on the wave landing (§8); when it is
-     scheduled is owned outside this document;
-   - **direction-A leaf-validity trust (OPEN A-1)** — leaf-validity ↔
-     applied-delta consistency for Normal txs is not independently enforced
-     today, so direction A keeps the interim descriptor binding (§2.2, Q6);
+   wave, as was A-1's leaf-validity authoritativeness (follow-up ruling
+   2026-08-24, §2.4.3). Residual opens:
+   - **format-wave scheduling** — the whole family, both directions, is
+     specified against the target formats (forced-leaf revision, §2.4;
+     authoritativeness predicates, §2.4.3) and gated on the wave landing
+     (§8); when it is scheduled is owned outside this document;
    - **the CEK carve-out** — `E_PLUTUS_SCRIPT_INVALID` rejections stay
      interactive-only, permanently outside this family (§1.2, §7.6).
 2. **Engine ExUnits ledger.** §6 rests on the pinned one-shot rates; the
@@ -1026,20 +1128,22 @@ Numbered; each with a recommendation.
    `validation-machine-v1.ak:6458-6484`) in `refusal_class`.
    *Recommendation:* keep it — it costs one `Int` and makes the minted proof
    auditable against the descriptor's code without re-running anything.
-6. **Direction-A leaf-validity authority (OPEN A-1).** Under the
-   2026-08-24 ruling the compact leaf's own validity field is the acceptance
-   claim direction A contradicts, but leaf-validity ↔ applied-delta
-   consistency for Normal txs is not independently enforced today
-   (§2.2: `expect_validity_code` bounds `0..5`, `codec.ak:25-29`; the claim
-   machinery constrains only the descriptor, `validation-claim-v1.ak:315`;
-   the forced twin is coupled by `forced_verdict_matches`, `:204-212`, with
-   the §2.4.2(c) extension pending). *Recommendation:* the format wave makes
-   the tx-leaf validity authoritative — or adds the Normal-tx consistency
-   predicate (`coarse_bucket_of`-style, §2.4.2(b)) — at which point direction
-   A drops the interim descriptor opening and binds the machine-free leaf
-   directly. A header where leaf and descriptor *disagree* remains a
-   distinct, cheap, single-transaction consistency fault; do not widen this
-   thread to cover it.
+6. **Direction-A leaf-validity authority — RESOLVED by the follow-up
+   ruling (2026-08-24).** The interim descriptor binding is removed; the
+   tx-leaf validity is made authoritative by the §2.4.3 format-wave
+   predicates — (d) Normal arm: `verified.tx_compact.validity_code == 0`,
+   (e) Forced arm: leaf verdict ↔ embedded scalar via
+   `validity_to_code(coarse_bucket_of(reason))` — both placed in
+   `verify_source_authentication` (`validation-claim-v1.ak:215-265`), where
+   the compact bytes are already decoded on every claim, so the cost is two
+   field equalities. Direction A binds the acceptance claim on the one leaf
+   the transaction lives under — `validity_code == TxIsValid` on the
+   `transactions_root` leaf for Normal sources, `ForcedTxValid` on the
+   forced leaf for Forced sources — gated on the wave like direction B; no
+   descriptor is opened anywhere in the thread. After the wave, a header
+   whose leaves and descriptors disagree cannot assemble a valid claim
+   witness at all — the disagreement is a claim-machinery format fault, and
+   this thread need not (and does not) cover it.
 7. **Catalogue id allocation and inventory drift.** Next free index after
    `0000000b`, but `catalogue.ts` is drifted (8 vs 11). *Recommendation:*
    allocate in the registration wave only, after the drift is reconciled;
