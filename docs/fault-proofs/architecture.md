@@ -95,18 +95,30 @@ step is therefore not merely expensive but unexecutable within L1 limits —
 the executable evidence, in the sense this section requires, that the current
 interactive placement is unsound as the *driver* of the scan.
 
-Derived direction (tracked on #633, direction (d)): relocate the scan drive to
-a single-party staged computation thread whose cross-transaction state is a
-cursor-plus-stack-root commitment (the shape
-`native-tx-script-pushdown-v1.ak` already implements for the native-tx
-pipeline), so nearly the full basis buys scan work — many nodes per
-transaction instead of one token that does not fit. The open design
-obligation is the composition rule: when a validation-trace disagreement
-lands on a scan transition, the machine's ResolveInputs stage must consume
-the completed scan thread's verdict rather than step the scan itself —
-mirroring how double-spend proof results are consumed. Until that lands, the
-scan's node/depth bounds (16,384/16,384) remain STAGED-machine bounds with no
-executable per-step path on L1.
+Derived direction (tracked on #633, direction (d)): scan-borne faults are
+covered by a standalone single-party computation thread, without touching the
+machine. Every input the verdict depends on is committed public data — the
+block commits the transaction, the prior ledger root commits the spent
+output's bytes, and the scan is deterministic over them — so the thread
+proves the memberships, drives the scan itself across as many transactions as
+it needs (cross-transaction state: a cursor-plus-stack-root commitment, the
+shape `native-tx-script-pushdown-v1.ak` already implements), reaches the true
+verdict, and faults the header directly. Wrongful acceptance and wrongful
+rejection are both contradicted from commitments this way; nearly the full
+basis buys scan work — many nodes per transaction instead of one token that
+does not fit.
+
+The residual obligation on the interactive family is only that it must not be
+a trap: no dispute may be steerable onto a per-token scan transition, since
+that transition is unexecutable on L1 and would decide the dispute by stall
+rather than by truth. Primary discharge: excise — exclude scan-borne faults
+from the interactive family and treat the canonicity check as opaque at the
+trace's transition granularity (a v2 protocol definition; the granularity is
+derived, not committed per block). Fallback: coarsen the trace to a single
+scan-verdict transition adjudicated by reading a completed scan-thread
+output, mirroring how double-spend results are consumed. Until one of these
+lands, the scan's node/depth bounds (16,384/16,384) remain STAGED-machine
+bounds with no executable per-step path on L1.
 
 ## 3. End-to-end proof lifecycle
 
