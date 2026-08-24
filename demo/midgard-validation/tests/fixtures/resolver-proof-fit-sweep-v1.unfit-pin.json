@@ -3,7 +3,7 @@
   "version": 1,
   "sourceSchema": "midgard-validation-resolver-proof-fit-sweep-v1",
   "sourceVersion": 3,
-  "unfitCount": 95,
+  "unfitCount": 112,
   "unfit": [
     {
       "category": "topLevel",
@@ -134,8 +134,20 @@
     {
       "category": "prepare",
       "index": 11,
+      "label": "prepare fraud_proofs/validation_trace/cek_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to prepare resolver 11 (prepare fraud_proofs/validation_trace/cek_v1.main.spend), i.e. the same compiled script as topLevel[11]; the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "prepare",
+      "index": 12,
+      "label": "prepare fraud_proofs/validation_trace/value_and_mint_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to prepare resolver 12 (prepare fraud_proofs/validation_trace/value_and_mint_v1.main.spend), i.e. the same compiled script as topLevel[12]; the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "prepare",
+      "index": 13,
       "label": "prepare fraud_proofs/validation_trace/ledger_delta_v1.main.spend",
-      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to prepare resolver 11 (prepare fraud_proofs/validation_trace/ledger_delta_v1.main.spend), i.e. the same compiled script as topLevel[13]; the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to prepare resolver 13 (prepare fraud_proofs/validation_trace/ledger_delta_v1.main.spend), i.e. the same compiled script as topLevel[13]; the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
     },
     {
       "category": "semantic",
@@ -530,50 +542,140 @@
     {
       "category": "semantic",
       "index": 67,
-      "label": "fraud_proofs/validation_trace/ledger_delta_operation_semantic_v1.main.spend",
-      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 67 (fraud_proofs/validation_trace/ledger_delta_operation_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+      "label": "fraud_proofs/validation_trace/cek_finish_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 67 (fraud_proofs/validation_trace/cek_finish_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
     },
     {
       "category": "semantic",
       "index": 68,
-      "label": "fraud_proofs/validation_trace/ledger_delta_replay_semantic_v1.main.spend",
-      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 68 (fraud_proofs/validation_trace/ledger_delta_replay_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+      "label": "fraud_proofs/validation_trace/cek_execution_selection_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 68 (fraud_proofs/validation_trace/cek_execution_selection_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
     },
     {
       "category": "semantic",
       "index": 69,
-      "label": "fraud_proofs/validation_trace/ledger_delta_replay_finish_semantic_v1.main.spend",
-      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 69 (fraud_proofs/validation_trace/ledger_delta_replay_finish_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+      "label": "fraud_proofs/validation_trace/cek_context_step_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 69 (fraud_proofs/validation_trace/cek_context_step_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
     },
     {
       "category": "semantic",
       "index": 70,
-      "label": "fraud_proofs/validation_trace/ledger_delta_output_semantic_v1.main.spend",
-      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 70 (fraud_proofs/validation_trace/ledger_delta_output_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+      "label": "fraud_proofs/validation_trace/cek_core_step_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 70 (fraud_proofs/validation_trace/cek_core_step_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
     },
     {
       "category": "semantic",
       "index": 71,
-      "label": "fraud_proofs/validation_trace/ledger_delta_output_finish_semantic_v1.main.spend",
-      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 71 (fraud_proofs/validation_trace/ledger_delta_output_finish_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+      "label": "fraud_proofs/validation_trace/value_and_mint_begin_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 71 (fraud_proofs/validation_trace/value_and_mint_begin_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
     },
     {
       "category": "semantic",
       "index": 72,
-      "label": "fraud_proofs/validation_trace/ledger_delta_proof_frame_semantic_v1.main.spend",
-      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 72 (fraud_proofs/validation_trace/ledger_delta_proof_frame_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+      "label": "fraud_proofs/validation_trace/value_and_mint_replay_begin_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 72 (fraud_proofs/validation_trace/value_and_mint_replay_begin_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
     },
     {
       "category": "semantic",
       "index": 73,
-      "label": "fraud_proofs/validation_trace/ledger_delta_finalize_semantic_v1.main.spend",
-      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 73 (fraud_proofs/validation_trace/ledger_delta_finalize_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+      "label": "fraud_proofs/validation_trace/value_and_mint_replay_input_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 73 (fraud_proofs/validation_trace/value_and_mint_replay_input_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
     },
     {
       "category": "semantic",
       "index": 74,
+      "label": "fraud_proofs/validation_trace/value_and_mint_replay_asset_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 74 (fraud_proofs/validation_trace/value_and_mint_replay_asset_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "semantic",
+      "index": 75,
+      "label": "fraud_proofs/validation_trace/value_and_mint_replay_finish_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 75 (fraud_proofs/validation_trace/value_and_mint_replay_finish_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "semantic",
+      "index": 76,
+      "label": "fraud_proofs/validation_trace/value_and_mint_output_descriptor_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 76 (fraud_proofs/validation_trace/value_and_mint_output_descriptor_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "semantic",
+      "index": 77,
+      "label": "fraud_proofs/validation_trace/value_and_mint_output_asset_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 77 (fraud_proofs/validation_trace/value_and_mint_output_asset_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "semantic",
+      "index": 78,
+      "label": "fraud_proofs/validation_trace/value_and_mint_output_finish_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 78 (fraud_proofs/validation_trace/value_and_mint_output_finish_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "semantic",
+      "index": 79,
+      "label": "fraud_proofs/validation_trace/value_and_mint_mint_asset_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 79 (fraud_proofs/validation_trace/value_and_mint_mint_asset_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "semantic",
+      "index": 80,
+      "label": "fraud_proofs/validation_trace/value_and_mint_mint_finish_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 80 (fraud_proofs/validation_trace/value_and_mint_mint_finish_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "semantic",
+      "index": 81,
+      "label": "fraud_proofs/validation_trace/value_and_mint_finalize_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 81 (fraud_proofs/validation_trace/value_and_mint_finalize_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "semantic",
+      "index": 82,
+      "label": "fraud_proofs/validation_trace/ledger_delta_operation_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 82 (fraud_proofs/validation_trace/ledger_delta_operation_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "semantic",
+      "index": 83,
+      "label": "fraud_proofs/validation_trace/ledger_delta_replay_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 83 (fraud_proofs/validation_trace/ledger_delta_replay_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "semantic",
+      "index": 84,
+      "label": "fraud_proofs/validation_trace/ledger_delta_replay_finish_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 84 (fraud_proofs/validation_trace/ledger_delta_replay_finish_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "semantic",
+      "index": 85,
+      "label": "fraud_proofs/validation_trace/ledger_delta_output_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 85 (fraud_proofs/validation_trace/ledger_delta_output_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "semantic",
+      "index": 86,
+      "label": "fraud_proofs/validation_trace/ledger_delta_output_finish_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 86 (fraud_proofs/validation_trace/ledger_delta_output_finish_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "semantic",
+      "index": 87,
+      "label": "fraud_proofs/validation_trace/ledger_delta_proof_frame_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 87 (fraud_proofs/validation_trace/ledger_delta_proof_frame_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "semantic",
+      "index": 88,
+      "label": "fraud_proofs/validation_trace/ledger_delta_finalize_semantic_v1.main.spend",
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 88 (fraud_proofs/validation_trace/ledger_delta_finalize_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+    },
+    {
+      "category": "semantic",
+      "index": 89,
       "label": "fraud_proofs/validation_trace/ledger_delta_terminal_semantic_v1.main.spend",
-      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 74 (fraud_proofs/validation_trace/ledger_delta_terminal_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
+      "reason": "no harness-reachable fixture in this codebase drives a genuine one-step validation dispute to semantic global index 89 (fraud_proofs/validation_trace/ledger_delta_terminal_semantic_v1.main.spend); the only two existing, non-editable fixture builders that drive a real transaction through the emulator harness to a genuine accept (buildInvalidForcedValidationDisputeFixture -> resolverIndex 0/canonicalDecode + semantic global index 1/canonicalDecodeItem + its 4-stage chain; buildAcceptedClaimOverRejectingTransactionFixture -> resolverIndex 3/InputSets + semantic global index 4) do not reach it. Measuring it would require either a new fixture builder reaching that phase (out of scope: pinned support/fixture files may only be imported, never extended or edited) or hand-constructing a transaction context outside the harness (explicitly disallowed by the ruling that produced this generator)"
     }
   ]
 }

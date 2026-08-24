@@ -21,12 +21,12 @@ import { describe, expect, it } from "vitest";
  * measurement itself; this suite only verifies the artifact's own
  * coverage/fit contract and its reproducibility.
  *
- * Of the 105 contractual resolver slots:
+ * Of the 122 contractual resolver slots:
  *   - 14 top-level resolvers (`VALIDATION_TRACE_RESOLVER_COUNT_V1`), including
  *     both direct resolvers (cek at resolverIndex 11, valueAndMint at
  *     resolverIndex 12)
- *   - 75 registered semantic resolvers
- *   - 12 prepare resolvers
+ *   - 90 registered semantic resolvers
+ *   - 14 prepare resolvers
  *   - 4 canonical-decode-item stages
  * only 10 currently have an existing, non-editable fixture in
  * `demo/midgard-fault-proofs/tests/support/` that drives a genuine one-step
@@ -34,9 +34,9 @@ import { describe, expect, it } from "vitest";
  * (resolverIndex 0/canonicalDecode and resolverIndex 3/InputSets, their two
  * corresponding prepare rows, their two corresponding semantic rows, and the
  * 4 canonical-decode-item stage rows canonicalDecode's dispute exercises).
- * The remaining 95 are honestly reported in `unfit[]` with a specific
+ * The remaining 112 are honestly reported in `unfit[]` with a specific
  * per-row reason rather than measured, assumed, or silently dropped. That
- * 95-row closure gap is recorded evidence, not a standing failure: this
+ * 112-row closure gap is recorded evidence, not a standing failure: this
  * suite pins the *exact* current `unfit[]` set (count plus every
  * category/index/reason identity) against the committed snapshot at
  * `tests/fixtures/resolver-proof-fit-sweep-v1.unfit-pin.json`. Any drift —
@@ -141,8 +141,8 @@ const unfitPin = JSON.parse(
 ) as ResolverProofFitUnfitPin;
 
 const VALIDATION_TRACE_RESOLVER_COUNT_V1 = 14;
-const SEMANTIC_RESOLVER_COUNT_V1 = 75;
-const PREPARE_RESOLVER_COUNT_V1 = 12;
+const SEMANTIC_RESOLVER_COUNT_V1 = 90;
+const PREPARE_RESOLVER_COUNT_V1 = 14;
 const CANONICAL_DECODE_ITEM_STAGE_COUNT_V1 = 4;
 const EXPECTED_ROW_COUNT =
   VALIDATION_TRACE_RESOLVER_COUNT_V1 +
@@ -171,7 +171,7 @@ const findRow = (
 };
 
 describe("resolver proof-fit sweep V1", () => {
-  it("sweeps exactly 105 rows across all four resolver categories, with honest per-row coverage for every registry entry, including both direct resolvers", () => {
+  it("sweeps exactly 122 rows across all four resolver categories, with honest per-row coverage for every registry entry, including both direct resolvers", () => {
     expect(artifact.rowCount).toBe(EXPECTED_ROW_COUNT);
     expect(artifact.rows).toHaveLength(EXPECTED_ROW_COUNT);
     expect(artifact.categoryCounts).toEqual({
@@ -275,8 +275,8 @@ describe("resolver proof-fit sweep V1", () => {
       }
     }
 
-    // The 105-row registry currently closes 10 rows to a genuine harness
-    // accept and reports the remaining 95 honestly in `unfit[]`, each with
+    // The 122-row registry currently closes 10 rows to a genuine harness
+    // accept and reports the remaining 112 honestly in `unfit[]`, each with
     // a specific per-row reachability reason (see the module doc comment).
     // That gap is recorded evidence, not a standing failure: this pins the
     // *exact* unfit set (count plus every category/index/reason identity)
