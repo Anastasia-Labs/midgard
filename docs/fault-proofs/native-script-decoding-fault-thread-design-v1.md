@@ -220,9 +220,11 @@ Both directions:
   (`onchain/aiken/lib/midgard/validation-machine-v1.ak:6398-6407`). The
   descriptor value (`onchain/aiken/lib/midgard/ledger-output-commitment-v1.ak:31-48`)
   carries the fields the scan needs: `reference_script_language` (-1 / 0 / 3 /
-  128), `reference_script_offset` / `total_length`, and the 32-byte
-  `item_commitment` chunk commitment over the full output bytes (4095-byte
-  chunks, `onchain/aiken/lib/midgard/bounded-item-v1.ak:12`).
+  128), `reference_script_total_length` (the byte offset lives in the
+  output-scan control, `output_scan.reference_script_offset`,
+  `ledger-output-proof-v1.ak:109-110`, not in this descriptor), and the
+  32-byte `item_commitment` chunk commitment over the full output bytes
+  (4095-byte chunks, `onchain/aiken/lib/midgard/bounded-item-v1.ak:12`).
 - **The resolved-outpoint coordinate system.** Ordinals over resolved
   outpoints are in **field order**: spend inputs (field 0) in committed
   order, then reference inputs (field 1) in committed order — ordinal ∈
@@ -349,8 +351,16 @@ Direction B additionally:
   (`ledger-output-commitment-v1.ak:113-133`); nothing caps a reference
   script's `total_length` at 16,384. The 16,384 cap rides the **same
   format-revision wave** as the forced-leaf amendment (ruled 2026-08-24;
-  §8). Until it lands, the §2.3 shortcut stays conditional and the thread
-  scans rather than assumes.
+  §8). **Exact conjunct (readiness-review resolution):**
+  `descriptor.reference_script_total_length <= 16_384` added inside
+  `reference_script_is_well_formed`
+  (`ledger-output-commitment-v1.ak:90-109`), applying **only when
+  `reference_script_language == 0`** (the native tag — the cap exists for
+  the §2.3 scan lemma; it deliberately imposes no new size rule on Plutus
+  reference scripts, languages 3/128). The field is
+  `reference_script_total_length`, not the whole-output `total_length`
+  (`:118`). Until it lands, the §2.3 shortcut stays conditional and the
+  thread scans rather than assumes.
 
 ### 2.3 Bounds-unreachability lemma (context, not a shortcut)
 
@@ -498,10 +508,16 @@ hash:
   (§4.5, design note 3) rules the other way — **retire** the five
   rejection arms of `MidgardTxValidity` from the forced leaf in the same
   wave (the full `RejectionReasonV1` subsumes them, and the arm choice is
-  unadjudicated by today's `forced_verdict_matches` anyway), keeping
-  `coarse_bucket_of` only as a transition bridge for frozen off-chain
-  consumers. This design **adopts the catalogue's recommendation and
-  withdraws the widening** (§8, §9 Q1 residuals).
+  unadjudicated by today's `forced_verdict_matches` anyway). This design
+  **adopts the catalogue's recommendation and withdraws the widening**
+  (§8, §9 Q1 residuals). **Disposition of `coarse_bucket_of`
+  (readiness-review resolution, 2026-08-24):** with the rejection arms
+  retired in the same wave, the map's codomain degenerates to
+  `TxIsInvalid`, so `coarse_bucket_of` is **not shipped as onchain code**.
+  It survives only as the catalogue §5.2 documented table — the migration
+  reference for off-chain consumers leaving the old six-code vocabulary,
+  which are updated in the same wave. The only shipped onchain bridge is
+  `rejection_code_of` (a).
 - **(c) `forced_verdict_matches` extended.** Today it couples the leaf's
   coarse validity to the descriptor verdict
   (`validation-claim-v1.ak:204-212`). The extension requires, on the
@@ -511,6 +527,20 @@ hash:
   `hash_rejection_code(rejection_code_of(reason)) ==
   descriptor.rejection_code_hash`; `ForcedTxValid` ⇒
   `descriptor.verdict == Accepted`.
+- **Module hosting (readiness-review resolution, 2026-08-24).** A new
+  module `onchain/aiken/lib/midgard/rejection-reason-v1.ak` hosts
+  `RejectionReasonV1`, `OperatorVerdictV1`, `rejection_code_of`, and the
+  **canonical `pub` definitions of the 19 `E_*` byte constants**;
+  `validation-machine-v1.ak` replaces its private `const reject_*` copies
+  with imports from the new module (identical byte values — the machine's
+  encodings are unchanged; the wave's ABI gate verifies descriptor/machine
+  byte-identity). This direction avoids an import cycle:
+  `ledger-state.ak` imports the types from the new module,
+  `validation-claim-v1.ak` imports `rejection_code_of`, and the new module
+  imports nothing from either. If the implementer finds a cycle regardless,
+  the fallback is `pub`-ing the constants in place in
+  `validation-machine-v1.ak` and importing them from the new module —
+  never duplicating the byte literals.
 
 #### 2.4.3 Leaf-validity authoritativeness (NEW, same wave; follow-up ruling 2026-08-24)
 
@@ -540,12 +570,20 @@ to it — full stop, no descriptor path, gated on the wave like direction B.
   cross-root opening**: the two validation sources open disjoint roots
   (§2.1, `validation-claim-v1.ak:233` vs `:254`), forced transactions do
   not appear in `transactions_root`, and the forced leaf is self-contained
-  — verdict and transaction bytes travel together. The predicate's shape is
-  unchanged by the catalogue adoption — it composes `coarse_bucket_of`,
-  which is now the catalogue's §5.2 47-arm map. If the same wave also
-  retires `MidgardTxValidity`'s rejection arms (catalogue C-3; §2.4.2(b),
-  §8), the embedded scalar's rejecting vocabulary collapses and (e)'s
-  right-hand side simplifies with it — a wave detail, not a design change.
+  — verdict and transaction bytes travel together. **Post-wave final form
+  (readiness-review resolution, 2026-08-24).** The same wave retires
+  `MidgardTxValidity`'s five rejection arms (catalogue C-3; §2.4.2(b), §8),
+  so the normative post-wave state is: `MidgardTxValidity = TxIsValid |
+  TxIsInvalid`; the compact wire scalar takes exactly two values (0 =
+  valid, 1 = invalid); `expect_validity_code` bounds shrink to 0..1 and
+  `validity_from_code` / `validity_to_code` shrink with them
+  (`codec.ak:25-56` — this changes the canonical compact bytes, in-wave
+  like everything else). Predicate (e)'s final right-hand side is therefore
+  the bit equality — `ForcedTxValid` ⇒ `validity_code == 0`;
+  `ForcedTxInvalid { _ }` ⇒ `validity_code == 1` — with **no onchain
+  composition of `coarse_bucket_of`** (whose codomain is degenerate once
+  the arms retire; see §2.4.2(b)). Predicate (d) is unchanged
+  (`validity_code == 0`).
 - **Placement.** Both predicates run in `verify_source_authentication`
   (`validation-claim-v1.ak:215-265`), which executes on every claim via
   `committed_claim_source_is_authenticated` (`:383-392`) and **already
@@ -1082,14 +1120,18 @@ the current zero-blueprint-movement wave) carries: the in-place
 **47-arm** `RejectionReasonV1` (normative inventory:
 `rejection-reason-catalogue-v1.md` §5; shape in §2.4.1; in place because
 nothing is deployed and the house rule is no compat shims — no V2
-side-by-side type), the three consistency predicates
-(`rejection_code_of`, `coarse_bucket_of`, and the `forced_verdict_matches`
-extension, §2.4.2), the 16,384 `total_length` cap folded in from old OPEN
-B-2 (§2.2), and the two **leaf-validity authoritativeness predicates**
-(§2.4.3, follow-up ruling 2026-08-24: Normal-source `validity_code ==
-TxIsValid` and Forced-source `validity_code ==
-validity_to_code(coarse_bucket_of(reason))`, both in
-`verify_source_authentication`). The descriptor format
+side-by-side type), the consistency machinery
+(`rejection_code_of` and the `forced_verdict_matches`
+extension, §2.4.2; `coarse_bucket_of` is a documented table only,
+§2.4.2(b)), the reference-script `total_length` cap folded in from old
+OPEN B-2 — the exact conjunct is `reference_script_total_length <= 16_384`
+**when `reference_script_language == 0`** (native only; no new size rule
+for Plutus reference scripts), added in `reference_script_is_well_formed`
+(`ledger-output-commitment-v1.ak:90-109`) — and the two **leaf-validity
+authoritativeness predicates**
+(§2.4.3, follow-up ruling 2026-08-24: Normal-source `validity_code == 0`
+and Forced-source verdict-bit equality per (e)'s post-wave final form,
+both in `verify_source_authentication`). The descriptor format
 (`ValidationTraceDescriptorV1`) and the machine-state format
 (`ValidationMachineStateV1`) stay **frozen**; the only bridge to them is
 `hash_rejection_code(rejection_code_of(reason)) ==
@@ -1114,8 +1156,10 @@ of the rejection-reason catalogue bind the same wave:
   note 3).** The same wave should retire the five rejection arms of
   `MidgardTxValidity` from the forced leaf — the full reason subsumes them,
   and today's `forced_verdict_matches` never adjudicated the arm choice
-  anyway — keeping `coarse_bucket_of` only as a transition bridge for
-  frozen off-chain consumers. This supersedes this document's earlier
+  anyway. The enum shrinks to `TxIsValid | TxIsInvalid` (wire scalar 0/1;
+  §2.4.3(e) post-wave final form); `coarse_bucket_of` is a documented table
+  only (§2.4.2(b)); off-chain consumers of the six-code vocabulary are
+  updated in the same wave. This supersedes this document's earlier
   `MalformedTx`-widening recommendation (§2.4.2(b)).
 - **The stall concern is RESOLVED by owner ruling (2026-08-24): the
   forced-order door already excludes stall-class preimages.** The L1
@@ -1220,8 +1264,8 @@ Numbered; each with a recommendation.
    ruling (2026-08-24).** The interim descriptor binding is removed; the
    tx-leaf validity is made authoritative by the §2.4.3 format-wave
    predicates — (d) Normal arm: `verified.tx_compact.validity_code == 0`,
-   (e) Forced arm: leaf verdict ↔ embedded scalar via
-   `validity_to_code(coarse_bucket_of(reason))` — both placed in
+   (e) Forced arm: leaf verdict ↔ embedded scalar as the post-wave bit
+   equality (§2.4.3(e) final form) — both placed in
    `verify_source_authentication` (`validation-claim-v1.ak:215-265`), where
    the compact bytes are already decoded on every claim, so the cost is two
    field equalities. Direction A binds the acceptance claim on the one leaf
@@ -1257,11 +1301,16 @@ Numbered; each with a recommendation.
 10. **Dispute-side code register (catalogue OPEN C-1) — RULED by owner
     (2026-08-24): in the format wave.**
     `docs/spec/midgard-tx.md` carries no dispute-side rejection-code table
-    (its sections end at §11 — catalogue §4.1), so nothing normative
-    outside the catalogue names the reason space. The format wave (#640)
-    adds the register to the tx spec (or has the spec normatively reference
-    `rejection-reason-catalogue-v1.md` §5), so the leaf schema, the machine
-    codes, and the spec cannot drift apart.
+    (the earlier "no §12" phrasing here and in catalogue §4.1 is stale —
+    the spec gained §12 "Fault statements" before this audit), so nothing
+    normative outside the catalogue names the reason space.
+    **Execution form (readiness-review resolution):** the format wave
+    (#640) adds a **new §13** to the tx spec, "Dispute-side rejection-code
+    register", that lists the 19 `E_*` wire labels inline and
+    **normatively incorporates by reference** the catalogue's §5 arm
+    inventory and §6 type (one source of truth for the 47 arms — no
+    duplicated arm table, so the leaf schema, the machine codes, and the
+    spec cannot drift apart).
 11. **Stall conditions vs forced verdicts (catalogue OPEN C-2) —
     RESOLVED by owner ruling (2026-08-24).** Machine guardrails written as
     bare step-relation conjuncts (oversized field-6 script items, the

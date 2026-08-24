@@ -25,7 +25,7 @@ transaction. The frame this catalogue serves (owner rulings through
   `operator_validity` through `forced_verdict_matches`
   (`validation-claim-v1.ak:204-213`, applied at `:302-310`). The forced leaf is
   `ForcedInclusionTxV1 { tx_id, source, operator_validity }`
-  (`onchain/aiken/lib/midgard/ledger-state.ak:541-545`), committed under
+  (`onchain/aiken/lib/midgard/ledger-state.ak:540-543`), committed under
   `header.forced_transactions_root` (`ledger-state.ak:62`).
 - **Forced txs are full unrestricted L2 native txs**: nine field slots
   including `script_witnesses` (field 6) and `redeemers` (field 8)
@@ -421,12 +421,15 @@ precisely so that this carve-out contaminates nothing else.
 
 ### 4.1 The spec's dispute-side rejection codes
 
-`docs/spec/midgard-tx.md` has **no §12**; its sections end at §11
-("Intra-item access"). There is no dispute-side rejection-code table in the
+`docs/spec/midgard-tx.md` ends at §12 ("Fault statements",
+`docs/spec/midgard-tx.md:2780` — an earlier draft of this section claimed
+"no §12"; corrected 2026-08-24). There is no dispute-side rejection-code table in the
 tx-format spec to check against. **(C-1) — RULED by owner (2026-08-24)**:
-the spec gains the rejection-code register this catalogue proposes (or
-normatively references this catalogue's §5) in the same format-revision wave
-(#640).
+the spec gains a **new §13**, "Dispute-side rejection-code register", in the
+same format-revision wave (#640): the 19 `E_*` wire labels listed inline,
+with this catalogue's §5 arm inventory and §6 type normatively incorporated
+by reference (one source of truth for the 47 arms — no duplicated arm
+table).
 
 ### 4.2 The mempool code set vs the machine
 
@@ -488,8 +491,8 @@ prove from that state) or to commit an unprovable trace — both of which a
 challenger can attack, but neither of which the operator can avoid. Whether
 these shapes are excluded upstream — by the L1 forced-order publication path
 (`docs/spec/midgard-tx.md` §8.11 forced-order material carriage) refusing to
-finalize an order whose preimages violate them — was **not verified in this
-audit**. Resolution options are in design note 6.
+finalize an order whose preimages violate them — was not verified in the
+original audit; the question is now settled by the ruling immediately below.
 
 **Resolution (owner ruling, 2026-08-24).** The forced-order door **does**
 exclude these preimages: an order whose material violates the guardrails
@@ -517,7 +520,7 @@ retained for totality with the machine as written; see design note 5.
 
 ### 4.5 The coarse-verdict bridge is under-specified today
 
-`MidgardTxValidity` (`ledger-state.ak:483-491`, marked `// TODO`) has five
+`MidgardTxValidity` (`ledger-state.ak:484-492`, marked `// TODO`) has five
 rejection arms: `NonExistentInputUtxo`, `InvalidSignature`, `FailedScript`,
 `FeeTooLow`, `UnbalancedTx`. Two findings:
 
@@ -532,14 +535,20 @@ rejection arms: `NonExistentInputUtxo`, `InvalidSignature`, `FailedScript`,
   `E_EMPTY_INPUTS`, `E_DUPLICATE_INPUT_IN_TX`,
   `E_INVALID_VALIDITY_INTERVAL_FORMAT`, `E_NETWORK_ID_MISMATCH`,
   `E_VALIDITY_INTERVAL_MISMATCH`, `E_INVALID_OUTPUT`) — none of the five arms
-  says "malformed". **OPEN (C-3)**; the proposal's `coarse_bucket_of` (§6.3)
+  says "malformed". **(C-3) — RULED (2026-08-24): the rejection arms retire
+  in the format wave** (design note 3 adopted; §5.2 status note); the
+  proposal's `coarse_bucket_of` (§5.2)
   makes a documented convention total, and design note 3 recommends the arm
   set be revised (or retired) in the same wave that lands the verdict
   restructure.
 
 ## 5. Proposed `RejectionReasonV1`
 
-**47 constructors** from the 19 raw codes. Grouping mirrors the phase order.
+**47 constructors** from the 19 raw codes. Grouping mirrors the phase order
+— and the declaration order of the §6 Aiken block is **wire-normative**: it
+fixes the Plutus Data constructor indices of the forced leaf. Do not
+reorder, insert, or remove constructors except through a leaf-schema format
+revision (design note 1).
 Coordinate conventions, used by every payload comment:
 
 - *field ordinal*: the §2.5 slot index 0–8;
@@ -743,6 +752,14 @@ the table.)
 
 ### 5.2 `coarse_bucket_of` — the total map to `MidgardTxValidity`
 
+**Status (readiness-review resolution, 2026-08-24): documented table only —
+not shipped as onchain code.** The same wave retires the enum's five
+rejection arms (design note 3 adopted; `MidgardTxValidity = TxIsValid |
+TxIsInvalid`, wire scalar 0/1), which degenerates this map's codomain to
+`TxIsInvalid`. The table below remains as the migration reference for
+off-chain consumers leaving the old six-code vocabulary (updated in the same
+wave); the only shipped onchain bridge is `rejection_code_of` (§5.1).
+
 A documented convention (the enum offers no "malformed" arm — §4.5; the
 convention routes every structural fault through `FailedScript`'s neighbor
 semantics **except** where a more truthful arm exists):
@@ -836,10 +853,11 @@ Cost classes and single-party status are §3's; phases are §1's.
    (§4.5). The five-arm enum cannot express the structural family, its arm
    choice is unadjudicated by `forced_verdict_matches`, and once
    `OperatorVerdictV1` carries the full reason the coarse arm is redundant on
-   the forced leaf. *Recommendation*: retire the rejection arms of
-   `MidgardTxValidity` from the forced leaf (keep `TxIsValid`-equivalent
-   semantics inside `OperatorVerdictV1`), keeping `coarse_bucket_of` only for
-   frozen off-chain consumers during the transition.
+   the forced leaf. *Recommendation — adopted (2026-08-24)*: retire the
+   rejection arms of `MidgardTxValidity`; the enum shrinks to
+   `TxIsValid | TxIsInvalid` (wire scalar 0/1) and `coarse_bucket_of`
+   survives only as the §5.2 documented table for off-chain consumers
+   migrating in the same wave.
 4. **Scan-position payloads were considered and dropped.** For the
    native-script/output/redeemer scan arms a byte cursor of the offending
    token is knowable, but it is an *argument* (recomputable by the
