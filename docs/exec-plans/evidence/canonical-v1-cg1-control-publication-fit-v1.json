@@ -1,18 +1,12 @@
 {
   "schemaVersion": "midgard-canonical-v1-cg1-control-publication-fit-v1",
-  "goalIds": [
-    "CG1"
-  ],
+  "goalIds": ["CG1"],
   "acceptance": "Every parameterized hub/control validator fits a real 16,384-byte publication transaction; evidence is bound to final validator hashes.",
   "waivers": [],
   "createsC70Snapshots": false,
   "liveOrReadinessClaims": 0,
   "dependencyFreshness": {
-    "dependsOn": [
-      "C11",
-      "C12",
-      "C13"
-    ],
+    "dependsOn": ["C11", "C12", "C13"],
     "recordedIn": {
       "path": "GOAL_PROGRESS.md",
       "heading": "## #479 (B02, C10-C13 + CG1) measured: four sub-gates PASS, CG1's aggregate verifier was never built (2026-08-17)"
@@ -552,7 +546,30 @@
       "surface": "exclusions[0] (V1 validation-trace CEK direct resolver) and docs/exec-plans/evidence/necessity/cek-program-material-v1.md",
       "measured": "The exclusion's justification -- an applied cek_v1 direct-resolver body of 162,145 bytes that no 16,384-byte publication transaction can carry -- is bound to the pre-wave blueprint. #620 retired the direct wire and fraud_proofs/validation_trace/cek_v1.main.spend collapsed from 161,957 unapplied bytes (hash 0405be42...) to 5,307 unapplied bytes (hash bc0d94d5...) before this regeneration ran, so an applied body of that size now fits the L1 envelope with room to spare. The pinned appliedScriptHash a4bfbd01... and the 162,145/162,660/-146,276 byte triple are therefore stale.",
       "whyNotRepairedHere": "Correcting it is not a mechanical re-pin. This gate requires the single exclusion to measure above 16,384 bytes 'otherwise it belongs in the roster, not the exclusions', so the correct value decides whether the role joins nodeRuntimeReferenceScriptTargets -- a runtime roster and deployment-manifest change -- and the same numbers are pinned in an owner-signed necessity document. Both belong to the #617 sign-off, not to the mechanical regeneration pass.",
-      "owner": "#617 sign-off (CG1 / P1 oversized-validator gate / cek-program-material necessity doc)"
+      "owner": "#617 sign-off (CG1 / P1 oversized-validator gate / cek-program-material necessity doc)",
+      "remeasured": {
+        "issue": "#623 (owner ruling 2026-08-22: re-measure once, against the post-#617-wave regenerated blueprint)",
+        "atCommit": "9c971ae74b0878fcc3633f187fa07c6f6c7f2b59",
+        "date": "2026-08-23",
+        "blueprintMd5": "66426a3af44236a2ad3ded1b03f8fdcf",
+        "validatorCount": 444,
+        "method": "The exclusion target was published through exactly this artifact's own method: the real contracts bundle from loadRealMidgardContractsForTest at this artifact's fixed all-zero one-shot outref, the applied CEK direct resolver taken as buildFaultProofContracts(...).validationTraceDispute.prepareResolvers[11] at the deployment's own hubOracle / fraudProofCatalogue policy ids, published through completeReferenceScriptPublicationTxProgram, signed, measured as complete signed CBOR, then submitted and confirmed on a Lucid Emulator whose maxTxSize is pinned to the real 16,384-byte L1 limit. The driver was a transient lane-N file, deliberately not committed: committing it would add a second publication-fit driver alongside tests/scratch-cg1-publication-fit.test.ts for a role that is not in the roster, and whether the role joins the roster is the open question below, not this measurement's to decide.",
+        "unappliedScript": {
+          "title": "fraud_proofs/validation_trace/cek_v1.main.spend",
+          "bytes": 5307,
+          "hash": "bc0d94d556a172f3090a25b5d3f5707c27e10d5d1ea8cabf998f77ab"
+        },
+        "appliedScriptHash": "0388dc27438025a6f20e9b6077c1d37b08e482cc5b53c1b7a7de9d28",
+        "serializedScriptBytes": 5471,
+        "completeSignedTransactionBytes": 5984,
+        "l1ByteMarginBytes": 10400,
+        "feeLovelace": 418853,
+        "fits": true,
+        "submitted": "Accepted and confirmed by the emulator at maxTxSize 16,384; exactly one live reference-script UTxO at output index 1.",
+        "versusPinnedExclusion": "The pinned exclusion records appliedScriptHash a4bfbd01..., 162,145 applied bytes, 162,660 signed bytes and an L1 margin of -146,276. Re-measured against the regenerated blueprint the same role is 5,471 applied bytes, 5,984 signed bytes and an L1 margin of +10,400 -- it fits the publication envelope with 10,400 bytes to spare, and does so by real submission rather than by arithmetic.",
+        "decisionNotTakenHere": "exclusions[0] is left exactly as pinned. This gate requires its single exclusion to measure above 16,384 bytes, so replacing the triple with the measured one would make the exclusion self-contradictory; and the consequence of the role fitting is that it belongs in nodeRuntimeReferenceScriptTargets -- a runtime roster plus deployment-manifest movement, with the same numbers restated in the owner-signed cek-program-material necessity document and in the GOAL_PROGRESS.md ledger quote ('162,660 signed bytes, L1 margin -146,276'), both owner-owned surfaces. Per #623's ruling the executing lane brings the measured basis to the owner rather than editing them. Measurement delivered; the exclusion decision is the owner's.",
+        "rosterReproduction": "The 34 roster rows above were re-measured in the same pass (pnpm --dir demo/midgard-node exec vitest run tests/scratch-cg1-publication-fit.test.ts, MIDGARD_CG1_EMIT set) and reproduced byte-for-byte: every appliedScriptHash, serializedScriptBytes, completeSignedTransactionBytes, l1ByteMarginBytes and feeLovelace is identical to the pinned row. The only per-run difference is txHash, which the gate does not read and which the emulator derives from run-specific wallet seeds; the roster's fit claims are therefore reproducible and its transaction hashes are not."
+      }
     }
   ]
 }

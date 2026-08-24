@@ -1,0 +1,260 @@
+{
+  "schema": "midgard.transition-trace-descriptor-exunits-frontier.v1",
+  "version": 1,
+  "issue": "#628 — the descriptor repoint's carried sign-off item: 'the deposit arm's ExUnits are not unconditional (l2_datum is unbounded); both arms' frontiers get measured and recorded post-regeneration'. Carried to the #617 sign-off checklist.",
+  "purpose": "Post-regeneration ExUnits readings for the two arms #628 repointed onto LedgerOutputCommitmentV1 — validate_valid_deposit_transition (deposit) and apply_l2_outputs (L2) — plus the isolated descriptor derivation they both pay for, taken across the output sizes the tree already pins. It records what the arms cost and where the cost crosses the execution basis. It is a measurement record, not a gate: see `gatingStatus`.",
+  "basis": {
+    "memoryUnits": 13200000,
+    "cpuUnits": 8000000000,
+    "source": "GOAL_SPEC §3.3, as exported by GOAL_SPEC_EXECUTION_BASIS_V1 in onchain/aiken/scripts/exec-ledger-within-basis-v1.mjs — 20% margin off the supported L1 floor MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits of 16,500,000 mem.",
+    "retiredFigure": "#628's original note compared against an 11.2M reserve ceiling. That figure is retired; every judgement in this artifact is made at the §3.3 basis above."
+  },
+  "measurement": {
+    "atCommit": "9c971ae74b0878fcc3633f187fa07c6f6c7f2b59",
+    "date": "2026-08-23",
+    "compiler": {
+      "binary": "/home/gumbo/playground/aiken/target/release/aiken",
+      "version": "aiken v1.1.23+2a78108",
+      "md5": "b3acfdf348235798cb6b921d0f87750a"
+    },
+    "blueprint": {
+      "path": "onchain/aiken/plutus.json",
+      "md5": "66426a3af44236a2ad3ded1b03f8fdcf",
+      "validatorCount": 444,
+      "note": "The blueprint is not an input to an `aiken check` reading; it is recorded so the reading is bound to the same regenerated source tree the #617 wave signs off."
+    },
+    "harness": "Every reading is taken through onchain/aiken/scripts/run-focused-check.mjs, the repo's mandated reading path: it asserts the collected module is the one asked for and that every selected test passed, so a row for a test that did not run — or one that did not pass — cannot appear here. No reading was taken by spawning Aiken directly.",
+    "commands": [
+      "MIDGARD_AIKEN_BIN=<fork> node scripts/run-focused-check.mjs midgard/ledger_output_descriptor_v1.test builds_no_reference_output_exactly builds_small_datum_output_exactly builds_small_reference_output_exactly builds_native_reference_script_output_exactly builds_rich_multi_chunk_output_exactly the_output_index_is_bound_into_the_value",
+      "MIDGARD_AIKEN_BIN=<fork> node scripts/run-focused-check.mjs midgard/fraud_proofs/transition_trace/proof.test accepts_valid_deposit_transition_fault rejects_valid_deposit_transition_with_arbitrary_projected_output accepts_valid_l2_transaction_no_op_transition_fault l2_descriptor_dispute_over_a_descriptor_ledger_mints rejects_l2_transaction_when_trace_matches_expected_post_root accepts_omitted_due_deposit_fault accepts_out_of_window_deposit_fault"
+    ],
+    "runs": [
+      {
+        "command": 0,
+        "exitStatus": 0,
+        "wallClockSeconds": 5.48,
+        "peakResidentKbytes": 562048,
+        "memoryCap": "systemd-run --user --scope -p MemoryMax=14G -p MemorySwapMax=0"
+      },
+      {
+        "command": 1,
+        "exitStatus": 0,
+        "wallClockSeconds": 9.5,
+        "peakResidentKbytes": 604112,
+        "memoryCap": "systemd-run --user --scope -p MemoryMax=14G -p MemorySwapMax=0"
+      }
+    ],
+    "determinism": "The descriptor rows were taken twice in two separate invocations and reproduced to the unit."
+  },
+  "readingKind": "Aiken `check` reports execution units for the whole test, including the fixture the test builds in-process. Every row below is therefore an upper bound on what its arm costs on chain, not the validator's own figure. That is the same reading the tree's other execution ledgers pin and judge basisFit on (native-tx-q31/q21/q1x, the §8.10 carriage ledger), so the comparison against the §3.3 basis is convention-consistent — but the transition-trace rows build MPF roots and CBOR fixtures inline and carry materially more fixture cost than the small door-opening rows those ledgers record. Separating validator cost from fixture cost needs purpose-built vectors; see `notMeasuredHere`.",
+  "descriptorDerivation": {
+    "module": "midgard/ledger_output_descriptor_v1.test",
+    "subject": "ledger_output_descriptor_v1.ledger_value_v1(output_index, output_cbor) — the one-shot §5.3 descriptor builder both repointed arms call. This is the cost that scales with the deposit arm's unbounded l2_datum.",
+    "rows": [
+      {
+        "test": "builds_no_reference_output_exactly",
+        "outputCborBytes": 37,
+        "shape": "protected script address, zero lovelace, no assets, no datum, no reference script",
+        "mem": 3473129,
+        "cpu": 1521859855,
+        "memPercentOfBasis": 26.31,
+        "cpuPercentOfBasis": 19.02,
+        "basisFit": "within"
+      },
+      {
+        "test": "builds_small_datum_output_exactly",
+        "outputCborBytes": 42,
+        "shape": "the same output carrying a 3-byte inline datum",
+        "mem": 4322073,
+        "cpu": 1847446361,
+        "memPercentOfBasis": 32.74,
+        "cpuPercentOfBasis": 23.09,
+        "basisFit": "within"
+      },
+      {
+        "test": "builds_small_reference_output_exactly",
+        "outputCborBytes": 44,
+        "shape": "PlutusV3 reference script",
+        "mem": 4272305,
+        "cpu": 1841057882,
+        "memPercentOfBasis": 32.37,
+        "cpuPercentOfBasis": 23.01,
+        "basisFit": "within"
+      },
+      {
+        "test": "builds_native_reference_script_output_exactly",
+        "outputCborBytes": 74,
+        "shape": "native reference script at the top of the output-index domain",
+        "mem": 4273951,
+        "cpu": 1844539712,
+        "memPercentOfBasis": 32.38,
+        "cpuPercentOfBasis": 23.06,
+        "basisFit": "within"
+      },
+      {
+        "test": "builds_rich_multi_chunk_output_exactly",
+        "outputCborBytes": 2355,
+        "shape": "two policies / three assets, 56-byte base address, ~2 KiB inline datum, PlutusV3 reference script; the only pinned vector whose bounded item spans more than one 4,095-byte chunk",
+        "mem": 16952326,
+        "cpu": 6952720474,
+        "memPercentOfBasis": 128.43,
+        "cpuPercentOfBasis": 86.91,
+        "basisFit": "exceeds",
+        "exceedsBy": {
+          "mem": 3752326,
+          "cpu": 0
+        },
+        "note": "This is the reading #628 carried to the sign-off as '≈16.95M mem for a ~2.3 KiB output', confirmed post-regeneration at 16,952,326 mem on a 2,355-byte output. Memory is the binding constraint; CPU still fits."
+      },
+      {
+        "test": "the_output_index_is_bound_into_the_value",
+        "outputCborBytes": 37,
+        "shape": "the 37-byte vector at a second output index",
+        "mem": 3473630,
+        "cpu": 1522015904,
+        "memPercentOfBasis": 26.32,
+        "cpuPercentOfBasis": 19.03,
+        "basisFit": "within"
+      }
+    ],
+    "crossing": {
+      "measuredBracket": {
+        "largestWithin": {
+          "outputCborBytes": 74,
+          "mem": 4273951
+        },
+        "smallestExceeding": {
+          "outputCborBytes": 2355,
+          "mem": 16952326
+        }
+      },
+      "interpolated": {
+        "memPerOutputByte": 5558.3,
+        "memoryCrossingOutputBytes": 1680,
+        "cpuPerOutputByte": 2239447,
+        "cpuCrossingOutputBytes": 2822,
+        "status": "INTERPOLATED, NOT MEASURED",
+        "why": "Only two points bracket the crossing and both are pinned cross-language golden vectors, so the slope between them is a straight-line estimate over a region no reading covers. A measured crossing needs new Aiken vectors that sweep l2_datum size programmatically (guardrail 3: built by a builder function at runtime, never as a giant source literal). That is an .ak change, which this evidence-only lane does not make."
+      },
+      "boundingConstraint": "memory"
+    }
+  },
+  "arms": {
+    "module": "midgard/fraud_proofs/transition_trace/proof.test",
+    "rows": [
+      {
+        "arm": "deposit",
+        "test": "accepts_valid_deposit_transition_fault",
+        "subject": "validate_valid_deposit_transition — inserts the derived descriptor under the deposit out-ref key",
+        "depositShape": "sample_deposit_info with l2_datum: None — the minimal deposit output the arm admits",
+        "mem": 12776094,
+        "cpu": 5770576874,
+        "memPercentOfBasis": 96.79,
+        "cpuPercentOfBasis": 72.13,
+        "basisFit": "within",
+        "memoryHeadroom": 423906,
+        "note": "The arm's cheapest reachable shape already sits at 96.8% of the memory basis, leaving 423,906 mem of headroom for everything l2_datum adds. Read against the descriptor slope above (~5.6K mem per output byte) that headroom is on the order of tens of bytes of extra datum, which is what #628 means by 'the deposit arm's ExUnits are not unconditional'."
+      },
+      {
+        "arm": "deposit",
+        "test": "rejects_valid_deposit_transition_with_arbitrary_projected_output",
+        "subject": "the arm's refusal path — the witness value is bound to the derivation, so a prover-named projected output is refused",
+        "mem": 6766419,
+        "cpu": 3107544173,
+        "memPercentOfBasis": 51.26,
+        "cpuPercentOfBasis": 38.84,
+        "basisFit": "within"
+      },
+      {
+        "arm": "l2",
+        "test": "accepts_valid_l2_transaction_no_op_transition_fault",
+        "subject": "apply_l2_outputs — inserts the derived descriptor for each produced output",
+        "outputShape": "one spent and one produced Ada-only output (1,000,000 lovelace, no assets, no datum, no reference script) — two descriptor derivations, the ~2 Ada-only outputs #628 records the arm topping out at",
+        "mem": 15279779,
+        "cpu": 6870905597,
+        "memPercentOfBasis": 115.76,
+        "cpuPercentOfBasis": 85.89,
+        "basisFit": "exceeds",
+        "exceedsBy": {
+          "mem": 2079779,
+          "cpu": 0
+        }
+      },
+      {
+        "arm": "l2",
+        "test": "l2_descriptor_dispute_over_a_descriptor_ledger_mints",
+        "subject": "the honest half of #628's pair — a descriptor-valued dispute over a descriptor-built ledger mints",
+        "mem": 15239324,
+        "cpu": 6859051474,
+        "memPercentOfBasis": 115.45,
+        "cpuPercentOfBasis": 85.74,
+        "basisFit": "exceeds",
+        "exceedsBy": {
+          "mem": 2039324,
+          "cpu": 0
+        }
+      },
+      {
+        "arm": "l2",
+        "test": "rejects_l2_transaction_when_trace_matches_expected_post_root",
+        "subject": "the arm's no-fault path",
+        "mem": 15276289,
+        "cpu": 6869610306,
+        "memPercentOfBasis": 115.73,
+        "cpuPercentOfBasis": 85.87,
+        "basisFit": "exceeds",
+        "exceedsBy": {
+          "mem": 2076289,
+          "cpu": 0
+        }
+      },
+      {
+        "arm": "deposit",
+        "test": "accepts_omitted_due_deposit_fault",
+        "subject": "a deposit fault that never derives a descriptor — the control that shows the readings above are descriptor-derivation cost and not fixed arm overhead",
+        "mem": 353906,
+        "cpu": 212211159,
+        "memPercentOfBasis": 2.68,
+        "cpuPercentOfBasis": 2.65,
+        "basisFit": "within"
+      },
+      {
+        "arm": "deposit",
+        "test": "accepts_out_of_window_deposit_fault",
+        "subject": "the second non-deriving deposit control",
+        "mem": 412233,
+        "cpu": 260702489,
+        "memPercentOfBasis": 3.12,
+        "cpuPercentOfBasis": 3.26,
+        "basisFit": "within"
+      }
+    ],
+    "reading": "Both arms are memory-bound, never CPU-bound: every row fits the 8,000,000,000 cpu basis and the three that exceed do so on memory alone. The two non-deriving deposit controls cost under 3.2% of the basis, so essentially all of the 12.8M–15.3M the deriving rows spend is descriptor derivation plus the fixture that feeds it, not fixed arm overhead."
+  },
+  "notMeasuredHere": [
+    "A measured crossing point for the deposit arm's l2_datum sweep. The two pinned descriptor vectors bracket it at 74 and 2,355 output bytes; every point between would be a new Aiken vector, which is an .ak change this evidence-only lane does not make.",
+    "The split between validator cost and in-test fixture cost for the transition-trace rows. Aiken reports whole-test units and these tests build their MPF fixtures inline; isolating the arm needs purpose-built vectors, same constraint as above.",
+    "Any re-pin, guard, or judgement change. Nothing in this artifact gates anything (see gatingStatus)."
+  ],
+  "gatingStatus": {
+    "gated": false,
+    "why": "The tree's execution-ledger verifiers cannot host these rows as they stand. The shared within-basis checker (onchain/aiken/scripts/exec-ledger-within-basis-v1.mjs) accepts only `basisFit: \"within\"` rows and fails by name on anything else, and four of the rows here exceed the memory basis. Hosting them needs either the richer carriage/q1x ledger shape or a new lane verifier plus its self-test — a new gate, which this evidence-only lane does not add.",
+    "escalated": "The question of which shape these rows should land in, and whether the #617 sign-off wants them gated, is raised with the wave orchestrator."
+  },
+  "adjacentMinorsVerifiedAtHead": [
+    {
+      "id": "tag-4-round-trip-no-longer-pinned",
+      "surface": "demo/midgard-fault-proofs/tests/transition-trace-challenger.test.ts:1192",
+      "statusAtHead": "CONFIRMED PRESENT, unchanged since bdcb7d16.",
+      "detail": "bdcb7d16 rewrote the it.each block formerly titled 'preserves the Aiken tag-4 output encoding for $label' into 'refuses to replay $label, which has no canonical ledger value'. The old body asserted that detectTransitionTraceFaults produced no l2_transaction_transition_matches_authenticated_replay detection for those shapes — i.e. that the tag-4 encoder round-tripped them byte for byte. The new body asserts a missingWitnessData rejection instead. The round-trip property is now only stated in the block's comment ('the Aiken tag-4 encoder neither reorders nor re-canonicalises them'); no assertion in the suite still pins it, and the case that lost the most coverage (opaque native-script bytes) was additionally split out into its own refusal test at :1233 documenting the parse_script_ref divergence, which is wave item 9 / #633.",
+      "measurementAdjacency": "It removes the only executable check that the tag-4 encoding is stable across the encoder, which is the input every descriptor reading in this artifact is derived from."
+    },
+    {
+      "id": "challenger-fixture-silent-descriptor-fallback",
+      "surface": "demo/midgard-fault-proofs/tests/transition-trace-challenger.test.ts:267 (ledgerTrieValue)",
+      "statusAtHead": "CONFIRMED PRESENT, unchanged since bdcb7d16.",
+      "detail": "ledgerTrieValue wraps buildCanonicalMidgardLedgerEntryOutputMaterialV1 in a bare try/catch that returns the raw output bytes on any throw. Its comment justifies this for fixtures that deliberately feed non-canonical outputs, which have no descriptor. The catch is untyped and unconditional, so a genuine regression in the descriptor encoder — for any fixture, not just the deliberately-malformed ones — silently rebuilds the fixture's utxos_root from full output bytes, which is exactly the pre-#628 shape the repoint removed, and the suite can still go green over it.",
+      "measurementAdjacency": "The same encoder is the off-chain twin of the on-chain builder every row in this artifact measures; a silent fallback means a cross-language divergence in it would not surface here."
+    }
+  ]
+}
