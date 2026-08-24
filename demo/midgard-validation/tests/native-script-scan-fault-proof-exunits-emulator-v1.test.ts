@@ -233,7 +233,7 @@ const buildBenchmarkCase = async (
     initialEntries: [{ outRef: spent, output: spentOutput }],
     operations: expectedLedgerOps,
   });
-   
+
   console.log(`[bench] building ${shape} ${nodes.toString()}-node trace…`);
   const trace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
@@ -418,7 +418,6 @@ const loadContracts =
         fraudProofCataloguePolicyId: FRAUD_PROOF_CATALOGUE_POLICY_ID,
       }),
     ).catch((error: unknown) => {
-       
       console.log(
         "[bench] contracts build failed:",
         inspect(error, { depth: 12 }),
@@ -542,11 +541,14 @@ const measureStep = async (
     // are raised so the harness records actual consumption instead of
     // aborting; every step is compared against the 13.2M/8B basis in the
     // report, not against these emulator caps.
+    // The mem ceiling must stay small enough that a divergent or runaway
+    // evaluation exhausts the BUDGET (a graceful over-budget error) before it
+    // exhausts wasm32 linear memory (an opaque `unreachable` trap).
     {
       ...PROTOCOL_PARAMETERS_DEFAULT,
       maxTxSize: 262_144,
-      maxTxExMem: 1_000_000_000n,
-      maxTxExSteps: 1_000_000_000_000n,
+      maxTxExMem: 100_000_000n,
+      maxTxExSteps: 200_000_000_000n,
     },
   );
   const lucid: LucidEvolution = await Lucid(emulator, "Custom");
@@ -655,7 +657,7 @@ const measureStep = async (
     }
   }
   const completeSignedBytes = signedCbor.length / 2;
-  return {
+  const measurement: StepMeasurement = {
     label: descriptor.label,
     stepIndex: descriptor.stepIndex,
     stage: descriptor.stage,
@@ -667,6 +669,12 @@ const measureStep = async (
     completeSignedBytes,
     l1ByteMargin: MAX_L1_PROOF_TX_BYTES - completeSignedBytes,
   };
+  // Logged immediately so a later step's failure cannot lose measured rows.
+   
+  console.log(
+    `[bench] measured ${descriptor.label}: mem=${mem.toString()} cpu=${cpu.toString()} txBytes=${completeSignedBytes.toString()} fee=${measurement.fee.toString()}`,
+  );
+  return measurement;
 };
 
 type CurvePointReport = {
@@ -696,17 +704,21 @@ const runCurvePoint = async (
   const countNativeStage = (stage: number): number =>
     nativeSteps.filter((step) => step.control.nativeScript?.stage === stage)
       .length;
-  const descriptors = selectSteps(benchmarkCase);
+  const stepFilter = (process.env.MIDGARD_SCAN_BENCH_STEPS ?? "")
+    .split(",")
+    .filter((part) => part !== "");
+  const descriptors = selectSteps(benchmarkCase).filter(
+    (descriptor) =>
+      stepFilter.length === 0 || stepFilter.includes(descriptor.label),
+  );
   const measurements: StepMeasurement[] = [];
   for (const descriptor of descriptors) {
-     
     console.log(
       `[bench] measuring ${shape} ${nodes.toString()} ${descriptor.label}`,
     );
     try {
       measurements.push(await measureStep(benchmarkCase, descriptor));
     } catch (error) {
-       
       console.log(
         `[bench] step ${descriptor.label} failed:`,
         inspect(error, { depth: 14 }),
@@ -780,11 +792,11 @@ describe("native-script scan fault-proof step ExUnits baseline (#633)", () => {
         for (const nodes of points) {
           const report = await runCurvePoint(shape, nodes);
           reports.push(report);
-           
+
           console.log(formatReport([report]));
         }
       }
-       
+
       console.log(formatReport(reports));
       const outPath = process.env.MIDGARD_SCAN_BENCH_OUT;
       if (outPath !== undefined && outPath !== "") {
