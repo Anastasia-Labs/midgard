@@ -129,16 +129,16 @@ export const MIDGARD_V1_ENVELOPE_MEASUREMENTS = Object.freeze({
   // The two review-mandated caveats that must ride these numbers, verbatim
   // from the #622 owner sign-off table:
   //   1. *Framing-relative*: 13,522/14,004 are measured under this fixture
-  //      family's journey framing (constant 1,926-1,927 bytes across all
+  //      family's journey framing (constant 1,926–1,927 bytes across all
   //      measured items). A different production framing shifts them by tens
-  //      of bytes - a routing-cost effect only; the pre-sign projection +
+  //      of bytes — a routing-cost effect only; the pre-sign projection +
   //      envelope gate are the operative guards and are proven live at
   //      14,005.
   //   2. *Quantization ladder*: signed observe size is nonmonotone near the
-  //      envelope (CBOR integer-width crossings in fee/change, +16/-4
-  //      jumps); no in-family item signs at exactly 16,384 - the usable
+  //      envelope (CBOR integer-width crossings in fee/change, +16/−4
+  //      jumps); **no in-family item signs at exactly 16,384** — the usable
   //      frontier is the contiguous 14,004. The 512-byte reserve absorbs the
-  //      <=16-byte wobble.
+  //      ≤16-byte wobble.
   //
   // The retired per-stage rows re-derive in the same pass, as the ruling
   // requires. At the reserve frontier the item-independent stages measure
