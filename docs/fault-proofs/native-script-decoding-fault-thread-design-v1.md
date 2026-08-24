@@ -8,7 +8,10 @@ binds wrongful rejections to the `ForcedInclusionTxV1` leaf under
 the which-outpoint amendment moves onto that leaf in place (pending a future
 format-revision wave), and both directions shed the machine-state preimages.
 Decisions below cited "ruled 2026-08-24" are settled; this document implements
-them.
+them. Revised again the same day to adopt the **47-arm rejection-reason
+catalogue** (`docs/fault-proofs/rejection-reason-catalogue-v1.md`, committed
+on this branch) as the normative arm inventory for `RejectionReasonV1`:
+§2.4.1 now defers to it instead of restating a reason type of its own.
 
 This document is the architecture and specification for a NEW standalone
 single-party fault-proof computation-thread family covering the native-script
@@ -83,16 +86,25 @@ The family covers **both** fault directions ruled in scope for #633:
   direction, and each proof opens exactly one source root** (§2.1).
 - **Direction B — wrongful rejection.** The header commits, under its
   `forced_transactions_root`, a forced leaf whose operator verdict is
-  `ForcedTxInvalid` with a scan-borne reason (`InvalidFieldType`,
-  `NativeScriptDepth`, `NativeScriptNodeCount` — §2.4's target leaf format,
-  **pending-format-wave**) charged to a named resolved outpoint, yet the
+  `ForcedTxInvalid` with one of the three scan-borne resolved-outpoint
+  reasons — `ResolvedReferenceScriptMalformed`,
+  `ResolvedReferenceScriptNodeLimit`, `ResolvedReferenceScriptDepthLimit`
+  (§2.4's target leaf format, **pending-format-wave**; arm names per the
+  normative catalogue) — charged to a named resolved outpoint, yet the
   payload at exactly that outpoint is either not a tag-0 native reference
   script at all or scans to a canonical terminal.
 
-**Explicit carve-out (ruled 2026-08-24):** rejections whose reason is
-`E_PLUTUS_SCRIPT_INVALID` are **not refutable by this family** — CEK verdicts
-are interactive-only, and no committed-content recomputation thread can
-adjudicate them (§7.6, §9 Q1 residuals).
+**Explicit carve-out (ruled 2026-08-24; narrowed by the catalogue):** exactly
+**one** reason arm is not refutable by any single-party family —
+`PlutusExecutionFailed { execution_index }`, the genuine CEK verdict, which
+no committed-content recomputation thread can adjudicate (§7.6, §9 Q1
+residuals). The legacy `E_PLUTUS_SCRIPT_INVALID` code's other half,
+`ReceivePurposePlutusV3Forbidden { execution_index }` (the static
+V3-for-receive selection rejection,
+`onchain/aiken/lib/midgard/validation-machine-v1.ak:15193-15201`), is a
+static language/purpose fact and **is** single-party refutable — the
+catalogue's split of that code widens single-party coverage to 46 of 47
+arms (catalogue §2 item 7, §3).
 
 The scan semantics are frozen: 16,384-node and 16,384-depth bounds, and the
 same accept/reject verdicts as `native_script_scan_v1`
@@ -219,8 +231,14 @@ Both directions:
   38-byte stride reads via `native_tx_machine_walk_v1.spend_input_at`,
   `onchain/aiken/lib/midgard/native-tx-machine-walk-v1.ak:532`). This is
   deliberately the positionally-openable coordinate: the §8.8 stride read *is*
-  the ordinal's semantics. Note honestly that the machine's internal
-  resolution-schedule *hash* sorts scheduled inputs by encoded key
+  the ordinal's semantics. The §2.4 leaf arms present the **same coordinate
+  as a pair** `{ source_kind, input_index }` — catalogue convention:
+  `source_kind` 0 = spend (field 0), 1 = reference (field 1), `input_index`
+  the item ordinal within that field
+  (`rejection-reason-catalogue-v1.md` §5, coordinate conventions) — which
+  flattens injectively onto the thread's cursor as `input_index` (spend) /
+  `spend_count + input_index` (reference). Note honestly that the machine's
+  internal resolution-schedule *hash* sorts scheduled inputs by encoded key
   (`transaction_resolution_schedule_hash`,
   `validation-machine-v1.ak:859-885`; comparator at `:852-857`) — that sorted
   position is a different, non-positionally-openable ordering and is **not**
@@ -286,14 +304,18 @@ Direction B additionally:
   authentication via `verify_native_tx_proof_source_v1`,
   `compact.ak:493-514`). Against the §2.4 target format the thread
   pattern-matches `ForcedTxInvalid { reason }` and requires the reason to be
-  a scan-borne arm carrying a `ResolvedOutpointSubject { outpoint_ordinal }`.
+  one of the three scan-borne resolved-outpoint arms —
+  `ResolvedReferenceScriptMalformed` / `ResolvedReferenceScriptNodeLimit` /
+  `ResolvedReferenceScriptDepthLimit`, each carrying
+  `{ source_kind, input_index }` (§2.4.1).
   **No descriptor opening, no terminal-state preimage, no
   `phase == ResolveInputs` check**: the constructor arm replaces the phase
   attribution entirely (ruled 2026-08-24). The superseded phase-attribution
   machinery — and why the code hash alone could not attribute (the same
   codes are emitted from CanonicalDecode, `validation-machine-v1.ak:1627`,
   `:1941`, and PhaseANativeScripts, `:4041-4069`, among ~50 sites) — is
-  retained as the design *rationale* for the subject coordinate in §2.4.
+  retained as the design *rationale* for the per-arm subject coordinates,
+  now developed in full by the catalogue's §2 ambiguity map (§2.4.1).
 - The forced leaf's `source.compact_cbor` supplies the committed transaction
   bytes for the field-opening door (same §8.8 coordinate as direction A);
   `tx_id` is authenticated against them by
@@ -369,96 +391,82 @@ pub type OperatorVerdictV1 {
 
 #### 2.4.1 `RejectionReasonV1` — the fully enumerated reason type
 
-One constructor per distinct machine rejection code — the constructor tag
-**is** the code: no code strings, no code hashes, no sentinels ride the leaf.
-The machine defines exactly **19** codes today (verified by `const reject_`
-inventory over `onchain/aiken/lib/midgard`, all in
+**Normative arm inventory:**
+`docs/fault-proofs/rejection-reason-catalogue-v1.md` (committed on this
+branch; audited 2026-08-24 against the same machine revision, phase by
+phase over every emission site). This document **defers** to the catalogue
+and does not restate its 47 arms: the catalogue is the single source of
+truth for the arm list, payloads, emission-site anchors, refutability
+classes, and design notes. What follows is the type's *shape* and the arms
+this thread consumes.
+
+**Shape (catalogue §5).** **47 constructors**, derived from the machine's
+19 raw rejection-code constants (the `const reject_*` inventory, all in
 `validation-machine-v1.ak`: `:1186-1205`, `:2128-2134`, `:2277-2278`,
-`:2805-2808`, `:3450-3453`, `:6164-6169`, `:14338`). Each arm carries only
-its **subject ordinal(s)** in machine-defined coordinate systems — name the
-subject, never carry the argument (no byte payloads, no hashes-of-evidence;
-the one exception is `ValueNotPreserved`, whose subject *is* an asset id).
+`:2805-2808`, `:3450-3453`, `:6164-6169`, `:14338`) by splitting every code
+emitted for more than one (reason, subject-space) pair — the catalogue's §2
+ambiguity map: `E_INVALID_FIELD_TYPE` → 13 constructors,
+`E_MISSING_REQUIRED_WITNESS` → 5, `E_ASSET_COUNT` /
+`E_NATIVE_SCRIPT_NODE_COUNT` / `E_NATIVE_SCRIPT_DEPTH` → 4 each,
+`E_NATIVE_SCRIPT_INVALID` / `E_INVALID_OUTPUT` / `E_PLUTUS_SCRIPT_INVALID`
+→ 2 each; the eleven unambiguous codes map 1:1. The constructor tag **is**
+the code, and each constructor carries **its own** subject coordinates
+directly (`{ source_kind, input_index }`, `{ script_index }`, …).
+
+This supersedes the earlier draft's `RejectionSubjectV1` companion sum:
+with one constructor per (reason, subject-space) pair, a shared subject sum
+is unnecessary, and the admissibility table it required ("which subject
+arms may this code carry") collapses into the type itself — well-formedness
+reduces to non-negative ordinal bounds. Payload discipline is unchanged:
+name the subject, never carry the argument (catalogue design note 4 — even
+knowable scan positions are arguments, not subjects). The earlier draft's
+two ruled coarse choices are also superseded by finer arms: the tx-global
+`E_ASSET_COUNT` arm becomes four per-crossing accumulator arms, and
+`ValueNotPreserved` loses its asset-id payload and becomes tx-global (the
+whole-fold terminal is the subject; catalogue §1.13, §5).
+
+**The arms this thread consumes** (direction B, §2.1) are the three
+scan-borne resolved-outpoint arms, named here exactly as the catalogue
+names them (catalogue §5, ResolveInputs group; emission sites
+`validation-machine-v1.ak:6464-6481`):
 
 ```aiken
-// NEW / pending-format-wave
-pub type RejectionSubjectV1 {
-  // resolution-schedule ordinal (§2.1): spend inputs (field 0) in field
-  // order, then reference inputs (field 1) in field order
-  ResolvedOutpointSubject { outpoint_ordinal: Int }
-  // §8.8 field-door coordinate, 0..8 (field-opening-v1.ak:102-118)
-  FieldSubject { field_index: Int }
-  // ordinal into the witness set's script witnesses (field 6)
-  WitnessScriptSubject { script_index: Int }
-  // ordinal into required signers (field 4)
-  RequiredSignerSubject { signer_index: Int }
-  // ordinal into required observers (field 3)
-  ObserverSubject { observer_index: Int }
-  // ordinal into redeemers (field 8)
-  RedeemerSubject { redeemer_index: Int }
-}
-
-pub type RejectionReasonV1 {
-  // -- tx-global: NO fields (recomputable from header + committed tx bytes) --
-  MinFee                          // E_MIN_FEE
-  EmptyInputs                     // E_EMPTY_INPUTS
-  NetworkIdMismatch               // E_NETWORK_ID_MISMATCH
-  AssetCount                      // E_ASSET_COUNT
-  ValidityIntervalMismatch        // E_VALIDITY_INTERVAL_MISMATCH
-  InvalidValidityIntervalFormat   // E_INVALID_VALIDITY_INTERVAL_FORMAT
-  // -- field-scoped --
-  FieldPreimageSize { field_index: Int }         // E_FIELD_PREIMAGE_SIZE
-  // -- input-scoped (resolved-outpoint ordinal) --
-  InputNotFound { outpoint_ordinal: Int }        // E_INPUT_NOT_FOUND
-  DuplicateInputInTx { outpoint_ordinal: Int }   // E_DUPLICATE_INPUT_IN_TX
-  InvalidOutput { outpoint_ordinal: Int }        // E_INVALID_OUTPUT
-  // -- scan-capable (multi-site): subject coordinate --
-  InvalidFieldType { subject: RejectionSubjectV1 }      // E_INVALID_FIELD_TYPE
-  NativeScriptDepth { subject: RejectionSubjectV1 }     // E_NATIVE_SCRIPT_DEPTH
-  NativeScriptNodeCount { subject: RejectionSubjectV1 } // E_NATIVE_SCRIPT_NODE_COUNT
-  // -- witness-scoped --
-  InvalidSignature { vkey_witness_index: Int }   // E_INVALID_SIGNATURE
-  MissingRequiredWitness { subject: RejectionSubjectV1 } // E_MISSING_REQUIRED_WITNESS
-  NativeScriptInvalid { script_index: Int }      // E_NATIVE_SCRIPT_INVALID
-  // -- output-scoped --
-  MinAda { output_index: Int }                   // E_MIN_ADA
-  // -- redeemer-scoped --
-  PlutusScriptInvalid { redeemer_index: Int }    // E_PLUTUS_SCRIPT_INVALID
-  // -- asset-scoped --
-  ValueNotPreserved { policy_id: ByteArray, asset_name: ByteArray } // E_VALUE_NOT_PRESERVED
-}
+// NEW / pending-format-wave — the three arms direction B refutes
+// (excerpt; the full 47-constructor type is normative in
+// rejection-reason-catalogue-v1.md §5)
+  /// Resolved output's tag-0 reference script structurally invalid.
+  ResolvedReferenceScriptMalformed { source_kind: Int, input_index: Int }
+  /// That scan exceeds the 16,384-node bound.
+  ResolvedReferenceScriptNodeLimit { source_kind: Int, input_index: Int }
+  /// That scan exceeds the 16,384-depth bound.
+  ResolvedReferenceScriptDepthLimit { source_kind: Int, input_index: Int }
 ```
 
-Arm-by-arm subject assignments, with the emission sites that justify them
-(all anchors `validation-machine-v1.ak` unless noted):
+`source_kind` is 0 = spend (field 0) / 1 = reference (field 1) and
+`input_index` the item ordinal within that field — the §2.1 field-order
+coordinate presented as a pair. Two neighbouring resolved-outpoint arms
+are deliberately **not** in this thread's domain:
+`InputSpentOutputNonCanonical { source_kind, input_index }` (the *output*
+canonicity scan, `:6458-6463` — the D-S10 output-well-formedness overlap,
+§9 Q3) and the own-output twins (`OutputReferenceScript*`, ScriptSources
+stage 5 — the witness/own-bytes sibling concern of §9 Q4).
 
-| Code | Payload | Subject space and justification |
-|---|---|---|
-| `E_MIN_FEE` | none | Tx-global (ruled explicitly): the fee floor is recomputable from header `min_fee_a`/`min_fee_b` (`ledger-state.ak:79-80`) plus the committed tx bytes. Emitted `:2708`. |
-| `E_EMPTY_INPUTS` | none | Tx-global: the subject is field 0 being empty; nothing finer to name. Emitted `:2404`. |
-| `E_NETWORK_ID_MISMATCH` | none | Tx-global: one network id per tx vs `header.expected_network_id`. Emitted `:2706`. |
-| `E_ASSET_COUNT` | none | Tx-global **by choice**: the cap is a whole-transaction aggregate fold (`fold.asset_count + asset_count > max_distinct_asset_count`, `:9644-9651`; also `:17396`, `:17561`, `:17644`), so the item at which the aggregate crosses is traversal-order-dependent — naming it would encode the machine's walk, not the subject. |
-| `E_VALIDITY_INTERVAL_MISMATCH` | none | Tx-global: interval vs `header.block_slot`. Emitted `:6744`, `:6844`. |
-| `E_INVALID_VALIDITY_INTERVAL_FORMAT` | none | Tx-global: one validity-interval field per tx. Emitted `:2452`. |
-| `E_FIELD_PREIMAGE_SIZE` | `field_index` | The field whose preimage breaches the size discipline; §8.8 door coordinate 0..8. Emitted `:1501`, `:1649`, `:1961`. |
-| `E_INPUT_NOT_FOUND` | `outpoint_ordinal` | The input whose outpoint has no leaf under the pre-state root. Emitted `:6559`. |
-| `E_DUPLICATE_INPUT_IN_TX` | `outpoint_ordinal` | The **later** occurrence of the duplicated input (spend-input ordinal; the earlier occurrence is derivable from the bytes). Emitted `:2621`. |
-| `E_INVALID_OUTPUT` | `outpoint_ordinal` | Both emission sites charge a **resolved** output (`LedgerOutputProofInvalidOutput` mapping, `:6462` in ResolveInputs, `:9380` in ScriptSources), so the coordinate is the resolution ordinal, not a field-2 output index, despite the name. |
-| `E_INVALID_FIELD_TYPE` | `subject` | Multi-site (~50 emissions across CanonicalDecode `:1627`/`:1941`, PhaseANativeScripts `:3882`-`:5371`, ResolveInputs `:6468`, ScriptSources `:8272`-`:9386`, NativeScripts `:11737`+, tail `:14986`): no single ordinal space covers them, so the payload is the subject coordinate. Scan-borne (resolved-output) emissions MUST use `ResolvedOutpointSubject`. |
-| `E_NATIVE_SCRIPT_DEPTH` | `subject` | Multi-site: PhaseA witness scripts (`:4069`, `:4585`, `:4866`) vs resolved outputs (`:6480`, `:9398`). Admissible arms: `WitnessScriptSubject`, `ResolvedOutpointSubject`. |
-| `E_NATIVE_SCRIPT_NODE_COUNT` | `subject` | Multi-site: PhaseA witness scripts (`:4049`, `:4544`, `:4851`, `:4900`, `:5117`, `:5216`) vs resolved outputs (`:6474`, `:9392`). Admissible arms as above. |
-| `E_INVALID_SIGNATURE` | `vkey_witness_index` | Per-witness signature check in the Signatures phase (`:3005`); ruled coordinate. |
-| `E_MISSING_REQUIRED_WITNESS` | `subject` | Multi-site: required signers (`:3275` → `RequiredSignerSubject`), resolved-input signer authorization (`:6518` → `ResolvedOutpointSubject`), missing script source at ScriptSources stage nine (`:9431`, `:11308` → `RedeemerSubject` for the requiring purpose), native-script signers and observers (`:10905`, `:11373`, `:11614` → `WitnessScriptSubject` / `ObserverSubject`). A missing witness has no vkey-witness index, so the subject is the unmet **requirement**, named in its own field's coordinate. |
-| `E_NATIVE_SCRIPT_INVALID` | `script_index` | Single site: a witness-set native script evaluating false in PhaseA (`:4250`); field-6 ordinal. |
-| `E_MIN_ADA` | `output_index` | Per-output floor in the ValueAndMint output-descriptor step (`:17494`; doc comment at `:1196-1204`); field-2 ordinal. |
-| `E_PLUTUS_SCRIPT_INVALID` | `redeemer_index` | Ruled coordinate; CEK sites `:15078`, `:15200`. Not refutable by this family (§1.2 carve-out). |
-| `E_VALUE_NOT_PRESERVED` | `{ policy_id, asset_name }` | Ruled: names the allegedly unbalanced asset. Emitted `:17688`. |
+**Refutability totals (catalogue §3):** 46 of 47 arms are single-party
+refutable — 13 in a single L1 transaction, 33 as bounded computation
+threads; exactly one arm, `PlutusExecutionFailed { execution_index }`, is
+interactive-domain (§1.2 carve-out). That census is the quantified form of
+the Rejected ⇒ Forced invariant's enforceability. The catalogue's design
+note 2 records that the subject payloads are precisely what dissolved this
+document's old OPEN (B-1) and re-scoped direction B to one named outpoint.
 
-A `rejection_reason_is_well_formed` predicate (NEW, format wave) restricts
-each multi-site arm to its admissible subject constructors per the table and
-bounds every ordinal non-negative. A reason whose subject arm misattributes
-the site (e.g. a genuinely scan-borne rejection recorded with `FieldSubject`)
-is a trace-detail fault for the interactive family — exactly the residual the
-superseded phase-attribution check had (§7.6).
+A reason that **misattributes** the subject space — e.g. a genuinely
+resolved-outpoint scan fault recorded as `WitnessNativeScriptMalformed` —
+is a trace-detail fault for the interactive family, exactly as the
+misattributed-phase residual was before (§7.6). The 47-way split *shrinks*
+that residual: each arm carries its own single-party refutation procedure
+(catalogue §3), so a wrongly-chosen arm whose named subject does not
+exhibit its named fault is refutable under that arm's own procedure without
+this thread's involvement.
 
 #### 2.4.2 Consistency predicates (NEW, specified with the format)
 
@@ -467,29 +475,33 @@ All three ruled 2026-08-24; the descriptor and machine-state formats stay
 hash:
 
 - **(a) `rejection_code_of(reason: RejectionReasonV1) -> ByteArray`** — a
-  total map from constructor to the frozen `E_*` label bytes (the
-  `const reject_*` values, `validation-machine-v1.ak:1186-1205` etc.),
-  bridged to the FROZEN descriptor format by
-  `hash_rejection_code(rejection_code_of(reason)) ==
+  **total, non-injective 47 → 19 map** from constructor to the frozen `E_*`
+  label bytes (the `const reject_*` values,
+  `validation-machine-v1.ak:1186-1205` etc.): every arm returns exactly the
+  legacy code it was split from. The normative arm-by-arm table is the
+  catalogue's §5.1 — this document does not duplicate it (mechanically, a
+  single `when`-expression). The bridge to the FROZEN descriptor format is
+  unchanged: `hash_rejection_code(rejection_code_of(reason)) ==
   descriptor.rejection_code_hash` (`hash_rejection_code` at
   `onchain/aiken/lib/midgard/validation-trace-v1.ak:239-243`, domain-tagged
   blake2b-256).
 - **(b) `coarse_bucket_of(reason: RejectionReasonV1) -> MidgardTxValidity`**
-  — a total map into the compact-tx leaf's validity vocabulary
-  (`ledger-state.ak:485-492`), for consistency with the compact leaf's
-  validity field: `InputNotFound → NonExistentInputUtxo`;
-  `InvalidSignature | MissingRequiredWitness → InvalidSignature`;
-  `NativeScriptInvalid | PlutusScriptInvalid | NativeScriptDepth |
-  NativeScriptNodeCount → FailedScript`; `MinFee → FeeTooLow`;
-  `ValueNotPreserved | MinAda | AssetCount → UnbalancedTx`; the structural /
-  format codes (`EmptyInputs`, `DuplicateInputInTx`, `InvalidOutput`,
-  `InvalidFieldType`, `FieldPreimageSize`, `NetworkIdMismatch`, both
-  validity-interval codes) map to `FailedScript` as a **documented lossy
-  catch-all** — `MidgardTxValidity` is literally `// TODO`-marked
-  (`ledger-state.ak:484`) and has no malformed-structure arm; the format
-  wave should widen it (recommendation: add a `MalformedTx` arm) rather than
-  keep the lossy bucket. `TxIsValid` is unreachable from this map by
-  construction.
+  — a **total 47-arm map** into the compact-tx leaf's validity vocabulary
+  (`ledger-state.ak:485-492`). The normative table is the catalogue's §5.2;
+  its `FailedScript` row is honest about being a **documented lossy
+  convention**, not a semantics — `MidgardTxValidity` is literally
+  `// TODO`-marked (`ledger-state.ak:484`) and has no malformed-structure
+  arm, so the structural family routes there by convention.
+  `TxIsValid` is unreachable from this map by construction.
+  **Reconciliation:** this document's earlier recommendation was to widen
+  the enum with a `MalformedTx` arm; the catalogue's finding C-3
+  (§4.5, design note 3) rules the other way — **retire** the five
+  rejection arms of `MidgardTxValidity` from the forced leaf in the same
+  wave (the full `RejectionReasonV1` subsumes them, and the arm choice is
+  unadjudicated by today's `forced_verdict_matches` anyway), keeping
+  `coarse_bucket_of` only as a transition bridge for frozen off-chain
+  consumers. This design **adopts the catalogue's recommendation and
+  withdraws the widening** (§8, §9 Q1 residuals).
 - **(c) `forced_verdict_matches` extended.** Today it couples the leaf's
   coarse validity to the descriptor verdict
   (`validation-claim-v1.ak:204-212`). The extension requires, on the
@@ -528,7 +540,12 @@ to it — full stop, no descriptor path, gated on the wave like direction B.
   cross-root opening**: the two validation sources open disjoint roots
   (§2.1, `validation-claim-v1.ak:233` vs `:254`), forced transactions do
   not appear in `transactions_root`, and the forced leaf is self-contained
-  — verdict and transaction bytes travel together.
+  — verdict and transaction bytes travel together. The predicate's shape is
+  unchanged by the catalogue adoption — it composes `coarse_bucket_of`,
+  which is now the catalogue's §5.2 47-arm map. If the same wave also
+  retires `MidgardTxValidity`'s rejection arms (catalogue C-3; §2.4.2(b),
+  §8), the embedded scalar's rejecting vocabulary collapses and (e)'s
+  right-hand side simplifies with it — a wave detail, not a design change.
 - **Placement.** Both predicates run in `verify_source_authentication`
   (`validation-claim-v1.ak:215-265`), which executes on every claim via
   `committed_claim_source_is_authenticated` (`:383-392`) and **already
@@ -639,10 +656,14 @@ steps do. The Continue arms:
        the acceptance claim, from the same single leaf that carries the
        transaction bytes.
      - Direction B: pattern-match `ForcedTxInvalid { reason }` and require
-       the reason to be one of `InvalidFieldType` / `NativeScriptDepth` /
-       `NativeScriptNodeCount` with `subject ==
-       ResolvedOutpointSubject { outpoint_ordinal }`; freeze the reason's
-       constructor tag and `outpoint_ordinal` into the state.
+       the reason to be one of `ResolvedReferenceScriptMalformed` /
+       `ResolvedReferenceScriptNodeLimit` /
+       `ResolvedReferenceScriptDepthLimit`, each carrying
+       `{ source_kind, input_index }` (§2.4.1, arm names per the normative
+       catalogue); freeze the reason's constructor tag and the flattened
+       field-order cursor — `input_index` for spend (arm `source_kind` 0),
+       `spend_count + input_index` for reference (arm `source_kind` 1),
+       per §2.1 — into the state.
      **No descriptor opening, no terminal-state preimage, no phase check**
      — the constructor arm is the attribution.
   5. Output state: the §4 schema, cursor frozen at the accused ordinal
@@ -760,13 +781,18 @@ pub type ScanThreadStateV1 {
   verified_tx_id: ByteArray,         // 32B; Normal: step-01's counted-root binding;
                                      // Forced: the forced leaf's authenticated tx_id
   tx_order_id: Int,                  // Forced: the forced leaf's key; -1 for Normal
-  scan_reason_class: Int,            // direction B: 0 = InvalidFieldType, 1 = NativeScriptDepth,
-                                     // 2 = NativeScriptNodeCount (the leaf reason's tag);
+  scan_reason_class: Int,            // direction B: 0 = ResolvedReferenceScriptMalformed,
+                                     // 1 = ResolvedReferenceScriptNodeLimit,
+                                     // 2 = ResolvedReferenceScriptDepthLimit
+                                     // (the leaf reason's constructor, §2.4.1);
                                      // -1 for direction A
   prior_ledger_root: ByteArray,      // 32B, transition_step.pre_utxos_root (§2.1 opening)
   // -- the accused/chosen outpoint, frozen at step-02 --
   outpoint_cursor: Int,              // FROZEN ordinal in [0, spend_count + reference_count):
-                                     // direction B: the leaf reason's outpoint_ordinal;
+                                     // direction B: flattened from the leaf reason's
+                                     // { source_kind, input_index } pair (spend/reference
+                                     // kind — distinct from this state's Normal/Forced
+                                     // source_kind field), per §2.1;
                                      // direction A: prover-chosen
   outpoint_key_hash: ByteArray,      // 32B blake2b_256(cbor(K)); binds BindOutpoint → Scan
   reference_script_language: Int,    // from the bound descriptor: -1 | 0 | 3 | 128
@@ -970,15 +996,19 @@ the same hash.
 
 ### 7.6 Wrongful-rejection edge cases
 
-- **Attribution** (revised 2026-08-24): the leaf reason's constructor arm and
-  subject replace the old `terminal.phase == ResolveInputs` check entirely.
-  A rejection recorded with a scan-capable code but a non-outpoint subject
-  (`FieldSubject`, `WitnessScriptSubject`, …) cannot be attacked by this
-  family — correctly, since those emissions (CanonicalDecode, PhaseA; §2.4.1
-  inventory) may be legitimate for other reasons. The residual — a genuinely
-  scan-borne rejection recorded with a **misattributed subject arm** to dodge
-  refutability — is a trace-detail fault for the interactive family, exactly
-  as the misattributed-phase residual was before (state assumptions only, per
+- **Attribution** (revised 2026-08-24; catalogue-adopted): the leaf reason's
+  constructor replaces the old `terminal.phase == ResolveInputs` check
+  entirely. A rejection recorded under any non-resolved-outpoint arm
+  (`FieldItemWidthIllegal`, `WitnessNativeScriptMalformed`, …) cannot be
+  attacked by this family — correctly: under the 47-arm split each such arm
+  carries its own single-party refutation procedure (catalogue §3), so a
+  wrongful rejection under it is another family's business, not an escape
+  hatch. The residual — a genuinely scan-borne rejection recorded under a
+  **misattributed arm** to dodge this thread — **shrinks** with the split:
+  whenever the wrongly-chosen arm's named subject does not exhibit its
+  named fault, that arm's own procedure refutes it single-party; what
+  remains is a trace-detail fault for the interactive family, exactly as
+  the misattributed-phase residual was before (state assumptions only, per
   the no-trap residual ruling, `architecture.md:111-121`). Conversely, a
   rejection whose reason names an outpoint against canonical payloads **is**
   covered regardless of what a hypothetical honest run would have rejected
@@ -988,11 +1018,18 @@ the same hash.
   minutes at 1 tx/block (§6). The old direction-B adversarial extreme is a
   historical note on the superseded V1-format binding (§6); its dissolution
   is what the forced-leaf amendment was ruled to buy.
-- **CEK carve-out** (ruled 2026-08-24): `E_PLUTUS_SCRIPT_INVALID` rejections
-  are not refutable by this family — CEK verdicts are interactive-only. The
-  leaf still *represents* them (`PlutusScriptInvalid { redeemer_index }`,
-  §2.4.1) so the format stays total; refutation belongs to the interactive
-  machinery.
+- **CEK carve-out** (ruled 2026-08-24; narrowed by the catalogue): exactly
+  one arm is interactive-only — `PlutusExecutionFailed { execution_index }`,
+  the genuine CEK verdict. Its legacy-code sibling
+  `ReceivePurposePlutusV3Forbidden { execution_index }` (static
+  V3-for-receive selection, `validation-machine-v1.ak:15193-15201`) is
+  single-party refutable as a bounded thread (catalogue §3 #41), so the
+  split keeps the carve-out from leaking onto a static fact that merely
+  shared the legacy `E_PLUTUS_SCRIPT_INVALID` code (catalogue §2 item 7,
+  design note 10). The leaf still *represents* the interactive arm so the
+  format stays total; its refutation belongs to the interactive machinery,
+  which should consume the arm's `execution_index` subject to select the
+  single execution under dispute (catalogue design note 10).
 - **Non-native reference scripts**: a scan-borne reason charged to an
   outpoint whose trie-authenticated descriptor carries language 3 / 128 / -1
   is contradicted by the descriptor alone — direction B finishes at
@@ -1004,7 +1041,8 @@ the same hash.
 ### 7.7 Wrongful-acceptance edge cases
 
 - Direction A accepts **any** refusal class of the frozen machine (not only
-  the three scan codes): if the committed verdict is `Accepted`, *any*
+  the three scan refusal classes that mirror §2.4.1's direction-B arms): if
+  the committed verdict is `Accepted`, *any*
   divergence the staged machine exhibits on the committed bytes (including
   `InvalidOutput`-class refusals from earlier stages of the output machine)
   contradicts it. Whether to keep this breadth or narrow to the
@@ -1041,7 +1079,8 @@ needs is **the forced-leaf revision plus the consistency predicates — not a
 machine-state revision**. Concretely, one future format-revision wave (not
 the current zero-blueprint-movement wave) carries: the in-place
 `ForcedInclusionTxV1` verdict-sum revision with the fully enumerated
-`RejectionReasonV1` and its subject coordinates (§2.4; in place because
+**47-arm** `RejectionReasonV1` (normative inventory:
+`rejection-reason-catalogue-v1.md` §5; shape in §2.4.1; in place because
 nothing is deployed and the house rule is no compat shims — no V2
 side-by-side type), the three consistency predicates
 (`rejection_code_of`, `coarse_bucket_of`, and the `forced_verdict_matches`
@@ -1058,6 +1097,41 @@ descriptor.rejection_code_hash` (`validation-trace-v1.ak:239-243`). Both
 directions of this family are specified against the target formats and gated
 on that wave landing — the thread family ships whole when the wave lands
 (§9 Q1 residuals).
+
+**Catalogue-adoption consequences for the wave (2026-08-24).** Four findings
+of the rejection-reason catalogue bind the same wave:
+
+- **Extension policy (catalogue design note 1).** With constructor-as-code,
+  adding a rejection reason changes the wire format of the forced leaf and
+  therefore the meaning of `forced_transactions_root` — a protocol format
+  revision of the same class as the verdict restructure itself.
+  **Deliberately no in-band extension point**: an "other/unknown" arm would
+  be a sentinel by another name and would break constructor-as-code. A
+  future `RejectionReasonV2` is a new leaf schema version;
+  `rejection_code_of` / `coarse_bucket_of` are the compatibility surface for
+  frozen consumers.
+- **`MidgardTxValidity` retirement (catalogue §4.5 / OPEN C-3, design
+  note 3).** The same wave should retire the five rejection arms of
+  `MidgardTxValidity` from the forced leaf — the full reason subsumes them,
+  and today's `forced_verdict_matches` never adjudicated the arm choice
+  anyway — keeping `coarse_bucket_of` only as a transition bridge for
+  frozen off-chain consumers. This supersedes this document's earlier
+  `MalformedTx`-widening recommendation (§2.4.2(b)).
+- **The stall audit gates the leaf-format freeze (catalogue §4.3 / OPEN
+  C-2).** Several machine guardrails are bare conjuncts of the step
+  relation, so a violating forced transaction *stalls* — no accepting or
+  rejecting successor exists, hence **no honest verdict** for the operator
+  — unless the L1 forced-order publication path (`docs/spec/midgard-tx.md`
+  §8.11) excludes such preimages, which the catalogue audit could not
+  verify. The `GuardrailExceeded` family stays **reserved, not populated**,
+  and the wave must not freeze the leaf schema before that audit closes
+  (§9 Q11).
+- **Possibly-dead structural arms (catalogue §4.4, design note 5).** The
+  three `ExecutionNativeScript{Malformed,NodeLimit,DepthLimit}` arms are
+  plausibly unreachable (every Phase-B native source is pre-scanned by an
+  earlier phase); if the reachability proof closes, the wave drops them and
+  the type shrinks to 44 (§9 Q12). None of the three is an arm this thread
+  consumes.
 
 **Catalogue immutability consequence — checked and reported honestly.** The
 fraud-proof catalogue is an MPF root in a datum
@@ -1103,15 +1177,21 @@ Numbered; each with a recommendation.
      specified against the target formats (forced-leaf revision, §2.4;
      authoritativeness predicates, §2.4.3) and gated on the wave landing
      (§8); when it is scheduled is owned outside this document;
-   - **the CEK carve-out** — `E_PLUTUS_SCRIPT_INVALID` rejections stay
-     interactive-only, permanently outside this family (§1.2, §7.6).
+   - **the CEK carve-out** — narrowed by the catalogue to exactly one arm:
+     `PlutusExecutionFailed { execution_index }` stays interactive-only,
+     permanently outside this family; its former code-sharing sibling
+     `ReceivePurposePlutusV3Forbidden` is single-party refutable (§1.2,
+     §7.6);
+   - **the leaf-format freeze** is additionally gated on the catalogue's
+     C-2 stall audit (§8, §9 Q11).
 2. **Engine ExUnits ledger.** §6 rests on the pinned one-shot rates; the
    batched engine (§3.3) must be measured with `aiken` (not runnable under
    this document's constraints) and pinned in a new
    `native-script-decoding-engine-exec-ledger-v1.json` before the family is
    scheduled. *Recommendation:* gate registration on that ledger existing.
 3. **Breadth of direction A's refusal acceptance.** Accepting any
-   staged-machine refusal (not just the three scan codes) maximizes coverage
+   staged-machine refusal (not just the three scan refusal classes)
+   maximizes coverage
    but overlaps the planned output-well-formedness family (D-S10).
    *Recommendation:* keep the breadth; record the overlap in
    `catalogue-status.md` at registration so D-S10's scoping subtracts it.
@@ -1120,8 +1200,9 @@ Numbered; each with a recommendation.
    PhaseANativeScripts (`validation-machine-v1.ak:3882-4069`, `:4528-4900`);
    those bytes are committed differently (witness-set compact CBOR, not
    ledger descriptors). The §2.4 leaf already *represents* those rejections
-   (`WitnessScriptSubject`), so a twin family would slot into the same
-   reason format. *Recommendation:* a twin family sharing the engine but
+   (the catalogue's `WitnessScriptHeaderMalformed` /
+   `WitnessNativeScript{Malformed,NodeLimit,DepthLimit,False}` arms), so a
+   twin family would slot into the same reason format. *Recommendation:* a twin family sharing the engine but
    with a witness-set byte-authentication front end; out of scope here.
 5. **Refusal-class fidelity.** The thread's `Verdict` arm preserves the
    staged machine's three-way distinction (invalid / node-limit / depth-limit,
@@ -1164,3 +1245,36 @@ Numbered; each with a recommendation.
    validation-trace fault for the interactive family, and this thread's
    proof is a genuine contradiction within the header's own transition-trace
    commitments either way.
+10. **Dispute-side code register (catalogue OPEN C-1).**
+    `docs/spec/midgard-tx.md` carries no dispute-side rejection-code table
+    (its sections end at §11 — catalogue §4.1), so nothing normative
+    outside the catalogue names the reason space. *Recommendation:* the
+    format wave adds the register to the tx spec, or has the spec
+    normatively reference `rejection-reason-catalogue-v1.md` §5, so the
+    leaf schema, the machine codes, and the spec cannot drift apart.
+11. **Stall conditions vs forced verdicts (catalogue OPEN C-2) — gates the
+    leaf-format freeze.** Machine guardrails written as bare step-relation
+    conjuncts (oversized field-6 script items, the derived collection-count
+    caps, malformed out-ref and address-witness items, deep field-5 mint
+    shape — the catalogue's §4.3 verified anchors) make a violating
+    transaction **stall**: no accepting *or* rejecting successor exists.
+    For a forced transaction that means the operator has **no honest
+    verdict to commit** — they must either mis-code (commit a reason the
+    machine cannot prove) or commit an unprovable trace — unless the L1
+    forced-order publication path (`docs/spec/midgard-tx.md` §8.11)
+    excludes such preimages, which the catalogue audit could not verify.
+    *Recommendation:* close that audit before the wave freezes the leaf
+    schema; if the path is permissive, enact the reserved
+    `GuardrailExceeded` family (a format revision plus machine emission
+    sites — a machine-version bump); if it excludes them, record the
+    exclusion as the invariant that keeps the family unreserved
+    (catalogue design note 6).
+12. **Possibly-dead `ExecutionNativeScript*` structural arms (catalogue
+    §4.4, design note 5).** Kept for totality with the machine as written;
+    every Phase-B native source is pre-scanned by an earlier phase, so the
+    three structural arms are plausibly unreachable. *Recommendation:*
+    attempt the reachability proof; if it closes, drop the three arms in
+    the same format revision (the type shrinks from 47 to 44) and assert
+    the invariant in the machine. `ExecutionNativeScriptFalse` is genuinely
+    reachable and stays. None of the four is an arm this thread consumes,
+    so the outcome does not touch this design's bindings.
