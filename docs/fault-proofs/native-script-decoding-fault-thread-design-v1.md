@@ -1117,15 +1117,17 @@ of the rejection-reason catalogue bind the same wave:
   anyway — keeping `coarse_bucket_of` only as a transition bridge for
   frozen off-chain consumers. This supersedes this document's earlier
   `MalformedTx`-widening recommendation (§2.4.2(b)).
-- **The stall audit gates the leaf-format freeze (catalogue §4.3 / OPEN
-  C-2).** Several machine guardrails are bare conjuncts of the step
-  relation, so a violating forced transaction *stalls* — no accepting or
-  rejecting successor exists, hence **no honest verdict** for the operator
-  — unless the L1 forced-order publication path (`docs/spec/midgard-tx.md`
-  §8.11) excludes such preimages, which the catalogue audit could not
-  verify. The `GuardrailExceeded` family stays **reserved, not populated**,
-  and the wave must not freeze the leaf schema before that audit closes
-  (§9 Q11).
+- **The stall concern is RESOLVED by owner ruling (2026-08-24): the
+  forced-order door already excludes stall-class preimages.** The L1
+  forced-order publication path (`docs/spec/midgard-tx.md` §8.11) refuses
+  to finalize an order whose preimages violate the bare-conjunct guardrails
+  of catalogue §4.3, so a forced transaction that would stall the machine
+  never becomes an order and the operator always has an honest verdict.
+  The leaf-format freeze is **no longer gated** on an audit; the
+  `GuardrailExceeded` family stays **reserved, not populated**, and is
+  expected to remain so. Residual (evidence, non-gating): document the
+  per-conjunct coverage mapping — each §4.3 conjunct to the §8.11 door
+  check that excludes it — tracked as #641 (§9 Q11).
 - **Possibly-dead structural arms (catalogue §4.4, design note 5).** The
   three `ExecutionNativeScript{Malformed,NodeLimit,DepthLimit}` arms are
   plausibly unreachable (every Phase-B native source is pre-scanned by an
@@ -1182,8 +1184,10 @@ Numbered; each with a recommendation.
      permanently outside this family; its former code-sharing sibling
      `ReceivePurposePlutusV3Forbidden` is single-party refutable (§1.2,
      §7.6);
-   - **the leaf-format freeze** is additionally gated on the catalogue's
-     C-2 stall audit (§8, §9 Q11).
+   - **the leaf-format freeze** is no longer gated on the catalogue's C-2
+     stall concern — resolved by owner ruling 2026-08-24, the forced-order
+     door excludes stall-class preimages (§8, §9 Q11); the per-conjunct
+     coverage mapping remains as a non-gating evidence task (#641).
 2. **Engine ExUnits ledger.** §6 rests on the pinned one-shot rates; the
    batched engine (§3.3) must be measured with `aiken` (not runnable under
    this document's constraints) and pinned in a new
@@ -1252,23 +1256,22 @@ Numbered; each with a recommendation.
     format wave adds the register to the tx spec, or has the spec
     normatively reference `rejection-reason-catalogue-v1.md` §5, so the
     leaf schema, the machine codes, and the spec cannot drift apart.
-11. **Stall conditions vs forced verdicts (catalogue OPEN C-2) — gates the
-    leaf-format freeze.** Machine guardrails written as bare step-relation
-    conjuncts (oversized field-6 script items, the derived collection-count
-    caps, malformed out-ref and address-witness items, deep field-5 mint
-    shape — the catalogue's §4.3 verified anchors) make a violating
-    transaction **stall**: no accepting *or* rejecting successor exists.
-    For a forced transaction that means the operator has **no honest
-    verdict to commit** — they must either mis-code (commit a reason the
-    machine cannot prove) or commit an unprovable trace — unless the L1
-    forced-order publication path (`docs/spec/midgard-tx.md` §8.11)
-    excludes such preimages, which the catalogue audit could not verify.
-    *Recommendation:* close that audit before the wave freezes the leaf
-    schema; if the path is permissive, enact the reserved
-    `GuardrailExceeded` family (a format revision plus machine emission
-    sites — a machine-version bump); if it excludes them, record the
-    exclusion as the invariant that keeps the family unreserved
-    (catalogue design note 6).
+11. **Stall conditions vs forced verdicts (catalogue OPEN C-2) —
+    RESOLVED by owner ruling (2026-08-24).** Machine guardrails written as
+    bare step-relation conjuncts (oversized field-6 script items, the
+    derived collection-count caps, malformed out-ref and address-witness
+    items, deep field-5 mint shape — the catalogue's §4.3 verified
+    anchors) make a violating transaction **stall**: no accepting *or*
+    rejecting successor exists. The owner ruled that the L1 forced-order
+    publication path (`docs/spec/midgard-tx.md` §8.11) **already excludes
+    such preimages** — a stall-class transaction never becomes a forced
+    order, so the operator always has an honest verdict and the reserved
+    `GuardrailExceeded` family stays unpopulated (catalogue design
+    note 6's second branch). The leaf-format freeze is not gated on this.
+    *Residual (evidence, non-gating):* record the exclusion as the
+    invariant that keeps the family unreserved by documenting the
+    per-conjunct coverage mapping — each §4.3 conjunct to the §8.11 door
+    check that excludes it — tracked as #641.
 12. **Possibly-dead `ExecutionNativeScript*` structural arms (catalogue
     §4.4, design note 5).** Kept for totality with the machine as written;
     every Phase-B native source is pre-scanned by an earlier phase, so the

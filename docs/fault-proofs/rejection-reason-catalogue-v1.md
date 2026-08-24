@@ -460,10 +460,12 @@ fault categories ("operational evidence, not L1 fault proofs",
 
 ### 4.3 Stall conditions — where an operator would be forced to mis-code
 
-**OPEN (C-2), the material completeness gap.** Several machine guardrails are
-written as bare conjuncts of the step relation, so a violating transaction has
-**no valid step at all** — neither an accepting nor a rejecting successor
-exists. Verified instances:
+**OPEN (C-2), the material completeness gap — RESOLVED by owner ruling
+(2026-08-24): the forced-order door excludes these preimages; see the
+resolution note at the end of this subsection.** Several machine guardrails
+are written as bare conjuncts of the step relation, so a violating
+transaction has **no valid step at all** — neither an accepting nor a
+rejecting successor exists. Verified instances:
 
 - an oversized field-6 script item: `item_length <= max_aggregate_field_preimage_bytes`
   is a conjunct (`:3876`, `:8263`, `:8569-8570`), not a rejection branch;
@@ -486,10 +488,18 @@ challenger can attack, but neither of which the operator can avoid. Whether
 these shapes are excluded upstream — by the L1 forced-order publication path
 (`docs/spec/midgard-tx.md` §8.11 forced-order material carriage) refusing to
 finalize an order whose preimages violate them — was **not verified in this
-audit** and must be treated as unresolved. Resolution options are in design
-note 6. Until resolved, the proposed type deliberately reserves a
-`GuardrailExceeded` family (§6) so the format revision does not have to be
-re-cut if the upstream path proves permissive.
+audit**. Resolution options are in design note 6.
+
+**Resolution (owner ruling, 2026-08-24).** The forced-order door **does**
+exclude these preimages: an order whose material violates the guardrails
+above cannot be finalized, so a stall-class transaction never becomes a
+forced order and the operator always has an honest verdict. The reserved
+`GuardrailExceeded` family (§6) therefore stays unpopulated (design note 6's
+exclusion branch), and the leaf-format freeze is not gated on this
+subsection. Residual evidence task (non-gating, tracked as #641): document
+the per-conjunct coverage mapping — each conjunct above to the §8.11 door
+check that excludes it — as the recorded invariant that keeps the family
+unreserved.
 
 ### 4.4 Codes that can never legitimately apply to a forced tx
 
@@ -692,9 +702,11 @@ pub type RejectionReasonV1 {
 
 A **reserved** family, not populated in V1 (see §4.3 / design note 6):
 `GuardrailExceeded { guardrail: Int, field_index: Int, item_index: Int }` —
-to be enacted only if the §4.3 stall audit finds the forced-order path
-admits guardrail-violating preimages; enacting it is a format revision like
-any other arm addition (design note 1).
+kept unpopulated per the 2026-08-24 owner ruling that the forced-order path
+excludes guardrail-violating preimages (§4.3 resolution note); it would be
+enacted only if the #641 coverage mapping refutes that exclusion, and
+enacting it is a format revision like any other arm addition (design
+note 1).
 
 ### 5.1 `rejection_code_of` — the total map back to the frozen descriptor codes
 
@@ -845,14 +857,15 @@ Cost classes and single-party status are §3's; phases are §1's.
    in the machine (`fail` instead of reject), shrinking the type to 44.
    `ExecutionNativeScriptFalse` (#39) is genuinely reachable (evaluation
    depends on the signer set, not structure) and stays regardless.
-6. **The stall audit (OPEN C-2) must close before the type freezes.** If the
-   forced-order publication path (`midgard-tx.md` §8.11) admits preimages
-   that violate the bare-conjunct guardrails of §4.3, an operator handed such
-   an order has *no honest verdict*, and the reserved `GuardrailExceeded`
-   family must be enacted (with machine emission sites added — also a
-   machine-version bump). If the path excludes them, record that exclusion as
-   the invariant that keeps the family unreserved. Either way the resolution
-   is a one-line normative statement this audit could not itself establish.
+6. **The stall question (OPEN C-2) — RESOLVED by owner ruling
+   (2026-08-24), exclusion branch.** The forced-order publication path
+   (`midgard-tx.md` §8.11) excludes preimages that violate the
+   bare-conjunct guardrails of §4.3, so no operator is ever handed an
+   order with *no honest verdict* and the reserved `GuardrailExceeded`
+   family stays unpopulated. The type freeze is not gated on this.
+   Residual: record that exclusion as the invariant that keeps the family
+   unreserved — the per-conjunct coverage mapping is tracked as #641
+   (evidence, non-gating).
 7. **`AddressWitnessSignatureInvalid` names a witness the machine's own
    terminal never named** (§1.5's latch structure). The arm is judged
    sound anyway: the operator picks the subject, and the refuter checks that
