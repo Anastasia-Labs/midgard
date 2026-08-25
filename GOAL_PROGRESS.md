@@ -6137,6 +6137,10 @@ the rebuilt blueprint (the decoding validators are unregistered), so
 inputs digest after that green check per the sanctioned flow (closure
 2090efff…, artifact 1b064ba9…, new plutus.json md5 a7cdd64b…).
 
+OWNER RULING 2026-08-25: superset APPROVED (ruled on this request the
+same day; the three-face arm is the sanctioned reading). The request as
+posed:
+
 OWNER RULING REQUESTED on the superset: the two extra faces convict on
 the committed reason's *encoding alone* — the accused transaction is
 never opened for them — and the load-bearing premise ("the machine only

@@ -772,7 +772,8 @@ steps do. The Continue arms:
     and reading its authenticated item count. Closes straight to step-04
     with the class-0 contradiction marker on the still-unbound state, which
     step-04's direction-B gate consumes unchanged. The `source_kind` and
-    negative faces are a deliberate strict superset of the decision text's
+    negative faces are a deliberate strict superset (owner-approved
+    2026-08-25) of the decision text's
     `outpoint_cursor ≥ |field|`: step-02's direction-B copy is verbatim by
     the "store the pair" ruling, so all three faces reach step-03, and each
     is the same fault statement — the accusation names a subject the
