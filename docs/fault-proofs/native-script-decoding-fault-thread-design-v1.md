@@ -707,7 +707,7 @@ steps do. The Continue arms:
   5. Output state: the §4 schema, cursor frozen at the accused ordinal
      (direction B) or at the prover-chosen ordinal (direction A, either
      source kind).
-- **step-03**, three Continue arms:
+- **step-03**, four Continue arms:
   - `BindOutpoint { field_opening, outpoint_index, ledger_membership,
     descriptor_bytes }`: open T's field 0 or 1 through the §8.8 door
     (`opened_field_view` + the 38-byte stride read, as
@@ -758,6 +758,25 @@ steps do. The Continue arms:
       scan-borne reason, and the thread hands off to step-04. No iteration
       over other outpoints exists any more (the universal quantification of
       the superseded V1-format binding is a §6 historical note).
+  - `BindOutOfDomain { subject_field_opening }` (decided 2026-08-25, the
+    offchain plan's §7.2 closing arm; direction B only, once, on a pre-bind
+    state): the forced leaf's verbatim accusation pair names a subject the
+    committed transaction does not have, so `BindOutpoint` aborts on it
+    (§7.3 abort-never-clamp) and the thread would otherwise strand — yet the
+    machine never emits such a pair, so its presence in a committed
+    rejection reason is itself the contradiction. Three faces, one
+    obligation each: a `source_kind` outside `{0, 1}` names no field and a
+    negative ordinal names no item (both close with no opening — the
+    canonical redeemer carries `None`); an ordinal at/past the named field's
+    item count is proven by opening the accused field through the §8.8 door
+    and reading its authenticated item count. Closes straight to step-04
+    with the class-0 contradiction marker on the still-unbound state, which
+    step-04's direction-B gate consumes unchanged. The `source_kind` and
+    negative faces are a deliberate strict superset of the decision text's
+    `outpoint_cursor ≥ |field|`: step-02's direction-B copy is verbatim by
+    the "store the pair" ruling, so all three faces reach step-03, and each
+    is the same fault statement — the accusation names a subject the
+    machine could never have resolved.
 - **step-04** `Continue(Finalize { … })`: `common.finalize`
   (`common.ak:579-673`) exactly as `double-spend/step-04.ak:53-72`; re-check
   the carried terminal marker (direction A: refusal recorded; direction B:
@@ -1075,6 +1094,18 @@ the same hash.
   be dressed up as a scan target, and a prover cannot skip a tag-0 payload by
   lying about the language (the descriptor is trie-authenticated, not
   prover-supplied).
+- **Out-of-domain accusation subjects** (decided 2026-08-25): a scan-borne
+  reason whose verbatim pair names a subject outside the committed
+  transaction's domain — `source_kind ∉ {0, 1}`, a negative `input_index`,
+  or an ordinal at/past the named field's item count — is contradicted
+  without any descriptor: the machine resolves only subjects that exist, so
+  such a pair in a committed reason is not the machine's verdict. Direction
+  B closes at step-03's `BindOutOfDomain` arm (§3.2); the count face is
+  proven against the §8.8 door's authenticated item count, the other two
+  faces on the state alone. Soundness runs one way only: an honest
+  operator's reasons always name in-domain subjects, so the arm can never
+  close against one, and the in-domain refusal is a pinned neutralisation
+  selector in the engine exec ledger.
 
 ### 7.7 Wrongful-acceptance edge cases
 
