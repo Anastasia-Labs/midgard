@@ -1,0 +1,424 @@
+/**
+ * `native-script-decoding` family (#635, #633) — off-chain codec twins.
+ *
+ * Proves an operator verdict wrong about the decodability of a resolved
+ * reference script — the `ResolvedReferenceScriptMalformed` / `NodeLimit` /
+ * `DepthLimit` corner of the rejection catalogue — in either direction:
+ * wrongful acceptance (direction A, the frozen scan refuses the accepted
+ * script) or wrongful rejection (direction B, the accused script scans to the
+ * exact canonical terminal).
+ *
+ * Violation: `native-script-decoding`.
+ * Catalogue category: **not registered yet** (Q2: two reservations stand ahead
+ * of it, so the expected id is `0000000d`, allocated only at registration).
+ * Until then this module is reached by direct import rather than through
+ * `fraud-proof/catalogue.ts`, and the asset-name helper is parameterized on
+ * the category id instead of pinning one.
+ *
+ * Every schema below mirrors an Aiken type in
+ * `onchain/aiken/lib/midgard/fraud-proofs/native-script-decoding/
+ * step-0{1,2,3,4}.ak` (and `engine.ak` for the thread states) field for field
+ * and constructor index for constructor index; the exact bytes are pinned in
+ * `tests/native-script-decoding-v1.test.ts` against values measured out of
+ * those Aiken modules over their own `thread_fixture_v1` fixtures.
+ */
+import { Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+import {
+  hashHexWithBlake2b,
+  type HashingError,
+  MerkleRootSchema,
+  OutputReferenceSchema,
+  ProofSchema,
+} from "@/common.js";
+import {
+  BoundedItemChunkProofV1Schema,
+  EventKeySchema,
+  EventToStepValueSchema,
+  ForcedInclusionTxV1Schema,
+  HeaderV1Schema,
+  TransitionStepSchema,
+} from "@/ledger-state.js";
+import { rootMembershipProofSchema } from "@/transition-trace.js";
+
+import { type ChallengedHeaderHash } from "./fabricated-deposit-v1.js";
+import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import {
+  faultProofStepDatumSchema,
+  faultProofStepRedeemerSchema,
+  NativeTxInclusionCarriageSchema,
+} from "./native.js";
+import { NativeScriptFrameV1Schema } from "./validation-auxiliary-witness-v1.js";
+
+/** Normative violation identifier. */
+export const NATIVE_SCRIPT_DECODING_VIOLATION_ID_V1 =
+  "native-script-decoding" as const;
+
+// ## Engine constants (twin of `engine.ak:54-99`), as `Data` integers
+
+export const NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1 = 0n;
+export const NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1 = 1n;
+export const NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1 = 0n;
+export const NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED_V1 = 1n;
+export const NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND_V1 = 0n;
+export const NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_REFERENCE_V1 = 1n;
+export const NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1 = 0n;
+export const NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_NODE_LIMIT_V1 = 1n;
+export const NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_DEPTH_LIMIT_V1 = 2n;
+/** Sentinel for a class not (yet) established. */
+export const NATIVE_SCRIPT_DECODING_CLASS_PENDING_V1 = -1n;
+/** Sentinel for the descriptor fields before the bind step froze them. */
+export const NATIVE_SCRIPT_DECODING_LANGUAGE_UNBOUND_V1 = -2n;
+
+// ## Thread NFT asset name
+
+/**
+ * A decoding-fault computation-thread token's asset name: the family's
+ * category id (4 bytes, allocated at registration) followed by the challenged
+ * header hash.
+ */
+export const nativeScriptDecodingThreadTokenAssetNameV1 = (
+  categoryId: string,
+  challengedHeaderHash: ChallengedHeaderHash,
+): string => {
+  if (!/^[0-9a-f]{8}$/u.test(categoryId)) {
+    throw new Error(
+      "native-script-decoding category id must be 4 bytes of lowercase hex",
+    );
+  }
+  if (!/^[0-9a-f]{56}$/u.test(challengedHeaderHash)) {
+    throw new Error("challenged header hash must be 28 bytes of lowercase hex");
+  }
+  return `${categoryId}${challengedHeaderHash}`;
+};
+
+// ## Thread states (twin of `engine.ak:111-152`)
+
+/** Step-02's input state (step-01's output): the bound verdict subject. */
+export const NativeScriptDecodingBindStateV1Schema = Data.Object({
+  direction: Data.Integer(),
+  source_kind: Data.Integer(),
+  /** Id-verified subject tx id; `""` sentinel for forced threads until step-02. */
+  verified_tx_id: Data.Bytes(),
+});
+export type NativeScriptDecodingBindStateV1 = Data.Static<
+  typeof NativeScriptDecodingBindStateV1Schema
+>;
+export const NativeScriptDecodingBindStateV1 =
+  NativeScriptDecodingBindStateV1Schema as unknown as NativeScriptDecodingBindStateV1;
+
+/**
+ * The constant-size thread state from step-02's output onward — 15 fields in
+ * `engine.ak` declaration order. `tx_order_id` is the serialised forced-leaf
+ * trie key (`""` for normal threads) — the design's `Int` was a type repair.
+ */
+export const NativeScriptDecodingScanThreadStateV1Schema = Data.Object({
+  direction: Data.Integer(),
+  source_kind: Data.Integer(),
+  verified_tx_id: Data.Bytes(),
+  tx_order_id: Data.Bytes(),
+  /** Direction B: 0/1/2 mirroring the leaf's arm; `-1` for direction A. */
+  scan_reason_class: Data.Integer(),
+  /** The transition step's `pre_utxos_root`. */
+  prior_ledger_root: MerkleRootSchema,
+  outpoint_source_kind: Data.Integer(),
+  outpoint_cursor: Data.Integer(),
+  /** blake2b-256 of the accused outpoint's trie-key bytes; `""` until bind. */
+  outpoint_key_hash: Data.Bytes(),
+  reference_script_language: Data.Integer(),
+  output_index: Data.Integer(),
+  total_length: Data.Integer(),
+  item_commitment: Data.Bytes(),
+  /** `hash_machine_control_v1` of the current control; `""` until the machine runs. */
+  machine_state_hash: Data.Bytes(),
+  refusal_class: Data.Integer(),
+});
+export type NativeScriptDecodingScanThreadStateV1 = Data.Static<
+  typeof NativeScriptDecodingScanThreadStateV1Schema
+>;
+export const NativeScriptDecodingScanThreadStateV1 =
+  NativeScriptDecodingScanThreadStateV1Schema as unknown as NativeScriptDecodingScanThreadStateV1;
+
+// ## Step 01 — bind the verdict subject
+
+export const NativeScriptDecodingStep01DatumSchema = faultProofStepDatumSchema(
+  Data.Any(),
+);
+export type NativeScriptDecodingStep01Datum = Data.Static<
+  typeof NativeScriptDecodingStep01DatumSchema
+>;
+export const NativeScriptDecodingStep01Datum =
+  NativeScriptDecodingStep01DatumSchema as unknown as NativeScriptDecodingStep01Datum;
+
+/**
+ * Twin of `step_01.Args`: `BindNormalTransaction` (direction A over a normal
+ * leaf, bound through the counted `transactions_root`) is constructor 0,
+ * `RecordForcedSource` (either direction, forced leaf bound at step-02) is
+ * constructor 1.
+ */
+export const NativeScriptDecodingStep01ArgsSchema = Data.Enum([
+  Data.Object({
+    BindNormalTransaction: Data.Object({
+      carriage: NativeTxInclusionCarriageSchema,
+    }),
+  }),
+  Data.Object({
+    RecordForcedSource: Data.Object({
+      direction: Data.Integer(),
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+    }),
+  }),
+]);
+export type NativeScriptDecodingStep01Args = Data.Static<
+  typeof NativeScriptDecodingStep01ArgsSchema
+>;
+export const NativeScriptDecodingStep01Args =
+  NativeScriptDecodingStep01ArgsSchema as unknown as NativeScriptDecodingStep01Args;
+
+export const NativeScriptDecodingStep01SpendRedeemerSchema =
+  faultProofStepRedeemerSchema(NativeScriptDecodingStep01ArgsSchema);
+export type NativeScriptDecodingStep01SpendRedeemer = Data.Static<
+  typeof NativeScriptDecodingStep01SpendRedeemerSchema
+>;
+export const NativeScriptDecodingStep01SpendRedeemer =
+  NativeScriptDecodingStep01SpendRedeemerSchema as unknown as NativeScriptDecodingStep01SpendRedeemer;
+
+// ## Step 02 — committed-claim openings
+
+export const NativeScriptDecodingStep02DatumSchema = faultProofStepDatumSchema(
+  NativeScriptDecodingBindStateV1Schema,
+);
+export type NativeScriptDecodingStep02Datum = Data.Static<
+  typeof NativeScriptDecodingStep02DatumSchema
+>;
+export const NativeScriptDecodingStep02Datum =
+  NativeScriptDecodingStep02DatumSchema as unknown as NativeScriptDecodingStep02Datum;
+
+export const NativeScriptDecodingEventToStepMembershipSchema =
+  rootMembershipProofSchema(EventKeySchema, EventToStepValueSchema);
+export const NativeScriptDecodingTransitionStepMembershipSchema =
+  rootMembershipProofSchema(Data.Integer(), TransitionStepSchema);
+export const NativeScriptDecodingForcedMembershipSchema =
+  rootMembershipProofSchema(OutputReferenceSchema, ForcedInclusionTxV1Schema);
+
+/** Twin of `step_02.Args`. */
+export const NativeScriptDecodingStep02ArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  /** The disputed block's header, bound to the thread NFT's asset name. */
+  header: HeaderV1Schema,
+  event_to_step_membership: NativeScriptDecodingEventToStepMembershipSchema,
+  transition_step_membership:
+    NativeScriptDecodingTransitionStepMembershipSchema,
+  /** Forced threads: the verdict leaf. `null` for normal threads. */
+  forced_membership: Data.Nullable(NativeScriptDecodingForcedMembershipSchema),
+  /** Direction A: the prover-chosen accused pair. Ignored for direction B. */
+  chosen_outpoint_source_kind: Data.Integer(),
+  chosen_outpoint_cursor: Data.Integer(),
+});
+export type NativeScriptDecodingStep02Args = Data.Static<
+  typeof NativeScriptDecodingStep02ArgsSchema
+>;
+export const NativeScriptDecodingStep02Args =
+  NativeScriptDecodingStep02ArgsSchema as unknown as NativeScriptDecodingStep02Args;
+
+export const NativeScriptDecodingStep02SpendRedeemerSchema =
+  faultProofStepRedeemerSchema(NativeScriptDecodingStep02ArgsSchema);
+export type NativeScriptDecodingStep02SpendRedeemer = Data.Static<
+  typeof NativeScriptDecodingStep02SpendRedeemerSchema
+>;
+export const NativeScriptDecodingStep02SpendRedeemer =
+  NativeScriptDecodingStep02SpendRedeemerSchema as unknown as NativeScriptDecodingStep02SpendRedeemer;
+
+// ## Step 03 — bind, scan (self-loop), verdict
+
+export const NativeScriptDecodingStep03DatumSchema = faultProofStepDatumSchema(
+  NativeScriptDecodingScanThreadStateV1Schema,
+);
+export type NativeScriptDecodingStep03Datum = Data.Static<
+  typeof NativeScriptDecodingStep03DatumSchema
+>;
+export const NativeScriptDecodingStep03Datum =
+  NativeScriptDecodingStep03DatumSchema as unknown as NativeScriptDecodingStep03Datum;
+
+/**
+ * Twin of `step_03.Args`: `BindOutpoint` 0, `Scan` 1 (the self-loop),
+ * `Verdict` 2.
+ */
+export const NativeScriptDecodingStep03ArgsSchema = Data.Enum([
+  Data.Object({
+    BindOutpoint: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      subject_field_opening: FieldOpeningV1Schema,
+      descriptor_cbor: Data.Bytes(),
+      ledger_membership_proof: ProofSchema,
+      /** Required (chunk 0) whenever the descriptor names a tag-0 script. */
+      first_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+    }),
+  }),
+  Data.Object({
+    Scan: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      control_cbor: Data.Bytes(),
+      chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+      next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+      frames: Data.Array(NativeScriptFrameV1Schema),
+      step_budget: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    Verdict: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      control_cbor: Data.Bytes(),
+      chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+      next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+    }),
+  }),
+]);
+export type NativeScriptDecodingStep03Args = Data.Static<
+  typeof NativeScriptDecodingStep03ArgsSchema
+>;
+export const NativeScriptDecodingStep03Args =
+  NativeScriptDecodingStep03ArgsSchema as unknown as NativeScriptDecodingStep03Args;
+
+export const NativeScriptDecodingStep03SpendRedeemerSchema =
+  faultProofStepRedeemerSchema(NativeScriptDecodingStep03ArgsSchema);
+export type NativeScriptDecodingStep03SpendRedeemer = Data.Static<
+  typeof NativeScriptDecodingStep03SpendRedeemerSchema
+>;
+export const NativeScriptDecodingStep03SpendRedeemer =
+  NativeScriptDecodingStep03SpendRedeemerSchema as unknown as NativeScriptDecodingStep03SpendRedeemer;
+
+// ## Step 04 — finalize
+
+export const NativeScriptDecodingStep04DatumSchema =
+  NativeScriptDecodingStep03DatumSchema;
+export type NativeScriptDecodingStep04Datum = NativeScriptDecodingStep03Datum;
+export const NativeScriptDecodingStep04Datum =
+  NativeScriptDecodingStep04DatumSchema as unknown as NativeScriptDecodingStep04Datum;
+
+/** Twin of `step_04.Args`. */
+export const NativeScriptDecodingStep04ArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  fraud_proof_mint_redeemer_index: Data.Integer(),
+});
+export type NativeScriptDecodingStep04Args = Data.Static<
+  typeof NativeScriptDecodingStep04ArgsSchema
+>;
+export const NativeScriptDecodingStep04Args =
+  NativeScriptDecodingStep04ArgsSchema as unknown as NativeScriptDecodingStep04Args;
+
+export const NativeScriptDecodingStep04SpendRedeemerSchema =
+  faultProofStepRedeemerSchema(NativeScriptDecodingStep04ArgsSchema);
+export type NativeScriptDecodingStep04SpendRedeemer = Data.Static<
+  typeof NativeScriptDecodingStep04SpendRedeemerSchema
+>;
+export const NativeScriptDecodingStep04SpendRedeemer =
+  NativeScriptDecodingStep04SpendRedeemerSchema as unknown as NativeScriptDecodingStep04SpendRedeemer;
+
+// ## Step resolver
+
+export const NATIVE_SCRIPT_DECODING_STEP_NAMES_V1 = [
+  "step_01",
+  "step_02",
+  "step_03",
+  "step_04",
+] as const;
+export type NativeScriptDecodingStepNameV1 =
+  (typeof NATIVE_SCRIPT_DECODING_STEP_NAMES_V1)[number];
+
+/**
+ * Explicit, exhaustive step-datum resolver. There is no fallback branch:
+ * adding a step without adding its schema fails to compile.
+ */
+export const nativeScriptDecodingStepDatumSchemaV1 = (
+  step: NativeScriptDecodingStepNameV1,
+) => {
+  switch (step) {
+    case "step_01":
+      return NativeScriptDecodingStep01DatumSchema;
+    case "step_02":
+      return NativeScriptDecodingStep02DatumSchema;
+    case "step_03":
+      return NativeScriptDecodingStep03DatumSchema;
+    case "step_04":
+      return NativeScriptDecodingStep04DatumSchema;
+  }
+};
+
+// ## Handoffs (twins of `engine.pre_bind_scan_state_v1` / `bound_scan_state_v1`)
+
+/**
+ * The state step-02 emits: verdict subject and accusation bound, the
+ * descriptor and machine fields still at their sentinels.
+ */
+export const nativeScriptDecodingPreBindScanStateV1 = ({
+  direction,
+  sourceKind,
+  verifiedTxId,
+  txOrderId,
+  scanReasonClass,
+  priorLedgerRoot,
+  outpointSourceKind,
+  outpointCursor,
+}: {
+  readonly direction: bigint;
+  readonly sourceKind: bigint;
+  readonly verifiedTxId: string;
+  readonly txOrderId: string;
+  readonly scanReasonClass: bigint;
+  readonly priorLedgerRoot: string;
+  readonly outpointSourceKind: bigint;
+  readonly outpointCursor: bigint;
+}): NativeScriptDecodingScanThreadStateV1 => ({
+  direction,
+  source_kind: sourceKind,
+  verified_tx_id: verifiedTxId,
+  tx_order_id: txOrderId,
+  scan_reason_class: scanReasonClass,
+  prior_ledger_root: priorLedgerRoot,
+  outpoint_source_kind: outpointSourceKind,
+  outpoint_cursor: outpointCursor,
+  outpoint_key_hash: "",
+  reference_script_language: NATIVE_SCRIPT_DECODING_LANGUAGE_UNBOUND_V1,
+  output_index: -1n,
+  total_length: -1n,
+  item_commitment: "",
+  machine_state_hash: "",
+  refusal_class: NATIVE_SCRIPT_DECODING_CLASS_PENDING_V1,
+});
+
+/**
+ * The bind step's freeze: the accused outpoint's trie-key hash plus the bound
+ * descriptor's reference-script anchor fields, copied verbatim.
+ */
+export const nativeScriptDecodingBoundScanStateV1 = ({
+  state,
+  outpointKeyBytes,
+  referenceScriptLanguage,
+  outputIndex,
+  referenceScriptTotalLength,
+  referenceScriptItemCommitment,
+}: {
+  readonly state: NativeScriptDecodingScanThreadStateV1;
+  /** The accused outpoint's canonical trie-key bytes, as hex. */
+  readonly outpointKeyBytes: string;
+  readonly referenceScriptLanguage: bigint;
+  readonly outputIndex: bigint;
+  readonly referenceScriptTotalLength: bigint;
+  readonly referenceScriptItemCommitment: string;
+}): Effect.Effect<NativeScriptDecodingScanThreadStateV1, HashingError> =>
+  Effect.map(hashHexWithBlake2b(outpointKeyBytes, 32), (outpoint_key_hash) => ({
+    ...state,
+    outpoint_key_hash,
+    reference_script_language: referenceScriptLanguage,
+    output_index: outputIndex,
+    total_length: referenceScriptTotalLength,
+    item_commitment: referenceScriptItemCommitment,
+  }));

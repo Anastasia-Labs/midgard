@@ -14,6 +14,7 @@ export * from "./input-no-idx.js";
 export * from "./invalid-range.js";
 export * from "./invalid-signature.js";
 export * from "./native.js";
+export * from "./native-script-decoding-v1.js";
 export * from "./no-reference-input.js";
 export * from "./non-existent-input.js";
 export * from "./reference-input-no-idx.js";
