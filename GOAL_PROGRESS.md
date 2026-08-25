@@ -6111,15 +6111,41 @@ Landed: the validator arm + 8 selectors (4 positive faces incl. the
 reference field; 4 refusals: in-domain ordinal, direction A, post-bind
 re-close, non-canonical opening on the negative face), the lib wire twin
 (`BindOutOfDomain` appended last — BindOutpoint/Scan/Verdict tags 0/1/2
-unmoved), design-doc §3.2/§7.6 amendments, and the engine exec-ledger row
-(`closes_an_out_of_domain_ordinal`: 2,382,579 mem / 1,016,343,454 cpu,
-within the 13.2M basis) plus a third step_03 neutralisation selector
-(`rejects_an_in_domain_ordinal_close` — were the count comparison
-neutralised, a prover could convict an operator whose correct in-domain
-rejection was never disproven). The five pre-existing step_03 rows moved
-by the arm's dispatch cost (+0.6–1.5K mem) and are re-pinned in the same
-commit per the ledger's own rule. Family suite 85/85 green under the
-fork; ledger verify green (22 rows).
+unmoved), design-doc §3.2/§7.6 amendments, and TWO engine exec-ledger
+rows — `closes_an_out_of_domain_ordinal` (2,382,579 mem / 1,016,343,454
+cpu) and, post-review, the arm's measured frontier face
+`closes_an_out_of_domain_reference_ordinal` (2,388,802 mem /
+1,018,687,200 cpu), both within the 13.2M basis — plus a third step_03
+neutralisation selector (`rejects_an_in_domain_ordinal_close` — were the
+count comparison neutralised, a prover could convict an operator whose
+correct in-domain rejection was never disproven). The five pre-existing
+step_03 rows moved by the arm's dispatch cost (+0.6–1.5K mem) and are
+re-pinned in the same commit per the ledger's own rule.
+
+Evidence, exact commands (all from `onchain/aiken/`, fork
+v1.1.23+6801f62 at /home/gumbo/.aiken/bin/aiken):
+`aiken check -m 'native_script_decoding/'` → 85/85 (step-03 module 32/32);
+`MIDGARD_AIKEN_BIN=<fork> node
+scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs` →
+pass, 23 rows. Blueprint (`aiken build`): only the step-03 spend/else
+pair moves, 24,862 → 25,767 B compiled — still over the 16,384 inline
+envelope, so the plan's Q3 reference-scripts answer stands; 452
+validator count unchanged. Resolver sweep
+`generate-resolver-proof-fit-sweep-v1.mjs --check` byte-identical under
+the rebuilt blueprint (the decoding validators are unregistered), so
+`resolver-proof-fit-sweep-inputs-digest-v1.mjs --stamp` re-stamped the
+inputs digest after that green check per the sanctioned flow (closure
+2090efff…, artifact 1b064ba9…, new plutus.json md5 a7cdd64b…).
+
+OWNER RULING REQUESTED on the superset: the two extra faces convict on
+the committed reason's *encoding alone* — the accused transaction is
+never opened for them — and the load-bearing premise ("the machine only
+ever emits in-domain pairs") is asserted from the machine's shape, not
+enforced by any in-repo range check on the emitter (the SDK types
+`source_kind`/`input_index` as unbounded integers). The one-face
+literal reading would instead leave those leaves unprovable, recreating
+the corner §7.2 closed. Landed as the superset; a-face-only revert is a
+three-line change if ruled otherwise.
 
 Discovered en route: the long-standing `aiken check -m
 native_script_decoding` filter matched ZERO tests (aiken treats a bare

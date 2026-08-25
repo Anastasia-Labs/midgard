@@ -148,6 +148,11 @@
           "mem": 2382579,
           "cpu": 1016343454,
           "basisFit": "within"
+        },
+        "decoding_step_03_closes_an_out_of_domain_reference_ordinal": {
+          "mem": 2388802,
+          "cpu": 1018687200,
+          "basisFit": "within"
         }
       }
     },
