@@ -929,8 +929,39 @@ const applyBlueprintParams = (
         "apply exactly the declared parameters (#609).",
     );
   }
-  return applyParamsToScript(validator.compiledCode, [...params]);
+  const cacheKey = appliedScriptCacheKey(validator.compiledCode, params);
+  const cached = appliedScriptCache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const applied = applyParamsToScript(validator.compiledCode, [...params]);
+  appliedScriptCache.set(cacheKey, applied);
+  return applied;
 };
+
+/**
+ * `applyParamsToScript` is pure — the applied script is a function of nothing
+ * but the compiled code and the CBOR of the parameters — and it dominates
+ * contract construction (3–65 ms per validator, ~14 s across a full
+ * fault-proof contract build). Memoizing on the exact inputs therefore cannot
+ * change any deployed byte: a cache hit is a proof the inputs were identical.
+ * The #609 arity guard above runs before the lookup on every call, cached or
+ * not, so under-/over-application still fails closed.
+ */
+const appliedScriptCache = new Map<string, string>();
+
+const appliedScriptCacheKey = (
+  compiledCode: string,
+  params: readonly Data[],
+): string =>
+  toHex(
+    blake2b(
+      new TextEncoder().encode(
+        `${compiledCode}|${params.map((param) => Data.to(param)).join("|")}`,
+      ),
+      { dkLen: 32 },
+    ),
+  );
 
 /**
  * The same fail-closed reading for validators deployed with no parameters at

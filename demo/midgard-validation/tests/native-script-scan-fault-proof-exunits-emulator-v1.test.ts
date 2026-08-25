@@ -53,6 +53,14 @@ import {
 } from "../src/index.js";
 import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "../src/ledger-output-descriptor.js";
 import {
+  checkScanBenchLedgerV1,
+  readScanBenchLedgerV1,
+  SCAN_BENCH_EXECUTION_BASIS_V1,
+  SCAN_BENCH_LEDGER_PATH_V1,
+  scanBenchFiltersInEffectV1,
+  writeScanBenchLedgerV1,
+} from "./helpers/native-script-scan-exunits-ledger-v1.js";
+import {
   fundingLovelaceForOutputsV1,
   makeMinAdaFundedExactSizeOutputItemV1,
   makeNativeTx,
@@ -77,16 +85,54 @@ import {
  *
  * This suite builds that exact transaction in the lucid-evolution emulator
  * against the real compiled blueprint, for deep and wide canonical payloads at
- * curve node counts, and reports per-step ExUnits (mem/cpu), fee, and complete
- * signed size — the measured baseline the #633 direction-(d) staged-proof
- * design (and any scan optimization) is judged against. No on-chain code is
- * touched: this is measurement only.
+ * curve node counts, and measures per-step ExUnits (mem/cpu), fee, and complete
+ * signed size — the baseline the #633 direction-(d) staged-proof design (and
+ * any scan optimization) is judged against. No on-chain code is touched.
+ *
+ * **This is no longer measurement only, and it no longer runs by default.**
+ *
+ * The suite costs about 858 seconds. It used to run inside the default
+ * `pnpm test` and assert only that each reading was positive, writing an
+ * artifact solely when `MIDGARD_SCAN_BENCH_OUT` was set — 14 minutes of
+ * measurement discarded on every run, behind a gate that no cost at any
+ * multiple of the §3.3 basis could fail. Two changes, together:
+ *
+ *   1. The whole suite is gated behind `MIDGARD_VALIDATION_EVIDENCE`, following
+ *      `demo/midgard-fault-proofs/tests/resolver-proof-fit-sweep-generate-v1.test.ts`'s
+ *      `describe.skipIf(!REGENERATE)`. The default `pnpm test` shows it SKIPPED —
+ *      present and named, never silently absent — and
+ *      `pnpm run test:evidence` runs it.
+ *   2. Every measured row is now pinned against the COMMITTED artifact
+ *      `evidence/native-script-scan-fault-proof-exunits-v1.json`, exactly, and
+ *      each row's position relative to the §3.3 basis and the L1 transaction cap
+ *      is a recorded judgement that movement in EITHER direction fails. So the
+ *      cheaper lane gates strictly MORE than the old default run did, not less.
+ *      See `tests/helpers/native-script-scan-exunits-ledger-v1.ts` for why exact
+ *      equality is the right comparison (emulator ExUnits are deterministic),
+ *      what counts as re-takeable drift, and how
+ *      `MIDGARD_SCAN_BENCH_UPDATE=1` re-records readings without laundering a
+ *      judgement.
+ *
+ * `MIDGARD_SCAN_BENCH_OUT` is unchanged and independent: it still dumps the raw
+ * per-curve reports to an arbitrary path, which is a scratch dump for reading,
+ * not the pinned ledger. Nothing about the measured rows, shapes, node counts or
+ * step selection changed — the same curve points and the same step sample are
+ * measured as before.
  */
 
 const blueprintPath =
   process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
   resolve(process.cwd(), "../../onchain/aiken/plutus.json");
-const blueprintJson = JSON.parse(readFileSync(blueprintPath, "utf8"));
+/**
+ * Read lazily. `onchain/aiken/plutus.json` is gitignored and generated, so
+ * reading it at module scope would throw during COLLECTION — turning the
+ * `skipIf` above into a hard error on any tree that has not built the
+ * blueprint, which is precisely the "skipped, not absent" property the lane
+ * split depends on.
+ */
+let cachedBlueprintJson: unknown;
+const loadBlueprintJson = (): unknown =>
+  (cachedBlueprintJson ??= JSON.parse(readFileSync(blueprintPath, "utf8")));
 
 const HUB_ORACLE_POLICY_ID = "11".repeat(28);
 const FRAUD_PROOF_CATALOGUE_POLICY_ID = "22".repeat(28);
@@ -97,9 +143,14 @@ const SIGNER_HASH = Buffer.from(
   SIGNING_KEY.to_public().hash().to_raw_bytes(),
 ).toString("hex");
 
-/** The §3.3 per-transaction execution basis the #633 measurements are read against. */
-const BASIS_MEMORY_UNITS = 13_200_000n;
-const BASIS_CPU_UNITS = 8_000_000_000n;
+/**
+ * The §3.3 per-transaction execution basis the #633 measurements are read
+ * against. Both halves participate: `memoryUnits` in the per-row `%mem-basis`
+ * column of the report AND in the ledger's recomputed
+ * `memBasisShareBasisPoints`, `cpuUnits` in the ledger's `basisFit` judgement,
+ * which a row may not cross in either direction without going red.
+ */
+const BASIS_MEMORY_UNITS = SCAN_BENCH_EXECUTION_BASIS_V1.memoryUnits;
 const MAX_L1_PROOF_TX_BYTES =
   MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
 
@@ -109,6 +160,19 @@ const MAX_L1_PROOF_TX_BYTES =
  * than restated; the max-fit curve point is derived against it.
  */
 const MAX_OUTPUT_CBOR_BYTES = 16_384;
+
+/**
+ * The basis the committed ledger must declare, assembled here from the
+ * constants above and handed to the verifier — never read back out of the
+ * ledger whose verdicts it decides.
+ */
+const SCAN_BENCH_LEDGER_BASIS_V1 = {
+  memoryUnits: BASIS_MEMORY_UNITS,
+  cpuUnits: SCAN_BENCH_EXECUTION_BASIS_V1.cpuUnits,
+  maxL1ProofTxBytes: MAX_L1_PROOF_TX_BYTES,
+  maxOutputCanonicalCborBytes: MAX_OUTPUT_CBOR_BYTES,
+  source: SCAN_BENCH_EXECUTION_BASIS_V1.source,
+} as const;
 
 /** Flat semantic-resolver index of `resolve_inputs_membership_step_semantic_v1`. */
 const RESOLVE_INPUTS_MEMBERSHIP_STEP_RESOLVER = 29;
@@ -412,7 +476,7 @@ const loadContracts =
   async (): Promise<ValidationTraceDisputeFaultProofContracts> => {
     cachedContracts ??= await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({
-        blueprint: parseFaultProofBlueprint(blueprintJson),
+        blueprint: parseFaultProofBlueprint(loadBlueprintJson()),
         network: "Custom",
         hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
         fraudProofCataloguePolicyId: FRAUD_PROOF_CATALOGUE_POLICY_ID,
@@ -784,57 +848,124 @@ const SHAPES: readonly PayloadShape[] = (
   .split(",")
   .filter((part): part is PayloadShape => part === "deep" || part === "wide");
 
-describe("native-script scan fault-proof step ExUnits baseline (#633)", () => {
-  it(
-    "measures the live one-token-per-transaction staged scan",
-    { timeout: 14_400_000 },
-    async () => {
-      const reports: CurvePointReport[] = [];
-      for (const shape of SHAPES) {
-        const producedItem = makeMinAdaFundedExactSizeOutputItemV1(160);
-        const funding = fundingLovelaceForOutputsV1([producedItem]);
-        const tokens =
-          INCLUDE_MAX_FIT && !CURVE_NODE_TOKENS.includes("maxfit")
-            ? [...CURVE_NODE_TOKENS, "maxfit"]
-            : [...CURVE_NODE_TOKENS];
-        const points = tokens.map((token) =>
-          token === "maxfit"
-            ? maxFitNodes(shape, funding)
-            : Number.parseInt(token, 10),
-        );
-        for (const nodes of points) {
-          const report = await runCurvePoint(shape, nodes);
-          reports.push(report);
+/**
+ * The evidence lane. Same idiom as
+ * `demo/midgard-fault-proofs/tests/resolver-proof-fit-sweep-generate-v1.test.ts:746`:
+ * `describe.skipIf` keeps the suite COLLECTED and reported as skipped under the
+ * default `pnpm test`, so nobody has to remember it exists.
+ */
+const EVIDENCE = process.env.MIDGARD_VALIDATION_EVIDENCE === "1";
+/** Re-record the raw readings into the committed artifact. Never a bypass. */
+const UPDATE_LEDGER = process.env.MIDGARD_SCAN_BENCH_UPDATE === "1";
 
-          console.log(formatReport([report]));
-        }
-      }
+describe.skipIf(!EVIDENCE)(
+  "native-script scan fault-proof step ExUnits baseline (#633)",
+  () => {
+    it(
+      "pins the live one-token-per-transaction staged scan against the committed ExUnits ledger",
+      { timeout: 14_400_000 },
+      async () => {
+        const reports: CurvePointReport[] = [];
+        for (const shape of SHAPES) {
+          const producedItem = makeMinAdaFundedExactSizeOutputItemV1(160);
+          const funding = fundingLovelaceForOutputsV1([producedItem]);
+          const tokens =
+            INCLUDE_MAX_FIT && !CURVE_NODE_TOKENS.includes("maxfit")
+              ? [...CURVE_NODE_TOKENS, "maxfit"]
+              : [...CURVE_NODE_TOKENS];
+          const points = tokens.map((token) =>
+            token === "maxfit"
+              ? maxFitNodes(shape, funding)
+              : Number.parseInt(token, 10),
+          );
+          for (const nodes of points) {
+            const report = await runCurvePoint(shape, nodes);
+            reports.push(report);
 
-      console.log(formatReport(reports));
-      const outPath = process.env.MIDGARD_SCAN_BENCH_OUT;
-      if (outPath !== undefined && outPath !== "") {
-        mkdirSync(dirname(outPath), { recursive: true });
-        writeFileSync(
-          outPath,
-          `${JSON.stringify(
-            reports,
-            (_key, value: unknown) =>
-              typeof value === "bigint" ? value.toString() : value,
-            2,
-          )}\n`,
-        );
-      }
-      // This is a baseline measurement harness: within-basis / L1-margin
-      // comparisons are REPORTED per row above, never gated, because the
-      // point of the baseline is to record where the live step stands
-      // relative to the basis — including any step that exceeds it. Only
-      // sanity-check that every measured step actually evaluated.
-      for (const report of reports) {
-        for (const row of report.measurements) {
-          expect(row.mem).toBeGreaterThan(0n);
-          expect(row.cpu).toBeGreaterThan(0n);
+            console.log(formatReport([report]));
+          }
         }
-      }
-    },
-  );
-});
+
+        console.log(formatReport(reports));
+
+        // Unchanged and independent of the ledger below: a scratch dump of the
+        // raw reports to an arbitrary path, for reading. The pinned evidence is
+        // the committed artifact, which is written only by the update lane.
+        const outPath = process.env.MIDGARD_SCAN_BENCH_OUT;
+        if (outPath !== undefined && outPath !== "") {
+          mkdirSync(dirname(outPath), { recursive: true });
+          writeFileSync(
+            outPath,
+            `${JSON.stringify(
+              reports,
+              (_key, value: unknown) =>
+                typeof value === "bigint" ? value.toString() : value,
+              2,
+            )}\n`,
+          );
+        }
+
+        // Every measured step actually evaluated. Kept from the original
+        // harness: it is cheap, and it separates "the emulator returned zero"
+        // from "the reading moved", which the ledger comparison below would
+        // otherwise report as an ordinary drift.
+        for (const report of reports) {
+          for (const row of report.measurements) {
+            expect(row.mem).toBeGreaterThan(0n);
+            expect(row.cpu).toBeGreaterThan(0n);
+          }
+        }
+
+        // The pin. Exact per-row equality against the committed artifact, with
+        // each row's side of the §3.3 basis and of the L1 cap recorded as a
+        // judgement that fails on movement in EITHER direction.
+        const verdict = checkScanBenchLedgerV1({
+          ledger: readScanBenchLedgerV1(SCAN_BENCH_LEDGER_PATH_V1),
+          readings: reports,
+          basis: SCAN_BENCH_LEDGER_BASIS_V1,
+          update: UPDATE_LEDGER,
+          filtersInEffect: scanBenchFiltersInEffectV1(),
+        });
+
+        // A re-take over an existing ledger follows the aiken verifier exactly:
+        // a structural failure writes NOTHING, because none of those is a
+        // re-takeable number. A BOOTSTRAP is the one divergence — there is no
+        // ledger to protect, the readings cost ~858 seconds, and the only thing
+        // a fresh bootstrap can be missing is `infeasibility`/`ruling` prose a
+        // human owes. So it writes the measured numbers and still fails red.
+        if (
+          UPDATE_LEDGER &&
+          verdict.updated !== null &&
+          (verdict.bootstrapped || verdict.failures.length === 0)
+        ) {
+          writeScanBenchLedgerV1(SCAN_BENCH_LEDGER_PATH_V1, verdict.updated);
+          console.log(
+            `[bench] ${verdict.bootstrapped ? "bootstrapped" : "updated"} ${SCAN_BENCH_LEDGER_PATH_V1} ` +
+              `with ${verdict.rowCount.toString()} row(s)`,
+          );
+        }
+
+        if (verdict.failures.length > 0) {
+          throw new Error(
+            `native-script scan ExUnits ledger: ${verdict.failures.length.toString()} structural failure(s).\n` +
+              `${verdict.failures.map((failure) => `  - ${failure}`).join("\n")}\n` +
+              (UPDATE_LEDGER
+                ? "MIDGARD_SCAN_BENCH_UPDATE absorbs measurement drift and nothing else."
+                : "These are not re-takeable numbers; resolve them in the source or in the ledger."),
+          );
+        }
+        if (verdict.drifts.length > 0) {
+          throw new Error(
+            `native-script scan ExUnits ledger: ${verdict.drifts.length.toString()} drift(s).\n` +
+              `${verdict.drifts.map((drift) => `  - ${drift}`).join("\n")}\n` +
+              "Emulator ExUnits are deterministic, so a moved reading means the " +
+              "blueprint, the trace builder, the transaction shape or the cost " +
+              "model moved. If the re-take is legitimate, re-run the update lane " +
+              "(MIDGARD_SCAN_BENCH_UPDATE=1) and commit the artifact.",
+          );
+        }
+        expect(verdict.rowCount).toBeGreaterThan(0);
+      },
+    );
+  },
+);
