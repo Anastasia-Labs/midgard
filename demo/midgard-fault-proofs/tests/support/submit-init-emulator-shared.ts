@@ -191,6 +191,10 @@ import {
   validationSemanticResolverGlobalIndexV1,
   validationValueAndMintSemanticReferenceScriptDeploymentEntryV1,
 } from "../../src/index.js";
+import {
+  NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1,
+  type NativeScriptDecodingContractsV1,
+} from "../../src/native-script-decoding/contracts-v1.js";
 import type { FabricatedDepositContractsV1 } from "../../src/submit-fabricated-deposit-step-01.js";
 import type { FabricatedWithdrawalContractsV1 } from "../../src/submit-fabricated-withdrawal-step-01.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
@@ -859,6 +863,75 @@ export const makeAlwaysSucceedsContracts = (
   };
 };
 
+/**
+ * Applies the four-step `native-script-decoding` chain in blueprint-declared
+ * parameter order (offchain design §1; the order note lives on
+ * `NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1`). Applied backwards, step 04
+ * first, because each step is parameterized by its successor's script hash.
+ * All four steps deploy as reference scripts (design §10 Q3): step 03's
+ * 24,862-byte applied body cannot inline inside the 16,384-byte L1 fault-proof
+ * envelope, so the family rides the same oversized reference-script
+ * publication pattern as the semantic resolvers below.
+ */
+export const buildNativeScriptDecodingChainV1 = ({
+  realBlueprint,
+  computationThreadPolicyId,
+  fraudProofPolicyId,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+  hubOraclePolicyId,
+}: {
+  readonly realBlueprint: Blueprint;
+  readonly computationThreadPolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
+  readonly hubOraclePolicyId: string;
+}): readonly [
+  SdkSpendingValidator,
+  SdkSpendingValidator,
+  SdkSpendingValidator,
+  SdkSpendingValidator,
+] => {
+  const step04 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.step04,
+      [
+        computationThreadPolicyId,
+        fraudProofPolicyId,
+        fraudProofTokenAddressData,
+      ],
+    ),
+  );
+  const step03 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.step03,
+      [
+        step04.spendingScriptHash,
+        computationThreadPolicyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+    ),
+  );
+  const step02 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.step02,
+      [step03.spendingScriptHash, computationThreadPolicyId],
+    ),
+  );
+  const step01 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.step01,
+      [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
+    ),
+  );
+  return [step01, step02, step03, step04];
+};
+
 export const buildMinimalFaultProofContracts = async (
   realBlueprint: Blueprint,
   alwaysBlueprint: Blueprint,
@@ -876,6 +949,7 @@ export const buildMinimalFaultProofContracts = async (
     realReferenceInputNoIdx = false,
     realInvalidSignature = false,
     realValidationTraceDispute = false,
+    realNativeScriptDecoding = false,
     alwaysFraudProofCatalogue = false,
   }: {
     readonly realNonExistentInput?: boolean;
@@ -890,12 +964,14 @@ export const buildMinimalFaultProofContracts = async (
     readonly realReferenceInputNoIdx?: boolean;
     readonly realInvalidSignature?: boolean;
     readonly realValidationTraceDispute?: boolean;
+    readonly realNativeScriptDecoding?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
 ): Promise<
   MidgardValidators & {
     readonly fabricatedDeposit?: FabricatedDepositContractsV1;
     readonly fabricatedWithdrawal?: FabricatedWithdrawalContractsV1;
+    readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
   }
 > => {
   // This integration test proves the real active-operators slashing and
@@ -1216,6 +1292,45 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueueMinting.policyId,
           categoryId: FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1,
         };
+  // Same predates-registration shape for the `native-script-decoding` family
+  // (#635): the chain is applied here from the double-spend family's shared
+  // computation-thread and fraud-proof policies, with the harness's
+  // always-succeeds field-preimage certificate stub standing in for the §8.6
+  // certificate policy (#579 ruling A) — production parameterizes step 03 with
+  // the real certificate policy instead.
+  const nativeScriptDecoding: NativeScriptDecodingContractsV1 | undefined =
+    realNativeScriptDecoding
+      ? await (async () => {
+          const fraudProofTokenAddressData = await Effect.runPromise(
+            addressDataFromBech32(
+              doubleSpendContracts.fraudProof.spendingScriptAddress,
+            ).pipe(
+              Effect.map((addressData) =>
+                Data.from(Data.to(addressData, AddressData)),
+              ),
+            ),
+          );
+          const steps = buildNativeScriptDecodingChainV1({
+            realBlueprint,
+            computationThreadPolicyId:
+              doubleSpendContracts.computationThread.policyId,
+            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
+            fraudProofTokenAddressData,
+            fieldPreimageCertificatePolicyId:
+              base.fieldPreimageCertificate.policyId,
+            hubOraclePolicyId: hubOracle.policyId,
+          });
+          return {
+            steps,
+            computationThread: doubleSpendContracts.computationThread,
+            fraudProof: doubleSpendContracts.fraudProof,
+            hubOraclePolicyId: hubOracle.policyId,
+            stateQueuePolicyId: stateQueueMinting.policyId,
+            fieldPreimageCertificatePolicyId:
+              base.fieldPreimageCertificate.policyId,
+          };
+        })()
+      : undefined;
   const fabricatedWithdrawal: FabricatedWithdrawalContractsV1 | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
@@ -1232,6 +1347,7 @@ export const buildMinimalFaultProofContracts = async (
     ...withScheduler,
     ...(fabricatedDeposit === undefined ? {} : { fabricatedDeposit }),
     ...(fabricatedWithdrawal === undefined ? {} : { fabricatedWithdrawal }),
+    ...(nativeScriptDecoding === undefined ? {} : { nativeScriptDecoding }),
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,
