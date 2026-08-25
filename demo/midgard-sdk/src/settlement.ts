@@ -36,11 +36,9 @@ import {
 } from "@/common.js";
 import { fetchHubOracleUTxOProgram, HubOracleError } from "@/hub-oracle.js";
 import { AuthenticUTxO } from "@/internals.js";
-import {
-  MidgardTxValiditySchema,
-  WithdrawalValiditySchema,
-} from "@/ledger-state.js";
+import { WithdrawalValiditySchema } from "@/ledger-state.js";
 import { getProtocolParameters } from "@/protocol-parameters.js";
+import { OperatorVerdictV1Schema } from "@/rejection-reason-v1.js";
 import {
   FetchRetiredOperatorParams,
   fetchRetiredOperatorUTxOs,
@@ -100,7 +98,7 @@ export const EventTypeSchema = Data.Enum([
   }),
   Data.Object({
     TxOrder: Data.Object({
-      validity_override: MidgardTxValiditySchema,
+      validity_override: OperatorVerdictV1Schema,
     }),
   }),
 ]);

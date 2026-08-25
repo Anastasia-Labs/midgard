@@ -66,7 +66,6 @@ import {
   CardanoDatumSchema,
   CekProgramMaterialDatumV1,
   CekProgramMaterialDatumV1Schema,
-  MidgardTxValiditySchema,
   NativeTxProofSourceV1,
   TxOrderEventV1Schema,
 } from "@/ledger-state.js";
@@ -74,6 +73,7 @@ import {
   type FieldCarriageV1,
   FieldCarriageV1Schema,
 } from "@/native-tx-field-access-v1.js";
+import { OperatorVerdictV1Schema } from "@/rejection-reason-v1.js";
 import { RawRootMembershipProofSchema } from "@/transition-trace.js";
 
 import {
@@ -222,7 +222,7 @@ export const TxOrderSpendRedeemerV1Schema = Data.Object({
   burn_redeemer_index: Data.Integer(),
   membership_proof: RawRootMembershipProofSchema,
   inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
-  validity_override: MidgardTxValiditySchema,
+  validity_override: OperatorVerdictV1Schema,
 });
 export type TxOrderSpendRedeemerV1 = Data.Static<
   typeof TxOrderSpendRedeemerV1Schema

@@ -18,6 +18,7 @@ export * from "./phas-membership.js";
 export * from "./protocol-parameters.js";
 export * from "./reference-scripts.js";
 export * from "./registered-operators.js";
+export * from "./rejection-reason-v1.js";
 export * from "./reserve.js";
 export * from "./reserve-payout.js";
 export * from "./retired-operators.js";

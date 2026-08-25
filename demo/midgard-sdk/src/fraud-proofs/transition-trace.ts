@@ -15,11 +15,13 @@ import {
   HeaderHashSchema,
   type HeaderV1,
   HeaderV1Schema,
-  type MidgardTxValidity,
-  MidgardTxValiditySchema,
   type WithdrawalValidity,
   WithdrawalValiditySchema,
 } from "@/ledger-state.js";
+import {
+  type OperatorVerdictV1,
+  OperatorVerdictV1Schema,
+} from "@/rejection-reason-v1.js";
 import {
   type AdjacentTraceProof,
   AdjacentTraceProofSchema,
@@ -371,7 +373,7 @@ export const OmittedDueL1EventWitnessSchema = Data.Enum([
     OmittedDueForcedTransaction: Data.Object({
       event_ref_input_index: Data.Integer(),
       event_asset_name: Data.Bytes(),
-      validity_override: MidgardTxValiditySchema,
+      validity_override: OperatorVerdictV1Schema,
       source_non_membership: ForcedTransactionSourceNonMembershipProofSchema,
     }),
   }),
@@ -395,7 +397,7 @@ export type OmittedDueL1EventWitness =
       readonly OmittedDueForcedTransaction: {
         readonly event_ref_input_index: bigint;
         readonly event_asset_name: string;
-        readonly validity_override: MidgardTxValidity;
+        readonly validity_override: OperatorVerdictV1;
         readonly source_non_membership: ForcedTransactionSourceNonMembershipProof;
       };
     };
@@ -422,7 +424,7 @@ export const OutOfWindowSourceEventWitnessSchema = Data.Enum([
     OutOfWindowForcedTransaction: Data.Object({
       event_ref_input_index: Data.Integer(),
       event_asset_name: Data.Bytes(),
-      validity_override: MidgardTxValiditySchema,
+      validity_override: OperatorVerdictV1Schema,
       source_membership: ForcedTransactionSourceMembershipProofSchema,
     }),
   }),
@@ -447,7 +449,7 @@ export type OutOfWindowSourceEventWitness =
       readonly OutOfWindowForcedTransaction: {
         readonly event_ref_input_index: bigint;
         readonly event_asset_name: string;
-        readonly validity_override: MidgardTxValidity;
+        readonly validity_override: OperatorVerdictV1;
         readonly source_membership: ForcedTransactionSourceMembershipProof;
       };
     };

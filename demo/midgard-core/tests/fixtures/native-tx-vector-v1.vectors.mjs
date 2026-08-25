@@ -14,7 +14,7 @@
  * schema: all nine fields empty, so the `n0x` bytes are dominated by the *shape*
  * rather than by content, with a non-zero fee, an upper validity bound and no
  * lower one, distinct non-empty script-integrity and auxiliary-data hashes, an
- * explicit network id, and the `FailedScript` validity code so the compact form's
+ * explicit network id, and the `TxIsInvalid` validity code so the compact form's
  * validity byte is not the zero default.
  *
  * This module imports nothing from the package: the two constants it needs
@@ -26,7 +26,7 @@
 /** The nine-field golden: everything empty, every scalar distinct. */
 export const nativeTxVectorCanonicalV1 = (codec) => ({
   version: codec.MIDGARD_NATIVE_TX_V1_VERSION,
-  validity: "FailedScript",
+  validity: "TxIsInvalid",
   body: {
     spendInputsPreimageCbor: codec.EMPTY_CBOR_LIST,
     referenceInputsPreimageCbor: codec.EMPTY_CBOR_LIST,
