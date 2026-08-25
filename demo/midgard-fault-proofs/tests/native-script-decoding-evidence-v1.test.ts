@@ -33,6 +33,7 @@ import {
   NativeScriptDecodingOutOfDomainFacesV1,
   nativeScriptDecodingOutpointKeyHashV1,
   nativeScriptDecodingOutpointKeyV1,
+  nativeScriptDecodingScanAccusationOfV1,
   nativeScriptDecodingScanArgsEvidenceV1,
   nativeScriptDecodingSubjectFieldIndexV1,
   nativeScriptDecodingWindowProofsV1,
@@ -214,6 +215,42 @@ describe("native-script-decoding evidence v1", () => {
       BigInt(segment.window!.chunkIndex),
     );
     expect(evidence.next_chunk_proof).toBeNull();
+  });
+
+  it("copies each decoding accusation verbatim and refuses foreign rejection arms", () => {
+    expect(
+      nativeScriptDecodingScanAccusationOfV1({
+        ResolvedReferenceScriptMalformed: { source_kind: 1n, input_index: 0n },
+      }),
+    ).toStrictEqual({
+      scanReasonClass: 0n,
+      outpointSourceKind: 1n,
+      outpointCursor: 0n,
+    });
+    expect(
+      nativeScriptDecodingScanAccusationOfV1({
+        ResolvedReferenceScriptNodeLimit: { source_kind: 0n, input_index: 7n },
+      }),
+    ).toStrictEqual({
+      scanReasonClass: 1n,
+      outpointSourceKind: 0n,
+      outpointCursor: 7n,
+    });
+    expect(
+      nativeScriptDecodingScanAccusationOfV1({
+        ResolvedReferenceScriptDepthLimit: {
+          source_kind: 2n,
+          input_index: -3n,
+        },
+      }),
+    ).toStrictEqual({
+      scanReasonClass: 2n,
+      outpointSourceKind: 2n,
+      outpointCursor: -3n,
+    });
+    expect(() =>
+      nativeScriptDecodingScanAccusationOfV1("FeeBelowMinimum"),
+    ).toThrow(/three decoding arms/);
   });
 
   it("classifies every SS7.2 out-of-domain face and refuses in-domain pairs", () => {

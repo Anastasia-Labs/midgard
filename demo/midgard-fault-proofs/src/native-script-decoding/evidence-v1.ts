@@ -37,6 +37,9 @@ import {
   MIDGARD_FIELD_INDEX_V1,
   NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_REFERENCE_V1,
   NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND_V1,
+  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_DEPTH_LIMIT_V1,
+  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
+  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_NODE_LIMIT_V1,
   Proof,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -332,6 +335,65 @@ export const buildNativeScriptDecodingStep02EvidenceV1 = async ({
     transitionStepMembership,
     forcedMembership,
   };
+};
+
+/**
+ * The accusation a decoding-family rejection makes: its refusal class and the
+ * accused `(source_kind, ordinal)` pair.
+ */
+export type NativeScriptDecodingScanAccusationV1 = {
+  readonly scanReasonClass: bigint;
+  readonly outpointSourceKind: bigint;
+  readonly outpointCursor: bigint;
+};
+
+/**
+ * Twin of `engine.scan_accusation_of_v1` (2026-08-24 ruling): the three
+ * decoding rejection arms map onto refusal classes 0/1/2 with the accused
+ * pair copied verbatim; any other rejection is a foreign arm this family
+ * cannot dispute in direction B. Deliberately no domain filtering — an
+ * out-of-domain pair is step-03's `BindOutOfDomain` close, not a refusal
+ * here.
+ */
+export const nativeScriptDecodingScanAccusationOfV1 = (
+  reason: SDK.RejectionReasonV1,
+): NativeScriptDecodingScanAccusationV1 => {
+  if (
+    typeof reason === "object" &&
+    "ResolvedReferenceScriptMalformed" in reason
+  ) {
+    const arm = reason.ResolvedReferenceScriptMalformed;
+    return {
+      scanReasonClass: NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
+      outpointSourceKind: arm.source_kind,
+      outpointCursor: arm.input_index,
+    };
+  }
+  if (
+    typeof reason === "object" &&
+    "ResolvedReferenceScriptNodeLimit" in reason
+  ) {
+    const arm = reason.ResolvedReferenceScriptNodeLimit;
+    return {
+      scanReasonClass: NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_NODE_LIMIT_V1,
+      outpointSourceKind: arm.source_kind,
+      outpointCursor: arm.input_index,
+    };
+  }
+  if (
+    typeof reason === "object" &&
+    "ResolvedReferenceScriptDepthLimit" in reason
+  ) {
+    const arm = reason.ResolvedReferenceScriptDepthLimit;
+    return {
+      scanReasonClass: NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_DEPTH_LIMIT_V1,
+      outpointSourceKind: arm.source_kind,
+      outpointCursor: arm.input_index,
+    };
+  }
+  throw evidenceError(
+    "the disputed rejection is not one of the family's three decoding arms, so a direction-B thread cannot dispute it.",
+  );
 };
 
 // ## §7.2 out-of-domain faces (direction B closing arm)
