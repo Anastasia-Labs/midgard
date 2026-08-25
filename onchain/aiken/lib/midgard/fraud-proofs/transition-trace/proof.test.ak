@@ -18,6 +18,7 @@ use midgard/hub_oracle
 use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
 use midgard/native_tx_field_access_v1
+use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/deposit
@@ -510,7 +511,7 @@ fn ledger_insert_witness(
 }
 
 fn forced_tx(
-  validity: ledger_state.MidgardTxValidity,
+  validity: rejection_reason_v1.OperatorVerdictV1,
   compact_cbor: ByteArray,
 ) -> ledger_state.ForcedInclusionTxV1 {
   ledger_state.ForcedInclusionTxV1 {
@@ -520,7 +521,13 @@ fn forced_tx(
       witness_set_compact_cbor: #"",
       field_preimage_lengths_cbor: #"",
     },
-    operator_validity: validity,
+    verdict: validity,
+  }
+}
+
+fn verdict_plutus_failed() -> rejection_reason_v1.OperatorVerdictV1 {
+  rejection_reason_v1.ForcedTxInvalid {
+    reason: rejection_reason_v1.PlutusExecutionFailed { execution_index: 0 },
   }
 }
 
@@ -552,7 +559,7 @@ fn empty_native_transaction() -> native_types.MidgardTransaction {
 }
 
 fn authenticated_forced_tx(
-  operator_validity: ledger_state.MidgardTxValidity,
+  verdict: rejection_reason_v1.OperatorVerdictV1,
 ) -> ledger_state.ForcedInclusionTxV1 {
   let tx = empty_native_transaction()
   let compact = native_transaction.midgard_transaction_to_compact(tx)
@@ -568,7 +575,7 @@ fn authenticated_forced_tx(
       witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
       field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     },
-    operator_validity,
+    verdict,
   }
 }
 
@@ -628,7 +635,7 @@ fn omitted_forced_event_is_valid(inclusion_time: Int) -> Bool {
         witness: proof.OmittedDueForcedTransaction {
           event_ref_input_index: 0,
           event_asset_name,
-          validity_override: ledger_state.TxIsValid,
+          validity_override: rejection_reason_v1.ForcedTxValid,
           source_non_membership: empty_non_membership(
             transition_trace.ForcedTransactionsV1RootDomain,
             out_ref(0),
@@ -643,7 +650,7 @@ fn omitted_forced_event_is_valid(inclusion_time: Int) -> Bool {
 }
 
 fn accepted_forced_transition_case(
-  operator_validity: ledger_state.MidgardTxValidity,
+  verdict: rejection_reason_v1.OperatorVerdictV1,
   phase: ledger_state.TransitionPhase,
   claimed_post_root: ByteArray,
   terminal_post_root: ByteArray,
@@ -654,7 +661,7 @@ fn accepted_forced_transition_case(
   let event_key = ledger_state.ForcedTransactionEventKey {
     tx_order_id: out_ref(0),
   }
-  let source = authenticated_forced_tx(operator_validity)
+  let source = authenticated_forced_tx(verdict)
   let source_membership = forced_source_membership(out_ref(0), source)
   let opened_step = step(0, event_key, phase, h32_a, claimed_post_root)
   let transition_membership = trace_membership(opened_step)
@@ -1310,7 +1317,7 @@ test accepts_invalid_forced_transaction_no_op_transition_fault() {
   )
   let source_membership = forced_source_membership(
     out_ref(0),
-    forced_tx(ledger_state.FailedScript, #""),
+    forced_tx(verdict_plutus_failed(), #""),
   )
   let header = ledger_state.HeaderV1 {
     ..base_header(),
@@ -1336,7 +1343,7 @@ test accepts_invalid_forced_transaction_no_op_transition_fault() {
 
 test accepts_valid_forced_transaction_wrong_accepted_post_root_fault() {
   let Pair(header, witness) = accepted_forced_transition_case(
-    ledger_state.TxIsValid,
+    rejection_reason_v1.ForcedTxValid,
     ledger_state.ForcedTransaction,
     h32_b,
     h32_c,
@@ -1349,7 +1356,7 @@ test accepts_valid_forced_transaction_wrong_accepted_post_root_fault() {
 
 test rejects_valid_forced_transaction_matching_accepted_post_root_fault() {
   let Pair(header, witness) = accepted_forced_transition_case(
-    ledger_state.TxIsValid,
+    rejection_reason_v1.ForcedTxValid,
     ledger_state.ForcedTransaction,
     h32_b,
     h32_b,
@@ -1362,7 +1369,7 @@ test rejects_valid_forced_transaction_matching_accepted_post_root_fault() {
 
 test rejects_invalid_forced_source_with_accepted_validation_claim() {
   let Pair(header, witness) = accepted_forced_transition_case(
-    ledger_state.FailedScript,
+    verdict_plutus_failed(),
     ledger_state.ForcedTransaction,
     h32_b,
     h32_c,
@@ -1375,7 +1382,7 @@ test rejects_invalid_forced_source_with_accepted_validation_claim() {
 
 test rejects_forced_event_with_l2_transition_phase_in_accepted_claim() {
   let Pair(header, witness) = accepted_forced_transition_case(
-    ledger_state.TxIsValid,
+    rejection_reason_v1.ForcedTxValid,
     ledger_state.L2Transaction,
     h32_b,
     h32_c,
@@ -1394,7 +1401,7 @@ test accepts_forced_transaction_classified_as_normal_fault() {
   let trace_proof = trace_membership(opened_step)
   let source_membership = forced_source_membership(
     out_ref(0),
-    forced_tx(ledger_state.TxIsValid, #""),
+    forced_tx(rejection_reason_v1.ForcedTxValid, #""),
   )
   let header = ledger_state.HeaderV1 {
     ..base_header(),
@@ -1468,7 +1475,7 @@ test rejects_unknown_transition_step_schema_version() {
   )
   let source_membership = forced_source_membership(
     out_ref(0),
-    forced_tx(ledger_state.FailedScript, #""),
+    forced_tx(verdict_plutus_failed(), #""),
   )
   let header = ledger_state.HeaderV1 {
     ..base_header(),
@@ -2454,7 +2461,7 @@ test accepts_late_forced_order_as_out_of_window_source_event() {
   let event_asset_name = #"01"
   let source_membership = forced_source_membership(
     out_ref(0),
-    authenticated_forced_tx(ledger_state.TxIsValid),
+    authenticated_forced_tx(rejection_reason_v1.ForcedTxValid),
   )
   let header = ledger_state.HeaderV1 {
     ..base_header(),
@@ -2468,7 +2475,7 @@ test accepts_late_forced_order_as_out_of_window_source_event() {
         witness: proof.OutOfWindowForcedTransaction {
           event_ref_input_index: 0,
           event_asset_name,
-          validity_override: ledger_state.TxIsValid,
+          validity_override: rejection_reason_v1.ForcedTxValid,
           source_membership,
         },
       },

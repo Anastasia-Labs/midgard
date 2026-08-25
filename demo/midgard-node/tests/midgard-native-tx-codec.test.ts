@@ -650,17 +650,17 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
     expect(withdrawals!.get(rewardAccount)).toBe(0n);
   });
 
-  it("maps non-success Midgard validity states to Cardano script-invalid txs", () => {
+  it("maps the invalid Midgard validity state to a Cardano script-invalid tx", () => {
     const full = decodeMidgardNativeTxFullV1FromCanonicalCbor(
       cardanoTxBytesToMidgardNativeTxCanonicalCborV1(sampleTxBytes[0]),
     );
     const invalid: MidgardNativeTxFullV1 = {
       ...full,
-      validity: "NonExistentInputUtxo",
+      validity: "TxIsInvalid",
       compact: deriveMidgardNativeTxCompactV1(
         full.body,
         full.witnessSet,
-        "NonExistentInputUtxo",
+        "TxIsInvalid",
       ),
     };
 

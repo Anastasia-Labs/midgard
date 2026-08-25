@@ -332,7 +332,7 @@ describe("phase A validation", () => {
   });
 
   it("rejects native validity values other than TxIsValid", async () => {
-    const fixture = makeNativeTx({ validity: "InvalidSignature" });
+    const fixture = makeNativeTx({ validity: "TxIsInvalid" });
     await expectSinglePhaseARejection(
       fixture,
       RejectCodes.IsValidFalseForbidden,

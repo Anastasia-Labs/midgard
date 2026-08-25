@@ -368,7 +368,7 @@ const EVIDENCE_CASES: readonly EvidenceCase[] = [
     "admission of a non-valid transaction",
     RejectCodes.IsValidFalseForbidden,
     "canonicalDecode",
-    fromNativeTx({ validity: "FailedScript" }),
+    fromNativeTx({ validity: "TxIsInvalid" }),
   ),
   evidenceCase(
     "auxiliary data hash present",

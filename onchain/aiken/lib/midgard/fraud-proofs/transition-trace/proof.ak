@@ -24,6 +24,7 @@ use midgard/hub_oracle as hub
 use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
 use midgard/native_tx_field_access_v1
+use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/tx_order_v1 as tx_order
@@ -235,7 +236,7 @@ pub type OmittedDueL1EventWitness {
   OmittedDueForcedTransaction {
     event_ref_input_index: Int,
     event_asset_name: AssetName,
-    validity_override: ledger_state.MidgardTxValidity,
+    validity_override: rejection_reason_v1.OperatorVerdictV1,
     source_non_membership: transition_trace.RootNonMembershipProof<
       ledger_state.TxOrderId,
     >,
@@ -263,7 +264,7 @@ pub type OutOfWindowSourceEventWitness {
   OutOfWindowForcedTransaction {
     event_ref_input_index: Int,
     event_asset_name: AssetName,
-    validity_override: ledger_state.MidgardTxValidity,
+    validity_override: rejection_reason_v1.OperatorVerdictV1,
     source_membership: transition_trace.RootMembershipProof<
       ledger_state.TxOrderId,
       ledger_state.ForcedInclusionTxV1,
@@ -1074,7 +1075,7 @@ fn validate_invalid_forced_transaction_no_op_transition(
     ledger_state.ForcedInclusionTxV1,
   >,
 ) -> Bool {
-  expect source_membership.value.operator_validity != ledger_state.TxIsValid
+  expect rejection_reason_v1.ForcedTxInvalid { .. } = source_membership.value.verdict
   and {
     validate_forced_transaction_one_step_binding(
       header,
@@ -1701,7 +1702,7 @@ fn validate_out_of_window_source_event(
       let expected_source_value = ledger_state.ForcedInclusionTxV1 {
         tx_id: event.tx.tx_id,
         source: event.tx.source,
-        operator_validity: validity_override,
+        verdict: validity_override,
       }
       let compact_body = tx_order_compact_body(event.tx)
       and {

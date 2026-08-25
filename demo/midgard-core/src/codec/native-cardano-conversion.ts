@@ -559,7 +559,7 @@ export const cardanoTxBytesToMidgardNativeTxCanonicalV1 = (
 
   return {
     version: constants.nativeTxVersion,
-    validity: tx.is_valid() ? "TxIsValid" : "FailedScript",
+    validity: tx.is_valid() ? "TxIsValid" : "TxIsInvalid",
     body: {
       spendInputsPreimageCbor,
       referenceInputsPreimageCbor,

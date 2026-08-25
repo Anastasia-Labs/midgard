@@ -98,14 +98,55 @@ const enumValue = (value, allowed, label) => {
   return value;
 };
 
-const VALIDITIES = [
-  "TxIsValid",
-  "NonExistentInputUtxo",
-  "InvalidSignature",
-  "FailedScript",
-  "FeeTooLow",
-  "UnbalancedTx",
-];
+// The canonical-input verdict vocabulary. Each name selects one
+// `OperatorVerdictV1` value (#640): `ForcedTxValid`, or `ForcedTxInvalid` with
+// the named `RejectionReasonV1` arm at subject ordinal 0. The names are the
+// arm spellings of `midgard/rejection_reason_v1` — the canonical input names
+// the reason, not a coarse validity bucket.
+const VERDICTS = {
+  ForcedTxValid: {
+    sdk: "ForcedTxValid",
+    aiken: "rejection_reason_v1.ForcedTxValid",
+  },
+  InputNotFound: {
+    sdk: {
+      ForcedTxInvalid: {
+        reason: { InputNotFound: { source_kind: 0n, input_index: 0n } },
+      },
+    },
+    aiken:
+      "rejection_reason_v1.ForcedTxInvalid {\n      reason: rejection_reason_v1.InputNotFound { source_kind: 0, input_index: 0 },\n    }",
+  },
+  AddressWitnessSignatureInvalid: {
+    sdk: {
+      ForcedTxInvalid: {
+        reason: { AddressWitnessSignatureInvalid: { witness_index: 0n } },
+      },
+    },
+    aiken:
+      "rejection_reason_v1.ForcedTxInvalid {\n      reason: rejection_reason_v1.AddressWitnessSignatureInvalid {\n        witness_index: 0,\n      },\n    }",
+  },
+  PlutusExecutionFailed: {
+    sdk: {
+      ForcedTxInvalid: {
+        reason: { PlutusExecutionFailed: { execution_index: 0n } },
+      },
+    },
+    aiken:
+      "rejection_reason_v1.ForcedTxInvalid {\n      reason: rejection_reason_v1.PlutusExecutionFailed { execution_index: 0 },\n    }",
+  },
+  FeeBelowMinimum: {
+    sdk: { ForcedTxInvalid: { reason: "FeeBelowMinimum" } },
+    aiken:
+      "rejection_reason_v1.ForcedTxInvalid {\n      reason: rejection_reason_v1.FeeBelowMinimum,\n    }",
+  },
+  ValueNotPreserved: {
+    sdk: { ForcedTxInvalid: { reason: "ValueNotPreserved" } },
+    aiken:
+      "rejection_reason_v1.ForcedTxInvalid {\n      reason: rejection_reason_v1.ValueNotPreserved,\n    }",
+  },
+};
+const VERDICT_NAMES = Object.keys(VERDICTS);
 
 const parseCanonicalTransaction = (value, label) => {
   exactKeys(
@@ -232,10 +273,10 @@ const toJsonTransaction = (parsed) => ({
 const aikenBytes = (value) => `#"${value}"`;
 const aikenInt = (value) => value.toString();
 
-const aikenValidity = (value) => {
-  const names = new Set(VALIDITIES);
-  if (!names.has(value)) fail(`unsupported Aiken validity ${value}`);
-  return `ledger_state.${value}`;
+const aikenVerdict = (name) => {
+  const verdict = VERDICTS[name];
+  if (verdict === undefined) fail(`unsupported Aiken verdict ${name}`);
+  return verdict.aiken;
 };
 
 const makeAiken = ({ transactions, forcedOrders, roots }) => {
@@ -248,6 +289,7 @@ const makeAiken = ({ transactions, forcedOrders, roots }) => {
     "use aiken/primitive/bytearray",
     "use cardano/transaction.{OutputReference}",
     "use midgard/ledger_state",
+    "use midgard/rejection_reason_v1",
     "use midgard/transition_trace",
     "",
   ];
@@ -427,7 +469,7 @@ const makeAiken = ({ transactions, forcedOrders, roots }) => {
       `    value.source.compact_cbor == ${entry.constantPrefix}_compact_cbor,`,
       `    value.source.witness_set_compact_cbor == ${entry.constantPrefix}_witness_set_compact_cbor,`,
       `    value.source.field_preimage_lengths_cbor == ${entry.constantPrefix}_field_preimage_lengths_cbor,`,
-      `    value.operator_validity == ${aikenValidity(entry.operatorValidity)},`,
+      `    value.verdict == ${aikenVerdict(entry.verdict)},`,
       "  }",
       "}",
       "",
@@ -557,7 +599,7 @@ for (const [index, value] of canonical.forcedOrders.entries()) {
   const label = `canonical input.forcedOrders[${index.toString()}]`;
   exactKeys(
     value,
-    ["name", "transaction", "orderId", "operatorValidity"],
+    ["name", "transaction", "orderId", "verdict"],
     label,
   );
   const name = nonEmptyString(value.name, `${label}.name`);
@@ -586,10 +628,10 @@ for (const [index, value] of canonical.forcedOrders.entries()) {
   if (outputIndex < 0n || outputIndex > 0xffff_ffff_ffff_ffffn) {
     fail(`${label}.orderId.outputIndex must fit uint64`);
   }
-  const operatorValidity = enumValue(
-    value.operatorValidity,
-    VALIDITIES,
-    `${label}.operatorValidity`,
+  const verdictName = enumValue(
+    value.verdict,
+    VERDICT_NAMES,
+    `${label}.verdict`,
   );
   const orderId = {
     transactionId: orderTransactionId.toString("hex"),
@@ -599,7 +641,7 @@ for (const [index, value] of canonical.forcedOrders.entries()) {
   const forced = await Effect.runPromise(
     production.encodeForcedInclusionValueV1({
       nativeTxCbor: Buffer.from(transaction.canonicalTransactionCborHex, "hex"),
-      operatorValidity,
+      verdict: VERDICTS[verdictName].sdk,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     }),
   );
@@ -607,7 +649,14 @@ for (const [index, value] of canonical.forcedOrders.entries()) {
     forced.value.toString("hex"),
     SDK.ForcedInclusionTxV1,
   );
-  if (decoded.operator_validity !== operatorValidity) {
+  if (
+    JSON.stringify(decoded.verdict, (_key, item) =>
+      typeof item === "bigint" ? item.toString() : item,
+    ) !==
+    JSON.stringify(VERDICTS[verdictName].sdk, (_key, item) =>
+      typeof item === "bigint" ? item.toString() : item,
+    )
+  ) {
     fail(`${label} production encoder changed the requested operator verdict`);
   }
   forcedEntries.push({
@@ -624,7 +673,7 @@ for (const [index, value] of canonical.forcedOrders.entries()) {
     witnessSetCompactCborHex: decoded.source.witness_set_compact_cbor,
     fieldPreimageLengthsCborHex: decoded.source.field_preimage_lengths_cbor,
     canonicalTransactionCborHex: transaction.canonicalTransactionCborHex,
-    operatorValidity,
+    verdict: verdictName,
   });
 }
 

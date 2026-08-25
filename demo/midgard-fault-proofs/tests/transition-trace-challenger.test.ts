@@ -1,7 +1,10 @@
 import { Proof as MpfProof, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
+  adjudicateMidgardNativeTxFullV1Validity,
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceV1,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -172,15 +175,53 @@ const nativeMaterial = (
   };
 };
 
+/**
+ * The #640 verdict standing in for the pre-format `FailedScript` arm: a
+ * forced transaction the operator rejected for a failed Plutus execution at
+ * execution index 0.
+ */
+const forcedTxInvalidPlutus: SDK.OperatorVerdictV1 = {
+  ForcedTxInvalid: {
+    reason: { PlutusExecutionFailed: { execution_index: 0n } },
+  },
+};
+
 const forcedTx = (
   byte: number,
-  operatorValidity: SDK.MidgardTxValidity = "FailedScript",
+  verdict: SDK.OperatorVerdictV1 = forcedTxInvalidPlutus,
 ): SDK.ForcedInclusionTxV1 => {
   const material = nativeMaterial(byte);
+  if (verdict === "ForcedTxValid") {
+    return {
+      tx_id: material.txId,
+      source: material.source,
+      verdict,
+    };
+  }
+  // A rejected forced leaf commits the operator-adjudicated source
+  // (§2.4.3(e)): the fixture bytes stay `TxIsValid` as submitted, while the
+  // leaf's triple carries the stamped `TxIsInvalid` scalar. The DA preimage
+  // registered for the leaf remains the submitted canonical bytes.
+  const adjudicated = deriveMidgardNativeTxProofSourceV1(
+    adjudicateMidgardNativeTxFullV1Validity(
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(material.canonicalCbor),
+      "TxIsInvalid",
+    ),
+  );
+  canonicalPreimageByCommitment.set(
+    computeMidgardNativeTxProofCommitmentV1(adjudicated).toString("hex"),
+    material.canonicalCbor,
+  );
   return {
     tx_id: material.txId,
-    source: material.source,
-    operator_validity: operatorValidity,
+    source: {
+      compact_cbor: adjudicated.compactCbor.toString("hex"),
+      witness_set_compact_cbor:
+        adjudicated.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        adjudicated.fieldPreimageLengthsCbor.toString("hex"),
+    },
+    verdict,
   };
 };
 
@@ -914,7 +955,7 @@ describe("transition-trace challenger tooling", () => {
               encodedEntry({
                 key: outRef(3),
                 keySchema: SDK.OutputReference as never,
-                value: forcedTx(40, "FailedScript"),
+                value: forcedTx(40, forcedTxInvalidPlutus),
                 valueSchema: SDK.ForcedInclusionTxV1Schema,
               }),
             ],
@@ -944,7 +985,7 @@ describe("transition-trace challenger tooling", () => {
       txOrderId: outRef(4),
       eventRefInputIndex: 0n,
       eventAssetName: "aa",
-      validityOverride: "FailedScript",
+      validityOverride: forcedTxInvalidPlutus,
     };
     const omitted = await buildOmittedDueL1EventFault({
       reconstruction,
@@ -1510,7 +1551,7 @@ describe("transition-trace challenger tooling", () => {
         encodedEntry({
           key: txOrderId,
           keySchema: SDK.OutputReference as never,
-          value: forcedTx(50, "FailedScript"),
+          value: forcedTx(50, forcedTxInvalidPlutus),
           valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],
@@ -1678,7 +1719,7 @@ describe("transition-trace challenger tooling", () => {
         encodedEntry({
           key: txOrderId,
           keySchema: SDK.OutputReference as never,
-          value: forcedTx(70, "FailedScript"),
+          value: forcedTx(70, forcedTxInvalidPlutus),
           valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],
@@ -1745,7 +1786,7 @@ describe("transition-trace challenger tooling", () => {
         encodedEntry({
           key: txOrderId,
           keySchema: SDK.OutputReference as never,
-          value: forcedTx(60, "FailedScript"),
+          value: forcedTx(60, forcedTxInvalidPlutus),
           valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],
@@ -1821,7 +1862,7 @@ describe("transition-trace challenger tooling", () => {
             txOrderId: outRef(10),
             eventRefInputIndex: 2n,
             eventAssetName: "cc",
-            validityOverride: "FailedScript",
+            validityOverride: forcedTxInvalidPlutus,
           },
         ],
       },
@@ -1870,7 +1911,7 @@ describe("transition-trace challenger tooling", () => {
         encodedEntry({
           key: outOfWindowForcedId,
           keySchema: SDK.OutputReference as never,
-          value: forcedTx(73, "FailedScript"),
+          value: forcedTx(73, forcedTxInvalidPlutus),
           valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],
@@ -1937,7 +1978,7 @@ describe("transition-trace challenger tooling", () => {
             txOrderId: outOfWindowForcedId,
             eventRefInputIndex: 2n,
             eventAssetName: "cc",
-            validityOverride: "FailedScript",
+            validityOverride: forcedTxInvalidPlutus,
           },
         ],
       },
@@ -2027,7 +2068,7 @@ describe("transition-trace challenger tooling", () => {
         encodedEntry({
           key: forcedId,
           keySchema: SDK.OutputReference as never,
-          value: forcedTx(13, "TxIsValid"),
+          value: forcedTx(13, "ForcedTxValid"),
           valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],

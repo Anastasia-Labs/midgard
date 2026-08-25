@@ -718,7 +718,18 @@ const vectors: readonly Vector[] = [
     label: "settlement event tx order tag2/1",
     value: {
       TxOrder: {
-        validity_override: "FeeTooLow",
+        validity_override: "ForcedTxValid",
+      },
+    },
+    schema: EventType,
+  },
+  {
+    label: "settlement event tx order tag2/1 rejected",
+    value: {
+      TxOrder: {
+        validity_override: {
+          ForcedTxInvalid: { reason: "EmptyInputs" },
+        },
       },
     },
     schema: EventType,
@@ -910,7 +921,8 @@ const EXPECTED_CBOR_BY_LABEL = {
     "d8799f58203333333333333333333333333333333333333333333333333333333333333333582044444444444444444444444444444444444444444444444444444444444444445820333333333333333333333333333333333333333333333333333333333333333358204444444444444444444444444444444444444444444444444444444444444444d8799fd8799f01581c11111111111111111111111111111111111111111111111111111111ffffff",
   "settlement event deposit tag0/0": "d87980",
   "settlement event withdrawal tag1/1": "d87a9fd87d80ff",
-  "settlement event tx order tag2/1": "d87b9fd87d80ff",
+  "settlement event tx order tag2/1": "d87b9fd87980ff",
+  "settlement event tx order tag2/1 rejected": "d87b9fd87a9fd87b80ffff",
   "settlement membership deposit tag0/1":
     "d8799fd8799fd87c8058203333333333333333333333333333333333333333333333333333333333333333582044444444444444444444444444444444444444444444444444444444444444440141aa41bb80ffff",
   "settlement membership withdrawal tag1/1":

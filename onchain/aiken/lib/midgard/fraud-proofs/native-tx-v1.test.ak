@@ -38,11 +38,10 @@ use midgard/fraud_proofs/native_tx/preimages.{
 }
 use midgard/fraud_proofs/native_tx/transaction
 use midgard/fraud_proofs/native_tx/types.{
-  FailedScript, FeeTooLow, InvalidSignature, MidgardAddressWitness,
-  MidgardV1Script, MidgardVersionedScript, NativeCardanoScript,
-  NativeTxBodyCompact, NativeTxCompact, NativeTxFieldPreimageLengthsV1,
-  NativeTxWitnessSetCompact, NonExistentInputUtxo, PlutusV3Script, TxIsValid,
-  UnbalancedTx, VerifiedMidgardNativeTxCompact, native_tx_version_v1,
+  MidgardAddressWitness, MidgardV1Script, MidgardVersionedScript,
+  NativeCardanoScript, NativeTxBodyCompact, NativeTxCompact,
+  NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact, PlutusV3Script,
+  TxIsInvalid, TxIsValid, VerifiedMidgardNativeTxCompact, native_tx_version_v1,
 }
 use midgard/native_tx_field_access_v1
 use midgard/native_tx_machine_walk_v1
@@ -52,13 +51,13 @@ const zero_hash =
   #"0000000000000000000000000000000000000000000000000000000000000000"
 
 const n01_canonical_full_cbor =
-  #"84018c418041804180172018184180418041805820111111111111111111111111111111111111111111111111111111111111111158202222222222222222222222222222222222222222222222222222222222222222018341804180418003"
+  #"84018c418041804180172018184180418041805820111111111111111111111111111111111111111111111111111111111111111158202222222222222222222222222222222222222222222222222222222222222222018341804180418001"
 
 const n03_compact_body_cbor =
   #"8c582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c017201818582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582011111111111111111111111111111111111111111111111111111111111111115820222222222222222222222222222222222222222222222222222222222222222201"
 
 const n02_compact_cbor =
-  #"84018c582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c017201818582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582011111111111111111111111111111111111111111111111111111111111111115820222222222222222222222222222222222222222222222222222222222222222201582052408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c03"
+  #"84018c582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c017201818582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582011111111111111111111111111111111111111111111111111111111111111115820222222222222222222222222222222222222222222222222222222222222222201582052408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c01"
 
 const n04_canonical_body_cbor =
   #"8c41804180418017201818418041804180582011111111111111111111111111111111111111111111111111111111111111115820222222222222222222222222222222222222222222222222222222222222222201"
@@ -71,16 +70,16 @@ const n06_canonical_witness_cbor = #"83418041804180"
 const n08_field_preimage_lengths_cbor = #"89010101010101010101"
 
 const n07_proof_source_cbor =
-  #"8359013b84018c582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c017201818582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582011111111111111111111111111111111111111111111111111111111111111115820222222222222222222222222222222222222222222222222222222222222222201582052408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c03586783582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c04a89010101010101010101"
+  #"8359013b84018c582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c017201818582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582011111111111111111111111111111111111111111111111111111111111111115820222222222222222222222222222222222222222222222222222222222222222201582052408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c01586783582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c04a89010101010101010101"
 
 const n02_transaction_id =
   #"c27090b9b20b3e6da5906b85969adad0a7c8a8f01a899925b16b93ad8be476f4"
 
 const n07_proof_commitment =
-  #"99d4a6d0c3d3d8bdcdf3247c20246c7d47ab68670b765ea49dec822440bbe88f"
+  #"6098051d537cd423d8ffa675dbbb4ee35f0887f425ac7176538ead2ae0e3aa0f"
 
 const n09_full_hash =
-  #"aee3bfa02625d824be4c2b786d5e6f4d159a1903ef282ab3434634e4da2735e1"
+  #"6ec61742dd40776937e3ac415cf38bd14fcbe812dca95986872fba885e4bd108"
 
 fn sample_compact() -> NativeTxCompact {
   NativeTxCompact {
@@ -191,45 +190,17 @@ test v1_network_id_adjacent_unknown_rejects() fail {
 test v1_n11_validity_code_and_plutus_constructor_bijection_is_exact() {
   and {
     native_codec.validity_from_code(0) == TxIsValid,
-    native_codec.validity_from_code(1) == NonExistentInputUtxo,
-    native_codec.validity_from_code(2) == InvalidSignature,
-    native_codec.validity_from_code(3) == FailedScript,
-    native_codec.validity_from_code(4) == FeeTooLow,
-    native_codec.validity_from_code(5) == UnbalancedTx,
+    native_codec.validity_from_code(1) == TxIsInvalid,
     native_codec.validity_to_code(TxIsValid) == 0,
-    native_codec.validity_to_code(NonExistentInputUtxo) == 1,
-    native_codec.validity_to_code(InvalidSignature) == 2,
-    native_codec.validity_to_code(FailedScript) == 3,
-    native_codec.validity_to_code(FeeTooLow) == 4,
-    native_codec.validity_to_code(UnbalancedTx) == 5,
+    native_codec.validity_to_code(TxIsInvalid) == 1,
     builtin.serialise_data(native_codec.validity_to_plutus_data(TxIsValid)) == #"d87980",
-    builtin.serialise_data(
-      native_codec.validity_to_plutus_data(NonExistentInputUtxo),
-    ) == #"d87a80",
-    builtin.serialise_data(
-      native_codec.validity_to_plutus_data(InvalidSignature),
-    ) == #"d87b80",
-    builtin.serialise_data(native_codec.validity_to_plutus_data(FailedScript)) == #"d87c80",
-    builtin.serialise_data(native_codec.validity_to_plutus_data(FeeTooLow)) == #"d87d80",
-    builtin.serialise_data(native_codec.validity_to_plutus_data(UnbalancedTx)) == #"d87e80",
+    builtin.serialise_data(native_codec.validity_to_plutus_data(TxIsInvalid)) == #"d87a80",
     native_codec.validity_from_plutus_data(
       native_codec.expect_deserialise(#"d87980"),
     ) == TxIsValid,
     native_codec.validity_from_plutus_data(
       native_codec.expect_deserialise(#"d87a80"),
-    ) == NonExistentInputUtxo,
-    native_codec.validity_from_plutus_data(
-      native_codec.expect_deserialise(#"d87b80"),
-    ) == InvalidSignature,
-    native_codec.validity_from_plutus_data(
-      native_codec.expect_deserialise(#"d87c80"),
-    ) == FailedScript,
-    native_codec.validity_from_plutus_data(
-      native_codec.expect_deserialise(#"d87d80"),
-    ) == FeeTooLow,
-    native_codec.validity_from_plutus_data(
-      native_codec.expect_deserialise(#"d87e80"),
-    ) == UnbalancedTx,
+    ) == TxIsInvalid,
   }
 }
 
@@ -239,8 +210,8 @@ test v1_n11_negative_validity_code_rejects() fail {
 
 test v1_n11_adjacent_validity_code_and_constructor_rejects() fail {
   native_codec.validity_from_plutus_data(
-    native_codec.expect_deserialise(#"d87f80"),
-  ) == UnbalancedTx
+    native_codec.expect_deserialise(#"d87b80"),
+  ) == TxIsInvalid
 }
 
 test v1_n11_non_nullary_validity_constructor_rejects() fail {
@@ -253,18 +224,18 @@ test v1_n11_noncanonical_compact_validity_code_rejects() fail {
   decode_native_tx_compact_v1(
     bytearray.concat(
       bytearray.take(n02_compact_cbor, bytearray.length(n02_compact_cbor) - 1),
-      #"1803",
+      #"1801",
     ),
-  ).validity_code == 3
+  ).validity_code == 1
 }
 
 test v1_n11_out_of_range_compact_validity_code_rejects() fail {
   decode_native_tx_compact_v1(
     bytearray.concat(
       bytearray.take(n02_compact_cbor, bytearray.length(n02_compact_cbor) - 1),
-      #"06",
+      #"02",
     ),
-  ).validity_code == 6
+  ).validity_code == 2
 }
 
 test v1_n01_canonical_full_transaction_exact_vector() {

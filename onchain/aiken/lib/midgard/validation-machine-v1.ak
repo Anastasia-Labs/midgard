@@ -44,6 +44,16 @@ use midgard/mpf_proof_v1
 use midgard/native_script_scan_v1
 use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
+use midgard/rejection_reason_v1.{
+  reject_asset_count, reject_duplicate_input, reject_empty_inputs,
+  reject_field_preimage_size, reject_input_not_found, reject_invalid_field_type,
+  reject_invalid_output, reject_invalid_signature,
+  reject_invalid_validity_interval_format, reject_min_ada, reject_min_fee,
+  reject_missing_required_witness, reject_native_script_depth,
+  reject_native_script_invalid, reject_native_script_node_count,
+  reject_network_id_mismatch, reject_plutus_script_invalid,
+  reject_validity_interval_mismatch, reject_value_not_preserved,
+}
 use midgard/script_context_v1
 use midgard/script_language_views_v1
 use midgard/script_proof_v1
@@ -1183,27 +1193,6 @@ pub fn encode_terminal_rejection_witness(
     |> bytearray.concat(encode_definite_bytes(#"80"))
 }
 
-const reject_field_preimage_size = #"455f4649454c445f505245494d4147455f53495a45"
-
-const reject_asset_count = #"455f41535345545f434f554e54"
-
-const reject_invalid_field_type = #"455f494e56414c49445f4649454c445f54595045"
-
-const reject_native_script_depth = #"455f4e41544956455f5343524950545f4445505448"
-
-const reject_native_script_node_count =
-  #"455f4e41544956455f5343524950545f4e4f44455f434f554e54"
-
-/// `E_MIN_ADA` (#618 ruling 1, R8; decision 0003 Q27). The stable rejection
-/// code the parameterized minimum-Ada floor binds to. Raised by the ValueAndMint
-/// stage-3 output-descriptor step when the authenticated descriptor of one
-/// transaction output does not fund
-/// `min_ada_lovelace_v1(env.coins_per_utxo_byte, descriptor.total_length)` --
-/// the MIN-ADA-TX violation shape of technical-spec §5. MIN-ADA-UTXO, the
-/// post-block UTxO-set shape of the same floor, is Q27's own membership shape
-/// and is not raised here.
-const reject_min_ada = #"455f4d494e5f414441"
-
 fn canonical_argument_header_size(value: Int) -> Int {
   expect value >= 0
   if value < 24 {
@@ -2125,14 +2114,6 @@ fn verify_compact_binding(
   }
 }
 
-const reject_empty_inputs = #"455f454d5054595f494e50555453"
-
-const reject_duplicate_input = #"455f4455504c49434154455f494e5055545f494e5f5458"
-
-const reject_network_id_mismatch = #"455f4e4554574f524b5f49445f4d49534d41544348"
-
-const reject_min_fee = #"455f4d494e5f464545"
-
 const consensus_profile_v1_id = #"6d6964676172642d636f6e73656e7375732d7631"
 
 pub type ValidationContextV1 {
@@ -2273,9 +2254,6 @@ const max_tx_size_derived_collection_item_count: Int =
   bounded_collection_v1.max_tx_size_derived_item_count
 
 const max_serialized_output_preimage_bytes: Int = 16384
-
-const reject_invalid_validity_interval_format =
-  #"455f494e56414c49445f56414c49444954595f494e54455256414c5f464f524d4154"
 
 pub type InputSetsControlV1 {
   compact_cbor: ByteArray,
@@ -2801,11 +2779,6 @@ fn verify_static_rules(
     },
   }
 }
-
-const reject_missing_required_witness =
-  #"455f4d495353494e475f52455155495245445f5749544e455353"
-
-const reject_invalid_signature = #"455f494e56414c49445f5349474e4154555245"
 
 pub type SignaturesControlV1 {
   compact_cbor: ByteArray,
@@ -3446,12 +3419,6 @@ pub fn verify_signatures_handoff_semantics_v1(
     signatures_control_from_witness(witness.work_witness_cbor),
   )
 }
-
-const reject_native_script_invalid =
-  #"455f4e41544956455f5343524950545f494e56414c4944"
-
-const reject_plutus_script_invalid =
-  #"455f504c555455535f5343524950545f494e56414c4944"
 
 const max_aggregate_field_preimage_bytes: Int = 32768
 
@@ -6160,13 +6127,6 @@ fn resolve_inputs_control_from_witness(
     resolution_schedule_hash: builtin.un_b_data(resolution_schedule_hash_data),
   }
 }
-
-const reject_validity_interval_mismatch =
-  #"455f56414c49444954595f494e54455256414c5f4d49534d41544348"
-
-const reject_input_not_found = #"455f494e5055545f4e4f545f464f554e44"
-
-const reject_invalid_output = #"455f494e56414c49445f4f5554505554"
 
 fn validity_interval_contains_slot(
   body: NativeTxBodyCompact,
@@ -14334,8 +14294,6 @@ pub type ValueAndMintControlV1 {
 }
 
 const mint_asset_leaf_domain = #"4d6964676172644d696e7441737365744c6561665631"
-
-const reject_value_not_preserved = #"455f56414c55455f4e4f545f505245534552564544"
 
 const no_rejection_code_hash =
   #"0000000000000000000000000000000000000000000000000000000000000000"

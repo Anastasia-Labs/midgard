@@ -298,12 +298,17 @@ describe.skipIf(!optionB)(
       const award = await journey.submitAward(result.nextThreadOutRef);
       // End-to-end: every transaction this dispute cost L1, from the four
       // reference-script publications through init, open, the bisection, the
-      // semantic leg (publication included), and the award — 162,657 bytes
+      // semantic leg (publication included), and the award — 166,403 bytes
       // total at the largest item the reference route can carry.
+      //
+      // Moved by #640: +3,746 bytes over the pre-format 162,657. The growth is
+      // the 47-arm RejectionReasonV1 enlarging the compiled validators, carried
+      // by the four reference-script publications; the item, the stage rows and
+      // the award are byte-identical across the change.
       expect(award.measurement.completeSignedBytes).toBe(7_238);
       expect(
         totalJourneyBytes(journey, semantic.measurements, award.measurement),
-      ).toBe(162_657);
+      ).toBe(166_403);
       expectWholeJourneyProofFit(
         "#622 reference-frontier item 14,336",
         journey,

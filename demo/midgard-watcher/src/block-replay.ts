@@ -110,7 +110,6 @@ import type {
   EventToStepValue,
   EvidenceProvenanceV1,
   HeaderV1,
-  MidgardTxValidity,
   TransitionStep,
 } from "@al-ft/midgard-sdk";
 import {
@@ -180,6 +179,8 @@ import {
 } from "./settlement-indexer.js";
 import {
   parseWatcherUserEventIndexerResultV1,
+  WATCHER_FORCED_TX_VALID_V1,
+  type WatcherForcedOperatorVerdictV1,
   type WatcherForcedTerminalClassificationV1,
   type WatcherIndexedUserEventV1,
   type WatcherTerminalUserEventV1,
@@ -578,8 +579,8 @@ export type WatcherBlockReplayTransactionRootV1 = Readonly<{
 export type WatcherBlockReplayForcedValidationFactV1 = Readonly<{
   eventKeyFingerprint: string;
   stepIndex: number;
-  authenticatedOperatorValidity: MidgardTxValidity;
-  canonicalOperatorValidity: MidgardTxValidity;
+  authenticatedOperatorValidity: WatcherForcedOperatorVerdictV1;
+  canonicalOperatorValidity: WatcherForcedOperatorVerdictV1;
   phaseAStatus: "accepted" | "rejected";
   phaseARejectCode: RejectCode | null;
   phaseBStatus: "not_run" | "accepted" | "rejected";
@@ -763,30 +764,48 @@ const ZERO_ROOT = "00".repeat(32);
 const normalizeRootHex = (root: string): string =>
   root === ZERO_ROOT ? EMPTY_MERKLE_TREE_ROOT : root;
 
-/** Exact canonical rejection-to-forced-validity partition consumed by W26. */
+/**
+ * Exact canonical rejection-to-forced-verdict partition consumed by W26.
+ *
+ * The class boundaries this partition has always published are unchanged;
+ * #640 re-spells each one as the `RejectionReasonV1` constructor tag the
+ * forced leaf now carries (`ForcedInclusionTxV1.verdict`). The one code the
+ * node classifier phase-splits — `E_NATIVE_SCRIPT_INVALID` becomes
+ * `WitnessNativeScriptFalse` when Phase A rejects and
+ * `ExecutionNativeScriptFalse` when Phase B does — is split identically
+ * here, so an exact-arm comparison against the authenticated leaf verdict
+ * never flags an honest operator. Both arms bridge to the same frozen
+ * rejection code, so nothing on-chain distinguishes them; the phase only
+ * picks which tag the leaf carries.
+ */
 export const watcherBlockReplayForcedValidityForRejectCodeV1 = (
   code: RejectCode,
-): MidgardTxValidity => {
+  phase: "phaseA" | "phaseB",
+): WatcherForcedOperatorVerdictV1 => {
   if (code === RejectCodes.InputNotFound) {
-    return "NonExistentInputUtxo";
+    return "InputNotFound";
   }
   if (
     code === RejectCodes.InvalidSignature ||
     code === RejectCodes.MissingRequiredWitness
   ) {
-    return "InvalidSignature";
+    return "AddressWitnessSignatureInvalid";
+  }
+  if (code === RejectCodes.NativeScriptInvalid) {
+    return phase === "phaseA"
+      ? "WitnessNativeScriptFalse"
+      : "ExecutionNativeScriptFalse";
   }
   if (
-    code === RejectCodes.NativeScriptInvalid ||
     code === RejectCodes.PlutusScriptInvalid ||
     code === RejectCodes.PlutusEvaluationUnavailable
   ) {
-    return "FailedScript";
+    return "PlutusExecutionFailed";
   }
   if (code === RejectCodes.MinFee) {
-    return "FeeTooLow";
+    return "FeeBelowMinimum";
   }
-  return "UnbalancedTx";
+  return "ValueNotPreserved";
 };
 
 /**
@@ -2005,12 +2024,13 @@ const bindForcedTransitionEffectV1 = async (input: {
   let phaseBStatus: WatcherBlockReplayForcedValidationFactV1["phaseBStatus"] =
     "not_run";
   let phaseBRejectCode: RejectCode | null = null;
-  let canonicalOperatorValidity: MidgardTxValidity;
+  let canonicalOperatorValidity: WatcherForcedOperatorVerdictV1;
   if ("code" in phaseA) {
     phaseAStatus = "rejected";
     phaseARejectCode = phaseA.code;
     canonicalOperatorValidity = watcherBlockReplayForcedValidityForRejectCodeV1(
       phaseA.code,
+      "phaseA",
     );
   } else {
     const phaseB = await makeReturn(
@@ -2032,13 +2052,16 @@ const bindForcedTransitionEffectV1 = async (input: {
       phaseBStatus = "rejected";
       phaseBRejectCode = phaseB.rejected[0]!.code;
       canonicalOperatorValidity =
-        watcherBlockReplayForcedValidityForRejectCodeV1(phaseBRejectCode);
+        watcherBlockReplayForcedValidityForRejectCodeV1(
+          phaseBRejectCode,
+          "phaseB",
+        );
     } else {
       if (phaseB.accepted.length !== 1) {
         return fail("canonical_validation_threw", "$.phaseB.forced");
       }
       phaseBStatus = "accepted";
-      canonicalOperatorValidity = "TxIsValid";
+      canonicalOperatorValidity = WATCHER_FORCED_TX_VALID_V1;
       derived = canonicalTransitionEffectFromStatePatchV1(phaseB.statePatch);
     }
   }

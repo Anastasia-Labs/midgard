@@ -28,6 +28,7 @@ use cardano/transaction.{
 use env
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
 use midgard/common/utils
+use midgard/rejection_reason_v1.{OperatorVerdictV1}
 use midgard/validation_trace_v1
 
 // # Ledger state types
@@ -481,14 +482,14 @@ pub type MidgardTxCompactWithoutValidity {
   wits: MidgardTxWitsHash,
 }
 
-// TODO
+/// The compact leaf's two-valued validity scalar (wire code 0 = valid,
+/// 1 = invalid). The five rejection arms retired in the #640 format wave
+/// (catalogue C-3, design note 3): the forced leaf's `OperatorVerdictV1`
+/// carries the full `RejectionReasonV1`, so a coarse arm choice — which
+/// `forced_verdict_matches` never adjudicated — has no surface left.
 pub type MidgardTxValidity {
   TxIsValid
-  NonExistentInputUtxo
-  InvalidSignature
-  FailedScript
-  FeeTooLow
-  UnbalancedTx
+  TxIsInvalid
 }
 
 /// The committed source of an L2 transaction, as the block's `transactions_root`
@@ -537,10 +538,16 @@ pub type L2TransactionSourceV1 {
 /// The forced-inclusion twin of `L2TransactionSourceV1`, carrying the operator's
 /// recorded verdict. It shed `transaction_commitment` for the same reason and in
 /// the same change — see that type.
+///
+/// `verdict` replaced the old coarse `operator_validity: MidgardTxValidity`
+/// in the #640 format wave: a rejection now names its reason (and the
+/// reason's subject coordinates) from the fully enumerated
+/// `RejectionReasonV1`, making the forced leaf the per-tx rejection
+/// commitment the fault-proof threads bind to.
 pub type ForcedInclusionTxV1 {
   tx_id: ByteArray,
   source: NativeTxProofSourceV1,
-  operator_validity: MidgardTxValidity,
+  verdict: OperatorVerdictV1,
 }
 
 pub type TransitionPhase {

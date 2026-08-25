@@ -1,6 +1,9 @@
 import {
+  adjudicateMidgardNativeTxFullV1Validity,
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceV1,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -143,15 +146,53 @@ const nativeMaterial = (byte: number) => {
   };
 };
 
+/**
+ * The #640 verdict standing in for the pre-format `FailedScript` arm: a
+ * forced transaction the operator rejected for a failed Plutus execution at
+ * execution index 0.
+ */
+const forcedTxInvalidPlutus: SDK.OperatorVerdictV1 = {
+  ForcedTxInvalid: {
+    reason: { PlutusExecutionFailed: { execution_index: 0n } },
+  },
+};
+
 const forcedTx = (
   byte: number,
-  operatorValidity: SDK.MidgardTxValidity,
+  verdict: SDK.OperatorVerdictV1,
 ): SDK.ForcedInclusionTxV1 => {
   const material = nativeMaterial(byte);
+  if (verdict === "ForcedTxValid") {
+    return {
+      tx_id: material.txId,
+      source: material.source,
+      verdict,
+    };
+  }
+  // A rejected forced leaf commits the operator-adjudicated source
+  // (§2.4.3(e)): the fixture bytes stay `TxIsValid` as submitted, while the
+  // leaf's triple carries the stamped `TxIsInvalid` scalar. The DA preimage
+  // registered for the leaf remains the submitted canonical bytes.
+  const adjudicated = deriveMidgardNativeTxProofSourceV1(
+    adjudicateMidgardNativeTxFullV1Validity(
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(material.canonicalCbor),
+      "TxIsInvalid",
+    ),
+  );
+  canonicalPreimageByCommitment.set(
+    computeMidgardNativeTxProofCommitmentV1(adjudicated).toString("hex"),
+    material.canonicalCbor,
+  );
   return {
     tx_id: material.txId,
-    source: material.source,
-    operator_validity: operatorValidity,
+    source: {
+      compact_cbor: adjudicated.compactCbor.toString("hex"),
+      witness_set_compact_cbor:
+        adjudicated.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        adjudicated.fieldPreimageLengthsCbor.toString("hex"),
+    },
+    verdict,
   };
 };
 
@@ -525,7 +566,7 @@ const buildAcceptedTransactionTransitionMismatchEvidence = (): {
       witness_set_compact_cbor: "",
       field_preimage_lengths_cbor: "",
     },
-    operator_validity: "TxIsValid",
+    verdict: "ForcedTxValid",
   };
   const claim: SDK.ValidationClaimWitnessV1 = {
     version: 1n,
@@ -761,7 +802,7 @@ const invalidOneStepTransitionProbe = async (): Promise<
       encodedEntry({
         key: txOrderId,
         keySchema: SDK.OutputReference as never,
-        value: forcedTx(641, "FailedScript"),
+        value: forcedTx(641, forcedTxInvalidPlutus),
         valueSchema: SDK.ForcedInclusionTxV1Schema,
       }),
     ],
@@ -808,7 +849,7 @@ const duplicateTraceEventProbe = async (): Promise<
       encodedEntry({
         key: txOrderId,
         keySchema: SDK.OutputReference as never,
-        value: forcedTx(661, "FailedScript"),
+        value: forcedTx(661, forcedTxInvalidPlutus),
         valueSchema: SDK.ForcedInclusionTxV1Schema,
       }),
     ],
@@ -1175,7 +1216,7 @@ describe("ledger-delta dense trace totality v1", () => {
           // TxIsValid: a valid forced inclusion legitimately moves the root,
           // so the default no-op check (which only fires for invalid forced
           // transactions) stays quiet here.
-          value: forcedTx(737, "TxIsValid"),
+          value: forcedTx(737, "ForcedTxValid"),
           valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],
@@ -1277,7 +1318,7 @@ describe("ledger-delta dense trace totality v1", () => {
         encodedEntry({
           key: forcedId,
           keySchema: SDK.OutputReference as never,
-          value: forcedTx(806, "TxIsValid"),
+          value: forcedTx(806, "ForcedTxValid"),
           valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],

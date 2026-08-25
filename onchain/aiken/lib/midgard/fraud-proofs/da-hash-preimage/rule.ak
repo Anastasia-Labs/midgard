@@ -25,7 +25,7 @@
 //// 0x84 || serialise(version) || body_cbor || 0x58 0x20 || wsh32 || validity
 //// \___________  ____________/             \_____________  ______________/
 ////             \/                                        \/
-////     2 bytes (version <= 23)              35 bytes (validity_code <= 5)
+////     2 bytes (version <= 23)              35 bytes (validity_code <= 1)
 //// ```
 ////
 //// so the body preimage of an honest leaf is exactly
@@ -49,7 +49,7 @@ use midgard/fraud_proofs/native_tx/types.{native_tx_version_v1}
 pub const compact_v1_head_byte_count: Int = 2
 
 /// Definite 32-byte witness-set hash (`0x58 0x20` + 32) plus the single-byte
-/// canonical validity code (`expect_validity_code` bounds it to `0..=5`).
+/// canonical validity code (`expect_validity_code` bounds it to `0..=1`).
 pub const compact_v1_tail_byte_count: Int = 35
 
 /// Shortest byte length a canonical compact leaf can have: the framing alone,

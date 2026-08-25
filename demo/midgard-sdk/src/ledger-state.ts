@@ -25,6 +25,7 @@ import {
   GENESIS_HEADER_HASH,
   GENESIS_PROTOCOL_VERSION,
 } from "@/ledger-constants.js";
+import { OperatorVerdictV1Schema } from "@/rejection-reason-v1.js";
 
 export const HeaderHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 export type HeaderHash = Data.Static<typeof HeaderHashSchema>;
@@ -558,13 +559,14 @@ export const DepositEventSchema = Data.Object({
 export type DepositEvent = Data.Static<typeof DepositEventSchema>;
 export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
 
+/**
+ * Twin of `midgard/ledger_state.MidgardTxValidity`. #640 collapsed the old
+ * six-arm enum to the bare validity bit; the per-reason vocabulary moved to
+ * `RejectionReasonV1` behind the forced leaf's `OperatorVerdictV1`.
+ */
 export const MidgardTxValiditySchema = Data.Enum([
   Data.Literal("TxIsValid"),
-  Data.Literal("NonExistentInputUtxo"),
-  Data.Literal("InvalidSignature"),
-  Data.Literal("FailedScript"),
-  Data.Literal("FeeTooLow"),
-  Data.Literal("UnbalancedTx"),
+  Data.Literal("TxIsInvalid"),
 ]);
 export type MidgardTxValidity = Data.Static<typeof MidgardTxValiditySchema>;
 export const MidgardTxValidity =
@@ -720,7 +722,7 @@ export const L2TransactionSourceV1 =
 export const ForcedInclusionTxV1Schema = Data.Object({
   tx_id: H32Schema,
   source: NativeTxProofSourceV1Schema,
-  operator_validity: MidgardTxValiditySchema,
+  verdict: OperatorVerdictV1Schema,
 });
 export type ForcedInclusionTxV1 = Data.Static<typeof ForcedInclusionTxV1Schema>;
 export const ForcedInclusionTxV1 =

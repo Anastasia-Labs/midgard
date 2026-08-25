@@ -17,6 +17,7 @@ import {
   verifyMidgardValidationTraceProofV1,
 } from "@al-ft/midgard-core";
 import {
+  adjudicateMidgardNativeTxFullV1Validity,
   decodeSingleCbor,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
@@ -2634,8 +2635,10 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     expect(retained.normal.revealStepCount).toBeGreaterThan(0);
 
-    // Both source classifications reach one identical canonical-decode work
-    // transcript; only the state's source-kind discriminant differs.
+    // The decode work transcript is a function of the BOUND source bytes, not
+    // of the source kind. A normal replay binds the submitted bytes; a forced
+    // replay binds the operator-adjudicated leaf (§2.4.3(e)), which for this
+    // rejected fixture carries validity `TxIsInvalid`.
     const [normalTrace, forcedTrace] = await Promise.all([
       Effect.runPromise(
         buildDeterministicValidationMachineTrace({
@@ -2651,13 +2654,60 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       ),
     ]);
     const normalTranscript = canonicalDecodeWorkTranscript(normalTrace);
+    const forcedTranscript = canonicalDecodeWorkTranscript(forcedTrace);
     expect(normalTranscript.length).toBeGreaterThan(fixture.outputCount);
-    expect(normalTranscript).toEqual(
-      canonicalDecodeWorkTranscript(forcedTrace),
+    expect(forcedTranscript.length).toBe(normalTranscript.length);
+    // The bound bytes differ by exactly the adjudicated scalar, so the two
+    // transcripts must NOT be byte-identical here — the forced trace reveals
+    // and hashes the adjudicated compact.
+    expect(forcedTranscript).not.toEqual(normalTranscript);
+    // The machine's WORK is nonetheless identical: same step structure, same
+    // per-step positions, same verdict and rejection code, and byte-identical
+    // terminal work witnesses. Only the source binding moved.
+    expect(
+      forcedTrace.witnesses.map((witness) => [
+        witness.phase,
+        witness.programCounter,
+      ]),
+    ).toEqual(
+      normalTrace.witnesses.map((witness) => [
+        witness.phase,
+        witness.programCounter,
+      ]),
+    );
+    expect(forcedTrace.verdict).toBe(normalTrace.verdict);
+    expect(forcedTrace.rejectionCode).toBe(normalTrace.rejectionCode);
+    expect(forcedTrace.witnesses.at(-1)!.cbor.toString("hex")).toBe(
+      normalTrace.witnesses.at(-1)!.cbor.toString("hex"),
     );
     expect(normalTrace.validationContextCbor.toString("hex")).toBe(
       forcedTrace.validationContextCbor.toString("hex"),
     );
+    const adjudicatedTx = adjudicateMidgardNativeTxFullV1Validity(
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(fixture.transaction.txCbor),
+      "TxIsInvalid",
+    );
+    // The forced states bind the adjudicated triple's commitment; the normal
+    // states bind the submitted one.
+    expect(forcedTrace.states[0]!.transactionCommitment.toString("hex")).toBe(
+      computeMidgardNativeTxProofCommitmentV1(
+        deriveMidgardNativeTxProofSourceV1(adjudicatedTx),
+      ).toString("hex"),
+    );
+    expect(normalTrace.states[0]!.transactionCommitment.toString("hex")).toBe(
+      computeMidgardNativeTxProofCommitmentV1(
+        deriveMidgardNativeTxProofSourceV1(
+          decodeMidgardNativeTxFullV1FromCanonicalCbor(
+            fixture.transaction.txCbor,
+          ),
+        ),
+      ).toString("hex"),
+    );
+    expect(
+      forcedTrace.states[0]!.transactionCommitment.equals(
+        normalTrace.states[0]!.transactionCommitment,
+      ),
+    ).toBe(false);
     expect(normalTrace.states.map((state) => state.sourceKind)).toEqual(
       normalTrace.states.map(() => "normal"),
     );

@@ -439,9 +439,18 @@ const txOrderUTxOToEntry = (
         ),
       );
     }
+    // The verdict recorded at ingest is provisional: the operator has not run
+    // Phase A/B yet. Admission requires the submitted bytes to claim
+    // TxIsValid (`E_IS_VALID_FALSE_FORBIDDEN`, enforced inside
+    // `encodeForcedInclusionValueV1`), so the only verdict an unadjudicated
+    // admitted preimage can carry is `ForcedTxValid`; block commitment
+    // recomputes and overwrites both this row's verdict and its
+    // `forced_inclusion_value`, and the encoder stamps the committed leaf's
+    // validity scalar from whatever verdict it is given (`ForcedTxValid` ⇔
+    // code 0, `ForcedTxInvalid { _ }` ⇔ code 1).
     const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValueV1({
       nativeTxCbor,
-      operatorValidity: decoded.validity,
+      verdict: "ForcedTxValid",
       consensusProfile: consensusProfile satisfies MidgardConsensusProfileV1,
     });
     // The two identity columns this row carries are **recomputed** from the
@@ -496,7 +505,8 @@ const txOrderUTxOToEntry = (
       [ForcedTransactionsDB.Columns.TX_ID]: encoded.txId,
       [ForcedTransactionsDB.Columns.TX_COMPACT]: encoded.txCompact,
       [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
-      [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]: decoded.validity,
+      [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]:
+        ForcedTransactionsDB.midgardTxValidityOfVerdictV1("ForcedTxValid"),
       [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
         consensusProfile.profileId,
       [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: nativeTxCbor,

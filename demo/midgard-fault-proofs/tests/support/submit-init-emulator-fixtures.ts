@@ -13,11 +13,13 @@
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
+  adjudicateMidgardNativeTxFullV1Validity,
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   buildMidgardValidationTraceTree,
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceV1,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardNativeTxCompactV1,
@@ -1065,8 +1067,12 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
     witnessByte: "b8",
   });
   const forcedCanonicalCbor = encodeMidgardNativeTxCanonicalV1(forcedNativeTx);
-  const forcedSource =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(forcedCanonicalCbor);
+  // The leaf is rejected, so its committed source is the operator-adjudicated
+  // (TxIsInvalid-stamped) triple; the DA preimage row stays the submitted
+  // canonical bytes, which is exactly what reconstruction re-adjudicates.
+  const forcedSource = deriveMidgardNativeTxProofSourceV1(
+    adjudicateMidgardNativeTxFullV1Validity(forcedNativeTx, "TxIsInvalid"),
+  );
   const forcedTransaction = {
     tx_id: computeMidgardNativeTxIdV1(forcedNativeTx).toString("hex"),
     source: {
@@ -1076,7 +1082,11 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
       field_preimage_lengths_cbor:
         forcedSource.fieldPreimageLengthsCbor.toString("hex"),
     },
-    operator_validity: "FailedScript",
+    verdict: {
+      ForcedTxInvalid: {
+        reason: { PlutusExecutionFailed: { execution_index: 0n } },
+      },
+    },
   };
   const step = {
     schema_version: 1n,
@@ -1267,7 +1277,7 @@ export const buildInvalidForcedValidationDisputeFixture = async ({
       field_preimage_lengths_cbor:
         forcedSource.fieldPreimageLengthsCbor.toString("hex"),
     },
-    operator_validity: "TxIsValid" as const,
+    verdict: "ForcedTxValid" as const,
   };
   const challengerTrace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
@@ -1288,6 +1298,9 @@ export const buildInvalidForcedValidationDisputeFixture = async ({
       ledgerMutationSteps: [],
       expectedVerdict: "rejected",
       expectedRejectionCode: RejectCodes.EmptyInputs,
+      // The challenger replays the operator's ACCEPTED leaf to a rejection;
+      // its states must still bind the committed (ForcedTxValid) source.
+      committedForcedVerdict: "accepted",
     }),
   );
   // #600: the complete-item witness carries the carriage **plan input** — which

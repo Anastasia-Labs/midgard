@@ -1652,7 +1652,7 @@ const nonDepositSpendBundle = (
       };
     };
   };
-  const validity = "TxIsValid" as const;
+  const validity = "ForcedTxValid" as const;
   const value =
     event.kind === "withdrawal"
       ? eventFieldsData.get(1).to_cbor_hex()
@@ -1660,7 +1660,7 @@ const nonDepositSpendBundle = (
           {
             tx_id: datum.event.tx!.tx_id,
             source: datum.event.tx!.source,
-            operator_validity: validity,
+            verdict: validity,
           },
           ForcedInclusionTxV1,
         );
@@ -2741,7 +2741,7 @@ describe("canonical authenticated user-event indexer", () => {
       if (kind === "forced_order") {
         expect(terminalEvent.terminalClassification).toStrictEqual({
           schemaVersion: "midgard-watcher-forced-terminal-classification-v1",
-          operatorValidity: "TxIsValid",
+          operatorValidity: "ForcedTxValid",
           terminalTransactionHash: terminalEvent.terminalTransactionHash,
           terminalPointDigest: terminalEvent.terminalPointDigest,
         });
@@ -2757,7 +2757,7 @@ describe("canonical authenticated user-event indexer", () => {
               string,
               unknown
             >;
-            classification.operatorValidity = "WrongValidity";
+            classification.operatorValidity = "WrongVerdict";
           },
           (candidate: Record<string, unknown>) => {
             const classification = candidate.terminalClassification as Record<
@@ -2813,7 +2813,7 @@ describe("canonical authenticated user-event indexer", () => {
         const events = snapshot.terminalEvents as Record<string, unknown>[];
         events[0]!.terminalClassification = Object.freeze({
           schemaVersion: "midgard-watcher-forced-terminal-classification-v1",
-          operatorValidity: "TxIsValid",
+          operatorValidity: "ForcedTxValid",
           terminalTransactionHash: terminalEvent.terminalTransactionHash,
           terminalPointDigest: terminalEvent.terminalPointDigest,
         });
@@ -2896,7 +2896,7 @@ describe("canonical authenticated user-event indexer", () => {
     // absence does *not* weaken. A forced order over the canonically-empty
     // transaction moves nothing, so refusing material here would leave the
     // watcher's forced-inclusion verification — `event-classification-verifier`'s
-    // `MidgardTxValidity` classification and `block-replay`'s `ForcedTransaction`
+    // `OperatorVerdictV1` classification and `block-replay`'s `ForcedTransaction`
     // replay, both of which drive this same gate through
     // `tests/support/w15-authority-scenarios.ts` — with no reachable subject.
     const fixture = makeEventFixture(

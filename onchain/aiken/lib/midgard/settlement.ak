@@ -6,6 +6,7 @@ use cardano/transaction.{InlineDatum, Input, Output, Redeemer, ScriptPurpose}
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/ledger_state
+use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/user_events/tx_order_v1 as tx_order
 
@@ -51,7 +52,7 @@ pub type SpendRedeemer {
 pub type EventType {
   Deposit
   Withdrawal { validity_override: ledger_state.WithdrawalValidity }
-  TxOrder { validity_override: ledger_state.MidgardTxValidity }
+  TxOrder { validity_override: rejection_reason_v1.OperatorVerdictV1 }
 }
 
 pub type EventMembershipProof {

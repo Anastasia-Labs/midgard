@@ -241,7 +241,14 @@ const ABI_MAPPINGS = [
     "ValidationClaimWitnessV1Schema",
     "midgard/validation_claim_v1/ValidationClaimWitnessV1",
   ],
-  ["MidgardTxValiditySchema", "midgard/ledger_state/MidgardTxValidity"],
+  ["OperatorVerdictV1Schema", "midgard/rejection_reason_v1/OperatorVerdictV1"],
+  ["RejectionReasonV1Schema", "midgard/rejection_reason_v1/RejectionReasonV1"],
+  // `MidgardTxValiditySchema` has no row: after the #640 format wave no
+  // validator ABI mentions `midgard/ledger_state/MidgardTxValidity` — the
+  // forced leaf carries `OperatorVerdictV1` and the compact wire carries the
+  // validity scalar as a plain Int — so the blueprint publishes no definition
+  // to compare against. What pins that schema instead is `VALIDITY_VECTORS`
+  // below, which binds each arm to its raw code and its Plutus constructor.
   // #596's §12.7 canonical-decodability family. Both types are **new**, so both
   // rows are red for #594's reason rather than #584/#587's: the SDK type exists,
   // the Aiken type exists, and only the regeneration that publishes them is
@@ -307,13 +314,12 @@ const ABI_MAPPINGS = [
   // languages rather than agreement of each with a blueprint.
 ] as const;
 
+// The #640 format wave retired the five coarse rejection arms: the compact
+// wire scalar is two-valued (0/1) and the rejection reason moved to the forced
+// leaf's `OperatorVerdictV1`. Codes 2..5 are no longer decodable.
 const VALIDITY_VECTORS = [
   ["TxIsValid", 0n, "d87980"],
-  ["NonExistentInputUtxo", 1n, "d87a80"],
-  ["InvalidSignature", 2n, "d87b80"],
-  ["FailedScript", 3n, "d87c80"],
-  ["FeeTooLow", 4n, "d87d80"],
-  ["UnbalancedTx", 5n, "d87e80"],
+  ["TxIsInvalid", 1n, "d87a80"],
 ] as const satisfies readonly [NativeMidgardTxValidity, bigint, string][];
 
 describe("SDK/Aiken canonical V1 schema parity", () => {
@@ -389,9 +395,13 @@ describe("SDK/Aiken canonical V1 schema parity", () => {
   );
 
   it("rejects unknown raw and Plutus validity constructors", () => {
+    expect(() => decodeValidityCode(2n, "validity")).toThrow(
+      /Unsupported Midgard tx validity code/u,
+    );
     expect(() => decodeValidityCode(6n, "validity")).toThrow(
       /Unsupported Midgard tx validity code/u,
     );
+    expect(() => Data.from("d87b80", SDK.MidgardTxValiditySchema)).toThrow();
     expect(() => Data.from("d87f80", SDK.MidgardTxValiditySchema)).toThrow();
   });
 });

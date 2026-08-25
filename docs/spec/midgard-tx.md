@@ -122,7 +122,12 @@ Canonical encoding: `83 ‖ 58 20 addr ‖ 58 20 script ‖ 58 20 redeemer`.
 ### 2.3 `NativeTxCompact`
 
 `{ body: NativeTxBodyCompact, witness_set_hash: 32-byte hash,
-validity_code: uint ≤ 5 }`. Versioned encoding
+validity_code: uint ≤ 1 }` — `0` = `TxIsValid`, `1` = `TxIsInvalid`; the
+former coarse rejection codes `2..5` were retired by the #640 format wave
+(rejection reasons live in the forced leaf's verdict, §13). User transaction
+admission requires code `0`; on a forced-inclusion leaf the code is the
+operator's adjudication, bound to the leaf's verdict by the §13.1
+predicates. Versioned encoding
 (`encode_native_tx_compact_for_version`):
 `84 ‖ uint(version) ‖ body ‖ 58 20 witness_set_hash ‖ uint(validity_code)`.
 
@@ -3987,3 +3992,121 @@ single regeneration event (rider 6 of its owner-authorized scope amendment).
 Until then the compiled artifacts do not exist and the code is source-only,
 per #587's precedent. The identity moves this section's implementation records
 for that batch are on #601.
+
+## 13. Dispute-side rejection-code register
+
+Normative for the dispute machine's rejection channel and for the #640 forced-
+leaf verdict format. §12 says what a challenger claims about a transaction's
+bytes; this section says what an **operator's rejection** of a forced
+transaction commits to, and fixes the register of codes every layer of that
+commitment resolves into.
+
+The reference implementation is
+`onchain/aiken/lib/midgard/rejection-reason-v1.ak` (types, code constants and
+the arm-to-code bridge) with its seam suite at the same path with `.test.ak`;
+the machine (`validation-machine-v1.ak`) imports its codes from there.
+
+### 13.1 The verdict on the forced leaf
+
+A forced-inclusion leaf under `forced_transactions_root` carries the
+operator's verdict as a two-arm sum:
+
+```aiken
+pub type OperatorVerdictV1 {
+  ForcedTxValid
+  ForcedTxInvalid { reason: RejectionReasonV1 }
+}
+```
+
+`RejectionReasonV1` is the fully enumerated space of rejection verdicts — 47
+constructors, each carrying only subject coordinates (never expected values,
+hashes, or recomputable arguments). Its arm inventory, payload conventions
+and per-arm refutability analysis are owned by
+`docs/fault-proofs/rejection-reason-catalogue-v1.md` §5 (arm-by-arm) and §6
+(design notes); this section does not restate them. Two properties of the
+type are wire-normative here:
+
+- **Constructor order is the wire format.** The declaration order in
+  `rejection-reason-v1.ak` fixes the Plutus Data constructor indices of the
+  forced leaf. Reordering, inserting or removing constructors — including
+  populating the reserved `GuardrailExceeded` family, which the §8.11
+  forced-order door's guardrail exclusion keeps empty — is a leaf-schema
+  format revision, never a patch.
+- **The sum shape is total and minimal.** "Valid with a reason" and "invalid
+  without one" are unrepresentable; every rejection names its reason.
+
+The transaction's own embedded validity scalar (§6's compact tail byte) is
+correspondingly two-valued: `TxIsValid` (0) | `TxIsInvalid` (1). A forced
+leaf's verdict arm must agree bit-for-bit with that scalar, and a Normal
+(operator-built) transaction's scalar must be 0 — both adjudicated leaf-
+internally by the claim layer (`validation-claim-v1.ak`,
+`verify_source_authentication`).
+
+### 13.2 The register
+
+The dispute machine's rejection channel is a 32-byte hash over one of **19
+rejection codes**. Each code's byte value is exactly the ASCII encoding of
+its label — the register below is therefore complete without a second
+column of hex:
+
+| #   | code label                           |
+| --- | ------------------------------------ |
+| 1   | `E_FIELD_PREIMAGE_SIZE`              |
+| 2   | `E_ASSET_COUNT`                      |
+| 3   | `E_INVALID_FIELD_TYPE`               |
+| 4   | `E_NATIVE_SCRIPT_DEPTH`              |
+| 5   | `E_NATIVE_SCRIPT_NODE_COUNT`         |
+| 6   | `E_MIN_ADA`                          |
+| 7   | `E_EMPTY_INPUTS`                     |
+| 8   | `E_DUPLICATE_INPUT_IN_TX`            |
+| 9   | `E_NETWORK_ID_MISMATCH`              |
+| 10  | `E_MIN_FEE`                          |
+| 11  | `E_INVALID_VALIDITY_INTERVAL_FORMAT` |
+| 12  | `E_MISSING_REQUIRED_WITNESS`         |
+| 13  | `E_INVALID_SIGNATURE`                |
+| 14  | `E_NATIVE_SCRIPT_INVALID`            |
+| 15  | `E_PLUTUS_SCRIPT_INVALID`            |
+| 16  | `E_VALIDITY_INTERVAL_MISMATCH`       |
+| 17  | `E_INPUT_NOT_FOUND`                  |
+| 18  | `E_INVALID_OUTPUT`                   |
+| 19  | `E_VALUE_NOT_PRESERVED`              |
+
+The canonical constant definitions are the 19 `reject_*` constants of
+`rejection-reason-v1.ak`; the machine's encodings import them and are
+byte-identical to the pre-#640 private copies. The seam suite pins every
+constant against its ASCII bytes.
+
+### 13.3 The bridge, and what is frozen
+
+`rejection_code_of : RejectionReasonV1 -> ByteArray` is the **total
+surjection** from the 47 arms onto the 19 codes (every arm maps; every code
+is hit). A rejecting validation-trace descriptor commits
+
+```
+rejection_code_hash = blake2b_256("MidgardValidationRejectCodeV1" || code)
+```
+
+(`hash_rejection_code`, `validation-trace-v1.ak`), and the claim layer's
+`forced_verdict_matches` accepts a rejecting forced leaf only when the
+descriptor's committed hash equals the hash of the code its `reason` maps
+to — the arm-level verdict and the code-level machine channel are bound
+through this bridge, in that direction only.
+
+**Frozen by the #640 rulings (2026-08-24):** the descriptor format
+(`ValidationTraceDescriptorV1`), the machine state format
+(`ValidationMachineStateV1`), the 19 code byte values, and the
+domain-separated hash above. The 47-arm type and the bridge are the revision
+surface: a `RejectionReasonV2` is a new leaf schema version whose bridge
+back to this register is its own compatibility obligation (catalogue §6,
+note 1).
+
+### 13.4 Conformance
+
+The seam suite (`rejection-reason-v1.test.ak`) pins, for all 47 arms: the
+totality and exact value of `rejection_code_of` against the imported
+constants, and the frozen bridge hash of every arm against independently
+computed digests. The claim-layer suite (`validation-claim-v1.test.ak`) pins
+the §13.1 leaf-internal agreements — verdict-arm vs validity scalar in both
+directions, and the Normal-source acceptance scalar — and
+`forced_verdict_matches` positively and negatively across accepting and
+rejecting descriptors.

@@ -180,7 +180,11 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
     const forced: SDK.ForcedInclusionTxV1 = {
       tx_id: payload.tx_id,
       source,
-      operator_validity: "FailedScript",
+      verdict: {
+        ForcedTxInvalid: {
+          reason: { PlutusExecutionFailed: { execution_index: 0n } },
+        },
+      },
     };
     const spend: SDK.TxOrderSpendRedeemerV1 = {
       input_index: 0n,
@@ -198,7 +202,11 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
         proof: [],
       },
       inclusion_proof_script_withdraw_redeemer_index: 5n,
-      validity_override: "FailedScript",
+      validity_override: {
+        ForcedTxInvalid: {
+          reason: { PlutusExecutionFailed: { execution_index: 0n } },
+        },
+      },
     };
 
     const datumCbor = Data.to(datum, SDK.TxOrderDatumV1);
@@ -215,10 +223,10 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       `d8799fd8799fd8799f5820${"33".repeat(32)}04ffd8799f5820${"44".repeat(32)}5820${"55".repeat(32)}d8799f41014202034104ffffff187b581c${"66".repeat(28)}d8799fd8799f581c${"77".repeat(28)}ffd87a80ffd87980ff`,
     );
     expect(Data.to(forced, SDK.ForcedInclusionTxV1)).toBe(
-      `d8799f5820${"44".repeat(32)}d8799f41014202034104ffd87c80ff`,
+      `d8799f5820${"44".repeat(32)}d8799f41014202034104ffd87a9fd905229f00ffffff`,
     );
     expect(Data.to(spend, SDK.TxOrderSpendRedeemerV1)).toBe(
-      "d8799f0001020304d8799fd87a805820000000000000000000000000000000000000000000000000000000000000000058201111111111111111111111111111111111111111111111111111111111111111015827d8799f5820333333333333333333333333333333333333333333333333333333333333333304ff5834d8799f58204444444444444444444444444444444444444444444444444444444444444444d8799f41014202034104ffd87c80ff80ff05d87c80ff",
+      "d8799f0001020304d8799fd87a805820000000000000000000000000000000000000000000000000000000000000000058201111111111111111111111111111111111111111111111111111111111111111015827d8799f5820333333333333333333333333333333333333333333333333333333333333333304ff583bd8799f58204444444444444444444444444444444444444444444444444444444444444444d8799f41014202034104ffd87a9fd905229f00ffffff80ff05d87a9fd905229f00ffffff",
     );
     expect(
       SDK.decodeTxOrderDatumV1Cbor(SDK.encodeTxOrderDatumV1Cbor(datum)),

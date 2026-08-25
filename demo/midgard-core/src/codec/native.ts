@@ -641,6 +641,31 @@ export const deriveMidgardNativeTxProofSourceV1FromCanonicalCbor = (
     decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalTransactionCbor),
   );
 
+/**
+ * Stamps the operator's adjudicated validity onto a decoded transaction —
+ * both the canonical scalar and its compact twin, so the result still
+ * satisfies {@link verifyMidgardNativeTxFullConsistencyV1}.
+ *
+ * A forced-inclusion leaf must carry the operator's verdict in its embedded
+ * validity scalar (§2.4.3(e) bit equality), while admission requires every
+ * submitted transaction to claim `TxIsValid`. Every producer or verifier of a
+ * forced-source triple therefore adjudicates through this one helper before
+ * deriving the proof source, so the committed bytes cannot drift between the
+ * leaf, the validation-machine states, and DA reconstruction. `tx_id` hashes
+ * the body only and is invariant under adjudication.
+ */
+export const adjudicateMidgardNativeTxFullV1Validity = (
+  tx: MidgardNativeTxFullV1,
+  validity: MidgardTxValidity,
+): MidgardNativeTxFullV1 =>
+  tx.validity === validity && tx.compact.validity === validity
+    ? tx
+    : {
+        ...tx,
+        validity,
+        compact: { ...tx.compact, validity },
+      };
+
 export const verifyMidgardNativeTxProofSourceV1 = ({
   transactionId,
   source,

@@ -23,11 +23,7 @@ import {
 
 const VALIDITY_VECTORS = [
   ["TxIsValid", 0n, "d87980"],
-  ["NonExistentInputUtxo", 1n, "d87a80"],
-  ["InvalidSignature", 2n, "d87b80"],
-  ["FailedScript", 3n, "d87c80"],
-  ["FeeTooLow", 4n, "d87d80"],
-  ["UnbalancedTx", 5n, "d87e80"],
+  ["TxIsInvalid", 1n, "d87a80"],
 ] as const satisfies readonly [MidgardTxValidity, bigint, string][];
 
 const makeCanonical = (
@@ -63,9 +59,12 @@ const replaceFinalValidityCode = (
 
 describe("Midgard native V1 validity language", () => {
   it("is the exact total code and Plutus-constructor bijection", () => {
-    expect(Object.keys(MidgardTxValidityCodes)).toHaveLength(6);
+    expect(Object.keys(MidgardTxValidityCodes)).toHaveLength(2);
     expect(new Set(Object.values(MidgardTxValidityCodes))).toEqual(
-      new Set([0n, 1n, 2n, 3n, 4n, 5n]),
+      new Set([0n, 1n]),
+    );
+    expect(new Set(VALIDITY_VECTORS.map(([, , cbor]) => cbor))).toEqual(
+      new Set(["d87980", "d87a80"]),
     );
 
     for (const [meaning, code, plutusDataCbor] of VALIDITY_VECTORS) {
@@ -95,42 +94,56 @@ describe("Midgard native V1 validity language", () => {
   });
 
   it("rejects adjacent, negative, fractional, and unknown meanings", () => {
-    for (const value of [-1n, 6n, 255n, -1, 6, 1.5, "3"]) {
+    // `2n` is the first code past the two-arm frontier — the constructor index
+    // that `d87b80` would carry, and the code the retired `InvalidSignature`
+    // arm used to own.
+    for (const value of [-1n, 2n, 3n, 255n, -1, 2, 1.5, "1"]) {
       expect(() => decodeValidityCode(value, "validity")).toThrow();
     }
     expect(() =>
       encodeValidityCode("UnknownValidity" as MidgardTxValidity),
     ).toThrow(/Unsupported Midgard tx validity variant/u);
+    for (const retired of [
+      "NonExistentInputUtxo",
+      "InvalidSignature",
+      "FailedScript",
+      "FeeTooLow",
+      "UnbalancedTx",
+    ]) {
+      expect(() => encodeValidityCode(retired as MidgardTxValidity)).toThrow(
+        /Unsupported Midgard tx validity variant/u,
+      );
+    }
   });
 
   it("rejects non-minimal and out-of-range compact and canonical codes", () => {
-    const failedScript = materializeMidgardNativeTxFromCanonicalV1(
-      makeCanonical("FailedScript"),
+    const txIsInvalid = materializeMidgardNativeTxFromCanonicalV1(
+      makeCanonical("TxIsInvalid"),
     );
-    const compact = encodeMidgardNativeTxCompactV1(failedScript.compact);
-    const canonical = encodeMidgardNativeTxCanonicalV1(failedScript);
+    const compact = encodeMidgardNativeTxCompactV1(txIsInvalid.compact);
+    const canonical = encodeMidgardNativeTxCanonicalV1(txIsInvalid);
 
-    expect(() => decodeSingleCbor(Buffer.from("1803", "hex"))).toThrow(
+    expect(() => decodeSingleCbor(Buffer.from("1801", "hex"))).toThrow(
       /Non-minimal CBOR integer/u,
     );
     expect(() =>
       decodeMidgardNativeTxCompactV1(
-        replaceFinalValidityCode(compact, Buffer.from("1803", "hex")),
+        replaceFinalValidityCode(compact, Buffer.from("1801", "hex")),
       ),
     ).toThrow(/Non-minimal CBOR integer/u);
     expect(() =>
       decodeMidgardNativeTxCanonicalV1(
-        replaceFinalValidityCode(canonical, Buffer.from("1803", "hex")),
+        replaceFinalValidityCode(canonical, Buffer.from("1801", "hex")),
       ),
     ).toThrow(/Non-minimal CBOR integer/u);
     expect(() =>
       decodeMidgardNativeTxCompactV1(
-        replaceFinalValidityCode(compact, Buffer.from([6])),
+        replaceFinalValidityCode(compact, Buffer.from([2])),
       ),
     ).toThrow(/Unsupported Midgard tx validity code/u);
     expect(() =>
       decodeMidgardNativeTxCanonicalV1(
-        replaceFinalValidityCode(canonical, Buffer.from([6])),
+        replaceFinalValidityCode(canonical, Buffer.from([2])),
       ),
     ).toThrow(/Unsupported Midgard tx validity code/u);
   });

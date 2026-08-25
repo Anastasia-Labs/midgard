@@ -59,6 +59,67 @@ implementation reuse are not sufficient reasons. Each interactive proof family
 must carry executable evidence demonstrating why a single-party construction is
 insufficient.
 
+#### Application: native-script structural canonicity (#633, recorded 2026-08-24)
+
+The deciding question the rule reduces to: **does establishing the statement
+intrinsically need an opposing claim?** For tag-0 native-script structural
+canonicity it does not. The payload is committed content (bytes of a resolved
+output's reference-script field), and canonicity is a deterministic predicate
+over those bytes — the same evidentiary class as the already-spent-input and
+non-existent-input proofs, which are single-party computation threads for
+exactly this reason. By the classification above, the scan belongs in a
+single-party construction.
+
+Where it actually lives today is inside the **interactive** validation-trace
+dispute: output canonicity was folded into the ResolveInputs transition
+semantics so the one-step machine would be total (any disagreement, wherever
+it lands in a trace, resolves through the same protocol; no cross-proof
+composition). Concretely, `resolve_inputs_membership_step_semantic_v1` drives
+`ledger_output_proof_v1.step_v1`, whose `stage_native_script` consumes one
+scan token or frame per L1 transaction
+(`onchain/aiken/validators/fraud-proofs/validation-trace/resolve-inputs-membership-step-semantic-v1.ak`;
+`onchain/aiken/lib/midgard/ledger-output-proof-v1.ak:983`).
+
+The 2026-08-24 emulator baseline (branch `wave/lane-o`,
+`demo/midgard-validation/tests/native-script-scan-fault-proof-exunits-emulator-v1.test.ts`)
+measured what that placement costs: every native-stage step transaction runs
+15.3–16.2M memory units — above the 13,200,000-unit GOAL_SPEC §3.3 basis and
+above the current L1 per-transaction execution-memory maximum (14,000,000) at
+every payload size, from 9 nodes to the 16,384-byte whole-output cap. Of that,
+only ~1.9M is the scan itself; the remaining ~13–14M is the machine's
+stateless control open/close, re-paid identically by every step
+(`resolve_inputs_control_is_bound`: full compact-transaction re-hash, context
+re-hash, double control re-encode —
+`onchain/aiken/lib/midgard/validation-machine-v1.ak:6661-6693`). The embedded
+step is therefore not merely expensive but unexecutable within L1 limits —
+the executable evidence, in the sense this section requires, that the current
+interactive placement is unsound as the *driver* of the scan.
+
+Derived direction (tracked on #633, direction (d)): scan-borne faults are
+covered by a standalone single-party computation thread, without touching the
+machine. Every input the verdict depends on is committed public data — the
+block commits the transaction, the prior ledger root commits the spent
+output's bytes, and the scan is deterministic over them — so the thread
+proves the memberships, drives the scan itself across as many transactions as
+it needs (cross-transaction state: a cursor-plus-stack-root commitment, the
+shape `native-tx-script-pushdown-v1.ak` already implements), reaches the true
+verdict, and faults the header directly. Wrongful acceptance and wrongful
+rejection are both contradicted from commitments this way; nearly the full
+basis buys scan work — many nodes per transaction instead of one token that
+does not fit.
+
+The residual obligation on the interactive family is only that it must not be
+a trap: no dispute may be steerable onto a per-token scan transition, since
+that transition is unexecutable on L1 and would decide the dispute by stall
+rather than by truth. Primary discharge: excise — exclude scan-borne faults
+from the interactive family and treat the canonicity check as opaque at the
+trace's transition granularity (a v2 protocol definition; the granularity is
+derived, not committed per block). Fallback: coarsen the trace to a single
+scan-verdict transition adjudicated by reading a completed scan-thread
+output, mirroring how double-spend results are consumed. Until one of these
+lands, the scan's node/depth bounds (16,384/16,384) remain STAGED-machine
+bounds with no executable per-step path on L1.
+
 ## 3. End-to-end proof lifecycle
 
 ```

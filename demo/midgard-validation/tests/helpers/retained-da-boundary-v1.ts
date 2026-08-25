@@ -132,7 +132,7 @@ const forcedSourceValueHex = (source: SDK.L2TransactionSourceV1): string =>
     Data.to(
       {
         ...source,
-        operator_validity: "TxIsValid",
+        verdict: "ForcedTxValid",
       } as never,
       SDK.ForcedInclusionTxV1Schema as never,
     ),
@@ -265,13 +265,10 @@ const reconstructRetainedClassificationV1 = ({
       ? Data.from(sourceEntry[1], SDK.L2TransactionSourceV1Schema as never)
       : Data.from(sourceEntry[1], SDK.ForcedInclusionTxV1Schema as never);
   const exactSource = retainedSource as SDK.L2TransactionSourceV1 & {
-    readonly operator_validity?: string;
+    readonly verdict?: SDK.OperatorVerdictV1;
   };
-  if (
-    sourceKind === "forced" &&
-    exactSource.operator_validity !== "TxIsValid"
-  ) {
-    throw new Error("forced retained-DA source lost its operator validity");
+  if (sourceKind === "forced" && exactSource.verdict !== "ForcedTxValid") {
+    throw new Error("forced retained-DA source lost its operator verdict");
   }
 
   const retainedCanonicalCbor = Buffer.from(preimageEntry[1], "hex");

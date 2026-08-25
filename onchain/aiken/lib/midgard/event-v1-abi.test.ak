@@ -8,6 +8,7 @@ use midgard/operator_directory/active_operators as active
 use midgard/operator_directory/registered_operators as registered
 use midgard/operator_directory/retired_operators as retired
 use midgard/payout
+use midgard/rejection_reason_v1
 use midgard/reserve
 use midgard/settlement
 use midgard/transition_trace
@@ -443,8 +444,17 @@ test canonical_settlement_v1_typescript_abi_vectors() {
       },
     ) == #"d87a9fd87d80ff",
     cbor.serialise(
-      settlement.TxOrder { validity_override: ledger_state.FeeTooLow },
-    ) == #"d87b9fd87d80ff",
+      settlement.TxOrder {
+        validity_override: rejection_reason_v1.ForcedTxValid,
+      },
+    ) == #"d87b9fd87980ff",
+    cbor.serialise(
+      settlement.TxOrder {
+        validity_override: rejection_reason_v1.ForcedTxInvalid {
+          reason: rejection_reason_v1.EmptyInputs,
+        },
+      },
+    ) == #"d87b9fd87a9fd87b80ffff",
     cbor.serialise(
       settlement.DepositMembership {
         witness: raw_membership_proof(transition_trace.DepositsRootDomain),

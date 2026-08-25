@@ -119,7 +119,7 @@ const forcedInclusionTx: SDK.ForcedInclusionTxV1 = {
     witness_set_compact_cbor: "80",
     field_preimage_lengths_cbor: "80",
   },
-  operator_validity: "TxIsValid",
+  verdict: "ForcedTxValid",
 };
 
 /**
@@ -198,7 +198,7 @@ const omittedForcedFault = (): SDK.TransitionFault =>
     OmittedDueForcedTransaction: {
       event_ref_input_index: 0n,
       event_asset_name: EVENT_ASSET_NAME,
-      validity_override: "TxIsValid",
+      validity_override: "ForcedTxValid",
       source_non_membership: nonMembership({
         domain: SDK.ROOT_DOMAINS.forcedTransactionsV1,
         key: outRef(0n),
@@ -238,7 +238,7 @@ const outOfWindowForcedFault = (): SDK.TransitionFault =>
     OutOfWindowForcedTransaction: {
       event_ref_input_index: 0n,
       event_asset_name: EVENT_ASSET_NAME,
-      validity_override: "TxIsValid",
+      validity_override: "ForcedTxValid",
       source_membership: membership({
         domain: SDK.ROOT_DOMAINS.forcedTransactionsV1,
         key: outRef(0n),

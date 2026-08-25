@@ -254,7 +254,7 @@ CREATE TABLE public.forced_transaction_utxos (
     CONSTRAINT forced_transaction_utxos_asset_name_check CHECK (((octet_length(asset_name) >= 1) AND (octet_length(asset_name) <= 32))),
     CONSTRAINT forced_transaction_utxos_check CHECK (((status <> 'awaiting'::text) OR (projected_header_hash IS NULL))),
     CONSTRAINT forced_transaction_utxos_exact_proof_material CHECK (((consensus_profile_id = 'midgard-consensus-v1'::text) AND (octet_length(native_tx_cbor) <= 295041) AND (octet_length(transaction_commitment) = 32) AND (octet_length(cek_program_material_sidecar_cbor) > 0) AND (octet_length(cek_program_material_sidecar_sha256) = 32))),
-    CONSTRAINT forced_transaction_utxos_operator_validity_check CHECK ((operator_validity = ANY (ARRAY['TxIsValid'::text, 'NonExistentInputUtxo'::text, 'InvalidSignature'::text, 'FailedScript'::text, 'FeeTooLow'::text, 'UnbalancedTx'::text]))),
+    CONSTRAINT forced_transaction_utxos_operator_validity_check CHECK ((operator_validity = ANY (ARRAY['TxIsValid'::text, 'TxIsInvalid'::text]))),
     CONSTRAINT forced_transaction_utxos_status_check CHECK ((status = ANY (ARRAY['awaiting'::text, 'projected'::text, 'finalized'::text]))),
     CONSTRAINT forced_transaction_utxos_tx_id_check CHECK ((octet_length(tx_id) = 32)),
     CONSTRAINT forced_transaction_utxos_tx_order_l1_output_index_check CHECK ((tx_order_l1_output_index >= 0)),

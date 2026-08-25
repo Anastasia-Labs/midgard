@@ -3241,7 +3241,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       const forcedEncoding = await Effect.runPromise(
         ForcedTransactionsDB.encodeForcedInclusionValueV1({
           nativeTxCbor: forcedTransfer.txCbor,
-          operatorValidity: "TxIsValid",
+          verdict: "ForcedTxValid",
           consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
         }),
       );
@@ -3394,7 +3394,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
         forcedJournalMember.sourceValueCbor.toString("hex"),
         SDK.ForcedInclusionTxV1,
       );
-      expect(forcedSource.operator_validity).toBe("TxIsValid");
+      expect(forcedSource.verdict).toBe("ForcedTxValid");
 
       const postState = await runNodeDatabaseEffect(
         materializeConfirmedLedgerSnapshot(active.value),

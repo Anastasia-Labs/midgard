@@ -5924,3 +5924,102 @@ identity. Ledger compiler.md5 values stay as historical records of what
 took each reading; whether to add the twin's md5 to the lane N ledger's
 compiler block as a documented parity binary is an owner decision queued
 in the sign-off comment.
+
+## 2026-08-25 — #640 forced-verdict format wave SEALED at 63885874
+
+The wave is sealed on wave/format-640 at 63885874, base 3a2cf947:
+d349332a (onchain: OperatorVerdictV1 + the 47-arm RejectionReasonV1,
+constructor order wire-normative to catalogue §5; predicates (d)/(e) and
+forced_verdict_matches in validation-claim-v1.ak; the ≤16_384 native
+reference-script cap) → 15251caf (sdk/core codec mirror) → cf5e4165
+(spec §13 rejection-code register) → 3b809de5 (watcher) → 9c215cac
+(fault-proofs/validation/da consumers) → 96a5e16a (node slice: two-valued
+operator_validity, verdict-typed write path, ruled semantic mapping in
+classifyForcedTransactionsV1) → 165db5ca (delegated decisions Q1–Q5 +
+the verdict-stamping consequence closed).
+
+The stamping convention: a forced transaction has two identities. The
+SUBMITTED identity (validity TxIsValid — admission requires it) is what
+the DB row columns, the L1 ORDER datum, and the watcher bind. The
+ADJUDICATED identity (scalar stamped from the final verdict through the
+single core helper adjudicateMidgardNativeTxFullV1Validity) is what the
+committed leaf, the validation-machine state binding, and DA payload
+authentication bind — matching what source_binding_is_exact and
+predicate (e) reveal on-chain from the committed triple. Sound because
+no machine step on-chain or off-chain reads the validity scalar, tx_id
+hashes the body only, and field preimages 0–8 exclude the scalar; only
+bound bytes move, never a trace decision.
+
+Re-pins (generator-driven, no hand edits): transaction-root-v1 forced
+phasRoot 1b475223…f7c06c, forced root 8cbf9354…e91d2b; rejected forced
+leaves flip the embedded compact validity byte 00→01; the .ak golden is
+byte-identical to the generator output (--check exit 0).
+transition-trace-abi.json re-pinned via its UPDATE switch at 96a5e16a
+(ForcedInclusionTxV1 51→58 B).
+
+Adversarial pre-push review (independent gate re-runs; every load-bearing
+claim re-verified: the 19 frozen digests recomputed, the 47-arm wire
+order compared .ak↔catalogue↔SDK programmatically, the 47→19 bridge
+diffed three ways, all deriveMidgardNativeTxProofSourceV1* call sites
+classified against the two-identity convention): SHIP-WITH-FIXES, both
+fixes applied at 63885874. (1) MAJOR: the watcher's
+rejection-to-verdict partition still mapped E_NATIVE_SCRIPT_INVALID to
+PlutusExecutionFailed while the node classifier phase-splits it — an
+honest WitnessNativeScriptFalse/ExecutionNativeScriptFalse leaf would
+have tripped transition_effect_semantics_mismatch; the watcher partition
+now takes the rejecting phase and splits identically (latent today: no
+production terminal-spend builder exists, and both arms bridge to the
+same frozen code so on-chain verification was never affected). (2) the
+stale `validity_code <= 5` layout comment in the da-hash-preimage rule.
+
+Gates at seal: aiken check 2784/0 errors/6 warnings (twin compiler
+50890fe3); validation-machine 28/28; fpv transition-trace 51/51 +
+submit-init-emulator-transition-trace 1/1; da payload 11/11; node
+targeted 54/55 (the 1 red is the pre-existing sequential-deltas failure,
+red at base); deposit-flow emulator 14/14; watcher targeted suites green
+after the fix; eslint clean on the touched packages.
+
+## 2026-08-25 — #640 post-seal addendum: dispute-side stamping defect + stale-dist gate hole (fixed)
+
+Merge validation against the #617-sealed checkpoint (a6ae7cee) found three
+defects the sealed wave's gates had missed. All three are fixed in this
+commit; the seal's gate claims are corrected below.
+
+1. **Validation-machine stamping defect (soundness, dispute-breaking).**
+   165db5ca adjudicated the forced proof source by the machine's own
+   REPLAYED verdict. In a dispute, a challenger replays the operator's
+   accepted leaf to a rejection — the challenger's states then bound a
+   TxIsInvalid-stamped commitment the committed (ForcedTxValid) leaf does
+   not carry, and the source-claim spend crashed
+   (submit-init-emulator-min-ada-v1 and
+   submit-init-emulator-option-b-reference-frontier-v1: "the validator
+   crashed / exited prematurely" at the source stage). Fix: the machine
+   input gains `committedForcedVerdict` — the verdict of the COMMITTED
+   leaf, which is what `source_binding_is_exact` reveals and therefore
+   what `transaction_commitment` must bind. It defaults to the replay
+   verdict, which is exact on the classifier path (the leaf is produced
+   from that replay, and the machine aborts on any expected/replayed
+   divergence), so node behavior is unchanged; the three dispute
+   harnesses that contest an accepted leaf now pass the leaf's verdict.
+
+2. **Stale-dist gate hole.** The wave's watcher gates ran against a
+   midgard-fault-proofs dist built 2026-08-24 19:53 — BEFORE 9c215cac's
+   reconstruct change that authenticates forced DA leaves against the
+   leaf-adjudicated source. The seal's "watcher targeted suites green
+   after the fix" claim was therefore vacuous for every path through
+   `reconstructDaPayloadV1`. (fpv's own suites import `../src` directly
+   and were unaffected; node was re-validated against a fresh dist.)
+
+3. **Watcher fixture defect (uncovered by closing 2).** With a fresh fpv
+   dist, w25-authority-fixtures.ts and block-replay.test.ts projected the
+   ORDER event's SUBMITTED source triple into rejected forced DA leaves —
+   exactly the pairing the convention forbids. Both now re-derive the
+   leaf source through the single stamping helper by the leaf's verdict.
+
+Gates at this commit (fresh dists everywhere): validation-machine +
+validation-dispute-evidence 31/31; submit-init-emulator-min-ada-v1 1/1;
+submit-init-emulator-option-b-reference-frontier-v1 3/3;
+submit-init-emulator-transition-trace 1/1; watcher 3-file suite exactly
+the pre-existing 12-failure baseline (byte-identical test list; the W26
+forced-evidence test green); typecheck validation known-2/fpv 0/watcher
+0; eslint 0 on every touched file.

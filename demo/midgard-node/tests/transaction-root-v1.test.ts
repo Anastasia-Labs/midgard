@@ -26,7 +26,13 @@ type GoldenEntry = {
 };
 
 type GoldenForcedEntry = GoldenEntry & {
-  readonly operatorValidity: SDK.MidgardTxValidity;
+  /**
+   * The `OperatorVerdictV1` the canonical input asked for, named by its
+   * constructor arm: `ForcedTxValid`, or the `RejectionReasonV1` arm carried
+   * by `ForcedTxInvalid`. The arm names — not a coarse validity bucket — are
+   * the fixture's verdict vocabulary since the #640 format wave.
+   */
+  readonly verdict: string;
   readonly orderId: {
     readonly transactionId: string;
     readonly outputIndex: string;
@@ -104,27 +110,17 @@ describe("RF-031 transaction and forced root V1 golden contract", () => {
   });
 
   it("exercises the production forced-order encoder and every exact verdict constructor", async () => {
-    expect(
-      new Set(fixture.forcedOrders.map((entry) => entry.operatorValidity)),
-    ).toEqual(
-      new Set<SDK.MidgardTxValidity>([
-        "TxIsValid",
-        "NonExistentInputUtxo",
-        "InvalidSignature",
-        "FailedScript",
-        "FeeTooLow",
-        "UnbalancedTx",
+    expect(new Set(fixture.forcedOrders.map((entry) => entry.verdict))).toEqual(
+      new Set<string>([
+        "ForcedTxValid",
+        "InputNotFound",
+        "AddressWitnessSignatureInvalid",
+        "PlutusExecutionFailed",
+        "FeeBelowMinimum",
+        "ValueNotPreserved",
       ]),
     );
     for (const entry of fixture.forcedOrders) {
-      const encoded = await run(
-        encodeForcedInclusionValueV1({
-          nativeTxCbor: Buffer.from(entry.canonicalTransactionCborHex, "hex"),
-          operatorValidity: entry.operatorValidity,
-          consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-        }),
-      );
-      expect(encoded.value.toString("hex")).toBe(entry.valueCborHex);
       const decoded = Data.from(
         entry.valueCborHex,
         SDK.ForcedInclusionTxV1,
@@ -133,7 +129,22 @@ describe("RF-031 transaction and forced root V1 golden contract", () => {
         entry.valueCborHex,
       );
       assertSourceFields(decoded, entry);
-      expect(decoded.operator_validity).toBe(entry.operatorValidity);
+      // The leaf's own constructor tags must spell the verdict the canonical
+      // input named — the fixture's arm name is checked against the decoded
+      // value, never against a table restated here.
+      expect(
+        decoded.verdict === "ForcedTxValid"
+          ? "ForcedTxValid"
+          : SDK.rejectionReasonArmOf(decoded.verdict.ForcedTxInvalid.reason),
+      ).toBe(entry.verdict);
+      const encoded = await run(
+        encodeForcedInclusionValueV1({
+          nativeTxCbor: Buffer.from(entry.canonicalTransactionCborHex, "hex"),
+          verdict: decoded.verdict,
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        }),
+      );
+      expect(encoded.value.toString("hex")).toBe(entry.valueCborHex);
       const orderId = {
         transactionId: entry.orderId.transactionId,
         outputIndex: BigInt(entry.orderId.outputIndex),

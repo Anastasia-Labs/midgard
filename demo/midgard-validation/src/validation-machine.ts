@@ -77,14 +77,17 @@ import {
   parseMidgardMpfProofJsonV1,
 } from "@al-ft/midgard-core";
 import {
+  adjudicateMidgardNativeTxFullV1Validity,
   decodeMidgardAddressBytes,
   decodeMidgardFieldPreimageV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxCompactV1,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
   decodeMidgardNativeTxWitnessSetCompactV1,
   decodeMidgardSpendInputItemV1,
   decodeMidgardTxOutput,
   decodeSingleCbor,
+  deriveMidgardNativeTxProofSourceV1,
   encodeMidgardDefiniteBytesV1,
   encodeMidgardSpendInputItemV1,
   encodeMidgardVersionedScript,
@@ -534,6 +537,17 @@ export type ValidationMachineReplayInput = {
   readonly ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
   readonly expectedVerdict: "accepted" | "rejected";
   readonly expectedRejectionCode: RejectCode | null;
+  /**
+   * Verdict carried by the COMMITTED forced leaf — the operator's
+   * adjudication, which is what `source_binding_is_exact` reveals on-chain
+   * and therefore what the machine's `transaction_commitment` must bind.
+   * Defaults to the replay's own verdict, which is exact on the classifier
+   * path (the leaf is produced from this replay, and the machine aborts on
+   * any expected/replayed divergence). A dispute trace replayed AGAINST an
+   * operator leaf whose verdict it contests must pass the leaf's verdict
+   * here, or its states bind a commitment the committed leaf does not carry.
+   */
+  readonly committedForcedVerdict?: "accepted" | "rejected";
   readonly blockEndTimeMs: number;
   readonly expectedNetworkId: bigint;
   readonly minFeeA: bigint;
@@ -1751,9 +1765,34 @@ export const buildDeterministicValidationMachineTrace = (
         ledgerDeltaOperationLeafHashes,
         operationIndex,
       );
-    const proofSource = deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
-      input.canonicalTransactionCbor,
-    );
+    // The machine's `transaction_commitment` — and every carriage that reveals
+    // compact bytes — binds the COMMITTED source triple, i.e. the leaf under
+    // the block root. For a forced transaction that leaf carries the
+    // OPERATOR'S adjudicated validity scalar (§2.4.3(e)), not the submitted
+    // admission claim — and not this replay's verdict: a challenger replaying
+    // an operator's accepted claim to a rejection still binds the accepted
+    // leaf it disputes. So the proof source is adjudicated by the committed
+    // leaf's verdict (defaulting to the replayed verdict, exact on the
+    // classifier path where this replay produces the leaf). No machine step
+    // reads the scalar (on-chain or here) and the body bytes are untouched,
+    // so the trace's decisions are unchanged; only the bound bytes move.
+    // Normal sources are committed as submitted.
+    const committedForcedVerdict = input.committedForcedVerdict ?? verdict;
+    const proofSource =
+      input.sourceKind === "forced"
+        ? deriveMidgardNativeTxProofSourceV1(
+            adjudicateMidgardNativeTxFullV1Validity(
+              decodeMidgardNativeTxFullV1FromCanonicalCbor(
+                input.canonicalTransactionCbor,
+              ),
+              committedForcedVerdict === "accepted"
+                ? "TxIsValid"
+                : "TxIsInvalid",
+            ),
+          )
+        : deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
+            input.canonicalTransactionCbor,
+          );
     const compactProofTransaction = decodeMidgardNativeTxCompactV1(
       proofSource.compactCbor,
     );

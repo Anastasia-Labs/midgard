@@ -81,7 +81,7 @@ describe("validation-dispute journey to the E_MIN_ADA output-descriptor convicti
     expect(fixture.challengerTrace.rejectionCode).toBe(RejectCodes.MinAda);
 
     // The operator really did commit `Accepted`, which the forced-source
-    // binding forces from `operator_validity: TxIsValid`.
+    // binding forces from `verdict: ForcedTxValid`.
     expect(fixture.operatorTrace.tree.descriptor.verdict).toBe("accepted");
     expect(fixture.challengerTrace.tree.descriptor.verdict).toBe("rejected");
     expect(fixture.evidence.moves.length).toBeGreaterThan(0);
