@@ -118,6 +118,12 @@ const laneCommand = (filter) => {
 };
 
 const runLane = async (lane) => {
+  // Run EVERY package in the lane even after one fails: with long-lived
+  // known-red suites, stopping at the first failure would permanently shadow
+  // everything queued behind it (lane C's validation red would hide watcher,
+  // core, sdk and lucid). All failures are collected and the pass still exits
+  // red — coverage and the verdict are both preserved.
+  const laneFailures = [];
   for (const filter of lane.filters) {
     const { command, args } = laneCommand(filter);
     const started = Date.now();
@@ -127,10 +133,10 @@ const runLane = async (lane) => {
       `[lanes] ${lane.name} ${filter}: exit ${String(code)} in ${String(seconds)}s\n`,
     );
     if (code !== 0) {
-      return { lane: lane.name, filter, code };
+      laneFailures.push({ lane: lane.name, filter, code });
     }
   }
-  return undefined;
+  return laneFailures;
 };
 
 process.stdout.write(
@@ -150,7 +156,7 @@ if (typecheckCode !== 0) {
 const failures = [];
 if (laneConcurrency >= LANES.length) {
   const results = await Promise.all(LANES.map((lane) => runLane(lane)));
-  failures.push(...results.filter((result) => result !== undefined));
+  failures.push(...results.flat());
 } else {
   // Bounded lane concurrency: a simple work queue, preserving lane order.
   const queue = [...LANES];
@@ -162,10 +168,7 @@ if (laneConcurrency >= LANES.length) {
         if (lane === undefined) {
           return;
         }
-        const failure = await runLane(lane);
-        if (failure !== undefined) {
-          failures.push(failure);
-        }
+        failures.push(...(await runLane(lane)));
       }
     },
   );
