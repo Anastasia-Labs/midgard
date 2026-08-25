@@ -914,7 +914,7 @@ export const requireValidationCekSemanticReferenceScriptUtxo = async ({
  * output_asset 21,823, output_finish 20,987, mint_asset 18,622 and
  * mint_finish 17,931 bytes; begin (11,545), replay_begin (11,085) and finalize
  * (12,059) fit. (Parameter application adds 72-73 bytes over the unapplied
- * `compiledCode` in every case; figures predating #618 were unapplied sizes
+ * blueprint body in every case; figures predating #618 were unapplied sizes
  * mislabelled as applied and have been dropped.) A ValueAndMint semantic
  * dispute was therefore provable at the
  * validator level but not carriable on L1 — the #627 min-Ada journey's
