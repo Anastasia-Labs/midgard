@@ -143,7 +143,9 @@ const makeNativeTx = ({
 // measured floor for these 37-byte outputs is 849,070 lovelace. The original
 // 10-lovelace fixtures predate that ruling and were rejected before the
 // behaviour under test (conflict detection, validity intervals) was ever
-// reached (#642 item 4).
+// reached (#642 item 4). 5M rather than the exact floor: these tests are
+// about conflicts and intervals, not the floor's boundary, so the amount
+// carries headroom against future fee-parameter or serialized-size drift.
 const PHASE_B_COMPLIANT_LOVELACE = 5_000_000n;
 
 const makeCandidate = ({

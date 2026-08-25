@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { it } from "@effect/vitest";
@@ -7,24 +6,19 @@ import { describe, expect } from "vitest";
 
 import { mpfReplayProgram } from "@/commands/mpf-replay.js";
 
-// The architecture_g engine spawns the native owner binary. The plain `test`
-// run builds it in tests/global-setup.ts; it can still be absent when cargo is
-// unavailable (or MIDGARD_SKIP_NATIVE_BUILD=1). Skip LOUDLY rather than fail
-// on a missing optional toolchain — and never pass silently (#642).
-const nativeOwnerBinaryPath = fileURLToPath(
-  new URL(
-    "../native/mpf-event-flat-wasm/target/release/architecture-g-owner",
-    import.meta.url,
-  ),
-);
-const nativeOwnerBinaryPresent = existsSync(nativeOwnerBinaryPath);
-if (!nativeOwnerBinaryPresent) {
-  console.warn(
-    `[mpf-differential] SKIPPING: native binary absent at ${nativeOwnerBinaryPath} — build it with \`pnpm run native:mpf-owner:build\` (requires cargo)`,
-  );
+import {
+  nativeOwnerBinaryPresent,
+  warnNativeOwnerBinaryAbsent,
+} from "./helpers/native-owner-binary.js";
+
+// The architecture_g engine spawns the native owner binary; see the helper
+// for the build/skip contract (#642).
+const binaryPresent = nativeOwnerBinaryPresent();
+if (!binaryPresent) {
+  warnNativeOwnerBinaryAbsent("mpf-differential");
 }
 
-describe.skipIf(!nativeOwnerBinaryPresent)("mpf differential replay", () => {
+describe.skipIf(!binaryPresent)("mpf differential replay", () => {
   it.effect(
     "binds the seeded adversarial MPF corpus to every configured engine",
     () =>

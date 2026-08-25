@@ -20,7 +20,6 @@
  *      fresh shard has no schema to inherit.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,6 +31,10 @@ import { MigrationRunner } from "@/database/index.js";
 import { NodeConfig } from "@/services/config.js";
 import { Database } from "@/services/database.js";
 
+import {
+  nativeOwnerBinaryPath,
+  nativeOwnerBinaryPresent,
+} from "./helpers/native-owner-binary.js";
 import { applyMidgardNodeTestEnv, testDatabaseNames } from "./test-env.js";
 
 const maintenanceClient = (database: string) =>
@@ -78,10 +81,11 @@ const migrateShard = (shard: string) =>
  * missing artifact (#642). With a warm cargo target dir `--locked` rebuilds
  * are sub-second; a cold build pays once per worktree.
  *
- * Failure here is deliberately non-fatal: without cargo (or with
+ * Only a MISSING toolchain is non-fatal: without cargo (or with
  * MIDGARD_SKIP_NATIVE_BUILD=1) the two consumer files skip LOUDLY with the
- * build command in the reason — never a silent pass, never a whole-suite
- * abort over an optional toolchain.
+ * build command in the reason — never a silent pass. But cargo present with a
+ * FAILING build throws: that is a compile regression in the crate, and letting
+ * it degrade seven real assertions into skips would hide it.
  */
 const buildNativeOwnerBinary = (): void => {
   if (process.env.MIDGARD_SKIP_NATIVE_BUILD === "1") {
@@ -91,40 +95,31 @@ const buildNativeOwnerBinary = (): void => {
     return;
   }
   const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-  const manifestPath = resolve(
-    packageRoot,
-    "native/mpf-event-flat-wasm/Cargo.toml",
-  );
-  const binaryPath = resolve(
-    packageRoot,
-    "native/mpf-event-flat-wasm/target/release/architecture-g-owner",
-  );
-  const result = spawnSync(
-    "cargo",
-    [
-      "build",
-      "--release",
-      "--locked",
-      "--bin",
-      "architecture-g-owner",
-      "--manifest-path",
-      manifestPath,
-    ],
-    { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" },
-  );
+  const cargoProbe = spawnSync("cargo", ["--version"], { stdio: "ignore" });
+  if (cargoProbe.error !== undefined || cargoProbe.status !== 0) {
+    process.stderr.write(
+      "[global-setup] cargo is unavailable — native architecture-g-owner build skipped; dependent files will skip loudly unless the binary already exists\n",
+    );
+    return;
+  }
+  // The package script is the single source of truth for the build argv.
+  const result = spawnSync("pnpm", ["run", "native:mpf-owner:build"], {
+    cwd: packageRoot,
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
+  });
   if (result.error !== undefined || result.status !== 0) {
     const detail =
       result.error !== undefined
         ? result.error.message
         : (result.stderr ?? "").split("\n").slice(-15).join("\n");
-    process.stderr.write(
-      `[global-setup] native architecture-g-owner build FAILED (${detail.trim()}); dependent files will skip loudly unless ${binaryPath} already exists\n`,
+    throw new Error(
+      `[global-setup] native architecture-g-owner build FAILED with cargo available — a compile regression in the crate, not a missing toolchain:\n${detail.trim()}`,
     );
-    return;
   }
-  if (!existsSync(binaryPath)) {
-    process.stderr.write(
-      `[global-setup] cargo build succeeded but ${binaryPath} is absent — dependent files will skip loudly\n`,
+  if (!nativeOwnerBinaryPresent()) {
+    throw new Error(
+      `[global-setup] native:mpf-owner:build succeeded but ${nativeOwnerBinaryPath} is absent — the package script and the consumers disagree about the artifact path`,
     );
   }
 };
