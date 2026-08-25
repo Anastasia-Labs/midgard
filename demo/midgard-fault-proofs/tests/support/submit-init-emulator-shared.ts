@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -625,8 +626,37 @@ export const applyCompiledScript = (
       `${title} declares ${declaredParameters.length} parameter(s) but ${params.length} were applied — declared: ${describeDeclaredParameters(declaredParameters)}. Under-application deploys an always-succeeds script and over-application deploys an unusable script hash; apply exactly the declared parameters (#610).`,
     );
   }
-  return applyParamsToScript(found.compiledCode, [...params]);
+  const cacheKey = appliedScriptCacheKey(found.compiledCode, params);
+  const cached = appliedScriptCache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const applied = applyParamsToScript(found.compiledCode, [...params]);
+  appliedScriptCache.set(cacheKey, applied);
+  return applied;
 };
+
+/**
+ * `applyParamsToScript` is pure — the applied script is a function of nothing
+ * but the compiled code and the CBOR of the parameters — and it is the
+ * dominant fixed cost of every emulator journey (~12–14 s of contract build
+ * per test). Memoizing on the exact inputs cannot change a deployed byte: a
+ * cache hit is a proof the inputs were identical. The #610 arity guard above
+ * runs before the lookup on every call, so under-/over-application still
+ * fails closed. The cache is per-process, and this suite runs one fresh
+ * process per test file, so entries never outlive a file.
+ */
+const appliedScriptCache = new Map<string, string>();
+
+const appliedScriptCacheKey = (
+  compiledCode: string,
+  params: readonly Data[],
+): string =>
+  createHash("sha256")
+    .update(
+      `${compiledCode}|${params.map((param) => Data.to(param)).join("|")}`,
+    )
+    .digest("hex");
 
 export const makeMintingValidator = (
   mintingScriptCBOR: string,
