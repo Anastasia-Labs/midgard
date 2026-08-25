@@ -1971,6 +1971,9 @@ export const buildAcceptedClaimOverRejectingTransactionFixture = async ({
       ledgerMutationSteps: [],
       expectedVerdict: "rejected",
       expectedRejectionCode: RejectCodes.EmptyInputs,
+      // The challenger replays the operator's ACCEPTED leaf to a rejection;
+      // its states must still bind the committed (ForcedTxValid) source.
+      committedForcedVerdict: "accepted",
     }),
   );
   const restamped = restampTraceLedgerDeltaRoot(
@@ -2156,6 +2159,9 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
       ledgerMutationSteps: [],
       expectedVerdict: "rejected",
       expectedRejectionCode: RejectCodes.MinAda,
+      // The challenger replays the operator's ACCEPTED leaf to a rejection;
+      // its states must still bind the committed (ForcedTxValid) source.
+      committedForcedVerdict: "accepted",
     }),
   );
   const operatorTrace = replaceTerminalState(challengerTrace, {

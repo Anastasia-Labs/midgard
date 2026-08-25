@@ -9,6 +9,11 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import { blake2b } from "../../../midgard-core/node_modules/@noble/hashes/blake2.js";
+import {
+  adjudicateMidgardNativeTxFullV1Validity,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceV1,
+} from "../../../midgard-core/src/codec/native.js";
 import { wrapDaPayloadV1 } from "../../../midgard-core/src/da-payload-envelope.js";
 import { makeQueued } from "../../../midgard-validation/tests/validation-fixtures.js";
 import {
@@ -208,6 +213,20 @@ const publicEventFromAuthority = (
       readonly source: SDK.L2TransactionSourceV1["source"];
     };
   };
+  const verdict = w15ForcedOperatorVerdictForClassificationV1(
+    event.terminalClassification.operatorValidity,
+  );
+  // The ORDER event binds the SUBMITTED source, but the committed DA leaf
+  // carries the operator-ADJUDICATED one (§2.4.3(e)) — the payload
+  // reconstruction authenticates exactly that. Re-derive through the single
+  // stamping helper by the leaf's verdict rather than copying the event's
+  // submitted triple.
+  const adjudicatedSource = deriveMidgardNativeTxProofSourceV1(
+    adjudicateMidgardNativeTxFullV1Validity(
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalNativeTxCbor),
+      verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
+    ),
+  );
   return Object.freeze({
     eventKey: {
       ForcedTransactionEventKey: {
@@ -224,10 +243,14 @@ const publicEventFromAuthority = (
       dataHex(
         {
           tx_id: decoded.tx.tx_id,
-          source: decoded.tx.source,
-          verdict: w15ForcedOperatorVerdictForClassificationV1(
-            event.terminalClassification.operatorValidity,
-          ),
+          source: {
+            compact_cbor: adjudicatedSource.compactCbor.toString("hex"),
+            witness_set_compact_cbor:
+              adjudicatedSource.witnessSetCompactCbor.toString("hex"),
+            field_preimage_lengths_cbor:
+              adjudicatedSource.fieldPreimageLengthsCbor.toString("hex"),
+          },
+          verdict,
         },
         SDK.ForcedInclusionTxV1Schema,
       ),

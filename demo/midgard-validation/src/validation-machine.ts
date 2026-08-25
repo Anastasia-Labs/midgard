@@ -537,6 +537,17 @@ export type ValidationMachineReplayInput = {
   readonly ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
   readonly expectedVerdict: "accepted" | "rejected";
   readonly expectedRejectionCode: RejectCode | null;
+  /**
+   * Verdict carried by the COMMITTED forced leaf — the operator's
+   * adjudication, which is what `source_binding_is_exact` reveals on-chain
+   * and therefore what the machine's `transaction_commitment` must bind.
+   * Defaults to the replay's own verdict, which is exact on the classifier
+   * path (the leaf is produced from this replay, and the machine aborts on
+   * any expected/replayed divergence). A dispute trace replayed AGAINST an
+   * operator leaf whose verdict it contests must pass the leaf's verdict
+   * here, or its states bind a commitment the committed leaf does not carry.
+   */
+  readonly committedForcedVerdict?: "accepted" | "rejected";
   readonly blockEndTimeMs: number;
   readonly expectedNetworkId: bigint;
   readonly minFeeA: bigint;
@@ -1756,12 +1767,17 @@ export const buildDeterministicValidationMachineTrace = (
       );
     // The machine's `transaction_commitment` — and every carriage that reveals
     // compact bytes — binds the COMMITTED source triple, i.e. the leaf under
-    // the block root. For a forced transaction that leaf carries the operator's
-    // adjudicated validity scalar (§2.4.3(e)), not the submitted admission
-    // claim, so the proof source is adjudicated by the replayed verdict before
-    // derivation. No machine step reads the scalar (on-chain or here) and the
-    // body bytes are untouched, so the trace's decisions are unchanged; only
-    // the bound bytes move. Normal sources are committed as submitted.
+    // the block root. For a forced transaction that leaf carries the
+    // OPERATOR'S adjudicated validity scalar (§2.4.3(e)), not the submitted
+    // admission claim — and not this replay's verdict: a challenger replaying
+    // an operator's accepted claim to a rejection still binds the accepted
+    // leaf it disputes. So the proof source is adjudicated by the committed
+    // leaf's verdict (defaulting to the replayed verdict, exact on the
+    // classifier path where this replay produces the leaf). No machine step
+    // reads the scalar (on-chain or here) and the body bytes are untouched,
+    // so the trace's decisions are unchanged; only the bound bytes move.
+    // Normal sources are committed as submitted.
+    const committedForcedVerdict = input.committedForcedVerdict ?? verdict;
     const proofSource =
       input.sourceKind === "forced"
         ? deriveMidgardNativeTxProofSourceV1(
@@ -1769,7 +1785,9 @@ export const buildDeterministicValidationMachineTrace = (
               decodeMidgardNativeTxFullV1FromCanonicalCbor(
                 input.canonicalTransactionCbor,
               ),
-              verdict === "accepted" ? "TxIsValid" : "TxIsInvalid",
+              committedForcedVerdict === "accepted"
+                ? "TxIsValid"
+                : "TxIsInvalid",
             ),
           )
         : deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(

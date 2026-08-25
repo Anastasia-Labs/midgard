@@ -5930,3 +5930,48 @@ submit-init-emulator-transition-trace 1/1; da payload 11/11; node
 targeted 54/55 (the 1 red is the pre-existing sequential-deltas failure,
 red at base); deposit-flow emulator 14/14; watcher targeted suites green
 after the fix; eslint clean on the touched packages.
+
+## 2026-08-25 — #640 post-seal addendum: dispute-side stamping defect + stale-dist gate hole (fixed)
+
+Merge validation against the #617-sealed checkpoint (a6ae7cee) found three
+defects the sealed wave's gates had missed. All three are fixed in this
+commit; the seal's gate claims are corrected below.
+
+1. **Validation-machine stamping defect (soundness, dispute-breaking).**
+   165db5ca adjudicated the forced proof source by the machine's own
+   REPLAYED verdict. In a dispute, a challenger replays the operator's
+   accepted leaf to a rejection — the challenger's states then bound a
+   TxIsInvalid-stamped commitment the committed (ForcedTxValid) leaf does
+   not carry, and the source-claim spend crashed
+   (submit-init-emulator-min-ada-v1 and
+   submit-init-emulator-option-b-reference-frontier-v1: "the validator
+   crashed / exited prematurely" at the source stage). Fix: the machine
+   input gains `committedForcedVerdict` — the verdict of the COMMITTED
+   leaf, which is what `source_binding_is_exact` reveals and therefore
+   what `transaction_commitment` must bind. It defaults to the replay
+   verdict, which is exact on the classifier path (the leaf is produced
+   from that replay, and the machine aborts on any expected/replayed
+   divergence), so node behavior is unchanged; the three dispute
+   harnesses that contest an accepted leaf now pass the leaf's verdict.
+
+2. **Stale-dist gate hole.** The wave's watcher gates ran against a
+   midgard-fault-proofs dist built 2026-08-24 19:53 — BEFORE 9c215cac's
+   reconstruct change that authenticates forced DA leaves against the
+   leaf-adjudicated source. The seal's "watcher targeted suites green
+   after the fix" claim was therefore vacuous for every path through
+   `reconstructDaPayloadV1`. (fpv's own suites import `../src` directly
+   and were unaffected; node was re-validated against a fresh dist.)
+
+3. **Watcher fixture defect (uncovered by closing 2).** With a fresh fpv
+   dist, w25-authority-fixtures.ts and block-replay.test.ts projected the
+   ORDER event's SUBMITTED source triple into rejected forced DA leaves —
+   exactly the pairing the convention forbids. Both now re-derive the
+   leaf source through the single stamping helper by the leaf's verdict.
+
+Gates at this commit (fresh dists everywhere): validation-machine +
+validation-dispute-evidence 31/31; submit-init-emulator-min-ada-v1 1/1;
+submit-init-emulator-option-b-reference-frontier-v1 3/3;
+submit-init-emulator-transition-trace 1/1; watcher 3-file suite exactly
+the pre-existing 12-failure baseline (byte-identical test list; the W26
+forced-evidence test green); typecheck validation known-2/fpv 0/watcher
+0; eslint 0 on every touched file.

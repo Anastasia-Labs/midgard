@@ -1298,6 +1298,9 @@ export const buildInvalidForcedValidationDisputeFixture = async ({
       ledgerMutationSteps: [],
       expectedVerdict: "rejected",
       expectedRejectionCode: RejectCodes.EmptyInputs,
+      // The challenger replays the operator's ACCEPTED leaf to a rejection;
+      // its states must still bind the committed (ForcedTxValid) source.
+      committedForcedVerdict: "accepted",
     }),
   );
   // #600: the complete-item witness carries the carriage **plan input** — which

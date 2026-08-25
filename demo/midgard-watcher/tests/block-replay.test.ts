@@ -8,8 +8,10 @@
  * roots, ordering, and exact canonical rejection attribution.
  */
 import {
+  adjudicateMidgardNativeTxFullV1Validity,
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceV1,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import { buildCountedRoot, encodeData } from "@al-ft/midgard-fault-proofs";
@@ -720,6 +722,20 @@ const publicEventFromW15 = (
   ) {
     throw new Error("forced W15 event lacks terminal classification");
   }
+  const verdict = w15ForcedOperatorVerdictForClassificationV1(
+    event.terminalClassification.operatorValidity,
+  );
+  // The ORDER event binds the SUBMITTED source, but the committed DA leaf
+  // carries the operator-ADJUDICATED one (§2.4.3(e)) — the payload
+  // reconstruction authenticates exactly that. Re-derive through the single
+  // stamping helper by the leaf's verdict rather than copying the event's
+  // submitted triple.
+  const adjudicatedSource = deriveMidgardNativeTxProofSourceV1(
+    adjudicateMidgardNativeTxFullV1Validity(
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(forcedNative.txCbor),
+      verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
+    ),
+  );
   return Object.freeze({
     eventKey: {
       ForcedTransactionEventKey: {
@@ -736,10 +752,14 @@ const publicEventFromW15 = (
       dataHex(
         {
           tx_id: decoded.tx.tx_id,
-          source: decoded.tx.source,
-          verdict: w15ForcedOperatorVerdictForClassificationV1(
-            event.terminalClassification.operatorValidity,
-          ),
+          source: {
+            compact_cbor: adjudicatedSource.compactCbor.toString("hex"),
+            witness_set_compact_cbor:
+              adjudicatedSource.witnessSetCompactCbor.toString("hex"),
+            field_preimage_lengths_cbor:
+              adjudicatedSource.fieldPreimageLengthsCbor.toString("hex"),
+          },
+          verdict,
         },
         SDK.ForcedInclusionTxV1Schema,
       ),
