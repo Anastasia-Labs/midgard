@@ -337,6 +337,12 @@ describe("zz609 the arity check is the only door", () => {
     // declared parameter would keep being deployed under-applied — the #605
     // always-succeeds shape with no failing gate. So every production source
     // that touches `compiledCode` must be one of the known doors.
+    //
+    // The scan matches FILE TEXT, comments included (#642 item 1): a prose
+    // mention of `compiledCode` in an unallowlisted file trips this gate
+    // exactly like a real read. That is deliberate — the gate stays a dumb
+    // text scan so nothing syntactic can evade it — so word doc comments
+    // around it (say "blueprint body") rather than allowlisting the file.
     const scanRoots = [
       "demo/midgard-sdk/src",
       "demo/midgard-node/src",

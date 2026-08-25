@@ -6023,3 +6023,61 @@ submit-init-emulator-transition-trace 1/1; watcher 3-file suite exactly
 the pre-existing 12-failure baseline (byte-identical test list; the W26
 forced-evidence test green); typecheck validation known-2/fpv 0/watcher
 0; eslint 0 on every touched file.
+
+## 2026-08-25 — #642 fail-surface wave: five findings closed, two attributions corrected
+
+Branch `fix/642-fail-surface` (off checkpoint 5a745068) implements every
+finding of consolidated issue #642. Commits, in order: b9d4cb26 (item 1),
+6e4304e7 (item 2), 3e2c712c (item 3), 6325cbd0 (item 4), aff13ec6 +
+9e879e1e (item 5), plus the review-fix commit closing this wave.
+
+1. **zz605 allowlist red — and a corrected diagnosis.** The issue's
+   "unallowlisted harness compiledCode reads" were not reads:
+   `submit-init-emulator-shared.ts` is already allowlisted, and the trip
+   was a DOC COMMENT in `validation-dispute/submit.ts` (165db5ca's
+   deployment-size note) — the gate scans file text, comments included.
+   The comment is reworded ("the unapplied blueprint body"); the file is
+   NOT allowlisted, so the gate keeps its precision. The gate's own
+   comment now records the prose-mention hazard. zz605 8/8.
+
+2. **complete-item-proof-fit re-pin with measured attribution.** Only
+   resolver[1]'s applied hash moved (81b42c84… → 28db415e…); count (91)
+   and the proof-item hash held. The producer returns the identical
+   triple under BOTH the base-0df64631 444-validator blueprint and this
+   tree's 452 — the move is entirely #640's `da-hash-preimage/rule.ak`
+   fix; the #635 appended validators touch no identity. File 6/6.
+
+3. **mpf native binary.** `tests/global-setup.ts` now builds
+   `architecture-g-owner` before the node suite (warm-target rebuild is
+   sub-second; `MIDGARD_SKIP_NATIVE_BUILD=1` opts out). Cargo present
+   but build failing THROWS — a crate compile regression is a red suite,
+   never a skip; only cargo-absent hosts skip, loudly, naming the path
+   and build command in both consumer files.
+
+4. **validation-parallelization — the DB attribution was wrong.** The
+   file touches no database; both reds were deterministic E_MIN_ADA
+   fixture staleness (10-lovelace outputs vs the #618 floor, 849,070 for
+   these 37-byte outputs — R8 of decision 0005). Min-Ada-funded fixtures
+   restore the behaviours under test, including the literal "120 > 119"
+   interval detail. The perf report's dirty-DB correlation was spurious.
+   File 7/7.
+
+5. **Evidence lane.** (a) The sweep "not byte-identical" regen was #640
+   hash drift, not nondeterminism: two independent regens byte-identical,
+   differing from the fixture in exactly eight scriptHash lines. Fixture
+   re-pinned; sanctioned flow green end-to-end (--check byte-identical →
+   digest --stamp → gate PASS → 4/4). This is the digest gate's FIRST
+   stamp; it binds the gitignored 452-validator blueprint bytes
+   (md5 78540c1d…) by design. (b) The scan bench's wasm death was
+   re-measured on this branch — it trapped again at exactly deep-65
+   native:finalize post-memoization, so the bench is restructured to
+   subprocess-per-measurement (`run-scan-bench-evidence-v1.mjs`; modes
+   list/measure/check; UPDATE reaches only the merged check child).
+   Verified on a narrowed deep-5 run: 10/10 measure children green, check
+   child red with exactly the honest "no committed artifact" failure.
+   The scan-ledger BOOTSTRAP remains owner-gated and was not performed.
+
+Expected red set on the checkpoint after this branch: watcher 15
+(E_MIN_ADA family), fault-proofs 1 (inspect-contracts), sdk 1
+(validation-resolver-applied-hashes), node 3 (forced-transactions-v1,
+mempool-ledger-cache ×2). All #642 items green.

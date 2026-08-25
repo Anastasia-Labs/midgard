@@ -3,7 +3,6 @@ import { once } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
@@ -29,13 +28,19 @@ import {
   createEventFlatDigest,
   prepareEventFlatDigest,
 } from "../src/workers/utils/mpf-event-flat-digest.js";
+import {
+  nativeOwnerBinaryPath,
+  nativeOwnerBinaryPresent,
+  warnNativeOwnerBinaryAbsent,
+} from "./helpers/native-owner-binary.js";
 
-const binaryPath = fileURLToPath(
-  new URL(
-    "../native/mpf-event-flat-wasm/target/release/architecture-g-owner",
-    import.meta.url,
-  ),
-);
+// The service spawns the native owner binary; see the helper for the
+// build/skip contract (#642).
+const binaryPath = nativeOwnerBinaryPath;
+const binaryPresent = nativeOwnerBinaryPresent();
+if (!binaryPresent) {
+  warnNativeOwnerBinaryAbsent("mpf-native-owner-service");
+}
 
 const digest = (...parts: readonly Uint8Array[]): Buffer => {
   const state = createEventFlatDigest();
@@ -74,7 +79,7 @@ const event = (
   { type: "insert", key: inserted, value },
 ];
 
-describe("production native MPF owner service", () => {
+describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
   const temporaryPaths: string[] = [];
   let binarySha256 = "";
 

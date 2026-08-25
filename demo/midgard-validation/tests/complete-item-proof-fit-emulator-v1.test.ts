@@ -1113,12 +1113,22 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
   // the same value `inspect-contracts.test.ts` prints as
   // `q13AppliedIdentities.fraudProofSpendingScriptHash`.
   // Measured by `loadContracts()` here, the same producer this row asserts on.
+  // Re-pinned 2026-08-25 (#642 item 2): the #640 merge's two-line
+  // `da-hash-preimage/rule.ak` fix recompiled every fraud-proof validator that
+  // transitively folds that rule — the canonical-decode item semantic resolver
+  // among them — so resolver[1]'s applied hash moves 81b42c84... ->
+  // 28db415e.... Attribution is measured, not argued: the same producer
+  // returns the identical triple under BOTH the base 0df64631 blueprint (444
+  // validators) and the current tree's blueprint (452 validators, md5
+  // 78540c1d34b10d205942372882487a00) — the #635 wave's eight decoding-engine
+  // additions are appended and touch none of these identities. COUNT (91) and
+  // the proof-item hash are measured unchanged under both.
   it("pins the applied §3.2 necessity identities on the measurement deployment", async () => {
     const contracts = await loadContracts();
     expect(contracts.validationTraceDispute.semanticResolvers).toHaveLength(91);
     expect(
       contracts.validationTraceDispute.semanticResolvers[1]!.spendingScriptHash,
-    ).toBe("81b42c84e294a579b20b4a635a135f12dea7893e4e202632ff6c2976");
+    ).toBe("28db415eafec8db16d39f184ecfdc446c848d52f89e59274f228a360");
     expect(contracts.validationTraceDispute.proofItem.spendingScriptHash).toBe(
       "22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab",
     );

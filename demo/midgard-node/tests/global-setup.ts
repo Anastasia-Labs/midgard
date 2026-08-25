@@ -19,6 +19,10 @@
  *      CI's separate `db:migrate` step against a single shared database), and a
  *      fresh shard has no schema to inherit.
  */
+import { spawnSync } from "node:child_process";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
 import { Effect, Layer, Redacted } from "effect";
@@ -27,6 +31,10 @@ import { MigrationRunner } from "@/database/index.js";
 import { NodeConfig } from "@/services/config.js";
 import { Database } from "@/services/database.js";
 
+import {
+  nativeOwnerBinaryPath,
+  nativeOwnerBinaryPresent,
+} from "./helpers/native-owner-binary.js";
 import { applyMidgardNodeTestEnv, testDatabaseNames } from "./test-env.js";
 
 const maintenanceClient = (database: string) =>
@@ -65,7 +73,59 @@ const migrateShard = (shard: string) =>
     );
   });
 
+/**
+ * Build the native architecture-G owner binary the mpf-differential and
+ * mpf-native-owner-service files spawn. The dedicated scripts
+ * (`test:mpf:differential`, `test:mpf-native-owner`) build it themselves, but
+ * the plain `test` run never did, so a fresh worktree failed those files on a
+ * missing artifact (#642). With a warm cargo target dir `--locked` rebuilds
+ * are sub-second; a cold build pays once per worktree.
+ *
+ * Only a MISSING toolchain is non-fatal: without cargo (or with
+ * MIDGARD_SKIP_NATIVE_BUILD=1) the two consumer files skip LOUDLY with the
+ * build command in the reason — never a silent pass. But cargo present with a
+ * FAILING build throws: that is a compile regression in the crate, and letting
+ * it degrade seven real assertions into skips would hide it.
+ */
+const buildNativeOwnerBinary = (): void => {
+  if (process.env.MIDGARD_SKIP_NATIVE_BUILD === "1") {
+    process.stderr.write(
+      "[global-setup] MIDGARD_SKIP_NATIVE_BUILD=1 — native architecture-g-owner build skipped; dependent files will skip loudly\n",
+    );
+    return;
+  }
+  const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const cargoProbe = spawnSync("cargo", ["--version"], { stdio: "ignore" });
+  if (cargoProbe.error !== undefined || cargoProbe.status !== 0) {
+    process.stderr.write(
+      "[global-setup] cargo is unavailable — native architecture-g-owner build skipped; dependent files will skip loudly unless the binary already exists\n",
+    );
+    return;
+  }
+  // The package script is the single source of truth for the build argv.
+  const result = spawnSync("pnpm", ["run", "native:mpf-owner:build"], {
+    cwd: packageRoot,
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
+  });
+  if (result.error !== undefined || result.status !== 0) {
+    const detail =
+      result.error !== undefined
+        ? result.error.message
+        : (result.stderr ?? "").split("\n").slice(-15).join("\n");
+    throw new Error(
+      `[global-setup] native architecture-g-owner build FAILED with cargo available — a compile regression in the crate, not a missing toolchain:\n${detail.trim()}`,
+    );
+  }
+  if (!nativeOwnerBinaryPresent()) {
+    throw new Error(
+      `[global-setup] native:mpf-owner:build succeeded but ${nativeOwnerBinaryPath} is absent — the package script and the consumers disagree about the artifact path`,
+    );
+  }
+};
+
 export const setup = async (): Promise<void> => {
+  buildNativeOwnerBinary();
   // The package's existing opt-out for database-backed tests. Provisioning
   // needs a live Postgres, and most files in this suite do not, so a run that
   // has already declared it is skipping the database files must not be made to
