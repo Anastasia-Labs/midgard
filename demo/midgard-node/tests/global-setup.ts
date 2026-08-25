@@ -19,6 +19,11 @@
  *      CI's separate `db:migrate` step against a single shared database), and a
  *      fresh shard has no schema to inherit.
  */
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
 import { Effect, Layer, Redacted } from "effect";
@@ -65,7 +70,67 @@ const migrateShard = (shard: string) =>
     );
   });
 
+/**
+ * Build the native architecture-G owner binary the mpf-differential and
+ * mpf-native-owner-service files spawn. The dedicated scripts
+ * (`test:mpf:differential`, `test:mpf-native-owner`) build it themselves, but
+ * the plain `test` run never did, so a fresh worktree failed those files on a
+ * missing artifact (#642). With a warm cargo target dir `--locked` rebuilds
+ * are sub-second; a cold build pays once per worktree.
+ *
+ * Failure here is deliberately non-fatal: without cargo (or with
+ * MIDGARD_SKIP_NATIVE_BUILD=1) the two consumer files skip LOUDLY with the
+ * build command in the reason — never a silent pass, never a whole-suite
+ * abort over an optional toolchain.
+ */
+const buildNativeOwnerBinary = (): void => {
+  if (process.env.MIDGARD_SKIP_NATIVE_BUILD === "1") {
+    process.stderr.write(
+      "[global-setup] MIDGARD_SKIP_NATIVE_BUILD=1 — native architecture-g-owner build skipped; dependent files will skip loudly\n",
+    );
+    return;
+  }
+  const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const manifestPath = resolve(
+    packageRoot,
+    "native/mpf-event-flat-wasm/Cargo.toml",
+  );
+  const binaryPath = resolve(
+    packageRoot,
+    "native/mpf-event-flat-wasm/target/release/architecture-g-owner",
+  );
+  const result = spawnSync(
+    "cargo",
+    [
+      "build",
+      "--release",
+      "--locked",
+      "--bin",
+      "architecture-g-owner",
+      "--manifest-path",
+      manifestPath,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" },
+  );
+  if (result.error !== undefined || result.status !== 0) {
+    const detail =
+      result.error !== undefined
+        ? result.error.message
+        : (result.stderr ?? "").split("\n").slice(-15).join("\n");
+    process.stderr.write(
+      `[global-setup] native architecture-g-owner build FAILED (${detail.trim()}); dependent files will skip loudly unless ${binaryPath} already exists\n`,
+    );
+    return;
+  }
+  if (!existsSync(binaryPath)) {
+    process.stderr.write(
+      `[global-setup] cargo build succeeded but ${binaryPath} is absent — dependent files will skip loudly\n`,
+    );
+  }
+};
+
 export const setup = async (): Promise<void> => {
+  buildNativeOwnerBinary();
   // The package's existing opt-out for database-backed tests. Provisioning
   // needs a live Postgres, and most files in this suite do not, so a run that
   // has already declared it is skipping the database files must not be made to
