@@ -21,52 +21,12 @@ import { NodeConfig } from "@/services/config.js";
 import { AdmissionSql, Database } from "@/services/database.js";
 import { WriteBehindLive } from "@/services/write-behind.js";
 
-const explicitPostgresDb =
-  process.env.POSTGRES_DB !== undefined && process.env.POSTGRES_DB !== "";
+import { applyMidgardNodeTestEnv } from "./test-env.js";
 
-const TEST_ENV_DEFAULTS: Record<string, string> = {
-  L1_PROVIDER: "Kupmios",
-  L1_OGMIOS_KEY: "http://127.0.0.1:1337",
-  L1_KUPO_KEY: "http://127.0.0.1:1442",
-  L1_OPERATOR_SEED_PHRASE:
-    "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail",
-  L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX:
-    "second salad helmet humble left noise inform person swamp surround twice animal fitness sing laundry saddle stove guess cabin rural kidney reject oil fee",
-  L1_REFERENCE_SCRIPT_SEED_PHRASE:
-    "cactus chalk grit reopen true slight whale sand law sibling silver fringe cement twist process bracket history leopard churn federal coral three hockey fossil",
-  L1_REFERENCE_SCRIPT_ADDRESS:
-    "addr_test1qpdjresrrk294hy9ndtqly955ldlhy688507shkfxpwtgf39vzk9uwp87k96zkd5yal83h9x0qheeu0lrqp9lldvsqjs5s4ggd",
-  NETWORK: "Preprod",
-  POSTGRES_HOST: "127.0.0.1",
-  POSTGRES_PORT: "5433",
-  POSTGRES_USER: "postgres",
-  POSTGRES_PASSWORD: "postgres",
-  POSTGRES_DB: "midgard_test",
-  TESTNET_GENESIS_WALLET_SEED_PHRASE_A:
-    "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail",
-  TESTNET_GENESIS_WALLET_SEED_PHRASE_B:
-    "second salad helmet humble left noise inform person swamp surround twice animal fitness sing laundry saddle stove guess cabin rural kidney reject oil fee",
-  TESTNET_GENESIS_WALLET_SEED_PHRASE_C:
-    "cactus chalk grit reopen true slight whale sand law sibling silver fringe cement twist process bracket history leopard churn federal coral three hockey fossil",
-};
-
-for (const [key, value] of Object.entries(TEST_ENV_DEFAULTS)) {
-  if (process.env[key] === undefined || process.env[key] === "") {
-    process.env[key] = value;
-  }
-}
-
-if (
-  process.env.POSTGRES_DB === "midgard" &&
-  process.env.MIDGARD_ALLOW_TEST_DATABASE_MIDGARD !== "1" &&
-  process.env.CI !== "true"
-) {
-  throw new Error(
-    explicitPostgresDb
-      ? "Refusing to run Midgard tests against POSTGRES_DB=midgard. Use an isolated test database, or set MIDGARD_ALLOW_TEST_DATABASE_MIDGARD=1 only for an intentionally disposable local environment."
-      : "Refusing to default Midgard tests to POSTGRES_DB=midgard. Use an isolated test database.",
-  );
-}
+// Importing this module is what pins a test file to its worker's database
+// shard; see tests/test-env.ts for why the shard is assigned rather than read
+// from an ambient POSTGRES_DB.
+applyMidgardNodeTestEnv();
 
 const AdmissionWriterTestLive = Layer.scoped(
   AdmissionWriter,
