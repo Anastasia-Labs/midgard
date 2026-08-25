@@ -248,6 +248,37 @@ export const buildSourceMembershipProof = async ({
   }
 };
 
+/**
+ * The raw forced-transaction leaf membership — the
+ * `RootMembershipProof<OutputReference, ForcedInclusionTxV1>` shape itself,
+ * outside the `TransitionSourceMembershipProof` enum wrapper
+ * `buildSourceMembershipProof` returns. The decoding-fault family's step-02
+ * (`forced_membership`) consumes the leaf directly.
+ */
+export const buildForcedTransactionLeafMembershipProof = async ({
+  reconstruction,
+  eventKey,
+}: {
+  readonly reconstruction: TransitionTraceReconstruction;
+  readonly eventKey: SDK.EventKey;
+}): Promise<
+  SDK.RootMembershipProof<SDK.OutputReference, SDK.ForcedInclusionTxV1>
+> => {
+  const event = sourceEventOrThrow(reconstruction, eventKey);
+  if (event.phase !== "ForcedTransaction") {
+    throw transitionTraceError(
+      "missingWitnessData",
+      `Cannot build forced-transaction leaf membership proof: event key ${eventKeyFingerprint(
+        eventKey,
+      )} is not a forced-transaction event.`,
+    );
+  }
+  return await membershipProof({
+    root: reconstruction.rootData.forcedTransactions,
+    entry: event.entry,
+  });
+};
+
 export const buildRawL2TransactionSourceMembershipProof = async ({
   reconstruction,
   txId,
