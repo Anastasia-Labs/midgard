@@ -5,6 +5,7 @@ use midgard/fraud_proofs/native_tx/compact.{
   native_tx_proof_commitment_v1, verify_native_tx_proof_source_v1,
 }
 use midgard/ledger_state
+use midgard/rejection_reason_v1.{ForcedTxInvalid, ForcedTxValid}
 use midgard/transition_trace
 use midgard/validation_machine_v1
 use midgard/validation_trace_v1
@@ -201,14 +202,26 @@ fn verify_event_to_step_membership(
   )
 }
 
-fn forced_verdict_matches(
-  validity: ledger_state.MidgardTxValidity,
-  verdict: validation_trace_v1.ValidationVerdict,
+/// The §2.4.2(c) bridge from the forced leaf's verdict to the FROZEN
+/// descriptor format: an accepting leaf demands an accepting descriptor; a
+/// rejecting leaf demands a rejecting descriptor whose committed
+/// `rejection_code_hash` is exactly the hash of the legacy `E_*` code the
+/// leaf's reason maps back to (`rejection_code_of`, the total 47 → 19 map).
+///
+/// Exported so the #640 gate-5 tests can drive the bridge directly; the only
+/// production caller remains `source_binding_is_exact` in this module.
+pub fn forced_verdict_matches(
+  leaf_verdict: rejection_reason_v1.OperatorVerdictV1,
+  descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
 ) -> Bool {
-  if validity == ledger_state.TxIsValid {
-    verdict == validation_trace_v1.Accepted
-  } else {
-    verdict == validation_trace_v1.Rejected
+  when leaf_verdict is {
+    ForcedTxValid -> descriptor.verdict == validation_trace_v1.Accepted
+    ForcedTxInvalid { reason } -> and {
+        descriptor.verdict == validation_trace_v1.Rejected,
+        validation_trace_v1.hash_rejection_code(
+          rejection_reason_v1.rejection_code_of(reason),
+        ) == descriptor.rejection_code_hash,
+      }
   }
 }
 
@@ -237,6 +250,14 @@ fn verify_source_authentication(
         ),
         membership.key == tx_order_id,
         verified.version == 1,
+        // §2.4.3(e) Forced-source authoritativeness, leaf-internal: the
+        // leaf's verdict must agree with the embedded validity scalar of the
+        // same leaf's own compact bytes (post-wave bit equality; never a
+        // cross-root opening).
+        when membership.value.verdict is {
+          ForcedTxValid -> verified.tx_compact.validity_code == 0
+          ForcedTxInvalid { .. } -> verified.tx_compact.validity_code == 1
+        },
       }
     }
     NormalValidationSource { membership } -> {
@@ -259,6 +280,10 @@ fn verify_source_authentication(
         membership.key == membership.value.tx_id,
         membership.value.tx_id == tx_id,
         verified.version == 1,
+        // §2.4.3(d) Normal-source authoritativeness: a Normal leaf under
+        // `transactions_root` IS an acceptance verdict — its embedded
+        // validity scalar must claim `TxIsValid` (0).
+        verified.tx_compact.validity_code == 0,
       }
     }
   }
@@ -303,10 +328,7 @@ fn source_binding_is_exact(
         membership.value.tx_id == initial_state.transaction_id,
         source_proof_commitment(membership.value.source) == initial_state.transaction_commitment,
         initial_state.source_kind == validation_trace_v1.Forced,
-        forced_verdict_matches(
-          membership.value.operator_validity,
-          descriptor.verdict,
-        ),
+        forced_verdict_matches(membership.value.verdict, descriptor),
       }
     NormalValidationSource { membership } -> and {
         membership.value.tx_id == initial_state.transaction_id,

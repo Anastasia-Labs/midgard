@@ -3,8 +3,7 @@ use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/types.{
-  FailedScript, FeeTooLow, InvalidSignature, MidgardTxValidity,
-  NonExistentInputUtxo, TxIsValid, UnbalancedTx,
+  MidgardTxValidity, TxIsInvalid, TxIsValid,
 }
 
 pub fn expect_h32(bytes: ByteArray) -> ByteArray {
@@ -24,7 +23,7 @@ pub fn expect_non_negative(value: Int) -> Int {
 
 pub fn expect_validity_code(value: Int) -> Int {
   expect _non_negative = expect_non_negative(value)
-  expect value <= 5
+  expect value <= 1
   value
 }
 
@@ -32,27 +31,15 @@ pub fn validity_from_code(value: Int) -> MidgardTxValidity {
   expect _validity_code = expect_validity_code(value)
   if value == 0 {
     TxIsValid
-  } else if value == 1 {
-    NonExistentInputUtxo
-  } else if value == 2 {
-    InvalidSignature
-  } else if value == 3 {
-    FailedScript
-  } else if value == 4 {
-    FeeTooLow
   } else {
-    UnbalancedTx
+    TxIsInvalid
   }
 }
 
 pub fn validity_to_code(validity: MidgardTxValidity) -> Int {
   when validity is {
     TxIsValid -> 0
-    NonExistentInputUtxo -> 1
-    InvalidSignature -> 2
-    FailedScript -> 3
-    FeeTooLow -> 4
-    UnbalancedTx -> 5
+    TxIsInvalid -> 1
   }
 }
 

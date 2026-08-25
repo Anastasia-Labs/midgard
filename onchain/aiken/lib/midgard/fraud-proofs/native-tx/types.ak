@@ -2,11 +2,7 @@ pub const native_tx_version_v1: Int = 1
 
 pub type MidgardTxValidity {
   TxIsValid
-  NonExistentInputUtxo
-  InvalidSignature
-  FailedScript
-  FeeTooLow
-  UnbalancedTx
+  TxIsInvalid
 }
 
 pub type MidgardTxInput {

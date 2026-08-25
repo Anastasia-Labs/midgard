@@ -38,6 +38,7 @@ use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/transition_trace/proof
 use midgard/hub_oracle
 use midgard/ledger_state
+use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/tx_order_v1 as tx_order
@@ -310,13 +311,13 @@ fn tx_order_reference_input(inclusion_time: Int) -> Input {
 }
 
 fn authenticated_forced_tx(
-  operator_validity: ledger_state.MidgardTxValidity,
+  verdict: rejection_reason_v1.OperatorVerdictV1,
 ) -> ledger_state.ForcedInclusionTxV1 {
   let payload = authenticated_tx_order_payload()
   ledger_state.ForcedInclusionTxV1 {
     tx_id: payload.tx_id,
     source: payload.source,
-    operator_validity,
+    verdict,
   }
 }
 
@@ -419,7 +420,7 @@ fn omitted_due_forced_is_valid(inclusion_time: Int) -> Bool {
         witness: proof.OmittedDueForcedTransaction {
           event_ref_input_index: 0,
           event_asset_name,
-          validity_override: ledger_state.TxIsValid,
+          validity_override: rejection_reason_v1.ForcedTxValid,
           source_non_membership: empty_non_membership(
             transition_trace.ForcedTransactionsV1RootDomain,
             out_ref(0),
@@ -438,7 +439,7 @@ fn omitted_due_forced_is_valid(inclusion_time: Int) -> Bool {
 fn out_of_window_forced_is_valid(inclusion_time: Int) -> Bool {
   let source_membership = forced_source_membership(
     out_ref(0),
-    authenticated_forced_tx(ledger_state.TxIsValid),
+    authenticated_forced_tx(rejection_reason_v1.ForcedTxValid),
   )
   let header = ledger_state.HeaderV1 {
     ..base_header(),
@@ -452,7 +453,7 @@ fn out_of_window_forced_is_valid(inclusion_time: Int) -> Bool {
         witness: proof.OutOfWindowForcedTransaction {
           event_ref_input_index: 0,
           event_asset_name,
-          validity_override: ledger_state.TxIsValid,
+          validity_override: rejection_reason_v1.ForcedTxValid,
           source_membership,
         },
       },

@@ -11,10 +11,11 @@ use midgard/fraud_proofs/native_tx/types.{
   VerifiedMidgardNativeTxCompact,
 }
 use midgard/ledger_state.{
-  ForcedInclusionTxV1, MidgardTxValidity, NativeTxProofSourceV1, TxOrderEventV1,
-  TxOrderId, TxOrderPayloadV1, unsafe_event_to_key_value_pair,
+  ForcedInclusionTxV1, NativeTxProofSourceV1, TxOrderEventV1, TxOrderId,
+  TxOrderPayloadV1, unsafe_event_to_key_value_pair,
 }
 use midgard/native_tx_field_access_v1.{FieldCarriageV1}
+use midgard/rejection_reason_v1.{OperatorVerdictV1}
 use midgard/transition_trace
 use midgard/user_events
 
@@ -78,7 +79,7 @@ pub type SpendRedeemer {
   burn_redeemer_index: Int,
   membership_proof: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
   inclusion_proof_script_withdraw_redeemer_index: Int,
-  validity_override: MidgardTxValidity,
+  validity_override: OperatorVerdictV1,
 }
 
 fn field_length(
@@ -320,7 +321,7 @@ pub fn verify_order_material(
 
 pub fn forced_inclusion_key_value(
   tx_order_event_data: Data<TxOrderEventV1>,
-  validity_override: MidgardTxValidity,
+  validity_override: OperatorVerdictV1,
   return: fn(TxOrderId, ForcedInclusionTxV1) -> result,
 ) -> result {
   let Pair(tx_order_event_id_data, tx_order_payload_data) = unsafe_event_to_key_value_pair(
@@ -335,7 +336,7 @@ pub fn forced_inclusion_key_value(
     ForcedInclusionTxV1 {
       tx_id: tx_order_payload.tx_id,
       source: tx_order_payload.source,
-      operator_validity: validity_override,
+      verdict: validity_override,
     },
   )
 }
