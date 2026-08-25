@@ -138,11 +138,19 @@ const makeNativeTx = ({
   };
 };
 
+// Phase B enforces the #618 min-Ada floor (E_MIN_ADA, R8 of decision 0005) on
+// every output, so phase-B candidates must carry a compliant amount — the
+// measured floor for these 37-byte outputs is 849,070 lovelace. The original
+// 10-lovelace fixtures predate that ruling and were rejected before the
+// behaviour under test (conflict detection, validity intervals) was ever
+// reached (#642 item 4).
+const PHASE_B_COMPLIANT_LOVELACE = 5_000_000n;
+
 const makeCandidate = ({
   arrivalSeq,
   spent,
   referenceInputs = [],
-  inputLovelace = 10n,
+  inputLovelace = PHASE_B_COMPLIANT_LOVELACE,
   validityIntervalStart,
   validityIntervalEnd,
 }: {
@@ -275,8 +283,14 @@ describe("validation parallelization", () => {
     const spentX = outRefFromHash(hex32(0x01), 0n);
     const spentZ = outRefFromHash(hex32(0x02), 0n);
     const preState = new Map<string, Buffer>([
-      [spentX.toString("hex"), makeOutput(testAddress, 10n)],
-      [spentZ.toString("hex"), makeOutput(testAddress, 10n)],
+      [
+        spentX.toString("hex"),
+        makeOutput(testAddress, PHASE_B_COMPLIANT_LOVELACE),
+      ],
+      [
+        spentZ.toString("hex"),
+        makeOutput(testAddress, PHASE_B_COMPLIANT_LOVELACE),
+      ],
     ]);
 
     const txA = makeCandidate({
@@ -318,7 +332,10 @@ describe("validation parallelization", () => {
   it("evaluates validity intervals against the current Cardano slot number", async () => {
     const spent = outRefFromHash(hex32(0x03), 0n);
     const preState = new Map<string, Buffer>([
-      [spent.toString("hex"), makeOutput(testAddress, 10n)],
+      [
+        spent.toString("hex"),
+        makeOutput(testAddress, PHASE_B_COMPLIANT_LOVELACE),
+      ],
     ]);
 
     const expired = makeCandidate({
