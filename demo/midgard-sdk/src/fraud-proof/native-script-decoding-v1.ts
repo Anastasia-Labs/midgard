@@ -245,7 +245,10 @@ export const NativeScriptDecodingStep03Datum =
 
 /**
  * Twin of `step_03.Args`: `BindOutpoint` 0, `Scan` 1 (the self-loop),
- * `Verdict` 2.
+ * `Verdict` 2, and — appended 2026-08-25 with the #633 §7.2 closing arm so
+ * the three earlier tags are unmoved — `BindOutOfDomain` 3 (direction B
+ * only: the accusation's pair names a subject outside the committed
+ * transaction's domain).
  */
 export const NativeScriptDecodingStep03ArgsSchema = Data.Enum([
   Data.Object({
@@ -277,6 +280,18 @@ export const NativeScriptDecodingStep03ArgsSchema = Data.Enum([
       control_cbor: Data.Bytes(),
       chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
       next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+    }),
+  }),
+  Data.Object({
+    BindOutOfDomain: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      /**
+       * Required exactly when the named field exists and the ordinal is
+       * non-negative — the count face; the negative-ordinal and
+       * unknown-source-kind faces close with `None` here.
+       */
+      subject_field_opening: Data.Nullable(FieldOpeningV1Schema),
     }),
   }),
 ]);

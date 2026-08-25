@@ -259,6 +259,22 @@ describe("native-script-decoding step arguments", () => {
     );
   });
 
+  it("step-03 BindOutOfDomain args ride the appended fourth tag (v8)", () => {
+    // The #633 §7.2 closing arm is appended LAST so the
+    // BindOutpoint/Scan/Verdict tags are unmoved: constructor index 3.
+    // The negative-ordinal and unknown-source-kind faces carry no opening.
+    const args: NativeScriptDecodingStep03Args = {
+      BindOutOfDomain: {
+        input_index: 0n,
+        output_index: 1n,
+        subject_field_opening: null,
+      },
+    };
+    expect(Data.to(args, NativeScriptDecodingStep03Args)).toBe(
+      "d87c9f0001d87a80ff",
+    );
+  });
+
   it("step-04 args match the Aiken wire shape (v6)", () => {
     const args: NativeScriptDecodingStep04Args = {
       input_index: 0n,
