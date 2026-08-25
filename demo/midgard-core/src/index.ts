@@ -27,6 +27,7 @@ export * from "./ledger-output-proof-v1.js";
 export * from "./ledger-output-scan-v1.js";
 export * from "./ledger-output-value-v1.js";
 export * from "./mpf-proof-fold-v1.js";
+export * from "./native-script-decoding-engine-v1.js";
 export * from "./native-script-scan-v1.js";
 export * from "./out-ref.js";
 export * from "./plutus-data-cbor.js";

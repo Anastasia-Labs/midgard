@@ -73,7 +73,7 @@ export type MidgardNativeScriptScanFrameV1 = {
   readonly required: bigint;
 };
 
-type MidgardNativeScriptTokenV1 = {
+export type MidgardNativeScriptTokenV1 = {
   readonly kind: MidgardNativeScriptKindV1;
   readonly nextOffset: number;
   readonly childCount: number;
@@ -414,6 +414,10 @@ const readToken = ({
     required,
   };
 };
+
+// The exact parser the token step consumes, exported so the decoding-fault
+// engine twin can reconstruct pushed frames without a second CBOR parser.
+export const readMidgardNativeScriptStructureTokenV1 = readToken;
 
 const advanced = (
   control: MidgardNativeScriptStructureControlV1,
