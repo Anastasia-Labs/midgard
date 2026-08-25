@@ -38,6 +38,12 @@ Ruled decisions this plan implements and never re-opens:
   (≈61–69 nodes/tx, ≈100 transactions) are superseded — the realized fold
   rate is ≈3.5× the one-shot rates; §6's conclusions survive at ≈330–350
   transactions (see §6 below).
+- **Dual-consumer proving (owner ruling 2026-08-25):** the offchain code is
+  designed so the same proving core is consumable by the watcher for
+  autonomous proving AND by the CLI for manual proving. The core is
+  consumer-agnostic (§4.3); the CLI and the watcher are thin adapters over
+  it. Whether/when autonomous proving is *enabled*, and under what wallet
+  and budget policy, remains an owner setting (§10 Q5, narrowed).
 
 Where this plan uncovers a genuine decision, it records the decision as an
 owner question in §10 and takes no position beyond presenting the branches.
@@ -327,19 +333,33 @@ behind a flag.
 
 ### 3.4 Detection output and routing
 
-Following the established shape (observer watcher, manual prover): the
-detector emits a **finding record** — direction, source kind, event key
+The detector emits a **typed finding record**,
+`NativeScriptDecodingFindingV1` — direction, source kind, event key
 (`tx_id` or serialised `TxOrderId`), header hash, the accused/chosen pair,
 the reason class (direction B), the descriptor fields, and the provability
-class from §3.2/3.3 — into the watcher's journal/log surface, alongside a
-ready-to-run CLI invocation. Driving the thread remains operator-initiated
-through the `midgard-fault-proofs` CLI (§4.3). No autonomous prover is
-introduced by this plan (that would be new policy, not pattern-following;
-flagged as future work, not an owner question).
+class from §3.2/3.3. The finding record is the CONTRACT between detection
+and proving (ruled 2026-08-25): it is the sole input the proving core
+(§4.3) accepts, and it is deliberately self-contained — everything needed
+to start (or resume) a thread is derivable from it plus chain state, so
+the same record drives either consumer:
+
+- **Manual:** the watcher journals the finding alongside a ready-to-run
+  CLI invocation; an operator drives the thread through the
+  `midgard-fault-proofs` CLI verbs, which call the proving core.
+- **Autonomous:** the watcher hands the finding directly to the proving
+  core through the prover API (§4.3), gated by its autonomy policy
+  (settlement depth, budget caps, dedup — §4.3). Enablement and policy
+  defaults are owner-set (§10 Q5).
+
+Findings whose provability class is one of the unprovable corners (§7.2,
+§7.3) are journaled but never routed to proving by either path — the
+classification, not the consumer, is the gate.
 
 The watcher's `proof-thread-indexer` gains a `families[]` policy entry
 (category id, step script hashes) at registration so third-party threads of
-this family are indexed like every other family's.
+this family are indexed like every other family's; the indexer also feeds
+the autonomy path's dedup check (do not Init a thread whose asset name an
+indexed live thread already carries — duplicates are sound but waste fees).
 
 ---
 
@@ -447,20 +467,74 @@ New module family `src/native-script-decoding/`:
   fabricated-deposit precedent (modules land first, verbs when the
   category exists).
 
-### 4.3 Thread driver
+### 4.3 The proving core and its two consumers (ruled 2026-08-25)
 
 No existing family loops, so nothing in the runtime assumes a self-loop;
-the step-03 loop needs a driver above the per-step submitters:
+the step-03 loop needs a driver above the per-step submitters. Per the
+2026-08-25 ruling, that driver is designed as a **consumer-agnostic
+proving core** consumable by the watcher (autonomous) and the CLI
+(manual) alike. The dependency direction already exists —
+`demo/midgard-watcher/package.json` depends on
+`@al-ft/midgard-fault-proofs` (workspace) — so the core lives in
+`demo/midgard-fault-proofs/src/native-script-decoding/prover-v1.ts` and
+no new workspace edges are introduced.
 
-`drive-native-script-decoding-thread.ts` — given a finding record (§3.4)
-and a wallet: Init → step-01 → step-02 → BindOutpoint → (Scan)* →
-Verdict → step-04, submitting each transaction, awaiting confirmation,
-and feeding `nextThreadOutRef` forward. The driver is resumable (§7.1):
-started against an existing thread UTxO it reads the on-chain
-`StepDatum`, identifies the step and (for step-03) the machine position,
-and continues. The driver is a convenience over the submitters, not a
-replacement — every step remains individually drivable by CLI, like every
-other family.
+**The core:**
+
+```ts
+proveNativeScriptDecodingFaultV1(
+  finding: NativeScriptDecodingFindingV1,   // §3.4 — the sole input
+  deps: NativeScriptDecodingProverDepsV1,
+): Effect<NativeScriptDecodingProofOutcomeV1>
+```
+
+driving Init → step-01 → step-02 → BindOutpoint → (Scan)* → Verdict →
+step-04: build each transaction from the evidence module and planner,
+submit, await confirmation, feed `nextThreadOutRef` forward. Properties
+the ruling requires of it:
+
+- **Capability-injected, zero consumer coupling.** `deps` carries
+  everything environmental: signer/wallet, chain provider, the pre-state
+  ledger-trie source (§4.2), a confirmation awaiter, a journal sink for
+  progress events, and the policy record below. The core imports nothing
+  from the CLI and nothing from the watcher; both adapters import it.
+- **Resumable and idempotent-by-reconstruction** (§7.1): invoked against
+  a header whose thread already exists, it locates the thread UTxO by
+  asset name, reads the on-chain `StepDatum`, recovers the position
+  (including mid-loop via the `machine_state_hash` boundary search), and
+  continues. Crash, retry, and double-invocation all converge — which is
+  precisely what makes unattended operation safe.
+- **Policy as data, not code.** `NativeScriptDecodingProverPolicyV1`:
+  settlement-depth gate (min L1 depth of the faulted header before
+  spending), per-thread fee budget cap (checked against §6's plan-time
+  estimate before Init and re-checked as the loop progresses), and a
+  dedup predicate (skip when the proof-thread indexer already sees a live
+  thread with this asset name, §3.4). The core enforces whatever policy
+  it is handed; it hard-codes none. Only the §3.2/3.3 provability
+  classification is non-negotiable — unprovable corners are refused at
+  the API boundary regardless of policy.
+- **Outcome as data:** proven (fraud-proof token minted), refused
+  (classification/policy, with the reason), stalled (unexpected on-chain
+  abort — surfaced loudly, never silently cancelled; cancellation is its
+  own explicit call).
+
+**The two adapters (thin by construction):**
+
+- **CLI (manual):** `bin.ts` verbs — a one-shot
+  `prove-native-script-decoding` wrapping the core end-to-end, plus the
+  per-step submitter verbs every family exposes for surgical use. The
+  operator IS the policy: the CLI adapter passes a permissive policy and
+  the operator's wallet.
+- **Watcher (autonomous):** a prover entry the watcher can mount as a
+  fiber — consume finding records (§3.4), apply the configured
+  `ProverPolicyV1`, invoke the core, journal outcomes. The adapter ships
+  with the family; whether the watcher process *enables* it, with which
+  wallet and which policy values, is owner-set configuration
+  (default OFF until ruled otherwise — §10 Q5).
+
+Per-step submitters remain independently exported (the CLI's surgical
+verbs and the emulator tests use them directly); the core composes them
+rather than replacing them.
 
 ---
 
@@ -576,19 +650,20 @@ derived figures are superseded and appear nowhere below.
 - **Pacing:** the thread is a single linear UTxO — strictly one
   transaction per block per thread (~20s), so the worst case runs ≈2 hours
   serial, comfortably inside the half-of-seven-days maturity fit
-  (`architecture.md:283-286`). The driver (§4.3) submits, awaits
+  (`architecture.md:283-286`). The proving core (§4.3) submits, awaits
   confirmation, then builds the next transaction from the confirmed
   `nextThreadOutRef`; same-block chaining of unconfirmed steps is a
   possible optimization deliberately out of scope for v1 (rollback of a
   chained prefix would strand the suffix).
 - **Funding and retry:** the prover wallet funds fees, the thread UTxO's
-  min-ADA, and collateral; the worst-case budget (~510 ADA + margin)
-  should be checked by the driver up front against the wallet balance,
-  with the finding record carrying the estimate so the operator sees the
-  cost before starting. Every submitter is idempotent-by-reconstruction:
-  on timeout/rollback the driver re-queries the thread UTxO by asset name
-  and rebuilds the next transaction from the on-chain state — no local
-  state is authoritative (§7.1).
+  min-ADA, and collateral. The plan-time cost estimate rides the finding
+  record, and the core's budget-cap policy (§4.3) checks it against the
+  wallet before Init and as the loop progresses — the same check serves
+  the operator reading a CLI prompt and the autonomous path refusing an
+  over-budget thread. Every submitter is idempotent-by-reconstruction: on
+  timeout/rollback the core re-queries the thread UTxO by asset name and
+  rebuilds the next transaction from the on-chain state — no local state
+  is authoritative (§7.1).
 
 ---
 
@@ -758,8 +833,9 @@ pinned fork.
    integration, not this plan.
 3. **Builder wave (this plan's implementation, pre-registration):** SDK
    schemas (§4.1 minus the contracts.ts registration parts), twins and
-   planner (§5), evidence module and submitters (§4.2), driver (§4.3),
-   suites §8.2(1–6) under the extra-category harness. Deliverable is
+   planner (§5), evidence module and submitters (§4.2), the proving core
+   and both adapters (§4.3), suites §8.2(1–6) under the extra-category
+   harness. Deliverable is
    green emulator end-to-ends in both directions with zero pin movement.
    Item §8.2(1) (envelope fit) runs first and, if it fails, blocks the
    submitter shape on Q3.
@@ -802,11 +878,13 @@ pinned fork.
   forms only (step-01 inclusion and step-03 windows inline). Confirm
   deferring the published-chunk transport is acceptable for the family's
   first registration, or name it in-scope.
-- **Q5 — Detection disposition.** The plan follows the established
-  observer-watcher/manual-prover split: the watcher emits finding records
-  and the operator drives the CLI. Confirm this family does not warrant
-  departing from that (an autonomous prover would be new policy with
-  wallet custody implications).
+- **Q5 — Autonomous-proving enablement policy.** The dual-consumer
+  architecture is ruled (2026-08-25): the proving core serves both the
+  watcher (autonomous) and the CLI (manual), and the watcher adapter
+  ships with the family, default OFF. What remains owner-set is the
+  enablement policy: whether/when any deployed watcher turns the adapter
+  on, which wallet funds autonomous threads (custody), the budget-cap
+  value, and the settlement-depth gate default.
 - **Q6 — Direction-A sweep placement.** Scanning every accepted
   transaction's resolved tag-0 reference scripts during block replay is
   new standing watcher work (small per-block, unbounded in aggregate).
@@ -829,7 +907,9 @@ registration (design §9 Q8).
 - The interactive validation-trace family; the witness-set twin family
   (design §9 Q4); the D-S10 output-well-formedness overlap accounting
   (recorded at registration per design §9 Q3).
-- Autonomous prover orchestration beyond the resumable driver (§4.3).
+- Enabling autonomous proving in any deployed watcher, and its wallet
+  custody / policy defaults (the architecture ships per §4.3; enablement
+  is owner configuration, §10 Q5).
 - Published-chunk transport for scan windows (§2.3, Q4).
 - Fee-price re-pinning (registration-time, design §9 Q8).
 - GOAL_PROGRESS ledger rows (owner may want one for this plan's landing).
