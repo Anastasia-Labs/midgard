@@ -42,11 +42,16 @@ Ruled decisions this plan implements and never re-opens:
   designed so the same proving core is consumable by the watcher for
   autonomous proving AND by the CLI for manual proving. The core is
   consumer-agnostic (§4.3); the CLI and the watcher are thin adapters over
-  it. Whether/when autonomous proving is *enabled*, and under what wallet
-  and budget policy, remains an owner setting (§10 Q5, narrowed).
+  it. Whether/when autonomous proving is *enabled* in a deployment remains
+  an owner act; the shipped policy defaults are decided in §10 Q5.
 
-Where this plan uncovers a genuine decision, it records the decision as an
-owner question in §10 and takes no position beyond presenting the branches.
+Where this plan uncovered a genuine decision, it originally recorded an
+owner question in §10. On 2026-08-25 the owner delegated the open register
+to be decided under the AGENTS.md north star (tradeoff order: correctness,
+safety, liveness, performance, convenience); §10 is now a **decision
+register** — each entry records the decision, the evidence behind it, and
+what would reopen it. The delegation does not extend to the ruled
+decisions above, which stand untouched.
 
 All `file:line` anchors are against the worktree state at `db83dd31`.
 
@@ -175,6 +180,11 @@ facts the registration wave will find:
   (#617): `FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1 = "0000000b"`
   (`demo/midgard-sdk/src/fraud-proof/fabricated-deposit-v1.ts:59`) — a
   hard-coded SDK constant for a family that is itself not yet registered.
+- Append index 12 = `0000000c` is likewise RESERVED:
+  `FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1 = "0000000c"`
+  (`demo/midgard-sdk/src/fraud-proof/fabricated-withdrawal-v1.ts:85`),
+  another unregistered family holding a hard-coded constant. (This plan's
+  first draft missed it; the Q2 reservation sweep found it.)
 - `demo/midgard-sdk/src/fraud-proof/catalogue.ts:26-37` holds **11**
   positional categories. `docs/fault-proofs/catalogue-status.md:13-14,106`
   still says "exactly 8" — the doc is stale, not the code; the "8 vs 11"
@@ -185,11 +195,13 @@ facts the registration wave will find:
   categories; this family is the newest of the unregistered set.
 
 Under the append discipline this family takes the next free index after
-every standing reservation — `0000000c` if fabricated-deposit's
-`0000000b` reservation stands and nothing else is reserved ahead of it —
-but the id is **allocated by the registration wave, not by this plan**
-(§10 Q2 asks the owner to confirm the reservation ordering, since two
-unregistered families claiming "next free" is a live collision hazard).
+every standing reservation. **Decided (Q2, 2026-08-25):** both standing
+reservations hold, so this family's expected index is **`0000000d`** —
+but the id constant is still **written only by the registration wave**
+(design §9 Q7, ruled), which re-verifies "next free after standing
+reservations" against the SDK constants at allocation time. The
+two-families-claiming-next-free collision hazard is closed by that
+re-verification step, not by pinning a number here.
 
 ### 2.2 What registration touches (the positional/pinned surfaces)
 
@@ -208,6 +220,7 @@ of every derived root. The complete checklist:
 | CLI category parse | `demo/midgard-fault-proofs/src/bin.ts:195-219` |
 | Inspect-contracts unions and readiness gate | `demo/midgard-fault-proofs/src/inspect-contracts.ts:222-252`, `:254-265`, `:285-296`, `:298-308` |
 | Watcher thread policy | `demo/midgard-watcher/src/proof-thread-indexer.ts:146-168` (`families[]` entry) |
+| Reference-script targets (new family-steps class, §2.3 Q3) | `demo/midgard-node/src/transactions/reference-scripts.ts:1124-1285` |
 | Test pins | §8.4 below |
 
 The catalogue is init-time-immutable (spending validator always fails;
@@ -219,7 +232,7 @@ insert itself is mechanical once the id exists —
 `buildFraudProofCatalogueDeploymentInfo` derives the root and per-category
 membership proofs the Init builder consumes.
 
-### 2.3 Script deployment: inline attach, not reference scripts
+### 2.3 Script deployment: reference scripts (decided by measurement)
 
 The established pattern does **not** deploy per-family step validators as
 reference scripts. `nodeRuntimeReferenceScriptTargets`
@@ -231,28 +244,40 @@ their spending validator inline (`attach.SpendingValidator`), which is why
 `withinL1TransactionByteEnvelopeNecessaryCondition` and
 `l1SpendingScriptEnvelopeNecessaryCondition` per step.
 
-This family's step-03 is the largest working step the fault-proof surface
-has ever shipped, and its `Scan` transactions additionally carry up to two
-4,095-byte chunks, the control bytes, and frame witnesses. **Whether the
-inline-attach pattern fits inside the 16,384-byte L1 envelope for step-03's
-worst-case Scan transaction is a measurement this plan requires before the
-builders are written** (§8.2 item 1): build the blueprint into scratch,
-apply parameters, and run the same envelope-fit arithmetic the
-inspect-contracts assertions encode. Two outcomes:
+**Measured (2026-08-25):** blueprint built into scratch from the wave
+branch at `db83dd31` with the pinned fork (452 validators); unapplied
+compiled sizes: step-01 **6,783 B**, step-02 **11,507 B**, step-03
+**24,862 B**, step-04 1,673 B. Step-03 alone exceeds the entire
+16,384-byte `maxTxSize` envelope — inline attach is impossible for it
+under any redeemer diet, and step-02 inline plus a worst-case forced-leaf
+redeemer cannot fit either.
 
-- Fits: follow the pattern, inline attach, nothing new.
-- Does not fit: the family needs a deviation — either reference-scripting
-  the step-03 validator (a new `referenceScriptTargets` class for
-  fault-proof steps) or shrinking the window transport (single-chunk
-  windows where the margin allows). That deviation is not this plan's to
-  choose: §10 Q3.
+**Decided (Q3, by measurement):** the family's four step validators
+deploy as **reference scripts** — one new `referenceScriptTargets` class
+for fault-proof family steps, published by the same deployment machinery
+as the shared scripts. All four, not just step-03: uniformity keeps the
+submitters, the deployment manifest, and the emulator harness one shape,
+and the per-step inline-envelope assertions in `inspect-contracts.test.ts`
+gain a reference-script-deployment variant for this family instead of
+being force-fitted. The §8.2(1) suite remains, recast: it charts the
+per-step redeemer frontier (subject-size coverage) under this shape
+rather than deciding it.
 
-Note the published-chunk transport (#545) exists only for the step-01
-membership proof (`NativeTxInclusionCarriage`), not for step-03 scan
-windows; the design keeps scan-window publication as a permitted transport
-optimization that "the security argument never rests on" (design §5(c)).
-V1 of the builders implements the redeemer-carried forms only, with the
-published-chunk option recorded as follow-up (§10 Q4).
+**Decided (Q4):** v1 implements **both** step-01 carriages —
+redeemer-carried (fast path) and the #545 published-chunk transport
+(completeness path). Both onchain arms already exist on the wave branch
+and are measured (exec-ledger rows: normal 1.74M / published-chunk 2.89M
+mem), so the offchain cost is one more evidence path; and completeness
+demands it — the subject's size is adversary-controlled, the §8.11
+publication frontier admits items to ~13.4 KB
+(`docs/spec/midgard-tx.md:528`), and the redeemer-carried frontier is
+marginal against that even with reference-scripted validators.
+Scan-window publication stays out of scope: design §5(c) keeps it a
+transport optimization "the security argument never rests on". Step-02
+has no chunked arm on-chain: the §8.2(1) frontier chart must show every
+door-admissible forced leaf fits the step-02 redeemer, and a demonstrated
+gap is a **wave-branch completeness finding to escalate**, never to
+absorb offchain.
 
 ---
 
@@ -292,10 +317,12 @@ of that transaction's resolution disagrees. The detector:
    reason's payload** (the 2026-08-25 ruling: this pair IS the accusation;
    the watcher never derives it).
 3. **Domain pre-check:** decode the leaf's own `source.compact_cbor` and
-   check `input_index < |field(source_kind)|`. An out-of-domain pair makes
-   direction B unprovable on-chain (the stride read aborts, §7.2) — the
-   detector must classify such a leaf as the B-completeness corner and NOT
-   start a thread (§7.2, §10 Q1).
+   check `input_index < |field(source_kind)|`. An out-of-domain pair is
+   classified `OutOfDomainAccusation` and — per the Q1 decision (§7.2) —
+   routed to proving through the cardinality close once the closing-arm
+   amendment lands on the wave branch. Until that amendment lands, the
+   classification refuses Init loudly (on-chain the stride read would
+   abort); it is never silently dropped.
 4. Resolve the accused outpoint against the pre-state ledger at the
    event's transition step (the same state block-replay reconstructs) and
    fetch the resolved output's descriptor.
@@ -327,9 +354,10 @@ refusal) to minimize the thread length.
 This sweep adds scan work proportional to the number of resolved tag-0
 reference scripts per block. The scan twin is linear in payload bytes with
 trivial constants, so the expected cost is small, but it is standing
-watcher work that did not exist before; §10 Q6 asks the owner to confirm
-it belongs in the watcher's default replay path (recommended) rather than
-behind a flag.
+watcher work that did not exist before. **Decided (Q6):** the sweep runs
+in the watcher's default replay path — detection coverage is safety, and
+strict behavior is the default (AGENTS.md) — with an explicit, isolated
+kill-switch flag (default on) for incident response.
 
 ### 3.4 Detection output and routing
 
@@ -348,12 +376,14 @@ the same record drives either consumer:
   `midgard-fault-proofs` CLI verbs, which call the proving core.
 - **Autonomous:** the watcher hands the finding directly to the proving
   core through the prover API (§4.3), gated by its autonomy policy
-  (settlement depth, budget caps, dedup — §4.3). Enablement and policy
-  defaults are owner-set (§10 Q5).
+  (settlement depth, budget caps, dedup — §4.3; defaults decided in
+  §10 Q5). Turning the adapter on in a deployment remains an explicit
+  owner configuration act.
 
-Findings whose provability class is one of the unprovable corners (§7.2,
-§7.3) are journaled but never routed to proving by either path — the
-classification, not the consumer, is the gate.
+Findings whose provability class is the wrapper-contradiction corner
+(§7.3) are journaled but never routed to proving by either path — the
+classification, not the consumer, is the gate. (The §7.2 corner leaves
+this refused set once the cardinality close lands; §10 Q1.)
 
 The watcher's `proof-thread-indexer` gains a `families[]` policy entry
 (category id, step script hashes) at registration so third-party threads of
@@ -452,12 +482,16 @@ New module family `src/native-script-decoding/`:
   - the reference-script item bytes and chunk proofs via
     `demo/midgard-core/src/bounded-item-v1.ts`
     (`buildMidgardBoundedItemChunkProofV1` `:190`) in the
-    reference-script commitment domain the descriptor pins.
+    reference-script commitment domain the descriptor pins;
+  - the field-cardinality opening for the out-of-domain close (Q1, §7.2):
+    the same §8.8 door exposes the accused field's item count, and the
+    evidence module proves `outpoint_cursor ≥ count` for the closing arm
+    — direction B only.
 - **`scan-plan-v1.ts`** — the scan-loop planner (§5).
 - **Submitters** `submit-native-script-decoding-init.ts` and
   `…-step-01.ts` … `…-step-04.ts`, following the per-step submitter
   pattern: each an independent Effect that builds one L1 transaction,
-  attaches the step validator, and returns
+  sources the step validator by reference (§2.3, Q3), and returns
   `nextThreadOutRef = "txHash#index"`. Init mirrors `submit-init.ts`
   (asset name `categoryId ‖ headerHash` `:537`, first-step datum
   `{ fraud_prover: signer.paymentKeyHash, data: null }` `:551-557`, Init
@@ -506,10 +540,16 @@ the ruling requires of it:
   precisely what makes unattended operation safe.
 - **Policy as data, not code.** `NativeScriptDecodingProverPolicyV1`:
   settlement-depth gate (min L1 depth of the faulted header before
-  spending), per-thread fee budget cap (checked against §6's plan-time
-  estimate before Init and re-checked as the loop progresses), and a
-  dedup predicate (skip when the proof-thread indexer already sees a live
-  thread with this asset name, §3.4). The core enforces whatever policy
+  spending; default = the watcher's existing finality-policy depth,
+  `finality-engine.ts:31` `confirmationDepth` 2,160), per-thread fee
+  budget cap (default 650 ADA — worst case ≈510 plus margin — checked
+  against §6's plan-time estimate before Init and re-checked as the loop
+  progresses), a single-flight cap (default one autonomous thread at a
+  time), a maturity guard (refuse Init when the remaining maturity window
+  is under twice the predicted serial duration), and a dedup predicate
+  (skip when the proof-thread indexer already sees a live thread with
+  this asset name, §3.4). Defaults decided in §10 Q5; every value is
+  deployment-overridable. The core enforces whatever policy
   it is handed; it hard-codes none. Only the §3.2/3.3 provability
   classification is non-negotiable — unprovable corners are refused at
   the API boundary regardless of policy.
@@ -528,9 +568,11 @@ the ruling requires of it:
 - **Watcher (autonomous):** a prover entry the watcher can mount as a
   fiber — consume finding records (§3.4), apply the configured
   `ProverPolicyV1`, invoke the core, journal outcomes. The adapter ships
-  with the family; whether the watcher process *enables* it, with which
-  wallet and which policy values, is owner-set configuration
-  (default OFF until ruled otherwise — §10 Q5).
+  with the family; whether the watcher process *enables* it is owner-set
+  configuration. It ships **default OFF**, and enabling requires an
+  explicit config block naming a dedicated prover wallet distinct from
+  the watcher's operational identity — the adapter refuses to run
+  autonomously on the operational wallet (§10 Q5).
 
 Per-step submitters remain independently exported (the CLI's surgical
 verbs and the emulator tests use them directly); the core composes them
@@ -610,9 +652,10 @@ Planning algorithm:
    not verdict).
 
 Bind-time short circuits need no plan: `MachineBindMalformedV1`
-(direction A) and the non-tag-0 descriptor contradiction (direction B)
-close at `BindOutpoint`, giving the minimal thread
-Init → 01 → 02 → bind → 04 (five transactions).
+(direction A), the non-tag-0 descriptor contradiction (direction B), and
+— once the Q1 closing arm lands — the out-of-domain cardinality close
+(direction B, §7.2) all close at `BindOutpoint`, giving the minimal
+thread Init → 01 → 02 → bind → 04 (five transactions).
 
 ### 5.3 Budget and ExUnits discipline
 
@@ -694,39 +737,54 @@ header hash and category id:
   the NFT. A cancel submitter/CLI verb ships with the family like every
   other step.
 
-### 7.2 The B-completeness corner (OPEN — owner question Q1)
+### 7.2 The B-completeness corner (DECIDED 2026-08-25 — closing arm)
 
 If a forced leaf's decoding-arm reason names a pair whose `input_index` is
 outside the named field's cardinality, the on-chain bind can never succeed
 (`spend_input_at` aborts past the committed collection; §7.3
-abort-never-clamp), so direction B is **unprovable for exactly the leaves
-whose accusation is most absurd**. Whether this stays stall-and-cancel or
-gains a closing arm is an open owner decision; the plan presents both
-branches' offchain consequences without deciding:
+abort-never-clamp), so direction B was **unprovable for exactly the leaves
+whose accusation is most absurd**.
 
-- **Branch (a) — stays stall-and-cancel (no onchain change):** the
-  detector's domain pre-check (§3.2 step 3) becomes load-bearing: it must
-  run before Init so no thread is ever started on an out-of-domain pair
-  (a started one is min-ADA + fees lost to a guaranteed cancel). The
-  finding record carries the corner classification; the wrongful
-  rejection itself stays unremedied by this family and the residual falls
-  where design §7.6 places it. Offchain cost: one pre-check, no new
-  builder surface.
-- **Branch (b) — a closing arm is added (onchain change, new deployment
-  class):** step-03 (or -02) would gain an arm proving
-  `input_index ≥ |field(source_kind)|` from the committed bytes (the
-  field-opening door exposes the item count), closing the thread as a
-  direction-B conviction — the accusation names a subject the machine
-  could never have resolved. Offchain consequences: the evidence module
-  gains a cardinality-proof path, the planner gains a fourth short
-  circuit, the detector routes the corner to proving instead of stalling,
-  and the family's validators change (new hashes, new blueprint, new
-  pins) — which is why the decision is format/deployment-scoped and not
-  this plan's to make.
+**Decision (delegated): the closing arm.** Step-03 gains a third
+bind-time close, direction B only: prove
+`outpoint_cursor ≥ |field(outpoint_source_kind)|` from the committed
+bytes (the §8.8 field-opening door already exposes the item count) and
+close to step-04 with the class-0 contradiction marker — the accusation
+names a subject the machine could never have resolved, which is exactly
+this family's fault statement ("the committed reason is not the machine's
+verdict on the named subject", design §7.6). Step-04 needs **no change**:
+its direction-B gate (`source_kind == forced ∧ refusal_class == 0 ∧
+scan_reason_class ∈ {0,1,2}`) already admits the close, and
+`scan_accusation_of_v1` guarantees the class domain.
 
-The builders are structured so branch (b), if ruled, adds a module rather
-than reshaping one: detection classification (§3.2) already separates the
-corner; only its disposition changes.
+Why this branch:
+
+- **Safety asymmetry.** The stall-and-cancel alternative was sound —
+  design §7.6's misattribution analysis lands the residual on the
+  interactive family (a machine trace can never validly emit a reason
+  naming a nonexistent input, and `verify_forced_leaf_v1` range-checks
+  nothing, so the contradiction surfaces in the trace) — but it made the
+  *cheapest* wrongful rejection to mount (write a garbage index) the only
+  one requiring the *most expensive* remedy (the interactive protocol).
+  The catalogue's whole thrust (#633) is maximal single-party coverage;
+  correctness-before-convenience closes it non-interactively.
+- **Timing.** The wave branch is unmerged and registration is a fresh
+  genesis-level deployment regardless (D-S13): adding the arm now costs
+  zero deployment churn; after registration it would cost a whole new
+  deployment.
+- **Long-term rule.** AGENTS.md: no stopgaps meant to be replaced later —
+  shipping the family with a known coverage notch and a backstop is
+  exactly that shape.
+
+**Onchain amendment scope** (rides the owner's integration of
+`wave/decoding-thread-635`, executed there — not on this plan branch): the
+step-03 arm (an out-of-domain proof path beside `BindOutpoint`), its lib
+wire twin, fixture + selector tests, and an exec-ledger row for the new
+arm. The offchain consequences are now planned, not hypothetical: the
+evidence module's cardinality-proof path (§4.2), the planner's fourth
+short circuit (§5.2), and the detector routing the corner to proving
+(§3.2). The decision reopens only if the door turns out not to expose the
+field's item count — the §4.2 builder would surface that immediately.
 
 ### 7.3 The wrapper-contradiction corner (recorded, not open)
 
@@ -744,9 +802,20 @@ the detector's classification table is total.
 
 ## 8. Testing
 
+**Standing requirement (owner directive 2026-08-25):** every plan for new
+offchain code that interacts with the contracts — this one and future ones
+— includes **lucid-evolution emulator tests of realistic scenarios, in
+both polarities**: the full fault-proof flow succeeds when the fault
+really exists in the state commitment, and fails when it should not — an
+adversarial actor attempting the fault proof against an honest state
+commitment must be refused by the validators. Suites 4–5 below carry the
+positive polarity; suite 7 carries the adversarial one.
+
 ### 8.1 Where and how
 
-- Emulator end-to-end tests live in `demo/midgard-fault-proofs/tests/`, in
+- Emulator end-to-end tests (the lucid-evolution `Emulator` harness the
+  fault-proof suites already run on) live in
+  `demo/midgard-fault-proofs/tests/`, in
   their **own file** (`submit-init-emulator-native-script-decoding.test.ts`)
   — the wasm32 UPLC heap ceiling is why per-family files exist
   (`submit-init-emulator-registered-families.test.ts` header). All vitest
@@ -766,10 +835,16 @@ the detector's classification table is total.
 
 ### 8.2 Suites, in order of construction
 
-1. **Envelope-fit measurement (before builders):** blueprint built into
-   scratch with the pinned fork, parameters applied, serialized script
-   sizes + worst-case Scan transaction arithmetic against the 16,384-byte
-   envelope (§2.3). Outcome gates the deployment-shape decision (Q3).
+1. **Envelope/frontier measurement (before builders):** blueprint built
+   into scratch with the pinned fork, parameters applied, and the
+   per-step redeemer frontier charted against the 16,384-byte envelope
+   under the reference-script deployment shape (§2.3, decided): the
+   worst-case Scan window arithmetic, the step-01 carriage frontier per
+   transport (both carriages, Q4), and the step-02 forced-leaf frontier
+   against the §8.11 publication bound — a demonstrated step-02 coverage
+   gap escalates as a wave-branch completeness finding (§2.3). The
+   2026-08-25 compiled-size measurement (step-03 24,862 B > the whole
+   envelope) is this suite's first pinned datum.
 2. **Twin differential suite** (`midgard-core` or `midgard-fault-proofs`
    unit tests): TS scan twin + the new bind/hash twins vs the Aiken
    engine's fixture vectors — control CBOR, frame hashes, and
@@ -782,10 +857,10 @@ the detector's classification table is total.
    Verdict plan refuses; direction B ends terminal-exact; resume from any
    committed boundary re-derives the identical remaining plan; ExUnits
    prediction per plan is within basis.
-4. **Emulator end-to-end, direction A (Normal source):** Init → 01
-   (redeemer-carried inclusion) → 02 → bind → Scan* → Verdict → 04 on a
-   malformed multi-chunk payload; assert the fraud-proof token mints and
-   the thread NFT burns.
+4. **Emulator end-to-end, direction A (Normal source):** Init → 01 → 02
+   → bind → Scan* → Verdict → 04 on a malformed multi-chunk payload, in
+   both step-01 carriages (redeemer-carried and published-chunk — Q4);
+   assert the fraud-proof token mints and the thread NFT burns.
 5. **Emulator end-to-end, direction B (forced source):** a forced leaf
    with `ResolvedReferenceScriptMalformed` over a canonical payload —
    full scan to terminal; plus the descriptor-contradiction short circuit
@@ -793,8 +868,26 @@ the detector's classification table is total.
    (`ForcedTxValid` leaf, resolved malformed payload).
 6. **Negative/abort coverage at the emulator level:** cancel at each
    step; a Scan with a stale control (replay) refused; a substituted
-   chunk refused; out-of-domain pair aborts bind (the §7.2 corner's
-   on-chain half); resume mid-loop after a simulated crash.
+   chunk refused; the out-of-domain cardinality close convicts on a
+   genuinely out-of-domain accusation and is refused on an in-domain one
+   (the §7.2 arm, both polarities, once the amendment lands); resume
+   mid-loop after a simulated crash.
+7. **Adversarial-prover suite (honest commitment, realistic scenarios;
+   the owner-directed negative polarity):** a fully honest header —
+   canonical payloads, correct verdicts — against which an adversarial
+   prover attempts every road to a wrongful conviction, each refused
+   on-chain at the exact step named: direction A against a well-formed
+   payload (the scan folds to the canonical terminal, no Verdict window
+   can exhibit a refusal, and a forged mid-fold refusal fails the Scan
+   transaction itself); direction B against an honest, correctly-classed
+   rejection of a genuinely malformed payload (terminal-exact can never
+   pass, the descriptor contradiction cannot fire on tag-0, the
+   cardinality close is refused in-domain); forged evidence — substituted
+   chunk bytes, a foreign descriptor, a mismatched leaf — refused by the
+   chunk/MPF/membership proofs; and a third party attempting to drive or
+   cancel an honest prover's thread. The suite asserts not merely that
+   these fail but that each fails at the intended validator check, so a
+   refactor that accidentally widens an arm turns it red.
 
 ### 8.3 What lands at registration (re-pins)
 
@@ -828,67 +921,89 @@ pinned fork.
 1. **#640 format wave integration** — hard gate (ruled). The family's
    branch is based on the wave; nothing offchain lands ahead of it.
 2. **Onchain family integration** — the owner integrates
-   `wave/decoding-thread-635` (`53b87ff9`, `db83dd31`). Blueprint
-   regeneration and the ABI/validator-count evidence ride that
+   `wave/decoding-thread-635` (`53b87ff9`, `db83dd31`), now including the
+   §7.2 closing-arm amendment (Q1, decided) executed on that branch.
+   Blueprint regeneration and the ABI/validator-count evidence ride that
    integration, not this plan.
 3. **Builder wave (this plan's implementation, pre-registration):** SDK
    schemas (§4.1 minus the contracts.ts registration parts), twins and
-   planner (§5), evidence module and submitters (§4.2), the proving core
-   and both adapters (§4.3), suites §8.2(1–6) under the extra-category
-   harness. Deliverable is
-   green emulator end-to-ends in both directions with zero pin movement.
-   Item §8.2(1) (envelope fit) runs first and, if it fails, blocks the
-   submitter shape on Q3.
+   planner (§5), evidence module and submitters (§4.2) including both
+   step-01 carriages (Q4) and the cardinality-proof path (Q1), the
+   proving core and both adapters (§4.3), suites §8.2(1–7) under the
+   extra-category harness. Deliverable is green emulator end-to-ends in
+   both directions and both polarities with zero pin movement. Item
+   §8.2(1) (envelope/frontier) runs first; its step-02 frontier check is
+   the one place that can still escalate (§2.3).
 4. **Registration wave (separate, owner-scheduled):** category-id
-   allocation (after the reservation ordering is confirmed — Q2),
-   catalogue/manifest/union appends (§2.2), CLI verbs, watcher
-   `families[]` policy entry, re-pins (§8.3), `catalogue-status.md`
-   correction, and the fresh genesis-level deployment (D-S13).
-5. **Blocked on outstanding owner rulings:** the B-completeness corner
-   disposition (Q1) blocks only the corner's routing (branch (a) is the
-   default behavior of the planned code; branch (b) adds onchain surface
-   first); Q2–Q6 block the specific items that name them, none blocks
-   starting step 3.
+   allocation (next free after the two standing reservations, expected
+   `0000000d` — Q2, decided), catalogue/manifest/union appends (§2.2),
+   the family-steps reference-script targets (§2.3, Q3), CLI verbs,
+   watcher `families[]` policy entry, re-pins (§8.3),
+   `catalogue-status.md` correction, and the fresh genesis-level
+   deployment (D-S13).
+5. **No outstanding rulings block the sequence** (register decided
+   2026-08-25, §10). The remaining owner acts are operational: the wave
+   integration itself (step 2), scheduling the registration wave
+   (step 4), and any deployment's decision to switch the autonomous
+   adapter on (Q5).
 
 ---
 
-## 10. Owner questions register
+## 10. Decision register (owner-delegated 2026-08-25)
 
-- **Q1 — B-completeness corner (carried from the wave report; OPEN).** A
-  direction-B accusation whose pair is out of the subject's field domain
-  is on-chain unprovable: stall-and-cancel (status quo) or a closing arm
-  (onchain change)? §7.2 presents both branches' offchain consequences;
-  the builders are shaped so either ruling is additive.
-- **Q2 — Category-id reservation ordering.** Fabricated-deposit hard-codes
-  the reserved `0000000b` while itself unregistered
-  (`fabricated-deposit-v1.ts:59`); this family would take `0000000c` if
-  that reservation stands. Confirm the append order (and whether any
-  other unregistered family holds a reservation) before any id constant
-  is written, and note `catalogue-status.md`'s category count is stale
-  (11 registered, not 8).
-- **Q3 — Step-validator deployment shape, contingent on measurement.** The
-  pattern is inline attach (no per-family reference scripts). If §8.2(1)
-  shows step-03's worst-case Scan transaction cannot fit the 16,384-byte
-  envelope with the script inline, the family needs a deviation
-  (reference-scripting the step validators, or constraining window
-  transport). Only reached if the measurement fails; the measurement
-  itself is unconditional.
-- **Q4 — #545 published-chunk carriage scope for v1.** The design keeps
-  published-chunk transport optional. Plan v1 implements redeemer-carried
-  forms only (step-01 inclusion and step-03 windows inline). Confirm
-  deferring the published-chunk transport is acceptable for the family's
-  first registration, or name it in-scope.
-- **Q5 — Autonomous-proving enablement policy.** The dual-consumer
-  architecture is ruled (2026-08-25): the proving core serves both the
-  watcher (autonomous) and the CLI (manual), and the watcher adapter
-  ships with the family, default OFF. What remains owner-set is the
-  enablement policy: whether/when any deployed watcher turns the adapter
-  on, which wallet funds autonomous threads (custody), the budget-cap
-  value, and the settlement-depth gate default.
-- **Q6 — Direction-A sweep placement.** Scanning every accepted
-  transaction's resolved tag-0 reference scripts during block replay is
-  new standing watcher work (small per-block, unbounded in aggregate).
-  Confirm it runs in the default replay path rather than behind a flag.
+The owner delegated the open questions to be decided under the AGENTS.md
+north star (tradeoff order: correctness, safety, liveness, performance,
+convenience). Each entry records the decision, the evidence, and what
+would reopen it.
+
+- **Q1 — B-completeness corner: DECIDED, closing arm (§7.2).** Step-03
+  gains a direction-B cardinality close; step-04 is untouched (its gate
+  already admits the close). Grounds: single-party coverage of the
+  cheapest censorship move; zero deployment cost while the wave is
+  unmerged; the interactive-family backstop (design §7.6) made
+  stall-and-cancel sound but stopgap-shaped. Reopens only if the
+  field-opening door turns out not to expose the field's item count —
+  the §4.2 builder would surface that immediately.
+- **Q2 — Reservation ordering: DECIDED, both reservations stand (§2.1).**
+  The sweep found TWO hard-coded reservations — `0000000b`
+  (fabricated-deposit, `fabricated-deposit-v1.ts:59`) and `0000000c`
+  (fabricated-withdrawal, `fabricated-withdrawal-v1.ts:85`; missed by
+  this plan's first draft) — so this family's expected index is
+  `0000000d`. The constant is still written only by the registration
+  wave (design §9 Q7, ruled), which re-verifies "next free after
+  standing reservations" at allocation time and corrects
+  `catalogue-status.md`'s stale count in passing.
+- **Q3 — Deployment shape: DECIDED BY MEASUREMENT, reference scripts
+  (§2.3).** Step-03's compiled validator is 24,862 bytes — larger than
+  the whole 16,384-byte envelope — so inline attach is impossible, not
+  merely tight. All four steps deploy as reference scripts (one new
+  `referenceScriptTargets` class); the per-step envelope assertions gain
+  a reference-script variant. Not reopenable: the measurement is
+  arithmetic.
+- **Q4 — Step-01 carriage scope: DECIDED, both carriages in v1 (§2.3).**
+  Subject size is adversary-controlled and the redeemer-carried frontier
+  is marginal against the §8.11 publication bound, so the
+  published-chunk path is completeness, not optimization — and both
+  onchain arms already exist and are measured. Scan-window publication
+  stays out (design §5(c)). Residual guard: the §8.2(1) frontier chart
+  must show step-02's redeemer covers every door-admissible forced leaf;
+  a gap escalates as a wave-branch finding.
+- **Q5 — Autonomy enablement defaults: DECIDED (§4.3).** The watcher
+  adapter ships default OFF; enabling is an explicit per-deployment
+  config block that must name a dedicated prover wallet distinct from
+  the watcher's operational identity (the adapter refuses the
+  operational wallet). Policy defaults: settlement-depth gate = the
+  watcher's existing finality depth (`finality-engine.ts:31`,
+  `confirmationDepth` 2,160); budget cap 650 ADA/thread (worst case
+  ≈510 + margin); one autonomous thread in flight; maturity guard =
+  refuse Init when under 2× the predicted serial duration remains. All
+  deployment-overridable; the act of enabling in any real deployment
+  remains the owner's.
+- **Q6 — Direction-A sweep: DECIDED, default replay path (§3.3).**
+  Detection coverage is safety and strict behavior is the default; the
+  cost is bounded per block (linear in resolved tag-0 bytes). An
+  explicit, isolated kill-switch flag (default on) exists for incident
+  response.
 
 Not questions (already ruled or repaired): the pair ruling (2026-08-25),
 the `tx_order_id` ByteArray type repair (flagged in the wave report), the
@@ -901,7 +1016,8 @@ registration (design §9 Q8).
 ## 11. Out of scope
 
 - Any onchain change: validators, engine, formats, pins, exec ledgers,
-  and the #640 wave itself.
+  and the #640 wave itself. (The Q1 closing-arm amendment is *scoped* in
+  §7.2 but executed on the wave branch, not on this plan branch.)
 - The registration wave's execution (id allocation, appends, re-pins,
   genesis deployment) — planned here (§2, §8.3), executed separately.
 - The interactive validation-trace family; the witness-set twin family
@@ -910,6 +1026,8 @@ registration (design §9 Q8).
 - Enabling autonomous proving in any deployed watcher, and its wallet
   custody / policy defaults (the architecture ships per §4.3; enablement
   is owner configuration, §10 Q5).
-- Published-chunk transport for scan windows (§2.3, Q4).
+- Published-chunk publication of scan *windows* (§2.3 — a transport
+  optimization only; the step-01 published-chunk carriage IS in scope,
+  Q4).
 - Fee-price re-pinning (registration-time, design §9 Q8).
 - GOAL_PROGRESS ledger rows (owner may want one for this plan's landing).
