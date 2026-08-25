@@ -858,6 +858,51 @@ const EVIDENCE = process.env.MIDGARD_VALIDATION_EVIDENCE === "1";
 /** Re-record the raw readings into the committed artifact. Never a bypass. */
 const UPDATE_LEDGER = process.env.MIDGARD_SCAN_BENCH_UPDATE === "1";
 
+/**
+ * Orchestration modes (#642 item 5). The `@lucid-evolution/uplc` wasm module
+ * leaks linear memory across evaluations and wasm32 cannot shrink, so a
+ * single process measuring every step dies with an opaque `unreachable` trap
+ * — reproduced twice at exactly `deep 65 native:finalize`, both before and
+ * after the parameter-application memoization. The fix is process-level:
+ * `scripts/run-scan-bench-evidence-v1.mjs` runs this file once per
+ * MEASUREMENT in a fresh process and once more to judge the merged readings.
+ *
+ *   - ""        — the historical single-process run (kept as a direct knob;
+ *                 known to trap at deep-65 finalize on full coverage).
+ *   - "list"    — build the configured curve points, write
+ *                 `[{shape, nodes, labels}]` to MIDGARD_SCAN_BENCH_OUT, no
+ *                 measurement and no ledger judgement.
+ *   - "measure" — measure the (env-narrowed) points/steps and write the
+ *                 reports to MIDGARD_SCAN_BENCH_OUT; positivity is asserted
+ *                 here, the ledger judgement is NOT (a narrowed child must
+ *                 not judge — that is the orchestrator's final phase).
+ *   - "check"   — no measurement: read the orchestrator's merged readings
+ *                 from MIDGARD_SCAN_BENCH_MERGED and run the full ledger
+ *                 judgement (and update/bootstrap path) over them.
+ */
+const BENCH_MODE = process.env.MIDGARD_SCAN_BENCH_MODE ?? "";
+
+/** Revives a merged-readings JSON row (bigints travel as strings). */
+const reviveCurveReading = (curve: {
+  readonly shape: PayloadShape;
+  readonly nodes: number;
+  readonly payloadBytes: number;
+  readonly spentOutputBytes: number;
+  readonly proofStepCounts: CurvePointReport["proofStepCounts"];
+  readonly measurements: readonly (Omit<
+    StepMeasurement,
+    "mem" | "cpu" | "fee"
+  > & { mem: string; cpu: string; fee: string })[];
+}): CurvePointReport => ({
+  ...curve,
+  measurements: curve.measurements.map((row) => ({
+    ...row,
+    mem: BigInt(row.mem),
+    cpu: BigInt(row.cpu),
+    fee: BigInt(row.fee),
+  })),
+});
+
 describe.skipIf(!EVIDENCE)(
   "native-script scan fault-proof step ExUnits baseline (#633)",
   () => {
@@ -865,24 +910,69 @@ describe.skipIf(!EVIDENCE)(
       "pins the live one-token-per-transaction staged scan against the committed ExUnits ledger",
       { timeout: 14_400_000 },
       async () => {
-        const reports: CurvePointReport[] = [];
-        for (const shape of SHAPES) {
+        const resolveCurvePoints = (shape: PayloadShape): number[] => {
           const producedItem = makeMinAdaFundedExactSizeOutputItemV1(160);
           const funding = fundingLovelaceForOutputsV1([producedItem]);
           const tokens =
             INCLUDE_MAX_FIT && !CURVE_NODE_TOKENS.includes("maxfit")
               ? [...CURVE_NODE_TOKENS, "maxfit"]
               : [...CURVE_NODE_TOKENS];
-          const points = tokens.map((token) =>
+          return tokens.map((token) =>
             token === "maxfit"
               ? maxFitNodes(shape, funding)
               : Number.parseInt(token, 10),
           );
-          for (const nodes of points) {
-            const report = await runCurvePoint(shape, nodes);
-            reports.push(report);
+        };
 
-            console.log(formatReport([report]));
+        if (BENCH_MODE === "list") {
+          const listing: {
+            shape: PayloadShape;
+            nodes: number;
+            labels: string[];
+          }[] = [];
+          for (const shape of SHAPES) {
+            for (const nodes of resolveCurvePoints(shape)) {
+              const benchmarkCase = await buildBenchmarkCase(shape, nodes);
+              listing.push({
+                shape,
+                nodes,
+                labels: selectSteps(benchmarkCase).map(
+                  (descriptor) => descriptor.label,
+                ),
+              });
+            }
+          }
+          const outPath = process.env.MIDGARD_SCAN_BENCH_OUT;
+          if (outPath === undefined || outPath === "") {
+            throw new Error("list mode requires MIDGARD_SCAN_BENCH_OUT");
+          }
+          mkdirSync(dirname(outPath), { recursive: true });
+          writeFileSync(outPath, `${JSON.stringify(listing, null, 2)}\n`);
+          expect(listing.length).toBeGreaterThan(0);
+          for (const point of listing) {
+            expect(point.labels.length).toBeGreaterThan(0);
+          }
+          return;
+        }
+
+        const reports: CurvePointReport[] = [];
+        if (BENCH_MODE === "check") {
+          const mergedPath = process.env.MIDGARD_SCAN_BENCH_MERGED;
+          if (mergedPath === undefined || mergedPath === "") {
+            throw new Error("check mode requires MIDGARD_SCAN_BENCH_MERGED");
+          }
+          const merged = JSON.parse(
+            readFileSync(mergedPath, "utf8"),
+          ) as Parameters<typeof reviveCurveReading>[0][];
+          reports.push(...merged.map(reviveCurveReading));
+        } else {
+          for (const shape of SHAPES) {
+            for (const nodes of resolveCurvePoints(shape)) {
+              const report = await runCurvePoint(shape, nodes);
+              reports.push(report);
+
+              console.log(formatReport([report]));
+            }
           }
         }
 
@@ -914,6 +1004,15 @@ describe.skipIf(!EVIDENCE)(
             expect(row.mem).toBeGreaterThan(0n);
             expect(row.cpu).toBeGreaterThan(0n);
           }
+        }
+
+        // A measure-mode child is env-narrowed by construction, and a narrowed
+        // run must never judge (or bootstrap) the ledger — that is exactly the
+        // truncated-pin shape checkScanBenchLedgerV1 refuses. Its readings are
+        // judged once, merged, by the orchestrator's check phase.
+        if (BENCH_MODE === "measure") {
+          expect(reports.length).toBeGreaterThan(0);
+          return;
         }
 
         // The pin. Exact per-row equality against the committed artifact, with
