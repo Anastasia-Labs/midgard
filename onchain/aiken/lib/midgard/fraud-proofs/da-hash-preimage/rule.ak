@@ -25,7 +25,7 @@
 //// 0x84 || serialise(version) || body_cbor || 0x58 0x20 || wsh32 || validity
 //// \___________  ____________/             \_____________  ______________/
 ////             \/                                        \/
-////     2 bytes (version <= 23)              35 bytes (validity_code <= 5)
+////     2 bytes (version <= 23)              35 bytes (validity_code <= 1)
 //// ```
 ////
 //// so the body preimage of an honest leaf is exactly

@@ -35,6 +35,8 @@ const FIXTURE_CLASSIFICATIONS = Object.freeze([
   "ForcedTxValid",
   "InputNotFound",
   "AddressWitnessSignatureInvalid",
+  "WitnessNativeScriptFalse",
+  "ExecutionNativeScriptFalse",
   "PlutusExecutionFailed",
   "FeeBelowMinimum",
   "ValueNotPreserved",
@@ -54,6 +56,8 @@ const FIXTURE_VERDICT_CBOR = Object.freeze({
   ForcedTxValid: "d87980",
   InputNotFound: "d87a9fd9050b9f0000ffff",
   AddressWitnessSignatureInvalid: "d87a9fd905009f00ffff",
+  WitnessNativeScriptFalse: "d87a9fd905069f00ffff",
+  ExecutionNativeScriptFalse: "d87a9fd9051f9f00ffff",
   PlutusExecutionFailed: "d87a9fd905229f00ffff",
   FeeBelowMinimum: "d87a9fd87f80ff",
   ValueNotPreserved: "d87a9fd9052780ff",
@@ -192,54 +196,87 @@ describe("forced operator verdict vocabulary", () => {
     }
   });
 
-  it("partitions the canonical reject codes onto five reason tags", () => {
+  it("partitions the canonical reject codes onto the reason tags", () => {
     // The class boundaries are the ones the partition has always published;
-    // #640 only re-spells each class as the tag the forced leaf now carries.
+    // #640 re-spells each class as the tag the forced leaf now carries, and
+    // E_NATIVE_SCRIPT_INVALID is the one phase-split code: the node
+    // classifier commits WitnessNativeScriptFalse when Phase A rejects and
+    // ExecutionNativeScriptFalse when Phase B does, so the replay's
+    // representative must split identically or exact-arm comparison flags
+    // honest operators.
+    for (const phase of ["phaseA", "phaseB"] as const) {
+      expect(
+        watcherBlockReplayForcedValidityForRejectCodeV1(
+          RejectCodes.InputNotFound,
+          phase,
+        ),
+      ).toBe("InputNotFound");
+      for (const code of [
+        RejectCodes.InvalidSignature,
+        RejectCodes.MissingRequiredWitness,
+      ]) {
+        expect(
+          watcherBlockReplayForcedValidityForRejectCodeV1(code, phase),
+          code,
+        ).toBe("AddressWitnessSignatureInvalid");
+      }
+      for (const code of [
+        RejectCodes.PlutusScriptInvalid,
+        RejectCodes.PlutusEvaluationUnavailable,
+      ]) {
+        expect(
+          watcherBlockReplayForcedValidityForRejectCodeV1(code, phase),
+          code,
+        ).toBe("PlutusExecutionFailed");
+      }
+      expect(
+        watcherBlockReplayForcedValidityForRejectCodeV1(
+          RejectCodes.MinFee,
+          phase,
+        ),
+      ).toBe("FeeBelowMinimum");
+      // The catch-all: every code outside the named classes, which is what
+      // the retired `UnbalancedTx` arm covered.
+      expect(
+        watcherBlockReplayForcedValidityForRejectCodeV1(
+          RejectCodes.ValueNotPreserved,
+          phase,
+        ),
+      ).toBe("ValueNotPreserved");
+      expect(
+        watcherBlockReplayForcedValidityForRejectCodeV1(
+          RejectCodes.TxSize,
+          phase,
+        ),
+      ).toBe("ValueNotPreserved");
+    }
     expect(
       watcherBlockReplayForcedValidityForRejectCodeV1(
-        RejectCodes.InputNotFound,
+        RejectCodes.NativeScriptInvalid,
+        "phaseA",
       ),
-    ).toBe("InputNotFound");
-    for (const code of [
-      RejectCodes.InvalidSignature,
-      RejectCodes.MissingRequiredWitness,
-    ]) {
-      expect(watcherBlockReplayForcedValidityForRejectCodeV1(code), code).toBe(
-        "AddressWitnessSignatureInvalid",
-      );
-    }
-    for (const code of [
-      RejectCodes.NativeScriptInvalid,
-      RejectCodes.PlutusScriptInvalid,
-      RejectCodes.PlutusEvaluationUnavailable,
-    ]) {
-      expect(watcherBlockReplayForcedValidityForRejectCodeV1(code), code).toBe(
-        "PlutusExecutionFailed",
-      );
-    }
-    expect(
-      watcherBlockReplayForcedValidityForRejectCodeV1(RejectCodes.MinFee),
-    ).toBe("FeeBelowMinimum");
-    // The catch-all: every code outside the four named classes, which is what
-    // the retired `UnbalancedTx` arm covered.
+    ).toBe("WitnessNativeScriptFalse");
     expect(
       watcherBlockReplayForcedValidityForRejectCodeV1(
-        RejectCodes.ValueNotPreserved,
+        RejectCodes.NativeScriptInvalid,
+        "phaseB",
       ),
-    ).toBe("ValueNotPreserved");
-    expect(
-      watcherBlockReplayForcedValidityForRejectCodeV1(RejectCodes.TxSize),
-    ).toBe("ValueNotPreserved");
+    ).toBe("ExecutionNativeScriptFalse");
   });
 
   it("emits only tags the watcher classification vocabulary admits", () => {
-    for (const code of Object.values(RejectCodes)) {
-      const tag = watcherBlockReplayForcedValidityForRejectCodeV1(code);
-      expect(isWatcherForcedOperatorVerdictV1(tag), code).toBe(true);
-      expect(tag, code).not.toBe(WATCHER_FORCED_TX_VALID_V1);
-      expect(encodeVerdict(tag), code).toBe(
-        FIXTURE_VERDICT_CBOR[tag as keyof typeof FIXTURE_VERDICT_CBOR],
-      );
+    for (const phase of ["phaseA", "phaseB"] as const) {
+      for (const code of Object.values(RejectCodes)) {
+        const tag = watcherBlockReplayForcedValidityForRejectCodeV1(
+          code,
+          phase,
+        );
+        expect(isWatcherForcedOperatorVerdictV1(tag), code).toBe(true);
+        expect(tag, code).not.toBe(WATCHER_FORCED_TX_VALID_V1);
+        expect(encodeVerdict(tag), code).toBe(
+          FIXTURE_VERDICT_CBOR[tag as keyof typeof FIXTURE_VERDICT_CBOR],
+        );
+      }
     }
   });
 });

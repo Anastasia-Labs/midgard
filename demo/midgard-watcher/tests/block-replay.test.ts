@@ -1242,6 +1242,7 @@ describe("W25 published rejection-code partition", () => {
     expect(WATCHER_BLOCK_REPLAY_PROTOCOL_MINUS_UNCLAIMED_V1).toHaveLength(39);
     const expectedForcedValidity = (
       code: (typeof RejectCodes)[keyof typeof RejectCodes],
+      phase: "phaseA" | "phaseB",
     ): string => {
       if (code === RejectCodes.InputNotFound) return "InputNotFound";
       if (
@@ -1250,8 +1251,14 @@ describe("W25 published rejection-code partition", () => {
       ) {
         return "AddressWitnessSignatureInvalid";
       }
+      if (code === RejectCodes.NativeScriptInvalid) {
+        // The one phase-split code: it must carry the same arm the node
+        // classifier commits into the leaf for the phase that rejected.
+        return phase === "phaseA"
+          ? "WitnessNativeScriptFalse"
+          : "ExecutionNativeScriptFalse";
+      }
       if (
-        code === RejectCodes.NativeScriptInvalid ||
         code === RejectCodes.PlutusScriptInvalid ||
         code === RejectCodes.PlutusEvaluationUnavailable
       ) {
@@ -1260,17 +1267,22 @@ describe("W25 published rejection-code partition", () => {
       if (code === RejectCodes.MinFee) return "FeeBelowMinimum";
       return "ValueNotPreserved";
     };
-    expect(
-      Object.values(RejectCodes).map((code) => ({
-        code,
-        validity: watcherBlockReplayForcedValidityForRejectCodeV1(code),
-      })),
-    ).toStrictEqual(
-      Object.values(RejectCodes).map((code) => ({
-        code,
-        validity: expectedForcedValidity(code),
-      })),
-    );
+    for (const phase of ["phaseA", "phaseB"] as const) {
+      expect(
+        Object.values(RejectCodes).map((code) => ({
+          code,
+          validity: watcherBlockReplayForcedValidityForRejectCodeV1(
+            code,
+            phase,
+          ),
+        })),
+      ).toStrictEqual(
+        Object.values(RejectCodes).map((code) => ({
+          code,
+          validity: expectedForcedValidity(code, phase),
+        })),
+      );
+    }
     expect(WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1).toStrictEqual(
       WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1,
     );

@@ -1512,13 +1512,17 @@ export const w15ForcedOperatorVerdictForClassificationV1 = (
       ? { InputNotFound: { source_kind: 0n, input_index: 0n } }
       : classification === "AddressWitnessSignatureInvalid"
         ? { AddressWitnessSignatureInvalid: { witness_index: 0n } }
-        : classification === "PlutusExecutionFailed"
-          ? { PlutusExecutionFailed: { execution_index: 0n } }
-          : classification === "FeeBelowMinimum"
-            ? "FeeBelowMinimum"
-            : classification === "ValueNotPreserved"
-              ? "ValueNotPreserved"
-              : null;
+        : classification === "WitnessNativeScriptFalse"
+          ? { WitnessNativeScriptFalse: { script_index: 0n } }
+          : classification === "ExecutionNativeScriptFalse"
+            ? { ExecutionNativeScriptFalse: { execution_index: 0n } }
+            : classification === "PlutusExecutionFailed"
+              ? { PlutusExecutionFailed: { execution_index: 0n } }
+              : classification === "FeeBelowMinimum"
+                ? "FeeBelowMinimum"
+                : classification === "ValueNotPreserved"
+                  ? "ValueNotPreserved"
+                  : null;
   if (reason === null) {
     throw new Error(
       `w15 fixtures carry no forced verdict for classification ${classification}`,

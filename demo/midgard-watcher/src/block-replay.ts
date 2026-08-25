@@ -767,14 +767,20 @@ const normalizeRootHex = (root: string): string =>
 /**
  * Exact canonical rejection-to-forced-verdict partition consumed by W26.
  *
- * The five classes are the ones this partition has always published; #640
- * only re-spells each one as the `RejectionReasonV1` constructor tag the
- * forced leaf now carries (`ForcedInclusionTxV1.verdict`). The class
- * boundaries, and therefore how much the operator's claim is discriminated
- * against, are unchanged.
+ * The class boundaries this partition has always published are unchanged;
+ * #640 re-spells each one as the `RejectionReasonV1` constructor tag the
+ * forced leaf now carries (`ForcedInclusionTxV1.verdict`). The one code the
+ * node classifier phase-splits — `E_NATIVE_SCRIPT_INVALID` becomes
+ * `WitnessNativeScriptFalse` when Phase A rejects and
+ * `ExecutionNativeScriptFalse` when Phase B does — is split identically
+ * here, so an exact-arm comparison against the authenticated leaf verdict
+ * never flags an honest operator. Both arms bridge to the same frozen
+ * rejection code, so nothing on-chain distinguishes them; the phase only
+ * picks which tag the leaf carries.
  */
 export const watcherBlockReplayForcedValidityForRejectCodeV1 = (
   code: RejectCode,
+  phase: "phaseA" | "phaseB",
 ): WatcherForcedOperatorVerdictV1 => {
   if (code === RejectCodes.InputNotFound) {
     return "InputNotFound";
@@ -785,8 +791,12 @@ export const watcherBlockReplayForcedValidityForRejectCodeV1 = (
   ) {
     return "AddressWitnessSignatureInvalid";
   }
+  if (code === RejectCodes.NativeScriptInvalid) {
+    return phase === "phaseA"
+      ? "WitnessNativeScriptFalse"
+      : "ExecutionNativeScriptFalse";
+  }
   if (
-    code === RejectCodes.NativeScriptInvalid ||
     code === RejectCodes.PlutusScriptInvalid ||
     code === RejectCodes.PlutusEvaluationUnavailable
   ) {
@@ -2020,6 +2030,7 @@ const bindForcedTransitionEffectV1 = async (input: {
     phaseARejectCode = phaseA.code;
     canonicalOperatorValidity = watcherBlockReplayForcedValidityForRejectCodeV1(
       phaseA.code,
+      "phaseA",
     );
   } else {
     const phaseB = await makeReturn(
@@ -2041,7 +2052,10 @@ const bindForcedTransitionEffectV1 = async (input: {
       phaseBStatus = "rejected";
       phaseBRejectCode = phaseB.rejected[0]!.code;
       canonicalOperatorValidity =
-        watcherBlockReplayForcedValidityForRejectCodeV1(phaseBRejectCode);
+        watcherBlockReplayForcedValidityForRejectCodeV1(
+          phaseBRejectCode,
+          "phaseB",
+        );
     } else {
       if (phaseB.accepted.length !== 1) {
         return fail("canonical_validation_threw", "$.phaseB.forced");
