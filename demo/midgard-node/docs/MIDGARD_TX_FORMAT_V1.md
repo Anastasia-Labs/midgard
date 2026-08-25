@@ -16,11 +16,11 @@
   - `version = 1`
   - `validity_code` maps to Aiken `MidgardTxValidity` variants:
     - `0 TxIsValid`
-    - `1 NonExistentInputUtxo`
-    - `2 InvalidSignature`
-    - `3 FailedScript`
-    - `4 FeeTooLow`
-    - `5 UnbalancedTx`
+    - `1 TxIsInvalid`
+  - The #640 format wave retired the coarse rejection arms from this scalar:
+    codes `2..5` are no longer decodable. A rejection's reason and its subject
+    coordinates live in the forced leaf's `OperatorVerdictV1`
+    (`midgard/rejection_reason_v1`), not in the compact wire.
 
 - `MidgardTxBodyCompactV1`
 

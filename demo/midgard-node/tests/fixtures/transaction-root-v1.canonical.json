@@ -59,7 +59,7 @@
         "transactionId": "1111111111111111111111111111111111111111111111111111111111111111",
         "outputIndex": "0"
       },
-      "operatorValidity": "TxIsValid"
+      "verdict": "ForcedTxValid"
     },
     {
       "name": "alpha-missing-input",
@@ -68,7 +68,7 @@
         "transactionId": "1111111111111111111111111111111111111111111111111111111111111111",
         "outputIndex": "1"
       },
-      "operatorValidity": "NonExistentInputUtxo"
+      "verdict": "InputNotFound"
     },
     {
       "name": "alpha-invalid-signature",
@@ -77,7 +77,7 @@
         "transactionId": "1111111111111111111111111111111111111111111111111111111111111111",
         "outputIndex": "2"
       },
-      "operatorValidity": "InvalidSignature"
+      "verdict": "AddressWitnessSignatureInvalid"
     },
     {
       "name": "beta-failed-script",
@@ -86,7 +86,7 @@
         "transactionId": "2222222222222222222222222222222222222222222222222222222222222222",
         "outputIndex": "0"
       },
-      "operatorValidity": "FailedScript"
+      "verdict": "PlutusExecutionFailed"
     },
     {
       "name": "beta-fee-too-low",
@@ -95,7 +95,7 @@
         "transactionId": "2222222222222222222222222222222222222222222222222222222222222222",
         "outputIndex": "1"
       },
-      "operatorValidity": "FeeTooLow"
+      "verdict": "FeeBelowMinimum"
     },
     {
       "name": "beta-unbalanced",
@@ -104,7 +104,7 @@
         "transactionId": "2222222222222222222222222222222222222222222222222222222222222222",
         "outputIndex": "2"
       },
-      "operatorValidity": "UnbalancedTx"
+      "verdict": "ValueNotPreserved"
     }
   ]
 }

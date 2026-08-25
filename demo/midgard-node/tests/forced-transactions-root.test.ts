@@ -71,12 +71,12 @@ const canonicalTransaction = (): MidgardNativeTxCanonicalV1 => ({
 const forcedEntry = ({
   label,
   txOrderId,
-  operatorValidity,
+  verdict,
   inclusionTime,
 }: {
   readonly label: string;
   readonly txOrderId: SDK.OutputReference;
-  readonly operatorValidity: SDK.MidgardTxValidity;
+  readonly verdict: SDK.OperatorVerdictV1;
   readonly inclusionTime: Date;
 }): Effect.Effect<ForcedTransactionsDB.Entry, DatabaseError> =>
   Effect.gen(function* () {
@@ -85,7 +85,7 @@ const forcedEntry = ({
     );
     const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValueV1({
       nativeTxCbor,
-      operatorValidity,
+      verdict,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     });
     const sidecarCbor = encodeMidgardCekProgramMaterialSidecarV1([]);
@@ -108,7 +108,8 @@ const forcedEntry = ({
       [ForcedTransactionsDB.Columns.TX_ID]: encoded.txId,
       [ForcedTransactionsDB.Columns.TX_COMPACT]: encoded.txCompact,
       [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
-      [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]: operatorValidity,
+      [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]:
+        ForcedTransactionsDB.midgardTxValidityOfVerdictV1(verdict),
       [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
         MIDGARD_CONSENSUS_PROFILE_V1.profileId,
       [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: nativeTxCbor,
@@ -133,13 +134,13 @@ describe("forced transaction source roots", () => {
         const first = yield* forcedEntry({
           label: "01",
           txOrderId: outputReference("same-l2-first-order", 0n),
-          operatorValidity: "TxIsValid",
+          verdict: "ForcedTxValid",
           inclusionTime: new Date("2026-06-12T00:00:01.000Z"),
         });
         const second = yield* forcedEntry({
           label: "02",
           txOrderId: outputReference("same-l2-second-order", 1n),
-          operatorValidity: "TxIsValid",
+          verdict: "ForcedTxValid",
           inclusionTime: new Date("2026-06-12T00:00:02.000Z"),
         });
 
@@ -170,7 +171,11 @@ describe("forced transaction source roots", () => {
       const invalid = yield* forcedEntry({
         label: "03",
         txOrderId,
-        operatorValidity: "NonExistentInputUtxo",
+        verdict: {
+          ForcedTxInvalid: {
+            reason: { InputNotFound: { source_kind: 0n, input_index: 0n } },
+          },
+        },
         inclusionTime: new Date("2026-06-12T00:00:03.000Z"),
       });
       const built = yield* buildAuthenticatedRootFromEncodedEntries(
@@ -199,7 +204,14 @@ describe("forced transaction source roots", () => {
         valueSchema: SDK.ForcedInclusionTxV1Schema,
       });
 
-      expect(decodedValue.operator_validity).toBe("NonExistentInputUtxo");
+      expect(decodedValue.verdict).toEqual({
+        ForcedTxInvalid: {
+          reason: { InputNotFound: { source_kind: 0n, input_index: 0n } },
+        },
+      });
+      expect(invalid[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]).toBe(
+        "TxIsInvalid",
+      );
       expect(decodedValue.tx_id).toBe(
         invalid[ForcedTransactionsDB.Columns.TX_ID].toString("hex"),
       );
@@ -222,7 +234,7 @@ describe("forced transaction source roots", () => {
       const first = yield* forcedEntry({
         label: "04",
         txOrderId,
-        operatorValidity: "TxIsValid",
+        verdict: "ForcedTxValid",
         inclusionTime: new Date("2026-06-12T00:00:04.000Z"),
       });
       const second = {
@@ -249,7 +261,7 @@ describe("forced transaction source roots", () => {
         const forced = yield* forcedEntry({
           label: "05",
           txOrderId,
-          operatorValidity: "TxIsValid",
+          verdict: "ForcedTxValid",
           inclusionTime: new Date("2026-06-12T00:00:05.000Z"),
         });
         const entry = ForcedTransactionsDB.toRootKeyValue(forced);

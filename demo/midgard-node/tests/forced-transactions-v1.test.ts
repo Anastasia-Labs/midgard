@@ -169,7 +169,7 @@ const forcedEntry = async ({
   const encoded = await Effect.runPromise(
     ForcedTransactionsDB.encodeForcedInclusionValueV1({
       nativeTxCbor: transaction.canonicalCbor,
-      operatorValidity: "UnbalancedTx",
+      verdict: { ForcedTxInvalid: { reason: "ValueNotPreserved" } },
       consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     }),
   );
@@ -190,7 +190,7 @@ const forcedEntry = async ({
     [ForcedTransactionsDB.Columns.TX_ID]: encoded.txId,
     [ForcedTransactionsDB.Columns.TX_COMPACT]: encoded.txCompact,
     [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
-    [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]: "UnbalancedTx",
+    [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]: "TxIsInvalid",
     [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
       MIDGARD_CONSENSUS_PROFILE_V1.profileId,
     [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: transaction.canonicalCbor,
@@ -244,14 +244,14 @@ describe("V1 forced transaction material", () => {
     const accepted = await Effect.runPromise(
       ForcedTransactionsDB.encodeForcedInclusionValueV1({
         nativeTxCbor,
-        operatorValidity: "TxIsValid",
+        verdict: "ForcedTxValid",
         consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
       }),
     );
     const rejected = await Effect.runPromise(
       ForcedTransactionsDB.encodeForcedInclusionValueV1({
         nativeTxCbor,
-        operatorValidity: "FeeTooLow",
+        verdict: { ForcedTxInvalid: { reason: "FeeBelowMinimum" } },
         consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
       }),
     );
@@ -275,7 +275,7 @@ describe("V1 forced transaction material", () => {
         field_preimage_lengths_cbor:
           accepted.source.fieldPreimageLengthsCbor.toString("hex"),
       },
-      operator_validity: "TxIsValid",
+      verdict: "ForcedTxValid",
     });
     const journalMember =
       ForcedTransactionsDB.encodeForcedTransactionJournalMemberV1({
@@ -754,7 +754,23 @@ describe("V1 forced transaction material", () => {
 
     expect(
       classified!.entry[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY],
-    ).toBe("NonExistentInputUtxo");
+    ).toBe("TxIsInvalid");
+    // The column carries only the two-valued projection; the reason and its
+    // subject coordinates live in the leaf the roots commit to.
+    expect(
+      (
+        Data.from(
+          classified!.entry[
+            ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE
+          ].toString("hex"),
+          SDK.ForcedInclusionTxV1,
+        ) as SDK.ForcedInclusionTxV1
+      ).verdict,
+    ).toEqual({
+      ForcedTxInvalid: {
+        reason: { InputNotFound: { source_kind: 0n, input_index: 0n } },
+      },
+    });
     expect(classified!.rejectionCode).toBe(RejectCodes.InputNotFound);
     expect(classified!.ledgerOps).toEqual([]);
     expect(classified!.ledgerMutationSteps).toEqual([]);

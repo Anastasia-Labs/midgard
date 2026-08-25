@@ -80,6 +80,11 @@ export type Entry = {
   [Columns.TX_ID]: Buffer;
   [Columns.TX_COMPACT]: Buffer;
   [Columns.FORCED_INCLUSION_VALUE]: Buffer;
+  /**
+   * The verdict's two-valued projection — see
+   * {@link midgardTxValidityOfVerdictV1}. The verdict itself is carried, arm
+   * and coordinates, by {@link Columns.FORCED_INCLUSION_VALUE}.
+   */
   [Columns.OPERATOR_VALIDITY]: SDK.MidgardTxValidity;
   [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
   [Columns.NATIVE_TX_CBOR]: Buffer;
@@ -93,9 +98,24 @@ export type Entry = {
 
 export type ForcedInclusionValueV1Input = {
   readonly nativeTxCbor: Buffer;
-  readonly operatorValidity: SDK.MidgardTxValidity;
+  readonly verdict: SDK.OperatorVerdictV1;
   readonly consensusProfile: MidgardConsensusProfileV1;
 };
+
+/**
+ * The two-valued projection of an {@link SDK.OperatorVerdictV1} onto the
+ * compact leaf's validity scalar, as the #640 forced-arm authoritativeness
+ * predicate binds them: `ForcedTxValid` ⇔ validity code 0 (`TxIsValid`),
+ * `ForcedTxInvalid { _ }` ⇔ validity code 1 (`TxIsInvalid`).
+ *
+ * `operator_validity` persists exactly this bit; the full verdict — arm and
+ * subject coordinates — lives in `forced_inclusion_value`, the byte-exact
+ * `ForcedInclusionTxV1` leaf the roots commit to.
+ */
+export const midgardTxValidityOfVerdictV1 = (
+  verdict: SDK.OperatorVerdictV1,
+): SDK.MidgardTxValidity =>
+  verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid";
 
 export const FORCED_TRANSACTION_JOURNAL_MEMBER_V1_VERSION = 1n;
 if (
@@ -297,7 +317,7 @@ const sameImmutablePayload = (left: Entry, right: Entry): boolean => {
 
 export const encodeForcedInclusionValueV1 = ({
   nativeTxCbor,
-  operatorValidity,
+  verdict,
   consensusProfile,
 }: ForcedInclusionValueV1Input): Effect.Effect<
   {
@@ -357,7 +377,7 @@ export const encodeForcedInclusionValueV1 = ({
         field_preimage_lengths_cbor:
           material.source.fieldPreimageLengthsCbor.toString("hex"),
       },
-      operator_validity: operatorValidity,
+      verdict,
     };
     const value = yield* Effect.try({
       try: () =>
@@ -393,11 +413,7 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
           ${sql(Columns.FORCED_INCLUSION_VALUE)} BYTEA NOT NULL,
 	          ${sql(Columns.OPERATOR_VALIDITY)} TEXT NOT NULL CHECK (${sql(Columns.OPERATOR_VALIDITY)} IN (
             'TxIsValid',
-            'NonExistentInputUtxo',
-            'InvalidSignature',
-            'FailedScript',
-            'FeeTooLow',
-            'UnbalancedTx'
+            'TxIsInvalid'
 	          )),
 	          ${sql(Columns.CONSENSUS_PROFILE_ID)} TEXT NOT NULL CHECK (${sql(Columns.CONSENSUS_PROFILE_ID)} = ${MIDGARD_CONSENSUS_PROFILE_V1_ID}),
 	          ${sql(Columns.NATIVE_TX_CBOR)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.NATIVE_TX_CBOR)}) <= 295041),

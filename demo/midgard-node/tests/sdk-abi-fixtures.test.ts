@@ -169,7 +169,11 @@ const forcedInclusionTxV1Fixture: SDK.ForcedInclusionTxV1 = {
     witness_set_compact_cbor: "81",
     field_preimage_lengths_cbor: "82",
   },
-  operator_validity: "FailedScript",
+  verdict: {
+    ForcedTxInvalid: {
+      reason: { PlutusExecutionFailed: { execution_index: 0n } },
+    },
+  },
 };
 
 const l2TransactionSourceV1Fixture: SDK.L2TransactionSourceV1 = {
@@ -548,7 +552,11 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
       OmittedDueForcedTransaction: {
         event_ref_input_index: 2n,
         event_asset_name: "cc",
-        validity_override: "FailedScript",
+        validity_override: {
+          ForcedTxInvalid: {
+            reason: { PlutusExecutionFailed: { execution_index: 0n } },
+          },
+        },
         source_non_membership: forcedSourceNonMembership,
       },
     }),
@@ -576,7 +584,11 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
       OutOfWindowForcedTransaction: {
         event_ref_input_index: 2n,
         event_asset_name: "cc",
-        validity_override: "FailedScript",
+        validity_override: {
+          ForcedTxInvalid: {
+            reason: { PlutusExecutionFailed: { execution_index: 0n } },
+          },
+        },
         source_membership: forcedSourceMembership,
       },
     }),
@@ -1341,12 +1353,12 @@ describe("SDK canonical ABI fixtures", () => {
     );
     const forcedInclusionTx: SDK.ForcedInclusionTxV1 = {
       ...forcedInclusionTxV1Fixture,
-      operator_validity: "TxIsValid",
+      verdict: "ForcedTxValid",
     };
     expectRoundTrip(forcedInclusionTx, SDK.ForcedInclusionTxV1);
     expect(
       Object.keys(roundTrip(forcedInclusionTx, SDK.ForcedInclusionTxV1)),
-    ).toEqual(["tx_id", "source", "operator_validity"]);
+    ).toEqual(["tx_id", "source", "verdict"]);
     for (const phase of transitionPhases) {
       expectRoundTrip(phase, SDK.TransitionPhase);
       expectRoundTrip({ step_index: 1n, phase }, SDK.EventToStepValue);

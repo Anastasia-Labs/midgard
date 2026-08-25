@@ -439,9 +439,21 @@ const txOrderUTxOToEntry = (
         ),
       );
     }
+    // The verdict recorded at ingest is provisional: the operator has not run
+    // Phase A/B yet, so it can only mirror the submitted transaction's own
+    // validity scalar — which is what the #640 forced-arm predicate binds the
+    // verdict to (`ForcedTxValid` ⇔ code 0, `ForcedTxInvalid { _ }` ⇔ code 1).
+    // A self-declared-invalid preimage carries no reason of its own, so it
+    // takes the classifier's unattributed-rejection bucket (`ValueNotPreserved`,
+    // the `forcedVerdictForRejection` default); block commitment recomputes and
+    // overwrites both this row's verdict and its `forced_inclusion_value`.
+    const provisionalVerdict: SDK.OperatorVerdictV1 =
+      decoded.validity === "TxIsValid"
+        ? "ForcedTxValid"
+        : { ForcedTxInvalid: { reason: "ValueNotPreserved" } };
     const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValueV1({
       nativeTxCbor,
-      operatorValidity: decoded.validity,
+      verdict: provisionalVerdict,
       consensusProfile: consensusProfile satisfies MidgardConsensusProfileV1,
     });
     // The two identity columns this row carries are **recomputed** from the
@@ -496,7 +508,8 @@ const txOrderUTxOToEntry = (
       [ForcedTransactionsDB.Columns.TX_ID]: encoded.txId,
       [ForcedTransactionsDB.Columns.TX_COMPACT]: encoded.txCompact,
       [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
-      [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]: decoded.validity,
+      [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]:
+        ForcedTransactionsDB.midgardTxValidityOfVerdictV1(provisionalVerdict),
       [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
         consensusProfile.profileId,
       [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: nativeTxCbor,

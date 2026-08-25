@@ -329,7 +329,7 @@ ForcedTransactionKey =
 
 ForcedInclusionTx {
   tx_compact: MidgardTxCompactWithoutValidity
-  operator_validity: MidgardTxValidity
+  verdict: OperatorVerdictV1
 }
 
 forced_transactions_root =
@@ -346,8 +346,12 @@ must appear in `forced_transactions_root`.
 
 The forced transaction root keeps the user-authored transaction payload separate
 from the operator's execution classification. `tx_compact` is validity-free;
-`operator_validity` is the operator's claim about how that ordered transaction
-processed against the block state, and is challengeable by one-step fraud proofs.
+`verdict` is the operator's claim about how that ordered transaction processed
+against the block state, and is challengeable by one-step fraud proofs. Since
+the #640 format wave it is an `OperatorVerdictV1` — `ForcedTxValid`, or
+`ForcedTxInvalid` naming one of the 47 `RejectionReasonV1` arms together with
+that reason's subject coordinates — so a wrong rejection is refutable against
+the named subject rather than against a coarse bucket.
 
 Canonical V1 supports both forced outcomes. Production block construction
 applies the exact validated ledger delta for a `TxIsValid` forced transaction,
@@ -359,12 +363,12 @@ on L1.
 
 Production forced-transaction no-op classifications include at least:
 
-- transaction validity interval mismatch;
-- missing input;
-- invalid signature;
-- failed script;
-- fee too low;
-- unbalanced transaction;
+- transaction validity interval mismatch (`ValidityIntervalExcludesBlockSlot`);
+- missing input (`InputNotFound`);
+- invalid signature (`AddressWitnessSignatureInvalid`);
+- failed script (`PlutusExecutionFailed`);
+- fee too low (`FeeBelowMinimum`);
+- unbalanced transaction (`ValueNotPreserved`);
 - duplicate or already-applied `tx_id` where the order cannot apply effects
   because an earlier event already consumed the necessary inputs.
 
@@ -1127,7 +1131,7 @@ MidgardTransitionStepV1
 ```text
 ForcedInclusionTx {
   tx_compact: MidgardTxCompactWithoutValidity
-  operator_validity: MidgardTxValidity
+  verdict: OperatorVerdictV1
 }
 ```
 
