@@ -11,6 +11,16 @@
 > `onchain/aiken/lib/midgard/validation-machine-v1.ak` (19,171 lines at this
 > audit) or its companion libraries; anything not verified is marked OPEN.
 > Line anchors are to the audited revision.
+>
+> **Landed (#640, 2026-08-24).** The §5 proposal shipped: the forced leaf now
+> carries `verdict: OperatorVerdictV1` (`ForcedTxValid |
+> ForcedTxInvalid { reason: RejectionReasonV1 }`), implemented in
+> `onchain/aiken/lib/midgard/rejection-reason-v1.ak`. The dispute-side
+> register of 19 `E_*` codes, the frozen `hash_rejection_code` bridge and
+> the wire-normativity of this catalogue's §5/§6 constructor order are
+> specified normatively in `docs/spec/midgard-tx.md` §13. Pre-wave line
+> anchors and the `operator_validity` field name in the body below describe
+> the audited revision and are retained as the audit record.
 
 ## 0. Scope and governing frame
 
