@@ -1,6 +1,6 @@
 //// ## Native-Script Decoding Fault Proof — Step 03 (#635, #633)
 ////
-//// The thread's working step, in three arms:
+//// The thread's working step, in four arms:
 ////
 //// - `BindOutpoint` (once): opens the accused field at the accused ordinal
 ////   through the §8.8 door, authenticates the resolved output's descriptor
@@ -18,6 +18,13 @@
 //// - `Verdict` (once): direction A exhibits exactly one refusing primitive
 ////   step; direction B exhibits the exact canonical terminal. Either hands
 ////   the classed state to step-04.
+//// - `BindOutOfDomain` (once, direction B only) — the #633 §7.2 closing
+////   arm: the forced leaf's verbatim accusation pair names a subject the
+////   committed transaction does not have (a `source_kind` naming no field,
+////   a negative ordinal, or an ordinal at/past the named field's item
+////   count), so the machine could never have resolved it. The
+////   contradiction is proven without binding a descriptor and closes
+////   straight to step-04 with the class-0 marker.
 
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
@@ -32,7 +39,7 @@ use midgard/fraud_proofs/field_opening_v1.{
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_script_decoding/engine.{ScanThreadStateV1}
 use midgard/fraud_proofs/native_script_decoding/step_03.{
-  Args, BindOutpoint, Datum, Scan, SpendRedeemer, Verdict,
+  Args, BindOutOfDomain, BindOutpoint, Datum, Scan, SpendRedeemer, Verdict,
 }
 use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
@@ -40,7 +47,7 @@ use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/ledger_output_commitment_v1
 use midgard/mpf_proof_v1
 use midgard/native_script_scan_v1
-use midgard/native_tx_machine_walk_v1.{spend_input_at}
+use midgard/native_tx_machine_walk_v1.{spend_input_at, spend_input_count}
 
 validator main(
   step_04_validator_script_hash: ScriptHash,
@@ -216,6 +223,91 @@ validator main(
           expect output_state_data == expected_output_state
           True
         }
+      }
+      ct.Continue(BindOutOfDomain {
+        input_index,
+        output_index,
+        subject_field_opening,
+      }) -> {
+        let Transaction { inputs, outputs, reference_inputs, .. } = tx
+
+        expect Some(step_datum) = datum
+
+        let
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data,
+            output_script_hash,
+            output_state_data
+          <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          inputs,
+          outputs,
+        )
+
+        expect Some(state) = m_input_state_data
+
+        // 1. Direction B only, exactly once, on a pre-bind state. The
+        //    forced leaf's pair reaches this step verbatim (the "store the
+        //    pair" ruling), so a leaf accusing a subject the transaction
+        //    does not have would otherwise strand the thread: `BindOutpoint`
+        //    aborts on it (§7.3 abort-never-clamp) and nothing else could
+        //    consume it. The machine never emits such a pair, so its
+        //    presence in a committed rejection reason is itself the
+        //    contradiction — the #633 §7.2 closing arm.
+        expect and {
+            state.direction == engine.direction_wrongful_rejection,
+            state.machine_state_hash == #"",
+            state.refusal_class == engine.class_pending,
+            state.outpoint_key_hash == #"",
+          }
+
+        // 2. Out of domain, one obligation per face: a source kind naming
+        //    no field and a negative ordinal are contradictions on their
+        //    own (the canonical redeemer carries no opening); an ordinal at
+        //    or past the named field's item count is proven against the
+        //    §8.8 door's authenticated count.
+        expect
+          if and {
+            state.outpoint_source_kind != engine.outpoint_source_spend,
+            state.outpoint_source_kind != engine.outpoint_source_reference,
+          } {
+            expect None = subject_field_opening
+            True
+          } else if state.outpoint_cursor < 0 {
+            expect None = subject_field_opening
+            True
+          } else {
+            expect Some(opening) = subject_field_opening
+            let subject_view = opened_field_view(
+              opening,
+              BodyAnchor { tx_id: state.verified_tx_id },
+              if state.outpoint_source_kind == engine.outpoint_source_spend {
+                spend_inputs_field_index
+              } else {
+                reference_inputs_field_index
+              },
+              reference_inputs,
+              field_preimage_certificate_policy_id,
+            )
+            state.outpoint_cursor >= spend_input_count(subject_view)
+          }
+
+        // 3. The contradiction closes straight to step-04 with the class-0
+        //    marker; the state stays unbound — step-04's direction-B gate
+        //    consumes it as-is.
+        expect output_script_hash == step_04_validator_script_hash
+        let expected_output_state: Data = ScanThreadStateV1 {
+          ..state,
+          refusal_class: engine.refusal_class_malformed,
+        }
+        expect output_state_data == expected_output_state
+        True
       }
       ct.Continue(Scan {
         input_index,
@@ -914,6 +1006,218 @@ test decoding_step_03_rejects_a_second_bind() fail {
   }
   let expected: Data = state
   run_step_03(state, bind_args(setup, True), expected, False)
+}
+
+// ## Out-of-domain closing selectors (#633 §7.2)
+
+fn out_of_domain_args(setup: BindSetup, with_opening: Bool) -> Args {
+  BindOutOfDomain {
+    input_index: 0,
+    output_index: 0,
+    subject_field_opening: if with_opening {
+      Some(
+        fixture.inline_body_opening(setup.block.compact_cbor, setup.field_items),
+      )
+    } else {
+      None
+    },
+  }
+}
+
+fn closed_out_of_domain(state: ScanThreadStateV1) -> Data {
+  let closed: Data = ScanThreadStateV1 {
+    ..state,
+    refusal_class: engine.refusal_class_malformed,
+  }
+  closed
+}
+
+/// Positive selector: the accused ordinal equals the committed spend field's
+/// item count — one past the last real ordinal — and the authenticated count
+/// proves the contradiction.
+test decoding_step_03_closes_an_out_of_domain_ordinal() {
+  let setup = bind_setup(
+    engine.outpoint_source_spend,
+    0,
+    tf.signature_script_item_v1(),
+  )
+  let state = pre_bind_state(
+    setup,
+    engine.direction_wrongful_rejection,
+    engine.refusal_class_malformed,
+    list.length(setup.field_items),
+  )
+  run_step_03(
+    state,
+    out_of_domain_args(setup, True),
+    closed_out_of_domain(state),
+    True,
+  )
+}
+
+/// Positive selector: the reference-input field closes the same way (the
+/// ruled pair's other branch), including ordinals far past the count.
+test decoding_step_03_closes_an_out_of_domain_reference_ordinal() {
+  let setup = bind_setup(
+    engine.outpoint_source_reference,
+    0,
+    tf.signature_script_item_v1(),
+  )
+  let state = pre_bind_state(
+    setup,
+    engine.direction_wrongful_rejection,
+    engine.refusal_class_node_limit,
+    list.length(setup.field_items) + 2,
+  )
+  run_step_03(
+    state,
+    out_of_domain_args(setup, True),
+    closed_out_of_domain(state),
+    True,
+  )
+}
+
+/// Positive selector: a negative ordinal names no subject in any field — the
+/// contradiction needs no opening at all.
+test decoding_step_03_closes_a_negative_ordinal() {
+  let setup = bind_setup(
+    engine.outpoint_source_spend,
+    0,
+    tf.signature_script_item_v1(),
+  )
+  let state = pre_bind_state(
+    setup,
+    engine.direction_wrongful_rejection,
+    engine.refusal_class_malformed,
+    -1,
+  )
+  run_step_03(
+    state,
+    out_of_domain_args(setup, False),
+    closed_out_of_domain(state),
+    True,
+  )
+}
+
+/// Positive selector: a source kind outside the ruled pair names no field,
+/// so the accusation is out of domain before any ordinal is considered.
+test decoding_step_03_closes_a_source_kind_naming_no_field() {
+  let setup = bind_setup(
+    engine.outpoint_source_spend,
+    0,
+    tf.signature_script_item_v1(),
+  )
+  let state = ScanThreadStateV1 {
+    ..pre_bind_state(
+      setup,
+      engine.direction_wrongful_rejection,
+      engine.refusal_class_malformed,
+      0,
+    ),
+    outpoint_source_kind: 7,
+  }
+  run_step_03(
+    state,
+    out_of_domain_args(setup, False),
+    closed_out_of_domain(state),
+    True,
+  )
+}
+
+/// An in-domain ordinal is `BindOutpoint`'s to resolve: the closing arm
+/// refuses it against the authenticated count.
+test decoding_step_03_rejects_an_in_domain_ordinal_close() fail {
+  let setup = bind_setup(
+    engine.outpoint_source_spend,
+    0,
+    tf.signature_script_item_v1(),
+  )
+  let state = pre_bind_state(
+    setup,
+    engine.direction_wrongful_rejection,
+    engine.refusal_class_malformed,
+    0,
+  )
+  run_step_03(
+    state,
+    out_of_domain_args(setup, True),
+    closed_out_of_domain(state),
+    True,
+  )
+}
+
+/// Direction A chooses its own pair at step-02 under a range guard, so an
+/// out-of-domain accusation can only be a forced leaf's — the arm is
+/// direction B's alone.
+test decoding_step_03_rejects_a_direction_a_out_of_domain_close() fail {
+  let setup = bind_setup(
+    engine.outpoint_source_spend,
+    0,
+    tf.signature_script_item_v1(),
+  )
+  let state = pre_bind_state(
+    setup,
+    engine.direction_wrongful_acceptance,
+    engine.class_pending,
+    list.length(setup.field_items),
+  )
+  run_step_03(
+    state,
+    out_of_domain_args(setup, True),
+    closed_out_of_domain(state),
+    True,
+  )
+}
+
+/// The close happens on a pre-bind state only: a thread that bound its
+/// outpoint proved the subject exists and cannot re-close out of domain.
+test decoding_step_03_rejects_an_out_of_domain_close_after_bind() fail {
+  let setup = bind_setup(
+    engine.outpoint_source_spend,
+    0,
+    tf.signature_script_item_v1(),
+  )
+  let state = ScanThreadStateV1 {
+    ..engine.bound_scan_state_v1(
+      pre_bind_state(
+        setup,
+        engine.direction_wrongful_rejection,
+        engine.refusal_class_malformed,
+        0,
+      ),
+      setup.descriptor,
+      setup.outpoint_key_bytes,
+    ),
+    machine_state_hash: machine_hash_of(initial_control_of(setup)),
+  }
+  run_step_03(
+    state,
+    out_of_domain_args(setup, True),
+    closed_out_of_domain(state),
+    True,
+  )
+}
+
+/// The canonical redeemer carries no opening on the faces that need none: a
+/// negative-ordinal close with an opening attached is refused.
+test decoding_step_03_rejects_a_negative_ordinal_close_with_an_opening() fail {
+  let setup = bind_setup(
+    engine.outpoint_source_spend,
+    0,
+    tf.signature_script_item_v1(),
+  )
+  let state = pre_bind_state(
+    setup,
+    engine.direction_wrongful_rejection,
+    engine.refusal_class_malformed,
+    -1,
+  )
+  run_step_03(
+    state,
+    out_of_domain_args(setup, True),
+    closed_out_of_domain(state),
+    True,
+  )
 }
 
 // ## Scan selectors
