@@ -35,7 +35,10 @@ import {
 } from "./settlement-indexer.js";
 import { parseWatcherStateQueueHeaderV1 } from "./state-queue-indexer.js";
 import {
+  isWatcherForcedOperatorVerdictV1,
   parseWatcherUserEventIndexerResultV1,
+  WATCHER_FORCED_TX_VALID_V1,
+  type WatcherForcedOperatorVerdictV1,
   type WatcherIndexedUserEventV1,
   type WatcherTerminalUserEventV1,
 } from "./user-event-indexer.js";
@@ -132,8 +135,8 @@ export type WatcherEventClassificationFindingV1 = Readonly<{
 type ForcedValidationFact = Readonly<{
   eventKeyFingerprint: string;
   stepIndex: number;
-  authenticatedOperatorValidity: string;
-  canonicalOperatorValidity: string;
+  authenticatedOperatorValidity: WatcherForcedOperatorVerdictV1;
+  canonicalOperatorValidity: WatcherForcedOperatorVerdictV1;
   phaseAStatus: "accepted" | "rejected";
   phaseARejectCode: string | null;
   phaseBStatus: "not_run" | "accepted" | "rejected";
@@ -609,14 +612,6 @@ const parseW25 = (
   );
   if (ordered.some((entry, index) => entry.stepIndex !== index)) return null;
   if (!Array.isArray(record.forcedValidationFacts)) return null;
-  const allowedValidity = new Set([
-    "TxIsValid",
-    "NonExistentInputUtxo",
-    "InvalidSignature",
-    "FailedScript",
-    "FeeTooLow",
-    "UnbalancedTx",
-  ]);
   const forcedValidationFacts: ForcedValidationFact[] = [];
   for (const fact of record.forcedValidationFacts) {
     const parsed = exact(fact, [
@@ -637,10 +632,8 @@ const parseW25 = (
       typeof parsed.stepIndex !== "number" ||
       !Number.isSafeInteger(parsed.stepIndex) ||
       parsed.stepIndex < 0 ||
-      typeof parsed.authenticatedOperatorValidity !== "string" ||
-      !allowedValidity.has(parsed.authenticatedOperatorValidity) ||
-      typeof parsed.canonicalOperatorValidity !== "string" ||
-      !allowedValidity.has(parsed.canonicalOperatorValidity) ||
+      !isWatcherForcedOperatorVerdictV1(parsed.authenticatedOperatorValidity) ||
+      !isWatcherForcedOperatorVerdictV1(parsed.canonicalOperatorValidity) ||
       (parsed.phaseAStatus !== "accepted" &&
         parsed.phaseAStatus !== "rejected") ||
       (parsed.phaseBStatus !== "not_run" &&
@@ -1144,10 +1137,10 @@ export const evaluateWatcherEventClassificationV1 = (
               fact.canonicalOperatorValidity ||
             fact.canonicalEffectMutationCount !== replayed.mutationCount ||
             (canonicalAccepted
-              ? fact.canonicalOperatorValidity !== "TxIsValid" ||
+              ? fact.canonicalOperatorValidity !== WATCHER_FORCED_TX_VALID_V1 ||
                 replayed.mutationCount === 0 ||
                 replayed.preRoot === replayed.postRoot
-              : fact.canonicalOperatorValidity === "TxIsValid" ||
+              : fact.canonicalOperatorValidity === WATCHER_FORCED_TX_VALID_V1 ||
                 replayed.mutationCount !== 0 ||
                 replayed.preRoot !== replayed.postRoot)
           )

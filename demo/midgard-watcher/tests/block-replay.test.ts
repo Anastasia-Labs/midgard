@@ -92,6 +92,7 @@ import {
   type GenuineW15AuthorityFixtureSetV1,
   genuineW15ForcedPayloadForCanonicalTxV1,
   type W15AcceptedAuthorityScenarioV1,
+  w15ForcedOperatorVerdictForClassificationV1,
 } from "./support/w15-authority-scenarios.js";
 import {
   createGenuineW16SettlementAuthoritiesV1,
@@ -135,16 +136,16 @@ const FORCED_FLOW_NATIVE = makeNativeTx({
   privateKey: FIXED_KEY,
 });
 const FORCED_INVALID_CASES = Object.freeze({
-  NonExistentInputUtxo: Object.freeze({
+  InputNotFound: Object.freeze({
     input: outRefFromByte(0x72),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x72)],
       outputs: [FLOW_OUTPUT],
       privateKey: FIXED_KEY,
     }),
-    operatorValidity: "NonExistentInputUtxo" as const,
+    operatorValidity: "InputNotFound" as const,
   }),
-  InvalidSignature: Object.freeze({
+  AddressWitnessSignatureInvalid: Object.freeze({
     input: outRefFromByte(0x73),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x73)],
@@ -152,9 +153,9 @@ const FORCED_INVALID_CASES = Object.freeze({
       privateKey: FIXED_KEY,
       invalidVkeyWitness: true,
     }),
-    operatorValidity: "InvalidSignature" as const,
+    operatorValidity: "AddressWitnessSignatureInvalid" as const,
   }),
-  FailedScript: Object.freeze({
+  PlutusExecutionFailed: Object.freeze({
     input: outRefFromByte(0x74),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x74)],
@@ -167,9 +168,9 @@ const FORCED_INVALID_CASES = Object.freeze({
         }),
       ],
     }),
-    operatorValidity: "FailedScript" as const,
+    operatorValidity: "PlutusExecutionFailed" as const,
   }),
-  FeeTooLow: Object.freeze({
+  FeeBelowMinimum: Object.freeze({
     input: outRefFromByte(0x75),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x75)],
@@ -177,16 +178,16 @@ const FORCED_INVALID_CASES = Object.freeze({
       privateKey: FIXED_KEY,
       fee: 0n,
     }),
-    operatorValidity: "FeeTooLow" as const,
+    operatorValidity: "FeeBelowMinimum" as const,
   }),
-  UnbalancedTx: Object.freeze({
+  ValueNotPreserved: Object.freeze({
     input: outRefFromByte(0x76),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x76)],
       outputs: [makeOutput(9n, FIXED_ADDRESS)],
       privateKey: FIXED_KEY,
     }),
-    operatorValidity: "UnbalancedTx" as const,
+    operatorValidity: "ValueNotPreserved" as const,
   }),
 });
 
@@ -239,14 +240,18 @@ const genuineW15Input = () => ({
         key,
         nonceByte: ["9d", "9e", "9f", "aa", "ab"][index]!,
         payload: forcedPayloadForNative(invalidCase.native),
-        operatorValidity: invalidCase.operatorValidity,
+        operatorValidity: w15ForcedOperatorVerdictForClassificationV1(
+          invalidCase.operatorValidity,
+        ),
       }),
     ),
     {
       key: "Mismatch",
       nonceByte: "ac",
-      payload: forcedPayloadForNative(FORCED_INVALID_CASES.UnbalancedTx.native),
-      operatorValidity: "TxIsValid" as const,
+      payload: forcedPayloadForNative(
+        FORCED_INVALID_CASES.ValueNotPreserved.native,
+      ),
+      operatorValidity: "ForcedTxValid" as const,
     },
   ],
 });
@@ -732,7 +737,9 @@ const publicEventFromW15 = (
         {
           tx_id: decoded.tx.tx_id,
           source: decoded.tx.source,
-          operator_validity: event.terminalClassification.operatorValidity,
+          verdict: w15ForcedOperatorVerdictForClassificationV1(
+            event.terminalClassification.operatorValidity,
+          ),
         },
         SDK.ForcedInclusionTxV1Schema,
       ),
@@ -1235,23 +1242,23 @@ describe("W25 published rejection-code partition", () => {
     expect(WATCHER_BLOCK_REPLAY_PROTOCOL_MINUS_UNCLAIMED_V1).toHaveLength(39);
     const expectedForcedValidity = (
       code: (typeof RejectCodes)[keyof typeof RejectCodes],
-    ): SDK.MidgardTxValidity => {
-      if (code === RejectCodes.InputNotFound) return "NonExistentInputUtxo";
+    ): string => {
+      if (code === RejectCodes.InputNotFound) return "InputNotFound";
       if (
         code === RejectCodes.InvalidSignature ||
         code === RejectCodes.MissingRequiredWitness
       ) {
-        return "InvalidSignature";
+        return "AddressWitnessSignatureInvalid";
       }
       if (
         code === RejectCodes.NativeScriptInvalid ||
         code === RejectCodes.PlutusScriptInvalid ||
         code === RejectCodes.PlutusEvaluationUnavailable
       ) {
-        return "FailedScript";
+        return "PlutusExecutionFailed";
       }
-      if (code === RejectCodes.MinFee) return "FeeTooLow";
-      return "UnbalancedTx";
+      if (code === RejectCodes.MinFee) return "FeeBelowMinimum";
+      return "ValueNotPreserved";
     };
     expect(
       Object.values(RejectCodes).map((code) => ({
@@ -1715,8 +1722,8 @@ describe("W25 roots and deterministic replay", () => {
       {
         eventKeyFingerprint: `ForcedTransaction:${forcedOrderId.transactionId}:${forcedOrderId.outputIndex.toString()}`,
         stepIndex: 0,
-        authenticatedOperatorValidity: "TxIsValid",
-        canonicalOperatorValidity: "TxIsValid",
+        authenticatedOperatorValidity: "ForcedTxValid",
+        canonicalOperatorValidity: "ForcedTxValid",
         phaseAStatus: "accepted",
         phaseARejectCode: null,
         phaseBStatus: "accepted",
@@ -1797,31 +1804,31 @@ describe("W25 roots and deterministic replay", () => {
 
     const noOpEffect = buildCanonicalTransitionEffectV1([]);
     const expectedOutcomes = {
-      NonExistentInputUtxo: {
+      InputNotFound: {
         phaseAStatus: "accepted",
         phaseARejectCode: null,
         phaseBStatus: "rejected",
         phaseBRejectCode: RejectCodes.InputNotFound,
       },
-      InvalidSignature: {
+      AddressWitnessSignatureInvalid: {
         phaseAStatus: "rejected",
         phaseARejectCode: RejectCodes.InvalidSignature,
         phaseBStatus: "not_run",
         phaseBRejectCode: null,
       },
-      FailedScript: {
+      PlutusExecutionFailed: {
         phaseAStatus: "rejected",
         phaseARejectCode: RejectCodes.NativeScriptInvalid,
         phaseBStatus: "not_run",
         phaseBRejectCode: null,
       },
-      FeeTooLow: {
+      FeeBelowMinimum: {
         phaseAStatus: "rejected",
         phaseARejectCode: RejectCodes.MinFee,
         phaseBStatus: "not_run",
         phaseBRejectCode: null,
       },
-      UnbalancedTx: {
+      ValueNotPreserved: {
         phaseAStatus: "accepted",
         phaseARejectCode: null,
         phaseBStatus: "rejected",
@@ -1855,7 +1862,7 @@ describe("W25 roots and deterministic replay", () => {
         invalidCase.native,
       );
       const invalidPriorState =
-        category === "NonExistentInputUtxo"
+        category === "InputNotFound"
           ? []
           : entries([[invalidCase.input, FLOW_OUTPUT]]);
       const invalidSteps = await committedStepsForEffects(invalidPriorState, [
@@ -1877,7 +1884,7 @@ describe("W25 roots and deterministic replay", () => {
         priorState: invalidPriorState,
         postState: invalidPriorState,
         eventAuthorities: [invalidAuthority],
-        ...(category === "FeeTooLow" ? { minFeeB: 1n } : {}),
+        ...(category === "FeeBelowMinimum" ? { minFeeB: 1n } : {}),
       });
       const invalidResult = await evaluateWatcherBlockReplayV1(
         publicInput(invalidFixture),
@@ -1905,7 +1912,7 @@ describe("W25 roots and deterministic replay", () => {
       });
     }
 
-    const restartEvidence = invalidReplayEvidence.UnbalancedTx!;
+    const restartEvidence = invalidReplayEvidence.ValueNotPreserved!;
     const restarted = await evaluateWatcherBlockReplayV1(
       publicInput(restartEvidence.fixture),
     );
@@ -1932,10 +1939,10 @@ describe("W25 roots and deterministic replay", () => {
     const mismatchUserEvent = genuineW15.forcedVariants.Mismatch!;
     const mismatchEvent = publicEventFromW15(
       mismatchUserEvent,
-      FORCED_INVALID_CASES.UnbalancedTx.native,
+      FORCED_INVALID_CASES.ValueNotPreserved.native,
     );
     const mismatchPriorState = entries([
-      [FORCED_INVALID_CASES.UnbalancedTx.input, FLOW_OUTPUT],
+      [FORCED_INVALID_CASES.ValueNotPreserved.input, FLOW_OUTPUT],
     ]);
     const mismatchSteps = await committedStepsForEffects(mismatchPriorState, [
       {
@@ -1948,7 +1955,7 @@ describe("W25 roots and deterministic replay", () => {
       event: mismatchEvent,
       userEvent: mismatchUserEvent,
       effect: noOpEffect,
-      forcedNative: FORCED_INVALID_CASES.UnbalancedTx.native,
+      forcedNative: FORCED_INVALID_CASES.ValueNotPreserved.native,
     });
     const mismatchFixture = await buildPublicReplayFixture({
       events: [mismatchEvent],
@@ -1976,8 +1983,9 @@ describe("W25 roots and deterministic replay", () => {
       restartEvidence.result.resultDigest,
     );
 
-    const inputNotFoundEvidence = invalidReplayEvidence.NonExistentInputUtxo!;
-    const invalidSignatureEvidence = invalidReplayEvidence.InvalidSignature!;
+    const inputNotFoundEvidence = invalidReplayEvidence.InputNotFound!;
+    const invalidSignatureEvidence =
+      invalidReplayEvidence.AddressWitnessSignatureInvalid!;
     const orderedGroups: readonly CommittedEffectGroup[] = [
       {
         eventKey: inputNotFoundEvidence.event.eventKey,
@@ -1991,7 +1999,7 @@ describe("W25 roots and deterministic replay", () => {
       },
     ];
     const orderedPriorState = entries([
-      [FORCED_INVALID_CASES.InvalidSignature.input, FLOW_OUTPUT],
+      [FORCED_INVALID_CASES.AddressWitnessSignatureInvalid.input, FLOW_OUTPUT],
     ]);
     const orderedFixture = await buildPublicReplayFixture({
       events: [inputNotFoundEvidence.event, invalidSignatureEvidence.event],
@@ -2010,7 +2018,7 @@ describe("W25 roots and deterministic replay", () => {
       orderedResult.forcedValidationFacts.map(
         ({ authenticatedOperatorValidity }) => authenticatedOperatorValidity,
       ),
-    ).toStrictEqual(["NonExistentInputUtxo", "InvalidSignature"]);
+    ).toStrictEqual(["InputNotFound", "AddressWitnessSignatureInvalid"]);
     const reversedGroups = [...orderedGroups].reverse();
     const reversedFixture = await buildPublicReplayFixture({
       events: [inputNotFoundEvidence.event, invalidSignatureEvidence.event],
@@ -2029,7 +2037,7 @@ describe("W25 roots and deterministic replay", () => {
       reversedResult.forcedValidationFacts.map(
         ({ authenticatedOperatorValidity }) => authenticatedOperatorValidity,
       ),
-    ).toStrictEqual(["InvalidSignature", "NonExistentInputUtxo"]);
+    ).toStrictEqual(["AddressWitnessSignatureInvalid", "InputNotFound"]);
     expect(reversedResult.downstreamPrerequisite.inputDigest).not.toBe(
       orderedResult.downstreamPrerequisite.inputDigest,
     );

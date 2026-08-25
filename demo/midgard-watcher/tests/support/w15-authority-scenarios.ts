@@ -12,11 +12,12 @@ import {
   ForcedInclusionTxV1,
   HubOracleDatum,
   MerkleRoot,
-  type MidgardTxValidity,
+  type OperatorVerdictV1,
   outputReferenceToPlutusDataCbor,
   PayoutDatum,
   PayoutMintRedeemer,
   Proof,
+  type RejectionReasonV1,
   resolveEventInclusionTime,
   RootDomain,
   SettlementDatum,
@@ -1492,6 +1493,40 @@ const blockBundle = (
   );
 };
 
+/**
+ * Test-side inverse of the watcher's verdict projection
+ * (`watcherForcedOperatorVerdictV1`): rebuilds the on-chain `OperatorVerdictV1`
+ * a forced leaf carries from the classification tag the indexer projected it
+ * onto. Every reason a fixture uses carries the zero subject coordinate, which
+ * is what the #640 forced-leaf mapping prescribes, so the round trip through
+ * the indexer is exact.
+ */
+export const w15ForcedOperatorVerdictForClassificationV1 = (
+  classification: string,
+): OperatorVerdictV1 => {
+  if (classification === "ForcedTxValid") {
+    return "ForcedTxValid";
+  }
+  const reason: RejectionReasonV1 | null =
+    classification === "InputNotFound"
+      ? { InputNotFound: { source_kind: 0n, input_index: 0n } }
+      : classification === "AddressWitnessSignatureInvalid"
+        ? { AddressWitnessSignatureInvalid: { witness_index: 0n } }
+        : classification === "PlutusExecutionFailed"
+          ? { PlutusExecutionFailed: { execution_index: 0n } }
+          : classification === "FeeBelowMinimum"
+            ? "FeeBelowMinimum"
+            : classification === "ValueNotPreserved"
+              ? "ValueNotPreserved"
+              : null;
+  if (reason === null) {
+    throw new Error(
+      `w15 fixtures carry no forced verdict for classification ${classification}`,
+    );
+  }
+  return { ForcedTxInvalid: { reason } };
+};
+
 export type GenuineW15AuthorityFixtureSetV1 = Readonly<{
   deposit: W15AcceptedAuthorityScenarioV1;
   withdrawal: W15AcceptedAuthorityScenarioV1;
@@ -1504,11 +1539,11 @@ export type GenuineW15AuthorityFixtureInputV1 = Readonly<{
   /** Test-only root override used to prove setup-failure lease cleanup. */
   transportFixtureRoot?: string;
   forcedPayloadOverride?: GenuineW15ForcedPayloadV1;
-  forcedOperatorValidity?: MidgardTxValidity;
+  forcedOperatorValidity?: OperatorVerdictV1;
   forcedVariants?: readonly Readonly<{
     key: string;
     payload: GenuineW15ForcedPayloadV1;
-    operatorValidity: MidgardTxValidity;
+    operatorValidity: OperatorVerdictV1;
     nonceByte?: string;
   }>[];
   depositL2Address?: AddressData;
@@ -1636,7 +1671,7 @@ export const createGenuineW15DepositWithdrawalAuthoritiesV1 = async (
     );
     const buildForcedAuthority = (forcedInput: {
       readonly payload?: GenuineW15ForcedPayloadV1;
-      readonly operatorValidity?: MidgardTxValidity;
+      readonly operatorValidity?: OperatorVerdictV1;
       readonly nonceByte?: string;
     }): W15AcceptedAuthorityScenarioV1 => {
       // The forced order needs no seeded store of its own since #587 retired the
@@ -1812,7 +1847,7 @@ const nonDepositSpendBundle = (
   state: WatcherUserEventIndexerStateV1,
   priorStore: ReturnType<typeof makeWatcherDurableStoreV1>,
   mutateRedeemers?: (redeemers: MutableRecord[]) => void,
-  forcedOperatorValidity: MidgardTxValidity = "TxIsValid",
+  forcedOperatorValidity: OperatorVerdictV1 = "ForcedTxValid",
 ): BlockBundle => {
   const event = state.snapshot.activeEvents[0]!;
   if (event.kind === "deposit") {
@@ -1936,7 +1971,7 @@ const nonDepositSpendBundle = (
           {
             tx_id: datum.event.tx!.tx_id,
             source: datum.event.tx!.source,
-            operator_validity: validity,
+            verdict: validity,
           },
           ForcedInclusionTxV1,
         );

@@ -9,11 +9,13 @@ import {
   ForcedInclusionTxV1Schema,
   HubOracleDatumSchema,
   MerkleRoot,
-  type MidgardTxValidity,
   outputReferenceToPlutusDataCbor,
   PayoutDatumSchema,
   PayoutMintRedeemerSchema,
   Proof,
+  rejectionCodeOf,
+  rejectionReasonArmOf,
+  type RejectionReasonV1,
   resolveEventInclusionTime,
   RootDomainSchema,
   SettlementDatumSchema,
@@ -230,9 +232,23 @@ export type WatcherTerminalUserEventV1 = WatcherIndexedUserEventV1 &
     terminalClassification?: WatcherForcedTerminalClassificationV1;
   }>;
 
+/**
+ * The watcher's JSON-safe spelling of a forced-inclusion operator verdict
+ * (`ForcedInclusionTxV1.verdict`, #640): the literal `ForcedTxValid`, or the
+ * constructor tag of the `RejectionReasonV1` an invalid verdict carries.
+ *
+ * The reason's subject coordinates are deliberately dropped. Watcher
+ * classification records are canonical-JSON digested and round-trip through
+ * the durable store, and that encoding admits no `bigint`; the constructor tag
+ * is also exactly as much as the retired six-member `MidgardTxValidity`
+ * classification ever discriminated, so nothing this comparison consumed is
+ * lost.
+ */
+export type WatcherForcedOperatorVerdictV1 = string;
+
 export type WatcherForcedTerminalClassificationV1 = Readonly<{
   schemaVersion: typeof WATCHER_FORCED_TERMINAL_CLASSIFICATION_V1_SCHEMA_VERSION;
-  operatorValidity: MidgardTxValidity;
+  operatorValidity: WatcherForcedOperatorVerdictV1;
   terminalTransactionHash: string;
   terminalPointDigest: string;
 }>;
@@ -541,18 +557,66 @@ const isNetwork = (value: unknown): value is WatcherUserEventNetworkV1 =>
   typeof value === "string" &&
   NETWORKS.includes(value as WatcherUserEventNetworkV1);
 
-const MIDGARD_TX_VALIDITIES = Object.freeze([
-  "TxIsValid",
-  "NonExistentInputUtxo",
-  "InvalidSignature",
-  "FailedScript",
-  "FeeTooLow",
-  "UnbalancedTx",
-] as const satisfies readonly MidgardTxValidity[]);
+/**
+ * `ForcedTxValid` — the watcher spelling of an accepting operator verdict.
+ */
+export const WATCHER_FORCED_TX_VALID_V1 = "ForcedTxValid" as const;
 
-const isMidgardTxValidity = (value: unknown): value is MidgardTxValidity =>
-  typeof value === "string" &&
-  (MIDGARD_TX_VALIDITIES as readonly string[]).includes(value);
+/**
+ * Membership test for {@link WatcherForcedOperatorVerdictV1}: the accepting
+ * literal, or any constructor tag the canonical 47-arm `RejectionReasonV1`
+ * bridge knows. Delegating to `rejectionCodeOf` (rather than restating the
+ * arm list here) keeps the watcher vocabulary in lockstep with the SDK twin.
+ */
+export const isWatcherForcedOperatorVerdictV1 = (
+  value: unknown,
+): value is WatcherForcedOperatorVerdictV1 => {
+  if (typeof value !== "string") {
+    return false;
+  }
+  if (value === WATCHER_FORCED_TX_VALID_V1) {
+    return true;
+  }
+  try {
+    rejectionCodeOf(value as RejectionReasonV1);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Projects a decoded `OperatorVerdictV1` (`ForcedInclusionTxV1.verdict`) onto
+ * its watcher spelling, or `null` when the value is not a verdict at all.
+ */
+export const watcherForcedOperatorVerdictV1 = (
+  verdict: unknown,
+): WatcherForcedOperatorVerdictV1 | null => {
+  if (verdict === WATCHER_FORCED_TX_VALID_V1) {
+    return WATCHER_FORCED_TX_VALID_V1;
+  }
+  if (typeof verdict !== "object" || verdict === null) {
+    return null;
+  }
+  const invalid = (verdict as { ForcedTxInvalid?: unknown }).ForcedTxInvalid;
+  if (typeof invalid !== "object" || invalid === null) {
+    return null;
+  }
+  const reason = (invalid as { reason?: unknown }).reason;
+  if (
+    typeof reason !== "string" &&
+    (typeof reason !== "object" || reason === null)
+  ) {
+    return null;
+  }
+  let arm: string;
+  try {
+    arm = rejectionReasonArmOf(reason as RejectionReasonV1);
+  } catch {
+    return null;
+  }
+  return isWatcherForcedOperatorVerdictV1(arm) ? arm : null;
+};
 
 const parseForcedTerminalClassification = (
   value: unknown,
@@ -567,7 +631,7 @@ const parseForcedTerminalClassification = (
     record === null ||
     record.schemaVersion !==
       WATCHER_FORCED_TERMINAL_CLASSIFICATION_V1_SCHEMA_VERSION ||
-    !isMidgardTxValidity(record.operatorValidity) ||
+    !isWatcherForcedOperatorVerdictV1(record.operatorValidity) ||
     !isHex32(record.terminalTransactionHash) ||
     !isHex32(record.terminalPointDigest)
   ) {
@@ -1995,7 +2059,7 @@ const verifyTerminalSemantics = (
               {
                 tx_id: tx.tx_id,
                 source: tx.source,
-                operator_validity: spend.purpose,
+                verdict: spend.purpose,
               } as never,
               ForcedInclusionTxV1Schema as never,
             );
@@ -2282,9 +2346,7 @@ const scanConsumedEvents = (
       }
       const forcedOperatorValidity =
         event.kind === "forced_order"
-          ? isMidgardTxValidity(terminalSpend.purpose)
-            ? terminalSpend.purpose
-            : null
+          ? watcherForcedOperatorVerdictV1(terminalSpend.purpose)
           : null;
       if (event.kind === "forced_order" && forcedOperatorValidity === null) {
         return null;

@@ -37,6 +37,7 @@ import {
   type GenuineW15AuthorityFixtureSetV1,
   genuineW15ForcedPayloadForCanonicalTxV1,
   type W15AcceptedAuthorityScenarioV1,
+  w15ForcedOperatorVerdictForClassificationV1,
 } from "./support/w15-authority-scenarios.js";
 import {
   createGenuineW16SettlementAuthoritiesV1,
@@ -222,16 +223,16 @@ const FORCED_VALID_NATIVE = makeNativeTx({
   privateKey: FIXED_KEY,
 });
 const FORCED_INVALID_CASES = Object.freeze({
-  NonExistentInputUtxo: Object.freeze({
+  InputNotFound: Object.freeze({
     input: outRefFromByte(0x72),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x72)],
       outputs: [FLOW_OUTPUT],
       privateKey: FIXED_KEY,
     }),
-    operatorValidity: "NonExistentInputUtxo" as const,
+    operatorValidity: "InputNotFound" as const,
   }),
-  InvalidSignature: Object.freeze({
+  AddressWitnessSignatureInvalid: Object.freeze({
     input: outRefFromByte(0x73),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x73)],
@@ -239,9 +240,9 @@ const FORCED_INVALID_CASES = Object.freeze({
       privateKey: FIXED_KEY,
       invalidVkeyWitness: true,
     }),
-    operatorValidity: "InvalidSignature" as const,
+    operatorValidity: "AddressWitnessSignatureInvalid" as const,
   }),
-  FailedScript: Object.freeze({
+  PlutusExecutionFailed: Object.freeze({
     input: outRefFromByte(0x74),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x74)],
@@ -254,9 +255,9 @@ const FORCED_INVALID_CASES = Object.freeze({
         }),
       ],
     }),
-    operatorValidity: "FailedScript" as const,
+    operatorValidity: "PlutusExecutionFailed" as const,
   }),
-  FeeTooLow: Object.freeze({
+  FeeBelowMinimum: Object.freeze({
     input: outRefFromByte(0x75),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x75)],
@@ -264,16 +265,16 @@ const FORCED_INVALID_CASES = Object.freeze({
       privateKey: FIXED_KEY,
       fee: 0n,
     }),
-    operatorValidity: "FeeTooLow" as const,
+    operatorValidity: "FeeBelowMinimum" as const,
   }),
-  UnbalancedTx: Object.freeze({
+  ValueNotPreserved: Object.freeze({
     input: outRefFromByte(0x76),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x76)],
       outputs: [makeOutput(9n, FIXED_ADDRESS)],
       privateKey: FIXED_KEY,
     }),
-    operatorValidity: "UnbalancedTx" as const,
+    operatorValidity: "ValueNotPreserved" as const,
   }),
 });
 
@@ -291,7 +292,9 @@ const genuineW15Input = () => ({
       key,
       nonceByte: ["9d", "9e", "9f", "aa", "ab"][index]!,
       payload: forcedPayloadForNative(invalidCase.native),
-      operatorValidity: invalidCase.operatorValidity,
+      operatorValidity: w15ForcedOperatorVerdictForClassificationV1(
+        invalidCase.operatorValidity,
+      ),
     }),
   ),
 });
@@ -790,8 +793,8 @@ describe("W26 canonical event classification rules", () => {
     expect(validReceipt.eventRoots).toMatchObject([{ mutationCount: 2 }]);
     expect(validReceipt.forcedValidationFacts).toMatchObject([
       {
-        authenticatedOperatorValidity: "TxIsValid",
-        canonicalOperatorValidity: "TxIsValid",
+        authenticatedOperatorValidity: "ForcedTxValid",
+        canonicalOperatorValidity: "ForcedTxValid",
         phaseAStatus: "accepted",
         phaseBStatus: "accepted",
         canonicalEffectMutationCount: 2,
@@ -837,7 +840,7 @@ describe("W26 canonical event classification rules", () => {
           .validity,
       ).toBe("TxIsValid");
       const priorState =
-        category === "NonExistentInputUtxo"
+        category === "InputNotFound"
           ? []
           : ledgerEntries([[invalidCase.input, FLOW_OUTPUT]]);
       const fixture = await makeGenuineW25PublicReplayFixtureV1({
@@ -846,7 +849,7 @@ describe("W26 canonical event classification rules", () => {
         transitionEffect: noOpEffect,
         priorState,
         postState: priorState,
-        ...(category === "FeeTooLow" ? { minFeeB: 1n } : {}),
+        ...(category === "FeeBelowMinimum" ? { minFeeB: 1n } : {}),
       });
       const receipt = await acceptedPublicW25(fixture);
       expect(receipt.eventRoots).toMatchObject([{ mutationCount: 0 }]);
@@ -872,17 +875,17 @@ describe("W26 canonical event classification rules", () => {
       exercisedCategories.push(category);
     }
     expect(exercisedCategories).toStrictEqual([
-      "NonExistentInputUtxo",
-      "InvalidSignature",
-      "FailedScript",
-      "FeeTooLow",
-      "UnbalancedTx",
+      "InputNotFound",
+      "AddressWitnessSignatureInvalid",
+      "PlutusExecutionFailed",
+      "FeeBelowMinimum",
+      "ValueNotPreserved",
     ]);
   });
 
   it("rejects omission, substitution, duplication, and tampering of genuine forced W15, W25, and native-source evidence", async () => {
-    const authority = genuineW15.forcedVariants.UnbalancedTx!;
-    const invalidCase = FORCED_INVALID_CASES.UnbalancedTx;
+    const authority = genuineW15.forcedVariants.ValueNotPreserved!;
+    const invalidCase = FORCED_INVALID_CASES.ValueNotPreserved;
     const priorState = ledgerEntries([[invalidCase.input, FLOW_OUTPUT]]);
     const fixture = await makeGenuineW25PublicReplayFixtureV1({
       userEvent: authority,
@@ -937,7 +940,7 @@ describe("W26 canonical event classification rules", () => {
       .terminalClassification;
     const substitutedClassification = classificationMutation();
     substitutedClassification.state.snapshot.terminalEvents[0]!.terminalClassification!.operatorValidity =
-      "TxIsValid";
+      "ForcedTxValid";
     const tamperedClassification = classificationMutation();
     tamperedClassification.state.snapshot.terminalEvents[0]!.terminalClassification!.terminalPointDigest =
       "f".repeat(64);
@@ -992,7 +995,7 @@ describe("W26 canonical event classification rules", () => {
     const genuineFact = receipt.forcedValidationFacts[0]!;
     for (const forcedValidationFacts of [
       [],
-      [{ ...genuineFact, canonicalOperatorValidity: "TxIsValid" }],
+      [{ ...genuineFact, canonicalOperatorValidity: "ForcedTxValid" }],
       [genuineFact, genuineFact],
       [{ ...genuineFact, canonicalEffectMutationCount: 1 }],
     ]) {

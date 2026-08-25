@@ -36,6 +36,7 @@ import {
   replayGenuineWithdrawalAuthorityScenarioV1,
   type W15AcceptedAuthorityScenarioV1,
   type W15AuthorityScenarioInputV1,
+  w15ForcedOperatorVerdictForClassificationV1,
 } from "./w15-authority-scenarios.js";
 import {
   type GenuineW16SettlementAuthorityV1,
@@ -224,7 +225,9 @@ const publicEventFromAuthority = (
         {
           tx_id: decoded.tx.tx_id,
           source: decoded.tx.source,
-          operator_validity: event.terminalClassification.operatorValidity,
+          verdict: w15ForcedOperatorVerdictForClassificationV1(
+            event.terminalClassification.operatorValidity,
+          ),
         },
         SDK.ForcedInclusionTxV1Schema,
       ),
