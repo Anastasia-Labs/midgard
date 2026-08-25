@@ -13,7 +13,7 @@ import {
 
 // R5 item 1 (#617): the cek and ValueAndMint resolver indices are prepare +
 // semantic decompositions like the other twelve. The journey below disputes
-// one honest step of the cek phase end to end on the emulator — open,
+// one honest step of the ValueAndMint phase end to end on the emulator — open,
 // source, bisection, enter-resolution, prepare-resolution, the phase's
 // `prepare_selected` validator, the kind's semantic resolver, the award and
 // the block removal — with every transaction under the literal 16,384-byte L1
@@ -21,21 +21,20 @@ import {
 // disputed step and forged from its successor on, so the challenger (whose
 // trace is the honest one) proves the step and wins.
 //
-// The ValueAndMint half of this pair lives in
-// submit-init-emulator-value-and-mint-v1.test.ts: one emulator journey per
-// file, on purpose. Each journey leaks wasm linear memory that
-// `@lucid-evolution/uplc` never reclaims, and vitest isolates per FILE, so
-// co-locating journeys walks the worker into the wasm32 ceiling and surfaces
-// it as `EvaluatorError: unreachable`. See tests/support/uplc-heap-guard.ts.
+// Split out of submit-init-emulator-cek-value-and-mint-v1.test.ts, which keeps
+// the cek half: one emulator journey per file, on purpose. Each journey leaks
+// wasm linear memory that `@lucid-evolution/uplc` never reclaims, and vitest
+// isolates per FILE, so co-locating journeys walks the worker into the wasm32
+// ceiling and surfaces it as `EvaluatorError: unreachable`. See
+// tests/support/uplc-heap-guard.ts.
 describe("validation-dispute journeys through the cek and ValueAndMint decompositions", () => {
   it.each([
     {
-      disputedPhase: "cek" as const,
-      resolverName: "Cek" as const,
-      // This key-witness spend has `execution_count == 0`, so the cek phase is
-      // the single stand-alone hand-off to ValueAndMint (`cek_finish_semantic_v1`).
+      disputedPhase: "valueAndMint" as const,
+      resolverName: "ValueAndMint" as const,
+      // Stage 0, the replay-schedule seed (`value_and_mint_begin_semantic_v1`).
       semanticResolverIndex: 0,
-      semanticModule: "cek_finish_semantic_v1",
+      semanticModule: "value_and_mint_begin_semantic_v1",
     },
   ])(
     "proves the honest $semanticModule step and removes the forged block",

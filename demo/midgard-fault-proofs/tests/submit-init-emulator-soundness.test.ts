@@ -4,12 +4,18 @@ import { describe, expect, it } from "vitest";
 import { validationResolverIndexV1 } from "../src/index.js";
 import {
   buildAcceptedClaimOverRejectingTransactionFixture,
-  buildHonestAcceptedValidationDisputeFixture,
   buildNonEmptyClaimedLedgerDeltaRootV1,
   EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1,
   runForcedValidationDisputeScenario,
 } from "./support/submit-init-emulator-shared.js";
 
+// One emulator journey per file, on purpose. Each journey leaks wasm linear
+// memory that `@lucid-evolution/uplc` never reclaims, and vitest isolates per
+// FILE, so co-locating journeys walks the worker into the wasm32 ceiling and
+// surfaces it as `EvaluatorError: unreachable`. See
+// tests/support/uplc-heap-guard.ts. The two siblings of this file are
+// submit-init-emulator-soundness-cleared-delta.test.ts and
+// submit-init-emulator-soundness-honest-operator.test.ts.
 describe("validation-dispute soundness with a non-empty claimed ledger delta", () => {
   it("lets a challenger win against an operator who claimed Accepted over a non-empty claimed ledger delta", async () => {
     const claimedLedgerDeltaRoot =
@@ -111,90 +117,4 @@ describe("validation-dispute soundness with a non-empty claimed ledger delta", (
       expect(measurement.l1ByteMargin).toBeGreaterThan(0);
     }
   }, 600_000);
-
-  it("rejects the cleared-delta rejection successor the deleted VM-DEFECT-2 clause required", async () => {
-    const claimedLedgerDeltaRoot =
-      await buildNonEmptyClaimedLedgerDeltaRootV1();
-    expect(
-      claimedLedgerDeltaRoot.equals(EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1),
-    ).toBe(false);
-
-    let removalReferenceScriptPublicationAttempts = 0;
-    await expect(
-      runForcedValidationDisputeScenario(
-        ({ operatorVkey, now }) =>
-          buildAcceptedClaimOverRejectingTransactionFixture({
-            operatorVkey,
-            now,
-            claimedLedgerDeltaRoot,
-            clearChallengerTerminalDelta: true,
-          }),
-        {
-          stopAfter: "semantic-resolution",
-          onRemovalReferenceScriptPublicationAttempt: () => {
-            removalReferenceScriptPublicationAttempts += 1;
-          },
-        },
-      ),
-    ).rejects.toThrow(/emulator lifecycle stage prepare-selected failed/u);
-    expect(removalReferenceScriptPublicationAttempts).toBe(0);
-  }, 600_000);
-
-  // RED, and it is the direction that matters. This is the symmetric-soundness
-  // case: a FORGED dispute against an HONEST operator must be refused at
-  // `prepare-selected` or `semantic-resolution`, and as of #579's close it is
-  // ACCEPTED instead ("promise resolved instead of rejecting"). The sibling
-  // positive case above — a challenger legitimately winning — passes, so this is
-  // not a broken harness; it is specifically the refusal direction that is not
-  // refusing.
-  //
-  // Owner-ordered tracking: **#605** (blocked_by #604, blocking #581). It is
-  // deliberately NOT filed under #604's offchain-builder staleness and NOT
-  // written off as accepted baseline: it is either a downstream effect of that
-  // staleness producing a malformed forgery that happens to be accepted, or a
-  // genuine soundness defect, and #579 did not bisect which. Do not re-pin,
-  // skip, or weaken this assertion to get a green suite — the whole value of the
-  // row is that it fails while the question is open.
-  it("cannot be defeated when the operator honestly accepted a valid transaction carrying a non-empty ledger delta", async () => {
-    // Same disputed instruction, same rejection code, same non-empty claimed
-    // delta as the challenger-wins case; only the transaction's validity
-    // differs. Soundness must be symmetric (GOAL_SPEC §3 invariant 9).
-    let observed:
-      | Awaited<ReturnType<typeof buildHonestAcceptedValidationDisputeFixture>>
-      | undefined;
-    await expect(
-      runForcedValidationDisputeScenario(async ({ operatorVkey, now }) => {
-        observed = await buildHonestAcceptedValidationDisputeFixture({
-          operatorVkey,
-          now,
-        });
-        return observed;
-      }),
-    ).rejects.toThrow(
-      /emulator lifecycle stage (prepare-selected|semantic-resolution) failed/u,
-    );
-
-    const fixture = observed;
-    if (fixture === undefined) {
-      throw new Error("honest-operator mirror fixture was never constructed");
-    }
-    expect(fixture.disputedPhase).toBe("inputSets");
-    expect(fixture.operatorTrace.tree.descriptor.verdict).toBe("accepted");
-    expect(fixture.challengerTrace.tree.descriptor.verdict).toBe("rejected");
-    expect(fixture.claimedLedgerDeltaRoot).toHaveLength(32);
-    expect(
-      fixture.claimedLedgerDeltaRoot.equals(EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1),
-    ).toBe(false);
-    const { lowIndex, highIndex } = fixture.evidence.finalDispute;
-    expect(highIndex).toBe(lowIndex + 1);
-    expect(fixture.challengerTrace.states[lowIndex]!.phase).toBe("inputSets");
-    const forgedSuccessor = fixture.challengerTrace.states[highIndex]!;
-    expect(forgedSuccessor.phase).toBe("terminal");
-    expect(forgedSuccessor.verdict).toBe("rejected");
-    // The forgery is maximally strong: the immutable claimed delta is carried
-    // through unchanged, so it is not rejected for a context mismatch.
-    expect(
-      forgedSuccessor.ledgerDeltaRoot.equals(fixture.claimedLedgerDeltaRoot),
-    ).toBe(true);
-  }, 900_000);
 });
