@@ -5876,3 +5876,57 @@ fixture (parent-owned). Registration (P2 catalogue append of BOTH
 families + common.ts keys, P3 fault-proofs barrel/runtime/bin) stays
 parent-serialized on #617. Remaining on the lane: Q40 §9.1 closure
 surfaces, then Q42, then Q41.
+
+## 2026-08-25 — #640 forced-verdict format wave SEALED at 63885874
+
+The wave is sealed on wave/format-640 at 63885874, base 3a2cf947:
+d349332a (onchain: OperatorVerdictV1 + the 47-arm RejectionReasonV1,
+constructor order wire-normative to catalogue §5; predicates (d)/(e) and
+forced_verdict_matches in validation-claim-v1.ak; the ≤16_384 native
+reference-script cap) → 15251caf (sdk/core codec mirror) → cf5e4165
+(spec §13 rejection-code register) → 3b809de5 (watcher) → 9c215cac
+(fault-proofs/validation/da consumers) → 96a5e16a (node slice: two-valued
+operator_validity, verdict-typed write path, ruled semantic mapping in
+classifyForcedTransactionsV1) → 165db5ca (delegated decisions Q1–Q5 +
+the verdict-stamping consequence closed).
+
+The stamping convention: a forced transaction has two identities. The
+SUBMITTED identity (validity TxIsValid — admission requires it) is what
+the DB row columns, the L1 ORDER datum, and the watcher bind. The
+ADJUDICATED identity (scalar stamped from the final verdict through the
+single core helper adjudicateMidgardNativeTxFullV1Validity) is what the
+committed leaf, the validation-machine state binding, and DA payload
+authentication bind — matching what source_binding_is_exact and
+predicate (e) reveal on-chain from the committed triple. Sound because
+no machine step on-chain or off-chain reads the validity scalar, tx_id
+hashes the body only, and field preimages 0–8 exclude the scalar; only
+bound bytes move, never a trace decision.
+
+Re-pins (generator-driven, no hand edits): transaction-root-v1 forced
+phasRoot 1b475223…f7c06c, forced root 8cbf9354…e91d2b; rejected forced
+leaves flip the embedded compact validity byte 00→01; the .ak golden is
+byte-identical to the generator output (--check exit 0).
+transition-trace-abi.json re-pinned via its UPDATE switch at 96a5e16a
+(ForcedInclusionTxV1 51→58 B).
+
+Adversarial pre-push review (independent gate re-runs; every load-bearing
+claim re-verified: the 19 frozen digests recomputed, the 47-arm wire
+order compared .ak↔catalogue↔SDK programmatically, the 47→19 bridge
+diffed three ways, all deriveMidgardNativeTxProofSourceV1* call sites
+classified against the two-identity convention): SHIP-WITH-FIXES, both
+fixes applied at 63885874. (1) MAJOR: the watcher's
+rejection-to-verdict partition still mapped E_NATIVE_SCRIPT_INVALID to
+PlutusExecutionFailed while the node classifier phase-splits it — an
+honest WitnessNativeScriptFalse/ExecutionNativeScriptFalse leaf would
+have tripped transition_effect_semantics_mismatch; the watcher partition
+now takes the rejecting phase and splits identically (latent today: no
+production terminal-spend builder exists, and both arms bridge to the
+same frozen code so on-chain verification was never affected). (2) the
+stale `validity_code <= 5` layout comment in the da-hash-preimage rule.
+
+Gates at seal: aiken check 2784/0 errors/6 warnings (twin compiler
+50890fe3); validation-machine 28/28; fpv transition-trace 51/51 +
+submit-init-emulator-transition-trace 1/1; da payload 11/11; node
+targeted 54/55 (the 1 red is the pre-existing sequential-deltas failure,
+red at base); deposit-flow emulator 14/14; watcher targeted suites green
+after the fix; eslint clean on the touched packages.
