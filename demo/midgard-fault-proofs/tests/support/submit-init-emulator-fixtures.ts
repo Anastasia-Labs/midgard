@@ -13,11 +13,13 @@
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
+  adjudicateMidgardNativeTxFullV1Validity,
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   buildMidgardValidationTraceTree,
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceV1,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardNativeTxCompactV1,
@@ -1065,8 +1067,12 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
     witnessByte: "b8",
   });
   const forcedCanonicalCbor = encodeMidgardNativeTxCanonicalV1(forcedNativeTx);
-  const forcedSource =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(forcedCanonicalCbor);
+  // The leaf is rejected, so its committed source is the operator-adjudicated
+  // (TxIsInvalid-stamped) triple; the DA preimage row stays the submitted
+  // canonical bytes, which is exactly what reconstruction re-adjudicates.
+  const forcedSource = deriveMidgardNativeTxProofSourceV1(
+    adjudicateMidgardNativeTxFullV1Validity(forcedNativeTx, "TxIsInvalid"),
+  );
   const forcedTransaction = {
     tx_id: computeMidgardNativeTxIdV1(forcedNativeTx).toString("hex"),
     source: {

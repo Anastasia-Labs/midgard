@@ -122,7 +122,12 @@ Canonical encoding: `83 ‖ 58 20 addr ‖ 58 20 script ‖ 58 20 redeemer`.
 ### 2.3 `NativeTxCompact`
 
 `{ body: NativeTxBodyCompact, witness_set_hash: 32-byte hash,
-validity_code: uint ≤ 5 }`. Versioned encoding
+validity_code: uint ≤ 1 }` — `0` = `TxIsValid`, `1` = `TxIsInvalid`; the
+former coarse rejection codes `2..5` were retired by the #640 format wave
+(rejection reasons live in the forced leaf's verdict, §13). User transaction
+admission requires code `0`; on a forced-inclusion leaf the code is the
+operator's adjudication, bound to the leaf's verdict by the §13.1
+predicates. Versioned encoding
 (`encode_native_tx_compact_for_version`):
 `84 ‖ uint(version) ‖ body ‖ 58 20 witness_set_hash ‖ uint(validity_code)`.
 

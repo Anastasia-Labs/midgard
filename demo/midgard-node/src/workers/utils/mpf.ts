@@ -8,7 +8,9 @@ import {
 } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceV1,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   encodeCborBytes,
   encodeCborInteger,
@@ -3047,8 +3049,18 @@ const logCommitMpfPhaseTiming = (
  * 19 descriptor-level `RejectCode`s, so each bucket names the corresponding
  * `RejectionReasonV1` arm at subject ordinal 0 — the coordinates are refined
  * where the classifier learns to report them.
+ *
+ * `E_NATIVE_SCRIPT_INVALID` is the one code whose arm depends on the phase:
+ * Phase A emits it only from the witness-set native scan
+ * (`WitnessNativeScriptFalse`), Phase B only from execution natives
+ * (`ExecutionNativeScriptFalse`) — both arms bridge back to exactly this
+ * code, so the split loses nothing and never claims a CEK failure
+ * (`PlutusExecutionFailed`) for a native-script refusal.
  */
-const forcedVerdictForRejection = (code: RejectCode): SDK.OperatorVerdictV1 => {
+const forcedVerdictForRejection = (
+  code: RejectCode,
+  phase: "phaseA" | "phaseB",
+): SDK.OperatorVerdictV1 => {
   switch (code) {
     case RejectCodes.InputNotFound:
       return {
@@ -3064,6 +3076,17 @@ const forcedVerdictForRejection = (code: RejectCode): SDK.OperatorVerdictV1 => {
         },
       };
     case RejectCodes.NativeScriptInvalid:
+      return phase === "phaseA"
+        ? {
+            ForcedTxInvalid: {
+              reason: { WitnessNativeScriptFalse: { script_index: 0n } },
+            },
+          }
+        : {
+            ForcedTxInvalid: {
+              reason: { ExecutionNativeScriptFalse: { execution_index: 0n } },
+            },
+          };
     case RejectCodes.PlutusScriptInvalid:
     case RejectCodes.PlutusEvaluationUnavailable:
       return {
@@ -3259,7 +3282,7 @@ export const classifyForcedTransactionsV1 = <R>({
       let rejectionCode: RejectCode | null = null;
       if (phaseA.rejected.length > 0) {
         rejectionCode = phaseA.rejected[0]!.code;
-        verdict = forcedVerdictForRejection(rejectionCode);
+        verdict = forcedVerdictForRejection(rejectionCode, "phaseA");
       } else {
         let acceptedCandidate = phaseA.accepted[0]!;
         if (
@@ -3320,7 +3343,7 @@ export const classifyForcedTransactionsV1 = <R>({
         );
         if (phaseB.rejected.length > 0) {
           rejectionCode = phaseB.rejected[0]!.code;
-          verdict = forcedVerdictForRejection(rejectionCode);
+          verdict = forcedVerdictForRejection(rejectionCode, "phaseB");
         } else {
           verdict = "ForcedTxValid";
           transitionEffect = canonicalTransitionEffectFromStatePatchV1(
@@ -3346,10 +3369,28 @@ export const classifyForcedTransactionsV1 = <R>({
         verdict,
         consensusProfile,
       });
+      // The row's tx_compact / transaction_commitment columns are the
+      // SUBMITTED identity written at ingest (admission requires TxIsValid),
+      // while `encoded` carries the operator-adjudicated leaf whose validity
+      // scalar is stamped from the verdict. Identity is therefore checked
+      // against a fresh derivation from the canonical bytes; `tx_id` hashes
+      // the body only and is invariant under adjudication.
+      const submittedSource = yield* Effect.try({
+        try: () => deriveMidgardNativeTxProofSourceV1(canonicalTx),
+        catch: (cause) =>
+          new DatabaseError({
+            table: ForcedTransactionsDB.tableName,
+            message:
+              "Forced transaction canonical bytes cannot derive a submitted proof source",
+            cause,
+          }),
+      });
       if (
         !encoded.txId.equals(txId) ||
-        !encoded.transactionCommitment.equals(transactionCommitment) ||
-        !encoded.txCompact.equals(
+        !computeMidgardNativeTxProofCommitmentV1(submittedSource).equals(
+          transactionCommitment,
+        ) ||
+        !submittedSource.compactCbor.equals(
           entry[ForcedTransactionsDB.Columns.TX_COMPACT],
         )
       ) {

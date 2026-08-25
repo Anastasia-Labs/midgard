@@ -1,4 +1,5 @@
 import {
+  adjudicateMidgardNativeTxFullV1Validity,
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
@@ -342,6 +343,8 @@ export const encodeForcedInclusionValueV1 = ({
     }
     const material = yield* Effect.try({
       try: () => {
+        // Admission runs on the user's bytes: submitted preimages must claim
+        // TxIsValid (E_IS_VALID_FALSE_FORBIDDEN).
         const violation = validateMidgardConsensusV1TxCbor(nativeTxCbor);
         if (violation !== null) {
           throw new Error(
@@ -350,8 +353,17 @@ export const encodeForcedInclusionValueV1 = ({
         }
         const nativeTx =
           decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeTxCbor);
-        const txId = computeMidgardNativeTxIdV1(nativeTx);
-        const source = deriveMidgardNativeTxProofSourceV1(nativeTx);
+        // The committed leaf's validity scalar is the operator's adjudication,
+        // stamped from the verdict so the #640 forced-arm predicate
+        // (`ForcedTxValid` ⇔ code 0, `ForcedTxInvalid { _ }` ⇔ code 1) holds
+        // for every leaf this encoder can produce. `tx_id` hashes the body
+        // only, so stamping never moves the transaction's identity.
+        const adjudicatedTx = adjudicateMidgardNativeTxFullV1Validity(
+          nativeTx,
+          verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
+        );
+        const txId = computeMidgardNativeTxIdV1(adjudicatedTx);
+        const source = deriveMidgardNativeTxProofSourceV1(adjudicatedTx);
         const transactionCommitment =
           computeMidgardNativeTxProofCommitmentV1(source);
         return {

@@ -327,26 +327,34 @@ L2 UTxO.
 ForcedTransactionKey =
   tx_order_id
 
-ForcedInclusionTx {
-  tx_compact: MidgardTxCompactWithoutValidity
+ForcedInclusionTxV1 {
+  tx_id
+  source: NativeTxProofSourceV1
+    (compact_cbor, witness_set_compact_cbor, field_preimage_lengths_cbor)
   verdict: OperatorVerdictV1
 }
 
 forced_transactions_root =
-  MerkleRoot<tx_order_id -> ForcedInclusionTx CBOR>
+  MerkleRoot<tx_order_id -> ForcedInclusionTxV1 CBOR>
 ```
 
 `tx_order_id` is the L1 order identity and is the map key. It must not be
-replaced by `tx_id`, and it must not be repeated inside the source-root value.
-The L2 transaction ID is derived from `tx_compact.body` when needed.
+replaced by `tx_id`: two orders may carry the same transaction, and only the
+order identity is unique. `tx_id` rides in the value, recomputed from the
+canonical bytes at encode time, never copied from the datum.
 
 Forced transactions are obligatory L1 events. Every authenticated transaction
 order whose transaction validity range requires processing by the block interval
 must appear in `forced_transactions_root`.
 
 The forced transaction root keeps the user-authored transaction payload separate
-from the operator's execution classification. `tx_compact` is validity-free;
-`verdict` is the operator's claim about how that ordered transaction processed
+from the operator's execution classification. The user authors the body and
+witness preimages only — admission refuses a submitted preimage that does not
+claim `TxIsValid` — while the committed compact's validity scalar is stamped
+from the verdict by the leaf encoder (`ForcedTxValid` ⇔ code 0,
+`ForcedTxInvalid { _ }` ⇔ code 1), which is exactly the bit equality the #640
+forced-arm claim predicate re-checks on-chain. `verdict`
+is the operator's claim about how that ordered transaction processed
 against the block state, and is challengeable by one-step fraud proofs. Since
 the #640 format wave it is an `OperatorVerdictV1` — `ForcedTxValid`, or
 `ForcedTxInvalid` naming one of the 47 `RejectionReasonV1` arms together with

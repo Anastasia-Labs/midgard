@@ -166,10 +166,14 @@ const forcedEntry = async ({
   readonly label: number;
   readonly transaction: ReturnType<typeof makeSignedEffectfulTransaction>;
 }): Promise<ForcedTransactionsDB.Entry> => {
+  // Mirrors ingest: the row is written with the provisional `ForcedTxValid`
+  // verdict, so its identity columns carry the SUBMITTED bytes. Adjudication
+  // happens at classification, which overwrites the leaf value and the
+  // validity projection but never the submitted identity.
   const encoded = await Effect.runPromise(
     ForcedTransactionsDB.encodeForcedInclusionValueV1({
       nativeTxCbor: transaction.canonicalCbor,
-      verdict: { ForcedTxInvalid: { reason: "ValueNotPreserved" } },
+      verdict: "ForcedTxValid",
       consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     }),
   );
@@ -190,7 +194,7 @@ const forcedEntry = async ({
     [ForcedTransactionsDB.Columns.TX_ID]: encoded.txId,
     [ForcedTransactionsDB.Columns.TX_COMPACT]: encoded.txCompact,
     [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
-    [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]: "TxIsInvalid",
+    [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]: "TxIsValid",
     [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
       MIDGARD_CONSENSUS_PROFILE_V1.profileId,
     [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: transaction.canonicalCbor,
@@ -239,7 +243,7 @@ describe("V1 forced transaction material", () => {
     expect(decoded.malformedCount).toBe(2);
   });
 
-  it("binds the exact canonical transaction independently of its derived verdict", async () => {
+  it("binds the transaction's body identity while stamping the leaf's validity scalar from the verdict", async () => {
     const nativeTxCbor = encodedTransaction();
     const accepted = await Effect.runPromise(
       ForcedTransactionsDB.encodeForcedInclusionValueV1({
@@ -260,11 +264,21 @@ describe("V1 forced transaction material", () => {
       SDK.ForcedInclusionTxV1,
     ) as SDK.ForcedInclusionTxV1;
 
+    // `tx_id` hashes the body only, so the operator's adjudication never
+    // moves the transaction's identity …
     expect(accepted.txId).toEqual(rejected.txId);
-    expect(accepted.transactionCommitment).toEqual(
+    // … but the committed compact carries the verdict's validity scalar
+    // (#640 forced-arm predicate: `ForcedTxValid` ⇔ code 0,
+    // `ForcedTxInvalid { _ }` ⇔ code 1), stamped as its trailing byte, so the
+    // compact and everything hashing it diverge by exactly that adjudication.
+    expect(accepted.txCompact.subarray(0, -1)).toEqual(
+      rejected.txCompact.subarray(0, -1),
+    );
+    expect(accepted.txCompact.at(-1)).toBe(0);
+    expect(rejected.txCompact.at(-1)).toBe(1);
+    expect(accepted.transactionCommitment).not.toEqual(
       rejected.transactionCommitment,
     );
-    expect(accepted.txCompact).toEqual(rejected.txCompact);
     expect(accepted.value).not.toEqual(rejected.value);
     expect(decoded).toEqual({
       tx_id: accepted.txId.toString("hex"),

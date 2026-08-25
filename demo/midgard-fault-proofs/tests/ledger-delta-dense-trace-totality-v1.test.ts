@@ -1,6 +1,9 @@
 import {
+  adjudicateMidgardNativeTxFullV1Validity,
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceV1,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -159,9 +162,36 @@ const forcedTx = (
   verdict: SDK.OperatorVerdictV1,
 ): SDK.ForcedInclusionTxV1 => {
   const material = nativeMaterial(byte);
+  if (verdict === "ForcedTxValid") {
+    return {
+      tx_id: material.txId,
+      source: material.source,
+      verdict,
+    };
+  }
+  // A rejected forced leaf commits the operator-adjudicated source
+  // (§2.4.3(e)): the fixture bytes stay `TxIsValid` as submitted, while the
+  // leaf's triple carries the stamped `TxIsInvalid` scalar. The DA preimage
+  // registered for the leaf remains the submitted canonical bytes.
+  const adjudicated = deriveMidgardNativeTxProofSourceV1(
+    adjudicateMidgardNativeTxFullV1Validity(
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(material.canonicalCbor),
+      "TxIsInvalid",
+    ),
+  );
+  canonicalPreimageByCommitment.set(
+    computeMidgardNativeTxProofCommitmentV1(adjudicated).toString("hex"),
+    material.canonicalCbor,
+  );
   return {
     tx_id: material.txId,
-    source: material.source,
+    source: {
+      compact_cbor: adjudicated.compactCbor.toString("hex"),
+      witness_set_compact_cbor:
+        adjudicated.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        adjudicated.fieldPreimageLengthsCbor.toString("hex"),
+    },
     verdict,
   };
 };

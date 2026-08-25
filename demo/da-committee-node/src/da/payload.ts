@@ -6,6 +6,7 @@ import {
   type MidgardCekProgramEnvelopeV1,
 } from "@al-ft/midgard-core/cek-proof";
 import {
+  adjudicateMidgardNativeTxFullV1Validity,
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
@@ -762,7 +763,19 @@ const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
       ),
       `forced_transaction_preimages[${index.toString()}]`,
     );
-    assertSourceBinding(forced, tx, fieldName);
+    // The committed forced leaf's validity scalar is the operator's
+    // adjudication (§2.4.3(e)), while the DA preimage is the transaction as
+    // submitted, so the binding is checked over the adjudicated bytes. The
+    // body — and therefore `tx_id` and the ledger-operation count — is
+    // invariant under adjudication.
+    assertSourceBinding(
+      forced,
+      adjudicateMidgardNativeTxFullV1Validity(
+        tx,
+        forced.verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
+      ),
+      fieldName,
+    );
     if (forced.verdict === "ForcedTxValid") {
       countLedgerOperations(tx, fieldName);
     }
