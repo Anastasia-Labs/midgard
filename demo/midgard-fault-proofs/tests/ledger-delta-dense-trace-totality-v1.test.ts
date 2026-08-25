@@ -143,15 +143,26 @@ const nativeMaterial = (byte: number) => {
   };
 };
 
+/**
+ * The #640 verdict standing in for the pre-format `FailedScript` arm: a
+ * forced transaction the operator rejected for a failed Plutus execution at
+ * execution index 0.
+ */
+const forcedTxInvalidPlutus: SDK.OperatorVerdictV1 = {
+  ForcedTxInvalid: {
+    reason: { PlutusExecutionFailed: { execution_index: 0n } },
+  },
+};
+
 const forcedTx = (
   byte: number,
-  operatorValidity: SDK.MidgardTxValidity,
+  verdict: SDK.OperatorVerdictV1,
 ): SDK.ForcedInclusionTxV1 => {
   const material = nativeMaterial(byte);
   return {
     tx_id: material.txId,
     source: material.source,
-    operator_validity: operatorValidity,
+    verdict,
   };
 };
 
@@ -525,7 +536,7 @@ const buildAcceptedTransactionTransitionMismatchEvidence = (): {
       witness_set_compact_cbor: "",
       field_preimage_lengths_cbor: "",
     },
-    operator_validity: "TxIsValid",
+    verdict: "ForcedTxValid",
   };
   const claim: SDK.ValidationClaimWitnessV1 = {
     version: 1n,
@@ -761,7 +772,7 @@ const invalidOneStepTransitionProbe = async (): Promise<
       encodedEntry({
         key: txOrderId,
         keySchema: SDK.OutputReference as never,
-        value: forcedTx(641, "FailedScript"),
+        value: forcedTx(641, forcedTxInvalidPlutus),
         valueSchema: SDK.ForcedInclusionTxV1Schema,
       }),
     ],
@@ -808,7 +819,7 @@ const duplicateTraceEventProbe = async (): Promise<
       encodedEntry({
         key: txOrderId,
         keySchema: SDK.OutputReference as never,
-        value: forcedTx(661, "FailedScript"),
+        value: forcedTx(661, forcedTxInvalidPlutus),
         valueSchema: SDK.ForcedInclusionTxV1Schema,
       }),
     ],
@@ -1175,7 +1186,7 @@ describe("ledger-delta dense trace totality v1", () => {
           // TxIsValid: a valid forced inclusion legitimately moves the root,
           // so the default no-op check (which only fires for invalid forced
           // transactions) stays quiet here.
-          value: forcedTx(737, "TxIsValid"),
+          value: forcedTx(737, "ForcedTxValid"),
           valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],
@@ -1277,7 +1288,7 @@ describe("ledger-delta dense trace totality v1", () => {
         encodedEntry({
           key: forcedId,
           keySchema: SDK.OutputReference as never,
-          value: forcedTx(806, "TxIsValid"),
+          value: forcedTx(806, "ForcedTxValid"),
           valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],

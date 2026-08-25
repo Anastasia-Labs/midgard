@@ -59,6 +59,13 @@ const aikenTwinSource = read(
 const aikenTwinTestSource = read(
   "../../../onchain/aiken/lib/midgard/validation-machine-v1.test.ak",
 );
+// #640 relocated the `reject_*` byte constants out of the machine's own body
+// and into the canonical rejection-reason module, which the machine now
+// imports. The byte pin below therefore reads its definition site, and the
+// machine source is held to importing that exact name.
+const aikenRejectionReasonSource = read(
+  "../../../onchain/aiken/lib/midgard/rejection-reason-v1.ak",
+);
 // `PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1` is the C70 target-parameter
 // snapshot the sibling `value-accounting.test.ts` min-Ada boundary already
 // reads, and it is the only in-repo TypeScript pin of the rate. It is read here
@@ -553,9 +560,14 @@ describe("min-Ada twin cross-check (D-S4 / C49)", () => {
     // The wiring, as source text (#618 ruling 1; R8 of decision 0005). Without
     // these three legs the pins above could agree perfectly while the floor
     // stayed unwired arithmetic, which is the state D-S4 was opened against.
-    expect(aikenTwinSource).toContain(
-      'const reject_min_ada = #"455f4d494e5f414441"',
+    expect(aikenRejectionReasonSource).toContain(
+      'pub const reject_min_ada = #"455f4d494e5f414441"',
     );
+    expect(
+      /use\s+midgard\/rejection_reason_v1\.\{[^}]*\breject_min_ada\b[^}]*\}/u.test(
+        aikenTwinSource,
+      ),
+    ).toBe(true);
     expect(aikenTwinSource.replace(/\s+/gu, " ")).toContain(
       "if !output_meets_min_ada_v1( env.coins_per_utxo_byte, descriptor.total_length, descriptor.lovelace, )",
     );

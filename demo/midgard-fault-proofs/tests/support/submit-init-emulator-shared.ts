@@ -1903,7 +1903,7 @@ export type ForcedValidationDisputeFixture = {
  * VM-DEFECT-2 regression fixture — the adversarial case the pre-fix rejection
  * surface could not express.
  *
- * The forced source carries `operator_validity: TxIsValid`, which
+ * The forced source carries `verdict: ForcedTxValid`, which
  * `validation-claim-v1.ak` (`forced_verdict_matches`, and the exactly
  * analogous `descriptor.verdict == Accepted` clause every *normal* L2 source
  * is held to) forces into an `Accepted` committed descriptor. The transaction
@@ -1950,7 +1950,7 @@ export const buildAcceptedClaimOverRejectingTransactionFixture = async ({
       field_preimage_lengths_cbor:
         forcedSource.fieldPreimageLengthsCbor.toString("hex"),
     },
-    operator_validity: "TxIsValid" as const,
+    verdict: "ForcedTxValid" as const,
   };
   const honestTrace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
@@ -2041,7 +2041,7 @@ const MIN_ADA_JOURNEY_OUTPUT_LOVELACE_V1 = 100_000n;
  * R8 of decision 0005 (#618) / the #627 ruling: the end-to-end journey for the
  * `E_MIN_ADA` wiring in the ValueAndMint output ladder.
  *
- * The forced source carries `operator_validity: TxIsValid`, which
+ * The forced source carries `verdict: ForcedTxValid`, which
  * `validation-claim-v1.ak` forces into an `Accepted` committed descriptor. The
  * transaction is otherwise impeccable -- one resolved spend input, a real
  * key witness, zero fee, and the produced output carries exactly the lovelace
@@ -2127,7 +2127,7 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
       field_preimage_lengths_cbor:
         forcedSource.fieldPreimageLengthsCbor.toString("hex"),
     },
-    operator_validity: "TxIsValid" as const,
+    verdict: "ForcedTxValid" as const,
   };
   // The probe deletion is only a way to read the root of the honest pre-state
   // ledger trie; none of its steps reach the machine, which is given an exact
@@ -2279,7 +2279,7 @@ const buildHonestAcceptedNativeTransactionTraceV1 = async ({
       field_preimage_lengths_cbor:
         forcedSource.fieldPreimageLengthsCbor.toString("hex"),
     },
-    operator_validity: "TxIsValid" as const,
+    verdict: "ForcedTxValid" as const,
   };
   const producedOutRef = encodeMidgardSpendInputItemV1({
     txId: transactionId,

@@ -557,7 +557,7 @@ const authenticateForcedTransactionPreimages = (
           field_preimage_lengths_cbor:
             source.fieldPreimageLengthsCbor.toString("hex"),
         },
-        operator_validity: entry.value.operator_validity,
+        verdict: entry.value.verdict,
       };
       if (
         Data.to(entry.value, SDK.ForcedInclusionTxV1) !==

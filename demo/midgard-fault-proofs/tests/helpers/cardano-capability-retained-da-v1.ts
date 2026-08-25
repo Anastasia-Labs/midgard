@@ -124,7 +124,7 @@ export const buildStrictRetainedDaPairFixtureV1 = async ({
   const forcedOrderIdHex = Data.to(forcedOrder, SDK.OutputReference);
   const forcedSource: SDK.ForcedInclusionTxV1 = {
     ...source,
-    operator_validity: "TxIsValid",
+    verdict: "ForcedTxValid",
   };
   const forcedEventKey: SDK.EventKey = {
     ForcedTransactionEventKey: {

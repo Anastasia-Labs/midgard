@@ -763,7 +763,7 @@ const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
       `forced_transaction_preimages[${index.toString()}]`,
     );
     assertSourceBinding(forced, tx, fieldName);
-    if (forced.operator_validity === "TxIsValid") {
+    if (forced.verdict === "ForcedTxValid") {
       countLedgerOperations(tx, fieldName);
     }
   }
@@ -1255,7 +1255,7 @@ const validateProofTraceCoverageV1 = (payload: SDK.DaPayloadV1): void => {
       eventKeyFingerprint({
         ForcedTransactionEventKey: { tx_order_id: txOrderId },
       }),
-      forced.operator_validity === "TxIsValid" ? "accepted" : "rejected",
+      forced.verdict === "ForcedTxValid" ? "accepted" : "rejected",
     );
   }
 

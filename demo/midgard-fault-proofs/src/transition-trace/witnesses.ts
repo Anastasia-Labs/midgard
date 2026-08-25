@@ -563,10 +563,10 @@ export const buildInvalidForcedTransactionNoOpWitness = async ({
       `Trace step ${stepIndex.toString()} is not a forced-transaction step.`,
     );
   }
-  if (source.entry.value.operator_validity === "TxIsValid") {
+  if (source.entry.value.verdict === "ForcedTxValid") {
     throw transitionTraceError(
       "missingWitnessData",
-      "InvalidForcedTransactionNoOpTransition requires a forced source classified as invalid; TxIsValid sources use the accepted-transition or validation-verdict proof path.",
+      "InvalidForcedTransactionNoOpTransition requires a forced source classified as invalid; ForcedTxValid sources use the accepted-transition or validation-verdict proof path.",
     );
   }
   return {
@@ -688,7 +688,7 @@ export type OmittedDueL1EventEvidence =
       readonly txOrderId: SDK.OutputReference;
       readonly eventRefInputIndex: bigint;
       readonly eventAssetName: string;
-      readonly validityOverride: SDK.MidgardTxValidity;
+      readonly validityOverride: SDK.OperatorVerdictV1;
     };
 
 export const eventKeyFromOmittedEvidence = (
@@ -788,7 +788,7 @@ export type OutOfWindowSourceEventEvidence =
       readonly txOrderId: SDK.OutputReference;
       readonly eventRefInputIndex: bigint;
       readonly eventAssetName: string;
-      readonly validityOverride: SDK.MidgardTxValidity;
+      readonly validityOverride: SDK.OperatorVerdictV1;
     };
 
 const eventKeyFromOutOfWindowEvidence = (

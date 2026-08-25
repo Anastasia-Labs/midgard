@@ -1076,7 +1076,11 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
       field_preimage_lengths_cbor:
         forcedSource.fieldPreimageLengthsCbor.toString("hex"),
     },
-    operator_validity: "FailedScript",
+    verdict: {
+      ForcedTxInvalid: {
+        reason: { PlutusExecutionFailed: { execution_index: 0n } },
+      },
+    },
   };
   const step = {
     schema_version: 1n,
@@ -1267,7 +1271,7 @@ export const buildInvalidForcedValidationDisputeFixture = async ({
       field_preimage_lengths_cbor:
         forcedSource.fieldPreimageLengthsCbor.toString("hex"),
     },
-    operator_validity: "TxIsValid" as const,
+    verdict: "ForcedTxValid" as const,
   };
   const challengerTrace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({

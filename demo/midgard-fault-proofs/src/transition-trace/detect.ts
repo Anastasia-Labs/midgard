@@ -552,7 +552,7 @@ const detectInvalidNoOpTransitions = async (
     }
     if (
       source.phase === "ForcedTransaction" &&
-      source.entry.value.operator_validity !== "TxIsValid" &&
+      source.entry.value.verdict !== "ForcedTxValid" &&
       step.pre_utxos_root !== step.post_utxos_root
     ) {
       const witness = await buildInvalidForcedTransactionNoOpWitness({
