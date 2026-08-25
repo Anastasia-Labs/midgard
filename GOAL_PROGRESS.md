@@ -6081,3 +6081,75 @@ Expected red set on the checkpoint after this branch: watcher 15
 (E_MIN_ADA family), fault-proofs 1 (inspect-contracts), sdk 1
 (validation-resolver-applied-hashes), node 3 (forced-transactions-v1,
 mempool-ledger-cache ×2). All #642 items green.
+
+## 2026-08-25 — #635/#633 §7.2 closing arm: step-03 gains `BindOutOfDomain`
+
+Branch `wave/decoding-72-closing-arm` off checkpoint `0e248f41` executes
+the offchain plan's §7.2 decision (delegated 2026-08-25, plan register
+`df9309b9`): the decoding thread's stranded corner — a forced leaf whose
+verbatim accusation pair names a subject `BindOutpoint` can only abort on
+— becomes direction B's fourth Continue arm, closing to step-04 with the
+class-0 contradiction marker on the still-unbound state. Step-04's
+direction-B gate consumes the closed state unchanged (its `proven_state`
+fixture is exactly this shape); step-02's verbatim copy stays unguarded
+by design and now says so.
+
+**Strict-superset disclosure.** The decision text names one face
+(`outpoint_cursor ≥ |field|`, proven via the §8.8 door's authenticated
+item count). The landed arm closes three: that face, a negative ordinal,
+and a `source_kind ∉ {0, 1}` — the last because the rejection-reason arms
+carry `source_kind` as an unvalidated Int and step-02's ruled verbatim
+copy forwards it, so a leaf naming source_kind 7 is the same unprovable
+corner one coordinate over. All three are the identical fault statement
+(the accusation names a subject the machine could never have resolved);
+the two extra faces close with no field opening (the canonical redeemer
+carries None — the named subject does not exist to open). Soundness runs
+one way: the machine only ever emits in-domain pairs, so no honest
+operator's leaf can be closed against.
+
+Landed: the validator arm + 8 selectors (4 positive faces incl. the
+reference field; 4 refusals: in-domain ordinal, direction A, post-bind
+re-close, non-canonical opening on the negative face), the lib wire twin
+(`BindOutOfDomain` appended last — BindOutpoint/Scan/Verdict tags 0/1/2
+unmoved), design-doc §3.2/§7.6 amendments, and TWO engine exec-ledger
+rows — `closes_an_out_of_domain_ordinal` (2,382,579 mem / 1,016,343,454
+cpu) and, post-review, the arm's measured frontier face
+`closes_an_out_of_domain_reference_ordinal` (2,388,802 mem /
+1,018,687,200 cpu), both within the 13.2M basis — plus a third step_03
+neutralisation selector (`rejects_an_in_domain_ordinal_close` — were the
+count comparison neutralised, a prover could convict an operator whose
+correct in-domain rejection was never disproven). The five pre-existing
+step_03 rows moved by the arm's dispatch cost (+0.6–1.5K mem) and are
+re-pinned in the same commit per the ledger's own rule.
+
+Evidence, exact commands (all from `onchain/aiken/`, fork
+v1.1.23+6801f62 at /home/gumbo/.aiken/bin/aiken):
+`aiken check -m 'native_script_decoding/'` → 85/85 (step-03 module 32/32);
+`MIDGARD_AIKEN_BIN=<fork> node
+scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs` →
+pass, 23 rows. Blueprint (`aiken build`): only the step-03 spend/else
+pair moves, 24,862 → 25,767 B compiled — still over the 16,384 inline
+envelope, so the plan's Q3 reference-scripts answer stands; 452
+validator count unchanged. Resolver sweep
+`generate-resolver-proof-fit-sweep-v1.mjs --check` byte-identical under
+the rebuilt blueprint (the decoding validators are unregistered), so
+`resolver-proof-fit-sweep-inputs-digest-v1.mjs --stamp` re-stamped the
+inputs digest after that green check per the sanctioned flow (closure
+2090efff…, artifact 1b064ba9…, new plutus.json md5 a7cdd64b…).
+
+OWNER RULING REQUESTED on the superset: the two extra faces convict on
+the committed reason's *encoding alone* — the accused transaction is
+never opened for them — and the load-bearing premise ("the machine only
+ever emits in-domain pairs") is asserted from the machine's shape, not
+enforced by any in-repo range check on the emitter (the SDK types
+`source_kind`/`input_index` as unbounded integers). The one-face
+literal reading would instead leave those leaves unprovable, recreating
+the corner §7.2 closed. Landed as the superset; a-face-only revert is a
+three-line change if ruled otherwise.
+
+Discovered en route: the long-standing `aiken check -m
+native_script_decoding` filter matched ZERO tests (aiken treats a bare
+`-m` string as a test-name filter; module filters need a `/` or `.{..}`)
+— earlier "green" runs under that exact filter were vacuous. Working
+filters: `-m 'native_script_decoding/'` (family) or `-m
+decoding_step_03` (module).

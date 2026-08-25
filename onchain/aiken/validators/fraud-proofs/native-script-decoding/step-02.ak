@@ -172,7 +172,10 @@ validator main(
             // Direction B disputes an explicit rejection by one of this
             // family's three arms; the accused pair and class are copied
             // verbatim from the leaf (2026-08-25 ruling) — the chosen_*
-            // redeemer fields are ignored.
+            // redeemer fields are ignored. Deliberately unguarded: a pair
+            // naming a subject outside the transaction's domain is
+            // step-03's `BindOutOfDomain` close (#633 §7.2), so nothing
+            // may filter it here.
             expect ForcedTxInvalid { reason } = leaf.verdict
             let accusation = engine.scan_accusation_of_v1(reason)
             engine.pre_bind_scan_state_v1(

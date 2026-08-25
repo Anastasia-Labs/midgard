@@ -112,35 +112,46 @@
     },
     {
       "module": "fraud_proofs/native_script_decoding/step_03",
-      "neutralisationNote": "The two §7 substitution axes the working step exists to kill must both be live: a chunk of some other item (payload substitution, §7.5) and a control the thread never committed (cursor replay, §7.4) must each refuse.",
+      "neutralisationNote": "The two §7 substitution axes the working step exists to kill must both be live: a chunk of some other item (payload substitution, §7.5) and a control the thread never committed (cursor replay, §7.4) must each refuse. The §7.2 closing arm adds a third: an in-domain ordinal must refuse the out-of-domain close — were the count comparison neutralised, a prover could convict an operator whose in-domain rejection was correct without disproving it.",
       "neutralisation": [
         "decoding_step_03_rejects_a_substituted_chunk",
-        "decoding_step_03_rejects_a_control_the_thread_never_committed"
+        "decoding_step_03_rejects_a_control_the_thread_never_committed",
+        "decoding_step_03_rejects_an_in_domain_ordinal_close"
       ],
       "rows": {
         "decoding_step_03_binds_a_spend_outpoint_and_starts_the_machine": {
-          "mem": 4573119,
-          "cpu": 1819852618,
+          "mem": 4573719,
+          "cpu": 1819948618,
           "basisFit": "within"
         },
         "decoding_step_03_closes_a_descriptor_contradiction_for_direction_b": {
-          "mem": 3645653,
-          "cpu": 1443587241,
+          "mem": 3646253,
+          "cpu": 1443683241,
           "basisFit": "within"
         },
         "decoding_step_03_scans_a_signature_script_to_terminal": {
-          "mem": 4298594,
-          "cpu": 1786178211,
+          "mem": 4300096,
+          "cpu": 1786546593,
           "basisFit": "within"
         },
         "decoding_step_03_verdict_proves_a_malformed_payload": {
-          "mem": 3198215,
-          "cpu": 1362346829,
+          "mem": 3199717,
+          "cpu": 1362715211,
           "basisFit": "within"
         },
         "decoding_step_03_verdict_proves_the_terminal_for_direction_b": {
-          "mem": 3394854,
-          "cpu": 1417541062,
+          "mem": 3396356,
+          "cpu": 1417909444,
+          "basisFit": "within"
+        },
+        "decoding_step_03_closes_an_out_of_domain_ordinal": {
+          "mem": 2382579,
+          "cpu": 1016343454,
+          "basisFit": "within"
+        },
+        "decoding_step_03_closes_an_out_of_domain_reference_ordinal": {
+          "mem": 2388802,
+          "cpu": 1018687200,
           "basisFit": "within"
         }
       }

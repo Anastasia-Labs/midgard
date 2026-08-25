@@ -1,7 +1,9 @@
 //// Datum and redeemer wire shapes for the decoding-fault thread's third
 //// step: bind the accused outpoint's resolved descriptor, then fold the
 //// frozen scan primitives under a prover-chosen budget (self-loop), then
-//// consume the verdict (#635, #633).
+//// consume the verdict (#635, #633) — or, direction B only, close an
+//// accusation whose pair names a subject outside the committed
+//// transaction's domain (#633 §7.2).
 
 use aiken/merkle_patricia_forestry as mpf
 use midgard/bounded_item_v1
@@ -51,6 +53,22 @@ pub type Args {
     control_cbor: ByteArray,
     chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
     next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  }
+  /// One-shot, direction B only — the #633 §7.2 closing arm (decided
+  /// 2026-08-25): the accusation's pair names a subject outside the committed
+  /// transaction's domain, so the machine could never have resolved it and
+  /// the accusation is contradicted with no descriptor to bind. Three faces,
+  /// one obligation each: a `source_kind` naming no field and a negative
+  /// ordinal are out of domain on their own (no opening supplied); an
+  /// ordinal at or past the named field's item count is proven against the
+  /// §8.8 door's authenticated count. Closes straight to step-04 with the
+  /// class-0 contradiction marker.
+  BindOutOfDomain {
+    input_index: Int,
+    output_index: Int,
+    /// Required exactly when the named field exists and the ordinal is
+    /// non-negative — the one face that needs the committed field's count.
+    subject_field_opening: Option<FieldOpeningV1>,
   }
 }
 
