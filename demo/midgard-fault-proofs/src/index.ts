@@ -2,6 +2,7 @@ export * from "./aiken-blueprint-data.js";
 export * from "./evidence/index.js";
 export * from "./family-scaffold/index.js";
 export * from "./inspect-contracts.js";
+export * from "./native-script-decoding/index.js";
 // RF-043: legacy diagnostic submit-init/submit-step APIs are intentionally not
 // part of the production package surface.  The CLI and file entrypoints retain
 // the same retirement guard until an authenticated canonical submitter exists.

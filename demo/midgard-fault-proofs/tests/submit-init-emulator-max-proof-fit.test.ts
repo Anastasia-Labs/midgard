@@ -240,15 +240,9 @@ describe("fault-proof maximum proof fit", () => {
       header: fraudulentHeader,
     });
     const { headerHash } = setup;
-    const deploymentInfo = buildRemovalDeploymentInfo(
-      contracts,
-      catalogue,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      removalReferenceScriptPublications.published,
-    );
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
+      removalReferenceScripts: removalReferenceScriptPublications.published,
+    });
 
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
     const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;
@@ -500,15 +494,9 @@ describe("fault-proof maximum proof fit", () => {
       header: fraudulentHeader,
     });
     const { headerHash } = setup;
-    const deploymentInfo = buildRemovalDeploymentInfo(
-      contracts,
-      catalogue,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      removalReferenceScriptPublications.published,
-    );
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
+      removalReferenceScripts: removalReferenceScriptPublications.published,
+    });
 
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
     const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;
@@ -729,15 +717,9 @@ describe("fault-proof maximum proof fit", () => {
       header: fraudulentHeader,
     });
     const { headerHash } = setup;
-    const deploymentInfo = buildRemovalDeploymentInfo(
-      contracts,
-      catalogue,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      removalReferenceScriptPublications.published,
-    );
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
+      removalReferenceScripts: removalReferenceScriptPublications.published,
+    });
 
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
     const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;
@@ -917,15 +899,9 @@ describe("fault-proof maximum proof fit", () => {
       header: fraudulentHeader,
     });
     const { headerHash } = setup;
-    const deploymentInfo = buildRemovalDeploymentInfo(
-      contracts,
-      catalogue,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      removalReferenceScriptPublications.published,
-    );
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
+      removalReferenceScripts: removalReferenceScriptPublications.published,
+    });
 
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
     const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;

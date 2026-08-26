@@ -1796,15 +1796,9 @@ export const buildProvedDoubleSpendFixture = async ({
     ],
   });
 
-  const deploymentInfo = buildRemovalDeploymentInfo(
-    contracts,
-    catalogue,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    removalReferenceScriptPublications.published,
-  );
+  const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
+    removalReferenceScripts: removalReferenceScriptPublications.published,
+  });
   const fraudulentBlockOutRef =
     successors[0]?.continuedAnchorOutRef ?? setup.fraudulentBlockOutRef;
 

@@ -748,7 +748,12 @@ const RedeemerItemProofWitnessV1Schema = Data.Object({
   next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
 });
 
-const NativeScriptFrameV1Schema = Data.Object({
+/**
+ * Twin of `midgard/native_script_scan_v1.NativeScriptFrameV1` — exported so
+ * the native-script-decoding family's `Scan` redeemer carries the same wire
+ * identity rather than declaring a second one.
+ */
+export const NativeScriptFrameV1Schema = Data.Object({
   tail: Data.Bytes(),
   kind: Data.Integer(),
   child_count: Data.Integer(),
@@ -756,6 +761,9 @@ const NativeScriptFrameV1Schema = Data.Object({
   valid_count: Data.Integer(),
   required: Data.Integer(),
 });
+export type NativeScriptFrameV1 = Data.Static<typeof NativeScriptFrameV1Schema>;
+export const NativeScriptFrameV1 =
+  NativeScriptFrameV1Schema as unknown as NativeScriptFrameV1;
 
 const SignerSetProofV1Schema = Data.Enum([
   Data.Literal("NoSignerSetProof"),
