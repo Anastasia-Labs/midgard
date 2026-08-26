@@ -118,15 +118,9 @@ describe("fault-proof emulator integration", () => {
       expectedHeaderHashes: [traceFixture.headerHash],
     });
 
-    const deploymentInfo = buildRemovalDeploymentInfo(
-      contracts,
-      catalogue,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      removalReferenceScriptPublications.published,
-    );
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
+      removalReferenceScripts: removalReferenceScriptPublications.published,
+    });
     const initResult = await submitInit({
       lucid: proverLucid,
       blueprint: realBlueprint,

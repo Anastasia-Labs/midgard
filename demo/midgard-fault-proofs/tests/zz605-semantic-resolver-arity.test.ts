@@ -310,7 +310,7 @@ describe("zz609 the arity check is the only door", () => {
     // The emulator harness deploys the real blueprint into a real ledger, so
     // an under-applied script there greens a test instead of a chain (#610).
     {
-      path: "demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts",
+      path: "demo/midgard-fault-proofs/tests/support/emulator/blueprints.ts",
       allowed: 1,
       helper: "applyCompiledScript",
     },
@@ -367,8 +367,10 @@ describe("zz609 the arity check is the only door", () => {
       // pinned below (#610).
       "demo/midgard-fault-proofs/src/runtime.ts",
       // The emulator harness's `getCompiledScript` (bare, same assertion) plus
-      // `applyCompiledScript`, its arity-checking applying door (#610).
-      "demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts",
+      // `applyCompiledScript`, its arity-checking applying door (#610) — moved
+      // from `submit-init-emulator-shared.ts` when that file became a barrel
+      // over `tests/support/emulator/`.
+      "demo/midgard-fault-proofs/tests/support/emulator/blueprints.ts",
       // This gate itself: it reads `compiledCode` to CONSTRUCT the
       // under-applied prefixes it then asserts nothing is deployed as.
       "demo/midgard-fault-proofs/tests/zz605-semantic-resolver-arity.test.ts",
@@ -435,7 +437,7 @@ describe("zz609 the arity check is the only door", () => {
     const zeroArityDoors = [
       "demo/midgard-sdk/src/phas-membership.ts",
       "demo/midgard-fault-proofs/src/runtime.ts",
-      "demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts",
+      "demo/midgard-fault-proofs/tests/support/emulator/blueprints.ts",
     ];
     for (const door of zeroArityDoors) {
       expect(

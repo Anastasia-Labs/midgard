@@ -163,15 +163,9 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
       expectedHeaderHashes: [headerHash],
     });
 
-    const deploymentInfo = buildRemovalDeploymentInfo(
-      contracts,
-      catalogue,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      removalReferenceScriptPublications.published,
-    );
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
+      removalReferenceScripts: removalReferenceScriptPublications.published,
+    });
 
     // ## init
     const initResult = await submitInit({

@@ -27,19 +27,15 @@ import {
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
 import {
-  Emulator,
-  generateEmulatorAccount,
+  type Emulator,
   getAddressDetails,
-  Lucid,
   type LucidEvolution,
-  PROTOCOL_PARAMETERS_DEFAULT,
   type Script,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
 import {
-  resolveProverSigner,
   submitValidationDisputeAward,
   submitValidationDisputeEnterResolution,
   submitValidationDisputeOpen,
@@ -63,16 +59,18 @@ import {
   captureEmulatorSubmission,
   cloneBlueprint,
   type CompleteSignedTransactionMeasurement,
-  EMULATOR_PROTOCOL_PARAMETERS,
+  createRealL1TargetLucids,
+  createValidationDisputeParties,
   expectSingleUtxoWithUnit,
   network,
   publishPlainReferenceScriptUtxo,
-  publishValidationDisputeReferenceScript,
   readBlueprint,
   realBlueprintPath,
   registerPhasMembershipRewardAccount,
   runEmulatorLifecycleStage,
+  stageAuthenticatedValidationDisputePublication,
   submitSetupTx,
+  withRealL1MaxTxSize,
 } from "./submit-init-emulator-shared.js";
 
 const ITEM_SEMANTIC_SPEND_TITLE =
@@ -282,50 +280,16 @@ export const prepareRouteFreedomJourneyV1 = async ({
 }): Promise<RouteFreedomJourneyV1> => {
   const realBlueprint = readBlueprint(realBlueprintPath);
   const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-  const operator = generateEmulatorAccount({ lovelace: 40_000_000_000n });
-  const challenger = generateEmulatorAccount({ lovelace: 20_000_000_000n });
-  const feeUtxoCount = 12;
-  const feeUtxoLovelace = 100_000_000n;
-  const emulator = new Emulator(
-    [
-      {
-        ...operator,
-        assets: {
-          lovelace:
-            operator.assets.lovelace - BigInt(feeUtxoCount) * feeUtxoLovelace,
-        },
-      },
-      ...Array.from({ length: feeUtxoCount }, () => ({
-        ...operator,
-        assets: { lovelace: feeUtxoLovelace },
-      })),
-      {
-        ...challenger,
-        assets: {
-          lovelace:
-            challenger.assets.lovelace - BigInt(feeUtxoCount) * feeUtxoLovelace,
-        },
-      },
-      ...Array.from({ length: feeUtxoCount }, () => ({
-        ...challenger,
-        assets: { lovelace: feeUtxoLovelace },
-      })),
-    ],
-    EMULATOR_PROTOCOL_PARAMETERS,
-  );
-  const operatorLucid = await Lucid(emulator, "Custom");
-  const challengerLucid = await Lucid(emulator, "Custom");
-  operatorLucid.selectWallet.fromSeed(operator.seedPhrase);
-  challengerLucid.selectWallet.fromSeed(challenger.seedPhrase);
-  const operatorSigner = resolveProverSigner({
-    network,
-    walletSeedPhrase: operator.seedPhrase,
-  });
-  const challengerSigner = resolveProverSigner({
-    network,
-    walletSeedPhrase: challenger.seedPhrase,
-  });
-  const validityRange = () => validationDisputeValidityRange(emulator.now());
+  const {
+    emulator,
+    operator,
+    challenger,
+    operatorLucid,
+    challengerLucid,
+    operatorSigner,
+    challengerSigner,
+    validityRange,
+  } = await createValidationDisputeParties();
   // #622: every staged lifecycle stage is measured through the same
   // `captureEmulatorSubmission` seam the semantic leg already uses, so the
   // measurement campaign reads per-stage complete signed bytes and execution
@@ -405,50 +369,22 @@ export const prepareRouteFreedomJourneyV1 = async ({
       header: fixture.header,
     }),
   );
-  const publicationSlotConfig = operatorLucid.config().slotConfig;
-  if (publicationSlotConfig === undefined) {
-    throw new Error(
-      "Expected reference-script publisher Lucid to expose its Custom slot config",
-    );
-  }
-  const setupProtocolParameters = emulator.protocolParameters;
-  emulator.protocolParameters = {
-    ...setupProtocolParameters,
-    maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
-  };
-  const referenceScriptPublisherLucid = await Lucid(emulator, "Custom", {
-    slotConfig: publicationSlotConfig,
-  });
-  referenceScriptPublisherLucid.selectWallet.fromSeed(operator.seedPhrase);
-  const validationDisputePublication = await runCapturedLifecycleStage(
-    "reference-script.publish-authenticated",
-    async () => {
-      try {
-        return await publishValidationDisputeReferenceScript({
-          lucid: referenceScriptPublisherLucid,
-          contracts,
-          now: emulator.now(),
-        });
-      } finally {
-        emulator.protocolParameters = setupProtocolParameters;
-      }
-    },
-  );
-  const publishPlain = async (label: string, script: Script) => {
-    emulator.protocolParameters = {
-      ...setupProtocolParameters,
-      maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
-    };
-    try {
-      return await publishPlainReferenceScriptUtxo({
+  const { referenceScriptPublisherLucid, validationDisputePublication } =
+    await stageAuthenticatedValidationDisputePublication({
+      emulator,
+      operatorLucid,
+      operatorSeedPhrase: operator.seedPhrase,
+      contracts,
+      runStage: runCapturedLifecycleStage,
+    });
+  const publishPlain = (label: string, script: Script) =>
+    withRealL1MaxTxSize(emulator, () =>
+      publishPlainReferenceScriptUtxo({
         lucid: referenceScriptPublisherLucid,
         script,
         label,
-      });
-    } finally {
-      emulator.protocolParameters = setupProtocolParameters;
-    }
-  };
+      }),
+    );
   const itemSemanticPublication = await runCapturedLifecycleStage(
     "reference-script.publish-item-semantic",
     () =>
@@ -473,23 +409,21 @@ export const prepareRouteFreedomJourneyV1 = async ({
         canonicalDecodePrepareContract.spendingScript,
       ),
   );
-  const deploymentInfo = buildRemovalDeploymentInfo(
-    contracts,
-    catalogue,
+  const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
     validationDisputePublication,
-    {
+    validationItemSemanticReference: {
       scriptHash: itemSemanticContract.spendingScriptHash,
       utxo: itemSemanticPublication.utxo,
     },
-    {
+    validationItemObserveReference: {
       scriptHash: itemObserveContract.spendingScriptHash,
       utxo: itemObservePublication.utxo,
     },
-    {
+    validationCanonicalDecodePrepareReference: {
       scriptHash: canonicalDecodePrepareContract.spendingScriptHash,
       utxo: canonicalDecodePreparePublication.utxo,
     },
-  );
+  });
   const initResult = await runCapturedLifecycleStage("init", () =>
     submitInit({
       lucid: challengerLucid,
@@ -502,25 +436,13 @@ export const prepareRouteFreedomJourneyV1 = async ({
       awaitConfirmation: true,
     }),
   );
-  const functionalProtocolParameters = emulator.protocolParameters;
-  const functionalSlotConfig = challengerLucid.config().slotConfig;
-  if (functionalSlotConfig === undefined) {
-    throw new Error(
-      "Expected functional emulator Lucid to expose its Custom slot config",
-    );
-  }
-  emulator.protocolParameters = {
-    ...functionalProtocolParameters,
-    maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
-  };
-  const targetOperatorLucid = await Lucid(emulator, "Custom", {
-    slotConfig: functionalSlotConfig,
-  });
-  const targetChallengerLucid = await Lucid(emulator, "Custom", {
-    slotConfig: functionalSlotConfig,
-  });
-  targetOperatorLucid.selectWallet.fromSeed(operator.seedPhrase);
-  targetChallengerLucid.selectWallet.fromSeed(challenger.seedPhrase);
+  const { targetOperatorLucid, targetChallengerLucid } =
+    await createRealL1TargetLucids({
+      emulator,
+      sourceLucid: challengerLucid,
+      operatorSeedPhrase: operator.seedPhrase,
+      challengerSeedPhrase: challenger.seedPhrase,
+    });
   const firstStepUtxo = await expectSingleUtxoWithUnit(
     targetChallengerLucid,
     initResult.firstStepAddress,

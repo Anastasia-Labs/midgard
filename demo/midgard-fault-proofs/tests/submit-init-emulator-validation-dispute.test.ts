@@ -569,23 +569,21 @@ describe("fault-proof emulator integration", () => {
           }
         },
       );
-      const deploymentInfo = buildRemovalDeploymentInfo(
-        contracts,
-        catalogue,
+      const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
         validationDisputePublication,
-        {
+        validationItemSemanticReference: {
           scriptHash: itemSemanticContract.spendingScriptHash,
           utxo: itemSemanticPublication.utxo,
         },
-        {
+        validationItemObserveReference: {
           scriptHash: itemObserveContract.spendingScriptHash,
           utxo: itemObservePublication.utxo,
         },
-        {
+        validationCanonicalDecodePrepareReference: {
           scriptHash: canonicalDecodePrepareContract.spendingScriptHash,
           utxo: canonicalDecodePreparePublication.utxo,
         },
-      );
+      });
       const initResult = await runEmulatorLifecycleStage("init", () =>
         submitInit({
           lucid: challengerLucid,

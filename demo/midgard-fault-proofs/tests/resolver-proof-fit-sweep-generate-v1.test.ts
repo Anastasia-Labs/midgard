@@ -498,29 +498,25 @@ const runResolverScenario = async ({
               }
             },
           );
-        return buildRemovalDeploymentInfo(
-          contracts,
-          catalogue,
+        return buildRemovalDeploymentInfo(contracts, catalogue, {
           validationDisputePublication,
-          {
+          validationItemSemanticReference: {
             scriptHash: itemSemanticContract.spendingScriptHash,
             utxo: itemSemanticPublication.utxo,
           },
-          {
+          validationItemObserveReference: {
             scriptHash: itemObserveContract.spendingScriptHash,
             utxo: itemObservePublication.utxo,
           },
-          {
+          validationCanonicalDecodePrepareReference: {
             scriptHash: canonicalDecodePrepareContract.spendingScriptHash,
             utxo: canonicalDecodePreparePublication.utxo,
           },
-        );
+        });
       })()
-    : buildRemovalDeploymentInfo(
-        contracts,
-        catalogue,
+    : buildRemovalDeploymentInfo(contracts, catalogue, {
         validationDisputePublication,
-      );
+      });
 
   const initResult = await runEmulatorLifecycleStage("init", () =>
     submitInit({
