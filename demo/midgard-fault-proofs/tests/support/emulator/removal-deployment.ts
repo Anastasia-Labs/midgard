@@ -10,6 +10,7 @@ import {
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   validationValueAndMintSemanticReferenceScriptDeploymentEntryV1,
 } from "../../../src/index.js";
+import { type NativeScriptDecodingContractsV1 } from "../../../src/native-script-decoding/index.js";
 import { deploymentManifest } from "./header-fixtures.js";
 import {
   publishValidationDisputeReferenceScript,
@@ -22,8 +23,20 @@ export type RemovalDeploymentReference = {
   readonly utxo: UTxO;
 };
 
+/**
+ * Manifest entry pinning the `native-script-decoding` step-01 script hash for
+ * removal (#635). The name is caller-chosen because the family predates its
+ * catalogue registration: `submitRemoveFraudulentBlock` checks the explicit
+ * category record's step-01 hash against whatever entry the record names, and
+ * this is the name the emulator manifests use.
+ */
+export const NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+  "fraudProofNativeScriptDecoding";
+
 export const buildRemovalDeploymentInfo = (
-  contracts: MidgardValidators,
+  contracts: MidgardValidators & {
+    readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
+  },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
     validationDisputePublication,
@@ -179,6 +192,14 @@ export const buildRemovalDeploymentInfo = (
       fraudProofInvalidSignature: {
         scriptHash: contracts.fraudProofs.invalidSignature.spendingScriptHash,
       },
+      ...(contracts.nativeScriptDecoding === undefined
+        ? {}
+        : {
+            [NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+              scriptHash:
+                contracts.nativeScriptDecoding.steps[0].spendingScriptHash,
+            },
+          }),
       fraudProofNonExistentInputNoIndex: {
         scriptHash:
           contracts.fraudProofs.nonExistentInputNoIndex.spendingScriptHash,

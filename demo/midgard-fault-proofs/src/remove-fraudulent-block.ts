@@ -146,7 +146,7 @@ type RemoveFraudulentBlockContracts = {
   readonly fraudProofPolicyId: string;
   readonly fraudProofAddress: string;
   readonly fraudCategoryId: string;
-  readonly fraudCategory: RemoveFraudulentBlockFraudCategory;
+  readonly fraudCategory: RemoveFraudulentBlockCategoryLabel;
 };
 
 type RemoveFraudulentBlockLayout = {
@@ -295,6 +295,53 @@ export type RemoveFraudulentBlockFraudCategory = Extract<
   | "invalidSignature"
 >;
 
+/**
+ * A fraud category that predates its catalogue registration (the Q39/Q40
+ * fabricated families, #635 native-script-decoding). These families have no
+ * SDK contract-chain builder and no category id in any deployment manifest
+ * yet, so removal cannot resolve them the canonical way; per the families'
+ * submitter convention the caller supplies the already-resolved facts
+ * instead, and every fail-closed check the canonical path runs still runs:
+ * the shared fraud-proof pair is checked against the
+ * `fraudProofMint`/`fraudProofSpend` deployment entries, the step-01 hash
+ * against the named deployment entry, and the category id against collisions
+ * with every canonical registered id. The on-chain removal handler is
+ * category-agnostic — it authenticates the fraud-proof reference input by
+ * policy id and reads the header hash off the asset-name suffix — so no
+ * category-specific script participates in the removal transaction itself.
+ */
+export type RemoveFraudulentBlockExplicitCategory = {
+  /** Category label used in failure messages and the result payload. */
+  readonly name: string;
+  /**
+   * The 4-byte hex category id the family's computation thread and
+   * fraud-proof token were minted under.
+   */
+  readonly categoryId: string;
+  /**
+   * Deployment-manifest entry whose `scriptHash` pins the family's step-01
+   * spending script.
+   */
+  readonly firstStepDeploymentEntry: string;
+  /** The step-01 spending-script hash of the already-resolved family chain. */
+  readonly firstStepScriptHash: string;
+  /** The shared fraud-proof pair the family chain was parameterized with. */
+  readonly fraudProof: {
+    readonly policyId: string;
+    readonly spendingScriptHash: string;
+    readonly spendingScriptAddress: string;
+  };
+};
+
+/**
+ * A canonical removable category name, or the label of an explicit
+ * pre-registration category. The `string & {}` half keeps the canonical
+ * literals in editor completion without narrowing away explicit labels.
+ */
+export type RemoveFraudulentBlockCategoryLabel =
+  | RemoveFraudulentBlockFraudCategory
+  | (string & {});
+
 export type StateQueueMutationLease = {
   readonly token: string;
   readonly source: string;
@@ -312,7 +359,7 @@ export type SubmitRemoveFraudulentBlockResult = {
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
-  readonly fraudCategory: RemoveFraudulentBlockFraudCategory;
+  readonly fraudCategory: RemoveFraudulentBlockCategoryLabel;
   readonly fraudCategoryId: string;
   readonly fraudulentHeaderHash: string;
   readonly stateQueueBlockOutRef: string;
@@ -545,6 +592,76 @@ const requireDeploymentScript = (
   return script;
 };
 
+/**
+ * Explicit-record variant of the category dispatch below, for categories that
+ * predate registration (see {@link RemoveFraudulentBlockExplicitCategory}).
+ * Runs the same three fail-closed manifest checks the canonical path runs —
+ * the shared fraud-proof pair and the family's step-01 hash — and, since the
+ * category id is caller-supplied rather than read out of the manifest,
+ * additionally refuses an id that collides with any canonical registered
+ * category, so an explicit record can never shadow one.
+ */
+const buildExplicitCategoryRemovalContracts = ({
+  deploymentInfo,
+  network,
+  explicitCategory,
+}: {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly network: Network;
+  readonly explicitCategory: RemoveFraudulentBlockExplicitCategory;
+}): RemoveFraudulentBlockContracts => {
+  const hubOraclePolicyId = requireDeploymentScriptHash(
+    deploymentInfo,
+    "hubOracleMint",
+  );
+  requireMatchingScriptHash({
+    label: "fraudProofMint policy",
+    deployed: requireDeploymentScriptHash(deploymentInfo, "fraudProofMint"),
+    derived: explicitCategory.fraudProof.policyId,
+  });
+  requireMatchingScriptHash({
+    label: "fraudProofSpend script",
+    deployed: requireDeploymentScriptHash(deploymentInfo, "fraudProofSpend"),
+    derived: explicitCategory.fraudProof.spendingScriptHash,
+  });
+  requireMatchingScriptHash({
+    label: `${explicitCategory.firstStepDeploymentEntry} step-01 script`,
+    deployed: requireDeploymentScriptHash(
+      deploymentInfo,
+      explicitCategory.firstStepDeploymentEntry,
+    ),
+    derived: explicitCategory.firstStepScriptHash,
+  });
+  const categoryId = parseHex(
+    explicitCategory.categoryId,
+    `${explicitCategory.name} category id`,
+    FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+  );
+  const canonicalCategories: Readonly<
+    Partial<Record<string, { readonly categoryId: string }>>
+  > =
+    deploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue?.categories ??
+    {};
+  for (const [canonicalName, canonicalCategory] of Object.entries(
+    canonicalCategories,
+  )) {
+    if (canonicalCategory?.categoryId === categoryId) {
+      throw new Error(
+        `Explicit category ${explicitCategory.name} id ${categoryId} collides with registered category ${canonicalName}.`,
+      );
+    }
+  }
+  return assembleRemovalContracts({
+    deploymentInfo,
+    network,
+    hubOraclePolicyId,
+    fraudProofPolicyId: explicitCategory.fraudProof.policyId,
+    fraudProofAddress: explicitCategory.fraudProof.spendingScriptAddress,
+    fraudCategoryId: categoryId,
+    fraudCategory: explicitCategory.name,
+  });
+};
+
 const buildRemovalContracts = async ({
   blueprint,
   deploymentInfo,
@@ -554,8 +671,17 @@ const buildRemovalContracts = async ({
   readonly blueprint: unknown;
   readonly deploymentInfo: ContractDeploymentInfo;
   readonly network: Network;
-  readonly fraudCategory: RemoveFraudulentBlockFraudCategory;
+  readonly fraudCategory:
+    | RemoveFraudulentBlockFraudCategory
+    | RemoveFraudulentBlockExplicitCategory;
 }): Promise<RemoveFraudulentBlockContracts> => {
+  if (typeof fraudCategory !== "string") {
+    return buildExplicitCategoryRemovalContracts({
+      deploymentInfo,
+      network,
+      explicitCategory: fraudCategory,
+    });
+  }
   const hubOraclePolicyId = requireDeploymentScriptHash(
     deploymentInfo,
     "hubOracleMint",
@@ -772,6 +898,39 @@ const buildRemovalContracts = async ({
     );
   }
 
+  return assembleRemovalContracts({
+    deploymentInfo,
+    network,
+    hubOraclePolicyId,
+    fraudProofPolicyId: categoryContracts.fraudProof.policyId,
+    fraudProofAddress: categoryContracts.fraudProof.spendingScriptAddress,
+    fraudCategoryId: categoryId,
+    fraudCategory,
+  });
+};
+
+/**
+ * The category-independent half of removal-contract resolution: every
+ * script, address and policy id here comes straight out of the deployment
+ * manifest, with the already-verified category facts passed through.
+ */
+const assembleRemovalContracts = ({
+  deploymentInfo,
+  network,
+  hubOraclePolicyId,
+  fraudProofPolicyId,
+  fraudProofAddress,
+  fraudCategoryId,
+  fraudCategory,
+}: {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofAddress: string;
+  readonly fraudCategoryId: string;
+  readonly fraudCategory: RemoveFraudulentBlockCategoryLabel;
+}): RemoveFraudulentBlockContracts => {
   const stateQueueSpendingScript = requireDeploymentScript(
     deploymentInfo,
     "stateQueueSpend",
@@ -857,9 +1016,9 @@ const buildRemovalContracts = async ({
         "registeredOperatorsSpend",
       ) as SpendingValidator,
     ),
-    fraudProofPolicyId: categoryContracts.fraudProof.policyId,
-    fraudProofAddress: categoryContracts.fraudProof.spendingScriptAddress,
-    fraudCategoryId: categoryId,
+    fraudProofPolicyId,
+    fraudProofAddress,
+    fraudCategoryId,
     fraudCategory,
   };
 };
@@ -2233,7 +2392,14 @@ export const submitRemoveFraudulentBlock = async ({
   readonly deploymentInfo: unknown;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
-  readonly fraudCategory?: RemoveFraudulentBlockFraudCategory;
+  /**
+   * A canonical removable category, or — for a family that predates its
+   * catalogue registration — the explicit already-resolved record
+   * ({@link RemoveFraudulentBlockExplicitCategory}).
+   */
+  readonly fraudCategory?:
+    | RemoveFraudulentBlockFraudCategory
+    | RemoveFraudulentBlockExplicitCategory;
   readonly fraudulentHeaderHash: string;
   readonly awaitConfirmation?: boolean;
   readonly requireReferenceScripts?: boolean;
