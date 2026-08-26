@@ -366,6 +366,12 @@ describe("zz609 the arity check is the only door", () => {
       // `getCompiledScript`, bare behind a zero-declared-parameters assertion,
       // pinned below (#610).
       "demo/midgard-fault-proofs/src/runtime.ts",
+      // Measurement-only reader: pins the unapplied compiled SIZES of the
+      // native-script-decoding steps against the offchain plan's SS2.3
+      // numbers (`compiledCode.length / 2`). It deploys nothing — the same
+      // class as this gate's own self-entry below, which reads the bytes to
+      // construct assertions rather than to load a script.
+      "demo/midgard-fault-proofs/tests/native-script-decoding-envelope-v1.test.ts",
       // The emulator harness's `getCompiledScript` (bare, same assertion) plus
       // `applyCompiledScript`, its arity-checking applying door (#610) — moved
       // from `submit-init-emulator-shared.ts` when that file became a barrel
