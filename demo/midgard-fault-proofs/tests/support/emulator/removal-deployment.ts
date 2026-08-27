@@ -10,6 +10,7 @@ import {
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   validationValueAndMintSemanticReferenceScriptDeploymentEntryV1,
 } from "../../../src/index.js";
+import { type MinFeeContractsV1 } from "../../../src/min-fee-contracts-v1.js";
 import { type NativeScriptDecodingContractsV1 } from "../../../src/native-script-decoding/index.js";
 import { deploymentManifest } from "./header-fixtures.js";
 import {
@@ -32,10 +33,12 @@ export type RemovalDeploymentReference = {
  */
 export const NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofNativeScriptDecoding";
+export const MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY_V1 = "fraudProofMinFee";
 
 export const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators & {
     readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
+    readonly minFee?: MinFeeContractsV1;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -198,6 +201,13 @@ export const buildRemovalDeploymentInfo = (
             [NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
               scriptHash:
                 contracts.nativeScriptDecoding.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.minFee === undefined
+        ? {}
+        : {
+            [MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+              scriptHash: contracts.minFee.steps[0].spendingScriptHash,
             },
           }),
       fraudProofNonExistentInputNoIndex: {

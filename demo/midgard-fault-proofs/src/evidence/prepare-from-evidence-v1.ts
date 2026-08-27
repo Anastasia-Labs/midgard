@@ -31,6 +31,10 @@ import {
   prepareInvalidRangeFromTransactions,
 } from "../prepare-invalid-range.js";
 import {
+  type PreparedMinFeeOutput,
+  prepareMinFeeFromTransactions,
+} from "../prepare-min-fee.js";
+import {
   type PreparedNonExistentInputOutput,
   prepareNonExistentInputFromTransactions,
 } from "../prepare-non-existent-input.js";
@@ -125,6 +129,28 @@ export const prepareInvalidRangeFromCanonicalEvidenceV1 = async ({
   });
 };
 
+export const prepareMinFeeFromCanonicalEvidenceV1 = async ({
+  evidence,
+  txId,
+  categoryId,
+  outputDir,
+}: CanonicalEvidenceBuilderInputV1 & {
+  readonly txId?: string;
+  readonly categoryId?: string;
+}): Promise<PreparedMinFeeOutput> => {
+  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+  return await prepareMinFeeFromTransactions({
+    headerHash: admitted.headerHash,
+    transactions: admitted.transactions,
+    expectedTransactionsRoot: admitted.expectedTransactionsRoot,
+    minFeeA: evidence.header.minFeeA,
+    minFeeB: evidence.header.minFeeB,
+    ...(txId === undefined ? {} : { txId }),
+    ...(categoryId === undefined ? {} : { categoryId }),
+    ...(outputDir === undefined ? {} : { outputDir }),
+  });
+};
+
 /**
  * Builds a non-existent-input proof solely from admitted block evidence. A
  * non-genesis predecessor ledger must be supplied as its own verified
@@ -192,6 +218,12 @@ export type CanonicalPrepareCommandV1 =
       readonly outputDir?: string;
     }
   | {
+      readonly command: "prepare-min-fee";
+      readonly txId?: string;
+      readonly categoryId?: string;
+      readonly outputDir?: string;
+    }
+  | {
       readonly command: "prepare-non-existent-input";
       readonly badTxId?: string;
       readonly badInputIndex?: string | number;
@@ -233,6 +265,17 @@ export const executeCanonicalPrepareCommandV1 = async ({
       return await prepareInvalidRangeFromCanonicalEvidenceV1({
         evidence,
         ...(request.txId === undefined ? {} : { txId: request.txId }),
+        ...(request.outputDir === undefined
+          ? {}
+          : { outputDir: request.outputDir }),
+      });
+    case "prepare-min-fee":
+      return await prepareMinFeeFromCanonicalEvidenceV1({
+        evidence,
+        ...(request.txId === undefined ? {} : { txId: request.txId }),
+        ...(request.categoryId === undefined
+          ? {}
+          : { categoryId: request.categoryId }),
         ...(request.outputDir === undefined
           ? {}
           : { outputDir: request.outputDir }),

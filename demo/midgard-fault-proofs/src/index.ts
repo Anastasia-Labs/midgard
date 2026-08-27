@@ -2,6 +2,8 @@ export * from "./aiken-blueprint-data.js";
 export * from "./evidence/index.js";
 export * from "./family-scaffold/index.js";
 export * from "./inspect-contracts.js";
+export * from "./min-fee-contracts-v1.js";
+export * from "./min-fee-submit-common-v1.js";
 export * from "./native-script-decoding/index.js";
 // RF-043: legacy diagnostic submit-init/submit-step APIs are intentionally not
 // part of the production package surface.  The CLI and file entrypoints retain
@@ -11,6 +13,7 @@ export * from "./prepare-double-spend.js";
 export * from "./prepare-input-no-idx.js";
 export * from "./prepare-invalid-range.js";
 export * from "./prepare-invalid-signature.js";
+export * from "./prepare-min-fee.js";
 export * from "./prepare-no-reference-input.js";
 export * from "./prepare-non-existent-input.js";
 export * from "./prepare-reference-input-no-idx.js";
@@ -26,6 +29,10 @@ export * from "./submit-input-no-idx-step-03.js";
 export * from "./submit-input-no-idx-step-04.js";
 export * from "./submit-invalid-signature-step-01.js";
 export * from "./submit-invalid-signature-step-02.js";
+export * from "./submit-min-fee-cancel.js";
+export * from "./submit-min-fee-init.js";
+export * from "./submit-min-fee-step-01.js";
+export * from "./submit-min-fee-step-02.js";
 export * from "./submit-no-reference-input-step-01.js";
 export * from "./submit-no-reference-input-step-02.js";
 export * from "./submit-no-reference-input-step-03.js";

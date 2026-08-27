@@ -83,7 +83,8 @@ inclusion/output artifacts → `submit-init --fraud-category
 nonExistentInputNoIndex` → `submit-input-no-idx-step-01` → `-02` or resumable
 `submit-input-no-idx-fold` → `-03` → `-04`, which concludes the thread and
 mints the fault-proof token. The emulator lifecycle reaches faulty-block
-removal. This does not claim the still-open Q14–Q20 family closures.
+removal. Family closure status is tracked individually in
+[`catalogue-status.md`](catalogue-status.md).
 
 ### transition-trace (library-only)
 
@@ -181,14 +182,15 @@ datum in the same txs; non-tail removals require the node's admin-gated
 
 ## 7. Manual-effort summary
 
-| Family             | Commands to conclude a proof                                       | Then removal                    |
-| ------------------ | ------------------------------------------------------------------ | ------------------------------- |
-| double-spend       | 6 (prepare + init + 4 steps)                                       | +1 per descendant link +1 final |
-| invalid-range      | 4                                                                  | same                            |
-| non-existent-input | 6                                                                  | same                            |
-| zero-input         | 4 (prepare + init + 2 steps)                                       | same                            |
-| transition-trace   | not possible via CLI (library calls only)                          | same                            |
-| Q14–Q20 families   | atomic closure remains task-specific; Q13 is no longer in this set | —                               |
+| Family             | Commands to conclude a proof                                                    | Then removal                    |
+| ------------------ | ------------------------------------------------------------------------------- | ------------------------------- |
+| double-spend       | 6 (prepare + init + 4 steps)                                                    | +1 per descendant link +1 final |
+| invalid-range      | 4                                                                               | same                            |
+| non-existent-input | 6                                                                               | same                            |
+| zero-input         | 4 (prepare + init + 2 steps)                                                    | same                            |
+| min-fee            | library-only pre-registration prepare + init + 2 steps; no registered CLI verbs | explicit-category removal       |
+| transition-trace   | not possible via CLI (library calls only)                                       | same                            |
+| Remaining families | atomic closure remains task-specific                                            | —                               |
 
 Each command needs env/config (Blockfrost or Kupmios keys, deployment-info JSON, out-ref
 plumbing between steps via JSON files). There is no single-command orchestration.

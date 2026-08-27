@@ -284,6 +284,22 @@ pub fn native_tx_canonical_size_v1(
   )
 }
 
+/// The network minimum fee for a native-V1 transaction whose canonical full
+/// serialization is `canonical_tx_size` bytes, under the header's fee
+/// schedule: `min_fee_a * canonical_tx_size + min_fee_b`.
+///
+/// The one source of the formula. The validation machine's static-rules phase
+/// (`reject_min_fee`) and the standalone `min-fee` fault-proof family both
+/// adjudicate the same ledger rule, so both call this function and cannot
+/// drift apart.
+pub fn min_fee_lovelace_v1(
+  min_fee_a: Int,
+  min_fee_b: Int,
+  canonical_tx_size: Int,
+) -> Int {
+  min_fee_a * canonical_tx_size + min_fee_b
+}
+
 pub fn encode_native_tx_compact_for_version(
   version: Int,
   tx: NativeTxCompact,
