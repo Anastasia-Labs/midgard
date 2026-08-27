@@ -337,6 +337,9 @@ export const MIN_FEE_TEST_CATEGORY_ID_V1 = "00000013";
 /** Reserved pre-registration emulator id; never a production assignment. */
 export const DOUBLE_WITHDRAW_TEST_CATEGORY_ID_V1 = "00000015";
 
+/** Reserved pre-registration emulator id; never a production assignment. */
+export const L2_TX_MISTAG_TEST_CATEGORY_ID_V1 = "00000017";
+
 export const makeFaultProofEmulatorHarnessV1 = async ({
   contractOptions = {},
   accounts,
@@ -485,6 +488,14 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
             categoryId: CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1,
             scriptHash:
               contracts.crossBlockDuplicateEvent.steps[0].spendingScriptHash,
+          },
+        }),
+    ...(contracts.l2TxMistag === undefined
+      ? {}
+      : {
+          l2TxMistag: {
+            categoryId: L2_TX_MISTAG_TEST_CATEGORY_ID_V1,
+            scriptHash: contracts.l2TxMistag.steps[0].spendingScriptHash,
           },
         }),
   });

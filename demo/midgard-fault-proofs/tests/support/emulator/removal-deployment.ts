@@ -14,6 +14,7 @@ import {
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   validationValueAndMintSemanticReferenceScriptDeploymentEntryV1,
 } from "../../../src/index.js";
+import { type L2TxMistagContractsV1 } from "../../../src/l2-tx-mistag/index.js";
 import { type MinFeeContractsV1 } from "../../../src/min-fee-contracts-v1.js";
 import { type MissingNativeScriptTxContractsV1 } from "../../../src/missing-native-script-tx/index.js";
 import { type MissingSignatureContractsV1 } from "../../../src/missing-signature/index.js";
@@ -59,6 +60,7 @@ export const DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofDoubleWithdraw";
 export const CROSS_BLOCK_DUPLICATE_EVENT_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofCrossBlockDuplicateEvent";
+export const L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1 = "fraudProofL2TxMistag";
 
 export const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators & {
@@ -71,6 +73,7 @@ export const buildRemovalDeploymentInfo = (
     readonly minFee?: MinFeeContractsV1;
     readonly doubleWithdraw?: DoubleWithdrawContractsV1;
     readonly crossBlockDuplicateEvent?: CrossBlockDuplicateEventContractsV1;
+    readonly l2TxMistag?: L2TxMistagContractsV1;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -295,6 +298,13 @@ export const buildRemovalDeploymentInfo = (
             [CROSS_BLOCK_DUPLICATE_EVENT_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
               scriptHash:
                 contracts.crossBlockDuplicateEvent.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.l2TxMistag === undefined
+        ? {}
+        : {
+            [L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+              scriptHash: contracts.l2TxMistag.steps[0].spendingScriptHash,
             },
           }),
       fraudProofNonExistentInputNoIndex: {

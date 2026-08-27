@@ -5,6 +5,7 @@ export * from "./cross-block-duplicate-event/index.js";
 export * from "./evidence/index.js";
 export * from "./family-scaffold/index.js";
 export * from "./inspect-contracts.js";
+export * from "./l2-tx-mistag/index.js";
 export * from "./min-fee-contracts-v1.js";
 export * from "./min-fee-submit-common-v1.js";
 export * from "./missing-native-script-tx/index.js";

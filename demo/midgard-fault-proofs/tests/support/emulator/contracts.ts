@@ -50,6 +50,10 @@ import {
   type DoubleWithdrawContractsV1,
 } from "../../../src/double-withdraw/contracts-v1.js";
 import {
+  buildL2TxMistagChainV1,
+  type L2TxMistagContractsV1,
+} from "../../../src/l2-tx-mistag/contracts-v1.js";
+import {
   MIN_FEE_BLUEPRINT_TITLES_V1,
   type MinFeeContractsV1,
 } from "../../../src/min-fee-contracts-v1.js";
@@ -558,6 +562,7 @@ export const buildMinimalFaultProofContracts = async (
     realMinFee = false,
     realDoubleWithdraw = false,
     realCrossBlockDuplicateEvent = false,
+    realL2TxMistag = false,
     alwaysFraudProofCatalogue = false,
   }: {
     readonly realNonExistentInput?: boolean;
@@ -581,6 +586,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realMinFee?: boolean;
     readonly realDoubleWithdraw?: boolean;
     readonly realCrossBlockDuplicateEvent?: boolean;
+    readonly realL2TxMistag?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
 ): Promise<
@@ -596,6 +602,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly minFee?: MinFeeContractsV1;
     readonly doubleWithdraw?: DoubleWithdrawContractsV1;
     readonly crossBlockDuplicateEvent?: CrossBlockDuplicateEventContractsV1;
+    readonly l2TxMistag?: L2TxMistagContractsV1;
   }
 > => {
   // This integration test proves the real active-operators slashing and
@@ -1107,6 +1114,34 @@ export const buildMinimalFaultProofContracts = async (
         };
       })()
     : undefined;
+  const l2TxMistag: L2TxMistagContractsV1 | undefined = realL2TxMistag
+    ? await (async () => {
+        const fraudProofTokenAddressData = await Effect.runPromise(
+          addressDataFromBech32(
+            doubleSpendContracts.fraudProof.spendingScriptAddress,
+          ).pipe(
+            Effect.map((addressData) =>
+              Data.from(Data.to(addressData, AddressData)),
+            ),
+          ),
+        );
+        return {
+          steps: buildL2TxMistagChainV1({
+            blueprint: realBlueprint,
+            network,
+            computationThreadPolicyId:
+              doubleSpendContracts.computationThread.policyId,
+            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
+            fraudProofTokenAddressData,
+            hubOraclePolicyId: hubOracle.policyId,
+          }),
+          computationThread: doubleSpendContracts.computationThread,
+          fraudProof: doubleSpendContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+        };
+      })()
+    : undefined;
   const fabricatedWithdrawal: FabricatedWithdrawalContractsV1 | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
@@ -1136,6 +1171,7 @@ export const buildMinimalFaultProofContracts = async (
     ...(crossBlockDuplicateEvent === undefined
       ? {}
       : { crossBlockDuplicateEvent }),
+    ...(l2TxMistag === undefined ? {} : { l2TxMistag }),
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,
