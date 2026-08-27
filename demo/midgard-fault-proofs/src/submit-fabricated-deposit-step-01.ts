@@ -15,10 +15,8 @@
  * header before submission. A prepared file that claims a leaf the chain does not
  * commit is rejected locally, before any submission.
  *
- * Deployment resolution is passed in as an already-resolved contracts record:
- * the `fabricatedDeposit` catalogue category is not registered yet (that is
- * parent-owned integration work), so this family cannot go through
- * `resolveFaultProofDeploymentContracts`.
+ * Deployment resolution is passed in as an already-resolved contracts record
+ * produced from the canonical `fabricatedDeposit` catalogue category.
  */
 import {
   commitCountedRootProgram,
@@ -49,9 +47,11 @@ import {
   type Script,
   scriptHashToCredential,
   toUnit,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -85,11 +85,9 @@ export type FabricatedDepositStepContractV1 = {
 /**
  * The already-resolved contracts a `fabricated-deposit` submission needs.
  *
- * Passed in explicitly rather than resolved from deployment info, because the
- * `fabricatedDeposit` catalogue category, its `SupportedFaultProofCategoryName`
- * entry and its chain builder are parent-owned surfaces that land with catalogue
- * registration. Keeping the record explicit also keeps the #609 arity guard in
- * `applyBlueprintParams` the single place where scripts are parameterized.
+ * Passed in explicitly after canonical deployment resolution. This keeps the
+ * #609 arity guard in `applyBlueprintParams` the single place where scripts are
+ * parameterized.
  */
 export type FabricatedDepositContractsV1 = {
   /** Steps 01..04, in order. */
@@ -263,6 +261,7 @@ export const submitFabricatedDepositStep01 = async ({
   threadOutRef,
   stateQueueBlockOutRef,
   depositInclusion,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -272,6 +271,7 @@ export const submitFabricatedDepositStep01 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly depositInclusion: SubmitFabricatedDepositInclusion;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedDepositStep01Result> => {
   const parsedThreadOutRef = parseOutRef(threadOutRef, "--thread-out-ref");
@@ -398,14 +398,21 @@ export const submitFabricatedDepositStep01 = async ({
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom(referenceInputs)
+    .readFrom([
+      ...referenceInputs,
+      requireFabricatedReferenceScriptV1({
+        utxo: referenceScriptUtxo,
+        expectedScriptHash: contracts.steps[0].spendingScriptHash,
+        categoryLabel: FABRICATED_DEPOSIT_CATEGORY_LABEL,
+        stepIndex: 0,
+      }),
+    ])
     .pay.ToContract(
       contracts.steps[1].spendingScriptAddress,
       { kind: "inline", value: step02Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.steps[0].spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
@@ -450,6 +457,7 @@ export const submitFabricatedDepositStep01 = async ({
 export const submitFabricatedDepositStep01FromFiles = async (
   config: SubmitFabricatedDepositStep01CliConfig & {
     readonly contracts: FabricatedDepositContractsV1;
+    readonly referenceScriptUtxo: UTxO;
   },
 ): Promise<SubmitFabricatedDepositStep01Result> => {
   const [depositInclusionJson, lucid] = await Promise.all([
@@ -466,6 +474,7 @@ export const submitFabricatedDepositStep01FromFiles = async (
     stateQueueBlockOutRef: config.stateQueueBlockOutRef,
     depositInclusion:
       parseSubmitFabricatedDepositInclusion(depositInclusionJson),
+    referenceScriptUtxo: config.referenceScriptUtxo,
     awaitConfirmation: config.awaitConfirmation,
   });
 };

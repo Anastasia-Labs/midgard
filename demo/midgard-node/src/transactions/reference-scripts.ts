@@ -14,6 +14,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@/deployment-manifest-v1.js";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import { runProviderStepWithRetry } from "@/provider-retry.js";
 import {
@@ -1121,6 +1122,90 @@ const publishMissingReferenceScriptTargets = (
     );
   });
 
+const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
+  "fabricatedDeposit",
+  "fabricatedWithdrawal",
+  "nativeScriptDecoding",
+  "missingSignature",
+  "missingNativeScriptTx",
+  "withdrawnReferenceInput",
+  "canonicalDecodability",
+  "committedFieldShape",
+  "minFee",
+  "withdrawalMistag",
+  "doubleWithdraw",
+  "crossBlockDuplicateEvent",
+  "l2TxMistag",
+  "withdrawnInput",
+] as const satisfies readonly (keyof SDK.FaultProofContracts)[];
+
+const TRANSITION_TRACE_FINAL_CONTRACT_NAMES = [
+  "fraudProofTransitionTraceControl",
+  "fraudProofTransitionTraceSource",
+  "fraudProofTransitionTraceWithdrawal",
+  "fraudProofTransitionTraceForced",
+  "fraudProofTransitionTraceAcceptedTransaction",
+  "fraudProofTransitionTraceDeposit",
+  "fraudProofTransitionTraceL1Event",
+  "fraudProofTransitionTraceDuplicate",
+] as const;
+
+const REFERENCE_SCRIPT_ROLE_BY_CONTRACT_NAME: ReadonlyMap<string, string> =
+  new Map<string, string>(
+    Object.entries(
+      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+    ).map(([role, contractName]) => [contractName, role] as const),
+  );
+
+const upperFirst = (value: string): string =>
+  `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+
+const faultProofStepContractName = (
+  category: (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
+  stepIndex: number,
+): string =>
+  `fraudProof${upperFirst(category)}${
+    stepIndex === 0 ? "" : `Step${(stepIndex + 1).toString().padStart(2, "0")}`
+  }`;
+
+const manifestReferenceScriptTarget = (
+  contractName: string,
+  script: SDK.ReferenceScriptTarget["script"],
+): ReferenceScriptTarget => {
+  const name = REFERENCE_SCRIPT_ROLE_BY_CONTRACT_NAME.get(contractName);
+  if (name === undefined) {
+    throw new Error(
+      `Contract is missing a canonical reference-script role: ${contractName}`,
+    );
+  }
+  referenceScriptAuthTokenNameText(name);
+  return { name, script };
+};
+
+const registeredFraudProofReferenceScriptTargets = (
+  contracts: SDK.MidgardValidators,
+): readonly ReferenceScriptTarget[] => [
+  ...REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES.flatMap((category) =>
+    contracts.fraudProofContracts[category].steps.map((validator, stepIndex) =>
+      manifestReferenceScriptTarget(
+        faultProofStepContractName(category, stepIndex),
+        validator.spendingScript,
+      ),
+    ),
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTrace",
+    contracts.fraudProofContracts.transitionTrace.route.spendingScript,
+  ),
+  ...contracts.fraudProofContracts.transitionTrace.finals.map(
+    (validator, index) =>
+      manifestReferenceScriptTarget(
+        TRANSITION_TRACE_FINAL_CONTRACT_NAMES[index],
+        validator.spendingScript,
+      ),
+  ),
+];
+
 export const nodeRuntimeReferenceScriptTargets = (
   contracts: SDK.MidgardValidators,
 ): readonly ReferenceScriptTarget[] => [
@@ -1282,6 +1367,7 @@ export const nodeRuntimeReferenceScriptTargets = (
             contracts.fraudProofs.validationTraceDispute.award.spendingScript,
         },
       ]),
+  ...registeredFraudProofReferenceScriptTargets(contracts),
 ];
 
 export const referenceScriptTargetsByCommand = (

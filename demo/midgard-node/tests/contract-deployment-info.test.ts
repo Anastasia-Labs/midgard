@@ -237,6 +237,24 @@ describe("contract deployment info", () => {
         ).toEqual(
           contracts.fraudProofs.validationTraceDispute.award.spendingScriptHash,
         );
+        expect(
+          manifest.contracts.fraudProofMissingSignatureStep04.scriptHash,
+        ).toEqual(
+          contracts.fraudProofContracts.missingSignature.steps[3]
+            .spendingScriptHash,
+        );
+        expect(
+          manifest.contracts.fraudProofMissingNativeScriptTxStep06.scriptHash,
+        ).toEqual(
+          contracts.fraudProofContracts.missingNativeScriptTx.steps[5]
+            .spendingScriptHash,
+        );
+        expect(
+          manifest.contracts.fraudProofTransitionTraceDuplicate.scriptHash,
+        ).toEqual(
+          contracts.fraudProofContracts.transitionTrace.finals[7]
+            .spendingScriptHash,
+        );
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 
@@ -574,6 +592,33 @@ describe("contract deployment info", () => {
         expect(
           reconstructed.fraudProofs.transitionTrace.spendingScriptHash,
         ).toEqual(manifest.contracts.fraudProofTransitionTrace.scriptHash);
+        expect(
+          reconstructed.fraudProofContracts.missingNativeScriptTx.steps.map(
+            ({ spendingScriptHash }) => spendingScriptHash,
+          ),
+        ).toEqual([
+          manifest.contracts.fraudProofMissingNativeScriptTx.scriptHash,
+          manifest.contracts.fraudProofMissingNativeScriptTxStep02.scriptHash,
+          manifest.contracts.fraudProofMissingNativeScriptTxStep03.scriptHash,
+          manifest.contracts.fraudProofMissingNativeScriptTxStep04.scriptHash,
+          manifest.contracts.fraudProofMissingNativeScriptTxStep05.scriptHash,
+          manifest.contracts.fraudProofMissingNativeScriptTxStep06.scriptHash,
+        ]);
+        expect(
+          reconstructed.fraudProofContracts.transitionTrace.finals.map(
+            ({ spendingScriptHash }) => spendingScriptHash,
+          ),
+        ).toEqual([
+          manifest.contracts.fraudProofTransitionTraceControl.scriptHash,
+          manifest.contracts.fraudProofTransitionTraceSource.scriptHash,
+          manifest.contracts.fraudProofTransitionTraceWithdrawal.scriptHash,
+          manifest.contracts.fraudProofTransitionTraceForced.scriptHash,
+          manifest.contracts.fraudProofTransitionTraceAcceptedTransaction
+            .scriptHash,
+          manifest.contracts.fraudProofTransitionTraceDeposit.scriptHash,
+          manifest.contracts.fraudProofTransitionTraceL1Event.scriptHash,
+          manifest.contracts.fraudProofTransitionTraceDuplicate.scriptHash,
+        ]);
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 

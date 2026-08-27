@@ -1,5 +1,13 @@
 # Committed-field-shape fault: offchain implementation plan (v1)
 
+> **Registration update (2026-08-26):** this family is now registered as
+> `committedFieldShape` at `00000012`. Generic Init, catalogue/inspection,
+> node/core deployment identity, watcher proof-thread topology, and both
+> mandatory authenticated reference scripts are wired. Family-specific CLI,
+> DA-first watcher detection/prover mounting, tier-2/3 carriage, preprod, and
+> live evidence remain open. The identity change requires fresh
+> genesis/redeployment; there is no migration or compatibility path.
+
 Plan date: 2026-08-26. Audited against branch
 `colll78/canonical-v1-watcher-l1-source-checkpoint` (HEAD `a1724e63`).
 Catalogue row: `catalogue-status.md` §1 row 20. Normative rule:
@@ -12,8 +20,8 @@ and §8 exist as uncommitted files beside it, so every "will" below is also a
 
 The parity bar is `missing-signature-offchain-plan-v1.md` and, transitively,
 the `native-script-decoding` family as built on this branch: explicit
-pre-registration contracts records, per-step submitters plus cancel, a
-reserved test category id wired only through the emulator harness, and
+contracts records, per-step submitters plus cancel, canonical category
+wiring, and
 lucid-evolution emulator suites in both polarities — through fraud-proof
 mint **and** fraudulent-commitment removal. Everything those plans decided
 generically is inherited here, not re-decided.
@@ -27,15 +35,10 @@ Standing rulings this plan implements and never re-opens:
   fault proves through the full lifecycle, and an adversarial prover against
   an honest commitment is refused **on-chain at the exact check**, not
   merely by offchain guards.
-- **Pre-registration explicit-record discipline:** the family's id never
-  routes through the deployment manifest — `parseFraudProofCatalogueDeploymentInfo`
-  silently drops non-canonical keys (`catalogue-status.md` §3). No CLI verb
-  in `bin.ts`, no entry in `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`, no
-  `submit-init.ts` category-union change until the registration wave.
-- **Reserved ids are expected, not promised:** `00000012` (index 18) is the
-  assigned test-harness id; the production id is written only by the
-  registration wave, which re-verifies "next free after standing
-  reservations" at allocation time.
+- **Explicit-record discipline:** proof modules take category identity as
+  data even though `committedFieldShape` is canonically registered. Generic
+  Init and manifests include it; family-specific CLI remains separate.
+- **Canonical id:** `00000012` (index 18) is the production category id.
 - **Removal via explicit category:** `remove-fraudulent-block.ts`'s
   `RemoveFraudulentBlockExplicitCategory` seam drives removal with every
   fail-closed check intact and zero changes to that module. The fraud-proof
@@ -125,24 +128,16 @@ build a transaction the L1 verdict recomputation would contradict.
 
 ### 2.1 Category id
 
-Reserved **test** id: `00000012` (= `categoryId(18)`), assigned to this
-family by the parent orchestrator; ids `0000000b`/`0000000c` (fabricated
-families), `0000000d` (native-script-decoding) and `0000000e`
-(missing-signature plan) precede it, and sibling waves running concurrently
-hold `0000000f`–`00000011`. The constant lives in
-`tests/support/emulator/harness.ts` as
-`COMMITTED_FIELD_SHAPE_TEST_CATEGORY_ID_V1` with the standing
-expected-but-not-promised caveat, and is wired **only** through the
-`buildCatalogueDeploymentInfo` extra-categories sidecar (base roots and
-proofs stay byte-identical when the family is off).
+Canonical id: `00000012` (= `categoryId(18)`). The SDK catalogue, generic
+Init, manifests, inspection, and watcher proof-thread topology bind it to the
+applied step-01 hash.
 
-### 2.2 What registration (later, parent-owned) touches — and this wave does not
+### 2.2 Registered deployment surface
 
-`FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` + `FraudProofs` record in
-`demo/midgard-sdk/src/fraud-proof/catalogue.ts`, an SDK
-`buildCommittedFieldShapeFaultProofContracts` chain builder, the
-`submit-init.ts` category union, `bin.ts` verbs, and the deployment
-manifest key. This wave touches none of them.
+`FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`, the `FraudProofs` record, generic
+`submit-init.ts`, and deployment-manifest keys are wired. Family-specific
+`bin.ts` verbs, watcher detection/prover mounting, and DA-first preparation
+remain open.
 
 ### 2.3 Script deployment: reference scripts
 
@@ -358,11 +353,12 @@ cheaper tier that already exists:
 All shared-file changes are additive only (a sibling wave owns the
 canonical-decodability seams in the same files).
 
-### 8.4 What lands at registration
+### 8.4 Registration completion and remaining operations
 
-Production id allocation, SDK chain builder + catalogue row, CLI verbs,
-`submit-init` union, watcher routing, DA-first prepare entry point, tier-2/3
-submitter carriage. Out of scope here (§11).
+Production id, SDK chain builder/catalogue row, generic `submit-init`, manifest
+identity, reference scripts, and watcher proof-thread topology are complete.
+Family-specific CLI, watcher detection/prover mounting, DA-first preparation,
+and tier-2/3 submitter carriage remain out of scope (§11).
 
 ### 8.5 Commands
 
@@ -394,8 +390,7 @@ is vacuous).
 
 ## 10. Decision register
 
-- **D1 — id `00000012` accepted as assigned;** wired through the harness
-  sidecar only (standing discipline).
+- **D1 — id `00000012` canonical;** wired through catalogue and deployment identity.
 - **D2 — reference scripts for both steps** (owner ruling; no size
   exception sought).
 - **D3 — emulator conviction is wrong-stride only.** The byte-bound
@@ -412,14 +407,12 @@ is vacuous).
   core/security split.
 - **D6 — submitter claim carriage is tier-1 `Inline` this wave;** tiers 2/3
   are on-chain-proven and shared with §12.7's carriage work (§4.3).
-- **D7 — removal drives the explicit-category seam** with a family
-  manifest-entry name (`fraudProofCommittedFieldShape`) that exists only in
-  the emulator manifests until registration.
+- **D7 — removal uses the registered family identity**
+  (`fraudProofCommittedFieldShape`) and mandatory reference scripts.
 
 ## 11. Out of scope
 
-Catalogue registration and production id; `bin.ts`/`submit-init.ts`/SDK
-catalogue surfaces; watcher scan/routing integration; DA-first evidence
+Family-specific `bin.ts` verbs; watcher scan/prover integration; DA-first evidence
 fetch; tier-2/3 TypeScript claim carriage; any onchain change (none was
 needed — the family's validators and goldens are REAL and untouched); the
 sibling canonical-decodability (§12.7) wave.

@@ -18,7 +18,6 @@ import {
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import {
-  committedFieldShapeRemovalCategoryV1,
   makeCommittedFieldShapeEmulatorHarnessV1,
   publishCommittedFieldShapeReferenceScriptsV1,
   setupCommittedFieldShapeScenarioV1,
@@ -199,7 +198,7 @@ describe("committed-field-shape emulator lifecycle", () => {
       deploymentInfo,
       network,
       signer: harness.proverSigner,
-      fraudCategory: committedFieldShapeRemovalCategoryV1(harness),
+      fraudCategory: "committedFieldShape",
       fraudulentHeaderHash: scenario.setup.headerHash,
       awaitConfirmation: true,
       requireReferenceScripts: true,
@@ -261,7 +260,7 @@ describe("committed-field-shape emulator lifecycle", () => {
         deploymentInfo,
         network,
         signer: harness.proverSigner,
-        fraudCategory: committedFieldShapeRemovalCategoryV1(harness),
+        fraudCategory: "committedFieldShape",
         fraudulentHeaderHash: scenario.setup.headerHash,
         awaitConfirmation: true,
         requireReferenceScripts: true,

@@ -26,6 +26,7 @@ import {
   prepareCanonicalDecodabilityV1,
   requireCanonicalDecodabilityReferenceScriptV1,
 } from "../src/canonical-decodability/index.js";
+import { measureBlueprintValidatorBytes } from "../src/runtime.js";
 import {
   buildCanonicalDecodabilityBodyFixtureV1,
   network,
@@ -44,14 +45,19 @@ describe("canonical-decodability envelope and deployment frontiers", () => {
   const blueprint = readBlueprint(realBlueprintPath);
 
   it("applies two distinct validators that fit the oversized publication host", async () => {
-    for (const title of Object.values(
+    const declaredArities = { step01: 4, step02: 3 } as const;
+    for (const [step, title] of Object.entries(
       CANONICAL_DECODABILITY_BLUEPRINT_TITLES_V1,
     )) {
-      const validator = blueprint.validators.find(
-        (candidate) => candidate.title === title,
-      );
-      expect(validator, title).toBeDefined();
-      expect(validator!.compiledCode.length / 2).toBeGreaterThan(0);
+      expect(
+        measureBlueprintValidatorBytes({
+          blueprint,
+          title,
+          expectedDeclaredParameterCount:
+            declaredArities[step as keyof typeof declaredArities],
+        }),
+        title,
+      ).toBeGreaterThan(0);
     }
     const addressData = await Effect.runPromise(
       addressDataFromBech32(

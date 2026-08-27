@@ -9,6 +9,13 @@ Transaction binding stays exclusively on
 (`common.ak`), and no rejecting-successor clearing clause is reintroduced
 (VM-DEFECT-2).
 
+Deployment identity keeps `transitionTrace` at `00000004` and authenticates a
+nine-validator graph: one route whose successors are the eight terminal
+validators, each of which can finalize. It is not a linear nine-step chain.
+All nine validators are mandatory authenticated reference scripts. This
+identity movement is fresh-genesis/redeploy only, with no migration or
+compatibility path; it does not imply autonomous watcher detection/proving.
+
 ## 1. CLI verb surface (GAP A)
 
 The offchain library (`demo/midgard-fault-proofs/src/transition-trace/`)

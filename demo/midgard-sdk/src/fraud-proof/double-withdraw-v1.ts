@@ -153,12 +153,12 @@ export const DoubleWithdrawStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   /** Produced output index. */
   output_index: Data.Integer(),
+  /** Index of the fraud-proof mint redeemer. */
+  fraud_proof_mint_redeemer_index: Data.Integer(),
   /** Reference-input index of the hub oracle. */
   hub_ref_input_index: Data.Integer(),
   /** Reference-input index of the challenged block's state-queue node. */
   state_queue_node_ref_input_index: Data.Integer(),
-  /** Index of the fraud-proof mint redeemer. */
-  fraud_proof_mint_redeemer_index: Data.Integer(),
   /** The second committed payable withdrawal leaf. */
   committed_withdrawal: DoubleWithdrawSourceProofV1Schema,
 });

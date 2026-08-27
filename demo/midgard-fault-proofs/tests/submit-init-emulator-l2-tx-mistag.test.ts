@@ -18,7 +18,6 @@ import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deploymen
 import {
   buildL2TxMistagBlockFixtureV1,
   l2TxMistagCategoryV1,
-  l2TxMistagRemovalCategoryV1,
   publishL2TxMistagReferenceScriptsV1,
 } from "./support/l2-tx-mistag-emulator-v1.js";
 import {
@@ -135,7 +134,7 @@ describe("l2-tx-mistag emulator lifecycle", () => {
       deploymentInfo,
       network,
       signer: harness.proverSigner,
-      fraudCategory: l2TxMistagRemovalCategoryV1(harness),
+      fraudCategory: "l2TxMistag",
       fraudulentHeaderHash: setup.headerHash,
       requireReferenceScripts: true,
       validFrom: now > 120_000n ? now - 120_000n : 0n,

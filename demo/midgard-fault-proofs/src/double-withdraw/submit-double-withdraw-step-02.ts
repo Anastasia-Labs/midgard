@@ -106,7 +106,7 @@ export const submitDoubleWithdrawStep02 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly inclusion: SubmitDoubleWithdrawInclusionV1;
-  readonly referenceScriptUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitDoubleWithdrawStep02Result> => {
   const [{ threadUtxo, threadToken }, hubOracleUtxo, stateQueueBlockUtxo] =
@@ -221,10 +221,10 @@ export const submitDoubleWithdrawStep02 = async ({
           {
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
+            fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
             hub_ref_input_index: layout.hubOracleRefInputIndex,
             state_queue_node_ref_input_index:
               layout.stateQueueNodeRefInputIndex,
-            fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
             committed_withdrawal: committedWithdrawal,
           },
         ],
@@ -282,16 +282,13 @@ export const submitDoubleWithdrawStep02 = async ({
     .addSignerKey(signer.paymentKeyHash)
     .attach.MintingPolicy(contracts.computationThread.mintingScript)
     .attach.MintingPolicy(contracts.fraudProof.mintingScript);
-  const tx =
-    referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[1].spendingScript)
-      : base.readFrom([
-          requireDoubleWithdrawReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[1].spendingScriptHash,
-            stepIndex: 1,
-          }),
-        ]);
+  const tx = base.readFrom([
+    requireDoubleWithdrawReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      expectedScriptHash: contracts.steps[1].spendingScriptHash,
+      stepIndex: 1,
+    }),
+  ]);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (
     layout === undefined ||

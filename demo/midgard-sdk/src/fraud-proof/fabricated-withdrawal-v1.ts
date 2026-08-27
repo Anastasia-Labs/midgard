@@ -10,9 +10,7 @@
  * (`MismatchedWithdrawalContent`).
  *
  * Violation: `fabricated-withdrawal`.
- * Catalogue category: `fabricatedWithdrawal` — **not registered yet**. Catalogue
- * registration is parent-owned integration work, so this module is reached by
- * direct import rather than through `fraud-proof/catalogue.ts`.
+ * Production catalogue category: `fabricatedWithdrawal` (`0000000c`).
  *
  * Every schema below mirrors an Aiken type in
  * `onchain/aiken/lib/midgard/fraud-proofs/fabricated-withdrawal/step-0{1,2,3,4}.ak`
@@ -60,6 +58,7 @@ import {
   WithdrawalOrderDatumSchema,
 } from "@/user-events/withdrawal.js";
 
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "./catalogue.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
@@ -75,14 +74,11 @@ export const FABRICATED_WITHDRAWAL_VIOLATION_ID_V1 =
  * A category id is the 4-byte big-endian index of the category's position in the
  * append-only `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` in `./catalogue.js` — the
  * same derivation that gives `transitionTrace` (index 4) its `00000004`.
- * `fabricatedWithdrawal` appends at index 12, **contingent on `fabricatedDeposit`
- * (Q39) taking index 11 first**. Neither category is registered yet. This
- * constant is the single point in this package that moves if the append-only
- * order gains another entry first, or if Q39 and Q40 land in the other order, and
- * it is the byte twin of `step_01.fabricated_withdrawal_fraud_category_id` in
- * Aiken.
+ * `fabricatedWithdrawal` is fixed at index 12, after `fabricatedDeposit`, and
+ * is the byte twin of `step_01.fabricated_withdrawal_fraud_category_id` in Aiken.
  */
-export const FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1 = "0000000c" as const;
+export const FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.fabricatedWithdrawal;
 
 /**
  * 28-byte hash of the challenged block header. Family-scoped: the deposit twin

@@ -18,7 +18,6 @@ import {
 } from "../src/index.js";
 import {
   makeMissingNativeScriptTxEmulatorHarnessV1,
-  missingNativeScriptTxRemovalCategoryV1,
   publishMissingNativeScriptTxReferenceScriptsV1,
   setupMissingNativeScriptTxFixtureV1,
 } from "./support/missing-native-script-tx-emulator-v1.js";
@@ -224,7 +223,7 @@ describe("missing-native-script-tx emulator lifecycle", () => {
       deploymentInfo: deployment,
       network,
       signer: harness.proverSigner,
-      fraudCategory: missingNativeScriptTxRemovalCategoryV1(harness),
+      fraudCategory: "missingNativeScriptTx",
       fraudulentHeaderHash: fixture.setup.headerHash,
       awaitConfirmation: true,
       requireReferenceScripts: true,
@@ -267,7 +266,7 @@ describe("missing-native-script-tx emulator lifecycle", () => {
         deploymentInfo: deployment,
         network,
         signer: harness.proverSigner,
-        fraudCategory: missingNativeScriptTxRemovalCategoryV1(harness),
+        fraudCategory: "missingNativeScriptTx",
         fraudulentHeaderHash: fixture.setup.headerHash,
         awaitConfirmation: true,
         requireReferenceScripts: true,

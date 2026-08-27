@@ -64,6 +64,77 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 validation-trace timeout": "V1ValidationTraceTimeout",
   "V1 validation-trace award": "V1ValidationTraceAward",
   "V1 validation-trace CEK direct resolver": "V1ValidationTraceCekResolver0",
+  "V1 fraud-proof transition-trace route": "V1FpTransitionTraceRoute",
+  "V1 fraud-proof transition-trace final-0": "V1FpTransitionTraceFinal0",
+  "V1 fraud-proof transition-trace final-1": "V1FpTransitionTraceFinal1",
+  "V1 fraud-proof transition-trace final-2": "V1FpTransitionTraceFinal2",
+  "V1 fraud-proof transition-trace final-3": "V1FpTransitionTraceFinal3",
+  "V1 fraud-proof transition-trace final-4": "V1FpTransitionTraceFinal4",
+  "V1 fraud-proof transition-trace final-5": "V1FpTransitionTraceFinal5",
+  "V1 fraud-proof transition-trace final-6": "V1FpTransitionTraceFinal6",
+  "V1 fraud-proof transition-trace final-7": "V1FpTransitionTraceFinal7",
+  "V1 fraud-proof fabricated-deposit step-01": "V1FpFabricatedDepositS01",
+  "V1 fraud-proof fabricated-deposit step-02": "V1FpFabricatedDepositS02",
+  "V1 fraud-proof fabricated-deposit step-03": "V1FpFabricatedDepositS03",
+  "V1 fraud-proof fabricated-deposit step-04": "V1FpFabricatedDepositS04",
+  "V1 fraud-proof fabricated-withdrawal step-01": "V1FpFabricatedWithdrawalS01",
+  "V1 fraud-proof fabricated-withdrawal step-02": "V1FpFabricatedWithdrawalS02",
+  "V1 fraud-proof fabricated-withdrawal step-03": "V1FpFabricatedWithdrawalS03",
+  "V1 fraud-proof fabricated-withdrawal step-04": "V1FpFabricatedWithdrawalS04",
+  "V1 fraud-proof native-script-decoding step-01":
+    "V1FpNativeScriptDecodingS01",
+  "V1 fraud-proof native-script-decoding step-02":
+    "V1FpNativeScriptDecodingS02",
+  "V1 fraud-proof native-script-decoding step-03":
+    "V1FpNativeScriptDecodingS03",
+  "V1 fraud-proof native-script-decoding step-04":
+    "V1FpNativeScriptDecodingS04",
+  "V1 fraud-proof missing-signature step-01": "V1FpMissingSignatureS01",
+  "V1 fraud-proof missing-signature step-02": "V1FpMissingSignatureS02",
+  "V1 fraud-proof missing-signature step-03": "V1FpMissingSignatureS03",
+  "V1 fraud-proof missing-signature step-04": "V1FpMissingSignatureS04",
+  "V1 fraud-proof missing-native-script-tx step-01":
+    "V1FpMissingNativeScriptTxS01",
+  "V1 fraud-proof missing-native-script-tx step-02":
+    "V1FpMissingNativeScriptTxS02",
+  "V1 fraud-proof missing-native-script-tx step-03":
+    "V1FpMissingNativeScriptTxS03",
+  "V1 fraud-proof missing-native-script-tx step-04":
+    "V1FpMissingNativeScriptTxS04",
+  "V1 fraud-proof missing-native-script-tx step-05":
+    "V1FpMissingNativeScriptTxS05",
+  "V1 fraud-proof missing-native-script-tx step-06":
+    "V1FpMissingNativeScriptTxS06",
+  "V1 fraud-proof withdrawn-reference-input step-01":
+    "V1FpWithdrawnReferenceInputS01",
+  "V1 fraud-proof withdrawn-reference-input step-02":
+    "V1FpWithdrawnReferenceInputS02",
+  "V1 fraud-proof withdrawn-reference-input step-03":
+    "V1FpWithdrawnReferenceInputS03",
+  "V1 fraud-proof canonical-decodability step-01":
+    "V1FpCanonicalDecodabilityS01",
+  "V1 fraud-proof canonical-decodability step-02":
+    "V1FpCanonicalDecodabilityS02",
+  "V1 fraud-proof committed-field-shape step-01": "V1FpCommittedFieldShapeS01",
+  "V1 fraud-proof committed-field-shape step-02": "V1FpCommittedFieldShapeS02",
+  "V1 fraud-proof min-fee step-01": "V1FpMinFeeS01",
+  "V1 fraud-proof min-fee step-02": "V1FpMinFeeS02",
+  "V1 fraud-proof withdrawal-mistag step-01": "V1FpWithdrawalMistagS01",
+  "V1 fraud-proof withdrawal-mistag step-02": "V1FpWithdrawalMistagS02",
+  "V1 fraud-proof withdrawal-mistag step-03": "V1FpWithdrawalMistagS03",
+  "V1 fraud-proof withdrawal-mistag step-04": "V1FpWithdrawalMistagS04",
+  "V1 fraud-proof withdrawal-mistag step-05": "V1FpWithdrawalMistagS05",
+  "V1 fraud-proof double-withdraw step-01": "V1FpDoubleWithdrawS01",
+  "V1 fraud-proof double-withdraw step-02": "V1FpDoubleWithdrawS02",
+  "V1 fraud-proof cross-block-duplicate-event step-01":
+    "V1FpCrossBlockDuplicateEventS01",
+  "V1 fraud-proof cross-block-duplicate-event step-02":
+    "V1FpCrossBlockDuplicateEventS02",
+  "V1 fraud-proof l2-tx-mistag step-01": "V1FpL2TxMistagS01",
+  "V1 fraud-proof l2-tx-mistag step-02": "V1FpL2TxMistagS02",
+  "V1 fraud-proof withdrawn-input step-01": "V1FpWithdrawnInputS01",
+  "V1 fraud-proof withdrawn-input step-02": "V1FpWithdrawnInputS02",
+  "V1 fraud-proof withdrawn-input step-03": "V1FpWithdrawnInputS03",
 } as const;
 
 export type ReferenceScriptAuthTokenTarget =

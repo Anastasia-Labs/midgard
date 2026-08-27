@@ -24,10 +24,8 @@
  * a different MPF leaf than the one the header committed and than the one the script
  * will recompute, so they are refused here rather than left to fail on chain.
  *
- * Deployment resolution is passed in as an already-resolved contracts record:
- * the `fabricatedWithdrawal` catalogue category is not registered yet (that is
- * parent-owned integration work), so this family cannot go through
- * `resolveFaultProofDeploymentContracts`.
+ * Deployment resolution is passed in as an already-resolved contracts record
+ * produced from the canonical `fabricatedWithdrawal` catalogue category.
  */
 import {
   commitCountedRootProgram,
@@ -60,9 +58,11 @@ import {
   type Script,
   scriptHashToCredential,
   toUnit,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -96,11 +96,9 @@ export type FabricatedWithdrawalStepContractV1 = {
 /**
  * The already-resolved contracts a `fabricated-withdrawal` submission needs.
  *
- * Passed in explicitly rather than resolved from deployment info, because the
- * `fabricatedWithdrawal` catalogue category, its `SupportedFaultProofCategoryName`
- * entry and its chain builder are parent-owned surfaces that land with catalogue
- * registration. Keeping the record explicit also keeps the #609 arity guard in
- * `applyBlueprintParams` the single place where scripts are parameterized.
+ * Passed in explicitly after canonical deployment resolution. This keeps the
+ * #609 arity guard in `applyBlueprintParams` the single place where scripts are
+ * parameterized.
  */
 export type FabricatedWithdrawalContractsV1 = {
   /** Steps 01..04, in order. */
@@ -303,6 +301,7 @@ export const submitFabricatedWithdrawalStep01 = async ({
   threadOutRef,
   stateQueueBlockOutRef,
   withdrawalInclusion,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -312,6 +311,7 @@ export const submitFabricatedWithdrawalStep01 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly withdrawalInclusion: SubmitFabricatedWithdrawalInclusion;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedWithdrawalStep01Result> => {
   const parsedThreadOutRef = parseOutRef(threadOutRef, "--thread-out-ref");
@@ -438,14 +438,21 @@ export const submitFabricatedWithdrawalStep01 = async ({
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom(referenceInputs)
+    .readFrom([
+      ...referenceInputs,
+      requireFabricatedReferenceScriptV1({
+        utxo: referenceScriptUtxo,
+        expectedScriptHash: contracts.steps[0].spendingScriptHash,
+        categoryLabel: FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
+        stepIndex: 0,
+      }),
+    ])
     .pay.ToContract(
       contracts.steps[1].spendingScriptAddress,
       { kind: "inline", value: step02Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.steps[0].spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
@@ -490,6 +497,7 @@ export const submitFabricatedWithdrawalStep01 = async ({
 export const submitFabricatedWithdrawalStep01FromFiles = async (
   config: SubmitFabricatedWithdrawalStep01CliConfig & {
     readonly contracts: FabricatedWithdrawalContractsV1;
+    readonly referenceScriptUtxo: UTxO;
   },
 ): Promise<SubmitFabricatedWithdrawalStep01Result> => {
   const [withdrawalInclusionJson, lucid] = await Promise.all([
@@ -507,6 +515,7 @@ export const submitFabricatedWithdrawalStep01FromFiles = async (
     withdrawalInclusion: parseSubmitFabricatedWithdrawalInclusion(
       withdrawalInclusionJson,
     ),
+    referenceScriptUtxo: config.referenceScriptUtxo,
     awaitConfirmation: config.awaitConfirmation,
   });
 };

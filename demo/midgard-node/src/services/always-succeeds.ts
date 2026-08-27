@@ -181,6 +181,15 @@ const makeMintOnlyAuthenticatedValidator = (
     };
   });
 
+const repeatedFaultProofChain = <Chain extends SDK.FraudProofChain>(
+  validator: SDK.SpendingValidator,
+  stepCount: number,
+): Chain =>
+  ({
+    firstStep: validator,
+    steps: Array.from({ length: stepCount }, () => validator),
+  }) as unknown as Chain;
+
 /**
  * Resolves the full always-succeeds validator set used by test environments.
  */
@@ -290,19 +299,109 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const referenceInputNoIdx = nonExistentInputNoIndex;
     const invalidSignature = invalidRange;
 
-    const fraudProofs: SDK.FraudProofs = {
-      doubleSpend,
-      nonExistentInput,
-      nonExistentInputNoIndex,
-      invalidRange,
-      transitionTrace,
-      zeroInput,
-      validationTraceDispute,
-      daHashPreimage,
-      noReferenceInput,
-      referenceInputNoIdx,
-      invalidSignature,
+    const validationTraceSemanticResolvers = Array.from(
+      { length: 90 },
+      () => transitionTrace,
+    );
+    const validationTracePrepareResolvers = Array.from(
+      { length: 14 },
+      () => transitionTrace,
+    );
+    const validationTraceCanonicalDecodeItemStages = {
+      source: transitionTrace,
+      observe: transitionTrace,
+      proof: transitionTrace,
+      settlement: transitionTrace,
     };
+    const validationTraceScriptSourcesStageOneRedeemerStages = {
+      envelope: transitionTrace,
+      traversalNormalizer: transitionTrace,
+      outerNormalizer: transitionTrace,
+      foldMapExecutor: transitionTrace,
+      finalizeFrameExecutor: transitionTrace,
+      settlement: transitionTrace,
+    };
+    const validationTraceDisputeChain = {
+      firstStep: transitionTrace,
+      steps: [
+        transitionTrace,
+        validationTraceDispute.source,
+        validationTraceDispute.game,
+        validationTraceDispute.boundary,
+        validationTraceDispute.timeout,
+        validationTraceDispute.award,
+        transitionTrace,
+        ...validationTraceSemanticResolvers,
+        transitionTrace,
+        transitionTrace,
+        transitionTrace,
+        transitionTrace,
+        transitionTrace,
+        ...Object.values(validationTraceCanonicalDecodeItemStages),
+        ...validationTracePrepareResolvers,
+      ],
+      cekProgramMaterial,
+      opener: validationTraceDispute,
+      source: validationTraceDispute.source,
+      game: validationTraceDispute.game,
+      boundary: validationTraceDispute.boundary,
+      timeout: validationTraceDispute.timeout,
+      award: validationTraceDispute.award,
+      proofItem: transitionTrace,
+      canonicalDecodeItemStages: validationTraceCanonicalDecodeItemStages,
+      scriptSourcesStageOneRedeemerStages:
+        validationTraceScriptSourcesStageOneRedeemerStages,
+      prepareResolvers: validationTracePrepareResolvers,
+      semanticResolvers: validationTraceSemanticResolvers,
+      resolvers: validationTracePrepareResolvers,
+    } as unknown as SDK.FaultProofContractChains["validationTraceDispute"];
+    const transitionTraceFinals = [
+      transitionTrace,
+      transitionTrace,
+      transitionTrace,
+      transitionTrace,
+      transitionTrace,
+      transitionTrace,
+      transitionTrace,
+      transitionTrace,
+    ] as const;
+    const fraudProofContracts: SDK.FaultProofContractChains = {
+      doubleSpend: repeatedFaultProofChain(doubleSpend, 4),
+      nonExistentInput: repeatedFaultProofChain(nonExistentInput, 4),
+      nonExistentInputNoIndex: repeatedFaultProofChain(
+        nonExistentInputNoIndex,
+        4,
+      ),
+      invalidRange: repeatedFaultProofChain(invalidRange, 2),
+      transitionTrace: {
+        firstStep: transitionTrace,
+        route: transitionTrace,
+        finals: transitionTraceFinals,
+        steps: [transitionTrace, ...transitionTraceFinals],
+      },
+      zeroInput: repeatedFaultProofChain(zeroInput, 2),
+      validationTraceDispute: validationTraceDisputeChain,
+      daHashPreimage: repeatedFaultProofChain(daHashPreimage, 2),
+      noReferenceInput: repeatedFaultProofChain(noReferenceInput, 4),
+      referenceInputNoIdx: repeatedFaultProofChain(referenceInputNoIdx, 4),
+      invalidSignature: repeatedFaultProofChain(invalidSignature, 2),
+      fabricatedDeposit: repeatedFaultProofChain(zeroInput, 4),
+      fabricatedWithdrawal: repeatedFaultProofChain(zeroInput, 4),
+      nativeScriptDecoding: repeatedFaultProofChain(zeroInput, 4),
+      missingSignature: repeatedFaultProofChain(invalidSignature, 4),
+      missingNativeScriptTx: repeatedFaultProofChain(zeroInput, 6),
+      withdrawnReferenceInput: repeatedFaultProofChain(referenceInputNoIdx, 3),
+      canonicalDecodability: repeatedFaultProofChain(zeroInput, 2),
+      committedFieldShape: repeatedFaultProofChain(zeroInput, 2),
+      minFee: repeatedFaultProofChain(invalidRange, 2),
+      withdrawalMistag: repeatedFaultProofChain(invalidRange, 5),
+      doubleWithdraw: repeatedFaultProofChain(doubleSpend, 2),
+      crossBlockDuplicateEvent: repeatedFaultProofChain(doubleSpend, 2),
+      l2TxMistag: repeatedFaultProofChain(invalidRange, 2),
+      withdrawnInput: repeatedFaultProofChain(nonExistentInput, 3),
+    };
+    const fraudProofs =
+      SDK.fraudProofContractsToFirstSteps(fraudProofContracts);
 
     return {
       referenceScriptAuth,
@@ -325,6 +424,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       settlement,
       reserve,
       payout,
+      fraudProofContracts,
       fraudProofs,
     };
   }).pipe(Effect.orDie);

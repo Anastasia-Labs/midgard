@@ -515,7 +515,10 @@
       "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
     },
     "fraudProofTransitionTrace": {
-      "refScriptUTxO": null,
+      "refScriptUTxO": {
+        "txHash": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+        "outputIndex": 0
+      },
       "contract": {
         "type": "PlutusV3",
         "cborHex": "525101010023259800a518a4d136564004ae69"
@@ -642,6 +645,589 @@
     "fieldPreimageCertificateMint": {
       "refScriptUTxO": {
         "txHash": "2828282828282828282828282828282828282828282828282828282828282828",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofFabricatedDeposit": {
+      "refScriptUTxO": {
+        "txHash": "4040404040404040404040404040404040404040404040404040404040404040",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofFabricatedDepositStep02": {
+      "refScriptUTxO": {
+        "txHash": "4141414141414141414141414141414141414141414141414141414141414141",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofFabricatedDepositStep03": {
+      "refScriptUTxO": {
+        "txHash": "4242424242424242424242424242424242424242424242424242424242424242",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofFabricatedDepositStep04": {
+      "refScriptUTxO": {
+        "txHash": "4343434343434343434343434343434343434343434343434343434343434343",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofFabricatedWithdrawal": {
+      "refScriptUTxO": {
+        "txHash": "4444444444444444444444444444444444444444444444444444444444444444",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofFabricatedWithdrawalStep02": {
+      "refScriptUTxO": {
+        "txHash": "4545454545454545454545454545454545454545454545454545454545454545",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofFabricatedWithdrawalStep03": {
+      "refScriptUTxO": {
+        "txHash": "4646464646464646464646464646464646464646464646464646464646464646",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofFabricatedWithdrawalStep04": {
+      "refScriptUTxO": {
+        "txHash": "4747474747474747474747474747474747474747474747474747474747474747",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofNativeScriptDecoding": {
+      "refScriptUTxO": {
+        "txHash": "4848484848484848484848484848484848484848484848484848484848484848",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofNativeScriptDecodingStep02": {
+      "refScriptUTxO": {
+        "txHash": "4949494949494949494949494949494949494949494949494949494949494949",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofNativeScriptDecodingStep03": {
+      "refScriptUTxO": {
+        "txHash": "4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofNativeScriptDecodingStep04": {
+      "refScriptUTxO": {
+        "txHash": "4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMissingSignature": {
+      "refScriptUTxO": {
+        "txHash": "4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMissingSignatureStep02": {
+      "refScriptUTxO": {
+        "txHash": "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMissingSignatureStep03": {
+      "refScriptUTxO": {
+        "txHash": "4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMissingSignatureStep04": {
+      "refScriptUTxO": {
+        "txHash": "4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMissingNativeScriptTx": {
+      "refScriptUTxO": {
+        "txHash": "5050505050505050505050505050505050505050505050505050505050505050",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMissingNativeScriptTxStep02": {
+      "refScriptUTxO": {
+        "txHash": "5151515151515151515151515151515151515151515151515151515151515151",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMissingNativeScriptTxStep03": {
+      "refScriptUTxO": {
+        "txHash": "5252525252525252525252525252525252525252525252525252525252525252",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMissingNativeScriptTxStep04": {
+      "refScriptUTxO": {
+        "txHash": "5353535353535353535353535353535353535353535353535353535353535353",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMissingNativeScriptTxStep05": {
+      "refScriptUTxO": {
+        "txHash": "5454545454545454545454545454545454545454545454545454545454545454",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMissingNativeScriptTxStep06": {
+      "refScriptUTxO": {
+        "txHash": "5555555555555555555555555555555555555555555555555555555555555555",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofWithdrawnReferenceInput": {
+      "refScriptUTxO": {
+        "txHash": "5656565656565656565656565656565656565656565656565656565656565656",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofWithdrawnReferenceInputStep02": {
+      "refScriptUTxO": {
+        "txHash": "5757575757575757575757575757575757575757575757575757575757575757",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofWithdrawnReferenceInputStep03": {
+      "refScriptUTxO": {
+        "txHash": "5858585858585858585858585858585858585858585858585858585858585858",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofCanonicalDecodability": {
+      "refScriptUTxO": {
+        "txHash": "5959595959595959595959595959595959595959595959595959595959595959",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofCanonicalDecodabilityStep02": {
+      "refScriptUTxO": {
+        "txHash": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofCommittedFieldShape": {
+      "refScriptUTxO": {
+        "txHash": "5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofCommittedFieldShapeStep02": {
+      "refScriptUTxO": {
+        "txHash": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMinFee": {
+      "refScriptUTxO": {
+        "txHash": "5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMinFeeStep02": {
+      "refScriptUTxO": {
+        "txHash": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofWithdrawalMistag": {
+      "refScriptUTxO": {
+        "txHash": "5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofWithdrawalMistagStep02": {
+      "refScriptUTxO": {
+        "txHash": "6060606060606060606060606060606060606060606060606060606060606060",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofWithdrawalMistagStep03": {
+      "refScriptUTxO": {
+        "txHash": "6161616161616161616161616161616161616161616161616161616161616161",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofWithdrawalMistagStep04": {
+      "refScriptUTxO": {
+        "txHash": "6262626262626262626262626262626262626262626262626262626262626262",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofWithdrawalMistagStep05": {
+      "refScriptUTxO": {
+        "txHash": "6363636363636363636363636363636363636363636363636363636363636363",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofDoubleWithdraw": {
+      "refScriptUTxO": {
+        "txHash": "6464646464646464646464646464646464646464646464646464646464646464",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofDoubleWithdrawStep02": {
+      "refScriptUTxO": {
+        "txHash": "6565656565656565656565656565656565656565656565656565656565656565",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofCrossBlockDuplicateEvent": {
+      "refScriptUTxO": {
+        "txHash": "6666666666666666666666666666666666666666666666666666666666666666",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofCrossBlockDuplicateEventStep02": {
+      "refScriptUTxO": {
+        "txHash": "6767676767676767676767676767676767676767676767676767676767676767",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofL2TxMistag": {
+      "refScriptUTxO": {
+        "txHash": "6868686868686868686868686868686868686868686868686868686868686868",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofL2TxMistagStep02": {
+      "refScriptUTxO": {
+        "txHash": "6969696969696969696969696969696969696969696969696969696969696969",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofWithdrawnInput": {
+      "refScriptUTxO": {
+        "txHash": "6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofWithdrawnInputStep02": {
+      "refScriptUTxO": {
+        "txHash": "6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofWithdrawnInputStep03": {
+      "refScriptUTxO": {
+        "txHash": "6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofTransitionTraceControl": {
+      "refScriptUTxO": {
+        "txHash": "6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofTransitionTraceSource": {
+      "refScriptUTxO": {
+        "txHash": "6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofTransitionTraceWithdrawal": {
+      "refScriptUTxO": {
+        "txHash": "6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofTransitionTraceForced": {
+      "refScriptUTxO": {
+        "txHash": "7070707070707070707070707070707070707070707070707070707070707070",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofTransitionTraceAcceptedTransaction": {
+      "refScriptUTxO": {
+        "txHash": "7171717171717171717171717171717171717171717171717171717171717171",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofTransitionTraceDeposit": {
+      "refScriptUTxO": {
+        "txHash": "7272727272727272727272727272727272727272727272727272727272727272",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofTransitionTraceL1Event": {
+      "refScriptUTxO": {
+        "txHash": "7373737373737373737373737373737373737373737373737373737373737373",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofTransitionTraceDuplicate": {
+      "refScriptUTxO": {
+        "txHash": "7474747474747474747474747474747474747474747474747474747474747474",
         "outputIndex": 0
       },
       "contract": {

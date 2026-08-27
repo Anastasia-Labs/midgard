@@ -15,7 +15,6 @@ import {
 } from "../src/index.js";
 import {
   buildCanonicalDecodabilityBodyFixtureV1,
-  canonicalDecodabilityRemovalCategoryV1,
   makeCanonicalDecodabilityEmulatorHarnessV1,
   network,
   publishCanonicalDecodabilityReferenceScriptsV1,
@@ -152,7 +151,7 @@ describe("canonical-decodability real-fault lifecycle", () => {
       deploymentInfo,
       network,
       signer: proverSigner,
-      fraudCategory: canonicalDecodabilityRemovalCategoryV1(harness),
+      fraudCategory: "canonicalDecodability",
       fraudulentHeaderHash: setup.headerHash,
       requireReferenceScripts: true,
       validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
@@ -182,7 +181,7 @@ describe("canonical-decodability real-fault lifecycle", () => {
         deploymentInfo,
         network,
         signer: proverSigner,
-        fraudCategory: canonicalDecodabilityRemovalCategoryV1(harness),
+        fraudCategory: "canonicalDecodability",
         fraudulentHeaderHash: setup.headerHash,
         requireReferenceScripts: true,
       }),

@@ -1,7 +1,7 @@
 import {} from "node:path";
 
 import {
-  CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1,
+  createReferenceScriptAuthPolicy,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   type FraudProofCatalogueCategoryDeploymentInfo,
   FraudProofComputationThreadRedeemer,
@@ -14,7 +14,6 @@ import {
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
   ScriptHashSchema,
-  WITHDRAWAL_MISTAG_TEST_CATEGORY_ID_V1,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -83,13 +82,13 @@ const encodeCatalogueMembershipRedeemer = ({
 
 /**
  * Init transaction for a fabricated family (Q39/Q40): mints the computation
- * thread under the family's extra catalogue category and locks it at step-01.
+ * thread under the family's canonical catalogue category and locks it at
+ * step-01.
  *
  * This mirrors the generic tail of `src/submit-init.ts` exactly — catalogue,
  * hub-oracle and fraudulent-block reference inputs, the PHAS membership
- * withdrawal carrying the category proof, and the `Init` mint redeemer — but
- * lives here because the production `submitInit` category union is parent-owned
- * and does not register these families yet.
+ * withdrawal carrying the category proof, and the `Init` mint redeemer. It
+ * remains here as the focused Q39/Q40 emulator adapter.
  */
 export const submitFabricatedFamilyInitV1 = async ({
   lucid,
@@ -305,45 +304,6 @@ export type FaultProofEmulatorHarnessV1 = {
  * suites publish at different points in the timeline, and the emulator clock
  * they sample afterwards is what their measured byte counts are anchored to.
  */
-/**
- * Test-only catalogue id for the `native-script-decoding` family (#635).
- * The production id is assigned only at catalogue registration (design §10
- * Q2); `0000000d` is the expected-but-not-promised next slot after the two
- * Q39/Q40 families, and the emulator suites register it as an extra
- * category exactly the way those families do.
- */
-export const NATIVE_SCRIPT_DECODING_TEST_CATEGORY_ID_V1 = "0000000d";
-
-/**
- * Expected-but-not-promised pre-registration id for `missing-signature`.
- * Production allocation remains deferred to the registration wave.
- */
-export const MISSING_SIGNATURE_TEST_CATEGORY_ID_V1 = "0000000e";
-
-/** Reserved emulator-only id; production registration re-verifies next-free. */
-export const MISSING_NATIVE_SCRIPT_TX_TEST_CATEGORY_ID_V1 = "0000000f";
-
-/** Test-only expected reservation; production registration re-allocates it. */
-export const WITHDRAWN_REFERENCE_INPUT_TEST_CATEGORY_ID_V1 = "00000010";
-
-/** Reserved pre-registration emulator id; never a production assignment. */
-export const CANONICAL_DECODABILITY_TEST_CATEGORY_ID_V1 = "00000011";
-
-/** Reserved pre-registration emulator id; never a production assignment. */
-export const COMMITTED_FIELD_SHAPE_TEST_CATEGORY_ID_V1 = "00000012";
-
-/** Reserved pre-registration emulator id; never a production assignment. */
-export const MIN_FEE_TEST_CATEGORY_ID_V1 = "00000013";
-
-/** Reserved pre-registration emulator id; never a production assignment. */
-export const DOUBLE_WITHDRAW_TEST_CATEGORY_ID_V1 = "00000015";
-
-/** Reserved pre-registration emulator id; never a production assignment. */
-export const L2_TX_MISTAG_TEST_CATEGORY_ID_V1 = "00000017";
-
-/** Reserved pre-registration emulator id; never a production assignment. */
-export const WITHDRAWN_INPUT_TEST_CATEGORY_ID_V1 = "00000018";
-
 export const makeFaultProofEmulatorHarnessV1 = async ({
   contractOptions = {},
   accounts,
@@ -392,133 +352,23 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
   if (nonceUtxo === undefined) {
     throw new Error("Expected funder wallet to expose a nonce UTxO");
   }
-  const contracts = await buildMinimalFaultProofContracts(
-    realBlueprint,
-    alwaysBlueprint,
-    nonceUtxo,
-    contractOptions,
-  );
-  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs, {
-    ...(contracts.fabricatedDeposit === undefined
-      ? {}
-      : {
-          fabricatedDeposit: {
-            categoryId: contracts.fabricatedDeposit.categoryId,
-            scriptHash: contracts.fabricatedDeposit.steps[0].spendingScriptHash,
-          },
-        }),
-    ...(contracts.fabricatedWithdrawal === undefined
-      ? {}
-      : {
-          fabricatedWithdrawal: {
-            categoryId: contracts.fabricatedWithdrawal.categoryId,
-            scriptHash:
-              contracts.fabricatedWithdrawal.steps[0].spendingScriptHash,
-          },
-        }),
-    ...(contracts.nativeScriptDecoding === undefined
-      ? {}
-      : {
-          nativeScriptDecoding: {
-            categoryId: NATIVE_SCRIPT_DECODING_TEST_CATEGORY_ID_V1,
-            scriptHash:
-              contracts.nativeScriptDecoding.steps[0].spendingScriptHash,
-          },
-        }),
-    ...(contracts.missingSignature === undefined
-      ? {}
-      : {
-          missingSignature: {
-            categoryId: MISSING_SIGNATURE_TEST_CATEGORY_ID_V1,
-            scriptHash: contracts.missingSignature.steps[0].spendingScriptHash,
-          },
-        }),
-    ...(contracts.missingNativeScriptTx === undefined
-      ? {}
-      : {
-          missingNativeScriptTx: {
-            categoryId: MISSING_NATIVE_SCRIPT_TX_TEST_CATEGORY_ID_V1,
-            scriptHash:
-              contracts.missingNativeScriptTx.steps[0].spendingScriptHash,
-          },
-        }),
-    ...(contracts.withdrawnReferenceInput === undefined
-      ? {}
-      : {
-          withdrawnReferenceInput: {
-            categoryId: WITHDRAWN_REFERENCE_INPUT_TEST_CATEGORY_ID_V1,
-            scriptHash:
-              contracts.withdrawnReferenceInput.steps[0].spendingScriptHash,
-          },
-        }),
-    ...(contracts.canonicalDecodability === undefined
-      ? {}
-      : {
-          canonicalDecodability: {
-            categoryId: CANONICAL_DECODABILITY_TEST_CATEGORY_ID_V1,
-            scriptHash:
-              contracts.canonicalDecodability.steps[0].spendingScriptHash,
-          },
-        }),
-    ...(contracts.committedFieldShape === undefined
-      ? {}
-      : {
-          committedFieldShape: {
-            categoryId: COMMITTED_FIELD_SHAPE_TEST_CATEGORY_ID_V1,
-            scriptHash:
-              contracts.committedFieldShape.steps[0].spendingScriptHash,
-          },
-        }),
-    ...(contracts.minFee === undefined
-      ? {}
-      : {
-          minFee: {
-            categoryId: MIN_FEE_TEST_CATEGORY_ID_V1,
-            scriptHash: contracts.minFee.steps[0].spendingScriptHash,
-          },
-        }),
-    ...(contracts.doubleWithdraw === undefined
-      ? {}
-      : {
-          doubleWithdraw: {
-            categoryId: DOUBLE_WITHDRAW_TEST_CATEGORY_ID_V1,
-            scriptHash: contracts.doubleWithdraw.steps[0].spendingScriptHash,
-          },
-        }),
-    ...(contracts.crossBlockDuplicateEvent === undefined
-      ? {}
-      : {
-          crossBlockDuplicateEvent: {
-            categoryId: CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1,
-            scriptHash:
-              contracts.crossBlockDuplicateEvent.steps[0].spendingScriptHash,
-          },
-        }),
-    ...(contracts.l2TxMistag === undefined
-      ? {}
-      : {
-          l2TxMistag: {
-            categoryId: L2_TX_MISTAG_TEST_CATEGORY_ID_V1,
-            scriptHash: contracts.l2TxMistag.steps[0].spendingScriptHash,
-          },
-        }),
-    ...(contracts.withdrawnInput === undefined
-      ? {}
-      : {
-          withdrawnInput: {
-            categoryId: WITHDRAWN_INPUT_TEST_CATEGORY_ID_V1,
-            scriptHash: contracts.withdrawnInput.steps[0].spendingScriptHash,
-          },
-        }),
-    ...(contracts.withdrawalMistag === undefined
-      ? {}
-      : {
-          withdrawalMistag: {
-            categoryId: WITHDRAWAL_MISTAG_TEST_CATEGORY_ID_V1,
-            scriptHash: contracts.withdrawalMistag.steps[0].spendingScriptHash,
-          },
-        }),
-  });
+  const contracts = {
+    ...(await buildMinimalFaultProofContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      nonceUtxo,
+      contractOptions,
+    )),
+    // Test/dev scaffold: production deployments use the same native timelock
+    // policy and persist its SDK-derived deployment info. Keeping the complete
+    // policy here lets strict manifest consumers validate the policy id and
+    // canonical role-token map rather than accepting an empty sidecar.
+    referenceScriptAuth: createReferenceScriptAuthPolicy(
+      funderLucid,
+      emulator.now(),
+    ),
+  };
+  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
   return {
     realBlueprint,
     alwaysBlueprint,

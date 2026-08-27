@@ -223,6 +223,59 @@ export const publishPlainReferenceScriptUtxo = async ({
   return { utxo: published[0]!, publicationMeasurement };
 };
 
+/** Publishes a canonical fraud-proof chain under its production entry names. */
+export const publishFraudProofChainReferenceScripts = async ({
+  lucid,
+  steps,
+  entryNames,
+  familyLabel,
+  oversizedEntryNames = new Set(),
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly steps: readonly {
+    readonly spendingScript: Script;
+    readonly spendingScriptHash: string;
+  }[];
+  readonly entryNames: readonly string[];
+  readonly familyLabel: string;
+  /**
+   * Explicit emulator-only publication hosts for scripts whose production
+   * CBOR exceeds one L1 transaction. Their consuming transactions still use
+   * the real reference inputs and remain under the normal envelope.
+   */
+  readonly oversizedEntryNames?: ReadonlySet<string>;
+}): Promise<
+  Readonly<Record<string, { readonly scriptHash: string; readonly utxo: UTxO }>>
+> => {
+  if (steps.length !== entryNames.length) {
+    throw new Error(
+      `${familyLabel} reference-script fixture has ${steps.length.toString()} steps for ${entryNames.length.toString()} production entries`,
+    );
+  }
+  const publications: Record<
+    string,
+    { readonly scriptHash: string; readonly utxo: UTxO }
+  > = {};
+  for (const [index, entryName] of entryNames.entries()) {
+    const publication = await publishPlainReferenceScriptUtxo({
+      lucid,
+      script: steps[index]!.spendingScript,
+      label: `${familyLabel} ${entryName}`,
+      oversized: oversizedEntryNames.has(entryName),
+    });
+    publications[entryName] = {
+      scriptHash: steps[index]!.spendingScriptHash,
+      utxo: publication.utxo,
+    };
+  }
+  return publications;
+};
+
+export const TRANSITION_TRACE_OVERSIZED_REFERENCE_SCRIPT_ENTRIES = new Set([
+  "fraudProofTransitionTraceAcceptedTransaction",
+  "fraudProofTransitionTraceDeposit",
+]);
+
 export const publishCrossBlockDuplicateEventReferenceScriptsV1 = async ({
   lucid,
   contracts,

@@ -1,5 +1,14 @@
 # Double-withdraw fault: offchain implementation plan (v1)
 
+> **Registration update (2026-08-26):** this family is now registered as
+> `doubleWithdraw` at `00000015`. Generic Init, catalogue/inspection,
+> node/core deployment identity, watcher proof-thread topology, and both
+> mandatory authenticated reference scripts are wired. Family-specific CLI,
+> autonomous watcher detector/prover mounting, preprod, and live evidence
+> remain open; D1's both-payable predicate confirmation is unchanged. The
+> identity change requires fresh genesis/redeployment; there is no migration
+> or compatibility path.
+
 Plan date: 2026-08-26. Audited against branch
 `colll78/canonical-v1-watcher-l1-source-checkpoint` (HEAD `a1724e63`). Work
 item: **W-C3** (`catalogue-status.md` §6 row `double-withdraw`, class **fund
@@ -7,7 +16,7 @@ theft**; coverage-matrix row DOUBLE-WITHDRAW, evidence
 `technical-spec/5-ledger-rules/1-cardano-ledger-rules.tex:143-161`). Unlike
 the Q16 plan this document accompanies a **complete implementation in the
 same change**: on-chain step chain, SDK codec twin, prepare/submit modules,
-pre-registration emulator wiring and both-polarity emulator suites all land
+catalogue emulator wiring and both-polarity emulator suites all land
 together, uncommitted, for owner review.
 
 > **Flagged owner-level refinement (decision D1, top of register).** The
@@ -33,14 +42,9 @@ Standing rulings this plan implements and never re-opens:
   fault proves through the full lifecycle — fraud-proof mint **and**
   fraudulent-commitment removal — and an adversarial prover against an
   honest commitment is refused **on-chain at the exact check** (§8).
-- **Pre-registration explicit-record discipline:** no route through the
-  deployment manifest (`parseFraudProofCatalogueDeploymentInfo` silently
-  drops non-canonical keys); explicit contracts records; the SDK catalogue
-  order, `submit-init.ts`'s category union and `bin.ts` are untouched until
-  the registration wave.
-- **Reserved ids are expected, not promised:** the test-harness constant
-  `00000015` records the reserved emulator id; the production id is written
-  only by the registration wave.
+- **Explicit-record discipline:** contracts records remain explicit while
+  `doubleWithdraw` is canonically routed through catalogue and manifests.
+- **Canonical id:** `00000015` is the production category id.
 - **Explicit-category removal (fb7c0217):** removal of the convicted block
   rides `RemoveFraudulentBlockExplicitCategory` — zero changes to
   `src/remove-fraudulent-block.ts`.
@@ -130,17 +134,12 @@ on-chain via `cbor.serialise`, offchain via
 (canonicality is asserted fail-closed in the prepare module, exactly as
 `prepare-fabricated-withdrawal` does).
 
-## 4. Registration surface (deferred) and reserved test id
+## 4. Registered deployment surface
 
-- Reserved emulator-test category id: **`00000015`** (wave-assigned). It
-  appears **only** in the emulator wiring
-  (`DOUBLE_WITHDRAW_TEST_CATEGORY_ID_V1`, harness `extraCategories`
-  sidecar), never in the SDK catalogue order, never in the deployment
-  manifest, never on chain.
-- At registration (parent-owned): append `doubleWithdraw` to
-  `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`, extend `submit-init.ts`'s union
-  and `bin.ts` verbs, publish both steps as reference scripts, and add the
-  removal manifest key `fraudProofDoubleWithdraw`.
+- Canonical category id: **`00000015`**. `doubleWithdraw` is in
+  `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`, generic `submit-init`, manifest
+  inspection, and watcher proof-thread topology. Family-specific `bin.ts`
+  step verbs and autonomous watcher actuation remain open.
 - Reference scripts (owner ruling): both step validators publish as plain
   reference-script UTxOs; submitters accept the published UTxO and verify
   the carried hash before building (decoding-family idiom,
@@ -154,14 +153,14 @@ on-chain via `cbor.serialise`, offchain via
 | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `demo/midgard-sdk/src/fraud-proof/double-withdraw-v1.ts`                          | codec/rule twin: step datum/redeemer schemas, `DoubleWithdrawStep02State`, state builder, `isDoubleWithdrawFaultV1`, canonical leaf-byte helpers re-exported from the shared withdrawal helpers                                           |
 | `demo/midgard-fault-proofs/src/prepare-double-withdraw.ts`                        | evidence builder: authenticates committed leaves against the header's counted root **and** count, finds/validates the payable duplicate pair, emits both membership proofs + the exact step-02 state; deterministic value-free rejections |
-| `demo/midgard-fault-proofs/src/double-withdraw/contracts-v1.ts`                   | explicit pre-registration contracts record (no `categoryId` field; blueprint titles pinned)                                                                                                                                               |
+| `demo/midgard-fault-proofs/src/double-withdraw/contracts-v1.ts`                   | explicit contracts record (no `categoryId` field; blueprint titles pinned)                                                                                                                                               |
 | `demo/midgard-fault-proofs/src/double-withdraw/submit-common-v1.ts`               | thread-UTxO/step-datum guards + reference-script guard                                                                                                                                                                                    |
-| `demo/midgard-fault-proofs/src/double-withdraw/submit-double-withdraw-step-01.ts` | step-01 submitter: re-derives the counted root from the **on-chain** header, serialiseData-form checks, `BuildTxWithRedeemer` layout, reference-script sourcing with inline fallback                                                      |
+| `demo/midgard-fault-proofs/src/double-withdraw/submit-double-withdraw-step-01.ts` | step-01 submitter: re-derives the counted root from the **on-chain** header, serialiseData-form checks, `BuildTxWithRedeemer` layout, mandatory authenticated reference-script sourcing                                                    |
 | `demo/midgard-fault-proofs/src/double-withdraw/submit-double-withdraw-step-02.ts` | finalize submitter: local twin of both last-chance checks (identity + established fault) refuses before it builds; thread burn + fraud-proof mint                                                                                         |
-| `demo/midgard-fault-proofs/src/double-withdraw/index.ts`                          | family barrel (reached by direct import; the package barrel is untouched until registration)                                                                                                                                              |
+| `demo/midgard-fault-proofs/src/double-withdraw/index.ts`                          | family barrel                                                                                                                                              |
 
-No CLI verbs in `bin.ts`; no catalogue entry; ids never routed through the
-deployment manifest.
+No family-specific step CLI verbs are added in `bin.ts`; catalogue and
+deployment-manifest routing are complete.
 
 ## 6. Detection
 
@@ -244,9 +243,9 @@ standing trap note.
   convicts honest operators that lawfully include and invalid-tag
   duplicate due events; over an "either-invalid ⇒ different family"
   routing because payability is the exact settlement-payout condition.
-- **D2 — reference scripts.** Standing owner ruling; inline fallback kept
-  only as the decoding-family idiom's local-attach path for harness setup
-  steps that predate publication.
+- **D2 — reference scripts.** Standing owner ruling; every production step
+  requires its authenticated published reference script. No inline production
+  fallback is part of the deployment contract.
 - **D3 — no on-chain category pin.** `native-script-decoding` precedent;
   Init's catalogue membership is the binding. The contingent-pin style is
   legacy.
@@ -257,14 +256,14 @@ standing trap note.
   comparison needs only the outref (fixed 34-ish bytes) and the identity;
   hashing the whole `WithdrawalInfo` (fabricated-withdrawal's need) buys
   nothing here since content fidelity is not adjudicated.
-- **D6 — watcher/scan-plan adapters deferred to registration.** Detection
-  core lands in `prepare-double-withdraw`; wiring it into the decoding
-  prover-adapter surface is parent-owned integration.
-- **D7 — test id `00000015`.** Wave-assigned; emulator-only.
+- **D6 — watcher/scan-plan adapters remain open after registration.** Detection
+  core lands in `prepare-double-withdraw`; mounting it in an autonomous prover
+  is separate integration.
+- **D7 — category id `00000015`.** Canonical production registration.
 
 ## 11. Out of scope
 
-Catalogue registration and production category id; `bin.ts` verbs; spec
+Family-specific `bin.ts` verbs and autonomous watcher actuation; spec
 erratum text for D1 (owner-owned); cross-block duplicate-event and
 cross-block distinct-id coverage (other families); DA-payload watcher
 service integration.

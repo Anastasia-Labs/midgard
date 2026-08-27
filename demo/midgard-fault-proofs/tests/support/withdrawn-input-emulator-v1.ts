@@ -9,6 +9,7 @@ import {
   commitCountedRootProgram,
   committedWithdrawalKeyBytesV1,
   committedWithdrawalValueBytesV1,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   type MidgardTxInput,
   type OutputReference,
   Proof,
@@ -38,7 +39,6 @@ import {
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
   trieRootHex,
-  WITHDRAWN_INPUT_TEST_CATEGORY_ID_V1,
 } from "./submit-init-emulator-shared.js";
 
 export type WithdrawnInputFixtureModeV1 =
@@ -231,7 +231,7 @@ export const makeWithdrawnInputEmulatorScenarioV1 = async (
     },
   });
   const contracts = harness.contracts.withdrawnInput;
-  const category = harness.catalogue.extraCategories.withdrawnInput;
+  const category = harness.catalogue.categories.withdrawnInput;
   if (contracts === undefined || category === undefined) {
     throw new Error("withdrawn-input emulator contracts/category missing");
   }
@@ -278,7 +278,7 @@ export const makeWithdrawnInputEmulatorScenarioV1 = async (
     header,
   });
   const explicitCategory: WithdrawnInputCatalogueCategoryV1 = {
-    categoryId: WITHDRAWN_INPUT_TEST_CATEGORY_ID_V1,
+    categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawnInput,
     scriptHash: contracts.steps[0].spendingScriptHash,
     membershipProofCbor: category.membershipProofCbor,
   };

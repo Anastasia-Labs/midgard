@@ -1,4 +1,4 @@
-/** Real pre-registration lifecycle for the standalone single-party min-fee proof. */
+/** Real lifecycle for the registered standalone single-party min-fee proof. */
 import { outRefLabel } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
@@ -26,8 +26,6 @@ import {
   funderPaymentKeyHash,
   makeFaultProofEmulatorHarnessV1,
   makeHeader,
-  MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  MIN_FEE_TEST_CATEGORY_ID_V1,
   network,
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
@@ -51,11 +49,13 @@ const makeHarness = async () => {
     },
   });
   const minFee = harness.contracts.minFee;
-  const category = harness.catalogue.extraCategories.minFee;
+  const category = harness.catalogue.categories.minFee;
   if (minFee === undefined || category === undefined) {
     throw new Error("Harness did not build the min-fee contracts/category");
   }
-  expect(category.categoryId).toBe(MIN_FEE_TEST_CATEGORY_ID_V1);
+  expect(category.categoryId).toBe(
+    SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.minFee,
+  );
   expect(category.scriptHash).toBe(minFee.steps[0].spendingScriptHash);
   expect(minFee.steps[0].spendingScriptHash).not.toBe(
     minFee.steps[1].spendingScriptHash,
@@ -119,7 +119,7 @@ const setupScenario = async ({
     expectedTransactionsRoot: block.nativeCompactTransactionsRoot,
     minFeeA: 0n,
     minFeeB: fee + 1n,
-    categoryId: MIN_FEE_TEST_CATEGORY_ID_V1,
+    categoryId: SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.minFee,
   });
   const refs: readonly [UTxO, UTxO] = [
     (
@@ -179,19 +179,7 @@ const advanceStep01 = async (
     referenceScriptUtxo: scenario.refs[0],
   });
 
-const removalCategory = (harness: Harness) => ({
-  name: "minFee",
-  categoryId: harness.category.categoryId,
-  firstStepDeploymentEntry: MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  firstStepScriptHash: harness.minFee.steps[0].spendingScriptHash,
-  fraudProof: {
-    policyId: harness.minFee.fraudProof.policyId,
-    spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-    spendingScriptAddress: harness.minFee.fraudProof.spendingScriptAddress,
-  },
-});
-
-describe("min-fee pre-registration emulator lifecycle", () => {
+describe("min-fee emulator lifecycle", () => {
   it("cancels both steps, resumes the same thread, rejects malformed evidence, mints, and removes", async () => {
     const harness = await makeHarness();
     const scenario = await setupScenario({
@@ -356,7 +344,7 @@ describe("min-fee pre-registration emulator lifecycle", () => {
       deploymentInfo: deployment,
       network,
       signer: harness.proverSigner,
-      fraudCategory: removalCategory(harness),
+      fraudCategory: "minFee",
       fraudulentHeaderHash: scenario.setup.headerHash,
       awaitConfirmation: true,
       requireReferenceScripts: true,
@@ -383,7 +371,7 @@ describe("min-fee pre-registration emulator lifecycle", () => {
         deploymentInfo: deployment,
         network,
         signer: harness.proverSigner,
-        fraudCategory: removalCategory(harness),
+        fraudCategory: "minFee",
         fraudulentHeaderHash: scenario.setup.headerHash,
         requireReferenceScripts: true,
       }),

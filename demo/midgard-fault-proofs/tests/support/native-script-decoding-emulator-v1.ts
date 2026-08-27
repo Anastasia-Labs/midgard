@@ -101,7 +101,6 @@ import {
   type NativeScriptDecodingProverPolicyV1,
 } from "../../src/native-script-decoding/prover-v1.js";
 import { requireNativeScriptDecodingThreadUtxoV1 } from "../../src/native-script-decoding/submit-common-v1.js";
-import type { RemoveFraudulentBlockExplicitCategory } from "../../src/remove-fraudulent-block.js";
 import {
   type ResolvedProverSigner,
   resolveProverSigner,
@@ -127,8 +126,6 @@ import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
   makeFaultProofEmulatorHarnessV1,
-  NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  NATIVE_SCRIPT_DECODING_TEST_CATEGORY_ID_V1,
   network as emulatorNetworkV1,
   publishPlainReferenceScriptUtxo,
   registerChunkedVerifyRewardAccount,
@@ -755,8 +752,8 @@ export const buildDecodingBlockFixtureV1 = async ({
 
 /**
  * The decoding-family harness: the real four-step chain built from the
- * regenerated blueprint and registered as the extra catalogue category the
- * design's §10 Q2 slot expects.
+ * regenerated blueprint and registered in its canonical production catalogue
+ * category.
  */
 export const makeDecodingEmulatorHarnessV1 = async () => {
   const harness = await makeFaultProofEmulatorHarnessV1({
@@ -770,13 +767,16 @@ export const makeDecodingEmulatorHarnessV1 = async () => {
     registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
   });
   const decoding = harness.contracts.nativeScriptDecoding;
-  const category = harness.catalogue.extraCategories.nativeScriptDecoding;
+  const category = harness.catalogue.categories.nativeScriptDecoding;
   if (decoding === undefined || category === undefined) {
     throw new Error(
       "Harness did not build the native-script-decoding contracts/category",
     );
   }
-  if (category.categoryId !== NATIVE_SCRIPT_DECODING_TEST_CATEGORY_ID_V1) {
+  if (
+    category.categoryId !==
+    SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.nativeScriptDecoding
+  ) {
     throw new Error("Unexpected native-script-decoding catalogue category id");
   }
   // The adversarial suite needs a THIRD party — a wallet that is neither the
@@ -792,30 +792,6 @@ export const makeDecodingEmulatorHarnessV1 = async () => {
   });
   return { ...harness, decoding, category, outsiderLucid, outsiderSigner };
 };
-
-/**
- * The explicit removal-category record for the family (#635): the removal
- * submitter cannot resolve a pre-registration category through the SDK's
- * canonical builders, so the harness hands it the already-resolved facts —
- * the test-registered category id, the step-01 hash the manifest entry pins,
- * and the shared fraud-proof pair the chain was parameterized with. The
- * spend-script hash rides the harness's shared `fraudProof` contracts because
- * the family record deliberately carries only the pair's policy id and
- * address; the two are the same deployment (see `contracts.ts`).
- */
-export const decodingRemovalCategoryV1 = (
-  harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarnessV1>>,
-): RemoveFraudulentBlockExplicitCategory => ({
-  name: "nativeScriptDecoding",
-  categoryId: harness.category.categoryId,
-  firstStepDeploymentEntry: NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  firstStepScriptHash: harness.decoding.steps[0].spendingScriptHash,
-  fraudProof: {
-    policyId: harness.decoding.fraudProof.policyId,
-    spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-    spendingScriptAddress: harness.decoding.fraudProof.spendingScriptAddress,
-  },
-});
 
 /**
  * Publishes all four step validators as reference scripts (design §10 Q3).

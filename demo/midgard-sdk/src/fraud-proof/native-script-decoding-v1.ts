@@ -9,11 +9,9 @@
  * exact canonical terminal).
  *
  * Violation: `native-script-decoding`.
- * Catalogue category: **not registered yet** (Q2: two reservations stand ahead
- * of it, so the expected id is `0000000d`, allocated only at registration).
- * Until then this module is reached by direct import rather than through
- * `fraud-proof/catalogue.ts`, and the asset-name helper is parameterized on
- * the category id instead of pinning one.
+ * Production catalogue category: `nativeScriptDecoding` (`0000000d`). The
+ * asset-name helper still accepts the deployed category id so callers remain
+ * explicitly bound to the manifest they are submitting against.
  *
  * Every schema below mirrors an Aiken type in
  * `onchain/aiken/lib/midgard/fraud-proofs/native-script-decoding/
@@ -75,8 +73,7 @@ export const NATIVE_SCRIPT_DECODING_LANGUAGE_UNBOUND_V1 = -2n;
 
 /**
  * A decoding-fault computation-thread token's asset name: the family's
- * category id (4 bytes, allocated at registration) followed by the challenged
- * header hash.
+ * deployed category id (4 bytes) followed by the challenged header hash.
  */
 export const nativeScriptDecodingThreadTokenAssetNameV1 = (
   categoryId: string,

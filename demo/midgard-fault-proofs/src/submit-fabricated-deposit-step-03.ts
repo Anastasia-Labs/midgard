@@ -46,6 +46,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -245,6 +246,7 @@ export const submitFabricatedDepositStep03 = async ({
   signer,
   threadOutRef,
   eventDatumCbor,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -252,6 +254,7 @@ export const submitFabricatedDepositStep03 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly eventDatumCbor?: string;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedDepositStep03Result> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -321,6 +324,14 @@ export const submitFabricatedDepositStep03 = async ({
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
+    .readFrom([
+      requireFabricatedReferenceScriptV1({
+        utxo: referenceScriptUtxo,
+        expectedScriptHash: contracts.steps[2].spendingScriptHash,
+        categoryLabel: FABRICATED_DEPOSIT_CATEGORY_LABEL,
+        stepIndex: 2,
+      }),
+    ])
     .pay.ToContract(
       contracts.steps[3].spendingScriptAddress,
       { kind: "inline", value: step04Datum },
@@ -329,8 +340,7 @@ export const submitFabricatedDepositStep03 = async ({
         [threadToken.unit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.steps[2].spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
@@ -365,6 +375,7 @@ export const submitFabricatedDepositStep03 = async ({
 export const submitFabricatedDepositStep03FromFiles = async (
   config: SubmitFabricatedDepositStep03CliConfig & {
     readonly contracts: FabricatedDepositContractsV1;
+    readonly referenceScriptUtxo: UTxO;
   },
 ): Promise<SubmitFabricatedDepositStep03Result> => {
   const [authenticContentJson, lucid] = await Promise.all([
@@ -384,6 +395,7 @@ export const submitFabricatedDepositStep03FromFiles = async (
         ? undefined
         : parseSubmitFabricatedDepositAuthenticContent(authenticContentJson)
             .eventDatumCbor,
+    referenceScriptUtxo: config.referenceScriptUtxo,
     awaitConfirmation: config.awaitConfirmation,
   });
 };

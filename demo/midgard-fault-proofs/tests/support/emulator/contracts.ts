@@ -2,21 +2,36 @@ import {
   AddressData,
   addressDataFromBech32,
   type AuthenticatedValidator,
+  buildCanonicalDecodabilityFaultProofContracts,
+  buildCommittedFieldShapeFaultProofContracts,
+  buildCrossBlockDuplicateEventFaultProofContracts,
   buildDaHashPreimageFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
+  buildDoubleWithdrawFaultProofContracts,
   buildFabricatedDepositFaultProofContracts,
   buildFabricatedWithdrawalFaultProofContracts,
   buildInputNoIdxFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
   buildInvalidSignatureFaultProofContracts,
+  buildL2TxMistagFaultProofContracts,
+  buildMinFeeFaultProofContracts,
+  buildMissingNativeScriptTxFaultProofContracts,
+  buildMissingSignatureFaultProofContracts,
+  buildNativeScriptDecodingFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildNoReferenceInputFaultProofContracts,
   buildReferenceInputNoIdxFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
+  buildWithdrawalMistagFaultProofContracts,
+  buildWithdrawnInputFaultProofContracts,
+  buildWithdrawnReferenceInputFaultProofContracts,
   buildZeroInputFaultProofContracts,
   FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1,
   FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
+  FAULT_PROOF_SHARED_TITLES,
+  type FaultProofContractChains,
+  fraudProofContractsToFirstSteps,
   HUB_ORACLE_ASSET_NAME,
   type MidgardValidators,
   parseFaultProofBlueprint,
@@ -49,14 +64,8 @@ import {
   DOUBLE_WITHDRAW_BLUEPRINT_TITLES_V1,
   type DoubleWithdrawContractsV1,
 } from "../../../src/double-withdraw/contracts-v1.js";
-import {
-  buildL2TxMistagChainV1,
-  type L2TxMistagContractsV1,
-} from "../../../src/l2-tx-mistag/contracts-v1.js";
-import {
-  MIN_FEE_BLUEPRINT_TITLES_V1,
-  type MinFeeContractsV1,
-} from "../../../src/min-fee-contracts-v1.js";
+import { type L2TxMistagContractsV1 } from "../../../src/l2-tx-mistag/contracts-v1.js";
+import { type MinFeeContractsV1 } from "../../../src/min-fee-contracts-v1.js";
 import {
   MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1,
   type MissingNativeScriptTxContractsV1,
@@ -98,6 +107,24 @@ import {
   makeMintingValidator,
   makeSpendingValidator,
 } from "./validators.js";
+
+type EmulatorStepTuple = readonly [
+  Pick<SdkSpendingValidator, "spendingScript">,
+  ...Pick<SdkSpendingValidator, "spendingScript">[],
+];
+
+type SdkStepTuple<Steps extends EmulatorStepTuple> = {
+  readonly [Index in keyof Steps]: SdkSpendingValidator;
+};
+
+const chainFromSteps = <const Steps extends EmulatorStepTuple>(
+  steps: Steps,
+) => {
+  const sdkSteps = steps.map((step) =>
+    makeSpendingValidator(step.spendingScript.script),
+  ) as unknown as SdkStepTuple<Steps>;
+  return { firstStep: sdkSteps[0], steps: sdkSteps };
+};
 
 /** Applies step 02 first, then pins its hash into step 01 in blueprint order. */
 export const buildCommittedFieldShapeChainV1 = ({
@@ -141,7 +168,7 @@ export const buildCommittedFieldShapeChainV1 = ({
   return [step01, step02];
 };
 
-/** Applies the pre-registration two-step `double-withdraw` chain backwards. */
+/** Applies the two-step `double-withdraw` chain backwards. */
 export const buildDoubleWithdrawChainV1 = ({
   realBlueprint,
   computationThreadPolicyId,
@@ -381,40 +408,6 @@ export const buildMissingNativeScriptTxChainV1 = ({
     ),
   );
   return [step01, step02, step03, step04, step05, step06];
-};
-
-/** Applies the standalone min-fee chain in blueprint-declared order. */
-export const buildMinFeeChainV1 = ({
-  realBlueprint,
-  computationThreadPolicyId,
-  fraudProofPolicyId,
-  fraudProofTokenAddressData,
-  fieldPreimageCertificatePolicyId,
-  hubOraclePolicyId,
-}: {
-  readonly realBlueprint: Blueprint;
-  readonly computationThreadPolicyId: string;
-  readonly fraudProofPolicyId: string;
-  readonly fraudProofTokenAddressData: Data;
-  readonly fieldPreimageCertificatePolicyId: string;
-  readonly hubOraclePolicyId: string;
-}): readonly [SdkSpendingValidator, SdkSpendingValidator] => {
-  const step02 = makeSpendingValidator(
-    applyCompiledScript(realBlueprint, MIN_FEE_BLUEPRINT_TITLES_V1.step02, [
-      fraudProofPolicyId,
-      fraudProofTokenAddressData,
-      computationThreadPolicyId,
-      fieldPreimageCertificatePolicyId,
-    ]),
-  );
-  const step01 = makeSpendingValidator(
-    applyCompiledScript(realBlueprint, MIN_FEE_BLUEPRINT_TITLES_V1.step01, [
-      step02.spendingScriptHash,
-      computationThreadPolicyId,
-      hubOraclePolicyId,
-    ]),
-  );
-  return [step01, step02];
 };
 
 /** Applies the two-step canonical-decodability family backwards. */
@@ -887,6 +880,54 @@ export const buildMinimalFaultProofContracts = async (
     realInvalidSignature,
     buildInvalidSignatureFaultProofContracts,
   );
+  const minFeeContracts = await buildFamilyContracts(
+    realMinFee,
+    buildMinFeeFaultProofContracts,
+  );
+  const nativeScriptDecodingContracts = await buildFamilyContracts(
+    realNativeScriptDecoding,
+    buildNativeScriptDecodingFaultProofContracts,
+  );
+  const missingSignatureContracts = await buildFamilyContracts(
+    realMissingSignature,
+    buildMissingSignatureFaultProofContracts,
+  );
+  const missingNativeScriptTxContracts = await buildFamilyContracts(
+    realMissingNativeScriptTx,
+    buildMissingNativeScriptTxFaultProofContracts,
+  );
+  const withdrawnReferenceInputContracts = await buildFamilyContracts(
+    realWithdrawnReferenceInput,
+    buildWithdrawnReferenceInputFaultProofContracts,
+  );
+  const canonicalDecodabilityContracts = await buildFamilyContracts(
+    realCanonicalDecodability,
+    buildCanonicalDecodabilityFaultProofContracts,
+  );
+  const committedFieldShapeContracts = await buildFamilyContracts(
+    realCommittedFieldShape,
+    buildCommittedFieldShapeFaultProofContracts,
+  );
+  const withdrawnInputContracts = await buildFamilyContracts(
+    realWithdrawnInput,
+    buildWithdrawnInputFaultProofContracts,
+  );
+  const withdrawalMistagContracts = await buildFamilyContracts(
+    realWithdrawalMistag,
+    buildWithdrawalMistagFaultProofContracts,
+  );
+  const doubleWithdrawContracts = await buildFamilyContracts(
+    realDoubleWithdraw,
+    buildDoubleWithdrawFaultProofContracts,
+  );
+  const crossBlockDuplicateEventContracts = await buildFamilyContracts(
+    realCrossBlockDuplicateEvent,
+    buildCrossBlockDuplicateEventFaultProofContracts,
+  );
+  const l2TxMistagContracts = await buildFamilyContracts(
+    realL2TxMistag,
+    buildL2TxMistagFaultProofContracts,
+  );
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
       withActiveOperators.activeOperators.spendingScriptAddress,
@@ -940,11 +981,9 @@ export const buildMinimalFaultProofContracts = async (
         ...stateQueueSpending,
       };
 
-  // The two Q39/Q40 families predate their catalogue registration: production
-  // deployment resolution cannot build them yet (parent-owned integration
-  // work), so their submitters take an explicit contracts record. Assemble it
-  // here, from the same parameterized chains whose step-01 hashes the tests
-  // register as extra catalogue categories.
+  // The Q39/Q40 submitters take an explicit focused contracts record. Assemble
+  // it from the same parameterized chains whose step-01 hashes occupy their
+  // canonical production catalogue categories.
   const fabricatedDeposit: FabricatedDepositContractsV1 | undefined =
     fabricatedDepositContracts === undefined
       ? undefined
@@ -956,393 +995,152 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueue.policyId,
           categoryId: FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1,
         };
-  // Same predates-registration shape for the `native-script-decoding` family
-  // (#635): the chain is applied here from the double-spend family's shared
-  // computation-thread and fraud-proof policies, with the harness's
-  // always-succeeds field-preimage certificate stub standing in for the §8.6
-  // certificate policy (#579 ruling A) — production parameterizes step 03 with
-  // the real certificate policy instead.
+  const fieldPreimageCertificateMinting = makeMintingValidator(
+    getCompiledScript(
+      realBlueprint,
+      FAULT_PROOF_SHARED_TITLES.fieldPreimageCertificateMint,
+    ),
+  );
+  const fieldPreimageCertificatePolicyId =
+    fieldPreimageCertificateMinting.policyId;
+
+  // Family adapters retain their focused test-facing records, but the scripts
+  // now come from the same canonical SDK builders used for production
+  // deployment. This keeps catalogue and removal hashes identical without
+  // reintroducing pre-registration sidecars.
   const nativeScriptDecoding: NativeScriptDecodingContractsV1 | undefined =
-    realNativeScriptDecoding
-      ? await (async () => {
-          const fraudProofTokenAddressData = await Effect.runPromise(
-            addressDataFromBech32(
-              doubleSpendContracts.fraudProof.spendingScriptAddress,
-            ).pipe(
-              Effect.map((addressData) =>
-                Data.from(Data.to(addressData, AddressData)),
-              ),
-            ),
-          );
-          const steps = buildNativeScriptDecodingChainV1({
-            realBlueprint,
-            computationThreadPolicyId:
-              doubleSpendContracts.computationThread.policyId,
-            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-            fraudProofTokenAddressData,
-            fieldPreimageCertificatePolicyId:
-              base.fieldPreimageCertificate.policyId,
-            hubOraclePolicyId: hubOracle.policyId,
-          });
-          return {
-            steps,
-            computationThread: doubleSpendContracts.computationThread,
-            fraudProof: doubleSpendContracts.fraudProof,
-            hubOraclePolicyId: hubOracle.policyId,
-            stateQueuePolicyId: stateQueue.policyId,
-            fieldPreimageCertificatePolicyId:
-              base.fieldPreimageCertificate.policyId,
-          };
-        })()
-      : undefined;
+    nativeScriptDecodingContracts === undefined
+      ? undefined
+      : {
+          steps: nativeScriptDecodingContracts.nativeScriptDecoding.steps,
+          computationThread: nativeScriptDecodingContracts.computationThread,
+          fraudProof: nativeScriptDecodingContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueue.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
   const missingSignature: MissingSignatureContractsV1 | undefined =
-    realMissingSignature
-      ? await (async () => {
-          const fraudProofTokenAddressData = await Effect.runPromise(
-            addressDataFromBech32(
-              doubleSpendContracts.fraudProof.spendingScriptAddress,
-            ).pipe(
-              Effect.map((addressData) =>
-                Data.from(Data.to(addressData, AddressData)),
-              ),
-            ),
-          );
-          const steps = buildMissingSignatureChainV1({
-            realBlueprint,
-            computationThreadPolicyId:
-              doubleSpendContracts.computationThread.policyId,
-            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-            fraudProofTokenAddressData,
-            fieldPreimageCertificatePolicyId:
-              base.fieldPreimageCertificate.policyId,
-            hubOraclePolicyId: hubOracle.policyId,
-          });
-          return {
-            steps,
-            computationThread: doubleSpendContracts.computationThread,
-            fraudProof: doubleSpendContracts.fraudProof,
-            hubOraclePolicyId: hubOracle.policyId,
-            stateQueuePolicyId: stateQueueMinting.policyId,
-            fieldPreimageCertificatePolicyId:
-              base.fieldPreimageCertificate.policyId,
-          };
-        })()
-      : undefined;
+    missingSignatureContracts === undefined
+      ? undefined
+      : {
+          steps: missingSignatureContracts.missingSignature.steps,
+          computationThread: missingSignatureContracts.computationThread,
+          fraudProof: missingSignatureContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
   const missingNativeScriptTx: MissingNativeScriptTxContractsV1 | undefined =
-    realMissingNativeScriptTx
-      ? await (async () => {
-          const fraudProofTokenAddressData = await Effect.runPromise(
-            addressDataFromBech32(
-              doubleSpendContracts.fraudProof.spendingScriptAddress,
-            ).pipe(
-              Effect.map((addressData) =>
-                Data.from(Data.to(addressData, AddressData)),
-              ),
-            ),
-          );
-          return {
-            steps: buildMissingNativeScriptTxChainV1({
-              realBlueprint,
-              computationThreadPolicyId:
-                doubleSpendContracts.computationThread.policyId,
-              fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-              fraudProofTokenAddressData,
-              fieldPreimageCertificatePolicyId:
-                base.fieldPreimageCertificate.policyId,
-              hubOraclePolicyId: hubOracle.policyId,
-            }),
-            computationThread: doubleSpendContracts.computationThread,
-            fraudProof: doubleSpendContracts.fraudProof,
-            hubOraclePolicyId: hubOracle.policyId,
-            stateQueuePolicyId: stateQueueMinting.policyId,
-            fieldPreimageCertificatePolicyId:
-              base.fieldPreimageCertificate.policyId,
-          };
-        })()
-      : undefined;
+    missingNativeScriptTxContracts === undefined
+      ? undefined
+      : {
+          steps: missingNativeScriptTxContracts.missingNativeScriptTx.steps,
+          computationThread: missingNativeScriptTxContracts.computationThread,
+          fraudProof: missingNativeScriptTxContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
   const canonicalDecodability: CanonicalDecodabilityContractsV1 | undefined =
-    realCanonicalDecodability
-      ? await (async () => {
-          const fraudProofTokenAddressData = await Effect.runPromise(
-            addressDataFromBech32(
-              doubleSpendContracts.fraudProof.spendingScriptAddress,
-            ).pipe(
-              Effect.map((addressData) =>
-                Data.from(Data.to(addressData, AddressData)),
-              ),
-            ),
-          );
-          const steps = buildCanonicalDecodabilityChainV1({
-            realBlueprint,
-            computationThreadPolicyId:
-              doubleSpendContracts.computationThread.policyId,
-            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-            fraudProofTokenAddressData,
-            fieldPreimageCertificatePolicyId:
-              base.fieldPreimageCertificate.policyId,
-            hubOraclePolicyId: hubOracle.policyId,
-          });
-          return {
-            steps,
-            computationThread: doubleSpendContracts.computationThread,
-            fraudProof: doubleSpendContracts.fraudProof,
-            hubOraclePolicyId: hubOracle.policyId,
-            stateQueuePolicyId: stateQueueMinting.policyId,
-            fieldPreimageCertificatePolicyId:
-              base.fieldPreimageCertificate.policyId,
-          };
-        })()
-      : undefined;
+    canonicalDecodabilityContracts === undefined
+      ? undefined
+      : {
+          steps: canonicalDecodabilityContracts.canonicalDecodability.steps,
+          computationThread: canonicalDecodabilityContracts.computationThread,
+          fraudProof: canonicalDecodabilityContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
   const committedFieldShape: CommittedFieldShapeContractsV1 | undefined =
-    realCommittedFieldShape
-      ? await (async () => {
-          const fraudProofTokenAddressData = await Effect.runPromise(
-            addressDataFromBech32(
-              doubleSpendContracts.fraudProof.spendingScriptAddress,
-            ).pipe(
-              Effect.map((addressData) =>
-                Data.from(Data.to(addressData, AddressData)),
-              ),
-            ),
-          );
-          const steps = buildCommittedFieldShapeChainV1({
-            realBlueprint,
-            computationThreadPolicyId:
-              doubleSpendContracts.computationThread.policyId,
-            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-            fraudProofTokenAddressData,
-            fieldPreimageCertificatePolicyId:
-              base.fieldPreimageCertificate.policyId,
-            hubOraclePolicyId: hubOracle.policyId,
-          });
-          return {
-            steps,
-            computationThread: doubleSpendContracts.computationThread,
-            fraudProof: doubleSpendContracts.fraudProof,
-            hubOraclePolicyId: hubOracle.policyId,
-            stateQueuePolicyId: stateQueueMinting.policyId,
-            fieldPreimageCertificatePolicyId:
-              base.fieldPreimageCertificate.policyId,
-          };
-        })()
-      : undefined;
+    committedFieldShapeContracts === undefined
+      ? undefined
+      : {
+          steps: committedFieldShapeContracts.committedFieldShape.steps,
+          computationThread: committedFieldShapeContracts.computationThread,
+          fraudProof: committedFieldShapeContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
   const withdrawnReferenceInput:
     | WithdrawnReferenceInputContractsV1
-    | undefined = realWithdrawnReferenceInput
-    ? await (async () => {
-        const fraudProofTokenAddressData = await Effect.runPromise(
-          addressDataFromBech32(
-            doubleSpendContracts.fraudProof.spendingScriptAddress,
-          ).pipe(
-            Effect.map((addressData) =>
-              Data.from(Data.to(addressData, AddressData)),
-            ),
-          ),
-        );
-        return {
-          steps: buildWithdrawnReferenceInputChainV1({
-            realBlueprint,
-            computationThreadPolicyId:
-              doubleSpendContracts.computationThread.policyId,
-            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-            fraudProofTokenAddressData,
-            fieldPreimageCertificatePolicyId:
-              base.fieldPreimageCertificate.policyId,
-            hubOraclePolicyId: hubOracle.policyId,
-          }),
-          computationThread: doubleSpendContracts.computationThread,
-          fraudProof: doubleSpendContracts.fraudProof,
+    | undefined =
+    withdrawnReferenceInputContracts === undefined
+      ? undefined
+      : {
+          steps: withdrawnReferenceInputContracts.withdrawnReferenceInput.steps,
+          computationThread: withdrawnReferenceInputContracts.computationThread,
+          fraudProof: withdrawnReferenceInputContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueueMinting.policyId,
-          fieldPreimageCertificatePolicyId:
-            base.fieldPreimageCertificate.policyId,
+          fieldPreimageCertificatePolicyId,
         };
-      })()
-    : undefined;
   const minFee: MinFeeContractsV1 | undefined = realMinFee
-    ? await (async () => {
-        const fraudProofTokenAddressData = await Effect.runPromise(
-          addressDataFromBech32(
-            doubleSpendContracts.fraudProof.spendingScriptAddress,
-          ).pipe(
-            Effect.map((addressData) =>
-              Data.from(Data.to(addressData, AddressData)),
-            ),
-          ),
-        );
-        return {
-          steps: buildMinFeeChainV1({
-            realBlueprint,
-            computationThreadPolicyId:
-              doubleSpendContracts.computationThread.policyId,
-            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-            fraudProofTokenAddressData,
-            fieldPreimageCertificatePolicyId:
-              base.fieldPreimageCertificate.policyId,
-            hubOraclePolicyId: hubOracle.policyId,
-          }),
-          computationThread: doubleSpendContracts.computationThread,
-          fraudProof: doubleSpendContracts.fraudProof,
-          hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: stateQueueMinting.policyId,
-          fieldPreimageCertificatePolicyId:
-            base.fieldPreimageCertificate.policyId,
-        };
-      })()
+    ? {
+        steps: minFeeContracts!.minFee.steps,
+        computationThread: minFeeContracts!.computationThread,
+        fraudProof: minFeeContracts!.fraudProof,
+        hubOraclePolicyId: hubOracle.policyId,
+        stateQueuePolicyId: stateQueueMinting.policyId,
+        fieldPreimageCertificatePolicyId,
+      }
     : undefined;
   const doubleWithdraw: DoubleWithdrawContractsV1 | undefined =
-    realDoubleWithdraw
-      ? await (async () => {
-          const fraudProofTokenAddressData = await Effect.runPromise(
-            addressDataFromBech32(
-              doubleSpendContracts.fraudProof.spendingScriptAddress,
-            ).pipe(
-              Effect.map((addressData) =>
-                Data.from(Data.to(addressData, AddressData)),
-              ),
-            ),
-          );
-          return {
-            steps: buildDoubleWithdrawChainV1({
-              realBlueprint,
-              computationThreadPolicyId:
-                doubleSpendContracts.computationThread.policyId,
-              fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-              fraudProofTokenAddressData,
-              hubOraclePolicyId: hubOracle.policyId,
-            }),
-            computationThread: doubleSpendContracts.computationThread,
-            fraudProof: doubleSpendContracts.fraudProof,
-            hubOraclePolicyId: hubOracle.policyId,
-            stateQueuePolicyId: stateQueueMinting.policyId,
-          };
-        })()
-      : undefined;
+    doubleWithdrawContracts === undefined
+      ? undefined
+      : {
+          steps: doubleWithdrawContracts.doubleWithdraw.steps,
+          computationThread: doubleWithdrawContracts.computationThread,
+          fraudProof: doubleWithdrawContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+        };
   const crossBlockDuplicateEvent:
     | CrossBlockDuplicateEventContractsV1
-    | undefined = realCrossBlockDuplicateEvent
-    ? await (async () => {
-        const fraudProofTokenAddressData = await Effect.runPromise(
-          addressDataFromBech32(
-            doubleSpendContracts.fraudProof.spendingScriptAddress,
-          ).pipe(
-            Effect.map((addressData) =>
-              Data.from(Data.to(addressData, AddressData)),
-            ),
-          ),
-        );
-        return {
-          steps: buildCrossBlockDuplicateEventChainV1({
-            realBlueprint,
-            computationThreadPolicyId:
-              doubleSpendContracts.computationThread.policyId,
-            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-            fraudProofTokenAddressData,
-            hubOraclePolicyId: hubOracle.policyId,
-          }),
-          computationThread: doubleSpendContracts.computationThread,
-          fraudProof: doubleSpendContracts.fraudProof,
+    | undefined =
+    crossBlockDuplicateEventContracts === undefined
+      ? undefined
+      : {
+          steps:
+            crossBlockDuplicateEventContracts.crossBlockDuplicateEvent.steps,
+          computationThread:
+            crossBlockDuplicateEventContracts.computationThread,
+          fraudProof: crossBlockDuplicateEventContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueueMinting.policyId,
         };
-      })()
-    : undefined;
-  const l2TxMistag: L2TxMistagContractsV1 | undefined = realL2TxMistag
-    ? await (async () => {
-        const fraudProofTokenAddressData = await Effect.runPromise(
-          addressDataFromBech32(
-            doubleSpendContracts.fraudProof.spendingScriptAddress,
-          ).pipe(
-            Effect.map((addressData) =>
-              Data.from(Data.to(addressData, AddressData)),
-            ),
-          ),
-        );
-        return {
-          steps: buildL2TxMistagChainV1({
-            blueprint: realBlueprint,
-            network,
-            computationThreadPolicyId:
-              doubleSpendContracts.computationThread.policyId,
-            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-            fraudProofTokenAddressData,
-            hubOraclePolicyId: hubOracle.policyId,
-          }),
-          computationThread: doubleSpendContracts.computationThread,
-          fraudProof: doubleSpendContracts.fraudProof,
+  const l2TxMistag: L2TxMistagContractsV1 | undefined =
+    l2TxMistagContracts === undefined
+      ? undefined
+      : {
+          steps: l2TxMistagContracts.l2TxMistag.steps,
+          computationThread: l2TxMistagContracts.computationThread,
+          fraudProof: l2TxMistagContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueueMinting.policyId,
         };
-      })()
-    : undefined;
   const withdrawnInput: WithdrawnInputContractsV1 | undefined =
-    realWithdrawnInput
-      ? await (async () => {
-          const fraudProofTokenAddressData = await Effect.runPromise(
-            addressDataFromBech32(
-              doubleSpendContracts.fraudProof.spendingScriptAddress,
-            ).pipe(
-              Effect.map((addressData) =>
-                Data.from(Data.to(addressData, AddressData)),
-              ),
-            ),
-          );
-          return {
-            steps: buildWithdrawnInputChainV1({
-              realBlueprint,
-              computationThreadPolicyId:
-                doubleSpendContracts.computationThread.policyId,
-              fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-              fraudProofTokenAddressData,
-              fieldPreimageCertificatePolicyId:
-                base.fieldPreimageCertificate.policyId,
-              hubOraclePolicyId: hubOracle.policyId,
-            }),
-            computationThread: doubleSpendContracts.computationThread,
-            fraudProof: {
-              ...doubleSpendContracts.fraudProof,
-              spendingScriptHash:
-                doubleSpendContracts.fraudProof.spendingScriptHash,
-            },
-            hubOraclePolicyId: hubOracle.policyId,
-            stateQueuePolicyId: stateQueueMinting.policyId,
-            fieldPreimageCertificatePolicyId:
-              base.fieldPreimageCertificate.policyId,
-          };
-        })()
-      : undefined;
+    withdrawnInputContracts === undefined
+      ? undefined
+      : {
+          steps: withdrawnInputContracts.withdrawnInput.steps,
+          computationThread: withdrawnInputContracts.computationThread,
+          fraudProof: withdrawnInputContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
   const withdrawalMistag: WithdrawalMistagContractsV1 | undefined =
-    realWithdrawalMistag
-      ? await (async () => {
-          const fraudProofTokenAddressData = await Effect.runPromise(
-            addressDataFromBech32(
-              doubleSpendContracts.fraudProof.spendingScriptAddress,
-            ).pipe(
-              Effect.map((addressData) =>
-                Data.from(Data.to(addressData, AddressData)),
-              ),
-            ),
-          );
-          return {
-            steps: buildWithdrawalMistagChainV1({
-              realBlueprint,
-              computationThreadPolicyId:
-                doubleSpendContracts.computationThread.policyId,
-              fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-              fraudProofTokenAddressData,
-              hubOraclePolicyId: hubOracle.policyId,
-            }),
-            computationThread: doubleSpendContracts.computationThread,
-            fraudProof: {
-              ...doubleSpendContracts.fraudProof,
-              spendingScriptHash:
-                doubleSpendContracts.fraudProof.spendingScriptHash,
-            },
-            hubOraclePolicyId: hubOracle.policyId,
-            stateQueuePolicyId: stateQueueMinting.policyId,
-          };
-        })()
-      : undefined;
+    withdrawalMistagContracts === undefined
+      ? undefined
+      : {
+          steps: withdrawalMistagContracts.withdrawalMistag.steps,
+          computationThread: withdrawalMistagContracts.computationThread,
+          fraudProof: withdrawalMistagContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+        };
   const fabricatedWithdrawal: FabricatedWithdrawalContractsV1 | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
@@ -1354,6 +1152,96 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueue.policyId,
           categoryId: FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
         };
+  const fraudProofContracts: FaultProofContractChains = {
+    ...withActiveOperators.fraudProofContracts,
+    doubleSpend: doubleSpendContracts.doubleSpend,
+    nonExistentInput:
+      nonExistentInputContracts?.nonExistentInput ??
+      withActiveOperators.fraudProofContracts.nonExistentInput,
+    nonExistentInputNoIndex:
+      inputNoIdxContracts?.nonExistentInputNoIndex ??
+      withActiveOperators.fraudProofContracts.nonExistentInputNoIndex,
+    invalidRange:
+      invalidRangeContracts?.invalidRange ??
+      withActiveOperators.fraudProofContracts.invalidRange,
+    transitionTrace:
+      transitionTraceContracts?.transitionTrace ??
+      withActiveOperators.fraudProofContracts.transitionTrace,
+    zeroInput:
+      zeroInputContracts?.zeroInput ??
+      withActiveOperators.fraudProofContracts.zeroInput,
+    validationTraceDispute:
+      validationTraceDisputeContracts?.validationTraceDispute ??
+      withActiveOperators.fraudProofContracts.validationTraceDispute,
+    daHashPreimage:
+      daHashPreimageContracts?.daHashPreimage ??
+      withActiveOperators.fraudProofContracts.daHashPreimage,
+    noReferenceInput:
+      noReferenceInputContracts?.noReferenceInput ??
+      withActiveOperators.fraudProofContracts.noReferenceInput,
+    referenceInputNoIdx:
+      referenceInputNoIdxContracts?.referenceInputNoIdx ??
+      withActiveOperators.fraudProofContracts.referenceInputNoIdx,
+    invalidSignature:
+      invalidSignatureContracts?.invalidSignature ??
+      withActiveOperators.fraudProofContracts.invalidSignature,
+    fabricatedDeposit:
+      fabricatedDeposit === undefined
+        ? withActiveOperators.fraudProofContracts.fabricatedDeposit
+        : chainFromSteps(fabricatedDeposit.steps),
+    fabricatedWithdrawal:
+      fabricatedWithdrawal === undefined
+        ? withActiveOperators.fraudProofContracts.fabricatedWithdrawal
+        : chainFromSteps(fabricatedWithdrawal.steps),
+    nativeScriptDecoding:
+      nativeScriptDecoding === undefined
+        ? withActiveOperators.fraudProofContracts.nativeScriptDecoding
+        : chainFromSteps(nativeScriptDecoding.steps),
+    missingSignature:
+      missingSignature === undefined
+        ? withActiveOperators.fraudProofContracts.missingSignature
+        : chainFromSteps(missingSignature.steps),
+    missingNativeScriptTx:
+      missingNativeScriptTx === undefined
+        ? withActiveOperators.fraudProofContracts.missingNativeScriptTx
+        : chainFromSteps(missingNativeScriptTx.steps),
+    withdrawnReferenceInput:
+      withdrawnReferenceInput === undefined
+        ? withActiveOperators.fraudProofContracts.withdrawnReferenceInput
+        : chainFromSteps(withdrawnReferenceInput.steps),
+    canonicalDecodability:
+      canonicalDecodability === undefined
+        ? withActiveOperators.fraudProofContracts.canonicalDecodability
+        : chainFromSteps(canonicalDecodability.steps),
+    committedFieldShape:
+      committedFieldShape === undefined
+        ? withActiveOperators.fraudProofContracts.committedFieldShape
+        : chainFromSteps(committedFieldShape.steps),
+    minFee:
+      minFee === undefined
+        ? withActiveOperators.fraudProofContracts.minFee
+        : chainFromSteps(minFee.steps),
+    withdrawalMistag:
+      withdrawalMistag === undefined
+        ? withActiveOperators.fraudProofContracts.withdrawalMistag
+        : chainFromSteps(withdrawalMistag.steps),
+    doubleWithdraw:
+      doubleWithdraw === undefined
+        ? withActiveOperators.fraudProofContracts.doubleWithdraw
+        : chainFromSteps(doubleWithdraw.steps),
+    crossBlockDuplicateEvent:
+      crossBlockDuplicateEvent === undefined
+        ? withActiveOperators.fraudProofContracts.crossBlockDuplicateEvent
+        : chainFromSteps(crossBlockDuplicateEvent.steps),
+    l2TxMistag:
+      l2TxMistag === undefined
+        ? withActiveOperators.fraudProofContracts.l2TxMistag
+        : chainFromSteps(l2TxMistag.steps),
+    withdrawnInput:
+      withdrawnInput === undefined
+        ? withActiveOperators.fraudProofContracts.withdrawnInput
+        : chainFromSteps(withdrawnInput.steps),
+  };
 
   return {
     ...withScheduler,
@@ -1378,6 +1266,14 @@ export const buildMinimalFaultProofContracts = async (
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,
+    // Certification must mint and park the output under the same canonical
+    // dual-purpose script every SDK family step is parameterized with.
+    fieldPreimageCertificate: {
+      ...fieldPreimageCertificateMinting,
+      ...makeSpendingValidator(
+        fieldPreimageCertificateMinting.mintingScriptCBOR,
+      ),
+    },
     stateQueue,
     fraudProof: {
       ...doubleSpendContracts.fraudProof,
@@ -1385,52 +1281,7 @@ export const buildMinimalFaultProofContracts = async (
       mintingScript: doubleSpendContracts.fraudProof.mintingScript,
       mintingScriptCBOR: doubleSpendContracts.fraudProof.mintingScriptCBOR,
     },
-    fraudProofs: {
-      ...withActiveOperators.fraudProofs,
-      doubleSpend: doubleSpendContracts.doubleSpend.firstStep,
-      nonExistentInput:
-        nonExistentInputContracts?.nonExistentInput.firstStep ??
-        withActiveOperators.fraudProofs.nonExistentInput,
-      invalidRange:
-        invalidRangeContracts?.invalidRange.firstStep ??
-        withActiveOperators.fraudProofs.invalidRange,
-      transitionTrace:
-        transitionTraceContracts?.transitionTrace.firstStep ??
-        withActiveOperators.fraudProofs.transitionTrace,
-      zeroInput:
-        zeroInputContracts?.zeroInput.firstStep ??
-        withActiveOperators.fraudProofs.zeroInput,
-      daHashPreimage:
-        daHashPreimageContracts?.daHashPreimage.firstStep ??
-        withActiveOperators.fraudProofs.daHashPreimage,
-      nonExistentInputNoIndex:
-        inputNoIdxContracts?.nonExistentInputNoIndex.firstStep ??
-        withActiveOperators.fraudProofs.nonExistentInputNoIndex,
-      noReferenceInput:
-        noReferenceInputContracts?.noReferenceInput.firstStep ??
-        withActiveOperators.fraudProofs.noReferenceInput,
-      referenceInputNoIdx:
-        referenceInputNoIdxContracts?.referenceInputNoIdx.firstStep ??
-        withActiveOperators.fraudProofs.referenceInputNoIdx,
-      invalidSignature:
-        invalidSignatureContracts?.invalidSignature.firstStep ??
-        withActiveOperators.fraudProofs.invalidSignature,
-      validationTraceDispute:
-        validationTraceDisputeContracts === undefined
-          ? withActiveOperators.fraudProofs.validationTraceDispute
-          : {
-              ...validationTraceDisputeContracts.validationTraceDispute
-                .firstStep,
-              source:
-                validationTraceDisputeContracts.validationTraceDispute.source,
-              game: validationTraceDisputeContracts.validationTraceDispute.game,
-              boundary:
-                validationTraceDisputeContracts.validationTraceDispute.boundary,
-              timeout:
-                validationTraceDisputeContracts.validationTraceDispute.timeout,
-              award:
-                validationTraceDisputeContracts.validationTraceDispute.award,
-            },
-    },
+    fraudProofContracts,
+    fraudProofs: fraudProofContractsToFirstSteps(fraudProofContracts),
   };
 };

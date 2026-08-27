@@ -34,6 +34,7 @@ import {
   outRefLabel,
   parseOutRef,
   readJsonFile,
+  requireDeploymentReferenceScript,
   requireSingletonUtxo,
   type ResolvedProverSigner,
   resolveProverSigner,
@@ -113,6 +114,17 @@ type TransitionTraceFinalSpendLayout = {
 type TransitionTraceFinalResolvedLayout = TransitionTraceFinalSpendLayout & {
   readonly computationThreadMintRedeemerIndex: bigint;
 };
+
+const TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES = [
+  "fraudProofTransitionTraceControl",
+  "fraudProofTransitionTraceSource",
+  "fraudProofTransitionTraceWithdrawal",
+  "fraudProofTransitionTraceForced",
+  "fraudProofTransitionTraceAcceptedTransaction",
+  "fraudProofTransitionTraceDeposit",
+  "fraudProofTransitionTraceL1Event",
+  "fraudProofTransitionTraceDuplicate",
+] as const;
 
 const fraudProofOutputPredicate = ({
   fraudProofAddress,
@@ -356,13 +368,17 @@ export const submitTransitionTraceProof = async ({
   additionalReferenceInputs = [],
   awaitConfirmation = true,
 }: SubmitTransitionTraceProofConfig): Promise<SubmitTransitionTraceProofResult> => {
-  const { transitionTraceCategory, hubOraclePolicyId, contracts } =
-    await resolveTransitionTraceDeploymentContracts({
-      blueprint,
-      deploymentInfo,
-      network,
-      requireFraudProofSpend: true,
-    });
+  const {
+    deploymentInfo: parsedDeploymentInfo,
+    transitionTraceCategory,
+    hubOraclePolicyId,
+    contracts,
+  } = await resolveTransitionTraceDeploymentContracts({
+    blueprint,
+    deploymentInfo,
+    network,
+    requireFraudProofSpend: true,
+  });
   const computedHeaderHash = await Effect.runPromise(
     hashBlockHeaderV1(proof.header),
   );
@@ -373,7 +389,13 @@ export const submitTransitionTraceProof = async ({
     );
   }
 
-  const [threadUtxo, hubOracleUtxo] = await Promise.all([
+  const finalIndex = transitionTraceFinalIndex(proof);
+  const [
+    threadUtxo,
+    hubOracleUtxo,
+    routeReferenceScript,
+    finalReferenceScript,
+  ] = await Promise.all([
     fetchUtxoByOutRef({
       lucid,
       outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -387,6 +409,16 @@ export const submitTransitionTraceProof = async ({
       ),
       unit: toUnit(hubOraclePolicyId, HUB_ORACLE_ASSET_NAME),
       label: "hub oracle",
+    }),
+    requireDeploymentReferenceScript({
+      lucid,
+      deploymentInfo: parsedDeploymentInfo,
+      name: "fraudProofTransitionTrace",
+    }),
+    requireDeploymentReferenceScript({
+      lucid,
+      deploymentInfo: parsedDeploymentInfo,
+      name: TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES[finalIndex]!,
     }),
   ]);
   if (
@@ -415,8 +447,7 @@ export const submitTransitionTraceProof = async ({
   }
 
   signer.selectWallet(lucid);
-  const finalValidator =
-    contracts.transitionTrace.finals[transitionTraceFinalIndex(proof)]!;
+  const finalValidator = contracts.transitionTrace.finals[finalIndex]!;
   const routeDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -446,13 +477,13 @@ export const submitTransitionTraceProof = async ({
         },
       }),
     )
+    .readFrom([routeReferenceScript])
     .pay.ToContract(
       finalValidator.spendingScriptAddress,
       { kind: "inline", value: routeDatum },
       routeAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.transitionTrace.route.spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
   const unsignedRoute = await routeTx.complete({ localUPLCEval: true });
   if (routeLayout === undefined) {
     throw transitionTraceError(
@@ -512,7 +543,11 @@ export const submitTransitionTraceProof = async ({
         },
       }),
     )
-    .readFrom([hubOracleUtxo, ...additionalReferenceInputs])
+    .readFrom([
+      hubOracleUtxo,
+      finalReferenceScript,
+      ...additionalReferenceInputs,
+    ])
     .mintAssets(
       { [threadToken.unit]: -1n },
       makeComputationThreadSuccessRedeemer({
@@ -537,7 +572,6 @@ export const submitTransitionTraceProof = async ({
       fraudProofAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(finalValidator.spendingScript)
     .attach.MintingPolicy(contracts.computationThread.mintingScript)
     .attach.MintingPolicy(contracts.fraudProof.mintingScript);
 

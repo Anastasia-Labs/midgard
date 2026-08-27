@@ -18,6 +18,7 @@ import {
   AddressData,
   addressDataFromBech32,
   AuthenticatedValidator,
+  type FraudProofs,
   MintingValidator,
   SpendingValidator,
 } from "@/common.js";
@@ -113,6 +114,79 @@ export const FABRICATED_WITHDRAWAL_FAULT_PROOF_TITLES = {
   step02: "fraud_proofs/fabricated_withdrawal/step_02.main.spend",
   step03: "fraud_proofs/fabricated_withdrawal/step_03.main.spend",
   step04: "fraud_proofs/fabricated_withdrawal/step_04.main.spend",
+} as const;
+
+export const NATIVE_SCRIPT_DECODING_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/native_script_decoding/step_01.main.spend",
+  step02: "fraud_proofs/native_script_decoding/step_02.main.spend",
+  step03: "fraud_proofs/native_script_decoding/step_03.main.spend",
+  step04: "fraud_proofs/native_script_decoding/step_04.main.spend",
+} as const;
+
+export const MISSING_SIGNATURE_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/missing_signature/step_01.main.spend",
+  step02: "fraud_proofs/missing_signature/step_02.main.spend",
+  step03: "fraud_proofs/missing_signature/step_03.main.spend",
+  step04: "fraud_proofs/missing_signature/step_04.main.spend",
+} as const;
+
+export const MISSING_NATIVE_SCRIPT_TX_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/missing_native_script_tx/step_01.main.spend",
+  step02: "fraud_proofs/missing_native_script_tx/step_02.main.spend",
+  step03: "fraud_proofs/missing_native_script_tx/step_03.main.spend",
+  step04: "fraud_proofs/missing_native_script_tx/step_04.main.spend",
+  step05: "fraud_proofs/missing_native_script_tx/step_05.main.spend",
+  step06: "fraud_proofs/missing_native_script_tx/step_06.main.spend",
+} as const;
+
+export const WITHDRAWN_REFERENCE_INPUT_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/withdrawn_reference_input/step_01.main.spend",
+  step02: "fraud_proofs/withdrawn_reference_input/step_02.main.spend",
+  step03: "fraud_proofs/withdrawn_reference_input/step_03.main.spend",
+} as const;
+
+export const CANONICAL_DECODABILITY_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/canonical_decodability/step_01.main.spend",
+  step02: "fraud_proofs/canonical_decodability/step_02.main.spend",
+} as const;
+
+export const COMMITTED_FIELD_SHAPE_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/committed_field_shape/step_01.main.spend",
+  step02: "fraud_proofs/committed_field_shape/step_02.main.spend",
+} as const;
+
+export const MIN_FEE_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/min_fee/step_01.main.spend",
+  step02: "fraud_proofs/min_fee/step_02.main.spend",
+} as const;
+
+export const WITHDRAWAL_MISTAG_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/withdrawal_mistag/step_01.main.spend",
+  step02: "fraud_proofs/withdrawal_mistag/step_02.main.spend",
+  step03: "fraud_proofs/withdrawal_mistag/step_03.main.spend",
+  step04: "fraud_proofs/withdrawal_mistag/step_04.main.spend",
+  step05: "fraud_proofs/withdrawal_mistag/step_05.main.spend",
+} as const;
+
+export const DOUBLE_WITHDRAW_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/double_withdraw/step_01.main.spend",
+  step02: "fraud_proofs/double_withdraw/step_02.main.spend",
+} as const;
+
+export const CROSS_BLOCK_DUPLICATE_EVENT_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/cross_block_duplicate_event/step_01.main.spend",
+  step02: "fraud_proofs/cross_block_duplicate_event/step_02.main.spend",
+} as const;
+
+export const L2_TX_MISTAG_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/l2_tx_mistag/step_01.main.spend",
+  step02: "fraud_proofs/l2_tx_mistag/step_02.main.spend",
+} as const;
+
+export const WITHDRAWN_INPUT_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/withdrawn_input/step_01.main.spend",
+  step02: "fraud_proofs/withdrawn_input/step_02.main.spend",
+  step03: "fraud_proofs/withdrawn_input/step_03.main.spend",
 } as const;
 
 export const TRANSITION_TRACE_FAULT_PROOF_TITLES = {
@@ -532,6 +606,133 @@ export type FabricatedWithdrawalFaultProofContracts = {
   };
 };
 
+export type NativeScriptDecodingFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly nativeScriptDecoding: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type MissingSignatureFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly missingSignature: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type MissingNativeScriptTxFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly missingNativeScriptTx: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type WithdrawnReferenceInputFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly withdrawnReferenceInput: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type CanonicalDecodabilityFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly canonicalDecodability: FraudProofChain & {
+    readonly steps: readonly [SpendingValidator, SpendingValidator];
+  };
+};
+
+export type CommittedFieldShapeFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly committedFieldShape: FraudProofChain & {
+    readonly steps: readonly [SpendingValidator, SpendingValidator];
+  };
+};
+
+export type MinFeeFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly minFee: FraudProofChain & {
+    readonly steps: readonly [SpendingValidator, SpendingValidator];
+  };
+};
+
+export type WithdrawalMistagFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly withdrawalMistag: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type DoubleWithdrawFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly doubleWithdraw: FraudProofChain & {
+    readonly steps: readonly [SpendingValidator, SpendingValidator];
+  };
+};
+
+export type CrossBlockDuplicateEventFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly crossBlockDuplicateEvent: FraudProofChain & {
+    readonly steps: readonly [SpendingValidator, SpendingValidator];
+  };
+};
+
+export type L2TxMistagFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly l2TxMistag: FraudProofChain & {
+    readonly steps: readonly [SpendingValidator, SpendingValidator];
+  };
+};
+
+export type WithdrawnInputFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly withdrawnInput: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
 export type TransitionTraceFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
@@ -729,7 +930,31 @@ export type FaultProofContracts = {
   readonly daHashPreimage: DaHashPreimageFaultProofContracts["daHashPreimage"];
   readonly nonExistentInputNoIndex: InputNoIdxFaultProofContracts["nonExistentInputNoIndex"];
   readonly referenceInputNoIdx: ReferenceInputNoIdxFaultProofContracts["referenceInputNoIdx"];
+  readonly fabricatedDeposit: FabricatedDepositFaultProofContracts["fabricatedDeposit"];
+  readonly fabricatedWithdrawal: FabricatedWithdrawalFaultProofContracts["fabricatedWithdrawal"];
+  readonly nativeScriptDecoding: NativeScriptDecodingFaultProofContracts["nativeScriptDecoding"];
+  readonly missingSignature: MissingSignatureFaultProofContracts["missingSignature"];
+  readonly missingNativeScriptTx: MissingNativeScriptTxFaultProofContracts["missingNativeScriptTx"];
+  readonly withdrawnReferenceInput: WithdrawnReferenceInputFaultProofContracts["withdrawnReferenceInput"];
+  readonly canonicalDecodability: CanonicalDecodabilityFaultProofContracts["canonicalDecodability"];
+  readonly committedFieldShape: CommittedFieldShapeFaultProofContracts["committedFieldShape"];
+  readonly minFee: MinFeeFaultProofContracts["minFee"];
+  readonly withdrawalMistag: WithdrawalMistagFaultProofContracts["withdrawalMistag"];
+  readonly doubleWithdraw: DoubleWithdrawFaultProofContracts["doubleWithdraw"];
+  readonly crossBlockDuplicateEvent: CrossBlockDuplicateEventFaultProofContracts["crossBlockDuplicateEvent"];
+  readonly l2TxMistag: L2TxMistagFaultProofContracts["l2TxMistag"];
+  readonly withdrawnInput: WithdrawnInputFaultProofContracts["withdrawnInput"];
 };
+
+/**
+ * Manifest-restorable category chains. Shared minting/spending policies are
+ * deliberately excluded because the deployment ABI does not persist enough
+ * information to reconstruct them safely.
+ */
+export type FaultProofContractChains = Omit<
+  FaultProofContracts,
+  "computationThread" | "fraudProof"
+>;
 
 type SharedFaultProofContracts = {
   readonly computationThread: MintingValidator;
@@ -786,6 +1011,42 @@ export type BuildFabricatedDepositFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildFabricatedWithdrawalFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildNativeScriptDecodingFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildMissingSignatureFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildMissingNativeScriptTxFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildWithdrawnReferenceInputFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildCanonicalDecodabilityFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildCommittedFieldShapeFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildMinFeeFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildWithdrawalMistagFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildDoubleWithdrawFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildCrossBlockDuplicateEventFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildL2TxMistagFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildWithdrawnInputFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildTransitionTraceFaultProofContractsParams =
@@ -1984,6 +2245,577 @@ const buildFabricatedWithdrawalChain = ({
     };
   });
 
+const buildFaultProofSpendingStep = (
+  context: Pick<BuildFaultProofContractsParams, "blueprint" | "network">,
+  title: string,
+  params: readonly Data[],
+  description: string,
+): Effect.Effect<SpendingValidator, Error> =>
+  tryBuild(description, () =>
+    makeSpendingValidator(
+      context.network,
+      applyBlueprintParams(context.blueprint, title, params),
+    ),
+  );
+
+const buildNativeScriptDecodingChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  NativeScriptDecodingFaultProofContracts["nativeScriptDecoding"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      NATIVE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step04,
+      [
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+      "Failed to build native-script-decoding step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      NATIVE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step03,
+      [
+        step04.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build native-script-decoding step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      NATIVE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step02,
+      [step03.spendingScriptHash, computationThread.policyId],
+      "Failed to build native-script-decoding step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      NATIVE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build native-script-decoding step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02, step03, step04] };
+  });
+
+const buildMissingSignatureChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  MissingSignatureFaultProofContracts["missingSignature"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_SIGNATURE_FAULT_PROOF_TITLES.step04,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build missing-signature step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_SIGNATURE_FAULT_PROOF_TITLES.step03,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build missing-signature step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_SIGNATURE_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build missing-signature step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_SIGNATURE_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build missing-signature step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02, step03, step04] };
+  });
+
+const buildMissingNativeScriptTxChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  MissingNativeScriptTxFaultProofContracts["missingNativeScriptTx"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step06 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_NATIVE_SCRIPT_TX_FAULT_PROOF_TITLES.step06,
+      [
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build missing-native-script-tx step 06",
+    );
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_NATIVE_SCRIPT_TX_FAULT_PROOF_TITLES.step05,
+      [step06.spendingScriptHash, computationThread.policyId],
+      "Failed to build missing-native-script-tx step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_NATIVE_SCRIPT_TX_FAULT_PROOF_TITLES.step04,
+      [
+        step05.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build missing-native-script-tx step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_NATIVE_SCRIPT_TX_FAULT_PROOF_TITLES.step03,
+      [
+        step04.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build missing-native-script-tx step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_NATIVE_SCRIPT_TX_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build missing-native-script-tx step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_NATIVE_SCRIPT_TX_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build missing-native-script-tx step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04, step05, step06],
+    };
+  });
+
+const buildWithdrawnReferenceInputChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  WithdrawnReferenceInputFaultProofContracts["withdrawnReferenceInput"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      WITHDRAWN_REFERENCE_INPUT_FAULT_PROOF_TITLES.step03,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build withdrawn-reference-input step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      WITHDRAWN_REFERENCE_INPUT_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build withdrawn-reference-input step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      WITHDRAWN_REFERENCE_INPUT_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build withdrawn-reference-input step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02, step03] };
+  });
+
+const buildCanonicalDecodabilityChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  CanonicalDecodabilityFaultProofContracts["canonicalDecodability"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      CANONICAL_DECODABILITY_FAULT_PROOF_TITLES.step02,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build canonical-decodability step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      CANONICAL_DECODABILITY_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build canonical-decodability step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02] };
+  });
+
+const buildCommittedFieldShapeChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  CommittedFieldShapeFaultProofContracts["committedFieldShape"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      COMMITTED_FIELD_SHAPE_FAULT_PROOF_TITLES.step02,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build committed-field-shape step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      COMMITTED_FIELD_SHAPE_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build committed-field-shape step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02] };
+  });
+
+const buildMinFeeChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  MinFeeFaultProofContracts["minFee"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      MIN_FEE_FAULT_PROOF_TITLES.step02,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build min-fee step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      MIN_FEE_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build min-fee step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02] };
+  });
+
+const buildWithdrawalMistagChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  WithdrawalMistagFaultProofContracts["withdrawalMistag"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      WITHDRAWAL_MISTAG_FAULT_PROOF_TITLES.step05,
+      [
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+      "Failed to build withdrawal-mistag step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      WITHDRAWAL_MISTAG_FAULT_PROOF_TITLES.step04,
+      [step05.spendingScriptHash, computationThread.policyId],
+      "Failed to build withdrawal-mistag step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      WITHDRAWAL_MISTAG_FAULT_PROOF_TITLES.step03,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build withdrawal-mistag step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      WITHDRAWAL_MISTAG_FAULT_PROOF_TITLES.step02,
+      [step03.spendingScriptHash, computationThread.policyId],
+      "Failed to build withdrawal-mistag step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      WITHDRAWAL_MISTAG_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build withdrawal-mistag step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04, step05],
+    };
+  });
+
+const buildDoubleWithdrawChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  DoubleWithdrawFaultProofContracts["doubleWithdraw"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      DOUBLE_WITHDRAW_FAULT_PROOF_TITLES.step02,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build double-withdraw step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      DOUBLE_WITHDRAW_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build double-withdraw step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02] };
+  });
+
+const buildCrossBlockDuplicateEventChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  CrossBlockDuplicateEventFaultProofContracts["crossBlockDuplicateEvent"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      CROSS_BLOCK_DUPLICATE_EVENT_FAULT_PROOF_TITLES.step02,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build cross-block-duplicate-event step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      CROSS_BLOCK_DUPLICATE_EVENT_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build cross-block-duplicate-event step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02] };
+  });
+
+const buildL2TxMistagChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  L2TxMistagFaultProofContracts["l2TxMistag"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      L2_TX_MISTAG_FAULT_PROOF_TITLES.step02,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build l2-tx-mistag step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      L2_TX_MISTAG_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build l2-tx-mistag step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02] };
+  });
+
+const buildWithdrawnInputChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  WithdrawnInputFaultProofContracts["withdrawnInput"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      WITHDRAWN_INPUT_FAULT_PROOF_TITLES.step03,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build withdrawn-input step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      WITHDRAWN_INPUT_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build withdrawn-input step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      WITHDRAWN_INPUT_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build withdrawn-input step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02, step03] };
+  });
+
 const buildTransitionTraceChain = ({
   blueprint,
   network,
@@ -2842,6 +3674,56 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
+    const fabricatedDeposit = yield* buildFabricatedDepositChain({
+      ...params,
+      ...shared,
+    });
+    const fabricatedWithdrawal = yield* buildFabricatedWithdrawalChain({
+      ...params,
+      ...shared,
+    });
+    const nativeScriptDecoding = yield* buildNativeScriptDecodingChain({
+      ...params,
+      ...shared,
+    });
+    const missingSignature = yield* buildMissingSignatureChain({
+      ...params,
+      ...shared,
+    });
+    const missingNativeScriptTx = yield* buildMissingNativeScriptTxChain({
+      ...params,
+      ...shared,
+    });
+    const withdrawnReferenceInput = yield* buildWithdrawnReferenceInputChain({
+      ...params,
+      ...shared,
+    });
+    const canonicalDecodability = yield* buildCanonicalDecodabilityChain({
+      ...params,
+      ...shared,
+    });
+    const committedFieldShape = yield* buildCommittedFieldShapeChain({
+      ...params,
+      ...shared,
+    });
+    const minFee = yield* buildMinFeeChain({ ...params, ...shared });
+    const withdrawalMistag = yield* buildWithdrawalMistagChain({
+      ...params,
+      ...shared,
+    });
+    const doubleWithdraw = yield* buildDoubleWithdrawChain({
+      ...params,
+      ...shared,
+    });
+    const crossBlockDuplicateEvent = yield* buildCrossBlockDuplicateEventChain({
+      ...params,
+      ...shared,
+    });
+    const l2TxMistag = yield* buildL2TxMistagChain({ ...params, ...shared });
+    const withdrawnInput = yield* buildWithdrawnInputChain({
+      ...params,
+      ...shared,
+    });
 
     return {
       computationThread: shared.computationThread,
@@ -2857,8 +3739,60 @@ export const buildFaultProofContracts = (
       daHashPreimage,
       nonExistentInputNoIndex,
       referenceInputNoIdx,
+      fabricatedDeposit,
+      fabricatedWithdrawal,
+      nativeScriptDecoding,
+      missingSignature,
+      missingNativeScriptTx,
+      withdrawnReferenceInput,
+      canonicalDecodability,
+      committedFieldShape,
+      minFee,
+      withdrawalMistag,
+      doubleWithdraw,
+      crossBlockDuplicateEvent,
+      l2TxMistag,
+      withdrawnInput,
     };
   });
+
+/** Project the full deployment registry to the first-step catalogue leaves. */
+export const fraudProofContractsToFirstSteps = (
+  contracts: FaultProofContractChains,
+): FraudProofs => ({
+  doubleSpend: contracts.doubleSpend.firstStep,
+  nonExistentInput: contracts.nonExistentInput.firstStep,
+  nonExistentInputNoIndex: contracts.nonExistentInputNoIndex.firstStep,
+  invalidRange: contracts.invalidRange.firstStep,
+  transitionTrace: contracts.transitionTrace.firstStep,
+  zeroInput: contracts.zeroInput.firstStep,
+  validationTraceDispute: {
+    ...contracts.validationTraceDispute.firstStep,
+    source: contracts.validationTraceDispute.source,
+    game: contracts.validationTraceDispute.game,
+    boundary: contracts.validationTraceDispute.boundary,
+    timeout: contracts.validationTraceDispute.timeout,
+    award: contracts.validationTraceDispute.award,
+  },
+  daHashPreimage: contracts.daHashPreimage.firstStep,
+  noReferenceInput: contracts.noReferenceInput.firstStep,
+  referenceInputNoIdx: contracts.referenceInputNoIdx.firstStep,
+  invalidSignature: contracts.invalidSignature.firstStep,
+  fabricatedDeposit: contracts.fabricatedDeposit.firstStep,
+  fabricatedWithdrawal: contracts.fabricatedWithdrawal.firstStep,
+  nativeScriptDecoding: contracts.nativeScriptDecoding.firstStep,
+  missingSignature: contracts.missingSignature.firstStep,
+  missingNativeScriptTx: contracts.missingNativeScriptTx.firstStep,
+  withdrawnReferenceInput: contracts.withdrawnReferenceInput.firstStep,
+  canonicalDecodability: contracts.canonicalDecodability.firstStep,
+  committedFieldShape: contracts.committedFieldShape.firstStep,
+  minFee: contracts.minFee.firstStep,
+  withdrawalMistag: contracts.withdrawalMistag.firstStep,
+  doubleWithdraw: contracts.doubleWithdraw.firstStep,
+  crossBlockDuplicateEvent: contracts.crossBlockDuplicateEvent.firstStep,
+  l2TxMistag: contracts.l2TxMistag.firstStep,
+  withdrawnInput: contracts.withdrawnInput.firstStep,
+});
 
 export const buildDoubleSpendFaultProofContracts = (
   params: BuildDoubleSpendFaultProofContractsParams,
@@ -3034,6 +3968,144 @@ export const buildFabricatedWithdrawalFaultProofContracts = (
       fraudProof: shared.fraudProof,
       fabricatedWithdrawal,
     };
+  });
+
+export const buildNativeScriptDecodingFaultProofContracts = (
+  params: BuildNativeScriptDecodingFaultProofContractsParams,
+): Effect.Effect<NativeScriptDecodingFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const nativeScriptDecoding = yield* buildNativeScriptDecodingChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, nativeScriptDecoding };
+  });
+
+export const buildMissingSignatureFaultProofContracts = (
+  params: BuildMissingSignatureFaultProofContractsParams,
+): Effect.Effect<MissingSignatureFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const missingSignature = yield* buildMissingSignatureChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, missingSignature };
+  });
+
+export const buildMissingNativeScriptTxFaultProofContracts = (
+  params: BuildMissingNativeScriptTxFaultProofContractsParams,
+): Effect.Effect<MissingNativeScriptTxFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const missingNativeScriptTx = yield* buildMissingNativeScriptTxChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, missingNativeScriptTx };
+  });
+
+export const buildWithdrawnReferenceInputFaultProofContracts = (
+  params: BuildWithdrawnReferenceInputFaultProofContractsParams,
+): Effect.Effect<WithdrawnReferenceInputFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const withdrawnReferenceInput = yield* buildWithdrawnReferenceInputChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, withdrawnReferenceInput };
+  });
+
+export const buildCanonicalDecodabilityFaultProofContracts = (
+  params: BuildCanonicalDecodabilityFaultProofContractsParams,
+): Effect.Effect<CanonicalDecodabilityFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const canonicalDecodability = yield* buildCanonicalDecodabilityChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, canonicalDecodability };
+  });
+
+export const buildCommittedFieldShapeFaultProofContracts = (
+  params: BuildCommittedFieldShapeFaultProofContractsParams,
+): Effect.Effect<CommittedFieldShapeFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const committedFieldShape = yield* buildCommittedFieldShapeChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, committedFieldShape };
+  });
+
+export const buildMinFeeFaultProofContracts = (
+  params: BuildMinFeeFaultProofContractsParams,
+): Effect.Effect<MinFeeFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const minFee = yield* buildMinFeeChain({ ...params, ...shared });
+    return { ...shared, minFee };
+  });
+
+export const buildWithdrawalMistagFaultProofContracts = (
+  params: BuildWithdrawalMistagFaultProofContractsParams,
+): Effect.Effect<WithdrawalMistagFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const withdrawalMistag = yield* buildWithdrawalMistagChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, withdrawalMistag };
+  });
+
+export const buildDoubleWithdrawFaultProofContracts = (
+  params: BuildDoubleWithdrawFaultProofContractsParams,
+): Effect.Effect<DoubleWithdrawFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const doubleWithdraw = yield* buildDoubleWithdrawChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, doubleWithdraw };
+  });
+
+export const buildCrossBlockDuplicateEventFaultProofContracts = (
+  params: BuildCrossBlockDuplicateEventFaultProofContractsParams,
+): Effect.Effect<CrossBlockDuplicateEventFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const crossBlockDuplicateEvent = yield* buildCrossBlockDuplicateEventChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, crossBlockDuplicateEvent };
+  });
+
+export const buildL2TxMistagFaultProofContracts = (
+  params: BuildL2TxMistagFaultProofContractsParams,
+): Effect.Effect<L2TxMistagFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const l2TxMistag = yield* buildL2TxMistagChain({ ...params, ...shared });
+    return { ...shared, l2TxMistag };
+  });
+
+export const buildWithdrawnInputFaultProofContracts = (
+  params: BuildWithdrawnInputFaultProofContractsParams,
+): Effect.Effect<WithdrawnInputFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const withdrawnInput = yield* buildWithdrawnInputChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, withdrawnInput };
   });
 
 export const buildTransitionTraceFaultProofContracts = (

@@ -554,7 +554,6 @@ describe("fault-proof deployment contract resolution", () => {
     const fraudProofCatalogue = await catalogueFor({
       transitionTrace: contracts.transitionTrace.firstStep.spendingScriptHash,
     });
-
     const resolved = await resolveTransitionTraceDeploymentContracts({
       blueprint,
       deploymentInfo: deploymentManifest({

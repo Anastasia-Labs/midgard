@@ -44,6 +44,7 @@ import {
   computeDeploymentManifestId,
   computeDeploymentManifestV1DaCommitteeSignersHash,
   computeDeploymentManifestV1JsonDigest,
+  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
   type DeploymentManifestV1Value,
   normalizeDeploymentManifestV1JsonValue,
@@ -200,46 +201,59 @@ type ScriptDescriptor = {
   readonly referenceScriptTargetName?: ReferenceScriptAuthTokenTarget;
 };
 
-const REFERENCE_SCRIPT_TARGET_BY_CONTRACT_NAME: Readonly<
-  Record<string, ReferenceScriptAuthTokenTarget>
-> = {
-  referenceScriptAuthMint: "reference-script-auth minting",
-  hubOracleMint: "hub-oracle minting",
-  daParamsGovernorSpend: "da-params-governor spending",
-  daParamsGovernorMint: "da-params-governor minting",
-  daAttestationSpend: "da-attestation spending",
-  daAttestationMint: "da-attestation minting",
-  stateQueueSpend: "state-queue spending",
-  stateQueueMint: "state-queue minting",
-  schedulerSpend: "scheduler spending",
-  schedulerMint: "scheduler minting",
-  registeredOperatorsSpend: "registered-operators spending",
-  registeredOperatorsMint: "registered-operators minting",
-  activeOperatorsSpend: "active-operators spending",
-  activeOperatorsMint: "active-operators minting",
-  retiredOperatorsSpend: "retired-operators spending",
-  retiredOperatorsMint: "retired-operators minting",
-  fraudProofCatalogueMint: "fraud-proof-catalogue minting",
-  depositSpend: "deposit spending",
-  depositMint: "deposit minting",
-  withdrawalSpend: "withdrawal spending",
-  withdrawalMint: "withdrawal minting",
-  settlementMint: "settlement minting",
-  payoutSpend: "payout spending",
-  payoutMint: "payout minting",
-  reserveSpend: "reserve spending",
-  reserveWithdraw: "reserve observer",
-  phasMembershipWithdraw: "membership proof withdrawal",
-  // #579 ruling A: receipt roles retired with their contracts.
-  fieldPreimageCertificateSpend: "V1 field-preimage certificate",
-  fieldPreimageCertificateMint: "V1 field-preimage certificate minting",
-  cekProgramMaterialSpend: "V1 immutable CEK program-material publication",
-  validationTraceDispute: "V1 validation-trace dispute",
-  validationTraceDisputeSource: "V1 validation-trace source",
-  validationTraceDisputeGame: "V1 validation-trace game",
-  validationTraceDisputeBoundary: "V1 validation-trace boundary",
-  validationTraceDisputeTimeout: "V1 validation-trace timeout",
-  validationTraceDisputeAward: "V1 validation-trace award",
+const REFERENCE_SCRIPT_TARGET_BY_CONTRACT_NAME = Object.freeze(
+  Object.fromEntries(
+    Object.entries(
+      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+    ).map(([targetName, contractName]) => {
+      if (!(targetName in SDK.REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)) {
+        throw new Error(
+          `Deployment manifest reference-script role is not registered by the SDK: ${targetName}`,
+        );
+      }
+      return [contractName, targetName as ReferenceScriptAuthTokenTarget];
+    }),
+  ) as Readonly<Record<string, ReferenceScriptAuthTokenTarget>>,
+);
+
+const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
+  "fabricatedDeposit",
+  "fabricatedWithdrawal",
+  "nativeScriptDecoding",
+  "missingSignature",
+  "missingNativeScriptTx",
+  "withdrawnReferenceInput",
+  "canonicalDecodability",
+  "committedFieldShape",
+  "minFee",
+  "withdrawalMistag",
+  "doubleWithdraw",
+  "crossBlockDuplicateEvent",
+  "l2TxMistag",
+  "withdrawnInput",
+] as const satisfies readonly (keyof SDK.FaultProofContracts)[];
+
+const upperFirst = (value: string): string =>
+  `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+
+const faultProofStepContractName = (
+  category: (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
+  stepIndex: number,
+): string =>
+  `fraudProof${upperFirst(category)}${
+    stepIndex === 0 ? "" : `Step${(stepIndex + 1).toString().padStart(2, "0")}`
+  }`;
+
+const referenceScriptTargetForContract = (
+  contractName: string,
+): ReferenceScriptAuthTokenTarget => {
+  const targetName = REFERENCE_SCRIPT_TARGET_BY_CONTRACT_NAME[contractName];
+  if (targetName === undefined) {
+    throw new Error(
+      `Contract is missing a canonical reference-script role: ${contractName}`,
+    );
+  }
+  return targetName;
 };
 
 const mintDescriptor = (
@@ -310,6 +324,49 @@ const phasMembershipDescriptor = (
       : { referenceScriptTargetName }),
   };
 };
+
+const TRANSITION_TRACE_FINAL_CONTRACT_NAMES = [
+  "fraudProofTransitionTraceControl",
+  "fraudProofTransitionTraceSource",
+  "fraudProofTransitionTraceWithdrawal",
+  "fraudProofTransitionTraceForced",
+  "fraudProofTransitionTraceAcceptedTransaction",
+  "fraudProofTransitionTraceDeposit",
+  "fraudProofTransitionTraceL1Event",
+  "fraudProofTransitionTraceDuplicate",
+] as const;
+
+const registeredFaultProofScriptDescriptors = (
+  contracts: SDK.MidgardValidators,
+): readonly ScriptDescriptor[] => [
+  ...REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES.flatMap((category) =>
+    contracts.fraudProofContracts[category].steps.map(
+      (validator, stepIndex) => {
+        const contractName = faultProofStepContractName(category, stepIndex);
+        return spendDescriptor(
+          contractName,
+          validator,
+          referenceScriptTargetForContract(contractName),
+        );
+      },
+    ),
+  ),
+  spendDescriptor(
+    "fraudProofTransitionTrace",
+    contracts.fraudProofContracts.transitionTrace.route,
+    referenceScriptTargetForContract("fraudProofTransitionTrace"),
+  ),
+  ...contracts.fraudProofContracts.transitionTrace.finals.map(
+    (validator, index) => {
+      const contractName = TRANSITION_TRACE_FINAL_CONTRACT_NAMES[index];
+      return spendDescriptor(
+        contractName,
+        validator,
+        referenceScriptTargetForContract(contractName),
+      );
+    },
+  ),
+];
 
 const fetchLiveReferenceScriptUtxos = (): Effect.Effect<
   readonly UTxO[],
@@ -506,10 +563,6 @@ const collectScriptDescriptors = (
     contracts.fraudProofs.nonExistentInputNoIndex,
   ),
   spendDescriptor("fraudProofInvalidRange", contracts.fraudProofs.invalidRange),
-  spendDescriptor(
-    "fraudProofTransitionTrace",
-    contracts.fraudProofs.transitionTrace,
-  ),
   spendDescriptor("fraudProofZeroInput", contracts.fraudProofs.zeroInput),
   spendDescriptor(
     "fraudProofDaHashPreimage",
@@ -557,6 +610,7 @@ const collectScriptDescriptors = (
     contracts.fraudProofs.validationTraceDispute.award,
     "V1 validation-trace award",
   ),
+  ...registeredFaultProofScriptDescriptors(contracts),
 ];
 
 const defaultSteps = (): DeploymentManifestV1["steps"] => ({

@@ -143,6 +143,16 @@ describe("#610 the fault-proofs runtime loader refuses an arity mismatch", () =>
     ).toThrow(/Validator with title "not\.a\.real\.validator" not found/u);
   });
 
+  it("refuses duplicate validator titles instead of selecting one", () => {
+    const duplicate = requireValidator(realBlueprint, BARE_LOADED_TITLES[0]);
+    const doctored = {
+      validators: [...realBlueprint.validators, duplicate],
+    };
+    expect(() =>
+      runtimeGetCompiledScript(doctored, BARE_LOADED_TITLES[0]),
+    ).toThrow(/must contain exactly one validator.*found 2/u);
+  });
+
   it("refuses a malformed declared-parameter list rather than reading it as zero", () => {
     const doctored = {
       validators: realBlueprint.validators.map((validator) =>

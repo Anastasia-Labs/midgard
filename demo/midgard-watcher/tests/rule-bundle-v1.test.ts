@@ -1,5 +1,6 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 
+import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -52,9 +53,6 @@ const h32 = (byte: string): string => byte.repeat(64);
 const NATIVE_SCRIPT_CBOR = `8200581c${"00".repeat(28)}`;
 const NATIVE_SCRIPT_HASH =
   "9dcfe5a661b6bc3af0999d06416d95842ba7c693dc0e246f5e0a5e33";
-const CONTRACT_SCRIPT_CBOR = "01";
-const CONTRACT_SCRIPT_HASH =
-  "bddf4b5c833decbf82201931cffc54f7c7dc51e4e6743a25a95aa2c0";
 const DA_VKEY = "44".repeat(32);
 const DA_SIGNERS_HASH =
   "0395256ce5d90f07504b614b9e70e29a06fdd69cef6b01f6018615164125a5c5";
@@ -93,24 +91,32 @@ const referenceOutRefByContract = new Map<
 
 const canonicalManifestIdentity = (): MutableRecord => {
   const contracts = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName) => [
-      contractName,
-      {
-        refScriptUTxO: referenceOutRefByContract.get(contractName) ?? null,
-        contract: {
-          type:
-            contractName === "referenceScriptAuthMint" ? "Native" : "PlutusV3",
-          cborHex:
+    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName, index) => {
+      const contractScriptCbor = (index + 1).toString(16).padStart(2, "0");
+      return [
+        contractName,
+        {
+          refScriptUTxO: referenceOutRefByContract.get(contractName) ?? null,
+          contract: {
+            type:
+              contractName === "referenceScriptAuthMint"
+                ? "Native"
+                : "PlutusV3",
+            cborHex:
+              contractName === "referenceScriptAuthMint"
+                ? NATIVE_SCRIPT_CBOR
+                : contractScriptCbor,
+          },
+          scriptHash:
             contractName === "referenceScriptAuthMint"
-              ? NATIVE_SCRIPT_CBOR
-              : CONTRACT_SCRIPT_CBOR,
+              ? NATIVE_SCRIPT_HASH
+              : validatorToScriptHash({
+                  type: "PlutusV3",
+                  script: contractScriptCbor,
+                }),
         },
-        scriptHash:
-          contractName === "referenceScriptAuthMint"
-            ? NATIVE_SCRIPT_HASH
-            : CONTRACT_SCRIPT_HASH,
-      },
-    ]),
+      ];
+    }),
   ) as MutableRecord;
   contracts.fraudProofCatalogueMint.fraudProofCatalogue =
     canonicalFraudProofCatalogueFixture(contracts);

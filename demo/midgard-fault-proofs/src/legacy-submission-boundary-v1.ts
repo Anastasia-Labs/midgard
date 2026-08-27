@@ -28,6 +28,20 @@ const RETIRED_INIT_CATEGORIES = new Set([
   "zeroInput",
   "nonExistentInput",
   "nonExistentInputNoIndex",
+  "fabricatedDeposit",
+  "fabricatedWithdrawal",
+  "nativeScriptDecoding",
+  "missingSignature",
+  "missingNativeScriptTx",
+  "withdrawnReferenceInput",
+  "canonicalDecodability",
+  "committedFieldShape",
+  "minFee",
+  "withdrawalMistag",
+  "doubleWithdraw",
+  "crossBlockDuplicateEvent",
+  "l2TxMistag",
+  "withdrawnInput",
 ]);
 
 export const RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_CODE_V1 =

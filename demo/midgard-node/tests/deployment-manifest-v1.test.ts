@@ -9,6 +9,8 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import {
   computeDeploymentManifestV1JsonDigest as computeSharedDeploymentManifestV1JsonDigest,
+  DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES as SHARED_DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE as SHARED_DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   normalizeDeploymentManifestV1JsonValue as normalizeSharedDeploymentManifestV1JsonValue,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
@@ -235,6 +237,16 @@ describe("V1 deployment manifest", () => {
     expect(computeDeploymentManifestV1JsonDigest).toBe(
       computeSharedDeploymentManifestV1JsonDigest,
     );
+    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toEqual(
+      SHARED_DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
+    );
+    expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).toEqual(
+      SHARED_DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+    );
+    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(107);
+    expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES).toHaveLength(90);
+    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(91);
+    expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toHaveLength(25);
   });
 
   // The golden manifest ID is `sha256` over the canonical stable JSON of the
@@ -336,9 +348,18 @@ describe("V1 deployment manifest", () => {
   //     every pin to the single #617 regeneration by design, which is why
   //     this row was already red at a8a2c6c5.
   //     `d9c811ab...` -> `29a6a7e6...`.
+  // 10. The complete fault-proof registration wave appended fourteen
+  //     catalogue categories (`0000000b` through `00000018`), 53 compiled
+  //     contract entries (45 validators across the appended linear families
+  //     plus eight transition-trace finals), and 54 authenticated
+  //     reference-script roles/tokens (those 53 entries plus the existing
+  //     transition-trace route). Existing positions remain unchanged. The
+  //     canonical catalogue root/proofs and full manifest identity move with
+  //     those append-only ABI vectors.
+  //     `29a6a7e6...` -> `b6dfe4d7...`.
   it("accepts the sole exact authenticated V1 manifest", () => {
     expect(canonicalManifest().manifestId).toBe(
-      "29a6a7e6a0b57bb38a313043a148451021339775886db131e91f1f87dd488d9a",
+      "b6dfe4d7a1955fa656fd5a6822e4b5f60dfb9dda40f878e2adf374f4cfbb5eec",
     );
     expect(parseDeploymentManifestV1Value(canonicalManifest())).toEqual(
       canonicalManifest(),

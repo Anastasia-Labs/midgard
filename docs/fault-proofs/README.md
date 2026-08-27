@@ -10,14 +10,18 @@ plus its contemporaneous working tree. Reconstructed on `tx-validation` HEAD
 `55afdc54`; paths were reconciled to that clean base, but line anchors must be
 rechecked when implementing an item.
 
-Current-tree reconciliation: **2026-08-04**, after Q13 commit `823b2d16`.
-Q00/Q02/Q03 and Q13 are complete in their assigned scope: all twelve compiled
-standalone families use the native V1 counted-root binding, and Q13 supplies
-the `input-no-idx` prepare/submit/CLI/emulator lifecycle. The current catalogue,
-`submit-init`, and manifest inspector each enumerate the same **eight**
-categories. This is an inventory refresh, not a launch claim: Q14–Q20,
-Q49-L298/Q49-L302, the missing-family/catalogue work, Q50+, economics, availability,
-and preprod gates remain open.
+Current-tree reconciliation: **2026-08-26**, on
+`colll78/canonical-v1-watcher-l1-source-checkpoint`. The canonical V1 catalogue,
+generic `submit-init` category parser, node/core deployment identity, manifest
+inspection, and watcher proof-thread deployment authority now enumerate the
+same **25** positional categories (`00000000`–`00000018`). The newly registered
+single-party families occupy `0000000b`–`00000018`; `transitionTrace` remains
+`00000004` and its deployed topology is one route validator with eight terminal
+validators. Every step in those families is a mandatory authenticated reference
+script. This identity change requires a fresh genesis/redeployment; it is not a
+migration or compatibility path. This remains an inventory refresh, not a launch
+claim: autonomous watcher detection/proving, preprod acceptance, economics,
+availability, and other rule-family gaps remain open.
 
 Terminology note: these were historically called **fraud proofs**. Public-facing
 documentation now generally says **fault proofs**, while the clean source tree still
@@ -33,7 +37,7 @@ appear in code/spec (for example the `fault_proof` token and
 | Document                                         | Purpose                                                                                                                                                                               |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`architecture.md`](architecture.md)             | How the system works: catalogue, computation threads, tokens, the state-queue removal + slashing payoff path, trust assumptions.                                                      |
-| [`catalogue-status.md`](catalogue-status.md)     | Per-proof-type delivery/functionality tracker (the 12 implemented types + generic machinery). The "what is delivered / what is functional" ledger.                                    |
+| [`catalogue-status.md`](catalogue-status.md)     | Per-proof-type delivery/functionality tracker (the 25 registered types + generic machinery). The "what is delivered / what is functional" ledger.                                    |
 | [`coverage-matrix.md`](coverage-matrix.md)       | First-principles enumeration of every way a state commitment can be faulty, mapped to a proof (or a gap). The "what is missing" analysis, including adversarial fund-theft scenarios. |
 | [`onchain-reference.md`](onchain-reference.md)   | Code map of the Aiken implementation (`onchain/aiken`), with `file:line` anchors.                                                                                                     |
 | [`offchain-reference.md`](offchain-reference.md) | Code map of the TypeScript SDK / CLI / watcher (`demo/*`), with `file:line` anchors.                                                                                                  |
@@ -62,7 +66,8 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 **1. Delivered _and_ functional** (real logic, compiles, emulator-proven where noted):
 
 - Generic machinery: catalogue, computation-thread minting policy (`Init`/`Success`/`BurnForCancellation`), step transition helpers, permanent fault-proof token, state-queue removal + operator slashing wiring, Plutarch MPF membership/non-membership (`phas`/`pexcludes`) primitives, counted/domain-tagged roots.
-- 10 of 12 proof types with real verification logic: `zero-input`, `no-input`, `double-spend`, `input-no-idx`, `invalid-range`, `invalid-signature`, `missing-native-script-tx`, `missing-signature`, `no-reference-input`, `withdrawn-reference-input`.
+- The 25 registered categories have real first-step routes; family-level tooling
+  and emulator depth still vary and are tracked in `catalogue-status.md`.
 - The `transition-trace` state-transition engine (9 top-level fault families: boundary, link, event-to-step, source-membership — incl. its phase-mismatch sub-variant — invalid one-step transition, duplicate-event, count, omitted-due-L1-event, out-of-window).
 - The transition-trace retained-DA prepare CLI, strict proof-submit CLI,
   complete omitted/out-of-window/count Aiken sub-variant matrix, and emulator
@@ -76,12 +81,16 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
   `submit-init`, four step commands (including resumable fold), inspection,
   and an emulator chain through faulty-block removal. Family-closure status is
   tracked individually in [`catalogue-status.md`](catalogue-status.md).
-- The positional deployment catalogue has **eight** categories:
-  `doubleSpend`, `nonExistentInput`, `nonExistentInputNoIndex`, `invalidRange`,
-  `transitionTrace`, `zeroInput`, `validationTraceDispute`, and
-  `daHashPreimage`. `submit-init` and `inspect-contracts` use the same eight.
-  This is only the initial §9.1 launch-scope inventory; Q50/Q55 must still
-  settle the final enabled routes.
+- The positional deployment catalogue has **25** categories. The canonical
+  append block is `fabricatedDeposit` (`0000000b`), `fabricatedWithdrawal`
+  (`0000000c`), `nativeScriptDecoding` (`0000000d`), `missingSignature`
+  (`0000000e`), `missingNativeScriptTx` (`0000000f`),
+  `withdrawnReferenceInput` (`00000010`), `canonicalDecodability`
+  (`00000011`), `committedFieldShape` (`00000012`), `minFee` (`00000013`),
+  `withdrawalMistag` (`00000014`), `doubleWithdraw` (`00000015`),
+  `crossBlockDuplicateEvent` (`00000016`), `l2TxMistag` (`00000017`), and
+  `withdrawnInput` (`00000018`). Catalogue membership, `submit-init`, manifest
+  inspection, and deployment identity share this order.
 
 **2. Delivered but _not_ functional** (present but stubbed/inert/disabled):
 
@@ -100,10 +109,8 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
   reference-input-no-idx, missing-native-script-utxo, native-script-invalid, min-ada,
   and network-id. Q24/Q25 establish executable structural N/A for ADA minting and
   negative output value.
-- Fabricated deposit / fabricated withdrawal (spec asserts "detectable" but provides no construction).
-- Mis-tagged (valid→invalid) withdrawal proof.
-- Remaining family production registration and missing-family routes remain
-  open despite the complete native-V1 binding.
+- Family-specific manual CLI commands and watcher detection/proving adapters
+  remain uneven even though the catalogue/deployment routes are registered.
 - Preprod end-to-end (an operator-local 2026-05-08 report recorded a canonical-root
   mismatch, but it is intentionally untracked and predates the counted-root work of PR
   #458 and the MPF rewrite of the proof builders; readiness remains unconfirmed until a

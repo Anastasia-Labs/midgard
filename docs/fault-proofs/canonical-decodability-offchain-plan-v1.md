@@ -1,10 +1,18 @@
 # Canonical-decodability fault: offchain implementation plan (v1)
 
+> **Registration update (2026-08-26):** this family is now registered as
+> `canonicalDecodability` at `00000011`. Generic Init, catalogue/inspection,
+> node/core deployment identity, watcher proof-thread topology, and both
+> mandatory authenticated reference scripts are wired. Family-specific CLI,
+> DA-first watcher detection/prover mounting, preprod, and live evidence remain
+> open. The identity change requires fresh genesis/redeployment; there is no
+> migration or compatibility path.
+
 > Status: implemented alongside this plan (same working tree). The on-chain
 > family (`docs/spec/midgard-tx.md` §12.7, two steps) and its SDK module
 > (`demo/midgard-sdk/src/fraud-proof/canonical-decodability-v1.ts`) predate
 > this plan and are consumed unchanged. What this plan adds is the offchain
-> prepare/submit chain, the emulator test category, and both-polarity emulator
+> prepare/submit chain, canonical category wiring, and both-polarity emulator
 > end-to-ends through fraud-proof-token mint AND fraudulent-commitment
 > removal, at the same bar as
 > `docs/fault-proofs/missing-signature-offchain-plan-v1.md`.
@@ -101,29 +109,19 @@ by name; blueprint parity rows 15–16 in
 
 ### 2.1 Category id
 
-**Pre-registration family.** No entry is added to
-`FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`),
-no CLI verbs are added to `bin.ts`, and the id never routes through the
-deployment manifest (`parseFraudProofCatalogueDeploymentInfo` silently drops
-non-canonical keys — routing it there would be a silent no-op). The emulator
-suites register the family as an _extra_ catalogue category, exactly the
-Q39/Q40 fabricated-family and #635 decoding pattern.
+Canonical category id: **`00000011`**. The production catalogue order,
+generic `submitInit` category union, deployment manifests, inspection, and
+watcher proof-thread authority bind that id to this family's step-01 hash.
+Every module below still takes the id as data so the proof logic is not coupled
+to a test constant.
 
-Reserved emulator-test id: **`00000011`**
-(`CANONICAL_DECODABILITY_TEST_CATEGORY_ID_V1`, `tests/support/emulator/harness.ts`).
-Assigned by the catalogue-completion wave coordinator; ids `0000000b`–`0000000d`
-are taken by fabricated-deposit/withdrawal/decoding and `0000000e`–`00000010`
-are claimed by sibling families in flight in the same wave. Expected, not
-promised: the production id is whatever the catalogue registration transaction
-writes, and every module below takes the id as data.
+### 2.2 Registered deployment surface
 
-### 2.2 What registration touches (later, parent-owned)
-
-Appending `"canonicalDecodability"` to the category order, the `submitInit`
-category union, deployment-manifest entries, and CLI wiring are one mechanical
-follow-up commit at registration time. Everything in this plan is
-forward-compatible with it: the contracts record deliberately has **no**
-`categoryId` member, and every submitter takes the category explicitly.
+`"canonicalDecodability"` is appended to the category order, generic
+`submitInit` accepts it, and deployment-manifest entries publish both steps.
+The contracts record deliberately has **no** `categoryId` member, and every
+submitter takes the category explicitly. Family-specific CLI verbs and watcher
+detection/prover mounting remain separate operational work.
 
 ### 2.3 Script deployment: reference scripts (owner ruling 2026-08-26)
 
@@ -173,7 +171,7 @@ cancel). This plan builds on it and duplicates nothing.
 
 ### 4.2 Family modules (`demo/midgard-fault-proofs/src/canonical-decodability/`)
 
-Same shape as `src/native-script-decoding/` (the pre-registration precedent),
+Same shape as `src/native-script-decoding/` (the family-module precedent),
 sized to a two-step family:
 
 | Module                                     | Owns                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -359,12 +357,12 @@ non-effects (thread untouched at the same out-ref, block still queued).
   category record, reference-script publication, and the raw step builders.
   On-chain refusal honesty guard imported from the decoding support module.
 
-### 8.4 What lands at registration
+### 8.4 Registration completion and remaining operations
 
-Production id, category-order append, `submitInit` union entry, CLI verbs,
-manifest entries, watcher wiring of the detection scan, and (if wanted then)
-published-chunk and tier-3 carriage exercise under this family's own id —
-all parent-owned, none blocking this wave.
+The production id, category-order append, generic `submitInit`, manifest
+entries, and watcher proof-thread topology are complete. Family-specific CLI,
+watcher detection/prover mounting, and published-chunk/tier-3 carriage exercise
+remain open; topology registration is not autonomous actuation.
 
 ## 9. Sequencing and dependencies
 
@@ -373,7 +371,7 @@ all parent-owned, none blocking this wave.
 3. Test-support extensions (§8.3).
 4. Suites 1–3 (§8.2), run green.
 5. `catalogue-status.md` §1 row 19 update (this family's row only).
-6. Registration wave (§8.4) — out of this tree.
+6. Registration/deployment wiring (§8.4) — complete; operational adapters open.
 
 Dependencies: none on the sibling committed-field-shape family (§12.8) —
 its wave runs separately and shares only the pre-existing SDK/door
@@ -381,9 +379,8 @@ machinery. Nothing here touches `onchain/`.
 
 ## 10. Decision register
 
-- **D1 — Category id `00000011`, test-only and not promised.** Assigned by the
-  wave coordinator; never routed through the deployment manifest; written
-  into production surfaces only at registration.
+- **D1 — Category id `00000011`, canonical.** It is routed through the
+  production catalogue and deployment manifest.
 - **D2 — Reference scripts, unconditionally.** Owner ruling 2026-08-26:
   fault-proof scripts deploy as reference scripts regardless of size; the
   suites require them on the removal path (`requireReferenceScripts: true`)
@@ -398,7 +395,7 @@ machinery. Nothing here touches `onchain/`.
 - **D5 — Submitter implements `Inline` field carriage.** Tier 2/3 field
   carriage is pinned on-chain by the family's own Aiken selectors (tier 3 at
   15,200 bytes) and the publication helper exists family-agnostically;
-  emulator exercise of tier 3 under this family is registration-wave work.
+  emulator exercise of tier 3 under this family remains operational test work.
   The pure prepare/submit path therefore refuses preimages above the 14,336-byte
   inline frontier with an instruction to publish a `RawUtxo`/`Certified`
   carriage; it never silently mislabels a larger preimage as `Inline`.
@@ -413,7 +410,7 @@ machinery. Nothing here touches `onchain/`.
 
 ## 11. Out of scope
 
-Catalogue registration and everything in §8.4; the §12.8 sibling family;
+Family-specific CLI/watcher actuation and the remaining §8.4 operations; the §12.8 sibling family;
 DA-layer preimage-availability faults (a committed hash whose preimage the
 DA layer cannot produce is a different fault); any change under
 `onchain/aiken/`; preprod/network acceptance.

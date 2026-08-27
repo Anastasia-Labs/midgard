@@ -75,7 +75,7 @@ export const submitDoubleWithdrawCancel = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly referenceScriptUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitDoubleWithdrawCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -149,16 +149,13 @@ export const submitDoubleWithdrawCancel = async ({
     .mintAssets({ [threadToken.unit]: -1n }, burnRedeemer)
     .addSignerKey(signer.paymentKeyHash)
     .attach.MintingPolicy(contracts.computationThread.mintingScript);
-  const tx =
-    referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[stepIndex].spendingScript)
-      : base.readFrom([
-          requireDoubleWithdrawReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
-            stepIndex,
-          }),
-        ]);
+  const tx = base.readFrom([
+    requireDoubleWithdrawReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
+      stepIndex,
+    }),
+  ]);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (inputIndex === undefined || mintIndex === undefined) {
     throw doubleWithdrawSubmitError("cancel layout was not resolved.");

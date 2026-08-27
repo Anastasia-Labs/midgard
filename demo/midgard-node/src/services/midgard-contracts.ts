@@ -515,6 +515,85 @@ const authenticatedValidatorFromManifest = (
   ...mintingValidatorFromManifest(manifest, sourcePath, mintName),
 });
 
+const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
+  "fabricatedDeposit",
+  "fabricatedWithdrawal",
+  "nativeScriptDecoding",
+  "missingSignature",
+  "missingNativeScriptTx",
+  "withdrawnReferenceInput",
+  "canonicalDecodability",
+  "committedFieldShape",
+  "minFee",
+  "withdrawalMistag",
+  "doubleWithdraw",
+  "crossBlockDuplicateEvent",
+  "l2TxMistag",
+  "withdrawnInput",
+] as const satisfies readonly (keyof SDK.FaultProofContractChains)[];
+
+type RegisteredLinearFaultProofCategory =
+  (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number];
+
+const upperFirst = (value: string): string =>
+  `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+
+const faultProofStepContractName = (
+  category: RegisteredLinearFaultProofCategory,
+  stepIndex: number,
+): string =>
+  `fraudProof${upperFirst(category)}${
+    stepIndex === 0 ? "" : `Step${(stepIndex + 1).toString().padStart(2, "0")}`
+  }`;
+
+const linearFaultProofChainFromManifest = <
+  Category extends RegisteredLinearFaultProofCategory,
+>(
+  network: Network,
+  manifest: DeploymentManifestCandidate,
+  sourcePath: string,
+  baseContracts: SDK.MidgardValidators,
+  category: Category,
+): SDK.FaultProofContractChains[Category] => {
+  const baseChain = baseContracts.fraudProofContracts[category];
+  const steps = baseChain.steps.map((_validator, stepIndex) =>
+    spendingValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      faultProofStepContractName(category, stepIndex),
+    ),
+  );
+  const firstStep = steps[0];
+  if (firstStep === undefined) {
+    throw new Error(`Fault-proof chain has no first step: ${category}`);
+  }
+  return {
+    firstStep,
+    steps,
+  } as unknown as SDK.FaultProofContractChains[Category];
+};
+
+const legacyFaultProofChainFromManifest = <Chain extends SDK.FraudProofChain>(
+  network: Network,
+  manifest: DeploymentManifestCandidate,
+  sourcePath: string,
+  baseChain: Chain,
+  firstStepContractName: string,
+): Chain => {
+  const firstStep = spendingValidatorFromManifest(
+    network,
+    manifest,
+    sourcePath,
+    firstStepContractName,
+  );
+  return {
+    ...baseChain,
+    firstStep,
+    steps: [firstStep, ...baseChain.steps.slice(1)],
+  } as unknown as Chain;
+};
+
 export const midgardContractsFromDeploymentManifest = (
   network: Network,
   manifest: DeploymentManifestCandidate,
@@ -580,6 +659,253 @@ export const midgardContractsFromDeploymentManifest = (
     sourcePath,
     "cekProgramMaterialSpend",
   );
+  const transitionTraceRoute = spendingValidatorFromManifest(
+    network,
+    manifest,
+    sourcePath,
+    "fraudProofTransitionTrace",
+  );
+  const transitionTraceFinals = [
+    "fraudProofTransitionTraceControl",
+    "fraudProofTransitionTraceSource",
+    "fraudProofTransitionTraceWithdrawal",
+    "fraudProofTransitionTraceForced",
+    "fraudProofTransitionTraceAcceptedTransaction",
+    "fraudProofTransitionTraceDeposit",
+    "fraudProofTransitionTraceL1Event",
+    "fraudProofTransitionTraceDuplicate",
+  ].map((contractName) =>
+    spendingValidatorFromManifest(network, manifest, sourcePath, contractName),
+  ) as unknown as SDK.FaultProofContractChains["transitionTrace"]["finals"];
+  const transitionTrace: SDK.FaultProofContractChains["transitionTrace"] = {
+    firstStep: transitionTraceRoute,
+    route: transitionTraceRoute,
+    finals: transitionTraceFinals,
+    steps: [transitionTraceRoute, ...transitionTraceFinals],
+  };
+  const validationTraceOpener = spendingValidatorFromManifest(
+    network,
+    manifest,
+    sourcePath,
+    "validationTraceDispute",
+  );
+  const validationTraceSource = spendingValidatorFromManifest(
+    network,
+    manifest,
+    sourcePath,
+    "validationTraceDisputeSource",
+  );
+  const validationTraceGame = spendingValidatorFromManifest(
+    network,
+    manifest,
+    sourcePath,
+    "validationTraceDisputeGame",
+  );
+  const validationTraceBoundary = spendingValidatorFromManifest(
+    network,
+    manifest,
+    sourcePath,
+    "validationTraceDisputeBoundary",
+  );
+  const validationTraceTimeout = spendingValidatorFromManifest(
+    network,
+    manifest,
+    sourcePath,
+    "validationTraceDisputeTimeout",
+  );
+  const validationTraceAward = spendingValidatorFromManifest(
+    network,
+    manifest,
+    sourcePath,
+    "validationTraceDisputeAward",
+  );
+  const baseValidationTrace =
+    baseContracts.fraudProofContracts.validationTraceDispute;
+  const validationTraceDispute = {
+    ...baseValidationTrace,
+    firstStep: validationTraceOpener,
+    opener: validationTraceOpener,
+    source: validationTraceSource,
+    game: validationTraceGame,
+    boundary: validationTraceBoundary,
+    timeout: validationTraceTimeout,
+    award: validationTraceAward,
+    steps: [
+      validationTraceOpener,
+      validationTraceSource,
+      validationTraceGame,
+      validationTraceBoundary,
+      validationTraceTimeout,
+      validationTraceAward,
+      ...baseValidationTrace.steps.slice(6),
+    ],
+  } as unknown as SDK.FaultProofContractChains["validationTraceDispute"];
+  const fraudProofContracts: SDK.FaultProofContractChains = {
+    doubleSpend: legacyFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts.fraudProofContracts.doubleSpend,
+      "fraudProofDoubleSpend",
+    ),
+    nonExistentInput: legacyFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts.fraudProofContracts.nonExistentInput,
+      "fraudProofNonExistentInput",
+    ),
+    nonExistentInputNoIndex: legacyFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts.fraudProofContracts.nonExistentInputNoIndex,
+      "fraudProofNonExistentInputNoIndex",
+    ),
+    invalidRange: legacyFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts.fraudProofContracts.invalidRange,
+      "fraudProofInvalidRange",
+    ),
+    transitionTrace,
+    zeroInput: legacyFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts.fraudProofContracts.zeroInput,
+      "fraudProofZeroInput",
+    ),
+    validationTraceDispute,
+    daHashPreimage: legacyFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts.fraudProofContracts.daHashPreimage,
+      "fraudProofDaHashPreimage",
+    ),
+    noReferenceInput: legacyFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts.fraudProofContracts.noReferenceInput,
+      "fraudProofNoReferenceInput",
+    ),
+    referenceInputNoIdx: legacyFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts.fraudProofContracts.referenceInputNoIdx,
+      "fraudProofReferenceInputNoIdx",
+    ),
+    invalidSignature: legacyFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts.fraudProofContracts.invalidSignature,
+      "fraudProofInvalidSignature",
+    ),
+    fabricatedDeposit: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "fabricatedDeposit",
+    ),
+    fabricatedWithdrawal: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "fabricatedWithdrawal",
+    ),
+    nativeScriptDecoding: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "nativeScriptDecoding",
+    ),
+    missingSignature: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "missingSignature",
+    ),
+    missingNativeScriptTx: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "missingNativeScriptTx",
+    ),
+    withdrawnReferenceInput: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "withdrawnReferenceInput",
+    ),
+    canonicalDecodability: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "canonicalDecodability",
+    ),
+    committedFieldShape: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "committedFieldShape",
+    ),
+    minFee: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "minFee",
+    ),
+    withdrawalMistag: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "withdrawalMistag",
+    ),
+    doubleWithdraw: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "doubleWithdraw",
+    ),
+    crossBlockDuplicateEvent: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "crossBlockDuplicateEvent",
+    ),
+    l2TxMistag: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "l2TxMistag",
+    ),
+    withdrawnInput: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "withdrawnInput",
+    ),
+  };
+  const fraudProofs = SDK.fraudProofContractsToFirstSteps(fraudProofContracts);
 
   return {
     referenceScriptAuth,
@@ -698,106 +1024,8 @@ export const midgardContractsFromDeploymentManifest = (
       "payoutSpend",
       "payoutMint",
     ),
-    fraudProofs: {
-      doubleSpend: spendingValidatorFromManifest(
-        network,
-        manifest,
-        sourcePath,
-        "fraudProofDoubleSpend",
-      ),
-      nonExistentInput: spendingValidatorFromManifest(
-        network,
-        manifest,
-        sourcePath,
-        "fraudProofNonExistentInput",
-      ),
-      nonExistentInputNoIndex: spendingValidatorFromManifest(
-        network,
-        manifest,
-        sourcePath,
-        "fraudProofNonExistentInputNoIndex",
-      ),
-      invalidRange: spendingValidatorFromManifest(
-        network,
-        manifest,
-        sourcePath,
-        "fraudProofInvalidRange",
-      ),
-      transitionTrace: spendingValidatorFromManifest(
-        network,
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTrace",
-      ),
-      zeroInput: spendingValidatorFromManifest(
-        network,
-        manifest,
-        sourcePath,
-        "fraudProofZeroInput",
-      ),
-      daHashPreimage: spendingValidatorFromManifest(
-        network,
-        manifest,
-        sourcePath,
-        "fraudProofDaHashPreimage",
-      ),
-      noReferenceInput: spendingValidatorFromManifest(
-        network,
-        manifest,
-        sourcePath,
-        "fraudProofNoReferenceInput",
-      ),
-      referenceInputNoIdx: spendingValidatorFromManifest(
-        network,
-        manifest,
-        sourcePath,
-        "fraudProofReferenceInputNoIdx",
-      ),
-      invalidSignature: spendingValidatorFromManifest(
-        network,
-        manifest,
-        sourcePath,
-        "fraudProofInvalidSignature",
-      ),
-      validationTraceDispute: {
-        ...spendingValidatorFromManifest(
-          network,
-          manifest,
-          sourcePath,
-          "validationTraceDispute",
-        ),
-        source: spendingValidatorFromManifest(
-          network,
-          manifest,
-          sourcePath,
-          "validationTraceDisputeSource",
-        ),
-        game: spendingValidatorFromManifest(
-          network,
-          manifest,
-          sourcePath,
-          "validationTraceDisputeGame",
-        ),
-        boundary: spendingValidatorFromManifest(
-          network,
-          manifest,
-          sourcePath,
-          "validationTraceDisputeBoundary",
-        ),
-        timeout: spendingValidatorFromManifest(
-          network,
-          manifest,
-          sourcePath,
-          "validationTraceDisputeTimeout",
-        ),
-        award: spendingValidatorFromManifest(
-          network,
-          manifest,
-          sourcePath,
-          "validationTraceDisputeAward",
-        ),
-      },
-    },
+    fraudProofContracts,
+    fraudProofs,
   };
 };
 
@@ -1261,7 +1489,41 @@ const expectDerivedScriptHash = (
         ),
       );
 
-const buildRealDoubleSpendFirstStepValidator = (
+const buildRealFaultProofContracts = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+  computationThread: SDK.MintingValidator,
+  fraudProof: SDK.AuthenticatedValidator,
+): Effect.Effect<SDK.FaultProofContractChains, Error> =>
+  Effect.gen(function* () {
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const derived = yield* SDK.buildFaultProofContracts({
+      blueprint,
+      network,
+      hubOraclePolicyId: contracts.hubOracle.policyId,
+      fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+    });
+
+    yield* expectDerivedScriptHash(
+      "computation-thread policy",
+      computationThread.policyId,
+      derived.computationThread.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof policy",
+      fraudProof.policyId,
+      derived.fraudProof.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof spend",
+      fraudProof.spendingScriptHash,
+      derived.fraudProof.spendingScriptHash,
+    );
+
+    return derived;
+  });
+
+export const buildRealDoubleSpendFirstStepValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   computationThread: SDK.MintingValidator,
@@ -1297,7 +1559,7 @@ const buildRealDoubleSpendFirstStepValidator = (
     return doubleSpendContracts.doubleSpend.firstStep;
   });
 
-const buildRealTransitionTraceProofValidator = (
+export const buildRealTransitionTraceProofValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   computationThread: SDK.MintingValidator,
@@ -1332,7 +1594,7 @@ const buildRealTransitionTraceProofValidator = (
     return transitionTraceContracts.transitionTrace.firstStep;
   });
 
-const buildRealValidationTraceDisputeValidator = (
+export const buildRealValidationTraceDisputeValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   computationThread: SDK.MintingValidator,
@@ -1375,7 +1637,7 @@ const buildRealValidationTraceDisputeValidator = (
     };
   });
 
-const buildRealNonExistentInputFirstStepValidator = (
+export const buildRealNonExistentInputFirstStepValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   computationThread: SDK.MintingValidator,
@@ -1410,7 +1672,7 @@ const buildRealNonExistentInputFirstStepValidator = (
     return nonExistentInputContracts.nonExistentInput.firstStep;
   });
 
-const buildRealZeroInputFirstStepValidator = (
+export const buildRealZeroInputFirstStepValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   computationThread: SDK.MintingValidator,
@@ -1444,7 +1706,7 @@ const buildRealZeroInputFirstStepValidator = (
     return zeroInputContracts.zeroInput.firstStep;
   });
 
-const buildRealDaHashPreimageFirstStepValidator = (
+export const buildRealDaHashPreimageFirstStepValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   computationThread: SDK.MintingValidator,
@@ -1479,7 +1741,7 @@ const buildRealDaHashPreimageFirstStepValidator = (
     return daHashPreimageContracts.daHashPreimage.firstStep;
   });
 
-const buildRealNoReferenceInputFirstStepValidator = (
+export const buildRealNoReferenceInputFirstStepValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   computationThread: SDK.MintingValidator,
@@ -1514,7 +1776,7 @@ const buildRealNoReferenceInputFirstStepValidator = (
     return noReferenceInputContracts.noReferenceInput.firstStep;
   });
 
-const buildRealReferenceInputNoIdxFirstStepValidator = (
+export const buildRealReferenceInputNoIdxFirstStepValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   computationThread: SDK.MintingValidator,
@@ -1549,7 +1811,7 @@ const buildRealReferenceInputNoIdxFirstStepValidator = (
     return referenceInputNoIdxContracts.referenceInputNoIdx.firstStep;
   });
 
-const buildRealInvalidSignatureFirstStepValidator = (
+export const buildRealInvalidSignatureFirstStepValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   computationThread: SDK.MintingValidator,
@@ -1921,81 +2183,17 @@ export const withRealStateQueueAndOperatorContracts = (
       network,
       realComputationThread,
     );
-    const realDoubleSpendFirstStep =
-      yield* buildRealDoubleSpendFirstStepValidator(
-        network,
-        withRealFraudProofCatalogue,
-        realComputationThread,
-        realFraudProof,
-      );
-    const realTransitionTrace = yield* buildRealTransitionTraceProofValidator(
+    const realFaultProofContracts = yield* buildRealFaultProofContracts(
       network,
       withRealFraudProofCatalogue,
       realComputationThread,
       realFraudProof,
     );
-    const realValidationTraceDispute =
-      yield* buildRealValidationTraceDisputeValidator(
-        network,
-        withRealFraudProofCatalogue,
-        realComputationThread,
-        realFraudProof,
-      );
-    const realNonExistentInput =
-      yield* buildRealNonExistentInputFirstStepValidator(
-        network,
-        withRealFraudProofCatalogue,
-        realComputationThread,
-        realFraudProof,
-      );
-    const realZeroInput = yield* buildRealZeroInputFirstStepValidator(
-      network,
-      withRealFraudProofCatalogue,
-      realComputationThread,
-      realFraudProof,
-    );
-    const realDaHashPreimage = yield* buildRealDaHashPreimageFirstStepValidator(
-      network,
-      withRealFraudProofCatalogue,
-      realComputationThread,
-      realFraudProof,
-    );
-    const realNoReferenceInput =
-      yield* buildRealNoReferenceInputFirstStepValidator(
-        network,
-        withRealFraudProofCatalogue,
-        realComputationThread,
-        realFraudProof,
-      );
-    const realReferenceInputNoIdx =
-      yield* buildRealReferenceInputNoIdxFirstStepValidator(
-        network,
-        withRealFraudProofCatalogue,
-        realComputationThread,
-        realFraudProof,
-      );
-    const realInvalidSignature =
-      yield* buildRealInvalidSignatureFirstStepValidator(
-        network,
-        withRealFraudProofCatalogue,
-        realComputationThread,
-        realFraudProof,
-      );
     const withRealFraudProof: SDK.MidgardValidators = {
       ...withRealFraudProofCatalogue,
       fraudProof: realFraudProof,
-      fraudProofs: {
-        ...withRealFraudProofCatalogue.fraudProofs,
-        doubleSpend: realDoubleSpendFirstStep,
-        transitionTrace: realTransitionTrace,
-        validationTraceDispute: realValidationTraceDispute,
-        nonExistentInput: realNonExistentInput,
-        zeroInput: realZeroInput,
-        daHashPreimage: realDaHashPreimage,
-        noReferenceInput: realNoReferenceInput,
-        referenceInputNoIdx: realReferenceInputNoIdx,
-        invalidSignature: realInvalidSignature,
-      },
+      fraudProofContracts: realFaultProofContracts,
+      fraudProofs: SDK.fraudProofContractsToFirstSteps(realFaultProofContracts),
     };
 
     const realRetiredOperators = yield* buildRealRetiredOperatorsValidator(
@@ -2260,7 +2458,7 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
     },
   );
   yield* Effect.logInfo(
-    "🔐 Contract source selected: state_queue=real, da_attestation=real, da_params_governor=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real, fraud_proofs.double_spend=real, fraud_proofs.transition_trace=real, fraud_proofs.validation_trace_dispute=real, fraud_proofs.non_existent_input=real",
+    "🔐 Contract source selected: state_queue=real, da_attestation=real, da_params_governor=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real, fraud_proofs.all_registered_chains=real",
   );
   const runtime: MidgardContractRuntimeValue = {
     contracts: resolvedContracts,

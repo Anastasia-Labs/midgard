@@ -1,9 +1,14 @@
 # Min-fee standalone fault proof: offchain implementation plan (v1)
 
 Plan date: 2026-08-26. Task: Q20 (`min-fee`). This plan covers the
-single-party standalone family only. It does not register a production
-catalogue category, change the interactive validation dispute, regenerate the
-blueprint, or change fee parameters.
+single-party standalone family only. The follow-on registration now assigns
+`minFee` to `00000013` and wires generic Init, catalogue/inspection, node/core
+deployment identity, watcher proof-thread topology, and both mandatory
+authenticated reference scripts. Family-specific CLI, autonomous watcher
+detector/prover mounting, preprod, and live evidence remain open. The identity
+change requires fresh genesis/redeployment; there is no migration or
+compatibility path. The interactive validation dispute and fee parameters are
+unchanged.
 
 ## 1. Rule and exact on-chain evidence
 
@@ -97,7 +102,7 @@ asset name. No automatic cancellation or registration lookup is permitted.
 
 ### 2.3 Submission chain
 
-The family adds explicit pre-registration modules:
+The family adds explicit modules:
 
 - `submit-min-fee-init.ts` — generic init semantics with explicit contracts
   and category proof;
@@ -120,42 +125,21 @@ datum to resume at step-01 or step-02. An absent thread after a submitted
 transaction is reconciled as either permanent proof-token success or explicit
 cancellation; it is never silently restarted.
 
-## 3. Registration posture and reserved id
+## 3. Registered category and deployment posture
 
-Production registration is deferred to the catalogue registration wave. This
-work must not edit `demo/midgard-sdk/src/fraud-proof/catalogue.ts`, the canonical
-deployment manifest, `submit-init.ts`'s registered union, or CLI category
-parsing.
-
-Standing pre-registration assignments are:
-
-- `0000000b`: fabricated-deposit;
-- `0000000c`: fabricated-withdrawal;
-- `0000000d`: native-script-decoding test id;
-- `0000000e`: missing-signature expected id, assigned by
-  `missing-signature-offchain-plan-v1.md`;
-- `0000000f`: missing-native-script-tx;
-- `00000010`: withdrawn-reference-input;
-- `00000011`: canonical-decodability; and
-- `00000012`: committed-field-shape.
-
-Therefore min-fee's expected-but-not-promised harness id is **`00000013`**
-(index 19). The emulator records that literal as
-`MIN_FEE_TEST_CATEGORY_ID_V1`. Removal uses an explicit category record and
-`buildExplicitCategoryRemovalContracts`; it must not pass the unregistered id
-through `parseFraudProofCatalogueDeploymentInfo`. The registration wave must
-re-scan reservations, allocate the then-next-free id, append all immutable
-catalogue/deployment surfaces together, rebuild reference scripts, and perform
-a fresh genesis-level deployment. The same wave reserves `00000014` through
-`00000018` respectively for withdrawal-mistag, double-withdraw,
-cross-block-duplicate-event, l2-tx-mistag, and withdrawn-input; min-fee must not
-consume any of those later slots either.
+`minFee` is canonically registered at **`00000013`** (index 19). The SDK
+catalogue, generic Init, deployment manifests/inspection, and watcher
+proof-thread topology bind that id to step 01. Both steps are mandatory
+authenticated reference scripts. Family-specific CLI and watcher
+detector/prover mounting remain open. The immutable catalogue/identity change
+is adopted only through fresh genesis/redeployment; no migration or
+compatibility path exists.
 
 ## 4. Emulator acceptance
 
-One pre-registration harness publishes both applied min-fee validators as
-reference scripts, builds explicit contracts, and extends the test catalogue
-under `00000013` without changing production catalogue code.
+The harness publishes both applied min-fee validators as authenticated
+reference scripts, builds explicit contracts, and uses the canonical
+`00000013` category.
 
 The lifecycle suites must prove:
 

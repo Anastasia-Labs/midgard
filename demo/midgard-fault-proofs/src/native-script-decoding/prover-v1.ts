@@ -207,7 +207,7 @@ export type NativeScriptDecodingProverDepsV1 = {
     event: NativeScriptDecodingProverEventV1,
   ) => void | Promise<void>;
   readonly policy: NativeScriptDecodingProverPolicyV1;
-  /** Q3: published step reference scripts; inline-attached when absent. */
+  /** Q3: mandatory authenticated published step reference scripts. */
   readonly referenceScriptUtxos?: {
     readonly step01?: UTxO;
     readonly step02?: UTxO;
@@ -387,6 +387,17 @@ export const runNativeScriptDecodingProverV1 = async (
   deps: NativeScriptDecodingProverDepsV1,
 ): Promise<NativeScriptDecodingProofOutcomeV1> => {
   const { lucid, contracts, policy, signer } = deps;
+  const referenceScriptUtxos = deps.referenceScriptUtxos;
+  if (
+    referenceScriptUtxos?.step01 === undefined ||
+    referenceScriptUtxos.step02 === undefined ||
+    referenceScriptUtxos.step03 === undefined ||
+    referenceScriptUtxos.step04 === undefined
+  ) {
+    throw nativeScriptDecodingSubmitError(
+      "production proving requires authenticated reference-script UTxOs for steps 01 through 04.",
+    );
+  }
   const headerHash = finding.headerHash;
   const journal = async (
     event: Omit<NativeScriptDecodingProverEventV1, "headerHash">,
@@ -680,7 +691,7 @@ export const runNativeScriptDecodingProverV1 = async (
             categoryId: deps.category.categoryId,
             signer,
             threadOutRef: cursor.threadOutRef,
-            referenceScriptUtxo: deps.referenceScriptUtxos?.step01,
+            referenceScriptUtxo: referenceScriptUtxos.step01,
           };
           const result =
             finding.sourceKind === NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1
@@ -730,7 +741,7 @@ export const runNativeScriptDecodingProverV1 = async (
                   cursor: finding.accusedOutpointCursor,
                 }
               : undefined,
-            referenceScriptUtxo: deps.referenceScriptUtxos?.step02,
+            referenceScriptUtxo: referenceScriptUtxos.step02,
           });
           txHashes.push(result.txHash);
           currentOutRef = result.nextThreadOutRef;
@@ -750,7 +761,7 @@ export const runNativeScriptDecodingProverV1 = async (
             categoryId: deps.category.categoryId,
             signer,
             threadOutRef: cursor.threadOutRef,
-            referenceScriptUtxo: deps.referenceScriptUtxos?.step03,
+            referenceScriptUtxo: referenceScriptUtxos.step03,
           };
           if (!needsBindOutpoint) {
             // §7.2 cardinality close. The count face proves against the
@@ -840,7 +851,7 @@ export const runNativeScriptDecodingProverV1 = async (
             threadOutRef: cursor.threadOutRef,
             segment,
             referenceScriptItemBytes,
-            referenceScriptUtxo: deps.referenceScriptUtxos?.step03,
+            referenceScriptUtxo: referenceScriptUtxos.step03,
           });
           txHashes.push(result.txHash);
           currentOutRef = result.nextThreadOutRef;
@@ -877,7 +888,7 @@ export const runNativeScriptDecodingProverV1 = async (
               plan.verdict.window === null
                 ? undefined
                 : (referenceScriptItemBytes ?? undefined),
-            referenceScriptUtxo: deps.referenceScriptUtxos?.step03,
+            referenceScriptUtxo: referenceScriptUtxos.step03,
           });
           txHashes.push(result.txHash);
           currentOutRef = result.nextThreadOutRef;
@@ -897,7 +908,7 @@ export const runNativeScriptDecodingProverV1 = async (
             categoryId: deps.category.categoryId,
             signer,
             threadOutRef: cursor.threadOutRef,
-            referenceScriptUtxo: deps.referenceScriptUtxos?.step04,
+            referenceScriptUtxo: referenceScriptUtxos.step04,
           });
           txHashes.push(result.txHash);
           await journal({

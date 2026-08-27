@@ -1,5 +1,13 @@
 # Missing-native-script-tx fault: offchain implementation plan (v1)
 
+> **Registration update (2026-08-26):** this family is now registered as
+> `missingNativeScriptTx` at `0000000f`. Generic Init,
+> catalogue/inspection, node/core deployment identity, watcher proof-thread
+> topology, and all six mandatory authenticated reference scripts are wired.
+> Family-specific CLI, autonomous watcher detector/prover mounting, preprod,
+> and live evidence remain open. The identity change requires fresh
+> genesis/redeployment; there is no migration or compatibility path.
+
 Plan date: 2026-08-26. Audited against branch
 `colll78/canonical-v1-watcher-l1-source-checkpoint` (HEAD `a1724e63`),
 which already carries the missing-signature plan (Q16) and the
@@ -9,14 +17,13 @@ row 9. Unlike the Q16 document, this plan ships **with its
 implementation**: the family modules, harness extensions, and emulator
 suites it describes land in the same change set.
 
-Implementation status (2026-08-26): **complete in this wave**. The strict SDK
-twins, explicit pre-registration contracts/evidence/prepare/init/six-step/
-cancel modules, reserved-id harness wiring, two-transaction fixture, uniform
+Implementation status (2026-08-26): **complete and registered**. The strict SDK
+twins, explicit contracts/evidence/prepare/init/six-step/cancel modules,
+catalogue harness wiring, two-transaction fixture, uniform
 reference-script path, absent/present emulator polarities, earlier adversarial
 controls, permanent-token mint, explicit-category removal, and cancellation
-are implemented and verified. Registration, CLI, watcher, and proving-core
-orchestration remain intentionally deferred exactly as §§2.2, 3, 4.3, and 8.4
-specify.
+are implemented and verified. Family-specific CLI, watcher detector/prover
+mounting, and proving-core orchestration remain intentionally open.
 
 The parity bar is `missing-signature-offchain-plan-v1.md`, which in turn
 inherits the `native-script-decoding` family's generic decisions.
@@ -29,15 +36,10 @@ Everything decided there is inherited here, not re-decided:
   fault proves through the full lifecycle — fraud-proof mint **and**
   fraudulent-commitment removal — and an adversarial prover against an
   honest commitment is refused **on-chain at the exact check** (§8).
-- **Pre-registration explicit-record discipline:** the family's id never
-  routes through the deployment manifest —
-  `parseFraudProofCatalogueDeploymentInfo` silently drops non-canonical
-  keys. Contracts records are explicit and parent-owned; the SDK
-  catalogue order, `submit-init.ts`'s category union, and `bin.ts` are
-  untouched until the registration wave.
-- **Reserved ids are expected, not promised:** the test-harness constant
-  records the expected index; the production id is written only by the
-  registration wave.
+- **Explicit-record discipline:** contracts remain explicit while
+  `missingNativeScriptTx` is canonically routed through catalogue and
+  deployment manifests. Family-specific CLI remains separate.
+- **Canonical id:** `0000000f` is the production category id.
 - **Removal via explicit category:**
   `RemoveFraudulentBlockExplicitCategory` drives removal with every
   fail-closed check intact and zero changes to
@@ -168,41 +170,31 @@ at steps 02 and 04.
 
 ### 2.1 Category id
 
-Standing reservations: `0000000b` fabricated-deposit, `0000000c`
-fabricated-withdrawal, `0000000d` native-script-decoding (test id,
-`tests/support/emulator/harness.ts`), `0000000e` missing-signature
-(Q16 plan §2.1, being built in a parallel wave). **This family's assigned
-test id is `0000000f`** (index 15), allocated by the parent orchestrator
-to avoid collision with the concurrent family waves. It lands as
-`MISSING_NATIVE_SCRIPT_TX_TEST_CATEGORY_ID_V1` in the test harness with
-the "expected but not promised" caveat; the production id is written only
-by the registration wave, which re-verifies next-free at allocation time.
-The id appears **only** in emulator wiring — never in the deployment
-manifest, the SDK catalogue order, or `bin.ts`.
+Canonical category id: **`0000000f`** (index 15). The SDK catalogue,
+generic Init, deployment manifests/inspection, and watcher proof-thread
+topology bind it to the applied step-01 hash.
 
-### 2.2 What registration touches
+### 2.2 Registered deployment surface
 
-Identical surface list to the decoding plan §2.2 (SDK catalogue order,
-`FraudProofs`/`FaultProofContracts` records, deployment-manifest identity,
-node manifest/descriptors/catalogue-MPF build, CLI category parse,
-inspect-contracts unions, watcher `families[]`, test re-pins). Registration
-is a fresh genesis-level deployment. Nothing in this wave moves any pinned
-surface: no CLI verbs, no `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` entry.
+The SDK catalogue order, `FraudProofs`/`FaultProofContracts` records,
+deployment-manifest identity, node manifest/descriptors/catalogue-MPF build,
+generic CLI category parse, inspection, and watcher proof-thread topology are
+wired. Family-specific CLI and autonomous watcher detector/prover mounting
+remain open. Adoption is a fresh genesis-level deployment only.
 
 ### 2.3 Script deployment: reference scripts
 
 All six steps deploy as reference scripts
 (`publishPlainReferenceScriptUtxo`, oversized shape for uniformity) and
-every submitter takes an optional `referenceScriptUtxo` sourced through
+every production submitter takes a `referenceScriptUtxo` sourced through
 the fail-closed `requireMissingNativeScriptTxReferenceScriptV1` hash
-check; when absent the submitter attaches the validator inline only as
-the emulator-bootstrap fallback the decoding family also keeps. The
-emulator suites drive the reference-script path exclusively.
+check. Inline attachment is not a production fallback. The emulator suites
+drive the reference-script path exclusively.
 
 ## 3. Detection
 
-Detection follows the missing-signature plan §3 shape and is **not built
-in this wave** (no watcher `families[]` entry before registration). The
+Detection follows the missing-signature plan §3 shape and is **not mounted
+autonomously**. The watcher has a proof-thread topology entry, but the
 recognition predicate an offchain scanner needs is already expressible
 with what this wave ships: for each committed tx, for each spend input,
 resolve the producing output; if its payment credential is a script hash
@@ -241,7 +233,7 @@ Exported from the SDK fraud-proof index; no catalogue surface touched.
 ### 4.2 Family modules (`demo/midgard-fault-proofs/src/missing-native-script-tx/`)
 
 Mirrors `src/native-script-decoding/` (the explicit-contracts,
-pre-registration pattern):
+family-module pattern):
 
 - `contracts-v1.ts` — blueprint titles, `StepContractV1` six-tuple record
   (+ shared computation-thread / fraud-proof / hub-oracle / state-queue /
@@ -397,10 +389,11 @@ emulator refusals.
   MPF leaves of one committed block), reference-script publication,
   explicit removal-category record, raw adversarial builders.
 
-### 8.4 What lands at registration
+### 8.4 Registration completion and remaining operations
 
-CLI verbs, catalogue order entry, deployment-manifest identity, watcher
-family, proving core — all deferred (§2.2, §4.3).
+Catalogue order, generic Init, deployment-manifest identity, reference scripts,
+and watcher proof-thread topology are complete. Family-specific CLI, proving
+core orchestration, and autonomous watcher actuation remain open (§2.2, §4.3).
 
 ## 9. Sequencing and dependencies
 
@@ -415,8 +408,7 @@ keys/ids, so the merge is textual.
 
 ## 10. Decision register
 
-- **D1 — Category id `0000000f`, test wiring only.** Assigned by the
-  orchestrator; never routed through the deployment manifest.
+- **D1 — Category id `0000000f`, canonical production registration.**
 - **D2 — Reference scripts always** (owner ruling 2026-08-26).
 - **D3 — Bare `NativeTxInclusionArgs` at steps 01/03** — the on-chain
   `Args` alias is the bare record, not `NativeTxInclusionCarriage`;
@@ -439,6 +431,6 @@ keys/ids, so the merge is textual.
 
 ## 11. Out of scope
 
-Registration surfaces (§2.2), the proving core and watcher integration
+Family-specific CLI, the proving core and autonomous watcher integration
 (§4.3), published-chunk carriage for the two binding proofs (no on-chain
 arm), the #565/#579 tier-3 field-6 lift, and any onchain change.

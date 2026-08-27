@@ -7,13 +7,14 @@
  * - step_02: `[fraud_proof_token_policy_id, fraud_proof_token_address, computation_thread_token_policy_id]`
  */
 import {
-  applyParamsToScript,
   type Data,
   type Network,
   type Script,
   validatorToAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
+
+import { applyBlueprintParamsExact } from "../runtime.js";
 
 export const L2_TX_MISTAG_CATEGORY_LABEL = "l2-tx-mistag";
 
@@ -43,33 +44,14 @@ export type L2TxMistagContractsV1 = {
   readonly stateQueuePolicyId: string;
 };
 
-export type L2TxMistagBlueprintV1 = {
-  readonly validators: readonly {
-    readonly title: string;
-    readonly compiledCode: string;
-    readonly parameters?: readonly unknown[];
-  }[];
-};
+export type L2TxMistagBlueprintV1 = unknown;
 
 const applyExact = (
   blueprint: L2TxMistagBlueprintV1,
   title: string,
   params: readonly Data[],
 ): string => {
-  const matches = blueprint.validators.filter((entry) => entry.title === title);
-  if (matches.length !== 1) {
-    throw new Error(
-      `${L2_TX_MISTAG_CATEGORY_LABEL}: blueprint must contain exactly one ${title} validator; found ${matches.length.toString()}.`,
-    );
-  }
-  const validator = matches[0];
-  const arity = validator.parameters?.length ?? 0;
-  if (arity !== params.length) {
-    throw new Error(
-      `${L2_TX_MISTAG_CATEGORY_LABEL}: ${title} declares ${arity.toString()} parameter(s), but ${params.length.toString()} were supplied.`,
-    );
-  }
-  return applyParamsToScript(validator.compiledCode, [...params]);
+  return applyBlueprintParamsExact({ blueprint, title, params });
 };
 
 const spendingContract = (

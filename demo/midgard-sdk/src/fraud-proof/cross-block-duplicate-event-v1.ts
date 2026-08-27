@@ -3,8 +3,7 @@
  *
  * Proves the same L1 deposit or withdrawal identity is committed by a live
  * challenged block and by a different confirmed settlement header. The family
- * is intentionally unregistered; `00000016` is reserved only for emulator and
- * pre-registration integration tests.
+ * Production catalogue category `crossBlockDuplicateEvent` (`00000016`).
  */
 import { Data } from "@lucid-evolution/lucid";
 
@@ -20,6 +19,7 @@ import {
   WithdrawalSourceMembershipProofSchema,
 } from "@/transition-trace.js";
 
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "./catalogue.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
@@ -28,9 +28,8 @@ import {
 export const CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID_V1 =
   "cross-block-duplicate-event" as const;
 
-/** Test/reservation id only; production catalogue registration is deferred. */
 export const CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1 =
-  "00000016" as const;
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.crossBlockDuplicateEvent;
 
 export const CrossBlockDuplicateEventHeaderHashSchema = Data.Bytes({
   minLength: 28,

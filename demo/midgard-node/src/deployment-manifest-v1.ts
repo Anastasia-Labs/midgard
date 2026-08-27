@@ -116,6 +116,59 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   // this vector is positional.
   "fieldPreimageCertificateSpend",
   "fieldPreimageCertificateMint",
+  "fraudProofFabricatedDeposit",
+  "fraudProofFabricatedDepositStep02",
+  "fraudProofFabricatedDepositStep03",
+  "fraudProofFabricatedDepositStep04",
+  "fraudProofFabricatedWithdrawal",
+  "fraudProofFabricatedWithdrawalStep02",
+  "fraudProofFabricatedWithdrawalStep03",
+  "fraudProofFabricatedWithdrawalStep04",
+  "fraudProofNativeScriptDecoding",
+  "fraudProofNativeScriptDecodingStep02",
+  "fraudProofNativeScriptDecodingStep03",
+  "fraudProofNativeScriptDecodingStep04",
+  "fraudProofMissingSignature",
+  "fraudProofMissingSignatureStep02",
+  "fraudProofMissingSignatureStep03",
+  "fraudProofMissingSignatureStep04",
+  "fraudProofMissingNativeScriptTx",
+  "fraudProofMissingNativeScriptTxStep02",
+  "fraudProofMissingNativeScriptTxStep03",
+  "fraudProofMissingNativeScriptTxStep04",
+  "fraudProofMissingNativeScriptTxStep05",
+  "fraudProofMissingNativeScriptTxStep06",
+  "fraudProofWithdrawnReferenceInput",
+  "fraudProofWithdrawnReferenceInputStep02",
+  "fraudProofWithdrawnReferenceInputStep03",
+  "fraudProofCanonicalDecodability",
+  "fraudProofCanonicalDecodabilityStep02",
+  "fraudProofCommittedFieldShape",
+  "fraudProofCommittedFieldShapeStep02",
+  "fraudProofMinFee",
+  "fraudProofMinFeeStep02",
+  "fraudProofWithdrawalMistag",
+  "fraudProofWithdrawalMistagStep02",
+  "fraudProofWithdrawalMistagStep03",
+  "fraudProofWithdrawalMistagStep04",
+  "fraudProofWithdrawalMistagStep05",
+  "fraudProofDoubleWithdraw",
+  "fraudProofDoubleWithdrawStep02",
+  "fraudProofCrossBlockDuplicateEvent",
+  "fraudProofCrossBlockDuplicateEventStep02",
+  "fraudProofL2TxMistag",
+  "fraudProofL2TxMistagStep02",
+  "fraudProofWithdrawnInput",
+  "fraudProofWithdrawnInputStep02",
+  "fraudProofWithdrawnInputStep03",
+  "fraudProofTransitionTraceControl",
+  "fraudProofTransitionTraceSource",
+  "fraudProofTransitionTraceWithdrawal",
+  "fraudProofTransitionTraceForced",
+  "fraudProofTransitionTraceAcceptedTransaction",
+  "fraudProofTransitionTraceDeposit",
+  "fraudProofTransitionTraceL1Event",
+  "fraudProofTransitionTraceDuplicate",
 ] as const);
 
 export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
@@ -158,6 +211,101 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 validation-trace boundary": "validationTraceDisputeBoundary",
     "V1 validation-trace timeout": "validationTraceDisputeTimeout",
     "V1 validation-trace award": "validationTraceDisputeAward",
+    "V1 fraud-proof fabricated-deposit step-01": "fraudProofFabricatedDeposit",
+    "V1 fraud-proof fabricated-deposit step-02":
+      "fraudProofFabricatedDepositStep02",
+    "V1 fraud-proof fabricated-deposit step-03":
+      "fraudProofFabricatedDepositStep03",
+    "V1 fraud-proof fabricated-deposit step-04":
+      "fraudProofFabricatedDepositStep04",
+    "V1 fraud-proof fabricated-withdrawal step-01":
+      "fraudProofFabricatedWithdrawal",
+    "V1 fraud-proof fabricated-withdrawal step-02":
+      "fraudProofFabricatedWithdrawalStep02",
+    "V1 fraud-proof fabricated-withdrawal step-03":
+      "fraudProofFabricatedWithdrawalStep03",
+    "V1 fraud-proof fabricated-withdrawal step-04":
+      "fraudProofFabricatedWithdrawalStep04",
+    "V1 fraud-proof native-script-decoding step-01":
+      "fraudProofNativeScriptDecoding",
+    "V1 fraud-proof native-script-decoding step-02":
+      "fraudProofNativeScriptDecodingStep02",
+    "V1 fraud-proof native-script-decoding step-03":
+      "fraudProofNativeScriptDecodingStep03",
+    "V1 fraud-proof native-script-decoding step-04":
+      "fraudProofNativeScriptDecodingStep04",
+    "V1 fraud-proof missing-signature step-01": "fraudProofMissingSignature",
+    "V1 fraud-proof missing-signature step-02":
+      "fraudProofMissingSignatureStep02",
+    "V1 fraud-proof missing-signature step-03":
+      "fraudProofMissingSignatureStep03",
+    "V1 fraud-proof missing-signature step-04":
+      "fraudProofMissingSignatureStep04",
+    "V1 fraud-proof missing-native-script-tx step-01":
+      "fraudProofMissingNativeScriptTx",
+    "V1 fraud-proof missing-native-script-tx step-02":
+      "fraudProofMissingNativeScriptTxStep02",
+    "V1 fraud-proof missing-native-script-tx step-03":
+      "fraudProofMissingNativeScriptTxStep03",
+    "V1 fraud-proof missing-native-script-tx step-04":
+      "fraudProofMissingNativeScriptTxStep04",
+    "V1 fraud-proof missing-native-script-tx step-05":
+      "fraudProofMissingNativeScriptTxStep05",
+    "V1 fraud-proof missing-native-script-tx step-06":
+      "fraudProofMissingNativeScriptTxStep06",
+    "V1 fraud-proof withdrawn-reference-input step-01":
+      "fraudProofWithdrawnReferenceInput",
+    "V1 fraud-proof withdrawn-reference-input step-02":
+      "fraudProofWithdrawnReferenceInputStep02",
+    "V1 fraud-proof withdrawn-reference-input step-03":
+      "fraudProofWithdrawnReferenceInputStep03",
+    "V1 fraud-proof canonical-decodability step-01":
+      "fraudProofCanonicalDecodability",
+    "V1 fraud-proof canonical-decodability step-02":
+      "fraudProofCanonicalDecodabilityStep02",
+    "V1 fraud-proof committed-field-shape step-01":
+      "fraudProofCommittedFieldShape",
+    "V1 fraud-proof committed-field-shape step-02":
+      "fraudProofCommittedFieldShapeStep02",
+    "V1 fraud-proof min-fee step-01": "fraudProofMinFee",
+    "V1 fraud-proof min-fee step-02": "fraudProofMinFeeStep02",
+    "V1 fraud-proof withdrawal-mistag step-01": "fraudProofWithdrawalMistag",
+    "V1 fraud-proof withdrawal-mistag step-02":
+      "fraudProofWithdrawalMistagStep02",
+    "V1 fraud-proof withdrawal-mistag step-03":
+      "fraudProofWithdrawalMistagStep03",
+    "V1 fraud-proof withdrawal-mistag step-04":
+      "fraudProofWithdrawalMistagStep04",
+    "V1 fraud-proof withdrawal-mistag step-05":
+      "fraudProofWithdrawalMistagStep05",
+    "V1 fraud-proof double-withdraw step-01": "fraudProofDoubleWithdraw",
+    "V1 fraud-proof double-withdraw step-02": "fraudProofDoubleWithdrawStep02",
+    "V1 fraud-proof cross-block-duplicate-event step-01":
+      "fraudProofCrossBlockDuplicateEvent",
+    "V1 fraud-proof cross-block-duplicate-event step-02":
+      "fraudProofCrossBlockDuplicateEventStep02",
+    "V1 fraud-proof l2-tx-mistag step-01": "fraudProofL2TxMistag",
+    "V1 fraud-proof l2-tx-mistag step-02": "fraudProofL2TxMistagStep02",
+    "V1 fraud-proof withdrawn-input step-01": "fraudProofWithdrawnInput",
+    "V1 fraud-proof withdrawn-input step-02": "fraudProofWithdrawnInputStep02",
+    "V1 fraud-proof withdrawn-input step-03": "fraudProofWithdrawnInputStep03",
+    "V1 fraud-proof transition-trace route": "fraudProofTransitionTrace",
+    "V1 fraud-proof transition-trace final-0":
+      "fraudProofTransitionTraceControl",
+    "V1 fraud-proof transition-trace final-1":
+      "fraudProofTransitionTraceSource",
+    "V1 fraud-proof transition-trace final-2":
+      "fraudProofTransitionTraceWithdrawal",
+    "V1 fraud-proof transition-trace final-3":
+      "fraudProofTransitionTraceForced",
+    "V1 fraud-proof transition-trace final-4":
+      "fraudProofTransitionTraceAcceptedTransaction",
+    "V1 fraud-proof transition-trace final-5":
+      "fraudProofTransitionTraceDeposit",
+    "V1 fraud-proof transition-trace final-6":
+      "fraudProofTransitionTraceL1Event",
+    "V1 fraud-proof transition-trace final-7":
+      "fraudProofTransitionTraceDuplicate",
   } as const);
 
 export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES = Object.freeze(
@@ -624,6 +772,20 @@ const validateFraudProofCatalogue = (
     noReferenceInput: "fraudProofNoReferenceInput",
     referenceInputNoIdx: "fraudProofReferenceInputNoIdx",
     invalidSignature: "fraudProofInvalidSignature",
+    fabricatedDeposit: "fraudProofFabricatedDeposit",
+    fabricatedWithdrawal: "fraudProofFabricatedWithdrawal",
+    nativeScriptDecoding: "fraudProofNativeScriptDecoding",
+    missingSignature: "fraudProofMissingSignature",
+    missingNativeScriptTx: "fraudProofMissingNativeScriptTx",
+    withdrawnReferenceInput: "fraudProofWithdrawnReferenceInput",
+    canonicalDecodability: "fraudProofCanonicalDecodability",
+    committedFieldShape: "fraudProofCommittedFieldShape",
+    minFee: "fraudProofMinFee",
+    withdrawalMistag: "fraudProofWithdrawalMistag",
+    doubleWithdraw: "fraudProofDoubleWithdraw",
+    crossBlockDuplicateEvent: "fraudProofCrossBlockDuplicateEvent",
+    l2TxMistag: "fraudProofL2TxMistag",
+    withdrawnInput: "fraudProofWithdrawnInput",
   } as const;
   const parsedCategories = {} as Record<
     DeploymentManifestV1FraudProofCatalogueCategory,

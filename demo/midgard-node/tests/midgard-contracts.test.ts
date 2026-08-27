@@ -205,6 +205,30 @@ describe("midgard contracts registry", () => {
       expect(resolved.fraudProofs.zeroInput.spendingScriptCBOR).not.toEqual(
         placeholderContracts.fraudProofs.zeroInput.spendingScriptCBOR,
       );
+      expect(resolved.fraudProofContracts.missingSignature.steps).toHaveLength(
+        4,
+      );
+      expect(
+        resolved.fraudProofContracts.missingNativeScriptTx.steps,
+      ).toHaveLength(6);
+      expect(resolved.fraudProofContracts.withdrawalMistag.steps).toHaveLength(
+        5,
+      );
+      expect(resolved.fraudProofContracts.withdrawnInput.steps).toHaveLength(3);
+      expect(resolved.fraudProofContracts.transitionTrace.finals).toHaveLength(
+        8,
+      );
+      expect(
+        resolved.fraudProofs.missingSignature.spendingScriptCBOR,
+      ).not.toEqual(
+        placeholderContracts.fraudProofs.missingSignature.spendingScriptCBOR,
+      );
+      expect(
+        resolved.fraudProofs.crossBlockDuplicateEvent.spendingScriptCBOR,
+      ).not.toEqual(
+        placeholderContracts.fraudProofs.crossBlockDuplicateEvent
+          .spendingScriptCBOR,
+      );
       const validationControlHashes = [
         resolved.fraudProofs.validationTraceDispute.spendingScriptHash,
         resolved.fraudProofs.validationTraceDispute.source.spendingScriptHash,

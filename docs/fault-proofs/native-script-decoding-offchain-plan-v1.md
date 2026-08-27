@@ -1,10 +1,18 @@
 # Native-script decoding fault: offchain implementation plan (v1)
 
+> **Registration update (2026-08-26):** this family is now registered as
+> `nativeScriptDecoding` at `0000000d`. Generic Init,
+> catalogue/inspection, node/core deployment identity, watcher proof-thread
+> topology, and all four mandatory authenticated reference scripts are wired.
+> Family-specific CLI and autonomous watcher detector/prover mounting are not
+> implied by that topology and remain open, as do preprod/live evidence. The
+> identity change requires fresh genesis/redeployment; there is no migration or
+> compatibility path.
+
 Plan date: 2026-08-25. Branch: `plan/decoding-offchain-635` (off
 `wave/decoding-thread-635` at `db83dd31`). Issues: #635 (family), #633
-(originating divergence). This is a PLANNING document only: it implements
-nothing, registers nothing, and deploys nothing. It elaborates the offchain /
-registration surface that
+(originating divergence). This began as a planning document and now also
+records the implemented registration surface that
 `docs/fault-proofs/native-script-decoding-fault-thread-design-v1.md` §3.4
 explicitly deferred ("Catalogue registration (MPF insert of the new category
 id → step-01 script hash), `catalogue.ts` update, and watcher detection logic
@@ -171,42 +179,14 @@ transaction shape (`self_loop_l1_tx_v1`).
 
 ### 2.1 Category id and the append ledger
 
-The design deliberately names no id (design §8, §9 Q7 — ruled: allocated in
-the registration wave only, after the drift is reconciled). The current
-facts the registration wave will find:
+Canonical category id: **`0000000d`** (append index 13). The SDK's 25-entry
+catalogue, generic Init, deployment manifests/inspection, and watcher
+proof-thread topology bind `nativeScriptDecoding` to the applied step-01 hash.
 
-- On-chain catalogue: eleven categories `00000000`–`0000000a`; append
-  index 11 = `0000000b` is RESERVED for the fabricated-deposit family
-  (#617): `FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1 = "0000000b"`
-  (`demo/midgard-sdk/src/fraud-proof/fabricated-deposit-v1.ts:59`) — a
-  hard-coded SDK constant for a family that is itself not yet registered.
-- Append index 12 = `0000000c` is likewise RESERVED:
-  `FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1 = "0000000c"`
-  (`demo/midgard-sdk/src/fraud-proof/fabricated-withdrawal-v1.ts:85`),
-  another unregistered family holding a hard-coded constant. (This plan's
-  first draft missed it; the Q2 reservation sweep found it.)
-- `demo/midgard-sdk/src/fraud-proof/catalogue.ts:26-37` holds **11**
-  positional categories. `docs/fault-proofs/catalogue-status.md:13-14,106`
-  still says "exactly 8" — the doc is stale, not the code; the "8 vs 11"
-  drift cited in design §8 has since closed. The registration wave should
-  correct `catalogue-status.md` in passing.
-- 20 family directories exist under
-  `onchain/aiken/validators/fraud-proofs/` against the 11 registered
-  categories; this family is the newest of the unregistered set.
+### 2.2 Registered positional/pinned surfaces
 
-Under the append discipline this family takes the next free index after
-every standing reservation. **Decided (Q2, 2026-08-25):** both standing
-reservations hold, so this family's expected index is **`0000000d`** —
-but the id constant is still **written only by the registration wave**
-(design §9 Q7, ruled), which re-verifies "next free after standing
-reservations" against the SDK constants at allocation time. The
-two-families-claiming-next-free collision hazard is closed by that
-re-verification step, not by pinning a number here.
-
-### 2.2 What registration touches (the positional/pinned surfaces)
-
-Registering the family is an append to every positional list plus a re-pin
-of every derived root. The complete checklist:
+Registration appended the family to every positional list and re-pinned the
+derived roots. The complete checklist remains the deployment audit surface:
 
 | Surface | Where |
 |---|---|
@@ -342,7 +322,7 @@ of that transaction's resolution disagrees. The detector:
 
 An acceptance claim is a Normal `transactions_root` leaf whose embedded
 scalar is 0, or a forced leaf whose verdict is `ForcedTxValid`. The
-detector runs during block replay: for every accepted transaction, for
+detector design scans every accepted transaction: for
 every resolved outpoint (spend inputs then reference inputs), if the
 resolved descriptor carries `reference_script_language == 0`, run the TS
 scan twin over the committed item bytes; any refusal (malformed /
@@ -353,11 +333,10 @@ refusal) to minimize the thread length.
 
 This sweep adds scan work proportional to the number of resolved tag-0
 reference scripts per block. The scan twin is linear in payload bytes with
-trivial constants, so the expected cost is small, but it is standing
-watcher work that did not exist before. **Decided (Q6):** the sweep runs
-in the watcher's default replay path — detection coverage is safety, and
-strict behavior is the default (AGENTS.md) — with an explicit, isolated
-kill-switch flag (default on) for incident response.
+trivial constants. The finding/proving core exists, but no watcher replay path
+currently mounts this sweep; catalogue/topology registration did not make it
+default-on. Mounting policy and any incident-response kill switch remain
+operational watcher work.
 
 ### 3.4 Detection output and routing
 
@@ -385,9 +364,9 @@ Findings whose provability class is the wrapper-contradiction corner
 classification, not the consumer, is the gate. (The §7.2 corner leaves
 this refused set once the cardinality close lands; §10 Q1.)
 
-The watcher's `proof-thread-indexer` gains a `families[]` policy entry
-(category id, step script hashes) at registration so third-party threads of
-this family are indexed like every other family's; the indexer also feeds
+The watcher's `proof-thread-indexer` has the canonical family/topology entry
+(category id, step script hashes) so third-party threads of this family are
+indexed like every other family's; the indexer also feeds
 the autonomy path's dedup check (do not Init a thread whose asset name an
 indexed live thread already carries — duplicates are sound but waste fees).
 
@@ -397,12 +376,11 @@ indexed live thread already carries — duplicates are sound but waste fees).
 
 ### 4.1 SDK (`demo/midgard-sdk`)
 
-One new module `src/fraud-proof/native-script-decoding-v1.ts`, mirroring
-the unregistered-family template (`fabricated-deposit-v1.ts`):
+One new module `src/fraud-proof/native-script-decoding-v1.ts`, following the
+fabricated-family template:
 
-- `NATIVE_SCRIPT_DECODING_VIOLATION_ID_V1` and — at registration time only
-  — the category-id constant; until then the module exports the asset-name
-  helper parameterized on the id:
+- `NATIVE_SCRIPT_DECODING_VIOLATION_ID_V1`, canonical category id
+  `0000000d`, and an asset-name helper parameterized on the id:
   `nativeScriptDecodingThreadTokenAssetNameV1(categoryId, headerHash)`.
 - Per-step `State` / `Datum` / `Args` / `SpendRedeemer` schemas built from
   the shared generics (`faultProofStepDatumSchema` /
@@ -443,7 +421,7 @@ the unregistered-family template (`fabricated-deposit-v1.ts`):
     already exported (the MPF library is consumed in four fault-proofs
     modules; `prepare-double-spend.ts` is the precedent for converting
     library proofs to on-chain `Proof` data).
-- `src/fraud-proof/contracts.ts` additions land **at registration** (title
+- `src/fraud-proof/contracts.ts` additions are registered (title
   map `NATIVE_SCRIPT_DECODING_FAULT_PROOF_TITLES` over the four blueprint
   titles, `buildNativeScriptDecodingChain` applying parameters backwards
   per §1's table through the arity-checked `applyBlueprintParams`
@@ -497,9 +475,8 @@ New module family `src/native-script-decoding/`:
   `{ fraud_prover: signer.paymentKeyHash, data: null }` `:551-557`, Init
   mint redeemer with the catalogue membership proof and the four reference
   indices `:576-609`, plus the PHAS zero-withdrawal `:613-637`).
-  CLI verbs are added to `bin.ts` **at registration**, matching the
-  fabricated-deposit precedent (modules land first, verbs when the
-  category exists).
+  Generic `submit-init` accepts the category. Family-specific step CLI verbs
+  remain open even though the category exists.
 
 ### 4.3 The proving core and its two consumers (ruled 2026-08-25)
 
@@ -683,8 +660,8 @@ derived figures are superseded and appear nowhere below.
 - **Worst case** (maximal 5,447-node payload, either direction): ≈320–340
   scan transactions, ≈330–350 L1 transactions total including the
   envelope steps. At the design's stated fee assumption (≈1.45 ADA per
-  full step transaction — an assumption to restate at registration, per
-  design §9 Q8, not a pin) that is **≈480–510 ADA**, under 0.7% of the
+  full step transaction — an operational assumption, not a pin) that is
+  **≈480–510 ADA**, under 0.7% of the
   75,000-ADA `fraud_prover_reward` production profile.
 - **Typical case:** committed native scripts are overwhelmingly small; a
   signature-node or few-node script closes in a handful of primitive steps,
@@ -889,10 +866,10 @@ positive polarity; suite 7 carries the adversarial one.
    these fail but that each fails at the intended validator check, so a
    refactor that accidentally widens an arm turns it red.
 
-### 8.3 What lands at registration (re-pins)
+### 8.3 Registration re-pins
 
-Registration — not the builder wave — moves the pinned surfaces, and every
-re-pin follows the provenance convention (append an entry recording
+Registration moved the pinned surfaces, and every re-pin follows the
+provenance convention (append an entry recording
 blueprint md5, validator count, and the derivation route; never transcribe
 from a failing assertion):
 
@@ -925,8 +902,7 @@ pinned fork.
    §7.2 closing-arm amendment (Q1, decided) executed on that branch.
    Blueprint regeneration and the ABI/validator-count evidence ride that
    integration, not this plan.
-3. **Builder wave (this plan's implementation, pre-registration):** SDK
-   schemas (§4.1 minus the contracts.ts registration parts), twins and
+3. **Builder wave:** SDK schemas, twins and
    planner (§5), evidence module and submitters (§4.2) including both
    step-01 carriages (Q4) and the cardinality-proof path (Q1), the
    proving core and both adapters (§4.3), suites §8.2(1–7) under the
@@ -934,17 +910,14 @@ pinned fork.
    both directions and both polarities with zero pin movement. Item
    §8.2(1) (envelope/frontier) runs first; its step-02 frontier check is
    the one place that can still escalate (§2.3).
-4. **Registration wave (separate, owner-scheduled):** category-id
-   allocation (next free after the two standing reservations, expected
-   `0000000d` — Q2, decided), catalogue/manifest/union appends (§2.2),
-   the family-steps reference-script targets (§2.3, Q3), CLI verbs,
-   watcher `families[]` policy entry, re-pins (§8.3),
-   `catalogue-status.md` correction, and the fresh genesis-level
-   deployment (D-S13).
+4. **Registration/deployment:** canonical `0000000d`,
+   catalogue/manifest/generic-Init appends (§2.2), all four mandatory
+   reference-script targets (§2.3, Q3), watcher proof-thread topology, re-pins
+   (§8.3), and fresh genesis-level deployment (D-S13) are complete.
+   Family-specific step CLI and autonomous watcher actuation remain open.
 5. **No outstanding rulings block the sequence** (register decided
    2026-08-25, §10). The remaining owner acts are operational: the wave
-   integration itself (step 2), scheduling the registration wave
-   (step 4), and any deployment's decision to switch the autonomous
+   integration itself (step 2) and any deployment's decision to switch the autonomous
    adapter on (Q5).
 
 ---
@@ -964,15 +937,8 @@ would reopen it.
   stall-and-cancel sound but stopgap-shaped. Reopens only if the
   field-opening door turns out not to expose the field's item count —
   the §4.2 builder would surface that immediately.
-- **Q2 — Reservation ordering: DECIDED, both reservations stand (§2.1).**
-  The sweep found TWO hard-coded reservations — `0000000b`
-  (fabricated-deposit, `fabricated-deposit-v1.ts:59`) and `0000000c`
-  (fabricated-withdrawal, `fabricated-withdrawal-v1.ts:85`; missed by
-  this plan's first draft) — so this family's expected index is
-  `0000000d`. The constant is still written only by the registration
-  wave (design §9 Q7, ruled), which re-verifies "next free after
-  standing reservations" at allocation time and corrects
-  `catalogue-status.md`'s stale count in passing.
+- **Q2 — Category id: DECIDED and registered (§2.1).**
+  `nativeScriptDecoding` is canonically `0000000d`.
 - **Q3 — Deployment shape: DECIDED BY MEASUREMENT, reference scripts
   (§2.3).** Step-03's compiled validator is 24,862 bytes — larger than
   the whole 16,384-byte envelope — so inline attach is impossible, not
@@ -999,17 +965,14 @@ would reopen it.
   refuse Init when under 2× the predicted serial duration remains. All
   deployment-overridable; the act of enabling in any real deployment
   remains the owner's.
-- **Q6 — Direction-A sweep: DECIDED, default replay path (§3.3).**
-  Detection coverage is safety and strict behavior is the default; the
-  cost is bounded per block (linear in resolved tag-0 bytes). An
-  explicit, isolated kill-switch flag (default on) exists for incident
-  response.
+- **Q6 — Direction-A sweep: core defined, watcher mounting open (§3.3).**
+  The cost is bounded per block (linear in resolved tag-0 bytes), but no
+  default replay-path mount or kill-switch is claimed by this registration.
 
 Not questions (already ruled or repaired): the pair ruling (2026-08-25),
 the `tx_order_id` ByteArray type repair (flagged in the wave report), the
-pinned-rates supersession of design §6, catalogue-id allocation deferral
-to the registration wave (design §9 Q7), and the fee restatement at
-registration (design §9 Q8).
+pinned-rates supersession of design §6, completed catalogue-id allocation,
+and the fee assumptions recorded in the registered deployment review.
 
 ---
 
@@ -1018,16 +981,16 @@ registration (design §9 Q8).
 - Any onchain change: validators, engine, formats, pins, exec ledgers,
   and the #640 wave itself. (The Q1 closing-arm amendment is *scoped* in
   §7.2 but executed on the wave branch, not on this plan branch.)
-- The registration wave's execution (id allocation, appends, re-pins,
-  genesis deployment) — planned here (§2, §8.3), executed separately.
+- Family-specific CLI and autonomous watcher detector/prover mounting;
+  catalogue, manifests, re-pins, and proof-thread topology are registered.
 - The interactive validation-trace family; the witness-set twin family
   (design §9 Q4); the D-S10 output-well-formedness overlap accounting
-  (recorded at registration per design §9 Q3).
+  (recorded in the registered identity per design §9 Q3).
 - Enabling autonomous proving in any deployed watcher, and its wallet
   custody / policy defaults (the architecture ships per §4.3; enablement
   is owner configuration, §10 Q5).
 - Published-chunk publication of scan *windows* (§2.3 — a transport
   optimization only; the step-01 published-chunk carriage IS in scope,
   Q4).
-- Fee-price re-pinning (registration-time, design §9 Q8).
+- Future fee-price re-pinning after a consensus/deployment identity change.
 - GOAL_PROGRESS ledger rows (owner may want one for this plan's landing).

@@ -10,6 +10,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
 import {
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   HUB_ORACLE_ASSET_NAME,
   type NativeTxInclusionCarriage,
   Proof,
@@ -39,7 +40,6 @@ import {
   requireL2TxMistagReferenceScriptV1,
   requireL2TxMistagThreadUtxoV1,
 } from "../../src/l2-tx-mistag/submit-common-v1.js";
-import type { RemoveFraudulentBlockExplicitCategory } from "../../src/remove-fraudulent-block.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
@@ -62,9 +62,7 @@ import {
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import { trieRootHex } from "./emulator/catalogue.js";
 import type { FaultProofEmulatorHarnessV1 } from "./emulator/harness.js";
-import { L2_TX_MISTAG_TEST_CATEGORY_ID_V1 } from "./emulator/harness.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
-import { L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1 } from "./emulator/removal-deployment.js";
 
 export type L2TxMistagBlockFixtureV1 = {
   readonly transactionsRoot: string;
@@ -131,11 +129,11 @@ export const buildL2TxMistagBlockFixtureV1 = async (
 };
 
 export const l2TxMistagCategoryV1 = (harness: FaultProofEmulatorHarnessV1) => {
-  const category = harness.catalogue.extraCategories.l2TxMistag;
+  const category = harness.catalogue.categories.l2TxMistag;
   if (category === undefined || harness.contracts.l2TxMistag === undefined) {
     throw new Error("l2-tx-mistag harness was not enabled");
   }
-  if (category.categoryId !== L2_TX_MISTAG_TEST_CATEGORY_ID_V1) {
+  if (category.categoryId !== FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.l2TxMistag) {
     throw new Error("l2-tx-mistag harness category id drifted");
   }
   return category;
@@ -163,26 +161,6 @@ export const publishL2TxMistagReferenceScriptsV1 = async ({
     );
   }
   return [published[0]!, published[1]!];
-};
-
-export const l2TxMistagRemovalCategoryV1 = (
-  harness: FaultProofEmulatorHarnessV1,
-): RemoveFraudulentBlockExplicitCategory => {
-  const contracts = harness.contracts.l2TxMistag;
-  if (contracts === undefined) {
-    throw new Error("l2-tx-mistag contracts were not enabled");
-  }
-  return {
-    name: "l2TxMistag",
-    categoryId: L2_TX_MISTAG_TEST_CATEGORY_ID_V1,
-    firstStepDeploymentEntry: L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1,
-    firstStepScriptHash: contracts.steps[0].spendingScriptHash,
-    fraudProof: {
-      policyId: contracts.fraudProof.policyId,
-      spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-      spendingScriptAddress: contracts.fraudProof.spendingScriptAddress,
-    },
-  };
 };
 
 /**

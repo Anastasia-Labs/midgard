@@ -410,7 +410,7 @@ describe("fault-proof CLI argument parsing", () => {
         "invalid-range",
       ]),
     ).toThrow(
-      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "nonExistentInputNoIndex", "zeroInput", "validationTraceDispute", "daHashPreimage", "noReferenceInput", "referenceInputNoIdx", or "invalidSignature"',
+      `--fraud-category must be one of ${SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((category) => `"${category}"`).join(", ")}.`,
     );
   });
 

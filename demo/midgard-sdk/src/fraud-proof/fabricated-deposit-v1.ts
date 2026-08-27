@@ -8,9 +8,7 @@
  * one (`MismatchedDepositContent`).
  *
  * Violation: `fabricated-deposit`.
- * Catalogue category: `fabricatedDeposit` — **not registered yet**. Catalogue
- * registration is parent-owned integration work, so this module is reached by
- * direct import rather than through `fraud-proof/catalogue.ts`.
+ * Production catalogue category: `fabricatedDeposit` (`0000000b`).
  *
  * Every schema below mirrors an Aiken type in
  * `onchain/aiken/lib/midgard/fraud-proofs/fabricated-deposit/step-0{1,2,3,4}.ak`
@@ -37,6 +35,7 @@ import {
 } from "@/transition-trace.js";
 import { DepositDatum, DepositDatumSchema } from "@/user-events/deposit.js";
 
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "./catalogue.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
@@ -51,12 +50,11 @@ export const FABRICATED_DEPOSIT_VIOLATION_ID_V1 = "fabricated-deposit" as const;
  * A category id is the 4-byte big-endian index of the category's position in the
  * append-only `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` in `./catalogue.js` — the
  * same derivation that gives `transitionTrace` (index 4) its `00000004`.
- * `fabricatedDeposit` appends at index 11. This constant is the single point that
- * moves if the append-only order gains another entry before Q39 is registered,
- * and it is the byte twin of
+ * `fabricatedDeposit` is fixed at index 11 and is the byte twin of
  * `step_01.fabricated_deposit_fraud_category_id` in Aiken.
  */
-export const FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1 = "0000000b" as const;
+export const FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.fabricatedDeposit;
 
 /** 28-byte hash of the challenged block header. */
 export const ChallengedHeaderHashSchema = Data.Bytes({

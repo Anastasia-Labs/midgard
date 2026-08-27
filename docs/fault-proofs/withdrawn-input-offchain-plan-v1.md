@@ -1,13 +1,22 @@
 # Withdrawn-input fault: plan and as-built record (v1)
 
+> **Registration update (2026-08-26):** this family is now registered as
+> `withdrawnInput` at `00000018`. Generic Init, catalogue/inspection,
+> node/core deployment identity, watcher proof-thread topology, and all three
+> mandatory authenticated reference scripts are wired. Family-specific CLI,
+> autonomous watcher detector/prover mounting, preprod, and live evidence
+> remain open. The identity change requires fresh genesis/redeployment; there
+> is no migration or compatibility path.
+
 Plan date: 2026-08-26. Audited against branch
 `colll78/canonical-v1-watcher-l1-source-checkpoint` (HEAD `a1724e63`).
 Work item: **W-C3** (spend-side `withdrawn-input`,
 `catalogue-status.md` §6; `coverage-matrix.md` §2 "Spend of withdrawn
 input"). Unlike the Q16 missing-signature document this is a plan **and**
 an as-built record: the same wave that wrote it delivers the on-chain
-family, the offchain tooling, and the emulator suites it specifies.
-Registration remains out of scope (§10).
+family, the offchain tooling, and the emulator suites it specifies. The
+follow-on registration is now complete; §10 records only the remaining
+operational gaps.
 
 The family is the spend-side mirror of `withdrawn-reference-input`
 (`catalogue-status.md` §1 row 11): a transaction the operator committed
@@ -27,16 +36,13 @@ missing-signature plan's list, inherited verbatim):
   fault proves through fraud-proof mint **and** fraudulent-commitment
   removal; an adversarial prover against an honest commitment is refused
   **on-chain at the exact check**.
-- **Pre-registration explicit-record discipline:** no CLI verbs, no SDK
-  catalogue append, no `submit-init.ts` union change; ids never route
-  through the deployment manifest (`parseFraudProofCatalogueDeploymentInfo`
-  silently drops non-canonical keys).
-- **Reserved ids are expected, not promised:** the test-harness constant
-  records the reserved index; the production id is written only by the
-  registration wave.
+- **Explicit-record discipline:** contracts remain explicit while
+  `withdrawnInput` is canonically routed through catalogue and deployment
+  manifests. Family-specific CLI remains separate.
+- **Canonical id:** `00000018` is the production category id.
 - **Removal via explicit category:** the
   `RemoveFraudulentBlockExplicitCategory` seam (commit `fb7c0217`) drives
-  removal for a pre-registration family with zero changes to
+  removal for the family with zero changes to
   `remove-fraudulent-block.ts`. The fraud-proof token is permanent by
   design; the state-queue node NFT burns at removal.
 
@@ -149,26 +155,18 @@ invalid-withdrawal refusal (leaf targets the spent input but carries
 
 ## 2. Registration posture
 
-### 2.1 Reserved emulator-test category id: `00000018`
+### 2.1 Canonical category id: `00000018`
 
-**Assigned to this family by the parent orchestration — not chosen here.**
-Standing reservations at HEAD stop at `0000000d`
-(native-script-decoding's test id); parallel family waves hold the
-intermediate indices. The constant lands as
-`WITHDRAWN_INPUT_TEST_CATEGORY_ID_V1 = "00000018"` in the emulator
-harness, with the inherited caveat: it is the emulator wiring's id only.
-The production id is allocated by the registration wave, which re-verifies
-next-free at allocation time. In code, the id appears only on test surfaces —
-not in `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`, not in `bin.ts`, and never in
-the deployment manifest.
+`withdrawnInput` is registered at `00000018`. The SDK catalogue, generic
+Init, deployment manifests/inspection, and watcher proof-thread topology bind
+the id to the applied step-01 hash.
 
-### 2.2 What stays untouched until the registration wave
+### 2.2 Registered deployment surface
 
-`demo/midgard-sdk/src/fraud-proof/catalogue.ts`, `submit-init.ts`'s
-category union, `bin.ts`, `inspect-contracts` unions, watcher
-`families[]`, and every pinned root/fixture. The family's contracts
-record is explicit and parent-owned (§5), mirroring
-fabricated-withdrawal's pre-registration shape.
+The SDK catalogue, generic `submit-init.ts`, inspection, manifests, watcher
+proof-thread topology, and pinned roots are wired. The family's contracts
+record remains explicit (§5). Family-specific CLI and autonomous watcher
+detector/prover mounting remain open.
 
 ### 2.3 Deployment: reference scripts
 
@@ -283,10 +281,10 @@ checks.
 
 ## 5. Off-chain submission chain (as built)
 
-The pre-registration family owns an explicit `WithdrawnInputContractsV1`
+The family owns an explicit `WithdrawnInputContractsV1`
 record and these submitters:
 
-1. init binds the explicit step-01 hash under the reserved emulator category;
+1. init binds the explicit step-01 hash under the registered category;
 2. step-01 authenticates the native transaction under the header's counted
    transactions root and carries that same header's counted withdrawals root;
 3. step-02 opens body field 0 through the shared authenticated-field door and
@@ -301,10 +299,10 @@ its script hash before building. The spending scripts are **referenced, never
 attached inline**. Common state/address/thread-token checks reject stale or
 cross-family UTxOs before submission.
 
-## 6. Pre-registration emulator and removal wiring (as built)
+## 6. Emulator and removal wiring (as built)
 
-`WITHDRAWN_INPUT_TEST_CATEGORY_ID_V1 = "00000018"` is enabled only by the
-emulator harness's explicit extra-category path. `buildWithdrawnInputChainV1`
+The emulator uses canonical category `00000018`.
+`buildWithdrawnInputChainV1`
 applies the three validators backwards in blueprint order. The scenario
 publishes all three plain reference-script UTxOs and constructs a real compact
 native transaction, an independent withdrawal MPF leaf, and one header whose
@@ -312,9 +310,8 @@ two counted roots authenticate them.
 
 The removal deployment helper exposes the explicit entry name
 `fraudProofWithdrawnInput`. The positive lifecycle passes an
-`RemoveFraudulentBlockExplicitCategory` record, so the unregistered family can
-exercise real state-queue removal without modifying production catalogue or
-manifest parsing. Removal burns the queue node NFT and retains the permanent
+`RemoveFraudulentBlockExplicitCategory` record and exercises real state-queue
+removal. Removal burns the queue node NFT and retains the permanent
 fraud-proof token.
 
 ## 7. Test matrix (as built)
@@ -346,16 +343,15 @@ evidence rather than a copied promise.
 ## 9. Catalogue/documentation reconciliation
 
 `catalogue-status.md`, `coverage-matrix.md`, and `execution-plan.md` record the
-family as implemented and emulator-proven but not registered or release-ready.
-They do not claim a production id, CLI route, watcher route, preprod run, or
-mainnet readiness.
+family as implemented, registered, and emulator-proven but not release-ready.
+They do not claim a family-specific CLI route, autonomous watcher actuation,
+preprod run, or mainnet readiness.
 
 ## 10. Deferred and out of scope
 
-- Production catalogue id/allocation, catalogue deployment, generic
-  `submit-init` union, CLI verbs, watcher registration, manifest routing,
-  preprod execution, and release evidence are deferred to the registration
-  wave.
+- Family-specific CLI verbs, autonomous watcher detector/prover mounting,
+  preprod execution, and release evidence remain open. Catalogue, generic
+  Init, manifest routing, and watcher proof-thread topology are registered.
 - `withdrawn-reference-input` remains wholly outside this wave.
 - `double-withdraw`, withdrawal mistagging, and cross-block withdrawn spends
   retain their separate proof routes described above.

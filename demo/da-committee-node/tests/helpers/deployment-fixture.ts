@@ -203,6 +203,30 @@ export const buildDaDeploymentFixture = async (
         .scriptHash as string,
       invalidSignature: contracts.fraudProofInvalidSignature!
         .scriptHash as string,
+      fabricatedDeposit: contracts.fraudProofFabricatedDeposit!
+        .scriptHash as string,
+      fabricatedWithdrawal: contracts.fraudProofFabricatedWithdrawal!
+        .scriptHash as string,
+      nativeScriptDecoding: contracts.fraudProofNativeScriptDecoding!
+        .scriptHash as string,
+      missingSignature: contracts.fraudProofMissingSignature!
+        .scriptHash as string,
+      missingNativeScriptTx: contracts.fraudProofMissingNativeScriptTx!
+        .scriptHash as string,
+      withdrawnReferenceInput: contracts.fraudProofWithdrawnReferenceInput!
+        .scriptHash as string,
+      canonicalDecodability: contracts.fraudProofCanonicalDecodability!
+        .scriptHash as string,
+      committedFieldShape: contracts.fraudProofCommittedFieldShape!
+        .scriptHash as string,
+      minFee: contracts.fraudProofMinFee!.scriptHash as string,
+      withdrawalMistag: contracts.fraudProofWithdrawalMistag!
+        .scriptHash as string,
+      doubleWithdraw: contracts.fraudProofDoubleWithdraw!.scriptHash as string,
+      crossBlockDuplicateEvent: contracts.fraudProofCrossBlockDuplicateEvent!
+        .scriptHash as string,
+      l2TxMistag: contracts.fraudProofL2TxMistag!.scriptHash as string,
+      withdrawnInput: contracts.fraudProofWithdrawnInput!.scriptHash as string,
     }),
   };
   const referenceScripts = Object.fromEntries(

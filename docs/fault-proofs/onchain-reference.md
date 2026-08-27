@@ -105,14 +105,19 @@ min_fee_a, min_fee_b, prev_header_hash, operator_vkey, protocol_version
 | `no-reference-input`        | 4            | `pexcludes` vs `prev_utxos_root` (`step-03.ak:70-76`) and vs `transactions_root` (`step-04.ak:72-79`)                                                                                                                                          |
 | `withdrawn-reference-input` | 3            | `l2_outref == missing_reference_input_outref` + `phas` vs `withdrawals_root` (`step-03.ak:75-92`)                                                                                                                                              |
 | `min-fee`                   | 2            | `bad_tx_body_fee < min_fee_lovelace_v1(min_fee_a, min_fee_b, canonical_tx_size)` after authenticating the compact transaction, witness compact, and all nine field preimage lengths; the same helper feeds validation-machine `reject_min_fee` |
-| `transition-trace`          | single proof | dispatch in `lib/.../transition-trace/proof.ak`; header binding + category prefix `#"00000004"`; direct unilateral transition families plus canonical accepted-validation-claim binding for normal and valid-forced effects                    |
+| `transition-trace`          | route + 8 finals | dispatch in `lib/.../transition-trace/proof.ak`; header binding + category prefix `#"00000004"`; one route selects one of eight terminal validators, all deployed as mandatory authenticated reference scripts                    |
 
-The append-only catalogue currently assigns eleven categories, IDs `00000000` through
-`0000000a`; Q13's `nonExistentInputNoIndex` is `00000002`, `zeroInput` is
-`00000005`, `validationTraceDispute` is `00000006`, `daHashPreimage` is
-`00000007`, `noReferenceInput` is `00000008`, `referenceInputNoIdx` is
-`00000009`, and `invalidSignature` is `0000000a`. All eleven transaction-proof step-01 validator chains use the native V1
-binding path; `transition-trace` has its separate canonical V1 trace/claim route.
+The append-only catalogue assigns 25 categories, IDs `00000000` through
+`00000018`. The canonical appended block `0000000b`–`00000018` is
+`fabricatedDeposit`, `fabricatedWithdrawal`, `nativeScriptDecoding`,
+`missingSignature`, `missingNativeScriptTx`, `withdrawnReferenceInput`,
+`canonicalDecodability`, `committedFieldShape`, `minFee`, `withdrawalMistag`,
+`doubleWithdraw`, `crossBlockDuplicateEvent`, `l2TxMistag`, and
+`withdrawnInput`. Every step in the deployment identity is an authenticated
+reference script. Catalogue immutability makes this a fresh-genesis/redeploy
+identity movement, not a migration or compatibility path. Watcher topology
+registration is off-chain authority metadata; it does not mount detectors or
+provers.
 
 ## 5. Environment parameters (`env/default.ak`, `env/testnet.ak`)
 

@@ -53,7 +53,7 @@ describe("withdrawal-mistag invalid marked valid emulator lifecycle", () => {
       harness,
       scenario,
     });
-    expect(removal.fraudCategory).toBe("withdrawal-mistag");
+    expect(removal.fraudCategory).toBe("withdrawalMistag");
     expect(removal.fraudCategoryId).toBe("00000014");
     await expect(
       harness.proverLucid.utxosAtWithUnit(

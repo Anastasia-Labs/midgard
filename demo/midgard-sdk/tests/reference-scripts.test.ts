@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   createReferenceScriptAuthPolicy,
   hasReferenceScriptAuthRole,
+  REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   referenceScriptAuthPolicyDeploymentInfo,
   referenceScriptAuthPolicyFromDeploymentInfo,
   referenceScriptAuthTokenName,
@@ -39,6 +40,27 @@ const utxo = ({
 });
 
 describe("reference-script SDK boundary", () => {
+  it("assigns unique <=32-byte auth tokens to every registered fraud-proof role", () => {
+    const fraudProofEntries = Object.entries(
+      REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+    ).filter(([role]) => role.startsWith("V1 fraud-proof "));
+    const tokenNames = fraudProofEntries.map(([, tokenName]) => tokenName);
+
+    expect(fraudProofEntries).toHaveLength(54);
+    expect(new Set(tokenNames).size).toBe(tokenNames.length);
+    expect(tokenNames.every((name) => Buffer.byteLength(name) <= 32)).toBe(
+      true,
+    );
+    expect(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES).toMatchObject({
+      "V1 fraud-proof transition-trace route": "V1FpTransitionTraceRoute",
+      "V1 fraud-proof transition-trace final-0": "V1FpTransitionTraceFinal0",
+      "V1 fraud-proof transition-trace final-7": "V1FpTransitionTraceFinal7",
+      "V1 fraud-proof missing-native-script-tx step-06":
+        "V1FpMissingNativeScriptTxS06",
+      "V1 fraud-proof withdrawn-input step-03": "V1FpWithdrawnInputS03",
+    });
+  });
+
   it("creates restorable native auth-policy deployment info", () => {
     const lucid = {
       unixTimeToSlot: (time: number) => Math.floor(time / 1000),

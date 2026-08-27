@@ -1,10 +1,12 @@
 # Cross-block duplicate-event fault proof — on-chain and off-chain plan V1
 
-Status: implemented locally and emulator-proven; unregistered
-`crossBlockDuplicateEvent` family. The emulator-only reserved category id is
-`00000016`. Production
-catalogue registration, deployment-manifest publication, and CLI verbs remain
-deferred to the catalogue registration wave.
+Status: implemented, emulator-proven, and registered as
+`crossBlockDuplicateEvent` at `00000016`. Catalogue/inspection, generic Init,
+node/core deployment identity, watcher proof-thread topology, and both
+mandatory authenticated reference scripts are wired. Family-specific CLI,
+autonomous watcher detector/prover mounting, settlement-history retention,
+preprod, and live evidence remain open. The identity change requires fresh
+genesis/redeployment; there is no migration or compatibility path.
 
 ## 1. Rule and scope
 
@@ -113,12 +115,12 @@ validator fallback. Step 01 reads the hub and challenged state-queue node.
 Step 02 reads the historical settlement UTxO and uses the shared fraud-proof
 mint/finalize machinery.
 
-Production registration is intentionally absent: do not add the family to
-`FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`, supported production category unions,
-deployment manifests, or production inspection gates. Tests register reserved
-id `00000016` as an extra emulator category, apply the real chain, publish both
-step validators as reference scripts, and pass an explicit category record to
-the category-independent removal submitter.
+Production registration is complete: `crossBlockDuplicateEvent` is present in
+`FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`, generic Init, deployment manifests,
+inspection, and watcher proof-thread topology at `00000016`. Tests apply the
+real chain, publish both mandatory reference scripts, and pass an explicit
+category record to the category-independent removal submitter. Autonomous
+watcher detection/proving remains separate.
 
 ## 6. Acceptance gates
 

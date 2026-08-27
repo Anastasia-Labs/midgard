@@ -1,5 +1,13 @@
 # L2-tx-mistag fault: design and offchain implementation plan (v1)
 
+> **Registration update (2026-08-26):** this family is now registered as
+> `l2TxMistag` at `00000017`. Generic Init, catalogue/inspection, node/core
+> deployment identity, watcher proof-thread topology, and both mandatory
+> authenticated reference scripts are wired. Family-specific CLI, autonomous
+> watcher detector/prover mounting, preprod, and live evidence remain open;
+> D-S9's formal wording gate is unchanged. The identity change requires fresh
+> genesis/redeployment; there is no migration or compatibility path.
+
 Plan date: 2026-08-26. Audited against branch
 `colll78/canonical-v1-watcher-l1-source-checkpoint` (HEAD `a1724e63`).
 Catalogue row: `catalogue-status.md` §6 (`l2-tx-mistag`); coverage-matrix
@@ -15,9 +23,8 @@ silently censored while appearing included.
 
 The parity bar is the `da-hash-preimage` / `zero-input` two-step families
 for the on-chain and submitter shape, and the `native-script-decoding`
-family (#635) for the pre-registration discipline: explicit contracts
-record, test-only category id registered through the emulator harness's
-extra-category seam, reference-script deployment, both-polarity emulator
+family (#635) for the explicit-record discipline: explicit contracts
+record, canonical category wiring, reference-script deployment, both-polarity emulator
 suites through fraud-proof mint AND fraudulent-commitment removal.
 
 Standing rulings this plan implements and never re-opens:
@@ -30,15 +37,10 @@ Standing rulings this plan implements and never re-opens:
   commitment removal — and an adversarial prover against an honest
   commitment is refused **on-chain at the exact check**, not merely by
   offchain guards (§8).
-- **Pre-registration explicit-record discipline:** pre-registration
-  families must not route their ids through the deployment manifest —
-  `parseFraudProofCatalogueDeploymentInfo` silently drops non-canonical
-  keys (`catalogue-status.md` §3). The contracts record is explicit; the
-  SDK catalogue order, `submit-init.ts`'s category union, and `bin.ts` are
-  untouched until the registration wave (§2.2).
-- **Reserved ids are expected, not promised** (decoding plan §10 Q2): the
-  test-harness constant records the assigned emulator id `00000017`; the
-  production id is written only by the registration wave (§2.1).
+- **Explicit-record discipline:** contracts records remain explicit while the
+  canonical catalogue and manifests route `l2TxMistag`; family-specific CLI is
+  separate (§2.2).
+- **Canonical id:** `00000017` is the production category id (§2.1).
 - **Fraud-proof token permanence:** the token minted at finalize has no
   burn path by design; removal burns the state-queue node NFT and slashes
   the operator while the token survives as permanent evidence.
@@ -177,29 +179,17 @@ authenticated facts; step-02 finalizes and adjudicates `!= 0`.
 
 ### 2.1 Category id
 
-Pre-registration family. Production catalogue registration (SDK
-`FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` entry, `submit-init.ts` category
-union, `bin.ts` verbs, deployment-manifest key) is parent-owned and lands
-with the registration wave — none of it is touched here.
+Canonical category id: **`00000017`**. `l2TxMistag` is present in the SDK
+catalogue, generic `submit-init`, deployment manifests/inspection, and watcher
+proof-thread topology.
 
-The emulator suites register the family through the harness's
-extra-category seam under the **assigned test id `00000017`**
-(`L2_TX_MISTAG_TEST_CATEGORY_ID_V1`, `tests/support/emulator/harness.ts`).
-Standing sibling reservations at plan time: `0000000b`
-fabricated-deposit, `0000000c` fabricated-withdrawal, `0000000d`
-native-script-decoding (test), `0000000e` missing-signature (planned);
-`00000017` was assigned by the coordinating wave to keep concurrent family
-builds collision-free and is recorded here as expected-not-promised: the
-registration wave re-verifies at allocation time.
+### 2.2 Registered deployment surface
 
-### 2.2 What registration will touch (and this wave does not)
-
-`demo/midgard-sdk/src/fraud-proof/catalogue.ts` (category order),
-`src/submit-init.ts` union, `bin.ts` CLI verbs, the deployment manifest's
-canonical key set, and the production category-id constant. Until then
-every submitter takes the explicit `L2TxMistagContractsV1` record plus the
-category the thread rides (native-script-decoding discipline,
-`contracts-v1.ts`).
+`demo/midgard-sdk/src/fraud-proof/catalogue.ts`, generic `submit-init.ts`, and
+the deployment manifest's canonical key set are wired. Every submitter still
+takes the explicit `L2TxMistagContractsV1` record plus the category the thread
+rides. Family-specific `bin.ts` verbs and watcher detector/prover mounting
+remain open.
 
 ### 2.3 Script deployment: reference scripts
 
@@ -277,7 +267,7 @@ Detection in the watcher is out of scope for this wave (§10 D6): the
 predicate is one comparison on bytes the watcher already ingests
 (`validity_code != 0` on a normal `transactions_root` leaf), and the
 finding-record/prover-core integration follows the missing-signature plan
-§3 shape at registration time.
+§3 shape when detector/prover mounting lands.
 
 ## 5. Test-harness integration (extend, do not fork)
 
@@ -404,19 +394,17 @@ discipline); `applyCompiledScript` only.
 - **D2: standalone two-step family**, not a transition-trace extension and
   not a refutation game (§1.4).
 - **D3: reference scripts always** (owner ruling; §2.3).
-- **D4: assigned test category id `00000017`**, expected-not-promised
-  (§2.1).
+- **D4: canonical category id `00000017`** (§2.1).
 - **D5: the exact check is `committed_validity_code != 0`** at BOTH steps
   (step-02 decisive, step-01 fail-fast), with the value read only off the
   authenticated view.
-- **D6: watcher detection/finding integration deferred to registration**
-  (§4); the on-chain + submitter + emulator surface is complete without
-  it.
+- **D6: watcher detection/finding integration remains open after registration**
+  (§4); proof-thread topology alone does not mount it.
 - **D7: leaf-convention tension recorded, not resolved** (§7).
 
 ## 11. Out of scope
 
-Production catalogue registration (§2.2), watcher finding records and the
-proving-core adapter (§4/D6), the forced-leaf verdict families, the
+Family-specific CLI, watcher finding records and the proving-core adapter
+(§4/D6), the forced-leaf verdict families, the
 `withdrawal-mistag` sibling (kept module-disjoint by construction), and
 any change to existing transition-trace semantics.

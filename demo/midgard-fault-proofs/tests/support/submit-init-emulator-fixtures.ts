@@ -38,6 +38,7 @@ import {
   ActiveOperatorSpendRedeemer,
   buildPhasMembershipRewardRegistrationTxProgram,
   commitCountedRootProgram,
+  createReferenceScriptAuthPolicy,
   DA_PAYLOAD_V1_VERSION,
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
@@ -1707,11 +1708,17 @@ export const buildProvedDoubleSpendFixture = async ({
     throw new Error("Expected funder wallet to expose a nonce UTxO");
   }
 
-  const contracts = await buildMinimalFaultProofContracts(
-    realBlueprint,
-    alwaysBlueprint,
-    nonceUtxo,
-  );
+  const contracts = {
+    ...(await buildMinimalFaultProofContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      nonceUtxo,
+    )),
+    referenceScriptAuth: createReferenceScriptAuthPolicy(
+      funderLucid,
+      emulator.now(),
+    ),
+  };
   const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
   const transactionInclusion = await buildTransactionInclusionFixture();
   // Removal needs the state-queue, operator-directory and scheduler validators.

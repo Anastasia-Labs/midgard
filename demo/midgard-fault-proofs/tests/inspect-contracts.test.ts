@@ -10,6 +10,7 @@ import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   type FraudProofCatalogueDeploymentInfo,
+  fraudProofContractsToFirstSteps,
   parseFaultProofBlueprint,
   ScriptHashSchema,
 } from "@al-ft/midgard-sdk";
@@ -17,7 +18,10 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { inspectContracts } from "../src/index.js";
+import {
+  FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
+  inspectContracts,
+} from "../src/index.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(moduleDir, "../../..");
@@ -44,10 +48,10 @@ const placeholderZeroInput = "03".repeat(28);
 // field-opening step — so all four applied hashes move even where a step's
 // compiled code did not. Same derivation route as #579's re-pin.
 const Q13_APPLIED_STEP_HASHES = [
-  "063831d17f9f26542608df346319a333917f14345d2c2df876f593af",
-  "5438e14789271ca13e0ec1cebe00b9d7c28e64a9d2e54d6d9f54013f",
-  "f88c7a7937df342a37eee3132139110d0a7689b037ab99b512937c30",
-  "393aeccc152ae74b067ede8670274e3994bc9577ef0bbd8bdc60f77c",
+  "8c426bee7326453d1c856a72a0629096fb0f28e632c3f50f8b63c5dc",
+  "b046488cf9b36b644d4d2daeed37b9b230e767598e3809657918afa1",
+  "72a31e5c880d0448a5c55a62acd82f7f87da55eaeb7d3b60b6d5f668",
+  "bede253420b1586d114c683b53aa97e303534e763dc75f1864afbe4f",
 ] as const;
 // Re-pinned 2026-08-05 (#544): the original-epoch root d88f9829…bcca394
 // (blueprint f5ae651e…, 380 validators) moved with the #521 renames — the
@@ -101,8 +105,14 @@ const Q13_APPLIED_STEP_HASHES = [
 // failing pin is how #579 lost one. Derived by this suite's own producer with
 // `MIDGARD_PRINT_PROOF_FIT=1` (`q13AppliedIdentities.catalogueRoot`), and it
 // agrees with the live catalogue derivation asserted on the preceding line.
+// Re-pinned 2026-08-26 after production registration expanded the catalogue
+// from 11 to 25 categories. The catalogue policy id is an applied parameter of
+// every chain, so the input-no-index hashes and the folded root move together.
+// Re-pinned again after the canonical double-withdraw terminal ABI was
+// normalized. The value agrees independently between the SDK catalogue
+// builder, the deployment fixture, and inspect-contracts' derived fold.
 const Q13_CATALOGUE_ROOT =
-  "f117b8336315fe4c462b67746fc69933aa3319ee2fb7c38379649d2568ea53aa";
+  "6f940f0f79b24e579a4b6649db8f51e6a3304086eab8b566701818747cb9a8bc";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -193,22 +203,15 @@ const buildInspectionFixture = async () => {
       fraudProofCataloguePolicyId: h28b,
     }),
   );
-  const fraudProofCatalogue = await buildCatalogueFixture({
-    doubleSpend: contracts.doubleSpend.firstStep.spendingScriptHash,
-    nonExistentInput: contracts.nonExistentInput.firstStep.spendingScriptHash,
-    nonExistentInputNoIndex:
-      contracts.nonExistentInputNoIndex.firstStep.spendingScriptHash,
-    invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
-    zeroInput: contracts.zeroInput.firstStep.spendingScriptHash,
-    transitionTrace: contracts.transitionTrace.firstStep.spendingScriptHash,
-    validationTraceDispute:
-      contracts.validationTraceDispute.firstStep.spendingScriptHash,
-    daHashPreimage: contracts.daHashPreimage.firstStep.spendingScriptHash,
-    noReferenceInput: contracts.noReferenceInput.firstStep.spendingScriptHash,
-    referenceInputNoIdx:
-      contracts.referenceInputNoIdx.firstStep.spendingScriptHash,
-    invalidSignature: contracts.invalidSignature.firstStep.spendingScriptHash,
-  });
+  const firstSteps = fraudProofContractsToFirstSteps(contracts);
+  const fraudProofCatalogue = await buildCatalogueFixture(
+    Object.fromEntries(
+      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((category) => [
+        category,
+        firstSteps[category].spendingScriptHash,
+      ]),
+    ),
+  );
   return { blueprintJson, contracts, fraudProofCatalogue };
 };
 
@@ -230,51 +233,90 @@ const deploymentInfoFor = (
   nonExistentInputScriptHash = contracts.nonExistentInput.firstStep
     .spendingScriptHash,
   zeroInputScriptHash = contracts.zeroInput.firstStep.spendingScriptHash,
-) => ({
-  referenceScriptAuthPolicy: {},
-  contracts: {
-    hubOracleMint: { scriptHash: h28 },
-    fraudProofCatalogueMint: {
-      scriptHash: h28b,
-      fraudProofCatalogue,
-    },
-    fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
-    fraudProofSpend: {
-      scriptHash: contracts.fraudProof.spendingScriptHash,
-    },
-    fraudProofDoubleSpend: { scriptHash: doubleSpendScriptHash },
-    fraudProofNonExistentInput: {
-      scriptHash: nonExistentInputScriptHash,
-    },
-    fraudProofNonExistentInputNoIndex: {
-      scriptHash:
-        contracts.nonExistentInputNoIndex.firstStep.spendingScriptHash,
-      contract: {
-        type: "PlutusV3" as const,
-        cborHex:
-          contracts.nonExistentInputNoIndex.firstStep.spendingScript.script,
+) => {
+  const registeredEntries: Record<string, unknown> = {};
+  let referenceOutputIndex = 0;
+  for (const category of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+    const chain = contracts[category];
+    for (const [stepIndex, name] of FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY[
+      category
+    ].entries()) {
+      const step = chain.steps[stepIndex];
+      if (step === undefined) {
+        throw new Error(`${category} fixture is missing step ${stepIndex}.`);
+      }
+      registeredEntries[name] = {
+        scriptHash: step.spendingScriptHash,
+        refScriptUTxO: {
+          txHash: "aa".repeat(32),
+          outputIndex: referenceOutputIndex,
+        },
+      };
+      referenceOutputIndex += 1;
+    }
+  }
+  return {
+    referenceScriptAuthPolicy: {},
+    contracts: {
+      ...registeredEntries,
+      hubOracleMint: { scriptHash: h28 },
+      fraudProofCatalogueMint: {
+        scriptHash: h28b,
+        fraudProofCatalogue,
+      },
+      fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+      fraudProofSpend: {
+        scriptHash: contracts.fraudProof.spendingScriptHash,
+      },
+      fraudProofDoubleSpend: {
+        scriptHash: doubleSpendScriptHash,
+        refScriptUTxO: { txHash: "aa".repeat(32), outputIndex: 0 },
+      },
+      fraudProofNonExistentInput: {
+        scriptHash: nonExistentInputScriptHash,
+        refScriptUTxO: { txHash: "aa".repeat(32), outputIndex: 1 },
+      },
+      fraudProofNonExistentInputNoIndex: {
+        scriptHash:
+          contracts.nonExistentInputNoIndex.firstStep.spendingScriptHash,
+        contract: {
+          type: "PlutusV3" as const,
+          cborHex:
+            contracts.nonExistentInputNoIndex.firstStep.spendingScript.script,
+        },
+        refScriptUTxO: { txHash: "aa".repeat(32), outputIndex: 2 },
+      },
+      fraudProofInvalidRange: {
+        scriptHash: invalidRangeScriptHash,
+        refScriptUTxO: { txHash: "aa".repeat(32), outputIndex: 3 },
+      },
+      fraudProofZeroInput: {
+        scriptHash: zeroInputScriptHash,
+        refScriptUTxO: { txHash: "aa".repeat(32), outputIndex: 13 },
+      },
+      fraudProofTransitionTrace: {
+        scriptHash: transitionTraceScriptHash,
+        refScriptUTxO: { txHash: "aa".repeat(32), outputIndex: 4 },
+      },
+      validationTraceDispute: {
+        scriptHash:
+          contracts.validationTraceDispute.firstStep.spendingScriptHash,
+      },
+      fraudProofDaHashPreimage: {
+        scriptHash: contracts.daHashPreimage.firstStep.spendingScriptHash,
+      },
+      fraudProofNoReferenceInput: {
+        scriptHash: contracts.noReferenceInput.firstStep.spendingScriptHash,
+      },
+      fraudProofReferenceInputNoIdx: {
+        scriptHash: contracts.referenceInputNoIdx.firstStep.spendingScriptHash,
+      },
+      fraudProofInvalidSignature: {
+        scriptHash: contracts.invalidSignature.firstStep.spendingScriptHash,
       },
     },
-    fraudProofInvalidRange: { scriptHash: invalidRangeScriptHash },
-    fraudProofZeroInput: { scriptHash: zeroInputScriptHash },
-    fraudProofTransitionTrace: { scriptHash: transitionTraceScriptHash },
-    validationTraceDispute: {
-      scriptHash: contracts.validationTraceDispute.firstStep.spendingScriptHash,
-    },
-    fraudProofDaHashPreimage: {
-      scriptHash: contracts.daHashPreimage.firstStep.spendingScriptHash,
-    },
-    fraudProofNoReferenceInput: {
-      scriptHash: contracts.noReferenceInput.firstStep.spendingScriptHash,
-    },
-    fraudProofReferenceInputNoIdx: {
-      scriptHash: contracts.referenceInputNoIdx.firstStep.spendingScriptHash,
-    },
-    fraudProofInvalidSignature: {
-      scriptHash: contracts.invalidSignature.firstStep.spendingScriptHash,
-    },
-  },
-});
+  };
+};
 
 describe("inspect-contracts", { timeout: 30_000 }, () => {
   it("emits stable implemented-category inspection JSON with catalogue readiness", async () => {
@@ -398,73 +440,35 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
       ...Array.from({ length: 91 }, (_, index) => `semantic-resolver-${index}`),
       ...Array.from({ length: 14 }, (_, index) => `prepare-resolver-${index}`),
     ]);
-    const appliedSpendingScripts = [
-      ...output.doubleSpend.steps.map((step) => ({
-        category: "doubleSpend",
-        step,
-      })),
-      ...output.nonExistentInput.steps.map((step) => ({
-        category: "nonExistentInput",
-        step,
-      })),
-      ...output.invalidRange.steps.map((step) => ({
-        category: "invalidRange",
-        step,
-      })),
-      ...output.zeroInput.steps.map((step) => ({
-        category: "zeroInput",
-        step,
-      })),
-      ...output.daHashPreimage.steps.map((step) => ({
-        category: "daHashPreimage",
-        step,
-      })),
-      ...output.nonExistentInputNoIndex.steps.map((step) => ({
-        category: "nonExistentInputNoIndex",
-        step,
-      })),
-      ...output.noReferenceInput.steps.map((step) => ({
-        category: "noReferenceInput",
-        step,
-      })),
-      ...output.referenceInputNoIdx.steps.map((step) => ({
-        category: "referenceInputNoIdx",
-        step,
-      })),
-      ...output.invalidSignature.steps.map((step) => ({
-        category: "invalidSignature",
-        step,
-      })),
-      ...output.transitionTrace.steps.map((step) => ({
-        category: "transitionTrace",
-        step,
-      })),
-      ...output.validationTraceDispute.steps.map((step) => ({
-        category: "validationTraceDispute",
-        step,
-      })),
-    ];
-    const selectedParameterizedValidators = [
-      ...contracts.doubleSpend.steps,
-      ...contracts.nonExistentInput.steps,
-      ...contracts.invalidRange.steps,
-      ...contracts.zeroInput.steps,
-      ...contracts.daHashPreimage.steps,
-      ...contracts.nonExistentInputNoIndex.steps,
-      ...contracts.noReferenceInput.steps,
-      ...contracts.referenceInputNoIdx.steps,
-      ...contracts.invalidSignature.steps,
-      contracts.transitionTrace.route,
-      ...contracts.transitionTrace.finals,
-      contracts.validationTraceDispute.opener,
-      contracts.validationTraceDispute.source,
-      contracts.validationTraceDispute.game,
-      contracts.validationTraceDispute.boundary,
-      contracts.validationTraceDispute.timeout,
-      contracts.validationTraceDispute.award,
-      ...contracts.validationTraceDispute.semanticResolvers,
-      ...contracts.validationTraceDispute.prepareResolvers,
-    ];
+    const appliedSpendingScripts = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.flatMap(
+      (category) => {
+        const steps =
+          category === "transitionTrace"
+            ? output.transitionTrace.steps
+            : category === "validationTraceDispute"
+              ? output.validationTraceDispute.steps
+              : output.registeredCategories[category].steps;
+        return steps.map((step) => ({
+          category,
+          step,
+        }));
+      },
+    );
+    const selectedParameterizedValidators =
+      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.flatMap((category) =>
+        category === "validationTraceDispute"
+          ? [
+              contracts.validationTraceDispute.opener,
+              contracts.validationTraceDispute.source,
+              contracts.validationTraceDispute.game,
+              contracts.validationTraceDispute.boundary,
+              contracts.validationTraceDispute.timeout,
+              contracts.validationTraceDispute.award,
+              ...contracts.validationTraceDispute.semanticResolvers,
+              ...contracts.validationTraceDispute.prepareResolvers,
+            ]
+          : contracts[category].steps,
+      );
     expect(appliedSpendingScripts).toHaveLength(
       selectedParameterizedValidators.length,
     );

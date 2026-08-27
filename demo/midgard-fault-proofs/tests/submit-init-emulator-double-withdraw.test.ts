@@ -1,5 +1,5 @@
 /**
- * Both-polarity emulator coverage for the pre-registration `double-withdraw`
+ * Both-polarity emulator coverage for the registered `double-withdraw`
  * family: payable duplicate -> permanent proof -> block removal, and honest
  * non-payable duplicate / same-leaf adversaries refused in the terminal script.
  */
@@ -32,7 +32,6 @@ import {
   type SubmitDoubleWithdrawInclusionV1,
 } from "../src/double-withdraw/submit-double-withdraw-step-01.js";
 import { prepareDoubleWithdrawFromCommittedLeavesV1 } from "../src/prepare-double-withdraw.js";
-import type { RemoveFraudulentBlockExplicitCategory } from "../src/remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { fetchUtxoByOutRef, parseOutRef } from "../src/runtime.js";
 import {
@@ -48,8 +47,6 @@ import { expectOnchainRefusalV1 } from "./support/native-script-decoding-emulato
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
-  DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  DOUBLE_WITHDRAW_TEST_CATEGORY_ID_V1,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
   makeFaultProofEmulatorHarnessV1,
@@ -107,11 +104,13 @@ const makeHarness = async () => {
     },
   });
   const doubleWithdraw = harness.contracts.doubleWithdraw;
-  const category = harness.catalogue.extraCategories.doubleWithdraw;
+  const category = harness.catalogue.categories.doubleWithdraw;
   if (doubleWithdraw === undefined || category === undefined) {
     throw new Error("double-withdraw harness contracts/category missing");
   }
-  expect(category.categoryId).toBe(DOUBLE_WITHDRAW_TEST_CATEGORY_ID_V1);
+  expect(category.categoryId).toBe(
+    SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.doubleWithdraw,
+  );
   expect(category.scriptHash).toBe(doubleWithdraw.steps[0].spendingScriptHash);
   return { ...harness, doubleWithdraw, category };
 };
@@ -175,21 +174,6 @@ const publishStepReferences = async ({
   });
   return [first.utxo, second.utxo];
 };
-
-const removalCategory = (
-  harness: Awaited<ReturnType<typeof makeHarness>>,
-): RemoveFraudulentBlockExplicitCategory => ({
-  name: "doubleWithdraw",
-  categoryId: harness.category.categoryId,
-  firstStepDeploymentEntry: DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  firstStepScriptHash: harness.doubleWithdraw.steps[0].spendingScriptHash,
-  fraudProof: {
-    policyId: harness.doubleWithdraw.fraudProof.policyId,
-    spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-    spendingScriptAddress:
-      harness.doubleWithdraw.fraudProof.spendingScriptAddress,
-  },
-});
 
 const inclusionFor = async ({
   counted,
@@ -297,6 +281,11 @@ const submitRawTerminal = async ({
           {
             input_index: ownInputIndex,
             output_index: outputIndex,
+            fraud_proof_mint_redeemer_index: SDK.requireMintRedeemerIndex(
+              ctx,
+              contracts.fraudProof.policyId,
+              "raw double-withdraw fraud-proof mint",
+            ),
             hub_ref_input_index: SDK.requireReferenceInputIndex(
               ctx,
               hubOracleUtxo,
@@ -306,11 +295,6 @@ const submitRawTerminal = async ({
               ctx,
               blockUtxo,
               "raw double-withdraw block",
-            ),
-            fraud_proof_mint_redeemer_index: SDK.requireMintRedeemerIndex(
-              ctx,
-              contracts.fraudProof.policyId,
-              "raw double-withdraw fraud-proof mint",
             ),
             committed_withdrawal: committedWithdrawal,
           },
@@ -531,7 +515,7 @@ describe("double-withdraw emulator lifecycle", () => {
       deploymentInfo: deployment,
       network,
       signer: harness.proverSigner,
-      fraudCategory: removalCategory(harness),
+      fraudCategory: "doubleWithdraw",
       fraudulentHeaderHash: block.setup.headerHash,
       awaitConfirmation: true,
       requireReferenceScripts: true,
@@ -561,7 +545,7 @@ describe("double-withdraw emulator lifecycle", () => {
         deploymentInfo: deployment,
         network,
         signer: harness.proverSigner,
-        fraudCategory: removalCategory(harness),
+        fraudCategory: "doubleWithdraw",
         fraudulentHeaderHash: block.setup.headerHash,
         awaitConfirmation: true,
         requireReferenceScripts: true,

@@ -14,7 +14,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { RemoveFraudulentBlockExplicitCategory } from "../../src/remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import {
   nativeTxFromCoreCompact,
@@ -45,8 +44,6 @@ import {
   makeHeader,
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
-  WITHDRAWN_REFERENCE_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  WITHDRAWN_REFERENCE_INPUT_TEST_CATEGORY_ID_V1,
 } from "./submit-init-emulator-shared.js";
 
 export const WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF_V1: SDK.MidgardTxInput = {
@@ -90,32 +87,20 @@ export const makeWithdrawnReferenceInputEmulatorHarnessV1 = async () => {
     },
   });
   const family = harness.contracts.withdrawnReferenceInput;
-  const category = harness.catalogue.extraCategories.withdrawnReferenceInput;
+  const category = harness.catalogue.categories.withdrawnReferenceInput;
   if (family === undefined || category === undefined) {
     throw new Error(
       "Harness did not build the withdrawn-reference-input contracts/category",
     );
   }
-  if (category.categoryId !== WITHDRAWN_REFERENCE_INPUT_TEST_CATEGORY_ID_V1) {
-    throw new Error("Unexpected withdrawn-reference-input test category id");
+  if (
+    category.categoryId !==
+    SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawnReferenceInput
+  ) {
+    throw new Error("Unexpected withdrawn-reference-input category id");
   }
   return { ...harness, family, category };
 };
-
-export const withdrawnReferenceInputRemovalCategoryV1 = (
-  harness: WithdrawnReferenceInputEmulatorHarnessV1,
-): RemoveFraudulentBlockExplicitCategory => ({
-  name: "withdrawnReferenceInput",
-  categoryId: harness.category.categoryId,
-  firstStepDeploymentEntry:
-    WITHDRAWN_REFERENCE_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  firstStepScriptHash: harness.family.steps[0].spendingScriptHash,
-  fraudProof: {
-    policyId: harness.family.fraudProof.policyId,
-    spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-    spendingScriptAddress: harness.family.fraudProof.spendingScriptAddress,
-  },
-});
 
 export const publishWithdrawnReferenceInputReferenceScriptsV1 = async ({
   lucid,

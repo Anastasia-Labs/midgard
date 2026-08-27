@@ -115,6 +115,31 @@ describe("node-runtime reference-script registry", () => {
       "V1 validation-trace timeout",
       "V1 validation-trace award",
     ]);
+    const registeredFraudProofNames = names.filter((name) =>
+      name.startsWith("V1 fraud-proof "),
+    );
+    expect(registeredFraudProofNames).toHaveLength(54);
+    expect(registeredFraudProofNames).toContain(
+      "V1 fraud-proof missing-signature step-04",
+    );
+    expect(registeredFraudProofNames).toContain(
+      "V1 fraud-proof missing-native-script-tx step-06",
+    );
+    expect(
+      registeredFraudProofNames.filter((name) =>
+        name.startsWith("V1 fraud-proof transition-trace "),
+      ),
+    ).toEqual([
+      "V1 fraud-proof transition-trace route",
+      "V1 fraud-proof transition-trace final-0",
+      "V1 fraud-proof transition-trace final-1",
+      "V1 fraud-proof transition-trace final-2",
+      "V1 fraud-proof transition-trace final-3",
+      "V1 fraud-proof transition-trace final-4",
+      "V1 fraud-proof transition-trace final-5",
+      "V1 fraud-proof transition-trace final-6",
+      "V1 fraud-proof transition-trace final-7",
+    ]);
   });
 
   it("derives protocol-init as a strict subset of node-runtime", async () => {

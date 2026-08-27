@@ -40,7 +40,7 @@ the implementation** — see [`coverage-matrix.md`](coverage-matrix.md) for the 
 | **phas / pexcludes**                     | Withdraw-zero "merkelized validator" scripts performing MPF membership (`mpf.has`) and non-membership (`mpf.insert` must succeed) checks, invoked by proof steps via reference scripts.                                                                             | `onchain/aiken/validators/phas.ak:15`, `pexcludes.ak:22`; `lib/midgard/common/utils.ak:597-719`                                     |
 | **DA attestation**                       | Committee threshold-signs `"MidgardDAAttestationV1" ‖ header_hash`; at threshold the `DAAT` token is burned and the state-queue node's `da_attestation` field set, gating maturation. The validator never inspects payload bytes.                                   | `onchain/aiken/validators/da-attestation.ak:29-32,336-376`                                                                          |
 | **Inclusion time / event interval**      | L1 user events (deposits, withdrawal orders, tx orders) get inclusion times; each block's non-overlapping, gapless event interval obligates inclusion — the censorship-protection invariant.                                                                        | `technical-spec/2-user-event-protocol/1-deposit.tex:27-33`; `C-considerations/1-protocol-invariants.tex:56-62`                      |
-| **Witness staking script**               | Per-event registered staking credential whose (non-)registration lets a Plutus script disprove the existence of an L1 event UTxO — the intended hook for fabricated-deposit/withdrawal proofs (no construction implemented).                                        | `technical-spec/2-user-event-protocol/1-deposit.tex:12`; `4-withdrawal-order.tex:106-120`                                           |
+| **Witness staking script**               | Per-event registered staking credential whose (non-)registration lets a Plutus script disprove the existence of an L1 event UTxO; the registered fabricated-deposit/withdrawal families use this hook for existence and content-fidelity proofs.                         | `technical-spec/2-user-event-protocol/1-deposit.tex:12`; `4-withdrawal-order.tex:106-120`                                           |
 | **Phase A / Phase B (local validation)** | The node's two-phase mempool admission: Phase A stateless per-tx checks; Phase B stateful UTxO/graph/script-execution checks. Reject codes are "operational evidence, not L1 fault proofs" (`technical-spec/7-phase-two-validation/3-fraud-proofs-involved.tex:9`). | `demo/midgard-validation/src/phase-a.ts:338`, `phase-b.ts:1072`                                                                     |
 
 ### Proof interaction classification
@@ -189,12 +189,14 @@ bounds with no executable per-step path on L1.
   (`onchain/aiken/env/default.ak:21-35`, `env/testnet.ak:20-26`); the penalty is enforced
   only as `fee >= env.slashing_penalty`, and nothing on-chain routes the bond remainder to
   the prover.
-- **Catalogue registration ≠ compiled validators.** The deployment layer now registers
-  eleven positional categories (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`), and
-  `submit-init`/inspection enforce that same eleven-category inventory. This does not
-  close the five unregistered deployed validator directories or settle the final §9.1
-  launch scope; Q50/Q55 own that integration. The `FaultProofs` type also carries a TODO that
-  multi-step registration needs "a more elaborate design" (`common.ts:160-161`).
+- **Catalogue registration ≠ autonomous actuation.** The deployment layer now
+  registers 25 positional categories (`00000000`–`00000018`), and generic
+  `submit-init`, inspection, node/core manifest identity, and watcher
+  proof-thread authority enforce the same inventory. Every step is a mandatory
+  authenticated reference script; `transitionTrace` (`00000004`) is one route
+  plus eight finals. The immutable identity change requires fresh
+  genesis/redeployment, with no migration/compatibility path. It does not mount
+  family detectors/provers or close preprod/live acceptance.
 - **`Success` trusts the terminal step.** `computation-thread.ak`'s `Success` branch only
   checks its own burn (`validators/computation-thread.ak:130-139`); thread/step-sequence
   integrity is each category's responsibility.

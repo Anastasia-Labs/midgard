@@ -51,7 +51,6 @@ import {
 } from "../src/native-script-decoding/index.js";
 import {
   decodingMalformedMultiChunkItemV1,
-  decodingRemovalCategoryV1,
   makeDecodingEmulatorHarnessV1,
   publishDecodingReferenceScriptsV1,
   setupDecodingScenarioV1,
@@ -240,7 +239,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       deploymentInfo: removalDeploymentInfo,
       network,
       signer: proverSigner,
-      fraudCategory: decodingRemovalCategoryV1(harness),
+      fraudCategory: "nativeScriptDecoding",
       fraudulentHeaderHash: setup.headerHash,
       awaitConfirmation: true,
       requireReferenceScripts: true,
@@ -318,7 +317,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
         deploymentInfo: removalDeploymentInfo,
         network,
         signer: proverSigner,
-        fraudCategory: decodingRemovalCategoryV1(harness),
+        fraudCategory: "nativeScriptDecoding",
         fraudulentHeaderHash: setup.headerHash,
         awaitConfirmation: true,
         requireReferenceScripts: true,

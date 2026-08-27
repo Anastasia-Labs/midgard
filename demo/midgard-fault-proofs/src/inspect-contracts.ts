@@ -98,7 +98,21 @@ export type InspectContractsOutput = {
     readonly noReferenceInput: InspectContractsCatalogueCategoryOutput;
     readonly referenceInputNoIdx: InspectContractsCatalogueCategoryOutput;
     readonly invalidSignature: InspectContractsCatalogueCategoryOutput;
+    readonly categories: Readonly<
+      Record<
+        FraudProofCatalogueCategoryName,
+        InspectContractsCatalogueCategoryOutput
+      >
+    >;
   };
+  /**
+   * Canonical full-chain inspection for every registered category. This is
+   * the authoritative inspection surface for append-wave families; the named
+   * legacy fields below remain for existing callers.
+   */
+  readonly registeredCategories: Readonly<
+    Record<FraudProofCatalogueCategoryName, InspectContractsRegisteredCategory>
+  >;
   readonly doubleSpend: {
     readonly categoryFirstStepHash: string;
     readonly deploymentDoubleSpendScriptHash: string | null;
@@ -225,6 +239,8 @@ export type InspectContractsStepOutput = {
     | "step02"
     | "step03"
     | "step04"
+    | "step05"
+    | "step06"
     | "route"
     | "control"
     | "withdrawal"
@@ -251,18 +267,17 @@ export type InspectContractsStepOutput = {
   readonly withinL1TransactionByteEnvelopeNecessaryCondition: boolean;
 };
 
-export type InspectContractsProofCategory =
-  | "doubleSpend"
-  | "nonExistentInput"
-  | "invalidRange"
-  | "zeroInput"
-  | "transitionTrace"
-  | "validationTraceDispute"
-  | "daHashPreimage"
-  | "nonExistentInputNoIndex"
-  | "noReferenceInput"
-  | "referenceInputNoIdx"
-  | "invalidSignature";
+export type InspectContractsProofCategory = FraudProofCatalogueCategoryName;
+
+export type InspectContractsRegisteredCategory = {
+  readonly categoryFirstStepHash: string;
+  readonly deploymentFirstStepScriptHash: string | null;
+  readonly deploymentFirstStepMatches: boolean | null;
+  readonly allStepScriptHashesMatch: boolean;
+  readonly allStepReferenceScriptsPublished: boolean;
+  readonly ready: boolean;
+  readonly steps: readonly InspectContractsStepOutput[];
+};
 
 export type InspectContractsOversizedSpendingScript = {
   readonly category: InspectContractsProofCategory;
@@ -282,18 +297,24 @@ export type InspectContractsCatalogueCategoryOutput = {
   readonly ready: boolean;
 };
 
-export type ImplementedFraudProofCategoryName =
-  | "doubleSpend"
-  | "nonExistentInput"
-  | "nonExistentInputNoIndex"
-  | "invalidRange"
-  | "zeroInput"
-  | "transitionTrace"
-  | "validationTraceDispute"
-  | "daHashPreimage"
-  | "noReferenceInput"
-  | "referenceInputNoIdx"
-  | "invalidSignature";
+export type ImplementedFraudProofCategoryName = FraudProofCatalogueCategoryName;
+
+const completeFraudProofCategoryRecord = <Value>(
+  entries: readonly (readonly [FraudProofCatalogueCategoryName, Value])[],
+): Readonly<Record<FraudProofCatalogueCategoryName, Value>> => {
+  const result: Partial<Record<FraudProofCatalogueCategoryName, Value>> = {};
+  for (const [category, value] of entries) {
+    result[category] = value;
+  }
+  for (const category of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+    if (result[category] === undefined) {
+      throw new Error(
+        `Failed to construct complete fraud-proof category record: ${category} is missing.`,
+      );
+    }
+  }
+  return result as Readonly<Record<FraudProofCatalogueCategoryName, Value>>;
+};
 
 export const expectedFraudProofCategoryId = (
   name: FraudProofCatalogueCategoryName,
@@ -383,6 +404,16 @@ const parseFraudProofCatalogueDeploymentInfo = (
     candidate.categories,
     "fraudProofCatalogue.categories",
   );
+  const canonicalCategoryNames = new Set<string>(
+    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  );
+  for (const rawCategoryName of Object.keys(rawCategories)) {
+    if (!canonicalCategoryNames.has(rawCategoryName)) {
+      throw new Error(
+        `fraudProofCatalogue.categories contains unsupported category ${rawCategoryName}`,
+      );
+    }
+  }
   const seenCategoryIds = new Map<string, FraudProofCatalogueCategoryName>();
   const categories = Object.fromEntries(
     FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name) => {
@@ -626,6 +657,62 @@ const optionalDeploymentScriptHash = (
   name: string,
 ): string | null => deploymentInfo[name]?.scriptHash ?? null;
 
+const FULL_CHAIN_REFERENCE_CATEGORIES =
+  new Set<FraudProofCatalogueCategoryName>([
+    "transitionTrace",
+    "fabricatedDeposit",
+    "fabricatedWithdrawal",
+    "nativeScriptDecoding",
+    "missingSignature",
+    "missingNativeScriptTx",
+    "withdrawnReferenceInput",
+    "canonicalDecodability",
+    "committedFieldShape",
+    "minFee",
+    "withdrawalMistag",
+    "doubleWithdraw",
+    "crossBlockDuplicateEvent",
+    "l2TxMistag",
+    "withdrawnInput",
+  ]);
+
+const deploymentEntryBaseForCategory = (
+  category: FraudProofCatalogueCategoryName,
+): string => {
+  if (category === "validationTraceDispute") {
+    return "validationTraceDispute";
+  }
+  return `fraudProof${category[0]!.toUpperCase()}${category.slice(1)}`;
+};
+
+const deploymentEntriesForCategory = (
+  category: FraudProofCatalogueCategoryName,
+  stepCount: number,
+): readonly string[] => {
+  if (category === "transitionTrace") {
+    return [
+      "fraudProofTransitionTrace",
+      "fraudProofTransitionTraceControl",
+      "fraudProofTransitionTraceSource",
+      "fraudProofTransitionTraceWithdrawal",
+      "fraudProofTransitionTraceForced",
+      "fraudProofTransitionTraceAcceptedTransaction",
+      "fraudProofTransitionTraceDeposit",
+      "fraudProofTransitionTraceL1Event",
+      "fraudProofTransitionTraceDuplicate",
+    ];
+  }
+  const base = deploymentEntryBaseForCategory(category);
+  if (!FULL_CHAIN_REFERENCE_CATEGORIES.has(category)) {
+    return [base];
+  }
+  return Array.from({ length: stepCount }, (_, index) =>
+    index === 0
+      ? base
+      : `${base}Step${(index + 1).toString().padStart(2, "0")}`,
+  );
+};
+
 const inspectEmbeddedDeploymentScriptIdentity = (
   deploymentInfo: ContractDeploymentInfo,
   name: string,
@@ -817,22 +904,28 @@ const inspectFraudProofCatalogue = (
   >,
 ): Effect.Effect<InspectContractsOutput["fraudProofCatalogue"], Error> => {
   if (catalogue === undefined) {
+    const categories = completeFraudProofCategoryRecord(
+      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
+        (name) => [name, emptyCatalogueCategoryInspection()] as const,
+      ),
+    );
     return Effect.succeed({
       root: null,
       derivedRoot: null,
       rootMatchesDerived: null,
       initReady: false,
-      doubleSpend: emptyCatalogueCategoryInspection(),
-      nonExistentInput: emptyCatalogueCategoryInspection(),
-      nonExistentInputNoIndex: emptyCatalogueCategoryInspection(),
-      invalidRange: emptyCatalogueCategoryInspection(),
-      zeroInput: emptyCatalogueCategoryInspection(),
-      transitionTrace: emptyCatalogueCategoryInspection(),
-      validationTraceDispute: emptyCatalogueCategoryInspection(),
-      daHashPreimage: emptyCatalogueCategoryInspection(),
-      noReferenceInput: emptyCatalogueCategoryInspection(),
-      referenceInputNoIdx: emptyCatalogueCategoryInspection(),
-      invalidSignature: emptyCatalogueCategoryInspection(),
+      categories,
+      doubleSpend: categories.doubleSpend,
+      nonExistentInput: categories.nonExistentInput,
+      nonExistentInputNoIndex: categories.nonExistentInputNoIndex,
+      invalidRange: categories.invalidRange,
+      zeroInput: categories.zeroInput,
+      transitionTrace: categories.transitionTrace,
+      validationTraceDispute: categories.validationTraceDispute,
+      daHashPreimage: categories.daHashPreimage,
+      noReferenceInput: categories.noReferenceInput,
+      referenceInputNoIdx: categories.referenceInputNoIdx,
+      invalidSignature: categories.invalidSignature,
     });
   }
 
@@ -890,67 +983,35 @@ const inspectFraudProofCatalogue = (
         };
       };
 
-      const doubleSpend = await inspectCategory("doubleSpend");
-      const nonExistentInput = await inspectCategory("nonExistentInput");
-      const nonExistentInputNoIndex = await inspectCategory(
-        "nonExistentInputNoIndex",
+      const inspectedCategories = await Promise.all(
+        FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
+          async (name) => [name, await inspectCategory(name)] as const,
+        ),
       );
-      const invalidRange = await inspectCategory("invalidRange");
-      const zeroInput = await inspectCategory("zeroInput");
-      const transitionTrace = await inspectCategory("transitionTrace");
-      const validationTraceDispute = await inspectCategory(
-        "validationTraceDispute",
-      );
-      const daHashPreimage = await inspectCategory("daHashPreimage");
-      const noReferenceInput = await inspectCategory("noReferenceInput");
-      const referenceInputNoIdx = await inspectCategory("referenceInputNoIdx");
-      const invalidSignature = await inspectCategory("invalidSignature");
-      const implementedCategories: readonly ImplementedFraudProofCategoryName[] =
-        [
-          "doubleSpend",
-          "nonExistentInput",
-          "nonExistentInputNoIndex",
-          "invalidRange",
-          "zeroInput",
-          "transitionTrace",
-          "validationTraceDispute",
-          "daHashPreimage",
-          "noReferenceInput",
-          "referenceInputNoIdx",
-          "invalidSignature",
-        ];
-      const implementedCategoriesReady = implementedCategories.every((name) => {
-        return {
-          doubleSpend,
-          nonExistentInput,
-          nonExistentInputNoIndex,
-          invalidRange,
-          zeroInput,
-          transitionTrace,
-          validationTraceDispute,
-          daHashPreimage,
-          noReferenceInput,
-          referenceInputNoIdx,
-          invalidSignature,
-        }[name].ready;
-      });
+      const inspectedByName =
+        completeFraudProofCategoryRecord(inspectedCategories);
+      const implementedCategoriesReady =
+        FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.every(
+          (name) => inspectedByName[name].ready,
+        );
 
       return {
         root: catalogue.root,
         derivedRoot,
         rootMatchesDerived,
         initReady: rootMatchesDerived && implementedCategoriesReady,
-        doubleSpend,
-        nonExistentInput,
-        nonExistentInputNoIndex,
-        invalidRange,
-        zeroInput,
-        transitionTrace,
-        validationTraceDispute,
-        daHashPreimage,
-        noReferenceInput,
-        referenceInputNoIdx,
-        invalidSignature,
+        categories: inspectedByName,
+        doubleSpend: inspectedByName.doubleSpend,
+        nonExistentInput: inspectedByName.nonExistentInput,
+        nonExistentInputNoIndex: inspectedByName.nonExistentInputNoIndex,
+        invalidRange: inspectedByName.invalidRange,
+        zeroInput: inspectedByName.zeroInput,
+        transitionTrace: inspectedByName.transitionTrace,
+        validationTraceDispute: inspectedByName.validationTraceDispute,
+        daHashPreimage: inspectedByName.daHashPreimage,
+        noReferenceInput: inspectedByName.noReferenceInput,
+        referenceInputNoIdx: inspectedByName.referenceInputNoIdx,
+        invalidSignature: inspectedByName.invalidSignature,
       };
     },
     catch: (cause) =>
@@ -1078,6 +1139,53 @@ export const inspectContracts = ({
           MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
       };
     };
+    const registeredCategories = completeFraudProofCategoryRecord(
+      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((category) => {
+        const chain = contracts[category];
+        const deploymentEntries = deploymentEntriesForCategory(
+          category,
+          chain.steps.length,
+        );
+        const inspectedSteps = chain.steps.map((step, stepIndex) =>
+          stepOutput(
+            `step${(stepIndex + 1).toString().padStart(2, "0")}` as InspectContractsStepOutput["name"],
+            step,
+          ),
+        );
+        const allStepScriptHashesMatch =
+          deploymentEntries.length === chain.steps.length &&
+          deploymentEntries.every(
+            (entryName, stepIndex) =>
+              parsedDeploymentInfo[entryName]?.scriptHash ===
+              chain.steps[stepIndex]?.spendingScriptHash,
+          );
+        const allStepReferenceScriptsPublished =
+          deploymentEntries.length === chain.steps.length &&
+          deploymentEntries.every(
+            (entryName) =>
+              parsedDeploymentInfo[entryName]?.refScriptUTxO != null,
+          );
+        const deploymentFirstStepScriptHash =
+          parsedDeploymentInfo[deploymentEntries[0]!]?.scriptHash ?? null;
+        const deploymentFirstStepMatches =
+          deploymentFirstStepScriptHash === null
+            ? null
+            : deploymentFirstStepScriptHash ===
+              chain.firstStep.spendingScriptHash;
+        return [
+          category,
+          {
+            categoryFirstStepHash: chain.firstStep.spendingScriptHash,
+            deploymentFirstStepScriptHash,
+            deploymentFirstStepMatches,
+            allStepScriptHashesMatch,
+            allStepReferenceScriptsPublished,
+            ready: allStepScriptHashesMatch && allStepReferenceScriptsPublished,
+            steps: inspectedSteps,
+          },
+        ] as const;
+      }),
+    );
     const steps: InspectContractsOutput["doubleSpend"]["steps"] = [
       stepOutput("step01", step01),
       stepOutput("step02", step02),
@@ -1204,6 +1312,12 @@ export const inspectContracts = ({
         category: "validationTraceDispute" as const,
         step,
       })),
+      ...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.slice(11).flatMap((category) =>
+        registeredCategories[category].steps.map((step) => ({
+          category,
+          step,
+        })),
+      ),
     ];
     const oversizedAppliedSpendingScripts =
       categorizedAppliedSpendingScripts.flatMap(({ category, step }) =>
@@ -1293,36 +1407,30 @@ export const inspectContracts = ({
         ? null
         : deploymentValidationTraceDisputeScriptHash ===
           validationTraceDisputeCategoryFirstStepHash;
+    const expectedFirstStepHashes = completeFraudProofCategoryRecord(
+      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
+        (category) =>
+          [
+            category,
+            registeredCategories[category].categoryFirstStepHash,
+          ] as const,
+      ),
+    );
+    const deploymentMatchesFirstStep = completeFraudProofCategoryRecord(
+      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
+        (category) =>
+          [
+            category,
+            FULL_CHAIN_REFERENCE_CATEGORIES.has(category)
+              ? registeredCategories[category].ready
+              : registeredCategories[category].deploymentFirstStepMatches,
+          ] as const,
+      ),
+    );
     const fraudProofCatalogue = yield* inspectFraudProofCatalogue(
       deployedFraudProofCatalogue,
-      {
-        doubleSpend: categoryFirstStepHash,
-        nonExistentInput: nonExistentInputCategoryFirstStepHash,
-        nonExistentInputNoIndex: nonExistentInputNoIndexCategoryFirstStepHash,
-        invalidRange: invalidRangeCategoryFirstStepHash,
-        zeroInput: zeroInputCategoryFirstStepHash,
-        transitionTrace: transitionTraceCategoryFirstStepHash,
-        validationTraceDispute: validationTraceDisputeCategoryFirstStepHash,
-        daHashPreimage: daHashPreimageCategoryFirstStepHash,
-        noReferenceInput: noReferenceInputCategoryFirstStepHash,
-        referenceInputNoIdx: referenceInputNoIdxCategoryFirstStepHash,
-        invalidSignature: invalidSignatureCategoryFirstStepHash,
-      },
-      {
-        doubleSpend: deploymentDoubleSpendMatchesFirstStep,
-        nonExistentInput: deploymentNonExistentInputMatchesFirstStep,
-        nonExistentInputNoIndex:
-          deploymentNonExistentInputNoIndexMatchesFirstStep,
-        invalidRange: deploymentInvalidRangeMatchesFirstStep,
-        zeroInput: deploymentZeroInputMatchesFirstStep,
-        transitionTrace: deploymentTransitionTraceMatchesFirstStep,
-        validationTraceDispute:
-          deploymentValidationTraceDisputeMatchesFirstStep,
-        daHashPreimage: deploymentDaHashPreimageMatchesFirstStep,
-        noReferenceInput: deploymentNoReferenceInputMatchesFirstStep,
-        referenceInputNoIdx: deploymentReferenceInputNoIdxMatchesFirstStep,
-        invalidSignature: deploymentInvalidSignatureMatchesFirstStep,
-      },
+      expectedFirstStepHashes,
+      deploymentMatchesFirstStep,
     );
 
     return {
@@ -1344,6 +1452,7 @@ export const inspectContracts = ({
         spendingScriptHash: contracts.fraudProof.spendingScriptHash,
       },
       fraudProofCatalogue,
+      registeredCategories,
       doubleSpend: {
         categoryFirstStepHash,
         deploymentDoubleSpendScriptHash,

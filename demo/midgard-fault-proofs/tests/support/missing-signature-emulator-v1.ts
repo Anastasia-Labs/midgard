@@ -42,7 +42,6 @@ import {
   requireMissingSignatureStepStateV1,
   requireMissingSignatureThreadUtxoV1,
 } from "../../src/missing-signature/index.js";
-import type { RemoveFraudulentBlockExplicitCategory } from "../../src/remove-fraudulent-block.js";
 import { excludeUtxo } from "../../src/spend-input-witness.js";
 import { selectFeeInput } from "../../src/submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
@@ -54,8 +53,6 @@ import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
   makeFaultProofEmulatorHarnessV1,
-  MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  MISSING_SIGNATURE_TEST_CATEGORY_ID_V1,
   network,
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
@@ -180,14 +177,17 @@ export const makeMissingSignatureEmulatorHarnessV1 = async ({
       : {}),
   });
   const missingSignature = harness.contracts.missingSignature;
-  const category = harness.catalogue.extraCategories.missingSignature;
+  const category = harness.catalogue.categories.missingSignature;
   if (missingSignature === undefined || category === undefined) {
     throw new Error(
       "missing-signature harness contracts/category were omitted",
     );
   }
-  if (category.categoryId !== MISSING_SIGNATURE_TEST_CATEGORY_ID_V1) {
-    throw new Error("unexpected missing-signature test category id");
+  if (
+    category.categoryId !==
+    SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.missingSignature
+  ) {
+    throw new Error("unexpected missing-signature category id");
   }
   return { ...harness, missingSignature, category };
 };
@@ -334,21 +334,6 @@ export const missingSignatureProverDepsV1 = ({
   journal: journal ?? (() => undefined),
   policy: MISSING_SIGNATURE_EMULATOR_PROVER_POLICY_V1,
   referenceScriptUtxos,
-});
-
-export const missingSignatureRemovalCategoryV1 = (
-  harness: Awaited<ReturnType<typeof makeMissingSignatureEmulatorHarnessV1>>,
-): RemoveFraudulentBlockExplicitCategory => ({
-  name: "missingSignature",
-  categoryId: harness.category.categoryId,
-  firstStepDeploymentEntry: MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  firstStepScriptHash: harness.missingSignature.steps[0].spendingScriptHash,
-  fraudProof: {
-    policyId: harness.missingSignature.fraudProof.policyId,
-    spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-    spendingScriptAddress:
-      harness.missingSignature.fraudProof.spendingScriptAddress,
-  },
 });
 
 /** Publish and mint the §8.6 material for a genuinely tier-3 field-7 proof. */

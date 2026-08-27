@@ -364,34 +364,30 @@ const CATEGORY_BY_VALIDATOR_DIRECTORY = new Map([
   ["no-reference-input", "noReferenceInput"],
   ["reference-input-no-idx", "referenceInputNoIdx"],
   ["invalid-signature", "invalidSignature"],
+  ["fabricated-deposit", "fabricatedDeposit"],
+  ["fabricated-withdrawal", "fabricatedWithdrawal"],
+  ["native-script-decoding", "nativeScriptDecoding"],
+  ["missing-signature", "missingSignature"],
+  ["missing-native-script-tx", "missingNativeScriptTx"],
+  ["withdrawn-reference-input", "withdrawnReferenceInput"],
+  ["canonical-decodability", "canonicalDecodability"],
+  ["committed-field-shape", "committedFieldShape"],
+  ["min-fee", "minFee"],
+  ["withdrawal-mistag", "withdrawalMistag"],
+  ["double-withdraw", "doubleWithdraw"],
+  ["cross-block-duplicate-event", "crossBlockDuplicateEvent"],
+  ["l2-tx-mistag", "l2TxMistag"],
+  ["withdrawn-input", "withdrawnInput"],
 ]);
 
 /**
  * Directories under `validators/fraud-proofs/` that are deliberately not
  * catalogue categories. `mpf-chunked-proof` is the #545 chunked-carriage
- * verifier shared by every family rather than a family of its own; the other
- * six are families with verifier logic that the deployed catalogue does not
- * register.
- *
- * `canonical-decodability` and `committed-field-shape` join that second group
- * at #579's regeneration. They are listed here rather than in
- * `CATEGORY_BY_VALIDATOR_DIRECTORY` because it is measured, not assumed: the
- * deployed catalogue order is eleven entries long in all three packages that
- * declare it (`midgard-core`, `midgard-sdk`, `midgard-node`) and neither
- * family appears in any of them. Registering a category is a deployment
- * event — the category id is a positional index, so the catalogue root and the
- * manifest identity move with it — and no such event has happened for these
- * two.
+ * verifier shared by every family rather than a family of its own. All actual
+ * fault-proof validator directories are registered in the production
+ * catalogue by the canonical V1 registration wave.
  */
-const UNCATEGORISED_VALIDATOR_DIRECTORIES = [
-  "canonical-decodability",
-  "committed-field-shape",
-  "min-fee",
-  "missing-native-script-tx",
-  "missing-signature",
-  "mpf-chunked-proof",
-  "withdrawn-reference-input",
-];
+const UNCATEGORISED_VALIDATOR_DIRECTORIES = ["mpf-chunked-proof"];
 
 /** GOAL_SPEC §11 IG2, in the order the clause names them. */
 const IG2_DIMENSION_IDS = [
@@ -620,9 +616,27 @@ const FAMILY_OFFCHAIN_MODULES = new Map([
     "invalid-signature",
     ["demo/midgard-fault-proofs/src/prepare-invalid-signature.ts"],
   ],
-  ["min-fee", []],
-  ["missing-native-script-tx", []],
-  ["missing-signature", []],
+  [
+    "cross-block-duplicate-event",
+    ["demo/midgard-fault-proofs/src/cross-block-duplicate-event/prepare-v1.ts"],
+  ],
+  [
+    "double-withdraw",
+    ["demo/midgard-fault-proofs/src/prepare-double-withdraw.ts"],
+  ],
+  [
+    "l2-tx-mistag",
+    ["demo/midgard-fault-proofs/src/l2-tx-mistag/prepare-l2-tx-mistag-v1.ts"],
+  ],
+  ["min-fee", ["demo/midgard-fault-proofs/src/prepare-min-fee.ts"]],
+  [
+    "missing-native-script-tx",
+    ["demo/midgard-fault-proofs/src/missing-native-script-tx/prepare-v1.ts"],
+  ],
+  [
+    "missing-signature",
+    ["demo/midgard-fault-proofs/src/missing-signature/prover-v1.ts"],
+  ],
   [
     "mpf-chunked-proof",
     ["demo/midgard-fault-proofs/src/publish-proof-chunks.ts"],
@@ -631,6 +645,10 @@ const FAMILY_OFFCHAIN_MODULES = new Map([
   [
     "no-reference-input",
     ["demo/midgard-fault-proofs/src/prepare-no-reference-input.ts"],
+  ],
+  [
+    "native-script-decoding",
+    ["demo/midgard-fault-proofs/src/native-script-decoding/prover-v1.ts"],
   ],
   [
     "reference-input-no-idx",
@@ -644,7 +662,22 @@ const FAMILY_OFFCHAIN_MODULES = new Map([
     "validation-trace",
     ["demo/midgard-fault-proofs/src/validation-dispute/submit.ts"],
   ],
-  ["withdrawn-reference-input", []],
+  [
+    "withdrawal-mistag",
+    [
+      "demo/midgard-fault-proofs/src/withdrawal-mistag/prepare-withdrawal-mistag.ts",
+    ],
+  ],
+  [
+    "withdrawn-input",
+    ["demo/midgard-fault-proofs/src/prepare-withdrawn-input.ts"],
+  ],
+  [
+    "withdrawn-reference-input",
+    [
+      "demo/midgard-fault-proofs/src/withdrawn-reference-input/prepare-withdrawn-reference-input-v1.ts",
+    ],
+  ],
   ["zero-input", ["demo/midgard-fault-proofs/src/prepare-zero-input.ts"]],
 ]);
 

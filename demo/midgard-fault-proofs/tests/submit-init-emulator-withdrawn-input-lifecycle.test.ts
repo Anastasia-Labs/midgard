@@ -12,7 +12,6 @@ import {
   buildRemovalDeploymentInfo,
   network,
   publishRemovalReferenceScripts,
-  WITHDRAWN_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1,
 } from "./support/submit-init-emulator-shared.js";
 import {
   advanceWithdrawnInputToStep03V1,
@@ -57,13 +56,7 @@ describe("withdrawn-input emulator lifecycle", () => {
       deploymentInfo,
       network,
       signer: scenario.harness.proverSigner,
-      fraudCategory: {
-        name: "withdrawnInput",
-        categoryId: scenario.category.categoryId,
-        firstStepDeploymentEntry: WITHDRAWN_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1,
-        firstStepScriptHash: scenario.contracts.steps[0].spendingScriptHash,
-        fraudProof: scenario.contracts.fraudProof,
-      },
+      fraudCategory: "withdrawnInput",
       fraudulentHeaderHash: scenario.setup.headerHash,
       requireReferenceScripts: true,
       validFrom: now > 120_000n ? now - 120_000n : 0n,

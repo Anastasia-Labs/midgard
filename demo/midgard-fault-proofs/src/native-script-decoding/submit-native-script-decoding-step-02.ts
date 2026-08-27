@@ -123,8 +123,8 @@ export const submitNativeScriptDecodingStep02 = async ({
    * Must be absent for direction B, where the accusation names the pair.
    */
   readonly chosenOutpoint?: NativeScriptDecodingChosenOutpointV1;
-  /** Q3: the published step-02 reference script; inline-attached when absent. */
-  readonly referenceScriptUtxo?: UTxO;
+  /** Q3: the mandatory published step-02 reference script. */
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep02Result> => {
   const { threadUtxo, threadToken } =
@@ -341,16 +341,13 @@ export const submitNativeScriptDecodingStep02 = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
-  const tx =
-    referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[1].spendingScript)
-      : base.readFrom([
-          requireNativeScriptDecodingReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[1].spendingScriptHash,
-            stepIndex: 1,
-          }),
-        ]);
+  const tx = base.readFrom([
+    requireNativeScriptDecodingReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      expectedScriptHash: contracts.steps[1].spendingScriptHash,
+      stepIndex: 1,
+    }),
+  ]);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {

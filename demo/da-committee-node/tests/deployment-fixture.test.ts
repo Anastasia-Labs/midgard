@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import {
   DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   verifyFinalizedDeploymentManifestV1,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { describe, expect, it } from "vitest";
@@ -59,6 +60,71 @@ describe("DA deployment fixture", () => {
         contract: manifest.contract,
         scriptHash: manifest.scriptHash,
       }).toEqual(source);
+    }
+  });
+
+  it("pins the appended fraud-proof category identities to their first-step contracts", async () => {
+    const manifest = await readDaDeploymentFixture();
+    const contracts = manifest.contracts as Record<
+      string,
+      Record<string, unknown>
+    >;
+    const catalogue = contracts.fraudProofCatalogueMint!
+      .fraudProofCatalogue as {
+      readonly categories: Readonly<
+        Record<
+          string,
+          { readonly categoryId: string; readonly scriptHash: string }
+        >
+      >;
+    };
+    const appendedCategories = [
+      ["fabricatedDeposit", "0000000b", "fraudProofFabricatedDeposit"],
+      ["fabricatedWithdrawal", "0000000c", "fraudProofFabricatedWithdrawal"],
+      ["nativeScriptDecoding", "0000000d", "fraudProofNativeScriptDecoding"],
+      ["missingSignature", "0000000e", "fraudProofMissingSignature"],
+      ["missingNativeScriptTx", "0000000f", "fraudProofMissingNativeScriptTx"],
+      [
+        "withdrawnReferenceInput",
+        "00000010",
+        "fraudProofWithdrawnReferenceInput",
+      ],
+      ["canonicalDecodability", "00000011", "fraudProofCanonicalDecodability"],
+      ["committedFieldShape", "00000012", "fraudProofCommittedFieldShape"],
+      ["minFee", "00000013", "fraudProofMinFee"],
+      ["withdrawalMistag", "00000014", "fraudProofWithdrawalMistag"],
+      ["doubleWithdraw", "00000015", "fraudProofDoubleWithdraw"],
+      [
+        "crossBlockDuplicateEvent",
+        "00000016",
+        "fraudProofCrossBlockDuplicateEvent",
+      ],
+      ["l2TxMistag", "00000017", "fraudProofL2TxMistag"],
+      ["withdrawnInput", "00000018", "fraudProofWithdrawnInput"],
+    ] as const;
+
+    for (const [categoryName, categoryId, contractName] of appendedCategories) {
+      expect(catalogue.categories[categoryName]).toMatchObject({
+        categoryId,
+        scriptHash: contracts[contractName]!.scriptHash,
+      });
+    }
+  });
+
+  it("gives every canonical reference-script role a source UTxO", async () => {
+    const fixture = await readRawFixture();
+    const contracts = fixture.contracts as Record<
+      string,
+      Record<string, unknown>
+    >;
+
+    for (const contractName of Object.values(
+      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+    )) {
+      expect(contracts[contractName]!.refScriptUTxO).toMatchObject({
+        txHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        outputIndex: expect.any(Number),
+      });
     }
   });
 

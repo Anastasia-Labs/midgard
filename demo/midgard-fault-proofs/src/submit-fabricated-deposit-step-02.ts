@@ -50,6 +50,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -200,6 +201,7 @@ export const submitFabricatedDepositStep02 = async ({
   signer,
   threadOutRef,
   evidence,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -208,6 +210,7 @@ export const submitFabricatedDepositStep02 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly evidence: FabricatedDepositEvidenceArmV1;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedDepositStep02Result> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -350,14 +353,21 @@ export const submitFabricatedDepositStep02 = async ({
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom([...referenceInputs])
+    .readFrom([
+      ...referenceInputs,
+      requireFabricatedReferenceScriptV1({
+        utxo: referenceScriptUtxo,
+        expectedScriptHash: contracts.steps[1].spendingScriptHash,
+        categoryLabel: FABRICATED_DEPOSIT_CATEGORY_LABEL,
+        stepIndex: 1,
+      }),
+    ])
     .pay.ToContract(
       contracts.steps[2].spendingScriptAddress,
       { kind: "inline", value: step03Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.steps[1].spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
@@ -393,6 +403,7 @@ export const submitFabricatedDepositStep02 = async ({
 export const submitFabricatedDepositStep02FromFiles = async (
   config: SubmitFabricatedDepositStep02CliConfig & {
     readonly contracts: FabricatedDepositContractsV1;
+    readonly referenceScriptUtxo: UTxO;
   },
 ): Promise<SubmitFabricatedDepositStep02Result> => {
   const lucid = await makeLucidForSubmit(config);
@@ -407,6 +418,7 @@ export const submitFabricatedDepositStep02FromFiles = async (
       config.eventOutRef === undefined
         ? { kind: "absent_identity" }
         : { kind: "present_event", eventOutRef: config.eventOutRef },
+    referenceScriptUtxo: config.referenceScriptUtxo,
     awaitConfirmation: config.awaitConfirmation,
   });
 };

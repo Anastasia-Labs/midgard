@@ -1,6 +1,9 @@
 import {
+  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueDeploymentInfo,
   type MidgardValidators,
+  type ReferenceScriptAuthPolicy,
+  referenceScriptAuthPolicyDeploymentInfo,
 } from "@al-ft/midgard-sdk";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 
@@ -9,6 +12,7 @@ import { type CommittedFieldShapeContractsV1 } from "../../../src/committed-fiel
 import { type CrossBlockDuplicateEventContractsV1 } from "../../../src/cross-block-duplicate-event/index.js";
 import type { DoubleWithdrawContractsV1 } from "../../../src/double-withdraw/contracts-v1.js";
 import {
+  FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
   VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
@@ -68,6 +72,23 @@ export const WITHDRAWN_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1 =
 export const WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofWithdrawalMistag";
 
+const requireReferenceScriptAuthPolicy = (
+  policy: MidgardValidators["referenceScriptAuth"],
+): ReferenceScriptAuthPolicy => {
+  const candidate = policy as Partial<ReferenceScriptAuthPolicy>;
+  if (
+    policy.mintingScript.type !== "Native" ||
+    candidate.expiresAtSlot === undefined ||
+    candidate.expiresAtUnixTime === undefined ||
+    candidate.timelockDurationMs === undefined
+  ) {
+    throw new Error(
+      "Removal deployment fixture requires the harness native reference-script auth policy",
+    );
+  }
+  return candidate as ReferenceScriptAuthPolicy;
+};
+
 export const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators & {
     readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
@@ -90,6 +111,7 @@ export const buildRemovalDeploymentInfo = (
     validationItemObserveReference,
     validationCanonicalDecodePrepareReference,
     removalReferenceScripts,
+    fraudProofReferenceScripts,
     validationValueAndMintSemanticReferences,
   }: {
     readonly validationDisputePublication?: Awaited<
@@ -99,6 +121,15 @@ export const buildRemovalDeploymentInfo = (
     readonly validationItemObserveReference?: RemovalDeploymentReference;
     readonly validationCanonicalDecodePrepareReference?: RemovalDeploymentReference;
     readonly removalReferenceScripts?: RemovalReferenceScriptPublications;
+    /**
+     * Live canonical fraud-proof step publications keyed by their production
+     * deployment-entry names. Hash-only catalogue records remain sufficient
+     * for steps a focused journey never consumes; every consumed reference
+     * step must be supplied here.
+     */
+    readonly fraudProofReferenceScripts?: Readonly<
+      Record<string, RemovalDeploymentReference>
+    >;
     /**
      * #634. Published ValueAndMint semantic-resolver reference scripts, keyed
      * by the ValueAndMint-local semantic index (0..10). Splices in the same
@@ -110,6 +141,43 @@ export const buildRemovalDeploymentInfo = (
     })[];
   } = {},
 ) => {
+  const fraudProofChainEntries = Object.fromEntries(
+    Object.entries(FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY).flatMap(
+      ([category, entryNames]) => {
+        const categoryName =
+          category as keyof MidgardValidators["fraudProofContracts"];
+        const steps = contracts.fraudProofContracts[categoryName].steps;
+        const requiresFullChain =
+          categoryName === "transitionTrace" ||
+          FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.indexOf(categoryName) >= 11;
+        if (
+          steps.length < entryNames.length ||
+          (requiresFullChain && steps.length !== entryNames.length)
+        ) {
+          throw new Error(
+            `${category} removal deployment fixture has the wrong chain length`,
+          );
+        }
+        return entryNames.map((entryName, index) => {
+          const published = fraudProofReferenceScripts?.[entryName];
+          return [
+            entryName,
+            {
+              scriptHash: steps[index]!.spendingScriptHash,
+              ...(published === undefined
+                ? {}
+                : {
+                    refScriptUTxO: {
+                      txHash: published.utxo.txHash,
+                      outputIndex: published.utxo.outputIndex,
+                    },
+                  }),
+            },
+          ];
+        });
+      },
+    ),
+  );
   const valueAndMintSemanticEntries = Object.fromEntries(
     (validationValueAndMintSemanticReferences ?? []).map(
       ({ semanticResolverIndex, scriptHash, utxo }) => {
@@ -161,6 +229,12 @@ export const buildRemovalDeploymentInfo = (
   };
   return deploymentManifest(
     {
+      // Seed every canonical catalogue entry from the production chain, then
+      // let the richer family/publication records below replace individual
+      // entries with contract bytes and live reference-script out-refs.  The
+      // reverse order silently discarded those fields for registered
+      // categories.
+      ...fraudProofChainEntries,
       ...valueAndMintSemanticEntries,
       ...(validationItemSemanticReference === undefined
         ? {}
@@ -218,9 +292,6 @@ export const buildRemovalDeploymentInfo = (
       },
       fraudProofInvalidRange: {
         scriptHash: contracts.fraudProofs.invalidRange.spendingScriptHash,
-      },
-      fraudProofTransitionTrace: {
-        scriptHash: contracts.fraudProofs.transitionTrace.spendingScriptHash,
       },
       fraudProofZeroInput: {
         scriptHash: contracts.fraudProofs.zeroInput.spendingScriptHash,
@@ -410,6 +481,9 @@ export const buildRemovalDeploymentInfo = (
       ),
       settlementMint: { scriptHash: contracts.settlement.policyId },
     },
-    validationDisputePublication?.authPolicyDeploymentInfo,
+    validationDisputePublication?.authPolicyDeploymentInfo ??
+      referenceScriptAuthPolicyDeploymentInfo(
+        requireReferenceScriptAuthPolicy(contracts.referenceScriptAuth),
+      ),
   );
 };

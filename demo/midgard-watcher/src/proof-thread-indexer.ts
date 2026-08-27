@@ -11,6 +11,8 @@ import {
 import { CML, Data, valueToAssets } from "@lucid-evolution/lucid";
 
 import {
+  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  type DeploymentManifestV1FraudProofCatalogueCategory,
   type DeploymentMarkerV1,
   MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
 } from "../../midgard-core/src/deployment-manifest-identity-v1.js";
@@ -86,6 +88,222 @@ export const WATCHER_PROOF_THREAD_V1_BOUNDS = Object.freeze({
   uint64Maximum: 18_446_744_073_709_551_615n,
 });
 
+/**
+ * The signed proof-thread deployment authority must name every registered
+ * catalogue family and every validator that can own its computation thread.
+ * These counts describe deployed validator topology only; they do not claim
+ * that an autonomous watcher detector exists for the corresponding fault.
+ */
+export const WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1 = Object.freeze({
+  doubleSpend: {
+    familyId: "double-spend",
+    stepCount: 4,
+    deployedStepContractNames: ["fraudProofDoubleSpend"],
+  },
+  nonExistentInput: {
+    familyId: "non-existent-input",
+    stepCount: 4,
+    deployedStepContractNames: ["fraudProofNonExistentInput"],
+  },
+  nonExistentInputNoIndex: {
+    familyId: "non-existent-input-no-index",
+    stepCount: 4,
+    deployedStepContractNames: ["fraudProofNonExistentInputNoIndex"],
+  },
+  invalidRange: {
+    familyId: "invalid-range",
+    stepCount: 2,
+    deployedStepContractNames: ["fraudProofInvalidRange"],
+  },
+  transitionTrace: {
+    familyId: "transition-trace",
+    stepCount: 9,
+    deployedStepContractNames: [
+      "fraudProofTransitionTrace",
+      "fraudProofTransitionTraceControl",
+      "fraudProofTransitionTraceSource",
+      "fraudProofTransitionTraceWithdrawal",
+      "fraudProofTransitionTraceForced",
+      "fraudProofTransitionTraceAcceptedTransaction",
+      "fraudProofTransitionTraceDeposit",
+      "fraudProofTransitionTraceL1Event",
+      "fraudProofTransitionTraceDuplicate",
+    ],
+  },
+  zeroInput: {
+    familyId: "zero-input",
+    stepCount: 2,
+    deployedStepContractNames: ["fraudProofZeroInput"],
+  },
+  validationTraceDispute: {
+    familyId: "validation-trace-dispute",
+    stepCount: 121,
+    deployedStepContractNames: [
+      "validationTraceDispute",
+      "validationTraceDisputeSource",
+      "validationTraceDisputeGame",
+      "validationTraceDisputeBoundary",
+      "validationTraceDisputeTimeout",
+      "validationTraceDisputeAward",
+    ],
+  },
+  daHashPreimage: {
+    familyId: "da-hash-preimage",
+    stepCount: 2,
+    deployedStepContractNames: ["fraudProofDaHashPreimage"],
+  },
+  noReferenceInput: {
+    familyId: "no-reference-input",
+    stepCount: 4,
+    deployedStepContractNames: ["fraudProofNoReferenceInput"],
+  },
+  referenceInputNoIdx: {
+    familyId: "reference-input-no-idx",
+    stepCount: 4,
+    deployedStepContractNames: ["fraudProofReferenceInputNoIdx"],
+  },
+  invalidSignature: {
+    familyId: "invalid-signature",
+    stepCount: 2,
+    deployedStepContractNames: ["fraudProofInvalidSignature"],
+  },
+  fabricatedDeposit: {
+    familyId: "fabricated-deposit",
+    stepCount: 4,
+    deployedStepContractNames: [
+      "fraudProofFabricatedDeposit",
+      "fraudProofFabricatedDepositStep02",
+      "fraudProofFabricatedDepositStep03",
+      "fraudProofFabricatedDepositStep04",
+    ],
+  },
+  fabricatedWithdrawal: {
+    familyId: "fabricated-withdrawal",
+    stepCount: 4,
+    deployedStepContractNames: [
+      "fraudProofFabricatedWithdrawal",
+      "fraudProofFabricatedWithdrawalStep02",
+      "fraudProofFabricatedWithdrawalStep03",
+      "fraudProofFabricatedWithdrawalStep04",
+    ],
+  },
+  nativeScriptDecoding: {
+    familyId: "native-script-decoding",
+    stepCount: 4,
+    deployedStepContractNames: [
+      "fraudProofNativeScriptDecoding",
+      "fraudProofNativeScriptDecodingStep02",
+      "fraudProofNativeScriptDecodingStep03",
+      "fraudProofNativeScriptDecodingStep04",
+    ],
+  },
+  missingSignature: {
+    familyId: "missing-signature",
+    stepCount: 4,
+    deployedStepContractNames: [
+      "fraudProofMissingSignature",
+      "fraudProofMissingSignatureStep02",
+      "fraudProofMissingSignatureStep03",
+      "fraudProofMissingSignatureStep04",
+    ],
+  },
+  missingNativeScriptTx: {
+    familyId: "missing-native-script-tx",
+    stepCount: 6,
+    deployedStepContractNames: [
+      "fraudProofMissingNativeScriptTx",
+      "fraudProofMissingNativeScriptTxStep02",
+      "fraudProofMissingNativeScriptTxStep03",
+      "fraudProofMissingNativeScriptTxStep04",
+      "fraudProofMissingNativeScriptTxStep05",
+      "fraudProofMissingNativeScriptTxStep06",
+    ],
+  },
+  withdrawnReferenceInput: {
+    familyId: "withdrawn-reference-input",
+    stepCount: 3,
+    deployedStepContractNames: [
+      "fraudProofWithdrawnReferenceInput",
+      "fraudProofWithdrawnReferenceInputStep02",
+      "fraudProofWithdrawnReferenceInputStep03",
+    ],
+  },
+  canonicalDecodability: {
+    familyId: "canonical-decodability",
+    stepCount: 2,
+    deployedStepContractNames: [
+      "fraudProofCanonicalDecodability",
+      "fraudProofCanonicalDecodabilityStep02",
+    ],
+  },
+  committedFieldShape: {
+    familyId: "committed-field-shape",
+    stepCount: 2,
+    deployedStepContractNames: [
+      "fraudProofCommittedFieldShape",
+      "fraudProofCommittedFieldShapeStep02",
+    ],
+  },
+  minFee: {
+    familyId: "min-fee",
+    stepCount: 2,
+    deployedStepContractNames: ["fraudProofMinFee", "fraudProofMinFeeStep02"],
+  },
+  withdrawalMistag: {
+    familyId: "withdrawal-mistag",
+    stepCount: 5,
+    deployedStepContractNames: [
+      "fraudProofWithdrawalMistag",
+      "fraudProofWithdrawalMistagStep02",
+      "fraudProofWithdrawalMistagStep03",
+      "fraudProofWithdrawalMistagStep04",
+      "fraudProofWithdrawalMistagStep05",
+    ],
+  },
+  doubleWithdraw: {
+    familyId: "double-withdraw",
+    stepCount: 2,
+    deployedStepContractNames: [
+      "fraudProofDoubleWithdraw",
+      "fraudProofDoubleWithdrawStep02",
+    ],
+  },
+  crossBlockDuplicateEvent: {
+    familyId: "cross-block-duplicate-event",
+    stepCount: 2,
+    deployedStepContractNames: [
+      "fraudProofCrossBlockDuplicateEvent",
+      "fraudProofCrossBlockDuplicateEventStep02",
+    ],
+  },
+  l2TxMistag: {
+    familyId: "l2-tx-mistag",
+    stepCount: 2,
+    deployedStepContractNames: [
+      "fraudProofL2TxMistag",
+      "fraudProofL2TxMistagStep02",
+    ],
+  },
+  withdrawnInput: {
+    familyId: "withdrawn-input",
+    stepCount: 3,
+    deployedStepContractNames: [
+      "fraudProofWithdrawnInput",
+      "fraudProofWithdrawnInputStep02",
+      "fraudProofWithdrawnInputStep03",
+    ],
+  },
+} as const satisfies Readonly<
+  Record<
+    DeploymentManifestV1FraudProofCatalogueCategory,
+    Readonly<{
+      familyId: string;
+      stepCount: number;
+      deployedStepContractNames: readonly string[];
+    }>
+  >
+>);
+
 export const WATCHER_PROOF_THREAD_REASON_CODES_V1 = [
   "init_pending",
   "init_confirmed",
@@ -148,7 +366,19 @@ export type WatcherProofThreadFamilyV1 = Readonly<{
   catalogueCategory: string;
   categoryId: string;
   firstStepScriptHash: string;
+  /**
+   * Canonical deployment order for every validator that can own the
+   * computation-thread token for this family. This is an authority surface,
+   * not a claim that the watcher autonomously detects the underlying fault.
+   */
   stepScriptHashes: readonly string[];
+  /**
+   * Forward-only adjacency list over `stepScriptHashes`. Empty rows are the
+   * validators that may finalize. Keeping the graph explicit matters for
+   * routed families such as transition-trace: its route validator can select
+   * any one of eight finals; those finals are not a linear eight-step chain.
+   */
+  nextStepIndexes: readonly (readonly string[])[];
 }>;
 
 export type WatcherProofThreadPolicyV1 = Readonly<{
@@ -594,6 +824,7 @@ const parseFamily = (value: unknown): WatcherProofThreadFamilyV1 | null => {
     "categoryId",
     "firstStepScriptHash",
     "stepScriptHashes",
+    "nextStepIndexes",
   ]);
   const steps =
     record === null
@@ -602,9 +833,22 @@ const parseFamily = (value: unknown): WatcherProofThreadFamilyV1 | null => {
           record.stepScriptHashes,
           WATCHER_PROOF_THREAD_V1_BOUNDS.stepsPerFamily,
         );
+  const nextStepIndexesValue =
+    record === null
+      ? null
+      : exactArray(
+          record.nextStepIndexes,
+          WATCHER_PROOF_THREAD_V1_BOUNDS.stepsPerFamily,
+        );
+  const nextStepIndexes =
+    nextStepIndexesValue?.map((next) =>
+      exactArray(next, WATCHER_PROOF_THREAD_V1_BOUNDS.stepsPerFamily),
+    ) ?? null;
   if (
     record === null ||
     steps === null ||
+    nextStepIndexesValue === null ||
+    nextStepIndexes === null ||
     !isStableName(record.familyId) ||
     typeof record.catalogueCategory !== "string" ||
     !CATALOGUE_CATEGORY.test(record.catalogueCategory) ||
@@ -613,7 +857,40 @@ const parseFamily = (value: unknown): WatcherProofThreadFamilyV1 | null => {
     steps.length === 0 ||
     steps.some((step) => !isHex28(step)) ||
     steps[0] !== record.firstStepScriptHash ||
-    new Set(steps).size !== steps.length
+    new Set(steps).size !== steps.length ||
+    nextStepIndexes.length !== steps.length ||
+    nextStepIndexes.some(
+      (next, currentIndex) =>
+        next === null ||
+        next.some(
+          (nextIndex) =>
+            !isNatural(nextIndex) ||
+            BigInt(nextIndex) <= BigInt(currentIndex) ||
+            BigInt(nextIndex) >= BigInt(steps.length),
+        ) ||
+        next.some(
+          (nextIndex, index) =>
+            index > 0 &&
+            BigInt(next[index - 1] as string) >= BigInt(nextIndex as string),
+        ),
+    )
+  ) {
+    return null;
+  }
+  const parsedNextStepIndexes =
+    nextStepIndexes as readonly (readonly string[])[];
+  const reachable = new Set([0]);
+  for (let index = 0; index < parsedNextStepIndexes.length; index += 1) {
+    if (!reachable.has(index)) {
+      return null;
+    }
+    for (const nextIndex of parsedNextStepIndexes[index]!) {
+      reachable.add(Number(nextIndex));
+    }
+  }
+  if (
+    reachable.size !== steps.length ||
+    !parsedNextStepIndexes.some((next) => next.length === 0)
   ) {
     return null;
   }
@@ -623,7 +900,55 @@ const parseFamily = (value: unknown): WatcherProofThreadFamilyV1 | null => {
     categoryId: record.categoryId,
     firstStepScriptHash: record.firstStepScriptHash,
     stepScriptHashes: Object.freeze(steps as string[]),
+    nextStepIndexes: Object.freeze(
+      parsedNextStepIndexes.map((next) => Object.freeze(next as string[])),
+    ),
   });
+};
+
+const familyMatchesRegisteredAuthority = (
+  family: WatcherProofThreadFamilyV1,
+): boolean => {
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1,
+      family.catalogueCategory,
+    )
+  ) {
+    return false;
+  }
+  const category =
+    family.catalogueCategory as DeploymentManifestV1FraudProofCatalogueCategory;
+  const categoryIndex =
+    DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.indexOf(
+      category,
+    );
+  const authority = WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1[category];
+  if (
+    categoryIndex < 0 ||
+    family.familyId !== authority.familyId ||
+    family.categoryId !== categoryIndex.toString(16).padStart(8, "0") ||
+    family.stepScriptHashes.length !== authority.stepCount ||
+    family.nextStepIndexes.length !== authority.stepCount
+  ) {
+    return false;
+  }
+  if (category === "transitionTrace") {
+    return family.nextStepIndexes.every((next, index) =>
+      index === 0
+        ? next.length === authority.stepCount - 1 &&
+          next.every(
+            (nextIndex, nextIndexOffset) =>
+              nextIndex === (nextIndexOffset + 1).toString(),
+          )
+        : next.length === 0,
+    );
+  }
+  return family.nextStepIndexes.every((next, index) =>
+    index === authority.stepCount - 1
+      ? next.length === 0
+      : next.length === 1 && next[0] === (index + 1).toString(),
+  );
 };
 
 export const makeWatcherProofThreadPolicyV1 = (
@@ -690,6 +1015,9 @@ export const parseWatcherProofThreadPolicyV1 = (
     return null;
   }
   const parsedFamilies = families as WatcherProofThreadFamilyV1[];
+  const familyByCategory = new Map(
+    parsedFamilies.map((family) => [family.catalogueCategory, family]),
+  );
   if (
     !parsedFamilies.every(
       (family, index) =>
@@ -699,6 +1027,14 @@ export const parseWatcherProofThreadPolicyV1 = (
       parsedFamilies.length ||
     new Set(parsedFamilies.map(({ catalogueCategory }) => catalogueCategory))
       .size !== parsedFamilies.length ||
+    parsedFamilies.length !==
+      DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length ||
+    !DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.every(
+      (category) => {
+        const family = familyByCategory.get(category);
+        return family !== undefined && familyMatchesRegisteredAuthority(family);
+      },
+    ) ||
     !addressMatchesScript(
       record.fraudProofAddressHex,
       record.fraudProofSpendScriptHash,
@@ -1658,6 +1994,17 @@ const verifyDeploymentAuthority = (
           category.scriptHash === family.firstStepScriptHash
         );
       });
+    const deployedStepsMatch = policy.families.every((family) => {
+      const category =
+        family.catalogueCategory as DeploymentManifestV1FraudProofCatalogueCategory;
+      return WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1[
+        category
+      ].deployedStepContractNames.every(
+        (contractName, stepIndex) =>
+          authority.policy.appliedScriptHashes[contractName] ===
+          family.stepScriptHashes[stepIndex],
+      );
+    });
     const computationCommitment = sha256Canonical({
       computationThreadPolicyId: policy.computationThreadPolicyId,
     });
@@ -1668,6 +2015,7 @@ const verifyDeploymentAuthority = (
         categoryId: family.categoryId,
         firstStepScriptHash: family.firstStepScriptHash,
         stepScriptHashes: family.stepScriptHashes,
+        nextStepIndexes: family.nextStepIndexes,
       })),
     );
     return same(verified, authority.result) &&
@@ -1683,7 +2031,8 @@ const verifyDeploymentAuthority = (
         computationCommitment &&
       authority.policy.programCommitments["proof-thread-catalogue-v1"] ===
         catalogueCommitment &&
-      catalogueMatches
+      catalogueMatches &&
+      deployedStepsMatch
       ? authority.policy
       : null;
   } catch {
@@ -2873,8 +3222,12 @@ const verifyStepTransaction = (
           "spend",
           input.inputIndex,
         );
-  const nextStep = Number(source.stepIndex!) + 1;
   const datum = output === null ? null : stepDatum(output.output);
+  const outputHash = output === null ? null : outputScriptHash(output.output);
+  const sourceStep = Number(source.stepIndex!);
+  const nextStep = family.nextStepIndexes[sourceStep]?.find(
+    (index) => family.stepScriptHashes[Number(index)] === outputHash,
+  );
   const durable =
     output === null
       ? null
@@ -2885,8 +3238,7 @@ const verifyStepTransaction = (
     spend !== null &&
     genericStepRedeemer(spend.bytes.bytesHex)?.kind === "continue" &&
     allMint(canonical.body).size === 0 &&
-    nextStep < family.stepScriptHashes.length &&
-    outputScriptHash(output.output) === family.stepScriptHashes[nextStep] &&
+    nextStep !== undefined &&
     exactTokenOutput(
       output.output,
       policy.computationThreadPolicyId,
@@ -2894,7 +3246,7 @@ const verifyStepTransaction = (
     ) &&
     datum?.fraud_prover === source.fraudProver &&
     datum.data !== null &&
-    journal.stepIndex === nextStep.toString() &&
+    journal.stepIndex === nextStep &&
     durable !== null &&
     durableOutputMatchesLifecycle(
       durable,
@@ -2929,7 +3281,7 @@ const verifySuccessTransaction = (
       fraudProofMintRedeemerGlobalIndex:
         layout.fraudProofMintRedeemerGlobalIndex,
     }) ||
-    Number(source.stepIndex!) !== family.stepScriptHashes.length - 1
+    family.nextStepIndexes[Number(source.stepIndex!)]?.length !== 0
   ) {
     return false;
   }

@@ -200,6 +200,62 @@ const aikenRecordFieldNames = (
   );
 };
 
+/** Constructor names of an Aiken sum declaration, in declared order. */
+const aikenSumConstructorNames = (
+  source: string,
+  type: string,
+): readonly string[] => {
+  const header = `pub type ${type} {`;
+  const start = source.indexOf(header);
+  if (start < 0) {
+    throw new Error(`source does not declare ${type}`);
+  }
+  const body = source.slice(start + header.length);
+  const end = body.indexOf("\n}");
+  if (end < 0) {
+    throw new Error(`declaration of ${type} is unterminated`);
+  }
+  return [
+    ...body.slice(0, end).matchAll(/^ {2}([A-Z][A-Za-z0-9_]*) \{/gmu),
+  ].map((match) => match[1] as string);
+};
+
+/** Field names of one record constructor in an Aiken sum declaration. */
+const aikenSumConstructorFieldNames = (
+  source: string,
+  type: string,
+  constructor: string,
+): readonly string[] => {
+  const typeHeader = `pub type ${type} {`;
+  const typeStart = source.indexOf(typeHeader);
+  if (typeStart < 0) {
+    throw new Error(`source does not declare ${type}`);
+  }
+  const typeBody = source.slice(typeStart + typeHeader.length);
+  const typeEnd = typeBody.indexOf("\n}");
+  if (typeEnd < 0) {
+    throw new Error(`declaration of ${type} is unterminated`);
+  }
+  const declaration = typeBody.slice(0, typeEnd);
+  const constructorHeader = `  ${constructor} {`;
+  const constructorStart = declaration.indexOf(constructorHeader);
+  if (constructorStart < 0) {
+    throw new Error(`${type} does not declare constructor ${constructor}`);
+  }
+  const constructorBody = declaration.slice(
+    constructorStart + constructorHeader.length,
+  );
+  const constructorEnd = constructorBody.indexOf("\n  }");
+  if (constructorEnd < 0) {
+    throw new Error(`constructor ${type}.${constructor} is unterminated`);
+  }
+  return [
+    ...constructorBody
+      .slice(0, constructorEnd)
+      .matchAll(/^ {4}([a-z_][a-z0-9_]*):/gmu),
+  ].map((match) => match[1] as string);
+};
+
 /** `<family>/step-NN.ak` of the last numbered step every shipped family ships. */
 const shippedTerminalStepModules = (): readonly {
   readonly id: string;
@@ -1536,12 +1592,36 @@ describe("Q02 generated shape matches the deployed families", () => {
     const deviating: string[] = [];
     const conforming: string[] = [];
     for (const terminal of terminals) {
-      const fields = aikenRecordFieldNames(
-        await readFile(terminal.path, "utf8"),
-        "Args",
-      );
+      const source = await readFile(terminal.path, "utf8");
+      const fields = aikenRecordFieldNames(source, "Args");
+      if (terminal.id === "missing-signature/step-04.ak") {
+        // This terminal is deliberately a bounded self-loop plus a distinct
+        // finalizer, so Args is a closed two-constructor sum rather than the
+        // ordinary one-record terminal shape. Keep this exception exact: the
+        // scan arm cannot mint, while the finalize arm retains the standard
+        // positional/mint prefix and the authenticated walk inputs.
+        expect(aikenSumConstructorNames(source, "Args")).toEqual([
+          "Scan",
+          "Finalize",
+        ]);
+        expect(aikenSumConstructorFieldNames(source, "Args", "Scan")).toEqual([
+          "input_index",
+          "output_index",
+          "addr_tx_wits_opening",
+          "checkpoint_cbor",
+        ]);
+        expect(
+          aikenSumConstructorFieldNames(source, "Args", "Finalize"),
+        ).toEqual([...prefix, "addr_tx_wits_opening", "checkpoint_cbor"]);
+        expect(source).toContain(
+          "pub type SpendRedeemer =\n  ct.StepRedeemer<Args>",
+        );
+        conforming.push(terminal.id);
+        continue;
+      }
       // A parser that quietly stopped finding fields would report every module
-      // conforming, so an empty field list is a failure, never a pass.
+      // conforming, so an empty field list is a failure for every ordinary
+      // record-shaped terminal.
       expect(
         fields.length,
         `${terminal.id} declares no Args fields`,

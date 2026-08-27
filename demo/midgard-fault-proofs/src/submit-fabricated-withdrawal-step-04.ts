@@ -40,6 +40,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -155,12 +156,14 @@ export const submitFabricatedWithdrawalStep04 = async ({
   contracts,
   signer,
   threadOutRef,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: FabricatedWithdrawalContractsV1;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedWithdrawalStep04Result> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -274,6 +277,14 @@ export const submitFabricatedWithdrawalStep04 = async ({
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
+    .readFrom([
+      requireFabricatedReferenceScriptV1({
+        utxo: referenceScriptUtxo,
+        expectedScriptHash: contracts.steps[3].spendingScriptHash,
+        categoryLabel: FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
+        stepIndex: 3,
+      }),
+    ])
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
     .pay.ToContract(
@@ -285,7 +296,6 @@ export const submitFabricatedWithdrawalStep04 = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.steps[3].spendingScript)
     .attach.MintingPolicy(contracts.computationThread.mintingScript)
     .attach.MintingPolicy(contracts.fraudProof.mintingScript);
 
@@ -336,6 +346,7 @@ export const submitFabricatedWithdrawalStep04 = async ({
 export const submitFabricatedWithdrawalStep04FromFiles = async (
   config: SubmitFabricatedWithdrawalStep04CliConfig & {
     readonly contracts: FabricatedWithdrawalContractsV1;
+    readonly referenceScriptUtxo: UTxO;
   },
 ): Promise<SubmitFabricatedWithdrawalStep04Result> => {
   const lucid = await makeLucidForSubmit(config);
@@ -345,6 +356,7 @@ export const submitFabricatedWithdrawalStep04FromFiles = async (
     contracts: config.contracts,
     signer,
     threadOutRef: config.threadOutRef,
+    referenceScriptUtxo: config.referenceScriptUtxo,
     awaitConfirmation: config.awaitConfirmation,
   });
 };

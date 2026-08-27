@@ -46,6 +46,20 @@ const CATALOGUE_CATEGORY_TO_CONTRACT = Object.freeze({
   noReferenceInput: "fraudProofNoReferenceInput",
   referenceInputNoIdx: "fraudProofReferenceInputNoIdx",
   invalidSignature: "fraudProofInvalidSignature",
+  fabricatedDeposit: "fraudProofFabricatedDeposit",
+  fabricatedWithdrawal: "fraudProofFabricatedWithdrawal",
+  nativeScriptDecoding: "fraudProofNativeScriptDecoding",
+  missingSignature: "fraudProofMissingSignature",
+  missingNativeScriptTx: "fraudProofMissingNativeScriptTx",
+  withdrawnReferenceInput: "fraudProofWithdrawnReferenceInput",
+  canonicalDecodability: "fraudProofCanonicalDecodability",
+  committedFieldShape: "fraudProofCommittedFieldShape",
+  minFee: "fraudProofMinFee",
+  withdrawalMistag: "fraudProofWithdrawalMistag",
+  doubleWithdraw: "fraudProofDoubleWithdraw",
+  crossBlockDuplicateEvent: "fraudProofCrossBlockDuplicateEvent",
+  l2TxMistag: "fraudProofL2TxMistag",
+  withdrawnInput: "fraudProofWithdrawnInput",
 } as const);
 
 const REFERENCE_SCRIPT_ROLES = Object.freeze(

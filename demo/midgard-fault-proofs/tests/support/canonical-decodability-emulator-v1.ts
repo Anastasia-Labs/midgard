@@ -13,6 +13,7 @@ import {
   CanonicalDecodabilityStep02SpendRedeemer,
   type CanonicalDecodabilityStep02State,
   type CommittedFieldClaimV1,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
@@ -45,7 +46,6 @@ import {
   requireCanonicalDecodabilityReferenceScriptV1,
   requireCanonicalDecodabilityThreadUtxoV1,
 } from "../../src/canonical-decodability/index.js";
-import type { RemoveFraudulentBlockExplicitCategory } from "../../src/index.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
@@ -69,8 +69,6 @@ import {
 } from "../../src/tx-layout.js";
 import { setupFraudulentBlockV1 } from "./submit-init-emulator-fixtures.js";
 import {
-  CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  CANONICAL_DECODABILITY_TEST_CATEGORY_ID_V1,
   makeFaultProofEmulatorHarnessV1,
   makeNativeTx,
   network,
@@ -224,14 +222,17 @@ export const makeCanonicalDecodabilityEmulatorHarnessV1 = async () => {
     registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
   });
   const canonicalDecodability = harness.contracts.canonicalDecodability;
-  const category = harness.catalogue.extraCategories.canonicalDecodability;
+  const category = harness.catalogue.categories.canonicalDecodability;
   if (canonicalDecodability === undefined || category === undefined) {
     throw new Error(
       "Harness did not build canonical-decodability contracts/category",
     );
   }
-  if (category.categoryId !== CANONICAL_DECODABILITY_TEST_CATEGORY_ID_V1) {
-    throw new Error("Unexpected canonical-decodability test category id");
+  if (
+    category.categoryId !==
+    FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.canonicalDecodability
+  ) {
+    throw new Error("Unexpected canonical-decodability category id");
   }
   return { ...harness, canonicalDecodability, category };
 };
@@ -274,24 +275,6 @@ export const publishCanonicalDecodabilityReferenceScriptsV1 = async ({
   }
   return published as unknown as readonly [UTxO, UTxO];
 };
-
-export const canonicalDecodabilityRemovalCategoryV1 = (
-  harness: Awaited<
-    ReturnType<typeof makeCanonicalDecodabilityEmulatorHarnessV1>
-  >,
-): RemoveFraudulentBlockExplicitCategory => ({
-  name: "canonicalDecodability",
-  categoryId: harness.category.categoryId,
-  firstStepDeploymentEntry: CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  firstStepScriptHash:
-    harness.canonicalDecodability.steps[0].spendingScriptHash,
-  fraudProof: {
-    policyId: harness.canonicalDecodability.fraudProof.policyId,
-    spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-    spendingScriptAddress:
-      harness.canonicalDecodability.fraudProof.spendingScriptAddress,
-  },
-});
 
 /** Guard-bypassing step-01 builder used only for validator-negative tests. */
 export const submitCanonicalDecodabilityStep01RawV1 = async ({

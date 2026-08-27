@@ -1,16 +1,24 @@
 # Missing-signature fault: offchain implementation plan (v1)
 
+> **Registration update (2026-08-26):** this family is now registered as
+> `missingSignature` at `0000000e`. Generic Init, catalogue/inspection,
+> node/core deployment identity, watcher proof-thread topology, and all four
+> mandatory authenticated reference scripts are wired. Family-specific CLI,
+> autonomous watcher detector/prover mounting, preprod, and live evidence
+> remain open. The identity change requires fresh genesis/redeployment; there
+> is no migration or compatibility path.
+
 Plan date: 2026-08-26. Audited against branch
 `colll78/canonical-v1-watcher-l1-source-checkpoint` (HEAD `b1223571`) plus
 the uncommitted 2026-08-26 working tree (the native-script-decoding
 removal-leg extension this plan builds on — see §9 gate 1). Task: **Q16**
 (`GOAL_SPEC.md` §9.3; depends Q00–Q03, C43 — all satisfied at HEAD).
 Catalogue row: `catalogue-status.md` §1 row 8. This document began as the
-implementation plan and now also records the completed pre-registration wave.
-It still registers and deploys nothing in production.
+implementation plan and now also records the completed implementation and
+registration waves.
 
 **Completion record (2026-08-26).** The planned SDK, detector, proving core,
-reference-script submitters, isolated `0000000e` harness, positive lifecycle
+reference-script submitters, canonical `0000000e` category, positive lifecycle
 through permanent proof mint and fraudulent-block removal, honest-commitment
 on-chain refusal, and negative/cancel/resume suites are implemented. The
 initial envelope run exposed step-04's whole-field memory gap, so this wave
@@ -20,16 +28,16 @@ Scan/Finalize handoff, and interior cancel/resume. The emulator now proves the
 first automatic tier-2 case (140 witnesses) and the maximum admissible field-7
 vector (318 witnesses), while the worst-depth step-01 transaction and every
 submitted scan/finalize transaction stay below 13.2M memory and 8B CPU.
-Production catalogue/manifest/CLI/watcher-family registration remains the
-separate registration wave exactly as planned. Where the original prospective
+Catalogue/manifest/watcher-topology registration is complete. Family-specific
+CLI and autonomous watcher detector/prover mounting remain open. Where the original prospective
 text below discusses the whole-field step-04 design or an open escalation,
 this completion record and the updated contract sections supersede it.
 
 The parity bar is the `native-script-decoding` family (row 18) as planned in
 `native-script-decoding-offchain-plan-v1.md` and built on this branch: a
 consumer-agnostic proving core with CLI and watcher adapters, per-arm step
-submitters plus cancel, a pre-registration emulator harness under a reserved
-test category id, and lucid-evolution emulator suites in both polarities —
+submitters plus cancel, canonical category wiring, and lucid-evolution
+emulator suites in both polarities —
 through fraud-proof mint **and** fraudulent-commitment removal — plus a
 compiled-size/frontier envelope suite. Everything that family's plan decided
 generically is inherited here, not re-decided.
@@ -45,20 +53,14 @@ Standing rulings this plan implements and never re-opens:
   the full lifecycle, and an adversarial prover against an honest
   commitment is refused **on-chain at the exact check**, not merely by
   offchain guards.
-- **Pre-registration explicit-record discipline:** pre-registration
-  families must not route their ids through the deployment manifest —
-  `parseFraudProofCatalogueDeploymentInfo` silently drops non-canonical
-  keys (`catalogue-status.md` §3). Contracts records are explicit and
-  parent-owned; the SDK catalogue, `submit-init.ts`'s category union, and
-  `bin.ts` are untouched until the registration wave.
-- **Reserved ids are expected, not promised** (decoding plan §10 Q2): the
-  test-harness constant records the expected next-free index; the
-  production id is written only by the registration wave, which re-verifies
-  "next free after standing reservations" at allocation time.
+- **Explicit-record discipline:** contracts remain explicit while
+  `missingSignature` is canonically routed through catalogue and deployment
+  manifests. Family-specific CLI remains separate.
+- **Canonical id:** `0000000e` is the production category id.
 - **Removal via explicit category** (2026-08-26 working tree):
   `remove-fraudulent-block.ts`'s `RemoveFraudulentBlockExplicitCategory` /
   `buildExplicitCategoryRemovalContracts` / `assembleRemovalContracts` seam
-  lets a pre-registration family drive removal with every fail-closed check
+  lets a family drive removal with every fail-closed check
   intact and **zero** further changes to that module. The fraud-proof token
   is permanent by design (the state-queue node NFT burns; the token
   survives as evidence and as the `alreadyProven` gate).
@@ -170,24 +172,18 @@ anchored commitment — the #606/E2 repair, `step-04.ak:365-415`).
 
 ### 2.1 Category id
 
-Standing reservations at HEAD: `0000000b` fabricated-deposit
-(`fabricated-deposit-v1.ts:59`), `0000000c` fabricated-withdrawal
-(`fabricated-withdrawal-v1.ts:85`), `0000000d` native-script-decoding
-(test id, `tests/support/emulator/harness.ts:313`). **This family's
-expected index is `0000000e`** (index 14; repo-wide grep confirms the id is
-unclaimed). Per the inherited ruling the constant lands as
-`MISSING_SIGNATURE_TEST_CATEGORY_ID_V1` in the test harness with the
-"expected but not promised" caveat; the production id is written only by
-the registration wave.
+Canonical category id: **`0000000e`** (index 14). The SDK catalogue,
+generic Init, deployment manifests/inspection, and watcher proof-thread
+topology bind it to the applied step-01 hash.
 
-### 2.2 What registration touches
+### 2.2 Registered deployment surface
 
-Identical surface list to the decoding plan §2.2 (SDK catalogue order,
-`FraudProofs`/`FaultProofContracts` records, deployment-manifest identity,
-node manifest/descriptors/catalogue-MPF build, CLI category parse,
-inspect-contracts unions, watcher `families[]`, test re-pins per §8.3).
-Registration is a fresh genesis-level deployment (catalogue immutability,
-D-S13). Nothing in this plan's builder wave moves any pinned surface.
+The SDK catalogue order, `FraudProofs`/`FaultProofContracts` records,
+deployment-manifest identity, node manifest/descriptors/catalogue-MPF build,
+generic CLI category parse, inspection, and watcher proof-thread topology are
+wired. Family-specific CLI and autonomous watcher detector/prover mounting
+remain open. Registration is a fresh genesis-level deployment (catalogue
+immutability, D-S13), never a migration or compatibility path.
 
 ### 2.3 Script deployment: reference scripts (owner ruling 2026-08-26)
 
@@ -206,8 +202,8 @@ for this family, as they do for decoding.
 
 Compiled sizes are pinned by the envelope suite against a normal blueprint
 build with the repository's pinned Aiken fork. They no longer decide the
-deployment shape; they feed the frontier chart (§5) and the registration
-wave's reference-script publication accounting:
+deployment shape; they feed the frontier chart (§5) and the canonical
+reference-script publication accounting:
 
 | Step    | Unapplied compiled size |
 | ------- | ----------------------- |
@@ -288,7 +284,8 @@ the committed structure, and the provability class
 `assertMissingSignatureFindingProvableV1` is the boundary gate the core
 calls — classification refusals are non-negotiable, no policy overrides
 them. Manual and autonomous consumers take the same record (§4.3). The
-watcher `families[]` entry lands at registration.
+watcher proof-thread topology entry is registered; detector/prover mounting
+remains separate.
 
 ---
 
@@ -300,7 +297,7 @@ One new module, mirroring `invalid-signature.ts` +
 `native-script-decoding-v1.ts`:
 
 - `missingSignatureThreadTokenAssetNameV1(categoryId, headerHash)` — id
-  parameterized until registration; no category-id constant pre-wave.
+  parameterized even though `0000000e` is canonical.
 - Per-step `State`/`Datum`/`Args`/`SpendRedeemer` schemas from the shared
   generics (`faultProofStepDatumSchema`/`faultProofStepRedeemerSchema`,
   `native.ts:228-248`), field-for-field against the lib twins:
@@ -323,7 +320,7 @@ missing_required_signer_vkey }`;
 - A `missingSignatureVkeyHashV1` helper (blake2b-224 twin of
   `get_verification_key_hash`) if `@al-ft/midgard-core` does not already
   export one — check `blake2b-224-trace-v1.ts` first (prefer reuse).
-- `contracts.ts` chain-builder additions land **at registration**.
+- `contracts.ts` chain-builder additions are registered.
 
 ### 4.2 Family modules (`demo/midgard-fault-proofs/src/missing-signature/`)
 
@@ -335,11 +332,11 @@ Mirroring the decoding module set, with the smaller fixed-stride step-04 loop:
 | `finding-v1.ts`                           | §3.4 record, provability enum, `assert…ProvableV1` boundary gate                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | decoding `finding-v1.ts` structure                                                                                                                                                                                                                               |
 | `evidence-v1.ts`                          | step-01 inclusion evidence (reuse `parseSubmitStep01TxInclusion`, `submit-step-01.ts:236`, and the PHAS helpers `runtime.ts:1088/1205`); the field-4 opening plan (**first offchain consumer of field 4** — `planFaultProofFieldOpeningV1` with `fieldIndex: requiredSigners`, BodyAnchor); the field-7 opening plan (WitnessAnchor — the `submit-invalid-signature-step-02.ts:395-407` shape: `witnessSet: witnessSetCompact`, `anchorWitnessSetHash` **taken from the thread state, never re-derived locally**); accused-ordinal selection; carriage publication via `publishFaultProofFieldCarriageV1` + `faultProofFieldCarriageReferenceOrderV1` when the tier demands it (§5). Owns nothing the door builders already own    | decoding `evidence-v1.ts` delegation discipline                                                                                                                                                                                                                  |
 | `submit-common-v1.ts`                     | label-prefixed errors, `require…ThreadUtxoV1` (thread NFT via the shared `requireComputationThreadToken`), `requireMissingSignatureReferenceScriptV1` (the published reference-script UTxO must hash to the step being spent — §2.3), fail-closed `require…StepStateV1` datum reads                                                                                                                                                                                                                                                                                                                                                                                                                                                | decoding `submit-common-v1.ts`, near-verbatim                                                                                                                                                                                                                    |
-| `submit-missing-signature-init.ts`        | fork of `submit-init.ts`'s generic tail taking the explicit contracts record + catalogue category (id ‖ headerHash asset name, first-step datum `{fraud_prover, data: null}`, Init mint with membership proof, PHAS zero-withdrawal). Collapses back into `submit-init.ts` at registration                                                                                                                                                                                                                                                                                                                                                                                                                                         | decoding `submit-…-init.ts`                                                                                                                                                                                                                                      |
+| `submit-missing-signature-init.ts`        | generic-tail-compatible Init taking the explicit contracts record + catalogue category (id ‖ headerHash asset name, first-step datum `{fraud_prover, data: null}`, Init mint with membership proof, PHAS zero-withdrawal); generic `submit-init.ts` now accepts the category                                                                                                                                                                                                                                                                                                                                                                                              | decoding `submit-…-init.ts`                                                                                                                                                                                                                                      |
 | `submit-missing-signature-step-01..04.ts` | one submitter per step. Steps 01–03 have one Continue arm; step-04 deterministically chooses Scan or Finalize from authenticated field size and the thread's checkpoint. Every locally predictable validator abort is refused **before anything is paid for**, message naming the check — step-02 pre-checks the ordinal against the decoded field-4 count and the preimage against the committed commitment; step-03 pre-checks `blake2b_224(vkey)` against the thread's hash; step-04 validates the entire absence predicate locally, resolves only a reachable checkpoint, and publishes/reads the required carriage. Positional indices are resolved against the built transaction (`requireInputIndex` etc.), never hardcoded | step-01: `submit-invalid-signature-step-01.ts:300-390`; step-02: `submit-input-no-idx-step-02.ts` + the field-4 index; step-03: `submit-fabricated-deposit-step-03.ts` handoff shape; step-04: shared field opening + bounded self-loop + terminal finalize/mint |
 | `submit-missing-signature-cancel.ts`      | step-agnostic `ct.Cancel` (locates the step by address, burns via `BurnForCancellation`, refuses non-prover signers up front)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | decoding cancel, directly copyable                                                                                                                                                                                                                               |
 | `prover-v1.ts`                            | the consumer-agnostic core (§4.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | decoding `prover-v1.ts` quartet                                                                                                                                                                                                                                  |
-| `prover-adapters-v1.ts`                   | CLI one-shot (permissive policy — "the operator IS the policy") + watcher fiber (config/summary; mounting at registration)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | decoding adapters, directly copyable                                                                                                                                                                                                                             |
+| `prover-adapters-v1.ts`                   | CLI one-shot (permissive policy — "the operator IS the policy") + watcher fiber (config/summary; autonomous mounting remains open)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | decoding adapters, directly copyable                                                                                                                                                                                                                             |
 | `index.ts`                                | barrel; one `export *` line added to `src/index.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | —                                                                                                                                                                                                                                                                |
 
 ### 4.3 The proving core
@@ -589,12 +586,12 @@ EMPTY_CBOR_LIST` (`:50`) and takes only `addrTxWitsPreimageCbor`. Widen
   `tests/support/emulator/` module with a re-export at its old site (no
   call-site churn) — two families now need it (§10 D7).
 
-### 8.4 What lands at registration
+### 8.4 Registration completion and remaining operations
 
-The same re-pin table as the decoding plan §8.3 (catalogue roots, watcher
-catalogue pins, blueprint validator counts, node catalogue tail,
-inspect-contracts unions/manifest identity), executed by the registration
-wave through the recorded derivation routes, never hand edits.
+Catalogue roots, watcher topology pins, blueprint validator counts, node
+catalogue tail, and inspection/manifest identity are registered through their
+recorded derivation routes. Family-specific CLI and autonomous watcher
+detector/prover mounting remain open.
 
 ---
 
@@ -619,13 +616,11 @@ wave through the recorded derivation routes, never hand edits.
    adversarial battery, negatives/resume — zero pin movement.
 7. **Detection wiring** (§3): classification + vkey recovery + finding
    emission in the watcher, journaling both refused classes.
-8. **Docs:** `catalogue-status.md` row 8 → 🔶 "implemented and
-   emulator-proven under the reserved id; production registration
-   outstanding" (+ §5 buckets, §3 SDK-catalogue row), `coverage-matrix.md`
-   §13 Q16 row, `offchain-reference.md` §3 workflow entry.
-9. **Registration wave** (separate, owner-scheduled): id allocation
-   (re-verify next-free; expected `0000000e`), the §2.2 appends, CLI
-   verbs, watcher `families[]`, re-pins, fresh genesis-level deployment.
+8. **Docs:** record implemented, registered, and emulator-proven status while
+   preserving live-evidence and watcher-actuation gaps.
+9. **Registration/deployment:** canonical `0000000e`, §2.2 appends, generic
+   Init, watcher topology, re-pins, and fresh genesis-level deployment are
+   complete. Family-specific CLI and autonomous actuation remain open.
 
 ---
 
@@ -636,10 +631,7 @@ performance, convenience), following the owner's 2026-08-25 delegation
 precedent for the decoding register; each entry records what would reopen
 it.
 
-- **D1 — Category id: `0000000e` expected, written only at registration.**
-  Grep-verified unclaimed after the three standing reservations. Reopens
-  only if another family reserves it first; the registration wave
-  re-verifies regardless.
+- **D1 — Category id: `0000000e`, canonical production registration.**
 - **D2 — Deployment shape: reference scripts (OWNER RULING 2026-08-26).**
   Fault-proof step validators always deploy as reference scripts and are
   referenced, never attached inline — regardless of compiled size. This
@@ -655,10 +647,9 @@ it.
   hash-compare variant is recorded as a possible future onchain amendment,
   not proposed. Reopens if garbage-hash commitments are observed in
   practice.
-- **D5 — Detection rides the existing replay divergence.** No new standing
-  sweep; the classification + finding emission is default-on (detection
-  coverage is safety), with the same isolated kill-switch convention as
-  the decoding sweep.
+- **D5 — Detection core rides the existing replay divergence when mounted.**
+  The detector is exported, but current watcher replay does not mount its
+  classification/finding emission; registration did not make it default-on.
 - **D6 — Present-but-invalid routes to `invalidSignature` (§7.3).** The
   classification table is total across the two signature families. Not
   reopenable — it mirrors the onchain fold's semantics.
@@ -672,11 +663,9 @@ it.
 ## 11. Out of scope
 
 - Any further onchain change beyond the completed bounded step-04 absence walk,
-  lib twin, validator, and rebuilt blueprint recorded here. Production pins
-  move only in the registration wave.
-- The registration wave's execution (§2.2, §8.4, §9 step 9) — planned
-  here, executed separately; no CLI verbs, no SDK catalogue append, no
-  `submit-init.ts` union change until then.
+  lib twin, validator, and rebuilt blueprint recorded here.
+- Family-specific CLI and autonomous watcher actuation; catalogue, generic
+  Init, manifests, and proof-thread topology are already registered.
 - The `missing-native-script-tx` (Q17) and `withdrawn-reference-input`
   (Q19) siblings — Q17 in particular will reuse this family's harness
   extensions and should be planned against this document once it lands.

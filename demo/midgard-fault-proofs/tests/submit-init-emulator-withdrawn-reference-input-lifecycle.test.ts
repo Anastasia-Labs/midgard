@@ -21,7 +21,6 @@ import {
   makeWithdrawnReferenceInputEmulatorHarnessV1,
   publishWithdrawnReferenceInputReferenceScriptsV1,
   setupWithdrawnReferenceInputScenarioV1,
-  withdrawnReferenceInputRemovalCategoryV1,
 } from "./support/withdrawn-reference-input-emulator-v1.js";
 
 describe("withdrawn-reference-input emulator lifecycle", () => {
@@ -127,7 +126,7 @@ describe("withdrawn-reference-input emulator lifecycle", () => {
       deploymentInfo,
       network,
       signer: harness.proverSigner,
-      fraudCategory: withdrawnReferenceInputRemovalCategoryV1(harness),
+      fraudCategory: "withdrawnReferenceInput",
       fraudulentHeaderHash: scenario.setup.headerHash,
       awaitConfirmation: true,
       requireReferenceScripts: true,
@@ -185,7 +184,7 @@ describe("withdrawn-reference-input emulator lifecycle", () => {
         deploymentInfo,
         network,
         signer: harness.proverSigner,
-        fraudCategory: withdrawnReferenceInputRemovalCategoryV1(harness),
+        fraudCategory: "withdrawnReferenceInput",
         fraudulentHeaderHash: scenario.setup.headerHash,
         awaitConfirmation: true,
         requireReferenceScripts: true,

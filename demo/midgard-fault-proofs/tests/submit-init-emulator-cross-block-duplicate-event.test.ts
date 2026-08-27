@@ -17,7 +17,6 @@ import {
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
-  CROSS_BLOCK_DUPLICATE_EVENT_REMOVAL_DEPLOYMENT_ENTRY_V1,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
   makeFaultProofEmulatorHarnessV1,
@@ -98,7 +97,7 @@ const setupLifecycle = async (variant: Variant) => {
     },
   });
   const family = harness.contracts.crossBlockDuplicateEvent;
-  const category = harness.catalogue.extraCategories.crossBlockDuplicateEvent;
+  const category = harness.catalogue.categories.crossBlockDuplicateEvent;
   if (family === undefined || category === undefined) {
     throw new Error(
       "cross-block-duplicate-event emulator deployment is absent",
@@ -263,20 +262,7 @@ describe.each(["deposit", "withdrawal"] as const)(
         deploymentInfo: deployment,
         network,
         signer: scenario.proverSigner,
-        fraudCategory: {
-          name: "crossBlockDuplicateEvent",
-          categoryId: scenario.category.categoryId,
-          firstStepDeploymentEntry:
-            CROSS_BLOCK_DUPLICATE_EVENT_REMOVAL_DEPLOYMENT_ENTRY_V1,
-          firstStepScriptHash: scenario.family.steps[0].spendingScriptHash,
-          fraudProof: {
-            policyId: scenario.family.fraudProof.policyId,
-            spendingScriptHash:
-              scenario.contracts.fraudProof.spendingScriptHash,
-            spendingScriptAddress:
-              scenario.family.fraudProof.spendingScriptAddress,
-          },
-        },
+        fraudCategory: "crossBlockDuplicateEvent",
         fraudulentHeaderHash: scenario.setup.headerHash,
         requireReferenceScripts: true,
         validFrom: now > 120_000n ? now - 120_000n : 0n,

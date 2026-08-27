@@ -37,6 +37,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -152,12 +153,14 @@ export const submitFabricatedDepositStep04 = async ({
   contracts,
   signer,
   threadOutRef,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: FabricatedDepositContractsV1;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedDepositStep04Result> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -271,6 +274,14 @@ export const submitFabricatedDepositStep04 = async ({
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
+    .readFrom([
+      requireFabricatedReferenceScriptV1({
+        utxo: referenceScriptUtxo,
+        expectedScriptHash: contracts.steps[3].spendingScriptHash,
+        categoryLabel: FABRICATED_DEPOSIT_CATEGORY_LABEL,
+        stepIndex: 3,
+      }),
+    ])
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
     .pay.ToContract(
@@ -282,7 +293,6 @@ export const submitFabricatedDepositStep04 = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.steps[3].spendingScript)
     .attach.MintingPolicy(contracts.computationThread.mintingScript)
     .attach.MintingPolicy(contracts.fraudProof.mintingScript);
 
@@ -333,6 +343,7 @@ export const submitFabricatedDepositStep04 = async ({
 export const submitFabricatedDepositStep04FromFiles = async (
   config: SubmitFabricatedDepositStep04CliConfig & {
     readonly contracts: FabricatedDepositContractsV1;
+    readonly referenceScriptUtxo: UTxO;
   },
 ): Promise<SubmitFabricatedDepositStep04Result> => {
   const lucid = await makeLucidForSubmit(config);
@@ -342,6 +353,7 @@ export const submitFabricatedDepositStep04FromFiles = async (
     contracts: config.contracts,
     signer,
     threadOutRef: config.threadOutRef,
+    referenceScriptUtxo: config.referenceScriptUtxo,
     awaitConfirmation: config.awaitConfirmation,
   });
 };

@@ -224,7 +224,7 @@ const advanceStep03Thread = async ({
   readonly nextState: NativeScriptDecodingScanThreadStateV1;
   readonly buildArgs: (layout: Step03Layout) => NativeScriptDecodingStep03Args;
   readonly carriageUtxos: readonly UTxO[];
-  readonly referenceScriptUtxo: UTxO | undefined;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation: boolean;
 }): Promise<{ readonly txHash: string; readonly layout: Step03Layout }> => {
   signer.selectWallet(lucid);
@@ -267,15 +267,11 @@ const advanceStep03Thread = async ({
 
   const referenceInputs = [
     ...carriageUtxos,
-    ...(referenceScriptUtxo === undefined
-      ? []
-      : [
-          requireNativeScriptDecodingReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[2].spendingScriptHash,
-            stepIndex: 2,
-          }),
-        ]),
+    requireNativeScriptDecodingReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      expectedScriptHash: contracts.steps[2].spendingScriptHash,
+      stepIndex: 2,
+    }),
   ];
   const withInputs = lucid
     .newTx()
@@ -292,10 +288,7 @@ const advanceStep03Thread = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
-  const tx =
-    referenceScriptUtxo === undefined
-      ? paid.attach.SpendingValidator(contracts.steps[2].spendingScript)
-      : paid;
+  const tx = paid;
 
   const unsigned = await tx.complete({
     localUPLCEval: true,
@@ -390,7 +383,7 @@ export const submitNativeScriptDecodingStep03BindOutpoint = async ({
   readonly referenceScriptItemBytes?: Uint8Array;
   /** Force §8 tier 2 carriage publication. */
   readonly publishCarriage?: boolean;
-  readonly referenceScriptUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep03Result> => {
   const { threadUtxo, threadToken } =
@@ -603,7 +596,7 @@ export const submitNativeScriptDecodingStep03Scan = async ({
   /** The plan segment whose `controlBefore` is the thread's committed machine. */
   readonly segment: NativeScriptDecodingScanSegmentPlanV1;
   readonly referenceScriptItemBytes: Uint8Array;
-  readonly referenceScriptUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep03Result> => {
   const { threadUtxo, threadToken } =
@@ -696,7 +689,7 @@ export const submitNativeScriptDecodingStep03Verdict = async ({
   readonly verdict: NativeScriptDecodingVerdictPlanV1;
   /** Required whenever the verdict's refusing step reads a chunk window. */
   readonly referenceScriptItemBytes?: Uint8Array;
-  readonly referenceScriptUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep03Result> => {
   const { threadUtxo, threadToken } =
@@ -837,7 +830,7 @@ export const submitNativeScriptDecodingStep03BindOutOfDomain = async ({
   readonly nativeTxCompactCbor?: string;
   readonly subjectFieldInputs?: readonly MidgardTxInput[];
   readonly publishCarriage?: boolean;
-  readonly referenceScriptUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep03Result> => {
   const { threadUtxo, threadToken } =

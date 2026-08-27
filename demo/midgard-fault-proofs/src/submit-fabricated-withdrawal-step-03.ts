@@ -59,6 +59,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -262,6 +263,7 @@ export const submitFabricatedWithdrawalStep03 = async ({
   signer,
   threadOutRef,
   eventDatumCbor,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -269,6 +271,7 @@ export const submitFabricatedWithdrawalStep03 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly eventDatumCbor?: string;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedWithdrawalStep03Result> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -338,6 +341,14 @@ export const submitFabricatedWithdrawalStep03 = async ({
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
+    .readFrom([
+      requireFabricatedReferenceScriptV1({
+        utxo: referenceScriptUtxo,
+        expectedScriptHash: contracts.steps[2].spendingScriptHash,
+        categoryLabel: FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
+        stepIndex: 2,
+      }),
+    ])
     .pay.ToContract(
       contracts.steps[3].spendingScriptAddress,
       { kind: "inline", value: step04Datum },
@@ -346,8 +357,7 @@ export const submitFabricatedWithdrawalStep03 = async ({
         [threadToken.unit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.steps[2].spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
@@ -382,6 +392,7 @@ export const submitFabricatedWithdrawalStep03 = async ({
 export const submitFabricatedWithdrawalStep03FromFiles = async (
   config: SubmitFabricatedWithdrawalStep03CliConfig & {
     readonly contracts: FabricatedWithdrawalContractsV1;
+    readonly referenceScriptUtxo: UTxO;
   },
 ): Promise<SubmitFabricatedWithdrawalStep03Result> => {
   const [authenticContentJson, lucid] = await Promise.all([
@@ -401,6 +412,7 @@ export const submitFabricatedWithdrawalStep03FromFiles = async (
         ? undefined
         : parseSubmitFabricatedWithdrawalAuthenticContent(authenticContentJson)
             .eventDatumCbor,
+    referenceScriptUtxo: config.referenceScriptUtxo,
     awaitConfirmation: config.awaitConfirmation,
   });
 };

@@ -141,8 +141,8 @@ export const submitNativeScriptDecodingStep04 = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  /** Q3: the published step-04 reference script; inline-attached when absent. */
-  readonly referenceScriptUtxo?: UTxO;
+  /** Q3: the mandatory published step-04 reference script. */
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep04Result> => {
   const { threadUtxo, threadToken } =
@@ -260,16 +260,13 @@ export const submitNativeScriptDecodingStep04 = async ({
     .addSignerKey(signer.paymentKeyHash)
     .attach.MintingPolicy(contracts.computationThread.mintingScript)
     .attach.MintingPolicy(contracts.fraudProof.mintingScript);
-  const tx =
-    referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[3].spendingScript)
-      : base.readFrom([
-          requireNativeScriptDecodingReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[3].spendingScriptHash,
-            stepIndex: 3,
-          }),
-        ]);
+  const tx = base.readFrom([
+    requireNativeScriptDecodingReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      expectedScriptHash: contracts.steps[3].spendingScriptHash,
+      stepIndex: 3,
+    }),
+  ]);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (

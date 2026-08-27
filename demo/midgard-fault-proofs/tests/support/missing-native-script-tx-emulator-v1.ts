@@ -14,6 +14,7 @@ import {
   encodeMidgardTxInputCanonicalV1,
   faultProofStepRedeemerSchema,
   fieldOpeningV1ForField,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
@@ -54,7 +55,6 @@ import {
   requireMissingNativeScriptTxThreadUtxoV1,
 } from "../../src/missing-native-script-tx/submit-common-v1.js";
 import { submitMissingNativeScriptTxBindingV1 } from "../../src/missing-native-script-tx/submit-native-binding-v1.js";
-import type { RemoveFraudulentBlockExplicitCategory } from "../../src/remove-fraudulent-block.js";
 import { resolveProverSigner } from "../../src/runtime.js";
 import type { SubmitStep01TxInclusion } from "../../src/submit-step-01.js";
 import { selectFeeInput } from "../../src/submit-step-01.js";
@@ -70,8 +70,6 @@ import {
   alignUnixTimeToEmulatorSlotBoundary,
   makeFaultProofEmulatorHarnessV1,
   makeNativeTx,
-  MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  MISSING_NATIVE_SCRIPT_TX_TEST_CATEGORY_ID_V1,
   network,
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
@@ -142,12 +140,15 @@ export const makeMissingNativeScriptTxEmulatorHarnessV1 = async () => {
     },
   });
   const family = harness.contracts.missingNativeScriptTx;
-  const category = harness.catalogue.extraCategories.missingNativeScriptTx;
+  const category = harness.catalogue.categories.missingNativeScriptTx;
   if (family === undefined || category === undefined) {
     throw new Error("Harness did not build missing-native-script-tx");
   }
-  if (category.categoryId !== MISSING_NATIVE_SCRIPT_TX_TEST_CATEGORY_ID_V1) {
-    throw new Error("Unexpected missing-native-script-tx test category id");
+  if (
+    category.categoryId !==
+    FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.missingNativeScriptTx
+  ) {
+    throw new Error("Unexpected missing-native-script-tx category id");
   }
   const outsider = generateEmulatorAccount({ lovelace: 0n });
   const outsiderLucid = await Lucid(harness.emulator, "Custom");
@@ -289,23 +290,6 @@ export const publishMissingNativeScriptTxReferenceScriptsV1 = async ({
   }
   return published as unknown as readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO];
 };
-
-export const missingNativeScriptTxRemovalCategoryV1 = (
-  harness: Awaited<
-    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarnessV1>
-  >,
-): RemoveFraudulentBlockExplicitCategory => ({
-  name: "missingNativeScriptTx",
-  categoryId: harness.category.categoryId,
-  firstStepDeploymentEntry:
-    MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  firstStepScriptHash: harness.family.steps[0].spendingScriptHash,
-  fraudProof: {
-    policyId: harness.family.fraudProof.policyId,
-    spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-    spendingScriptAddress: harness.family.fraudProof.spendingScriptAddress,
-  },
-});
 
 export const fundMissingNativeScriptTxOutsiderV1 = async (
   harness: Awaited<

@@ -1,5 +1,13 @@
 # Withdrawn-reference-input fault: offchain implementation plan (v1)
 
+> **Registration update (2026-08-26):** this family is now registered as
+> `withdrawnReferenceInput` at `00000010`. Generic Init,
+> catalogue/inspection, node/core deployment identity, watcher proof-thread
+> topology, and all three mandatory authenticated reference scripts are wired.
+> Family-specific CLI, autonomous watcher detector/prover mounting, preprod,
+> and live evidence remain open. The identity change requires fresh
+> genesis/redeployment; there is no migration or compatibility path.
+
 Plan date: 2026-08-26. Audited against branch
 `colll78/canonical-v1-watcher-l1-source-checkpoint` (HEAD `a1724e63`).
 Task: **Q19** (`GOAL_SPEC.md` §9.3), REFERENCE side only. Catalogue row:
@@ -13,8 +21,8 @@ same working tree as this document. The spend-side sibling
 The parity bar is the `native-script-decoding` family (row 18) as planned in
 `native-script-decoding-offchain-plan-v1.md` and built on this branch: a
 per-family module directory with explicit parent-owned contracts records,
-per-step submitters plus init and cancel, a pre-registration emulator
-harness under a reserved test category id, and lucid-evolution emulator
+per-step submitters plus init and cancel, canonical catalogue harness wiring,
+and lucid-evolution emulator
 suites in both polarities — through fraud-proof mint **and**
 fraudulent-commitment removal. Everything that family's plan decided
 generically is inherited here, not re-decided.
@@ -30,19 +38,12 @@ Standing rulings this plan implements and never re-opens:
   the full lifecycle, and an adversarial prover against an honest
   commitment is refused **on-chain at the exact check**, not merely by
   offchain guards.
-- **Pre-registration explicit-record discipline:** pre-registration
-  families must not route their ids through the deployment manifest —
-  `parseFraudProofCatalogueDeploymentInfo` silently drops non-canonical
-  keys (`catalogue-status.md` §3). Contracts records are explicit and
-  parent-owned; the SDK catalogue
-  (`FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`), `submit-init.ts`'s category
-  union, and `bin.ts` are untouched until the registration wave.
-- **Reserved ids are expected, not promised** (decoding plan §10 Q2): the
-  test-harness constant records the expected next-free index; the
-  production id is written only by the registration wave, which re-verifies
-  "next free after standing reservations" at allocation time.
+- **Explicit-record discipline:** contracts remain explicit while
+  `withdrawnReferenceInput` is canonically routed through catalogue and
+  deployment manifests. Family-specific CLI remains separate.
+- **Canonical id:** `00000010` is the production category id.
 - **Removal via explicit category:** `remove-fraudulent-block.ts`'s
-  `RemoveFraudulentBlockExplicitCategory` seam lets a pre-registration
+  `RemoveFraudulentBlockExplicitCategory` seam lets the
   family drive removal with every fail-closed check intact and **zero**
   further changes to that module. The fraud-proof token is permanent by
   design (the state-queue node NFT burns; the token survives as evidence
@@ -124,22 +125,16 @@ roots the validator can never verify.
 
 ### 2.1 Category id
 
-Reserved test category id: **`00000010`** (`categoryId(16)`, 4-byte BE hex
-per `tests/support/emulator/catalogue.ts`). Standing reservations at plan
-date: `0000000b` fabricated-deposit, `0000000c` fabricated-withdrawal,
-`0000000d` native-script-decoding, `0000000e` missing-signature (planned),
-`0000000f` missing-native-script-tx (planned, parallel wave). The id is
-expected, not promised (preamble); it appears **only** in emulator wiring
-(`harness.ts` extra-categories sidecar) and never in the deployment
-manifest, the SDK catalogue order, or `bin.ts`.
+Canonical category id: **`00000010`** (`categoryId(16)`, 4-byte BE hex).
+The SDK catalogue, generic Init, deployment manifests/inspection, and watcher
+proof-thread topology bind it to the applied step-01 hash.
 
-### 2.2 What registration touches (deferred to the registration wave)
+### 2.2 Registered deployment surface
 
-Exactly the decoding family's list, unchanged in kind: append to
-`FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`, extend `submit-init.ts`'s category
-union, add `bin.ts` verbs, move the removal deployment entry from the
-test-support sidecar to the canonical manifest, and re-verify the id
-allocation. None of that lands in this wave.
+`FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`, generic `submit-init.ts`, canonical
+deployment manifests, inspection, and watcher proof-thread topology are wired.
+Family-specific `bin.ts` verbs and autonomous watcher detector/prover mounting
+remain open.
 
 ### 2.3 Script deployment: reference scripts (owner ruling 2026-08-26)
 
@@ -240,8 +235,7 @@ Mirrors `native-script-decoding-v1.ts` in shape and
 
 ### 4.2 Family modules (`demo/midgard-fault-proofs/src/withdrawn-reference-input/`)
 
-Decoding-style directory (the pre-registration precedent; flat legacy files
-are for registered families):
+Decoding-style directory (module organization is independent of registration):
 
 | Module | Role |
 | --- | --- |
@@ -263,7 +257,8 @@ typed reasons (`withdrawal-not-valid`, `no-matching-reference-input`,
 `wrong-block-ordering` is unobservable from a single block and therefore
 out of scope of classification here — callers supply same-block data by
 construction), and emits the three-step evidence record. Watcher/CLI
-adapters are registration-wave work (§2.2), same as decoding.
+adapters remain operational work (§2.2), same as decoding; topology
+registration alone does not mount them.
 
 ## 5. Carriage frontiers
 
@@ -397,7 +392,7 @@ committed conflict:
 - `tests/support/emulator/removal-deployment.ts`:
   `WITHDRAWN_REFERENCE_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofWithdrawnReferenceInput"` + conditional entry spread
-  (test-support sidecar only; never the canonical manifest).
+  (the canonical manifest now carries the production entry too).
 
 ## 9. Sequencing
 
@@ -413,11 +408,11 @@ No onchain changes. Blueprint already built with the patched fork.
 
 | # | Decision | Rationale |
 | --- | --- | --- |
-| D1 | Test category id `00000010` = `categoryId(16)`, expected-not-promised, emulator-wiring only | Assigned by the orchestrator; standing reservation discipline (§2.1) |
+| D1 | Canonical category id `00000010` = `categoryId(16)` | Production catalogue/deployment identity (§2.1) |
 | D2 | Reference scripts for all three steps | Owner ruling 2026-08-26; sizes in §2.3 are informational only |
 | D3 | Same-block corner semantics (§3.2/§7.2): later-block never routes here; earlier-block routes to `no-reference-input`; invalid withdrawal refused in both planes | Matches the validator's decisive checks exactly; most canonical-V1-consistent reading of §5.1.16 |
 | D4 | Step-03 `withdrawal_membership` rides the redeemer; frontier F2 escalation clause for pathological `WithdrawalInfo` sizes | The onchain wire type admits nothing else; realistic sizes are small; growing a carriage arm is an owner decision |
-| D5 | Decoding-style module directory, not flat legacy files | Pre-registration precedent; flat style is the registered-family legacy |
+| D5 | Decoding-style module directory, not flat legacy files | Module organization is not a registration signal |
 | D6 | Plan + implementation land in one wave (unlike Q16's planning-only doc) | On-chain side is already REAL and complete; nothing blocks execution |
 | D7 | MPF leaves strictly via `committedWithdrawalKeyBytesV1`/`ValueBytesV1` | `cbor.serialise` parity (§1); node-canonical CBOR would build unverifiable roots |
 | D8 | `expectOnchainRefusalV1` imported from the decoding support module rather than hoisted | Smallest diff now; the Q16 plan's D7 already records the eventual hoist |
@@ -426,7 +421,7 @@ No onchain changes. Blueprint already built with the patched fork.
 
 - The spend-side `withdrawn-input` sibling (row 10) — separate parallel
   wave; nothing here designs or touches it.
-- Registration (§2.2), CLI verbs, watcher adapters.
+- Family-specific CLI verbs and autonomous watcher adapters (§2.2).
 - Onchain changes of any kind.
 - Cross-block routing implementation (recorded as classification rules
   only; the watcher wave owns routing).

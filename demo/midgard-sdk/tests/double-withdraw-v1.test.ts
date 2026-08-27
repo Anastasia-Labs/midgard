@@ -7,6 +7,8 @@ import {
   committedWithdrawalKeyBytesV1,
   committedWithdrawalValueBytesV1,
   type DoubleWithdrawSourceProofV1,
+  type DoubleWithdrawStep02Args,
+  DoubleWithdrawStep02Args as DoubleWithdrawStep02ArgsSchema,
   type DoubleWithdrawStep02State,
   DoubleWithdrawStep02State as DoubleWithdrawStep02StateSchema,
   doubleWithdrawStep02StateV1,
@@ -69,6 +71,21 @@ const STATE: DoubleWithdrawStep02State = doubleWithdrawStep02StateV1({
 });
 
 describe("double-withdraw v1 codec twin", () => {
+  it("pins the canonical terminal argument prefix before family fields", () => {
+    const args: DoubleWithdrawStep02Args = {
+      input_index: 11n,
+      output_index: 12n,
+      fraud_proof_mint_redeemer_index: 13n,
+      hub_ref_input_index: 14n,
+      state_queue_node_ref_input_index: 15n,
+      committed_withdrawal: proof(SECOND_ID, PAYABLE_INFO),
+    };
+    const encoded = Data.to(args, DoubleWithdrawStep02ArgsSchema);
+
+    expect(encoded).toMatch(/^d8799f0b0c0d0e0f/u);
+    expect(Data.from(encoded, DoubleWithdrawStep02ArgsSchema)).toEqual(args);
+  });
+
   it("encodes the fixed-size step-02 state with the Aiken constructor layout", () => {
     const expected =
       `d8799f581c${HEADER_HASH}` +

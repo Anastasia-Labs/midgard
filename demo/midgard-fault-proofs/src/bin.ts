@@ -4,7 +4,10 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { formatUnknownError } from "@al-ft/midgard-core";
-import { assertSecurityGradeEvidenceV1 } from "@al-ft/midgard-sdk";
+import {
+  assertSecurityGradeEvidenceV1,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+} from "@al-ft/midgard-sdk";
 
 import {
   diagnosticEvidenceBannerV1,
@@ -145,6 +148,8 @@ export type ParsedArgs = {
   readonly dryRun: boolean;
 };
 
+const fraudCategoryUsage = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.join("|");
+
 const usage = `Usage:
   prepare-* security-grade execution consumes CanonicalBlockEvidenceV1 through executeCanonicalPrepareCommandV1.
   --midgard-node-url, --transactions-file, and --sample-double-spend are labelled diagnostics only and are rejected before proof construction.
@@ -152,7 +157,7 @@ const usage = `Usage:
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
   midgard-fault-proofs prepare-transition-trace --da-payload-envelope <retained-da-envelope.cbor(.json)> --header-hash <committed 28-byte header hash, hex> [--output-dir <dir>]
   midgard-fault-proofs submit-transition-trace-proof --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --transition-fault-proof <proof.cbor(.json)> [--reference-input <txHash#outputIndex> ...] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|validationTraceDispute|daHashPreimage|noReferenceInput|referenceInputNoIdx|invalidSignature>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <${fraudCategoryUsage}>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx1-inputs <raw-input-cbor-list.json> --native-tx-compact <tx1-compact.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -192,7 +197,7 @@ const usage = `Usage:
   midgard-fault-proofs submit-reference-input-no-idx-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --outputs-preimage <outputs-preimage.json> --native-tx-compact <producing-tx-compact.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-invalid-signature-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> --witness-set-compact <invalid-signature-witness-set-compact.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-invalid-signature-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --addr-tx-wits-preimage <invalid-signature-addr-tx-wits-preimage.json> --native-tx-compact <native-tx-compact.json> --witness-set-compact <invalid-signature-witness-set-compact.json> --bad-addr-tx-wit-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|validationTraceDispute|daHashPreimage|noReferenceInput|referenceInputNoIdx|invalidSignature>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <${fraudCategoryUsage}>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
 `;
 
 export const parseFraudCategory = (
@@ -201,23 +206,14 @@ export const parseFraudCategory = (
   if (value === undefined) {
     return undefined;
   }
-  if (
-    value === "doubleSpend" ||
-    value === "invalidRange" ||
-    value === "transitionTrace" ||
-    value === "nonExistentInput" ||
-    value === "nonExistentInputNoIndex" ||
-    value === "zeroInput" ||
-    value === "validationTraceDispute" ||
-    value === "daHashPreimage" ||
-    value === "noReferenceInput" ||
-    value === "referenceInputNoIdx" ||
-    value === "invalidSignature"
-  ) {
-    return value;
+  const category = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.find(
+    (candidate) => candidate === value,
+  );
+  if (category !== undefined) {
+    return category;
   }
   throw new Error(
-    '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "nonExistentInputNoIndex", "zeroInput", "validationTraceDispute", "daHashPreimage", "noReferenceInput", "referenceInputNoIdx", or "invalidSignature".',
+    `--fraud-category must be one of ${FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((candidate) => `"${candidate}"`).join(", ")}.`,
   );
 };
 

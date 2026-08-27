@@ -7,7 +7,7 @@ import {
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
-  WITHDRAWAL_MISTAG_TEST_CATEGORY_ID_V1,
+  WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -77,7 +77,7 @@ export const submitWithdrawalMistagCancel = async ({
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
-    categoryId: WITHDRAWAL_MISTAG_TEST_CATEGORY_ID_V1,
+    categoryId: WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1,
     categoryLabel: WITHDRAWAL_MISTAG_CATEGORY_LABEL,
   });
   if (threadUtxo.datum == null)

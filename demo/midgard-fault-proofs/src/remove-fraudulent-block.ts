@@ -4,22 +4,8 @@ import {
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
   ActiveOperatorMintRedeemer,
   type ActiveOperatorMintRedeemer as ActiveOperatorMintRedeemerData,
-  buildDaHashPreimageFaultProofContracts,
-  buildDoubleSpendFaultProofContracts,
-  buildInputNoIdxFaultProofContracts,
-  buildInvalidRangeFaultProofContracts,
-  buildInvalidSignatureFaultProofContracts,
-  buildNonExistentInputFaultProofContracts,
-  buildNoReferenceInputFaultProofContracts,
-  buildReferenceInputNoIdxFaultProofContracts,
-  buildTransitionTraceFaultProofContracts,
-  buildValidationTraceDisputeFaultProofContracts,
-  buildZeroInputFaultProofContracts,
-  type DaHashPreimageFaultProofContracts,
-  type DoubleSpendFaultProofContracts,
   encodeLinkedListNodeView,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
-  type FraudProofCatalogueCategoryName,
   FraudProofTokenDatum,
   type FraudProverRewardPlan,
   getHeaderV1FromStateQueueDatum,
@@ -28,16 +14,9 @@ import {
   HUB_ORACLE_ASSET_NAME,
   incompleteRemoveFraudulentBlocksLinkTxProgram,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
-  type InputNoIdxFaultProofContracts,
-  type InvalidRangeFaultProofContracts,
-  type InvalidSignatureFaultProofContracts,
   type LinkedListNodeView,
-  type NonExistentInputFaultProofContracts,
-  type NoReferenceInputFaultProofContracts,
   type OutputReference,
   outputReferenceFromUTxO,
-  parseFaultProofBlueprint,
-  type ReferenceInputNoIdxFaultProofContracts,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -62,10 +41,7 @@ import {
   type StateQueueRedeemer as StateQueueRedeemerData,
   type StateQueueRemoveReferenceScriptUTxOs,
   type StateQueueUTxO,
-  type TransitionTraceFaultProofContracts,
   utxoToStateQueueUTxO,
-  type ValidationTraceDisputeFaultProofContracts,
-  type ZeroInputFaultProofContracts,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -99,8 +75,10 @@ import {
   requireMatchingScriptHash,
   requireSingletonUtxo,
   type ResolvedProverSigner,
+  resolveFaultProofDeploymentContracts,
   resolveProverSigner,
   type SubmitProviderConfig,
+  type SupportedFaultProofCategoryName,
 } from "./runtime.js";
 import { selectFeeInput } from "./submit-step-01.js";
 
@@ -280,67 +258,11 @@ export type RemoveFraudulentBlockCliConfig = SubmitProviderConfig & {
   readonly stateQueueLeaseTtlMs?: number;
 };
 
-export type RemoveFraudulentBlockFraudCategory = Extract<
-  FraudProofCatalogueCategoryName,
-  | "doubleSpend"
-  | "nonExistentInput"
-  | "invalidRange"
-  | "transitionTrace"
-  | "zeroInput"
-  | "validationTraceDispute"
-  | "daHashPreimage"
-  | "nonExistentInputNoIndex"
-  | "noReferenceInput"
-  | "referenceInputNoIdx"
-  | "invalidSignature"
->;
+export type RemoveFraudulentBlockFraudCategory =
+  SupportedFaultProofCategoryName;
 
-/**
- * A fraud category that predates its catalogue registration (the Q39/Q40
- * fabricated families, #635 native-script-decoding). These families have no
- * SDK contract-chain builder and no category id in any deployment manifest
- * yet, so removal cannot resolve them the canonical way; per the families'
- * submitter convention the caller supplies the already-resolved facts
- * instead, and every fail-closed check the canonical path runs still runs:
- * the shared fraud-proof pair is checked against the
- * `fraudProofMint`/`fraudProofSpend` deployment entries, the step-01 hash
- * against the named deployment entry, and the category id against collisions
- * with every canonical registered id. The on-chain removal handler is
- * category-agnostic — it authenticates the fraud-proof reference input by
- * policy id and reads the header hash off the asset-name suffix — so no
- * category-specific script participates in the removal transaction itself.
- */
-export type RemoveFraudulentBlockExplicitCategory = {
-  /** Category label used in failure messages and the result payload. */
-  readonly name: string;
-  /**
-   * The 4-byte hex category id the family's computation thread and
-   * fraud-proof token were minted under.
-   */
-  readonly categoryId: string;
-  /**
-   * Deployment-manifest entry whose `scriptHash` pins the family's step-01
-   * spending script.
-   */
-  readonly firstStepDeploymentEntry: string;
-  /** The step-01 spending-script hash of the already-resolved family chain. */
-  readonly firstStepScriptHash: string;
-  /** The shared fraud-proof pair the family chain was parameterized with. */
-  readonly fraudProof: {
-    readonly policyId: string;
-    readonly spendingScriptHash: string;
-    readonly spendingScriptAddress: string;
-  };
-};
-
-/**
- * A canonical removable category name, or the label of an explicit
- * pre-registration category. The `string & {}` half keeps the canonical
- * literals in editor completion without narrowing away explicit labels.
- */
 export type RemoveFraudulentBlockCategoryLabel =
-  | RemoveFraudulentBlockFraudCategory
-  | (string & {});
+  RemoveFraudulentBlockFraudCategory;
 
 export type StateQueueMutationLease = {
   readonly token: string;
@@ -592,76 +514,6 @@ const requireDeploymentScript = (
   return script;
 };
 
-/**
- * Explicit-record variant of the category dispatch below, for categories that
- * predate registration (see {@link RemoveFraudulentBlockExplicitCategory}).
- * Runs the same three fail-closed manifest checks the canonical path runs —
- * the shared fraud-proof pair and the family's step-01 hash — and, since the
- * category id is caller-supplied rather than read out of the manifest,
- * additionally refuses an id that collides with any canonical registered
- * category, so an explicit record can never shadow one.
- */
-const buildExplicitCategoryRemovalContracts = ({
-  deploymentInfo,
-  network,
-  explicitCategory,
-}: {
-  readonly deploymentInfo: ContractDeploymentInfo;
-  readonly network: Network;
-  readonly explicitCategory: RemoveFraudulentBlockExplicitCategory;
-}): RemoveFraudulentBlockContracts => {
-  const hubOraclePolicyId = requireDeploymentScriptHash(
-    deploymentInfo,
-    "hubOracleMint",
-  );
-  requireMatchingScriptHash({
-    label: "fraudProofMint policy",
-    deployed: requireDeploymentScriptHash(deploymentInfo, "fraudProofMint"),
-    derived: explicitCategory.fraudProof.policyId,
-  });
-  requireMatchingScriptHash({
-    label: "fraudProofSpend script",
-    deployed: requireDeploymentScriptHash(deploymentInfo, "fraudProofSpend"),
-    derived: explicitCategory.fraudProof.spendingScriptHash,
-  });
-  requireMatchingScriptHash({
-    label: `${explicitCategory.firstStepDeploymentEntry} step-01 script`,
-    deployed: requireDeploymentScriptHash(
-      deploymentInfo,
-      explicitCategory.firstStepDeploymentEntry,
-    ),
-    derived: explicitCategory.firstStepScriptHash,
-  });
-  const categoryId = parseHex(
-    explicitCategory.categoryId,
-    `${explicitCategory.name} category id`,
-    FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
-  );
-  const canonicalCategories: Readonly<
-    Partial<Record<string, { readonly categoryId: string }>>
-  > =
-    deploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue?.categories ??
-    {};
-  for (const [canonicalName, canonicalCategory] of Object.entries(
-    canonicalCategories,
-  )) {
-    if (canonicalCategory?.categoryId === categoryId) {
-      throw new Error(
-        `Explicit category ${explicitCategory.name} id ${categoryId} collides with registered category ${canonicalName}.`,
-      );
-    }
-  }
-  return assembleRemovalContracts({
-    deploymentInfo,
-    network,
-    hubOraclePolicyId,
-    fraudProofPolicyId: explicitCategory.fraudProof.policyId,
-    fraudProofAddress: explicitCategory.fraudProof.spendingScriptAddress,
-    fraudCategoryId: categoryId,
-    fraudCategory: explicitCategory.name,
-  });
-};
-
 const buildRemovalContracts = async ({
   blueprint,
   deploymentInfo,
@@ -669,242 +521,25 @@ const buildRemovalContracts = async ({
   fraudCategory,
 }: {
   readonly blueprint: unknown;
-  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly deploymentInfo: unknown;
   readonly network: Network;
-  readonly fraudCategory:
-    | RemoveFraudulentBlockFraudCategory
-    | RemoveFraudulentBlockExplicitCategory;
+  readonly fraudCategory: RemoveFraudulentBlockFraudCategory;
 }): Promise<RemoveFraudulentBlockContracts> => {
-  if (typeof fraudCategory !== "string") {
-    return buildExplicitCategoryRemovalContracts({
-      deploymentInfo,
-      network,
-      explicitCategory: fraudCategory,
-    });
-  }
-  const hubOraclePolicyId = requireDeploymentScriptHash(
-    deploymentInfo,
-    "hubOracleMint",
-  );
-  const fraudProofCataloguePolicyId = requireDeploymentScriptHash(
-    deploymentInfo,
-    "fraudProofCatalogueMint",
-  );
-  const parsedBlueprint = parseFaultProofBlueprint(blueprint);
-  let categoryContracts:
-    | DoubleSpendFaultProofContracts
-    | NonExistentInputFaultProofContracts
-    | InvalidRangeFaultProofContracts
-    | TransitionTraceFaultProofContracts
-    | ZeroInputFaultProofContracts
-    | ValidationTraceDisputeFaultProofContracts
-    | DaHashPreimageFaultProofContracts
-    | InputNoIdxFaultProofContracts
-    | NoReferenceInputFaultProofContracts
-    | ReferenceInputNoIdxFaultProofContracts
-    | InvalidSignatureFaultProofContracts;
-  let expectedCategoryDeploymentEntry:
-    | "fraudProofDoubleSpend"
-    | "fraudProofNonExistentInput"
-    | "fraudProofInvalidRange"
-    | "fraudProofTransitionTrace"
-    | "fraudProofZeroInput"
-    | "validationTraceDispute"
-    | "fraudProofDaHashPreimage"
-    | "fraudProofNonExistentInputNoIndex"
-    | "fraudProofNoReferenceInput"
-    | "fraudProofReferenceInputNoIdx"
-    | "fraudProofInvalidSignature";
-  let derivedCategoryFirstStepHash: string;
-  if (fraudCategory === "doubleSpend") {
-    const doubleSpendContracts = await Effect.runPromise(
-      buildDoubleSpendFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = doubleSpendContracts;
-    expectedCategoryDeploymentEntry = "fraudProofDoubleSpend";
-    derivedCategoryFirstStepHash =
-      doubleSpendContracts.doubleSpend.firstStep.spendingScriptHash;
-  } else if (fraudCategory === "nonExistentInput") {
-    const nonExistentInputContracts = await Effect.runPromise(
-      buildNonExistentInputFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = nonExistentInputContracts;
-    expectedCategoryDeploymentEntry = "fraudProofNonExistentInput";
-    derivedCategoryFirstStepHash =
-      nonExistentInputContracts.nonExistentInput.firstStep.spendingScriptHash;
-  } else if (fraudCategory === "invalidRange") {
-    const invalidRangeContracts = await Effect.runPromise(
-      buildInvalidRangeFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = invalidRangeContracts;
-    expectedCategoryDeploymentEntry = "fraudProofInvalidRange";
-    derivedCategoryFirstStepHash =
-      invalidRangeContracts.invalidRange.firstStep.spendingScriptHash;
-  } else if (fraudCategory === "transitionTrace") {
-    const transitionTraceContracts = await Effect.runPromise(
-      buildTransitionTraceFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = transitionTraceContracts;
-    expectedCategoryDeploymentEntry = "fraudProofTransitionTrace";
-    derivedCategoryFirstStepHash =
-      transitionTraceContracts.transitionTrace.firstStep.spendingScriptHash;
-  } else if (fraudCategory === "validationTraceDispute") {
-    const validationTraceDisputeContracts = await Effect.runPromise(
-      buildValidationTraceDisputeFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = validationTraceDisputeContracts;
-    expectedCategoryDeploymentEntry = "validationTraceDispute";
-    derivedCategoryFirstStepHash =
-      validationTraceDisputeContracts.validationTraceDispute.firstStep
-        .spendingScriptHash;
-  } else if (fraudCategory === "nonExistentInputNoIndex") {
-    const inputNoIdxContracts = await Effect.runPromise(
-      buildInputNoIdxFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = inputNoIdxContracts;
-    expectedCategoryDeploymentEntry = "fraudProofNonExistentInputNoIndex";
-    derivedCategoryFirstStepHash =
-      inputNoIdxContracts.nonExistentInputNoIndex.firstStep.spendingScriptHash;
-  } else if (fraudCategory === "daHashPreimage") {
-    const daHashPreimageContracts = await Effect.runPromise(
-      buildDaHashPreimageFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = daHashPreimageContracts;
-    expectedCategoryDeploymentEntry = "fraudProofDaHashPreimage";
-    derivedCategoryFirstStepHash =
-      daHashPreimageContracts.daHashPreimage.firstStep.spendingScriptHash;
-  } else if (fraudCategory === "noReferenceInput") {
-    const noReferenceInputContracts = await Effect.runPromise(
-      buildNoReferenceInputFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = noReferenceInputContracts;
-    expectedCategoryDeploymentEntry = "fraudProofNoReferenceInput";
-    derivedCategoryFirstStepHash =
-      noReferenceInputContracts.noReferenceInput.firstStep.spendingScriptHash;
-  } else if (fraudCategory === "referenceInputNoIdx") {
-    const referenceInputNoIdxContracts = await Effect.runPromise(
-      buildReferenceInputNoIdxFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = referenceInputNoIdxContracts;
-    expectedCategoryDeploymentEntry = "fraudProofReferenceInputNoIdx";
-    derivedCategoryFirstStepHash =
-      referenceInputNoIdxContracts.referenceInputNoIdx.firstStep
-        .spendingScriptHash;
-  } else if (fraudCategory === "invalidSignature") {
-    const invalidSignatureContracts = await Effect.runPromise(
-      buildInvalidSignatureFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = invalidSignatureContracts;
-    expectedCategoryDeploymentEntry = "fraudProofInvalidSignature";
-    derivedCategoryFirstStepHash =
-      invalidSignatureContracts.invalidSignature.firstStep.spendingScriptHash;
-  } else {
-    const zeroInputContracts = await Effect.runPromise(
-      buildZeroInputFaultProofContracts({
-        blueprint: parsedBlueprint,
-        network,
-        hubOraclePolicyId,
-        fraudProofCataloguePolicyId,
-      }),
-    );
-    categoryContracts = zeroInputContracts;
-    expectedCategoryDeploymentEntry = "fraudProofZeroInput";
-    derivedCategoryFirstStepHash =
-      zeroInputContracts.zeroInput.firstStep.spendingScriptHash;
-  }
-  requireMatchingScriptHash({
-    label: "fraudProofMint policy",
-    deployed: requireDeploymentScriptHash(deploymentInfo, "fraudProofMint"),
-    derived: categoryContracts.fraudProof.policyId,
-  });
-  requireMatchingScriptHash({
-    label: "fraudProofSpend script",
-    deployed: requireDeploymentScriptHash(deploymentInfo, "fraudProofSpend"),
-    derived: categoryContracts.fraudProof.spendingScriptHash,
-  });
-  requireMatchingScriptHash({
-    label: `${expectedCategoryDeploymentEntry} step-01 script`,
-    deployed: requireDeploymentScriptHash(
-      deploymentInfo,
-      expectedCategoryDeploymentEntry,
-    ),
-    derived: derivedCategoryFirstStepHash,
-  });
-  const categoryId = (
-    deploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue?.categories as
-      | Readonly<
-          Partial<
-            Record<
-              RemoveFraudulentBlockFraudCategory,
-              { readonly categoryId: string }
-            >
-          >
-        >
-      | undefined
-  )?.[fraudCategory]?.categoryId;
-  if (categoryId === undefined) {
-    throw new Error(
-      `Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.categories.${fraudCategory}.`,
-    );
-  }
-
-  return assembleRemovalContracts({
+  const resolved = await resolveFaultProofDeploymentContracts({
+    blueprint,
     deploymentInfo,
     network,
-    hubOraclePolicyId,
-    fraudProofPolicyId: categoryContracts.fraudProof.policyId,
-    fraudProofAddress: categoryContracts.fraudProof.spendingScriptAddress,
-    fraudCategoryId: categoryId,
+    categoryName: fraudCategory,
+    requireFraudProofSpend: true,
+  });
+
+  return assembleRemovalContracts({
+    deploymentInfo: resolved.deploymentInfo,
+    network,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    fraudProofPolicyId: resolved.contracts.fraudProof.policyId,
+    fraudProofAddress: resolved.contracts.fraudProof.spendingScriptAddress,
+    fraudCategoryId: resolved.category.categoryId,
     fraudCategory,
   });
 };
@@ -2392,14 +2027,8 @@ export const submitRemoveFraudulentBlock = async ({
   readonly deploymentInfo: unknown;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
-  /**
-   * A canonical removable category, or — for a family that predates its
-   * catalogue registration — the explicit already-resolved record
-   * ({@link RemoveFraudulentBlockExplicitCategory}).
-   */
-  readonly fraudCategory?:
-    | RemoveFraudulentBlockFraudCategory
-    | RemoveFraudulentBlockExplicitCategory;
+  /** Canonical catalogue category resolved from the production manifest. */
+  readonly fraudCategory?: RemoveFraudulentBlockFraudCategory;
   readonly fraudulentHeaderHash: string;
   readonly awaitConfirmation?: boolean;
   readonly requireReferenceScripts?: boolean;
@@ -2422,7 +2051,7 @@ export const submitRemoveFraudulentBlock = async ({
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
   const contracts = await buildRemovalContracts({
     blueprint,
-    deploymentInfo: parsedDeploymentInfo,
+    deploymentInfo,
     network,
     fraudCategory,
   });

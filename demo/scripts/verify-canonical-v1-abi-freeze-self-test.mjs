@@ -225,7 +225,7 @@ mustReject(
 
 mustReject(
   "catalogue category-id range broken",
-  /- catalogueBinding\.categoryIds must be the dense 4-byte range 00000000\.\.0000000a/u,
+  /- catalogueBinding\.categoryIds must be the dense 4-byte range 00000000\.\.00000018/u,
   (candidate) => {
     candidate.catalogueBinding.categoryIds[10] = "0000000b";
   },
@@ -233,7 +233,7 @@ mustReject(
 
 mustReject(
   "validator directory dropped from the catalogue binding",
-  /- catalogueBinding\.validatorDirectories must equal the 20 directories the index carries/u,
+  /- catalogueBinding\.validatorDirectories must equal the 26 directories the index carries/u,
   (candidate) => {
     candidate.catalogueBinding.validatorDirectories =
       candidate.catalogueBinding.validatorDirectories.filter(
@@ -248,9 +248,9 @@ mustReject(
 
 mustReject(
   "understated blueprint validator count",
-  /- blueprintIdentity\.validatorCount is 443 but the built blueprint measures 444/u,
+  /- blueprintIdentity\.validatorCount is 479 but the built blueprint measures 480/u,
   (candidate) => {
-    candidate.blueprintIdentity.validatorCount = 443;
+    candidate.blueprintIdentity.validatorCount = 479;
   },
 );
 
@@ -290,7 +290,7 @@ mustReject(
   "IG2 dimension claimed PASS while citing nothing",
   /- min-fee\.tooling is PASS and must cite at least one surface it was measured from/u,
   (candidate) => {
-    family(candidate, "min-fee").evidence.tooling.status = "PASS";
+    family(candidate, "min-fee").evidence.tooling.paths = [];
   },
 );
 
@@ -312,7 +312,7 @@ mustReject(
 
 mustReject(
   "family inventory truncated",
-  /- ig2ProofFamilies\.families must enumerate exactly the 20 directories that carry verifier logic/u,
+  /- ig2ProofFamilies\.families must enumerate exactly the 26 directories that carry verifier logic/u,
   (candidate) => {
     candidate.ig2ProofFamilies.families.pop();
   },
@@ -322,17 +322,13 @@ mustReject(
 /* 19-21: drift findings, waivers and the freeze status itself.        */
 /* ------------------------------------------------------------------ */
 
-// #550 recaptured the F20 inventory and the seeded defect was an invented
-// finding, because the gate then measured none. The #617 regeneration puts a
-// real one back: #482's two `fabricated-*` directories are in the index but
-// not in the reconciliation's binding inventory, so the gate measures
-// `f20-validator-directories-behind-the-index`. The seeded defect is therefore
-// the hiding direction again — an artifact that deletes a finding the tree
-// does support. Both directions are the same equality, so the surviving
-// mutation still measures it.
+// The canonical V1 registration wave moves both reconciliation bindings: F20
+// still records 11 categories and 18 validator directories while the freeze
+// measures 25 and 26 respectively. The seeded defect hides both findings; the
+// gate must continue to derive them from F20 rather than trust the artifact.
 mustReject(
   "measured drift finding hidden",
-  /- driftFindings must equal the 1 findings this gate measures: f20-validator-directories-behind-the-index/u,
+  /- driftFindings must equal the 2 findings this gate measures: f20-registered-categories-behind-the-frozen-catalogue, f20-validator-directories-behind-the-index/u,
   (candidate) => {
     candidate.driftFindings = [];
   },

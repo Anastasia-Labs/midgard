@@ -2,6 +2,7 @@ import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { compareOutRefs, findOutRefIndex } from "@al-ft/midgard-core";
 import {
   EMPTY_MERKLE_TREE_ROOT,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   type FraudProofCatalogueDeploymentInfo,
@@ -52,35 +53,14 @@ export const ledgerOrderedIndex = (
   return BigInt(index);
 };
 
-/**
- * A catalogue category registered on top of the canonical eleven — the Q39/Q40
- * fabricated families, whose production registration is parent-owned. With no
- * extras the emitted root and every base proof are byte-identical to the
- * two-argument behaviour, so no measured fixture moves.
- */
-export type CatalogueExtraCategoryV1 = {
-  readonly categoryId: string;
-  readonly scriptHash: string;
-  readonly membershipProofCbor: string;
-};
-
 export const buildCatalogueDeploymentInfo = async (
   fraudProofs: FraudProofs,
-  extraCategories: Readonly<
-    Record<string, { readonly categoryId: string; readonly scriptHash: string }>
-  > = {},
-): Promise<
-  FraudProofCatalogueDeploymentInfo & {
-    readonly extraCategories: Readonly<
-      Record<string, CatalogueExtraCategoryV1>
-    >;
-  }
-> => {
+): Promise<FraudProofCatalogueDeploymentInfo> => {
   const categories = Object.fromEntries(
-    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name, index) => [
+    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name) => [
       name,
       {
-        categoryId: categoryId(index),
+        categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[name],
         scriptHash: fraudProofs[name].spendingScriptHash,
         membershipProofCbor: "",
       },
@@ -97,13 +77,6 @@ export const buildCatalogueDeploymentInfo = async (
       encodeCatalogueValue(category.scriptHash),
     );
   }
-  for (const extra of Object.values(extraCategories)) {
-    await trie.insert(
-      encodeCatalogueKey(extra.categoryId),
-      encodeCatalogueValue(extra.scriptHash),
-    );
-  }
-
   const categoriesWithProofs = { ...categories };
   for (const name of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
     const category = categories[name];
@@ -113,19 +86,8 @@ export const buildCatalogueDeploymentInfo = async (
       membershipProofCbor: proof.toCBOR().toString("hex"),
     };
   }
-  const extraCategoriesWithProofs: Record<string, CatalogueExtraCategoryV1> =
-    {};
-  for (const [name, extra] of Object.entries(extraCategories)) {
-    const proof = await trie.prove(encodeCatalogueKey(extra.categoryId));
-    extraCategoriesWithProofs[name] = {
-      ...extra,
-      membershipProofCbor: proof.toCBOR().toString("hex"),
-    };
-  }
-
   return {
     root: trieRootHex(trie),
     categories: categoriesWithProofs,
-    extraCategories: extraCategoriesWithProofs,
   };
 };

@@ -30,6 +30,7 @@ import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submissi
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodePhasMembershipProofRedeemer,
+  faultProofCategoryLabel,
   fetchUtxoByOutRef,
   getCompiledScript,
   makeLucidForSubmit,
@@ -39,21 +40,13 @@ import {
   readJsonFile,
   requireDeploymentScriptHash,
   requireSingletonUtxo,
-  resolveDaHashPreimageDeploymentContracts,
-  resolveDoubleSpendDeploymentContracts,
   type ResolvedProverSigner,
+  resolveFaultProofDeploymentContracts,
   resolveFraudulentHeaderHash,
   resolveInputNoIdxDeploymentContracts,
-  resolveInvalidRangeDeploymentContracts,
-  resolveInvalidSignatureDeploymentContracts,
-  resolveNonExistentInputDeploymentContracts,
-  resolveNoReferenceInputDeploymentContracts,
   resolveProverSigner,
-  resolveReferenceInputNoIdxDeploymentContracts,
-  resolveTransitionTraceDeploymentContracts,
-  resolveValidationTraceDisputeDeploymentContracts,
-  resolveZeroInputDeploymentContracts,
   type SubmitProviderConfig,
+  type SupportedFaultProofCategoryName,
 } from "./runtime.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 
@@ -71,18 +64,7 @@ export type SubmitInitCliConfig = SubmitProviderConfig &
     readonly awaitConfirmation?: boolean;
   };
 
-export type SubmitInitFraudCategory =
-  | "doubleSpend"
-  | "nonExistentInput"
-  | "nonExistentInputNoIndex"
-  | "invalidRange"
-  | "transitionTrace"
-  | "zeroInput"
-  | "validationTraceDispute"
-  | "daHashPreimage"
-  | "noReferenceInput"
-  | "referenceInputNoIdx"
-  | "invalidSignature";
+export type SubmitInitFraudCategory = SupportedFaultProofCategoryName;
 
 export type SubmitInitResult = {
   readonly txHash: string;
@@ -114,30 +96,7 @@ const requireFraudProofCatalogue = (deploymentInfo: ContractDeploymentInfo) => {
 };
 
 const fraudCategoryLabel = (category: SubmitInitFraudCategory): string => {
-  switch (category) {
-    case "doubleSpend":
-      return "double-spend";
-    case "nonExistentInput":
-      return "non-existent-input";
-    case "nonExistentInputNoIndex":
-      return "non-existent-input-no-index";
-    case "invalidRange":
-      return "invalid-range";
-    case "transitionTrace":
-      return "transition-trace";
-    case "zeroInput":
-      return "zero-input";
-    case "validationTraceDispute":
-      return "validation-trace-dispute";
-    case "daHashPreimage":
-      return "da-hash-preimage";
-    case "noReferenceInput":
-      return "no-reference-input";
-    case "referenceInputNoIdx":
-      return "reference-input-no-idx";
-    case "invalidSignature":
-      return "invalid-signature";
-  }
+  return faultProofCategoryLabel(category);
 };
 
 const encodePhasMembershipRedeemer = ({
@@ -264,220 +223,40 @@ export const submitInit = async ({
 }): Promise<SubmitInitResult> => {
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
   const catalogue = requireFraudProofCatalogue(parsedDeploymentInfo);
-  let category: {
-    readonly categoryId: string;
-    readonly scriptHash: string;
-    readonly membershipProofCbor: string;
-  };
-  let stateQueuePolicyId: string;
-  let computationThreadPolicyId: string;
-  let computationThreadMintingScript: Script;
-  let firstStepAddress: string;
-  let firstStepHash: string;
-  if (fraudCategory === "doubleSpend") {
-    const resolvedDeployment = await resolveDoubleSpendDeploymentContracts({
-      blueprint,
-      deploymentInfo,
-      network,
-      requireStateQueueMint: true,
-    });
-    category = resolvedDeployment.doubleSpendCategory;
-    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
-    computationThreadPolicyId =
-      resolvedDeployment.contracts.computationThread.policyId;
-    computationThreadMintingScript =
-      resolvedDeployment.contracts.computationThread.mintingScript;
-    firstStepAddress =
-      resolvedDeployment.contracts.doubleSpend.firstStep.spendingScriptAddress;
-    firstStepHash =
-      resolvedDeployment.contracts.doubleSpend.firstStep.spendingScriptHash;
-  } else if (fraudCategory === "nonExistentInput") {
-    const resolvedDeployment = await resolveNonExistentInputDeploymentContracts(
-      {
-        blueprint,
-        deploymentInfo,
-        network,
-        requireStateQueueMint: true,
-      },
-    );
-    category = resolvedDeployment.nonExistentInputCategory;
-    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
-    computationThreadPolicyId =
-      resolvedDeployment.contracts.computationThread.policyId;
-    computationThreadMintingScript =
-      resolvedDeployment.contracts.computationThread.mintingScript;
-    firstStepAddress =
-      resolvedDeployment.contracts.nonExistentInput.firstStep
-        .spendingScriptAddress;
-    firstStepHash =
-      resolvedDeployment.contracts.nonExistentInput.firstStep
-        .spendingScriptHash;
-  } else if (fraudCategory === "nonExistentInputNoIndex") {
+  if (fraudCategory === "nonExistentInputNoIndex") {
     const resolvedNoIndex = await resolveNonExistentInputNoIndexInit({
       blueprint,
       deploymentInfo,
       network,
     });
-    category = resolvedNoIndex.category;
-    stateQueuePolicyId = resolvedNoIndex.stateQueuePolicyId;
-    computationThreadPolicyId = resolvedNoIndex.computationThreadPolicyId;
-    computationThreadMintingScript =
-      resolvedNoIndex.computationThreadMintingScript;
-    firstStepAddress = resolvedNoIndex.firstStepAddress;
-    firstStepHash = resolvedNoIndex.firstStepHash;
-  } else if (fraudCategory === "invalidRange") {
-    const resolvedDeployment = await resolveInvalidRangeDeploymentContracts({
-      blueprint,
-      deploymentInfo,
-      network,
-      requireStateQueueMint: true,
-    });
-    category = resolvedDeployment.invalidRangeCategory;
-    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
-    computationThreadPolicyId =
-      resolvedDeployment.contracts.computationThread.policyId;
-    computationThreadMintingScript =
-      resolvedDeployment.contracts.computationThread.mintingScript;
-    firstStepAddress =
-      resolvedDeployment.contracts.invalidRange.firstStep.spendingScriptAddress;
-    firstStepHash =
-      resolvedDeployment.contracts.invalidRange.firstStep.spendingScriptHash;
-  } else if (fraudCategory === "transitionTrace") {
-    const resolvedDeployment = await resolveTransitionTraceDeploymentContracts({
-      blueprint,
-      deploymentInfo,
-      network,
-      requireStateQueueMint: true,
-    });
-    category = resolvedDeployment.transitionTraceCategory;
-    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
-    computationThreadPolicyId =
-      resolvedDeployment.contracts.computationThread.policyId;
-    computationThreadMintingScript =
-      resolvedDeployment.contracts.computationThread.mintingScript;
-    firstStepAddress =
-      resolvedDeployment.contracts.transitionTrace.firstStep
-        .spendingScriptAddress;
-    firstStepHash =
-      resolvedDeployment.contracts.transitionTrace.firstStep.spendingScriptHash;
-  } else if (fraudCategory === "validationTraceDispute") {
-    const resolvedDeployment =
-      await resolveValidationTraceDisputeDeploymentContracts({
-        blueprint,
-        deploymentInfo,
-        network,
-        requireStateQueueMint: true,
-      });
-    category = resolvedDeployment.validationTraceDisputeCategory;
-    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
-    computationThreadPolicyId =
-      resolvedDeployment.contracts.computationThread.policyId;
-    computationThreadMintingScript =
-      resolvedDeployment.contracts.computationThread.mintingScript;
-    firstStepAddress =
-      resolvedDeployment.contracts.validationTraceDispute.firstStep
-        .spendingScriptAddress;
-    firstStepHash =
-      resolvedDeployment.contracts.validationTraceDispute.firstStep
-        .spendingScriptHash;
-  } else if (fraudCategory === "daHashPreimage") {
-    const resolvedDeployment = await resolveDaHashPreimageDeploymentContracts({
-      blueprint,
-      deploymentInfo,
-      network,
-      requireStateQueueMint: true,
-    });
-    category = resolvedDeployment.daHashPreimageCategory;
-    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
-    computationThreadPolicyId =
-      resolvedDeployment.contracts.computationThread.policyId;
-    computationThreadMintingScript =
-      resolvedDeployment.contracts.computationThread.mintingScript;
-    firstStepAddress =
-      resolvedDeployment.contracts.daHashPreimage.firstStep
-        .spendingScriptAddress;
-    firstStepHash =
-      resolvedDeployment.contracts.daHashPreimage.firstStep.spendingScriptHash;
-  } else if (fraudCategory === "noReferenceInput") {
-    const resolvedDeployment = await resolveNoReferenceInputDeploymentContracts(
-      {
-        blueprint,
-        deploymentInfo,
-        network,
-        requireStateQueueMint: true,
-      },
-    );
-    category = resolvedDeployment.noReferenceInputCategory;
-    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
-    computationThreadPolicyId =
-      resolvedDeployment.contracts.computationThread.policyId;
-    computationThreadMintingScript =
-      resolvedDeployment.contracts.computationThread.mintingScript;
-    firstStepAddress =
-      resolvedDeployment.contracts.noReferenceInput.firstStep
-        .spendingScriptAddress;
-    firstStepHash =
-      resolvedDeployment.contracts.noReferenceInput.firstStep
-        .spendingScriptHash;
-  } else if (fraudCategory === "referenceInputNoIdx") {
-    const resolvedDeployment =
-      await resolveReferenceInputNoIdxDeploymentContracts({
-        blueprint,
-        deploymentInfo,
-        network,
-        requireStateQueueMint: true,
-      });
-    category = resolvedDeployment.referenceInputNoIdxCategory;
-    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
-    computationThreadPolicyId =
-      resolvedDeployment.contracts.computationThread.policyId;
-    computationThreadMintingScript =
-      resolvedDeployment.contracts.computationThread.mintingScript;
-    firstStepAddress =
-      resolvedDeployment.contracts.referenceInputNoIdx.firstStep
-        .spendingScriptAddress;
-    firstStepHash =
-      resolvedDeployment.contracts.referenceInputNoIdx.firstStep
-        .spendingScriptHash;
-  } else if (fraudCategory === "invalidSignature") {
-    const resolvedDeployment = await resolveInvalidSignatureDeploymentContracts(
-      {
-        blueprint,
-        deploymentInfo,
-        network,
-        requireStateQueueMint: true,
-      },
-    );
-    category = resolvedDeployment.invalidSignatureCategory;
-    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
-    computationThreadPolicyId =
-      resolvedDeployment.contracts.computationThread.policyId;
-    computationThreadMintingScript =
-      resolvedDeployment.contracts.computationThread.mintingScript;
-    firstStepAddress =
-      resolvedDeployment.contracts.invalidSignature.firstStep
-        .spendingScriptAddress;
-    firstStepHash =
-      resolvedDeployment.contracts.invalidSignature.firstStep
-        .spendingScriptHash;
-  } else {
-    const resolvedDeployment = await resolveZeroInputDeploymentContracts({
-      blueprint,
-      deploymentInfo,
-      network,
-      requireStateQueueMint: true,
-    });
-    category = resolvedDeployment.zeroInputCategory;
-    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
-    computationThreadPolicyId =
-      resolvedDeployment.contracts.computationThread.policyId;
-    computationThreadMintingScript =
-      resolvedDeployment.contracts.computationThread.mintingScript;
-    firstStepAddress =
-      resolvedDeployment.contracts.zeroInput.firstStep.spendingScriptAddress;
-    firstStepHash =
-      resolvedDeployment.contracts.zeroInput.firstStep.spendingScriptHash;
+    if (resolvedNoIndex.firstStepHash !== resolvedNoIndex.category.scriptHash) {
+      throw new Error(
+        `${fraudCategoryLabel(fraudCategory)} first-step script hash mismatch: catalogue=${resolvedNoIndex.category.scriptHash}, derived=${resolvedNoIndex.firstStepHash}.`,
+      );
+    }
   }
+  const resolvedDeployment = await resolveFaultProofDeploymentContracts({
+    blueprint,
+    deploymentInfo,
+    network,
+    categoryName: fraudCategory,
+    requireStateQueueMint: true,
+  });
+  const category = resolvedDeployment.category;
+  const stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
+  const computationThreadPolicyId =
+    resolvedDeployment.contracts.computationThread.policyId;
+  const computationThreadMintingScript =
+    resolvedDeployment.contracts.computationThread.mintingScript;
+  const selectedContracts = resolvedDeployment.contracts[fraudCategory];
+  if (selectedContracts === undefined) {
+    throw new Error(
+      `${fraudCategoryLabel(fraudCategory)} deployment resolution returned no category contracts.`,
+    );
+  }
+  const firstStep = selectedContracts.firstStep;
+  const firstStepAddress = firstStep.spendingScriptAddress;
+  const firstStepHash = firstStep.spendingScriptHash;
   const fraudProofCataloguePolicyId = requireDeploymentScriptHash(
     parsedDeploymentInfo,
     "fraudProofCatalogueMint",

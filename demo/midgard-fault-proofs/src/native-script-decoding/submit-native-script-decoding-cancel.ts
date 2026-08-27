@@ -109,8 +109,8 @@ export const submitNativeScriptDecodingCancel = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  /** Q3: the located step's published reference script; inline-attached when absent. */
-  readonly referenceScriptUtxo?: UTxO;
+  /** Q3: the located step's mandatory published reference script. */
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -197,16 +197,13 @@ export const submitNativeScriptDecodingCancel = async ({
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
     .addSignerKey(signer.paymentKeyHash)
     .attach.MintingPolicy(contracts.computationThread.mintingScript);
-  const tx =
-    referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[stepIndex].spendingScript)
-      : base.readFrom([
-          requireNativeScriptDecodingReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
-            stepIndex,
-          }),
-        ]);
+  const tx = base.readFrom([
+    requireNativeScriptDecodingReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
+      stepIndex,
+    }),
+  ]);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (inputIndex === undefined || mintRedeemerIndex === undefined) {

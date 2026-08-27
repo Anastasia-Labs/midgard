@@ -61,6 +61,7 @@ import {
   makeFaultProofEmulatorHarnessV1,
   makeHeader,
   network,
+  publishPlainReferenceScriptUtxo,
   submitFabricatedFamilyInitV1,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
@@ -166,8 +167,8 @@ const buildChallengedBlockV1 = async () => {
 
 /**
  * The harness every emulator scenario in this file opens with: the real
- * fabricated-withdrawal chain built from the regenerated blueprint, registered
- * as the extra catalogue category `0000000c` on top of the canonical eleven.
+ * fabricated-withdrawal chain built from the regenerated blueprint and
+ * registered in the canonical production catalogue.
  */
 const makeEmulatorHarness = async () => {
   const harness = await makeFaultProofEmulatorHarnessV1({
@@ -177,7 +178,7 @@ const makeEmulatorHarness = async () => {
     },
   });
   const fabricatedWithdrawal = harness.contracts.fabricatedWithdrawal;
-  const category = harness.catalogue.extraCategories.fabricatedWithdrawal;
+  const category = harness.catalogue.categories.fabricatedWithdrawal;
   if (fabricatedWithdrawal === undefined || category === undefined) {
     throw new Error(
       "Harness did not build the fabricated-withdrawal contracts/category",
@@ -201,7 +202,14 @@ const setupChallengedBlockOnEmulator = async (
   harness: Awaited<ReturnType<typeof makeEmulatorHarness>>,
   committedInfoCbor: string,
 ) => {
-  const { emulator, funderLucid, contracts, catalogue, nonceUtxo } = harness;
+  const {
+    emulator,
+    funderLucid,
+    contracts,
+    catalogue,
+    nonceUtxo,
+    fabricatedWithdrawal,
+  } = harness;
   const counted = await buildCountedRoot(SDK.ROOT_DOMAINS.withdrawals, [
     {
       key: Buffer.from(KEY_AUTHENTIC_WITHDRAWAL_ID, "hex"),
@@ -235,6 +243,34 @@ const setupChallengedBlockOnEmulator = async (
     catalogue,
     header,
   });
+  const step01ReferenceScriptUtxo = (
+    await publishPlainReferenceScriptUtxo({
+      lucid: funderLucid,
+      script: fabricatedWithdrawal.steps[0].spendingScript,
+      label: "fabricated-withdrawal step-01",
+    })
+  ).utxo;
+  const step02ReferenceScriptUtxo = (
+    await publishPlainReferenceScriptUtxo({
+      lucid: funderLucid,
+      script: fabricatedWithdrawal.steps[1].spendingScript,
+      label: "fabricated-withdrawal step-02",
+    })
+  ).utxo;
+  const step03ReferenceScriptUtxo = (
+    await publishPlainReferenceScriptUtxo({
+      lucid: funderLucid,
+      script: fabricatedWithdrawal.steps[2].spendingScript,
+      label: "fabricated-withdrawal step-03",
+    })
+  ).utxo;
+  const step04ReferenceScriptUtxo = (
+    await publishPlainReferenceScriptUtxo({
+      lucid: funderLucid,
+      script: fabricatedWithdrawal.steps[3].spendingScript,
+      label: "fabricated-withdrawal step-04",
+    })
+  ).utxo;
   // The authentic event's inclusion time, inside this header's establishment
   // window `(start_time, end_time]`.
   const eventInclusionTime = header.startTime + 500n;
@@ -256,6 +292,12 @@ const setupChallengedBlockOnEmulator = async (
     authenticEventDatum,
     eventDatumCbor,
     observedEventAssetName,
+    referenceScriptUtxos: [
+      step01ReferenceScriptUtxo,
+      step02ReferenceScriptUtxo,
+      step03ReferenceScriptUtxo,
+      step04ReferenceScriptUtxo,
+    ] as const,
   };
 };
 
@@ -369,6 +411,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       eventInclusionTime,
       eventDatumCbor,
       observedEventAssetName,
+      referenceScriptUtxos,
     } = await setupChallengedBlockOnEmulator(
       harness,
       VALUE_DIVERTED_WITHDRAWAL_INFO,
@@ -508,6 +551,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       threadOutRef: initResult.threadOutRef,
       stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
       withdrawalInclusion: inclusion,
+      referenceScriptUtxo: referenceScriptUtxos[0],
       awaitConfirmation: true,
     });
     expect(step01Result.txHash).toHaveLength(64);
@@ -544,6 +588,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       signer: proverSigner,
       threadOutRef: step01Result.nextThreadOutRef,
       evidence: { kind: "present_event", eventOutRef: outRefLabel(eventUtxo) },
+      referenceScriptUtxo: referenceScriptUtxos[1],
       awaitConfirmation: true,
     });
     expect(step02Result.verdict).toEqual({
@@ -582,6 +627,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       signer: proverSigner,
       threadOutRef: step02Result.nextThreadOutRef,
       eventDatumCbor,
+      referenceScriptUtxo: referenceScriptUtxos[2],
       awaitConfirmation: true,
     });
     expect(step03Result.fault).toEqual(plan.classification.fault);
@@ -614,6 +660,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       contracts: fabricatedWithdrawal,
       signer: proverSigner,
       threadOutRef: step03Result.nextThreadOutRef,
+      referenceScriptUtxo: referenceScriptUtxos[3],
       awaitConfirmation: true,
     });
     expect(step04Result.fault).toEqual(plan.classification.fault);
@@ -655,8 +702,14 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       Data.from(DATUM_AUTHENTIC_WITHDRAWAL_EVENT, SDK.WithdrawalOrderDatum)
         .event.info,
     );
-    const { counted, header, setup, eventDatumCbor, observedEventAssetName } =
-      await setupChallengedBlockOnEmulator(harness, authenticInfoCbor);
+    const {
+      counted,
+      header,
+      setup,
+      eventDatumCbor,
+      observedEventAssetName,
+      referenceScriptUtxos,
+    } = await setupChallengedBlockOnEmulator(harness, authenticInfoCbor);
 
     const initResult = await submitFabricatedFamilyInitV1({
       lucid: proverLucid,
@@ -720,6 +773,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
         threadOutRef: outRefLabel(firstStepUtxo),
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         withdrawalInclusion: divertedInclusion,
+        referenceScriptUtxo: referenceScriptUtxos[0],
         awaitConfirmation: true,
       }),
     ).rejects.toThrow(/failed script execution.*Spend/su);

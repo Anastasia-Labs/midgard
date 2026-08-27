@@ -21,6 +21,7 @@ import {
   LucidError,
   UnauthenticUtxoError,
 } from "./errors.js";
+import type { FaultProofContractChains } from "./fraud-proof/contracts.js";
 import { getStateToken } from "./internals.js";
 import { RetiredOperatorUTxO } from "./retired-operators.js";
 
@@ -242,6 +243,20 @@ export type FraudProofs = {
    * does not authorize one of the inputs it spends.
    */
   invalidSignature: SpendingValidator;
+  fabricatedDeposit: SpendingValidator;
+  fabricatedWithdrawal: SpendingValidator;
+  nativeScriptDecoding: SpendingValidator;
+  missingSignature: SpendingValidator;
+  missingNativeScriptTx: SpendingValidator;
+  withdrawnReferenceInput: SpendingValidator;
+  canonicalDecodability: SpendingValidator;
+  committedFieldShape: SpendingValidator;
+  minFee: SpendingValidator;
+  withdrawalMistag: SpendingValidator;
+  doubleWithdraw: SpendingValidator;
+  crossBlockDuplicateEvent: SpendingValidator;
+  l2TxMistag: SpendingValidator;
+  withdrawnInput: SpendingValidator;
 };
 
 export type MidgardValidators = {
@@ -278,6 +293,9 @@ export type MidgardValidators = {
   settlement: AuthenticatedValidator;
   reserve: SpendingValidator & WithdrawalValidator;
   payout: AuthenticatedValidator;
+  /** Full ordered validator chains for every registered fraud category. */
+  fraudProofContracts: FaultProofContractChains;
+  /** First-step validators only, used to construct the catalogue MPF. */
   fraudProofs: FraudProofs;
 };
 

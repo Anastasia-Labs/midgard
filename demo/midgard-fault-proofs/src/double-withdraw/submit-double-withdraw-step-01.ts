@@ -172,7 +172,7 @@ export const submitDoubleWithdrawStep01 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly inclusion: SubmitDoubleWithdrawInclusionV1;
-  readonly referenceScriptUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitDoubleWithdrawStep01Result> => {
   const [{ threadUtxo, threadToken }, hubOracleUtxo, stateQueueBlockUtxo] =
@@ -299,16 +299,13 @@ export const submitDoubleWithdrawStep01 = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const tx =
-    referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[0].spendingScript)
-      : base.readFrom([
-          requireDoubleWithdrawReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[0].spendingScriptHash,
-            stepIndex: 0,
-          }),
-        ]);
+  const tx = base.readFrom([
+    requireDoubleWithdrawReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      expectedScriptHash: contracts.steps[0].spendingScriptHash,
+      stepIndex: 0,
+    }),
+  ]);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (layout === undefined) {
     throw doubleWithdrawSubmitError("step-01 layout was not resolved.");

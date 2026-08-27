@@ -1,8 +1,7 @@
 /**
  * `withdrawal-mistag` standalone proof family (D-S8/Q41).
  *
- * This module is deliberately not a production catalogue registration. The
- * reserved `00000014` id is for the pre-registration harness only. The schemas
+ * Production catalogue category `withdrawalMistag` (`00000014`). The schemas
  * mirror `onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-0*.ak`.
  */
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
@@ -36,14 +35,13 @@ import {
   WithdrawalSourceMembershipProofSchema,
 } from "@/transition-trace.js";
 
+import { WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1 } from "./catalogue.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
 } from "./native.js";
 
 export const WITHDRAWAL_MISTAG_VIOLATION_ID_V1 = "withdrawal-mistag" as const;
-/** Test-only id; production allocation remains append-only catalogue work. */
-export const WITHDRAWAL_MISTAG_TEST_CATEGORY_ID_V1 = "00000014" as const;
 export const WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT_V1 = 100;
 export const WITHDRAWAL_MISTAG_MAXIMUM_VALUE_CBOR_BYTES_V1 = 5_000;
 export const WITHDRAWAL_MISTAG_COINS_PER_UTXO_BYTE_V1 = 4_310n;
@@ -56,7 +54,7 @@ export const withdrawalMistagThreadTokenAssetNameV1 = (
       "withdrawal-mistag header hash must be 28-byte lowercase hex",
     );
   }
-  return `${WITHDRAWAL_MISTAG_TEST_CATEGORY_ID_V1}${challengedHeaderHash}`;
+  return `${WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1}${challengedHeaderHash}`;
 };
 
 export const WithdrawalMistagStep01DatumSchema = faultProofStepDatumSchema(

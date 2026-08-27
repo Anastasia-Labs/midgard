@@ -308,7 +308,7 @@ describe.skipIf(!optionB)(
       expect(award.measurement.completeSignedBytes).toBe(7_238);
       expect(
         totalJourneyBytes(journey, semantic.measurements, award.measurement),
-      ).toBe(166_403);
+      ).toBe(166_535);
       expectWholeJourneyProofFit(
         "#622 reference-frontier item 14,336",
         journey,

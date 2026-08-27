@@ -60,6 +60,7 @@ import {
   makeFaultProofEmulatorHarnessV1,
   makeHeader,
   network,
+  publishPlainReferenceScriptUtxo,
   submitFabricatedFamilyInitV1,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
@@ -163,8 +164,8 @@ const buildChallengedBlockV1 = async () => {
 
 /**
  * The harness every emulator scenario in this file opens with: the real
- * fabricated-deposit chain built from the regenerated blueprint, registered as
- * the extra catalogue category `0000000b` on top of the canonical eleven.
+ * fabricated-deposit chain built from the regenerated blueprint and registered
+ * in the canonical production catalogue.
  */
 const makeEmulatorHarness = async () => {
   const harness = await makeFaultProofEmulatorHarnessV1({
@@ -174,7 +175,7 @@ const makeEmulatorHarness = async () => {
     },
   });
   const fabricatedDeposit = harness.contracts.fabricatedDeposit;
-  const category = harness.catalogue.extraCategories.fabricatedDeposit;
+  const category = harness.catalogue.categories.fabricatedDeposit;
   if (fabricatedDeposit === undefined || category === undefined) {
     throw new Error(
       "Harness did not build the fabricated-deposit contracts/category",
@@ -196,7 +197,14 @@ const setupChallengedBlockOnEmulator = async (
   harness: Awaited<ReturnType<typeof makeEmulatorHarness>>,
   committedInfoCbor: string,
 ) => {
-  const { emulator, funderLucid, contracts, catalogue, nonceUtxo } = harness;
+  const {
+    emulator,
+    funderLucid,
+    contracts,
+    catalogue,
+    nonceUtxo,
+    fabricatedDeposit,
+  } = harness;
   const counted = await buildCountedRoot(SDK.ROOT_DOMAINS.deposits, [
     {
       key: Buffer.from(KEY_AUTHENTIC_DEPOSIT_ID, "hex"),
@@ -230,6 +238,34 @@ const setupChallengedBlockOnEmulator = async (
     catalogue,
     header,
   });
+  const step01ReferenceScriptUtxo = (
+    await publishPlainReferenceScriptUtxo({
+      lucid: funderLucid,
+      script: fabricatedDeposit.steps[0].spendingScript,
+      label: "fabricated-deposit step-01",
+    })
+  ).utxo;
+  const step02ReferenceScriptUtxo = (
+    await publishPlainReferenceScriptUtxo({
+      lucid: funderLucid,
+      script: fabricatedDeposit.steps[1].spendingScript,
+      label: "fabricated-deposit step-02",
+    })
+  ).utxo;
+  const step03ReferenceScriptUtxo = (
+    await publishPlainReferenceScriptUtxo({
+      lucid: funderLucid,
+      script: fabricatedDeposit.steps[2].spendingScript,
+      label: "fabricated-deposit step-03",
+    })
+  ).utxo;
+  const step04ReferenceScriptUtxo = (
+    await publishPlainReferenceScriptUtxo({
+      lucid: funderLucid,
+      script: fabricatedDeposit.steps[3].spendingScript,
+      label: "fabricated-deposit step-04",
+    })
+  ).utxo;
   // The authentic event's inclusion time, inside this header's establishment
   // window `(start_time, end_time]`.
   const eventInclusionTime = header.startTime + 500n;
@@ -249,6 +285,12 @@ const setupChallengedBlockOnEmulator = async (
     authenticEventDatum,
     eventDatumCbor,
     observedEventAssetName,
+    referenceScriptUtxos: [
+      step01ReferenceScriptUtxo,
+      step02ReferenceScriptUtxo,
+      step03ReferenceScriptUtxo,
+      step04ReferenceScriptUtxo,
+    ] as const,
   };
 };
 
@@ -360,6 +402,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       eventInclusionTime,
       eventDatumCbor,
       observedEventAssetName,
+      referenceScriptUtxos,
     } = await setupChallengedBlockOnEmulator(
       harness,
       VALUE_DIVERTED_DEPOSIT_INFO,
@@ -495,6 +538,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       threadOutRef: initResult.threadOutRef,
       stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
       depositInclusion: inclusion,
+      referenceScriptUtxo: referenceScriptUtxos[0],
       awaitConfirmation: true,
     });
     expect(step01Result.txHash).toHaveLength(64);
@@ -531,6 +575,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       signer: proverSigner,
       threadOutRef: step01Result.nextThreadOutRef,
       evidence: { kind: "present_event", eventOutRef: outRefLabel(eventUtxo) },
+      referenceScriptUtxo: referenceScriptUtxos[1],
       awaitConfirmation: true,
     });
     expect(step02Result.verdict).toEqual({
@@ -569,6 +614,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       signer: proverSigner,
       threadOutRef: step02Result.nextThreadOutRef,
       eventDatumCbor,
+      referenceScriptUtxo: referenceScriptUtxos[2],
       awaitConfirmation: true,
     });
     expect(step03Result.fault).toEqual(plan.classification.fault);
@@ -601,6 +647,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       contracts: fabricatedDeposit,
       signer: proverSigner,
       threadOutRef: step03Result.nextThreadOutRef,
+      referenceScriptUtxo: referenceScriptUtxos[3],
       awaitConfirmation: true,
     });
     expect(step04Result.fault).toEqual(plan.classification.fault);
@@ -641,8 +688,14 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     const authenticInfoCbor = SDK.committedDepositValueBytesV1(
       Data.from(DATUM_AUTHENTIC_DEPOSIT_EVENT, SDK.DepositDatum).event.info,
     );
-    const { counted, header, setup, eventDatumCbor, observedEventAssetName } =
-      await setupChallengedBlockOnEmulator(harness, authenticInfoCbor);
+    const {
+      counted,
+      header,
+      setup,
+      eventDatumCbor,
+      observedEventAssetName,
+      referenceScriptUtxos,
+    } = await setupChallengedBlockOnEmulator(harness, authenticInfoCbor);
 
     const initResult = await submitFabricatedFamilyInitV1({
       lucid: proverLucid,
@@ -706,6 +759,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
         threadOutRef: outRefLabel(firstStepUtxo),
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         depositInclusion: divertedInclusion,
+        referenceScriptUtxo: referenceScriptUtxos[0],
         awaitConfirmation: true,
       }),
     ).rejects.toThrow(/failed script execution.*Spend/su);

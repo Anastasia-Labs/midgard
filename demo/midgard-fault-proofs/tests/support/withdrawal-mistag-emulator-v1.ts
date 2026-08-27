@@ -213,18 +213,18 @@ export const makeWithdrawalMistagEmulatorHarnessV1 = async () => {
     },
   });
   const withdrawalMistag = harness.contracts.withdrawalMistag;
-  const rawCategory = harness.catalogue.extraCategories.withdrawalMistag;
+  const rawCategory = harness.catalogue.categories.withdrawalMistag;
   if (withdrawalMistag === undefined || rawCategory === undefined) {
     throw new Error(
       "Harness did not build withdrawal-mistag contracts/category",
     );
   }
-  if (rawCategory.categoryId !== SDK.WITHDRAWAL_MISTAG_TEST_CATEGORY_ID_V1) {
-    throw new Error("Unexpected withdrawal-mistag test category id");
+  if (rawCategory.categoryId !== SDK.WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1) {
+    throw new Error("Unexpected withdrawal-mistag category id");
   }
   const category: WithdrawalMistagCatalogueCategoryV1 = {
     ...rawCategory,
-    categoryId: SDK.WITHDRAWAL_MISTAG_TEST_CATEGORY_ID_V1,
+    categoryId: SDK.WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1,
   };
   return { ...harness, withdrawalMistag, category };
 };

@@ -46,9 +46,9 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
+        fraud_proof_mint_redeemer_index,
         hub_ref_input_index,
         state_queue_node_ref_input_index,
-        fraud_proof_mint_redeemer_index,
         committed_withdrawal,
       }) -> {
         let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = tx
@@ -173,9 +173,9 @@ fn run_step_02(
       Args {
         input_index: 0,
         output_index: 0,
+        fraud_proof_mint_redeemer_index: 0,
         hub_ref_input_index: 0,
         state_queue_node_ref_input_index: 1,
-        fraud_proof_mint_redeemer_index: 0,
         committed_withdrawal: membership,
       },
     ),

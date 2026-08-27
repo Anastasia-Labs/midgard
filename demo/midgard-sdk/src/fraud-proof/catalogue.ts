@@ -35,10 +35,80 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [
   "noReferenceInput",
   "referenceInputNoIdx",
   "invalidSignature",
+  "fabricatedDeposit",
+  "fabricatedWithdrawal",
+  "nativeScriptDecoding",
+  "missingSignature",
+  "missingNativeScriptTx",
+  "withdrawnReferenceInput",
+  "canonicalDecodability",
+  "committedFieldShape",
+  "minFee",
+  "withdrawalMistag",
+  "doubleWithdraw",
+  "crossBlockDuplicateEvent",
+  "l2TxMistag",
+  "withdrawnInput",
 ] as const satisfies readonly (keyof FraudProofs)[];
 
 export type FraudProofCatalogueCategoryName =
   (typeof FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER)[number];
+
+/**
+ * Canonical four-byte big-endian category identifiers. The mapping is pinned
+ * next to the append-only order so registration, thread-token construction,
+ * deployment manifests, and catalogue proofs share one authority.
+ */
+export const FRAUD_PROOF_CATALOGUE_CATEGORY_IDS = {
+  doubleSpend: "00000000",
+  nonExistentInput: "00000001",
+  nonExistentInputNoIndex: "00000002",
+  invalidRange: "00000003",
+  transitionTrace: "00000004",
+  zeroInput: "00000005",
+  validationTraceDispute: "00000006",
+  daHashPreimage: "00000007",
+  noReferenceInput: "00000008",
+  referenceInputNoIdx: "00000009",
+  invalidSignature: "0000000a",
+  fabricatedDeposit: "0000000b",
+  fabricatedWithdrawal: "0000000c",
+  nativeScriptDecoding: "0000000d",
+  missingSignature: "0000000e",
+  missingNativeScriptTx: "0000000f",
+  withdrawnReferenceInput: "00000010",
+  canonicalDecodability: "00000011",
+  committedFieldShape: "00000012",
+  minFee: "00000013",
+  withdrawalMistag: "00000014",
+  doubleWithdraw: "00000015",
+  crossBlockDuplicateEvent: "00000016",
+  l2TxMistag: "00000017",
+  withdrawnInput: "00000018",
+} as const satisfies Readonly<Record<FraudProofCatalogueCategoryName, string>>;
+
+export const NATIVE_SCRIPT_DECODING_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.nativeScriptDecoding;
+export const MISSING_SIGNATURE_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.missingSignature;
+export const MISSING_NATIVE_SCRIPT_TX_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.missingNativeScriptTx;
+export const WITHDRAWN_REFERENCE_INPUT_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawnReferenceInput;
+export const CANONICAL_DECODABILITY_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.canonicalDecodability;
+export const COMMITTED_FIELD_SHAPE_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.committedFieldShape;
+export const MIN_FEE_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.minFee;
+export const WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawalMistag;
+export const DOUBLE_WITHDRAW_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.doubleWithdraw;
+export const L2_TX_MISTAG_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.l2TxMistag;
+export const WITHDRAWN_INPUT_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawnInput;
 
 export type FraudProofCatalogueCategoryDeploymentInfo = {
   readonly categoryId: string;

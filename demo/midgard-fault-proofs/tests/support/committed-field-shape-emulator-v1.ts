@@ -46,7 +46,6 @@ import {
   type CommittedFieldShapeCatalogueCategoryV1,
   requireCommittedFieldShapeThreadUtxoV1,
 } from "../../src/committed-field-shape/submit-common-v1.js";
-import type { RemoveFraudulentBlockExplicitCategory } from "../../src/remove-fraudulent-block.js";
 import {
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
@@ -71,8 +70,6 @@ import {
 } from "../../src/tx-layout.js";
 import { setupFraudulentBlockV1 } from "./submit-init-emulator-fixtures.js";
 import {
-  COMMITTED_FIELD_SHAPE_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  COMMITTED_FIELD_SHAPE_TEST_CATEGORY_ID_V1,
   makeFaultProofEmulatorHarnessV1,
   makeNativeTx,
   network,
@@ -94,7 +91,7 @@ export const makeCommittedFieldShapeEmulatorHarnessV1 = async () => {
     },
   });
   const committedFieldShape = harness.contracts.committedFieldShape;
-  const category = harness.catalogue.extraCategories.committedFieldShape as
+  const category = harness.catalogue.categories.committedFieldShape as
     | CommittedFieldShapeCatalogueCategoryV1
     | undefined;
   if (committedFieldShape === undefined || category === undefined) {
@@ -102,8 +99,11 @@ export const makeCommittedFieldShapeEmulatorHarnessV1 = async () => {
       "Harness did not build the committed-field-shape contracts/category",
     );
   }
-  if (category.categoryId !== COMMITTED_FIELD_SHAPE_TEST_CATEGORY_ID_V1) {
-    throw new Error("Unexpected committed-field-shape test category id");
+  if (
+    category.categoryId !==
+    SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.committedFieldShape
+  ) {
+    throw new Error("Unexpected committed-field-shape category id");
   }
   const outsider = generateEmulatorAccount({ lovelace: 0n });
   const outsiderLucid = await Lucid(harness.emulator, "Custom");
@@ -120,21 +120,6 @@ export const makeCommittedFieldShapeEmulatorHarnessV1 = async () => {
     outsiderSigner,
   };
 };
-
-export const committedFieldShapeRemovalCategoryV1 = (
-  harness: CommittedFieldShapeEmulatorHarnessV1,
-): RemoveFraudulentBlockExplicitCategory => ({
-  name: "committedFieldShape",
-  categoryId: harness.category.categoryId,
-  firstStepDeploymentEntry: COMMITTED_FIELD_SHAPE_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  firstStepScriptHash: harness.committedFieldShape.steps[0].spendingScriptHash,
-  fraudProof: {
-    policyId: harness.committedFieldShape.fraudProof.policyId,
-    spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-    spendingScriptAddress:
-      harness.committedFieldShape.fraudProof.spendingScriptAddress,
-  },
-});
 
 /** Both step validators are always published and consumed by reference. */
 export const publishCommittedFieldShapeReferenceScriptsV1 = async ({

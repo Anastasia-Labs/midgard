@@ -56,6 +56,7 @@ import {
   makeWatcherProofThreadPolicyV1,
   parseWatcherProofThreadResultV1 as parseWatcherProofThreadResultV1Raw,
   parseWatcherProofThreadStateV1 as parseWatcherProofThreadStateV1Raw,
+  WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1,
   WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
   WATCHER_PROOF_THREAD_V1_BOUNDS,
   type WatcherProofThreadFamilyV1,
@@ -122,37 +123,78 @@ const publicBytes = (hex: string) => makeWatcherL1PublicBytesV1(hex);
 const canonicalData = (hex: string): string =>
   CML.PlutusData.from_cbor_hex(hex).to_canonical_cbor_hex();
 
-const familyNames = [
-  ["da-hash-preimage", "daHashPreimage"],
-  ["double-spend", "doubleSpend"],
-  ["invalid-range", "invalidRange"],
-  ["invalid-signature", "invalidSignature"],
-  ["no-reference-input", "noReferenceInput"],
-  ["non-existent-input", "nonExistentInput"],
-  ["non-existent-input-no-index", "nonExistentInputNoIndex"],
-  ["reference-input-no-idx", "referenceInputNoIdx"],
-  ["transition-trace", "transitionTrace"],
-  ["validation-trace-dispute", "validationTraceDispute"],
-  ["zero-input", "zeroInput"],
-] as const;
+const proofThreadFixtureStepHash = (
+  familyId: string,
+  stepIndex: number,
+): string =>
+  createHash("sha256")
+    .update(`midgard-watcher-proof-thread-step-v1:${familyId}:${stepIndex}`)
+    .digest("hex")
+    .slice(0, 56);
+
+const linearNextStepIndexes = (
+  stepCount: number,
+): readonly (readonly string[])[] =>
+  Object.freeze(
+    Array.from({ length: stepCount }, (_, index) =>
+      Object.freeze(index + 1 < stepCount ? [(index + 1).toString()] : []),
+    ),
+  );
 
 const makeDeploymentAuthority = () => {
   const contractSet = makeWatcherAuthorityContractsV1();
   const families: readonly WatcherProofThreadFamilyV1[] = Object.freeze(
-    familyNames.map(([familyId, catalogueCategory]) => {
-      const category =
-        contractSet.fraudProofCatalogue.categories[catalogueCategory];
-      return Object.freeze({
-        familyId,
-        catalogueCategory,
-        categoryId: category.categoryId,
-        firstStepScriptHash: category.scriptHash,
-        stepScriptHashes:
-          familyId === "double-spend"
-            ? Object.freeze([category.scriptHash, h28("d2")])
-            : Object.freeze([category.scriptHash]),
-      });
-    }),
+    Object.entries(WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1)
+      .map(([catalogueCategory, familyAuthority]) => {
+        const category =
+          contractSet.fraudProofCatalogue.categories[
+            catalogueCategory as keyof typeof contractSet.fraudProofCatalogue.categories
+          ];
+        const stepScriptHashes = Object.freeze(
+          Array.from({ length: familyAuthority.stepCount }, (_, index) => {
+            const deployedContractName =
+              familyAuthority.deployedStepContractNames[index];
+            const deployedScriptHash =
+              deployedContractName === undefined
+                ? undefined
+                : contractSet.contracts[deployedContractName]?.scriptHash;
+            if (
+              deployedContractName !== undefined &&
+              deployedScriptHash === undefined
+            ) {
+              throw new Error(
+                `proof-thread authority contract ${deployedContractName} is missing`,
+              );
+            }
+            return (
+              deployedScriptHash ??
+              proofThreadFixtureStepHash(familyAuthority.familyId, index)
+            );
+          }),
+        );
+        return Object.freeze({
+          familyId: familyAuthority.familyId,
+          catalogueCategory,
+          categoryId: category.categoryId,
+          firstStepScriptHash: category.scriptHash,
+          stepScriptHashes,
+          nextStepIndexes:
+            catalogueCategory === "transitionTrace"
+              ? Object.freeze([
+                  Object.freeze(
+                    Array.from(
+                      { length: familyAuthority.stepCount - 1 },
+                      (_, index) => (index + 1).toString(),
+                    ),
+                  ),
+                  ...Array.from({ length: familyAuthority.stepCount - 1 }, () =>
+                    Object.freeze([] as string[]),
+                  ),
+                ])
+              : linearNextStepIndexes(familyAuthority.stepCount),
+        });
+      })
+      .sort((left, right) => left.familyId.localeCompare(right.familyId)),
   );
   const fixture = makeWatcherDeploymentAuthorityFixtureV1({
     contractSet,
@@ -561,7 +603,7 @@ const witnessSetFor = (fixture: TxFixture): CML.TransactionWitnessSet => {
 
 const initTransaction = (): TxFixture => {
   const family = policy.families.find(
-    ({ familyId }) => familyId === "double-spend",
+    ({ familyId }) => familyId === "invalid-range",
   )!;
   const assetName = `${family.categoryId}${FRAUD_HEADER}`;
   const datumHex = Data.to(
@@ -999,7 +1041,7 @@ const baseStore = (fixture: TxFixture): WatcherDurableStoreV1 => {
         {
           faultId: FAULT_ID,
           blockHash: FRAUD_BLOCK,
-          familyId: "double-spend",
+          familyId: "invalid-range",
           evidence: makeWatcherDurablePayloadV1("80"),
         },
       ],
@@ -1119,12 +1161,12 @@ const initJournal = (fixture: TxFixture): WatcherProofThreadJournalV1 =>
   makeWatcherProofThreadJournalV1({
     journalId: journalIdentity,
     faultId: FAULT_ID,
-    familyId: "double-spend",
+    familyId: "invalid-range",
     fraudulentBlockHash: FRAUD_BLOCK,
     fraudulentHeaderHash: FRAUD_HEADER,
     fraudProver: PROVER,
     computationThreadAssetName: `${
-      policy.families.find(({ familyId }) => familyId === "double-spend")!
+      policy.families.find(({ familyId }) => familyId === "invalid-range")!
         .categoryId
     }${FRAUD_HEADER}`,
     phase: "active",
@@ -2311,7 +2353,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         families: [authority.families[0]!],
         maximumHistoryEntries: "32",
       }),
-    ).not.toBeNull();
+    ).toBeNull();
     expect(policy).not.toBeNull();
     expect(policy.families).toHaveLength(
       DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
@@ -2325,7 +2367,41 @@ describe("W17 public proof/computation-thread indexer", () => {
         .sort()
         .join(","),
     );
-    expect(policy.families[0]!.familyId).toBe("da-hash-preimage");
+    expect(policy.families[0]!.familyId).toBe("canonical-decodability");
+    const transitionTrace = policy.families.find(
+      ({ catalogueCategory }) => catalogueCategory === "transitionTrace",
+    )!;
+    expect(transitionTrace.categoryId).toBe("00000004");
+    expect(transitionTrace.stepScriptHashes).toHaveLength(9);
+    expect(transitionTrace.nextStepIndexes).toEqual([
+      ["1", "2", "3", "4", "5", "6", "7", "8"],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+    ]);
+    for (const family of policy.families) {
+      const registered =
+        WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1[
+          family.catalogueCategory as keyof typeof WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1
+        ];
+      expect(family.familyId).toBe(registered.familyId);
+      expect(family.stepScriptHashes).toHaveLength(registered.stepCount);
+      expect(family.nextStepIndexes).toHaveLength(registered.stepCount);
+      registered.deployedStepContractNames.forEach(
+        (contractName, stepIndex) => {
+          expect(family.stepScriptHashes[stepIndex]).toBe(
+            authority.deploymentAuthority.policy.appliedScriptHashes[
+              contractName
+            ],
+          );
+        },
+      );
+    }
 
     const hostile = structuredClone(authority.deploymentAuthority);
     (hostile.policy.programCommitments as Mutable)[
@@ -2346,6 +2422,56 @@ describe("W17 public proof/computation-thread indexer", () => {
       action: "reject",
       reasonCodes: ["malformed_public_context"],
     });
+  });
+
+  it("rejects incomplete, ambiguous, and unreachable signed family graphs", () => {
+    const base = {
+      network: "Preprod" as const,
+      releaseEvidenceDigest: RELEASE_DIGEST,
+      deploymentMarker: authority.marker,
+      deploymentTrustRootId: authority.result.trustRootId,
+      requiredFinalityDepth: "2",
+      computationThreadPolicyId: CT_POLICY,
+      fraudProofPolicyId: applied.fraudProofMint!,
+      fraudProofSpendScriptHash: applied.fraudProofSpend!,
+      fraudProofAddressHex: scriptAddress(applied.fraudProofSpend!),
+      maximumHistoryEntries: "32",
+    };
+
+    expect(
+      makeWatcherProofThreadPolicyV1({
+        ...base,
+        families: authority.families.slice(1),
+      }),
+    ).toBeNull();
+
+    const ambiguous = structuredClone(
+      authority.families,
+    ) as unknown as Mutable[];
+    const routed = ambiguous.find(
+      ({ catalogueCategory }) => catalogueCategory === "transitionTrace",
+    )!;
+    routed.nextStepIndexes[0] = ["1", "1", "2", "3", "4", "5", "6", "7"];
+    expect(
+      makeWatcherProofThreadPolicyV1({
+        ...base,
+        families: ambiguous as unknown as WatcherProofThreadFamilyV1[],
+      }),
+    ).toBeNull();
+
+    const unreachable = structuredClone(
+      authority.families,
+    ) as unknown as Mutable[];
+    const linear = unreachable.find(
+      ({ catalogueCategory }) => catalogueCategory === "invalidRange",
+    )!;
+    linear.nextStepIndexes = [[], []];
+    expect(
+      makeWatcherProofThreadPolicyV1({
+        ...base,
+        families: unreachable as unknown as WatcherProofThreadFamilyV1[],
+      }),
+    ).toBeNull();
   });
 
   it("holds first visibility, then promotes the exact W12-final transaction and replays after restart", () => {

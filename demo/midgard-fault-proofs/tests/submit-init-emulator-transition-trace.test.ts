@@ -8,7 +8,10 @@
  */
 
 import { outRefLabel } from "@al-ft/midgard-core";
-import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
+import {
+  createReferenceScriptAuthPolicy,
+  FraudProofTokenDatum,
+} from "@al-ft/midgard-sdk";
 import {
   Data,
   Emulator,
@@ -20,6 +23,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
   resolveProverSigner,
   submitRemoveFraudulentBlock,
   submitTransitionTraceProof,
@@ -38,11 +42,13 @@ import {
   EMULATOR_PROTOCOL_PARAMETERS,
   expectSingleUtxoWithUnit,
   network,
+  publishFraudProofChainReferenceScripts,
   publishRemovalReferenceScripts,
   readBlueprint,
   realBlueprintPath,
   registerPhasMembershipRewardAccount,
   submitSetupTx,
+  TRANSITION_TRACE_OVERSIZED_REFERENCE_SCRIPT_ENTRIES,
 } from "./support/submit-init-emulator-shared.js";
 
 describe("fault-proof emulator integration", () => {
@@ -70,12 +76,18 @@ describe("fault-proof emulator integration", () => {
       throw new Error("Expected funder wallet to expose a nonce UTxO");
     }
 
-    const contracts = await buildMinimalFaultProofContracts(
-      realBlueprint,
-      alwaysBlueprint,
-      nonceUtxo,
-      { realTransitionTrace: true, alwaysFraudProofCatalogue: true },
-    );
+    const contracts = {
+      ...(await buildMinimalFaultProofContracts(
+        realBlueprint,
+        alwaysBlueprint,
+        nonceUtxo,
+        { realTransitionTrace: true, alwaysFraudProofCatalogue: true },
+      )),
+      referenceScriptAuth: createReferenceScriptAuthPolicy(
+        funderLucid,
+        emulator.now(),
+      ),
+    };
     const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
     // See `publishRemovalReferenceScripts`: removal must source these seven
     // validators from reference inputs to stay inside the 16,384-byte L1
@@ -85,6 +97,15 @@ describe("fault-proof emulator integration", () => {
       await publishRemovalReferenceScripts({
         lucid: proverLucid,
         contracts,
+      });
+    const transitionTraceReferenceScripts =
+      await publishFraudProofChainReferenceScripts({
+        lucid: proverLucid,
+        steps: contracts.fraudProofContracts.transitionTrace.steps,
+        entryNames: FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY.transitionTrace,
+        familyLabel: "transition-trace",
+        oversizedEntryNames:
+          TRANSITION_TRACE_OVERSIZED_REFERENCE_SCRIPT_ENTRIES,
       });
     const funderPaymentCredential = getAddressDetails(
       await funderLucid.wallet().address(),
@@ -120,6 +141,7 @@ describe("fault-proof emulator integration", () => {
 
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
+      fraudProofReferenceScripts: transitionTraceReferenceScripts,
     });
     const initResult = await submitInit({
       lucid: proverLucid,

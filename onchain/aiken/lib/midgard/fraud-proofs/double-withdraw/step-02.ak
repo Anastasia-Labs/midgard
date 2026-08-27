@@ -42,9 +42,9 @@ pub type State {
 pub type Args {
   input_index: Int,
   output_index: Int,
+  fraud_proof_mint_redeemer_index: Int,
   hub_ref_input_index: Int,
   state_queue_node_ref_input_index: Int,
-  fraud_proof_mint_redeemer_index: Int,
   /// The second committed payable withdrawal leaf.
   committed_withdrawal: CommittedWithdrawalSourceProofV1,
 }

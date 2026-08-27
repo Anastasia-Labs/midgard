@@ -5,6 +5,7 @@ import {
   sign,
 } from "node:crypto";
 
+import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -39,9 +40,6 @@ import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-cat
 const NATIVE_SCRIPT_CBOR = `8200581c${"00".repeat(28)}`;
 const NATIVE_SCRIPT_HASH =
   "9dcfe5a661b6bc3af0999d06416d95842ba7c693dc0e246f5e0a5e33";
-const CONTRACT_SCRIPT_CBOR = "01";
-const CONTRACT_SCRIPT_HASH =
-  "bddf4b5c833decbf82201931cffc54f7c7dc51e4e6743a25a95aa2c0";
 const DA_VKEY = "44".repeat(32);
 const DA_SIGNERS_HASH =
   "0395256ce5d90f07504b614b9e70e29a06fdd69cef6b01f6018615164125a5c5";
@@ -65,24 +63,32 @@ const referenceOutRefByContract = new Map<
 
 const canonicalIdentity = (): MutableRecord => {
   const contracts = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName) => [
-      contractName,
-      {
-        refScriptUTxO: referenceOutRefByContract.get(contractName) ?? null,
-        contract: {
-          type:
-            contractName === "referenceScriptAuthMint" ? "Native" : "PlutusV3",
-          cborHex:
+    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName, index) => {
+      const contractScriptCbor = (index + 1).toString(16).padStart(2, "0");
+      return [
+        contractName,
+        {
+          refScriptUTxO: referenceOutRefByContract.get(contractName) ?? null,
+          contract: {
+            type:
+              contractName === "referenceScriptAuthMint"
+                ? "Native"
+                : "PlutusV3",
+            cborHex:
+              contractName === "referenceScriptAuthMint"
+                ? NATIVE_SCRIPT_CBOR
+                : contractScriptCbor,
+          },
+          scriptHash:
             contractName === "referenceScriptAuthMint"
-              ? NATIVE_SCRIPT_CBOR
-              : CONTRACT_SCRIPT_CBOR,
+              ? NATIVE_SCRIPT_HASH
+              : validatorToScriptHash({
+                  type: "PlutusV3",
+                  script: contractScriptCbor,
+                }),
         },
-        scriptHash:
-          contractName === "referenceScriptAuthMint"
-            ? NATIVE_SCRIPT_HASH
-            : CONTRACT_SCRIPT_HASH,
-      },
-    ]),
+      ];
+    }),
   ) as MutableRecord;
   contracts.fraudProofCatalogueMint.fraudProofCatalogue =
     canonicalFraudProofCatalogueFixture(contracts);
@@ -369,7 +375,7 @@ describe("watcher deployment identity", () => {
     });
   });
 
-  it("binds zero-input and validation-trace catalogue entries to their deployed contracts", () => {
+  it("binds the complete registered catalogue through category 18 to deployed contracts", () => {
     const fixture = makeFixture();
     const categories = fixture.policy.fraudProofCatalogue.categories;
 
@@ -381,6 +387,15 @@ describe("watcher deployment identity", () => {
       categoryId: "00000006",
       scriptHash: fixture.policy.appliedScriptHashes.validationTraceDispute,
     });
+    expect(categories.missingSignature).toEqual({
+      categoryId: "0000000e",
+      scriptHash: fixture.policy.appliedScriptHashes.fraudProofMissingSignature,
+    });
+    expect(categories.withdrawnInput).toEqual({
+      categoryId: "00000018",
+      scriptHash: fixture.policy.appliedScriptHashes.fraudProofWithdrawnInput,
+    });
+    expect(Object.keys(categories)).toHaveLength(25);
 
     fixture.policy = {
       ...fixture.policy,

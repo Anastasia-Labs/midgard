@@ -11,13 +11,24 @@
 > The transition-trace matrix, CLI, and emulator representation were reconciled
 > again on 2026-08-26 against the current tree.
 
+> Catalogue/deployment checkpoint (2026-08-26): the canonical catalogue now has
+> 25 positional categories (`00000000`–`00000018`). The additions at
+> `0000000b`–`00000018` are production registrations, and every family step is
+> a mandatory authenticated reference script. `transitionTrace` remains
+> `00000004` with one route plus eight terminal validators. Core/node manifest
+> identity and watcher proof-thread authority require the complete topology.
+> This identity movement is fresh-genesis/redeploy only, with no migration or
+> compatibility path. These tests do not establish autonomous watcher
+> detection/proving or a detect→prove→remove production drill.
+
 > Q20 addendum (2026-08-26): standalone min-fee now has 11 focused Aiken
 > controls, the full 190-case `validation_machine_v1` regression, four
 > prepare/envelope tests, and a two-case real-blueprint emulator suite. The
 > emulator covers both fee polarities, both cancellation states, same-NFT
 > resume, malformed evidence, exact compiled-validator boundary refusal,
 > permanent proof mint, and fraudulent-commitment removal. Production
-> catalogue registration remains deferred; `00000013` is test-only. The
+> catalogue registration is now `minFee` (`00000013`); family-specific CLI and
+> autonomous watcher mounting remain open. The
 > 32-case canonical-evidence suite also admits min-fee only from security-grade
 > DA/L1 evidence and rejects diagnostic/unauthenticated roots.
 

@@ -22,6 +22,7 @@ import {
   buildOmittedDueL1EventFault,
   buildOutOfWindowSourceEventFault,
   buildTransitionFaultProof,
+  FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
   reconstructDaPayloadV1,
   resolveTransitionTraceDeploymentContracts,
   submitRemoveFraudulentBlock,
@@ -42,8 +43,10 @@ import {
   makeFaultProofEmulatorHarnessV1,
   makeHeader,
   network,
+  publishFraudProofChainReferenceScripts,
   publishRemovalReferenceScripts,
   submitSetupTx,
+  TRANSITION_TRACE_OVERSIZED_REFERENCE_SCRIPT_ENTRIES,
   transitionTraceDaEntry,
   transitionTraceOutRef,
 } from "./support/submit-init-emulator-shared.js";
@@ -152,17 +155,29 @@ const makeHarness = async ({
     lucid: harness.proverLucid,
     contracts: harness.contracts,
   });
-  return { harness, publications };
+  const transitionTraceReferenceScripts =
+    await publishFraudProofChainReferenceScripts({
+      lucid: harness.proverLucid,
+      steps: harness.contracts.fraudProofContracts.transitionTrace.steps,
+      entryNames: FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY.transitionTrace,
+      familyLabel: "transition-trace",
+      oversizedEntryNames: TRANSITION_TRACE_OVERSIZED_REFERENCE_SCRIPT_ENTRIES,
+    });
+  return { harness, publications, transitionTraceReferenceScripts };
 };
 
 const setupChallenge = async ({
   harness,
   publications,
+  transitionTraceReferenceScripts,
   header,
 }: {
   readonly harness: Harness;
   readonly publications: Awaited<
     ReturnType<typeof publishRemovalReferenceScripts>
+  >;
+  readonly transitionTraceReferenceScripts: Awaited<
+    ReturnType<typeof publishFraudProofChainReferenceScripts>
   >;
   readonly header: SDK.HeaderV1;
 }) => {
@@ -176,7 +191,10 @@ const setupChallenge = async ({
   const deploymentInfo = buildRemovalDeploymentInfo(
     harness.contracts,
     harness.catalogue,
-    { removalReferenceScripts: publications.published },
+    {
+      removalReferenceScripts: publications.published,
+      fraudProofReferenceScripts: transitionTraceReferenceScripts,
+    },
   );
   const init = await submitInit({
     lucid: harness.proverLucid,
@@ -310,7 +328,8 @@ const alignedHeaderStart = async (harness: Harness) =>
 
 describe("transition-trace omitted/out-of-window/count subvariant lifecycle", () => {
   it("routes an omitted due withdrawal to final 6 and removes the block", async () => {
-    const { harness, publications } = await makeHarness();
+    const { harness, publications, transitionTraceReferenceScripts } =
+      await makeHarness();
     const header = makeHeader(
       await funderPaymentKeyHash(harness.funderLucid),
       await alignedHeaderStart(harness),
@@ -318,6 +337,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
     const lifecycle = await setupChallenge({
       harness,
       publications,
+      transitionTraceReferenceScripts,
       header,
     });
     const withdrawalId = transitionTraceOutRef("81");
@@ -337,7 +357,13 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
           kind: "withdrawal",
           withdrawalId,
           eventRefInputIndex: ledgerOrderedIndex(
-            [lifecycle.setup.hubOracle, event.utxo],
+            [
+              lifecycle.setup.hubOracle,
+              transitionTraceReferenceScripts[
+                "fraudProofTransitionTraceL1Event"
+              ]!.utxo,
+              event.utxo,
+            ],
             event.utxo,
             "omitted withdrawal reference input",
           ),
@@ -368,7 +394,8 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
   }, 180_000);
 
   it("routes an out-of-window withdrawal to final 6 and removes the block", async () => {
-    const { harness, publications } = await makeHarness();
+    const { harness, publications, transitionTraceReferenceScripts } =
+      await makeHarness();
     const operator = await funderPaymentKeyHash(harness.funderLucid);
     const startTime = await alignedHeaderStart(harness);
     const withdrawalId = transitionTraceOutRef("82");
@@ -447,6 +474,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
     const lifecycle = await setupChallenge({
       harness,
       publications,
+      transitionTraceReferenceScripts,
       header,
     });
     const event = await mintWithdrawalEvent({
@@ -470,7 +498,13 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
           kind: "withdrawal",
           withdrawalId,
           eventRefInputIndex: ledgerOrderedIndex(
-            [lifecycle.setup.hubOracle, event.utxo],
+            [
+              lifecycle.setup.hubOracle,
+              transitionTraceReferenceScripts[
+                "fraudProofTransitionTraceL1Event"
+              ]!.utxo,
+              event.utxo,
+            ],
             event.utxo,
             "out-of-window withdrawal reference input",
           ),
@@ -502,12 +536,13 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
   }, 180_000);
 
   it("routes a transition-step count mismatch to final 0 and removes the block", async () => {
-    const { harness, publications } = await makeHarness({
-      // The production state queue rejects this malformed header before a
-      // fault proof can observe it. Bypass admission only; the registered
-      // transition-trace chain and removal transaction remain real.
-      alwaysStateQueue: true,
-    });
+    const { harness, publications, transitionTraceReferenceScripts } =
+      await makeHarness({
+        // The production state queue rejects this malformed header before a
+        // fault proof can observe it. Bypass admission only; the registered
+        // transition-trace chain and removal transaction remain real.
+        alwaysStateQueue: true,
+      });
     const header: SDK.HeaderV1 = {
       ...makeHeader(
         await funderPaymentKeyHash(harness.funderLucid),
@@ -518,6 +553,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
     const lifecycle = await setupChallenge({
       harness,
       publications,
+      transitionTraceReferenceScripts,
       header,
     });
     const proof = SDK.makeTransitionFaultProof({
@@ -547,7 +583,8 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
   }, 180_000);
 
   it("rejects an honest late withdrawal accused as omitted at final 6", async () => {
-    const { harness, publications } = await makeHarness();
+    const { harness, publications, transitionTraceReferenceScripts } =
+      await makeHarness();
     const header = makeHeader(
       await funderPaymentKeyHash(harness.funderLucid),
       await alignedHeaderStart(harness),
@@ -555,6 +592,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
     const lifecycle = await setupChallenge({
       harness,
       publications,
+      transitionTraceReferenceScripts,
       header,
     });
     const withdrawalId = transitionTraceOutRef("83");
@@ -574,7 +612,13 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
           kind: "withdrawal",
           withdrawalId,
           eventRefInputIndex: ledgerOrderedIndex(
-            [lifecycle.setup.hubOracle, event.utxo],
+            [
+              lifecycle.setup.hubOracle,
+              transitionTraceReferenceScripts[
+                "fraudProofTransitionTraceL1Event"
+              ]!.utxo,
+              event.utxo,
+            ],
             event.utxo,
             "honest late withdrawal reference input",
           ),

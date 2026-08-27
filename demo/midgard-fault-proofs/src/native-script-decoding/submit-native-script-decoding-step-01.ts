@@ -97,10 +97,9 @@ export type SubmitNativeScriptDecodingStep01Result = {
   readonly awaitedConfirmation: boolean;
 };
 
-/** Attach-or-reference per Q3, shared by both arms. */
+/** Source the mandatory authenticated step-01 reference script. */
 const sourceStepScript = <
   T extends {
-    attach: { SpendingValidator: (s: Script) => T };
     readFrom: (utxos: UTxO[]) => T;
   },
 >({
@@ -110,17 +109,15 @@ const sourceStepScript = <
 }: {
   readonly tx: T;
   readonly contracts: NativeScriptDecodingContractsV1;
-  readonly referenceScriptUtxo: UTxO | undefined;
+  readonly referenceScriptUtxo: UTxO;
 }): T =>
-  referenceScriptUtxo === undefined
-    ? tx.attach.SpendingValidator(contracts.steps[0].spendingScript)
-    : tx.readFrom([
-        requireNativeScriptDecodingReferenceScriptV1({
-          utxo: referenceScriptUtxo,
-          expectedScriptHash: contracts.steps[0].spendingScriptHash,
-          stepIndex: 0,
-        }),
-      ]);
+  tx.readFrom([
+    requireNativeScriptDecodingReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      expectedScriptHash: contracts.steps[0].spendingScriptHash,
+      stepIndex: 0,
+    }),
+  ]);
 
 export const submitNativeScriptDecodingStep01BindNormal = async ({
   lucid,
@@ -147,8 +144,8 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   /** Present → the #545 published-chunk carriage; absent → redeemer-carried. */
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
-  /** Q3: the published step-01 reference script; inline-attached when absent. */
-  readonly referenceScriptUtxo?: UTxO;
+  /** Q3: the mandatory published step-01 reference script. */
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep01Result> => {
   const { threadUtxo, threadToken } =
@@ -209,15 +206,11 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
     hubOracleUtxo,
     stateQueueBlockUtxo,
     ...chunks.map((chunk) => chunk.utxo),
-    ...(referenceScriptUtxo === undefined
-      ? []
-      : [
-          requireNativeScriptDecodingReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[0].spendingScriptHash,
-            stepIndex: 0,
-          }),
-        ]),
+    requireNativeScriptDecodingReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      expectedScriptHash: contracts.steps[0].spendingScriptHash,
+      stepIndex: 0,
+    }),
   ];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
@@ -346,13 +339,9 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
-  const withStepScript =
-    referenceScriptUtxo === undefined
-      ? paid.attach.SpendingValidator(contracts.steps[0].spendingScript)
-      : paid;
   const completedTx = carriedByChunks
-    ? withStepScript.attach.WithdrawalValidator(chunkedVerifyScript)
-    : withStepScript.attach.WithdrawalValidator(phasMembershipScript);
+    ? paid.attach.WithdrawalValidator(chunkedVerifyScript)
+    : paid.attach.WithdrawalValidator(phasMembershipScript);
 
   const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
@@ -400,7 +389,7 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
   readonly threadOutRef: string;
   /** 0 (wrongful acceptance) or 1 (wrongful rejection); fixed for the thread's life. */
   readonly direction: bigint;
-  readonly referenceScriptUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep01Result> => {
   if (

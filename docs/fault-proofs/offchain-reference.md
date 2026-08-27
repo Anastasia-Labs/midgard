@@ -4,8 +4,9 @@
 > contemporaneous working tree; reconstructed on clean base `55afdc54`. Code map for the
 > TypeScript side: evidence construction, submission CLI, state correction, DA retrieval,
 > and local validation. Historical `fraud-proof` source paths are preserved literally.
-> Transition-trace CLI status was reconciled on 2026-08-26 against the current
-> working tree; the broader audit provenance is unchanged.
+> Catalogue/deployment and transition-trace CLI status were reconciled on
+> 2026-08-26 against the current working tree; the broader audit provenance is
+> unchanged.
 
 ## 1. Package roles
 
@@ -30,14 +31,24 @@
 `submit-transition-trace-proof` ·
 `remove-fraudulent-block`.
 
-`submit-init --fraud-category` accepts exactly eleven values — `doubleSpend |
-nonExistentInput | nonExistentInputNoIndex | invalidRange | transitionTrace |
-zeroInput | validationTraceDispute | daHashPreimage | noReferenceInput |
-referenceInputNoIdx | invalidSignature` — matching the catalogue and
-inspector. Transition-trace preparation accepts only a retained-DA envelope
+`submit-init --fraud-category` is derived from the canonical 25-entry catalogue
+order (`00000000`–`00000018`). The appended registrations are
+`fabricatedDeposit | fabricatedWithdrawal | nativeScriptDecoding |
+missingSignature | missingNativeScriptTx | withdrawnReferenceInput |
+canonicalDecodability | committedFieldShape | minFee | withdrawalMistag |
+doubleWithdraw | crossBlockDuplicateEvent | l2TxMistag | withdrawnInput`.
+The same order is required by inspection and node/core/watcher deployment
+identity. This gives every family a generic Init route; it does not create
+family-specific step CLI verbs. Transition-trace preparation accepts only a retained-DA envelope
 pinned to the committed header hash. Submission strictly decodes canonical
 `TransitionFaultProof` Data CBOR and resolves each repeatable
 `--reference-input` from the live provider.
+
+Every registered family step is deployed and spent through an authenticated
+reference-script UTxO. `transitionTrace` stays at `00000004` and its manifest
+topology is one route plus eight terminal validators. The catalogue/manifest
+identity movement requires fresh genesis/redeployment, with no migration or
+compatibility path.
 
 All `submit-*` commands hit a real L1 (Blockfrost/Kupmios via
 `runtime.ts:makeLucidForSubmit`, `src/runtime.ts:99-159`) and sign/submit; all `prepare-*`
@@ -90,7 +101,7 @@ mints the fault-proof token. The emulator lifecycle reaches faulty-block
 removal. Family closure status is tracked individually in
 [`catalogue-status.md`](catalogue-status.md).
 
-### missing-signature (Q16 library lifecycle; pre-registration)
+### missing-signature (Q16 registered library lifecycle)
 
 `src/missing-signature/` provides strict finding/evidence codecs, the resumable
 Init → step-01 → step-02 → step-03 → step-04 proving core, cancellation, and
@@ -100,9 +111,11 @@ token. Emulator coverage drives both the core and direct submitters through
 faulty-block removal, proves refusal for an honest commitment, and covers local
 negative, cancel, and resume paths. Watcher detection distinguishes an absent
 witness from an unknown verification-key preimage and a present-but-invalid
-witness before emitting a finding. The family is intentionally absent from the
-production CLI, catalogue, deployment manifest, and watcher `families[]` until
-the registration wave; `0000000e` is used only by the isolated emulator harness.
+witness before emitting a finding. The family is registered as
+`missingSignature` (`0000000e`) in the production catalogue, deployment
+manifest, and watcher proof-thread topology. It remains absent from the
+family-specific CLI surface, and the watcher does not mount its detector/prover
+autonomously.
 Step-04 authenticates field 7 once per spend and advances a canonical,
 thread-committed absence-walk checkpoint in 32-witness batches. The final batch
 burns the thread and mints the permanent proof; cancellation and crash-resume
@@ -206,7 +219,10 @@ datum in the same txs; non-tail removals require the node's admin-gated
   transactions; fault proofs concern committed blocks. Zero references to
   `RejectCode` in `demo/midgard-fault-proofs`. Consequence: nothing today classifies a
   _committed_ block's violation into a proof family — that selection is fully manual.
-- **Watcher**: no autonomous detection loop anywhere
+- **Watcher**: signed deployment authority now authenticates all 25 family ids,
+  first-step hashes, complete step graphs, and reference scripts. This is
+  proof-thread indexing/verification topology only. There is still no autonomous
+  detect→prove→remove loop
   (`demo/midgard-watcher/midgard-watcher-architecture.md:11-25` admits it; roadmap item 5
   `:414-431`; adversarial review verdict "No-go as a production-ready plan in its first
   draft", `watcher-plan-adversarial-review.md:22`).
@@ -219,8 +235,8 @@ datum in the same txs; non-tail removals require the node's admin-gated
 | invalid-range      | 4                                                                               | same                            |
 | non-existent-input | 6                                                                               | same                            |
 | zero-input         | 4 (prepare + init + 2 steps)                                                    | same                            |
-| min-fee            | library-only pre-registration prepare + init + 2 steps; no registered CLI verbs | explicit-category removal       |
-| transition-trace   | not possible via CLI (library calls only)                                       | same                            |
+| min-fee            | library prepare + generic registered init + 2 library step calls; no family-specific CLI verbs | registered-category removal       |
+| transition-trace   | 3 (prepare + init + authenticated route→selected-final submit)                  | same                            |
 | Remaining families | atomic closure remains task-specific                                            | —                               |
 
 Each command needs env/config (Blockfrost or Kupmios keys, deployment-info JSON, out-ref

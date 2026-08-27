@@ -1,6 +1,7 @@
 import {
   type AuthenticatedValidator,
-  type FraudProofs,
+  type FaultProofContractChains,
+  fraudProofContractsToFirstSteps,
   type MidgardValidators,
   type MintingValidator,
   type SpendingValidator as SdkSpendingValidator,
@@ -17,6 +18,30 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { type Blueprint, getCompiledScript, network } from "./blueprints.js";
+
+type RepeatedValidatorTuple<
+  Length extends number,
+  Result extends readonly SdkSpendingValidator[] = readonly [],
+> = Result["length"] extends Length
+  ? Result
+  : RepeatedValidatorTuple<Length, readonly [...Result, SdkSpendingValidator]>;
+
+const repeatValidator = <const Length extends number>(
+  validator: SdkSpendingValidator,
+  length: Length,
+): RepeatedValidatorTuple<Length> =>
+  Array.from(
+    { length },
+    () => validator,
+  ) as unknown as RepeatedValidatorTuple<Length>;
+
+const scaffoldChain = <const Length extends number>(
+  firstStep: SdkSpendingValidator,
+  length: Length,
+) => ({
+  firstStep,
+  steps: repeatValidator(firstStep, length),
+});
 
 export const makeMintingValidator = (
   mintingScriptCBOR: string,
@@ -126,63 +151,92 @@ export const makeAlwaysSucceedsContracts = (
   const alwaysValidationTraceDispute = makeSpendingValidator(
     alwaysScript(blueprint, "fraud_proofs", "transition_trace", "spend"),
   );
-  const fraudProofs: FraudProofs = {
-    doubleSpend: makeSpendingValidator(
-      alwaysScript(blueprint, "fraud_proofs", "double_spend", "spend"),
+  const nonExistentInputFirstStep = makeSpendingValidator(
+    alwaysScript(blueprint, "fraud_proofs", "non_existent_input", "spend"),
+  );
+  const nonExistentInputNoIndexFirstStep = makeSpendingValidator(
+    alwaysScript(
+      blueprint,
+      "fraud_proofs",
+      "non_existent_input_no_index",
+      "spend",
     ),
-    nonExistentInput: makeSpendingValidator(
-      alwaysScript(blueprint, "fraud_proofs", "non_existent_input", "spend"),
-    ),
-    nonExistentInputNoIndex: makeSpendingValidator(
-      alwaysScript(
-        blueprint,
-        "fraud_proofs",
-        "non_existent_input_no_index",
-        "spend",
-      ),
-    ),
-    invalidRange: makeSpendingValidator(
-      alwaysScript(blueprint, "fraud_proofs", "invalid_range", "spend"),
-    ),
-    transitionTrace: makeSpendingValidator(
-      alwaysScript(blueprint, "fraud_proofs", "transition_trace", "spend"),
-    ),
-    zeroInput: makeSpendingValidator(
-      alwaysScript(blueprint, "fraud_proofs", "zero_input", "spend"),
-    ),
+  );
+  const invalidRangeFirstStep = makeSpendingValidator(
+    alwaysScript(blueprint, "fraud_proofs", "invalid_range", "spend"),
+  );
+  const transitionTraceFirstStep = makeSpendingValidator(
+    alwaysScript(blueprint, "fraud_proofs", "transition_trace", "spend"),
+  );
+  const zeroInputFirstStep = makeSpendingValidator(
+    alwaysScript(blueprint, "fraud_proofs", "zero_input", "spend"),
+  );
+  // The always-succeeds blueprint predates the appended production families.
+  // Its full chain registry deliberately aliases one scaffold validator at
+  // each canonical chain length. Focused emulator suites replace the selected
+  // chain with that family's real validators.
+  const appendedFamilyFallback = makeSpendingValidator(
+    alwaysScript(blueprint, "fraud_proofs", "double_spend", "spend"),
+  );
+  const fraudProofContracts: FaultProofContractChains = {
+    doubleSpend: scaffoldChain(appendedFamilyFallback, 4),
+    nonExistentInput: scaffoldChain(nonExistentInputFirstStep, 4),
+    nonExistentInputNoIndex: scaffoldChain(nonExistentInputNoIndexFirstStep, 4),
+    invalidRange: scaffoldChain(invalidRangeFirstStep, 2),
+    transitionTrace: {
+      ...scaffoldChain(transitionTraceFirstStep, 9),
+      route: transitionTraceFirstStep,
+      finals: repeatValidator(transitionTraceFirstStep, 8),
+    },
+    zeroInput: scaffoldChain(zeroInputFirstStep, 2),
     validationTraceDispute: {
-      ...alwaysValidationTraceDispute,
+      ...scaffoldChain(alwaysValidationTraceDispute, 1),
+      cekProgramMaterial: alwaysValidationTraceDispute,
+      opener: alwaysValidationTraceDispute,
       source: alwaysValidationTraceDispute,
       game: alwaysValidationTraceDispute,
       boundary: alwaysValidationTraceDispute,
       timeout: alwaysValidationTraceDispute,
       award: alwaysValidationTraceDispute,
+      proofItem: alwaysValidationTraceDispute,
+      canonicalDecodeItemStages: {
+        source: alwaysValidationTraceDispute,
+        observe: alwaysValidationTraceDispute,
+        proof: alwaysValidationTraceDispute,
+        settlement: alwaysValidationTraceDispute,
+      },
+      scriptSourcesStageOneRedeemerStages: {
+        envelope: alwaysValidationTraceDispute,
+        traversalNormalizer: alwaysValidationTraceDispute,
+        outerNormalizer: alwaysValidationTraceDispute,
+        foldMapExecutor: alwaysValidationTraceDispute,
+        finalizeFrameExecutor: alwaysValidationTraceDispute,
+        settlement: alwaysValidationTraceDispute,
+      },
+      prepareResolvers: repeatValidator(alwaysValidationTraceDispute, 14),
+      semanticResolvers: repeatValidator(alwaysValidationTraceDispute, 91),
+      resolvers: repeatValidator(alwaysValidationTraceDispute, 14),
     },
-    // The always-succeeds devnet blueprint has no dedicated
-    // `da_hash_preimage` stub, so Q44 reuses the `zero_input` stub, mirroring
-    // how `validationTraceDispute` reuses `transition_trace`.
-    daHashPreimage: makeSpendingValidator(
-      alwaysScript(blueprint, "fraud_proofs", "zero_input", "spend"),
-    ),
-    // Same aliasing for the three families registered by #547: the
-    // always-succeeds devnet blueprint carries no `no_reference_input`,
-    // `reference_input_no_idx`, or `invalid_signature` stub, so each reuses
-    // the stub of the family it mirrors on-chain.
-    noReferenceInput: makeSpendingValidator(
-      alwaysScript(blueprint, "fraud_proofs", "non_existent_input", "spend"),
-    ),
-    referenceInputNoIdx: makeSpendingValidator(
-      alwaysScript(
-        blueprint,
-        "fraud_proofs",
-        "non_existent_input_no_index",
-        "spend",
-      ),
-    ),
-    invalidSignature: makeSpendingValidator(
-      alwaysScript(blueprint, "fraud_proofs", "invalid_range", "spend"),
-    ),
+    daHashPreimage: scaffoldChain(zeroInputFirstStep, 2),
+    noReferenceInput: scaffoldChain(nonExistentInputFirstStep, 4),
+    referenceInputNoIdx: scaffoldChain(nonExistentInputNoIndexFirstStep, 4),
+    invalidSignature: scaffoldChain(invalidRangeFirstStep, 2),
+    fabricatedDeposit: scaffoldChain(appendedFamilyFallback, 4),
+    fabricatedWithdrawal: scaffoldChain(appendedFamilyFallback, 4),
+    nativeScriptDecoding: scaffoldChain(appendedFamilyFallback, 4),
+    missingSignature: scaffoldChain(appendedFamilyFallback, 4),
+    missingNativeScriptTx: scaffoldChain(appendedFamilyFallback, 6),
+    withdrawnReferenceInput: scaffoldChain(appendedFamilyFallback, 3),
+    canonicalDecodability: scaffoldChain(appendedFamilyFallback, 2),
+    committedFieldShape: scaffoldChain(appendedFamilyFallback, 2),
+    minFee: scaffoldChain(appendedFamilyFallback, 2),
+    withdrawalMistag: scaffoldChain(appendedFamilyFallback, 5),
+    doubleWithdraw: scaffoldChain(appendedFamilyFallback, 2),
+    crossBlockDuplicateEvent: scaffoldChain(appendedFamilyFallback, 2),
+    l2TxMistag: scaffoldChain(appendedFamilyFallback, 2),
+    withdrawnInput: scaffoldChain(appendedFamilyFallback, 3),
   };
+  const fraudProofs = fraudProofContractsToFirstSteps(fraudProofContracts);
   const fieldPreimageV1 = makeSpendingValidator(
     alwaysScript(blueprint, "midgard", "state_queue", "spend"),
   );
@@ -230,6 +284,7 @@ export const makeAlwaysSucceedsContracts = (
     settlement: alwaysAuthenticated(blueprint, "settlement"),
     reserve,
     payout: alwaysAuthenticated(blueprint, "payout"),
+    fraudProofContracts,
     fraudProofs,
   };
 };

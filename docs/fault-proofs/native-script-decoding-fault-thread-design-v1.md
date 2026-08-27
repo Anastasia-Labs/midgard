@@ -1,5 +1,12 @@
 # Native-script decoding fault: standalone computation-thread family (design v1)
 
+> **Registration update (2026-08-26):** the designed family is registered as
+> `nativeScriptDecoding` at `0000000d`. Its four-step topology and all four
+> mandatory authenticated reference scripts are part of canonical deployment
+> identity. Watcher topology registration does not mount the autonomous
+> detector/prover. Adoption is a fresh genesis/redeployment with no migration
+> or compatibility path.
+
 Audit date: 2026-08-24. Branch: `wave/lane-o`. Issue: #633, direction (d).
 Revised same day to incorporate the owner rulings of 2026-08-24: the
 **Rejected ⇒ Forced** invariant governs the rejection commitment (the thread
@@ -1216,19 +1223,13 @@ fraud-proof catalogue is an MPF root in a datum
 (`onchain/aiken/lib/midgard/fraud-proof-catalogue.ak:7-29`,
 `Datum = MerkleRoot<Int, ByteArray>`, `id_byte_count = 4`) whose spending
 validator **always fails** (`docs/fault-proofs/onchain-reference.md:43`), so
-the catalogue is init-time-immutable: **adding this family to a live
-deployment is impossible; it requires a new genesis-level deployment**, per
+the catalogue is init-time-immutable. This family is registered only through
+a **fresh genesis-level deployment**, per
 D-S13 ("upgrades = new deployments",
-`docs/fault-proofs/catalogue-status.md:211-214`). The current catalogue holds
-eleven categories `00000000`–`0000000a`
-(`docs/fault-proofs/onchain-reference.md:108-113`) with append index 11 =
-`0000000b` reserved for the fabricated-deposit family (#617,
-`catalogue-status.md`). This family takes the next free index at registration
-time — **the id is deliberately not fixed by this document** because the
-reserved-index ledger is owned by the registration wave and `catalogue.ts` is
-already drifted (8 registered vs 11 on-chain,
-`catalogue-status.md`); pinning a number here would add a third source of
-truth. See §9 Q7.
+`docs/fault-proofs/catalogue-status.md`). The canonical catalogue holds 25
+categories `00000000`–`00000018`; this family is
+`nativeScriptDecoding` at `0000000d`. There is no live migration or
+compatibility path. See §9 Q7.
 
 **Pinned artifacts.** `native-script-scan-exec-ledger-v1.json` is read-only
 input to §6 and is not superseded; the new engine gets its **own** ledger
@@ -1277,7 +1278,7 @@ Numbered; each with a recommendation.
    maximizes coverage
    but overlaps the planned output-well-formedness family (D-S10).
    The breadth is kept as designed; the overlap is recorded in
-   `catalogue-status.md` at registration so D-S10's scoping subtracts it.
+   `catalogue-status.md`; D-S10's scoping now subtracts the registered family.
 4. **PhaseA witness-script twin.** `reject_invalid_field_type` and the limit
    codes are also emitted for *witness-set* native scripts in
    PhaseANativeScripts (`validation-machine-v1.ak:3882-4069`, `:4528-4900`);
@@ -1308,16 +1309,13 @@ Numbered; each with a recommendation.
    whose leaves and descriptors disagree cannot assemble a valid claim
    witness at all — the disagreement is a claim-machinery format fault, and
    this thread need not (and does not) cover it.
-7. **Catalogue id allocation and inventory drift — RULED by owner
-   (2026-08-24): recommendation adopted.** Next free index after
-   `0000000b`, but `catalogue.ts` is drifted (8 vs 11). The fresh
-   genesis-level deployment requirement (§8) is accepted; the category id
-   is allocated in the registration wave only, after the drift is
-   reconciled; this document intentionally names no number.
+7. **Catalogue id allocation — COMPLETE.** `nativeScriptDecoding` is
+   canonically registered at `0000000d`. The fresh genesis-level deployment
+   requirement (§8) is accepted; no migration/compatibility path exists.
 8. **Fee-price assumptions.** §6's lovelace figures assume current mainnet
    execution prices; the pinned ledger pins ExUnits, not prices.
-   *Recommendation:* restate fees at registration time; treat only the
-   step-count arithmetic as durable.
+   Treat only the step-count arithmetic as durable; fee assumptions are an
+   operational deployment review item.
 9. **`prior_ledger_root` source — RESOLVED by the 2026-08-24 rework.** The
    thread now takes `prior_ledger_root` directly from the transition trace
    (`event_to_step_root` → `transition_trace_root` →

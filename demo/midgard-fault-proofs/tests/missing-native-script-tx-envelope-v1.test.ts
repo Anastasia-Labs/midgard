@@ -9,6 +9,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1 } from "../src/missing-native-script-tx/contracts-v1.js";
+import { measureBlueprintValidatorBytes } from "../src/runtime.js";
 import {
   buildMissingNativeScriptTxChainV1,
   EMULATOR_PROTOCOL_PARAMETERS,
@@ -25,6 +26,14 @@ const EXPECTED_UNAPPLIED_SIZES_BYTES = {
   step05: 1_570,
   step06: 7_642,
 } as const;
+const EXPECTED_DECLARED_ARITIES = {
+  step01: 3,
+  step02: 3,
+  step03: 3,
+  step04: 3,
+  step05: 2,
+  step06: 4,
+} as const;
 
 describe("missing-native-script-tx envelope and reference-script deployment", () => {
   const blueprint = readBlueprint(realBlueprintPath);
@@ -34,11 +43,17 @@ describe("missing-native-script-tx envelope and reference-script deployment", ()
     for (const [step, title] of Object.entries(
       MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1,
     )) {
-      const validator = blueprint.validators.find(
-        (candidate) => candidate.title === title,
-      );
-      expect(validator, title).toBeDefined();
-      expect(validator!.compiledCode.length / 2).toBe(
+      expect(
+        measureBlueprintValidatorBytes({
+          blueprint,
+          title,
+          expectedDeclaredParameterCount:
+            EXPECTED_DECLARED_ARITIES[
+              step as keyof typeof EXPECTED_DECLARED_ARITIES
+            ],
+        }),
+        title,
+      ).toBe(
         EXPECTED_UNAPPLIED_SIZES_BYTES[
           step as keyof typeof EXPECTED_UNAPPLIED_SIZES_BYTES
         ],

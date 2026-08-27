@@ -26,10 +26,9 @@
  *    non-terminal batch commits a canonical checkpoint into the thread datum;
  *    the terminal batch burns the thread and mints the permanent proof.
  *
- * Catalogue category: **not registered yet** — the expected id (`0000000e`)
- * is allocated only at registration, so this module is reached by direct
- * import rather than through `fraud-proof/catalogue.ts`, and the asset-name
- * helper is parameterized on the category id instead of pinning one.
+ * Production catalogue category: `missingSignature` (`0000000e`). The
+ * asset-name helper accepts the deployed category id so callers remain bound
+ * to the manifest they are submitting against.
  *
  * This module is the strict TypeScript twin of
  * `onchain/aiken/lib/midgard/fraud-proofs/missing-signature/step-0{1..4}.ak`.
@@ -60,8 +59,7 @@ export const MISSING_SIGNATURE_VIOLATION_ID_V1 = "missing-signature" as const;
 
 /**
  * A missing-signature computation-thread token's asset name: the family's
- * category id (4 bytes, allocated at registration) followed by the challenged
- * block's header hash.
+ * deployed category id (4 bytes) followed by the challenged block's header hash.
  */
 export const missingSignatureThreadTokenAssetNameV1 = (
   categoryId: string,

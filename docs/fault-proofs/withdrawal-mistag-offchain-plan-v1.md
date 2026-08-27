@@ -1,9 +1,13 @@
 # Withdrawal mistag: standalone single-party proof plan (v1)
 
 Plan date: 2026-08-26. Scope: GOAL_SPEC Q41 / catalogue decision D-S8.
-This plan is the implementation contract for the on-chain and off-chain work
-that follows it in the same change. It does not register a production category
-or regenerate `plutus.json`.
+This plan is the implementation contract and as-built record for the on-chain
+and off-chain work. The family is registered as `withdrawalMistag` at
+`00000014`; generic Init, catalogue/inspection, node/core deployment identity,
+watcher proof-thread topology, and all five mandatory authenticated reference
+scripts are wired. Family-specific CLI, autonomous watcher detector/prover
+mounting, preprod, and live evidence remain open. The identity change requires
+fresh genesis/redeployment; there is no migration or compatibility path.
 
 ## 1. Decision: standalone, not transition-trace
 
@@ -73,11 +77,10 @@ technical specification does not define.
 
 ## 3. Catalogue and deployment boundary
 
-This is a standalone pre-registration family. Tests use the reserved test-only
-category id **`00000014`**. The id is never appended to
-`FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` by this change and is never presented as
-a production allocation. The emulator's extra-category catalogue builder
-binds `00000014` to the applied step-01 hash for Init.
+This standalone family is canonically registered as `withdrawalMistag` at
+**`00000014`**. The SDK catalogue, generic Init, deployment
+manifests/inspection, and watcher proof-thread topology bind the id to the
+applied step-01 hash.
 
 The five validators are applied backwards and referenced by the submitters:
 
@@ -89,11 +92,9 @@ The five validators are applied backwards and referenced by the submitters:
 | 04   | `step_05_hash`, computation-thread policy                          |
 | 05   | computation-thread policy, fraud-proof policy, fraud-proof address |
 
-Reference-script publication is required in the pre-registration harness for
-every step whose applied bytes plus worst redeemer do not fit the target L1
-transaction envelope. The harness records applied sizes and chooses the same
-reference-input attachment path for all five steps when any one requires it;
-production reference-script registration is deferred to the catalogue wave.
+Reference-script publication is mandatory for all five production steps,
+independent of size. Each submitter authenticates the published script hash;
+inline attachment is not a production fallback.
 
 ## 4. Exact validity predicate
 
@@ -200,7 +201,7 @@ removal workflow.
 ## 6. Off-chain API
 
 SDK (`demo/midgard-sdk/src/fraud-proof/withdrawal-mistag-v1.ts`) owns the five
-datum/redeemer schemas, the reserved test-id constant, direction and evidence
+datum/redeemer schemas, the canonical `00000014` id, direction and evidence
 types, exact output-length/min-Ada twins, and category/header asset-name
 helpers. It has byte/vector twins against Aiken.
 
@@ -209,7 +210,7 @@ Fault-proof package owns:
 - `prepare-withdrawal-mistag.ts`: admit and verify supplied retained source,
   event-to-step, trace and ledger openings; independently recompute the
   predicate; refuse preparation if there is no polarity mismatch;
-- `submit-withdrawal-mistag-init.ts`: generic Init using the extra-category
+- `submit-withdrawal-mistag-init.ts`: generic Init using the registered category
   membership proof;
 - `submit-withdrawal-mistag-step-01.ts` through `step-05.ts`;
 - `submit-withdrawal-mistag-cancel.ts`: prover-signed cancellation at any
@@ -264,7 +265,7 @@ emulator controls:
 
 The maximum source leaf and maximum ledger witness are measured after applying
 the real validators. If any step exceeds the L1 envelope even by reference
-script, evidence is split or the family remains unregistered; limits are never
+script, evidence is split or production deployment remains blocked; limits are never
 silently reduced.
 
 ## 9. Verification and integration boundary
@@ -279,7 +280,6 @@ Required non-zero checks:
   removal;
 - TypeScript typecheck, Prettier and ESLint on touched files.
 
-Minimal documentation changes mark D-S8 as implemented locally and
-pre-registration-only. Production catalogue/CLI/deployment-manifest/watcher
-registration, blueprint regeneration, preprod execution, and any change to
-`l2-tx-mistag` are explicitly out of scope.
+Documentation marks D-S8 implemented, registered, and emulator-proven.
+Family-specific CLI, autonomous watcher detector/prover mounting, preprod/live
+evidence, and any change to `l2-tx-mistag` remain out of scope.
