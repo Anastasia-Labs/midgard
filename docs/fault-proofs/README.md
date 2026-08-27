@@ -10,11 +10,11 @@ plus its contemporaneous working tree. Reconstructed on `tx-validation` HEAD
 `55afdc54`; paths were reconciled to that clean base, but line anchors must be
 rechecked when implementing an item.
 
-Current-tree reconciliation: **2026-08-04**, after Q13 commit `823b2d16`.
+Current-tree reconciliation: **2026-08-26**.
 Q00/Q02/Q03 and Q13 are complete in their assigned scope: all twelve compiled
 standalone families use the native V1 counted-root binding, and Q13 supplies
 the `input-no-idx` prepare/submit/CLI/emulator lifecycle. The current catalogue,
-`submit-init`, and manifest inspector each enumerate the same **eight**
+`submit-init`, and manifest inspector each enumerate the same **eleven**
 categories. This is an inventory refresh, not a launch claim: Q14–Q20,
 Q49-L298/Q49-L302, the missing-family/catalogue work, Q50+, economics, availability,
 and preprod gates remain open.
@@ -64,6 +64,9 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 - Generic machinery: catalogue, computation-thread minting policy (`Init`/`Success`/`BurnForCancellation`), step transition helpers, permanent fault-proof token, state-queue removal + operator slashing wiring, Plutarch MPF membership/non-membership (`phas`/`pexcludes`) primitives, counted/domain-tagged roots.
 - 10 of 12 proof types with real verification logic: `zero-input`, `no-input`, `double-spend`, `input-no-idx`, `invalid-range`, `invalid-signature`, `missing-native-script-tx`, `missing-signature`, `no-reference-input`, `withdrawn-reference-input`.
 - The `transition-trace` state-transition engine (9 top-level fault families: boundary, link, event-to-step, source-membership — incl. its phase-mismatch sub-variant — invalid one-step transition, duplicate-event, count, omitted-due-L1-event, out-of-window).
+- The transition-trace retained-DA prepare CLI, strict proof-submit CLI, complete
+  omitted/out-of-window/count Aiken sub-variant matrix, and registered emulator
+  journeys through real finals 0/3/6 and faulty-block removal.
 - Canonical V1 valid forced transactions use the same accepted ledger-delta
   validation claim as normal transactions; invalid forced transactions use an
   exact rejected no-op. Wrong verdicts, wrong roots, and either source-phase
@@ -73,10 +76,11 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
   `submit-init`, four step commands (including resumable fold), inspection,
   and an emulator chain through faulty-block removal. The remaining Q14–Q20
   family-closure tasks are not promoted by that result.
-- The positional deployment catalogue has **eight** categories:
+- The positional deployment catalogue has **eleven** categories:
   `doubleSpend`, `nonExistentInput`, `nonExistentInputNoIndex`, `invalidRange`,
   `transitionTrace`, `zeroInput`, `validationTraceDispute`, and
-  `daHashPreimage`. `submit-init` and `inspect-contracts` use the same eight.
+  `daHashPreimage`, `noReferenceInput`, `referenceInputNoIdx`, and
+  `invalidSignature`. `submit-init` and `inspect-contracts` use the same eleven.
   This is only the initial §9.1 launch-scope inventory; Q50/Q55 must still
   settle the final enabled routes.
 
@@ -100,8 +104,8 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
   negative output value.
 - Fabricated deposit / fabricated withdrawal (spec asserts "detectable" but provides no construction).
 - Mis-tagged (valid→invalid) withdrawal proof.
-- Atomic closure for Q14–Q20, CLI wiring for `transition-trace`, and the
-  missing-family routes remain open despite the complete native-V1 binding.
+- Atomic closure for the remaining unregistered families and the missing-family
+  routes remains open despite the complete native-V1 binding.
 - Preprod end-to-end (an operator-local 2026-05-08 report recorded a canonical-root
   mismatch, but it is intentionally untracked and predates the counted-root work of PR
   #458 and the MPF rewrite of the proof builders; readiness remains unconfirmed until a

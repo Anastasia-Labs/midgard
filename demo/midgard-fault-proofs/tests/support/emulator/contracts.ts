@@ -50,6 +50,7 @@ import {} from "./catalogue.js";
 import {
   makeAlwaysSucceedsContracts,
   makeAuthenticatedValidator,
+  makeIsolatedAlwaysSucceedsAuthenticatedValidator,
   makeMintingValidator,
   makeSpendingValidator,
 } from "./validators.js";
@@ -142,6 +143,7 @@ export const buildMinimalFaultProofContracts = async (
     realValidationTraceDispute = false,
     realNativeScriptDecoding = false,
     alwaysFraudProofCatalogue = false,
+    alwaysStateQueue = false,
   }: {
     readonly realNonExistentInput?: boolean;
     readonly realInvalidRange?: boolean;
@@ -157,6 +159,13 @@ export const buildMinimalFaultProofContracts = async (
     readonly realValidationTraceDispute?: boolean;
     readonly realNativeScriptDecoding?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
+    /**
+     * Test-only admission bypass for faults whose malformed header is rejected
+     * by the production state queue before the fault-proof family can observe
+     * it. The family under test, computation-thread policies, fraud-proof
+     * policy, and removal path remain their production implementations.
+     */
+    readonly alwaysStateQueue?: boolean;
   } = {},
 ): Promise<
   MidgardValidators & {
@@ -366,6 +375,12 @@ export const buildMinimalFaultProofContracts = async (
       withScheduler.daAttestation.policyId,
     ]),
   );
+  const stateQueue = alwaysStateQueue
+    ? makeIsolatedAlwaysSucceedsAuthenticatedValidator()
+    : {
+        ...stateQueueMinting,
+        ...stateQueueSpending,
+      };
 
   // The two Q39/Q40 families predate their catalogue registration: production
   // deployment resolution cannot build them yet (parent-owned integration
@@ -380,7 +395,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: fabricatedDepositContracts.computationThread,
           fraudProof: fabricatedDepositContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: stateQueueMinting.policyId,
+          stateQueuePolicyId: stateQueue.policyId,
           categoryId: FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1,
         };
   // Same predates-registration shape for the `native-script-decoding` family
@@ -416,7 +431,7 @@ export const buildMinimalFaultProofContracts = async (
             computationThread: doubleSpendContracts.computationThread,
             fraudProof: doubleSpendContracts.fraudProof,
             hubOraclePolicyId: hubOracle.policyId,
-            stateQueuePolicyId: stateQueueMinting.policyId,
+            stateQueuePolicyId: stateQueue.policyId,
             fieldPreimageCertificatePolicyId:
               base.fieldPreimageCertificate.policyId,
           };
@@ -430,7 +445,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: fabricatedWithdrawalContracts.computationThread,
           fraudProof: fabricatedWithdrawalContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: stateQueueMinting.policyId,
+          stateQueuePolicyId: stateQueue.policyId,
           categoryId: FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
         };
 
@@ -442,10 +457,7 @@ export const buildMinimalFaultProofContracts = async (
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,
-    stateQueue: {
-      ...stateQueueMinting,
-      ...stateQueueSpending,
-    },
+    stateQueue,
     fraudProof: {
       ...doubleSpendContracts.fraudProof,
       policyId: doubleSpendContracts.fraudProof.policyId,
