@@ -362,6 +362,8 @@ export type DecodingBlockFixtureV1 = {
   readonly nativeTxCompactCbor: string;
   /** Direction-A normal-source threads only: the step-01 inclusion evidence. */
   readonly txInclusion: SubmitStep01TxInclusion | null;
+  /** Inclusion evidence for every normal transaction committed by the fixture. */
+  readonly txInclusions: ReadonlyMap<string, SubmitStep01TxInclusion>;
   readonly forcedOrderKey: SDK.OutputReference | null;
   readonly transactionsPhasRoot: string;
 };
@@ -378,6 +380,7 @@ export const buildDecodingBlockFixtureV1 = async ({
   priorLedgerRoot,
   subject,
   decoyTransactionCount = 0,
+  additionalTransactions = [],
 }: {
   readonly operatorVkey: string;
   readonly startTime: bigint;
@@ -389,6 +392,8 @@ export const buildDecodingBlockFixtureV1 = async ({
    * steps, and the #545 published-chunk carriage has nothing to publish.
    */
   readonly decoyTransactionCount?: number;
+  /** Caller-supplied normal transactions committed beside the subject. */
+  readonly additionalTransactions?: readonly MidgardNativeTxFullV1[];
 }): Promise<DecodingBlockFixtureV1> => {
   const canonicalCbor = encodeMidgardNativeTxCanonicalV1(subject.nativeTx);
   const nativeTxId = computeMidgardNativeTxIdV1(subject.nativeTx).toString(
@@ -469,6 +474,8 @@ export const buildDecodingBlockFixtureV1 = async ({
     subject.kind === "normal"
       ? [[nativeTxId, compactCbor.toString("hex")]]
       : [];
+  const normalTransactionsForInclusion: MidgardNativeTxFullV1[] =
+    subject.kind === "normal" ? [subject.nativeTx] : [];
 
   // Decoys are ordinary committed L2 transactions. They exist only so the
   // transactions trie holds more than one leaf.
@@ -491,8 +498,13 @@ export const buildDecodingBlockFixtureV1 = async ({
           : "Accepted",
     },
   ];
-  for (let index = 0; index < decoyTransactionCount; index += 1) {
-    const decoy = decodingSubjectTransactionV1({ fee: BigInt(5_000 + index) });
+  const decoys = [
+    ...additionalTransactions,
+    ...Array.from({ length: decoyTransactionCount }, (_, index) =>
+      decodingSubjectTransactionV1({ fee: BigInt(5_000 + index) }),
+    ),
+  ];
+  for (const decoy of decoys) {
     const decoyCanonical = encodeMidgardNativeTxCanonicalV1(decoy);
     const decoyId = computeMidgardNativeTxIdV1(decoy).toString("hex");
     const decoySource =
@@ -524,6 +536,7 @@ export const buildDecodingBlockFixtureV1 = async ({
       decoyId,
       encodeMidgardNativeTxCompactV1(decoy.compact).toString("hex"),
     ]);
+    normalTransactionsForInclusion.push(decoy);
     events.push({
       eventKey: { L2TransactionEventKey: { tx_id: decoyId } },
       phase: "L2Transaction",
@@ -700,23 +713,27 @@ export const buildDecodingBlockFixtureV1 = async ({
     },
   };
 
-  let txInclusion: SubmitStep01TxInclusion | null = null;
-  if (subject.kind === "normal") {
+  const txInclusions = new Map<string, SubmitStep01TxInclusion>();
+  for (const nativeTx of normalTransactionsForInclusion) {
+    const includedId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
+    const includedCompact = encodeMidgardNativeTxCompactV1(nativeTx.compact);
     const membership = await keyValuePhasProof(
       { ...nativeCompactRoot, root: nativeCompactRoot.phasRoot },
-      Buffer.from(nativeTxId, "hex"),
-      compactCbor,
+      Buffer.from(includedId, "hex"),
+      includedCompact,
     );
     const proofCbor = Data.to(membership, SDK.Proof);
-    txInclusion = {
-      nativeTxId,
-      nativeTx: nativeTxFromCoreCompact(subject.nativeTx.compact),
-      nativeTxCompactCbor: compactCbor.toString("hex"),
+    txInclusions.set(includedId, {
+      nativeTxId: includedId,
+      nativeTx: nativeTxFromCoreCompact(nativeTx.compact),
+      nativeTxCompactCbor: includedCompact.toString("hex"),
       transactionsPhasRoot: nativeCompactRoot.phasRoot,
       txMembershipProof: membership,
       txMembershipProofCbor: proofCbor,
-    };
+    });
   }
+  const txInclusion =
+    subject.kind === "normal" ? (txInclusions.get(nativeTxId) ?? null) : null;
 
   return {
     header,
@@ -726,6 +743,7 @@ export const buildDecodingBlockFixtureV1 = async ({
     nativeTxId,
     nativeTxCompactCbor: compactCbor.toString("hex"),
     txInclusion,
+    txInclusions,
     forcedOrderKey: subject.kind === "forced" ? subject.orderKey : null,
     transactionsPhasRoot: nativeCompactRoot.phasRoot,
   };
