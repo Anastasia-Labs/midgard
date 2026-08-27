@@ -19,6 +19,7 @@ import { type MinFeeContractsV1 } from "../../../src/min-fee-contracts-v1.js";
 import { type MissingNativeScriptTxContractsV1 } from "../../../src/missing-native-script-tx/index.js";
 import { type MissingSignatureContractsV1 } from "../../../src/missing-signature/index.js";
 import { type NativeScriptDecodingContractsV1 } from "../../../src/native-script-decoding/index.js";
+import { type WithdrawnInputContractsV1 } from "../../../src/withdrawn-input/index.js";
 import { type WithdrawnReferenceInputContractsV1 } from "../../../src/withdrawn-reference-input/index.js";
 import { deploymentManifest } from "./header-fixtures.js";
 import {
@@ -61,6 +62,8 @@ export const DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY_V1 =
 export const CROSS_BLOCK_DUPLICATE_EVENT_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofCrossBlockDuplicateEvent";
 export const L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1 = "fraudProofL2TxMistag";
+export const WITHDRAWN_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+  "fraudProofWithdrawnInput";
 
 export const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators & {
@@ -74,6 +77,7 @@ export const buildRemovalDeploymentInfo = (
     readonly doubleWithdraw?: DoubleWithdrawContractsV1;
     readonly crossBlockDuplicateEvent?: CrossBlockDuplicateEventContractsV1;
     readonly l2TxMistag?: L2TxMistagContractsV1;
+    readonly withdrawnInput?: WithdrawnInputContractsV1;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -306,6 +310,14 @@ export const buildRemovalDeploymentInfo = (
             [L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
               scriptHash: contracts.l2TxMistag.steps[0].spendingScriptHash,
             },
+          }),
+      ...(contracts.withdrawnInput === undefined
+        ? {}
+        : {
+            [WITHDRAWN_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1]: deploymentEntry(
+              contracts.withdrawnInput.steps[0].spendingScriptHash,
+              contracts.withdrawnInput.steps[0].spendingScript,
+            ),
           }),
       fraudProofNonExistentInputNoIndex: {
         scriptHash:

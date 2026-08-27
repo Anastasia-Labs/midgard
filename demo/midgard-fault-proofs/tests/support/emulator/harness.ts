@@ -340,6 +340,9 @@ export const DOUBLE_WITHDRAW_TEST_CATEGORY_ID_V1 = "00000015";
 /** Reserved pre-registration emulator id; never a production assignment. */
 export const L2_TX_MISTAG_TEST_CATEGORY_ID_V1 = "00000017";
 
+/** Reserved pre-registration emulator id; never a production assignment. */
+export const WITHDRAWN_INPUT_TEST_CATEGORY_ID_V1 = "00000018";
+
 export const makeFaultProofEmulatorHarnessV1 = async ({
   contractOptions = {},
   accounts,
@@ -496,6 +499,14 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
           l2TxMistag: {
             categoryId: L2_TX_MISTAG_TEST_CATEGORY_ID_V1,
             scriptHash: contracts.l2TxMistag.steps[0].spendingScriptHash,
+          },
+        }),
+    ...(contracts.withdrawnInput === undefined
+      ? {}
+      : {
+          withdrawnInput: {
+            categoryId: WITHDRAWN_INPUT_TEST_CATEGORY_ID_V1,
+            scriptHash: contracts.withdrawnInput.steps[0].spendingScriptHash,
           },
         }),
   });

@@ -40,19 +40,23 @@ export const makeHeader = (
   now: number,
   transactionsRoot = EMPTY_MERKLE_TREE_ROOT,
   l2TransactionCount = 0n,
+  withdrawalsRoot = EMPTY_MERKLE_TREE_ROOT,
+  withdrawalCount = 0n,
 ): HeaderV1 => {
-  const hasL2Transactions = l2TransactionCount > 0n;
-  const eventCommitmentRoot = hasL2Transactions
+  const totalEventCount = l2TransactionCount + withdrawalCount;
+  const hasEvents = totalEventCount > 0n;
+  const eventCommitmentRoot = hasEvents
     ? transactionsRoot
     : EMPTY_MERKLE_TREE_ROOT;
   return {
     prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
     utxosRoot: EMPTY_MERKLE_TREE_ROOT,
-    withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
+    withdrawalsRoot,
     ...EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
     l2TransactionCount,
-    totalEventCount: l2TransactionCount,
-    transitionStepCount: l2TransactionCount,
+    withdrawalCount,
+    totalEventCount,
+    transitionStepCount: totalEventCount,
     validationTraceCount: l2TransactionCount,
     transactionsRoot,
     transitionTraceRoot: eventCommitmentRoot,

@@ -72,6 +72,10 @@ import {
 import { type FabricatedDepositContractsV1 } from "../../../src/submit-fabricated-deposit-step-01.js";
 import { type FabricatedWithdrawalContractsV1 } from "../../../src/submit-fabricated-withdrawal-step-01.js";
 import {
+  WITHDRAWN_INPUT_BLUEPRINT_TITLES_V1,
+  type WithdrawnInputContractsV1,
+} from "../../../src/withdrawn-input/contracts-v1.js";
+import {
   WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES_V1,
   type WithdrawnReferenceInputContractsV1,
 } from "../../../src/withdrawn-reference-input/contracts-v1.js";
@@ -536,6 +540,54 @@ export const buildWithdrawnReferenceInputChainV1 = ({
   return [step01, step02, step03];
 };
 
+/** Applies the three-step withdrawn-input chain backwards. */
+export const buildWithdrawnInputChainV1 = ({
+  realBlueprint,
+  computationThreadPolicyId,
+  fraudProofPolicyId,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+  hubOraclePolicyId,
+}: {
+  readonly realBlueprint: Blueprint;
+  readonly computationThreadPolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
+  readonly hubOraclePolicyId: string;
+}): WithdrawnInputContractsV1["steps"] => {
+  const step03 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      WITHDRAWN_INPUT_BLUEPRINT_TITLES_V1.step03,
+      [
+        fraudProofPolicyId,
+        fraudProofTokenAddressData,
+        computationThreadPolicyId,
+      ],
+    ),
+  );
+  const step02 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      WITHDRAWN_INPUT_BLUEPRINT_TITLES_V1.step02,
+      [
+        step03.spendingScriptHash,
+        computationThreadPolicyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+    ),
+  );
+  const step01 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      WITHDRAWN_INPUT_BLUEPRINT_TITLES_V1.step01,
+      [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
+    ),
+  );
+  return [step01, step02, step03];
+};
+
 export const buildMinimalFaultProofContracts = async (
   realBlueprint: Blueprint,
   alwaysBlueprint: Blueprint,
@@ -563,6 +615,7 @@ export const buildMinimalFaultProofContracts = async (
     realDoubleWithdraw = false,
     realCrossBlockDuplicateEvent = false,
     realL2TxMistag = false,
+    realWithdrawnInput = false,
     alwaysFraudProofCatalogue = false,
   }: {
     readonly realNonExistentInput?: boolean;
@@ -587,6 +640,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realDoubleWithdraw?: boolean;
     readonly realCrossBlockDuplicateEvent?: boolean;
     readonly realL2TxMistag?: boolean;
+    readonly realWithdrawnInput?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
 ): Promise<
@@ -603,6 +657,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly doubleWithdraw?: DoubleWithdrawContractsV1;
     readonly crossBlockDuplicateEvent?: CrossBlockDuplicateEventContractsV1;
     readonly l2TxMistag?: L2TxMistagContractsV1;
+    readonly withdrawnInput?: WithdrawnInputContractsV1;
   }
 > => {
   // This integration test proves the real active-operators slashing and
@@ -1142,6 +1197,42 @@ export const buildMinimalFaultProofContracts = async (
         };
       })()
     : undefined;
+  const withdrawnInput: WithdrawnInputContractsV1 | undefined =
+    realWithdrawnInput
+      ? await (async () => {
+          const fraudProofTokenAddressData = await Effect.runPromise(
+            addressDataFromBech32(
+              doubleSpendContracts.fraudProof.spendingScriptAddress,
+            ).pipe(
+              Effect.map((addressData) =>
+                Data.from(Data.to(addressData, AddressData)),
+              ),
+            ),
+          );
+          return {
+            steps: buildWithdrawnInputChainV1({
+              realBlueprint,
+              computationThreadPolicyId:
+                doubleSpendContracts.computationThread.policyId,
+              fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
+              fraudProofTokenAddressData,
+              fieldPreimageCertificatePolicyId:
+                base.fieldPreimageCertificate.policyId,
+              hubOraclePolicyId: hubOracle.policyId,
+            }),
+            computationThread: doubleSpendContracts.computationThread,
+            fraudProof: {
+              ...doubleSpendContracts.fraudProof,
+              spendingScriptHash:
+                doubleSpendContracts.fraudProof.spendingScriptHash,
+            },
+            hubOraclePolicyId: hubOracle.policyId,
+            stateQueuePolicyId: stateQueueMinting.policyId,
+            fieldPreimageCertificatePolicyId:
+              base.fieldPreimageCertificate.policyId,
+          };
+        })()
+      : undefined;
   const fabricatedWithdrawal: FabricatedWithdrawalContractsV1 | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
@@ -1172,6 +1263,7 @@ export const buildMinimalFaultProofContracts = async (
       ? {}
       : { crossBlockDuplicateEvent }),
     ...(l2TxMistag === undefined ? {} : { l2TxMistag }),
+    ...(withdrawnInput === undefined ? {} : { withdrawnInput }),
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,
