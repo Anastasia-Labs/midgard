@@ -275,6 +275,17 @@ export {
   type WatcherL1ChainPointV1 as WatcherNormalizedL1ChainPointV1,
 } from "./l1-adapter.js";
 export {
+  detectAndJournalMissingSignatureFindingsV1,
+  detectMissingSignatureFindingV1,
+  recoverMissingSignatureVkeyV1,
+  WATCHER_MISSING_SIGNATURE_DETECTION_DEFAULTS_V1,
+  WATCHER_MISSING_SIGNATURE_DETECTOR_V1_SCHEMA_VERSION,
+  type WatcherMissingSignatureCandidateV1,
+  type WatcherMissingSignatureDetectionConfigV1,
+  type WatcherMissingSignatureDetectionV1,
+  type WatcherMissingSignatureVkeySourcesV1,
+} from "./missing-signature-detector-v1.js";
+export {
   evaluateWatcherMultiProviderConsistencyV1,
   WATCHER_MULTI_PROVIDER_ALERT_CODES_V1,
   WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS,

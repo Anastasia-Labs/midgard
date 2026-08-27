@@ -10,6 +10,7 @@ import {
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   validationValueAndMintSemanticReferenceScriptDeploymentEntryV1,
 } from "../../../src/index.js";
+import { type MissingSignatureContractsV1 } from "../../../src/missing-signature/index.js";
 import { type NativeScriptDecodingContractsV1 } from "../../../src/native-script-decoding/index.js";
 import { deploymentManifest } from "./header-fixtures.js";
 import {
@@ -32,10 +33,13 @@ export type RemovalDeploymentReference = {
  */
 export const NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofNativeScriptDecoding";
+export const MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+  "fraudProofMissingSignature";
 
 export const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators & {
     readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
+    readonly missingSignature?: MissingSignatureContractsV1;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -198,6 +202,14 @@ export const buildRemovalDeploymentInfo = (
             [NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
               scriptHash:
                 contracts.nativeScriptDecoding.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.missingSignature === undefined
+        ? {}
+        : {
+            [MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+              scriptHash:
+                contracts.missingSignature.steps[0].spendingScriptHash,
             },
           }),
       fraudProofNonExistentInputNoIndex: {

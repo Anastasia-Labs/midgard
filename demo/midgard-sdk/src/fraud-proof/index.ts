@@ -13,6 +13,7 @@ export * from "./field-preimage-carriage-v1.js";
 export * from "./input-no-idx.js";
 export * from "./invalid-range.js";
 export * from "./invalid-signature.js";
+export * from "./missing-signature-v1.js";
 export * from "./native.js";
 export * from "./native-script-decoding-v1.js";
 export * from "./no-reference-input.js";

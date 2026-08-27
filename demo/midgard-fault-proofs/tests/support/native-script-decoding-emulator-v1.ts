@@ -1473,25 +1473,4 @@ export const submitRawDecodingTag0ContradictionCloseV1 = async ({
  * error — a missing fee input, an unresolvable layout — would otherwise read
  * as a passing security assertion.
  */
-export const expectOnchainRefusalV1 = async (
-  build: () => Promise<unknown>,
-): Promise<string> => {
-  let failure: unknown;
-  try {
-    await build();
-  } catch (error) {
-    failure = error;
-  }
-  if (failure === undefined) {
-    throw new Error(
-      "expected the validator to refuse this transaction, but it succeeded",
-    );
-  }
-  const text = failure instanceof Error ? failure.message : String(failure);
-  if (!/failed script execution/u.test(text)) {
-    throw new Error(
-      `expected an on-chain validator refusal, got a non-validator failure: ${text}`,
-    );
-  }
-  return text;
-};
+export { expectOnchainRefusalV1 } from "./emulator/expect-onchain-refusal-v1.js";

@@ -76,6 +76,7 @@ validator main(
           missing_required_signer_vkey,
           verified_tx_id,
           verified_witness_set_hash,
+          field_walk_checkpoint_hash: #"",
         }
         expect output_state_data == expected_output_state
 

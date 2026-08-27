@@ -18,6 +18,9 @@ export const makeNativeTx = ({
   outputCbor,
   witnessByte,
   addrTxWitsPreimageCbor,
+  requiredSignerHashes = [],
+  scriptTxWitsPreimageCbor = EMPTY_CBOR_LIST,
+  redeemerTxWitsPreimageCbor = EMPTY_CBOR_LIST,
   validityIntervalStart = MIDGARD_POSIX_TIME_NONE,
   validityIntervalEnd = MIDGARD_POSIX_TIME_NONE,
 }: {
@@ -28,6 +31,9 @@ export const makeNativeTx = ({
   readonly outputCbor?: Buffer;
   readonly witnessByte?: string;
   readonly addrTxWitsPreimageCbor?: Buffer;
+  readonly requiredSignerHashes?: readonly string[];
+  readonly scriptTxWitsPreimageCbor?: Buffer;
+  readonly redeemerTxWitsPreimageCbor?: Buffer;
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
 }): MidgardNativeTxFullV1 =>
@@ -47,7 +53,16 @@ export const makeNativeTx = ({
             ? EMPTY_CBOR_LIST
             : encodeCbor([Buffer.from(h32(outputByte), "hex")]),
       requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-      requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+      requiredSignersPreimageCbor: encodeCbor(
+        requiredSignerHashes.map((hash) => {
+          if (!/^[0-9a-f]{56}$/u.test(hash)) {
+            throw new Error(
+              "required signer hashes must be 28 bytes of lowercase hex",
+            );
+          }
+          return Buffer.from(hash, "hex");
+        }),
+      ),
       mintPreimageCbor: EMPTY_CBOR_LIST,
       scriptIntegrityHash: EMPTY_NULL_ROOT,
       auxiliaryDataHash: EMPTY_NULL_ROOT,
@@ -62,7 +77,7 @@ export const makeNativeTx = ({
         (witnessByte === undefined
           ? EMPTY_CBOR_LIST
           : encodeCbor([Buffer.from(h32(witnessByte), "hex")])),
-      scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      scriptTxWitsPreimageCbor,
+      redeemerTxWitsPreimageCbor,
     },
   });
