@@ -4,6 +4,7 @@ export * from "./emulator/contracts.js";
 export * from "./emulator/dispute-scenario.js";
 export * from "./emulator/dispute-staging.js";
 export * from "./emulator/emulator-context.js";
+export * from "./emulator/expect-onchain-refusal-v1.js";
 export * from "./emulator/harness.js";
 export * from "./emulator/header-fixtures.js";
 export * from "./emulator/measurement.js";

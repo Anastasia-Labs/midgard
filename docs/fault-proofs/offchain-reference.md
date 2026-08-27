@@ -85,6 +85,28 @@ nonExistentInputNoIndex` → `submit-input-no-idx-step-01` → `-02` or resumabl
 mints the fault-proof token. The emulator lifecycle reaches faulty-block
 removal. This does not claim the still-open Q14–Q20 family closures.
 
+### missing-signature (Q16 library lifecycle; pre-registration)
+
+`src/missing-signature/` provides strict finding/evidence codecs, the resumable
+Init → step-01 → step-02 → step-03 → step-04 proving core, cancellation, and
+CLI/watcher adapters. Every validator spend uses a hash-checked reference-script
+UTxO; the terminal step burns the computation thread and mints the fraud-proof
+token. Emulator coverage drives both the core and direct submitters through
+faulty-block removal, proves refusal for an honest commitment, and covers local
+negative, cancel, and resume paths. Watcher detection distinguishes an absent
+witness from an unknown verification-key preimage and a present-but-invalid
+witness before emitting a finding. The family is intentionally absent from the
+production CLI, catalogue, deployment manifest, and watcher `families[]` until
+the registration wave; `0000000e` is used only by the isolated emulator harness.
+Step-04 authenticates field 7 once per spend and advances a canonical,
+thread-committed absence-walk checkpoint in 32-witness batches. The final batch
+burns the thread and mints the permanent proof; cancellation and crash-resume
+work from interior checkpoints. The envelope suite proves both the first
+automatic tier-2 case (140 witnesses) and the maximum admissible field-7 vector
+(318 witnesses) within the 13.2M-memory/8B-CPU transaction limits. It also
+submits the worst-depth step-01 binding transaction under those limits. No
+smaller off-chain evidence claim is used.
+
 ### transition-trace (library-only)
 
 `transition-trace/detect.ts` (fault detection over reconstructed payloads),

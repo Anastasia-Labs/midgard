@@ -312,11 +312,18 @@ export type FaultProofEmulatorHarnessV1 = {
  */
 export const NATIVE_SCRIPT_DECODING_TEST_CATEGORY_ID_V1 = "0000000d";
 
+/**
+ * Expected-but-not-promised pre-registration id for `missing-signature`.
+ * Production allocation remains deferred to the registration wave.
+ */
+export const MISSING_SIGNATURE_TEST_CATEGORY_ID_V1 = "0000000e";
+
 export const makeFaultProofEmulatorHarnessV1 = async ({
   contractOptions = {},
   accounts,
   emulatorTimeMs,
   registerAdditionalRewardAccounts,
+  lucidOptions,
 }: {
   readonly contractOptions?: Parameters<
     typeof buildMinimalFaultProofContracts
@@ -326,6 +333,7 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
     readonly prover: EmulatorAccount;
   };
   readonly emulatorTimeMs?: number;
+  readonly lucidOptions?: Parameters<typeof Lucid>[2];
   readonly registerAdditionalRewardAccounts?: (
     funderLucid: Awaited<ReturnType<typeof Lucid>>,
     realBlueprint: Blueprint,
@@ -341,8 +349,8 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
   if (emulatorTimeMs !== undefined) {
     emulator.time = emulatorTimeMs;
   }
-  const funderLucid = await Lucid(emulator, "Custom");
-  const proverLucid = await Lucid(emulator, "Custom");
+  const funderLucid = await Lucid(emulator, "Custom", lucidOptions);
+  const proverLucid = await Lucid(emulator, "Custom", lucidOptions);
   funderLucid.selectWallet.fromSeed(funder.seedPhrase);
   proverLucid.selectWallet.fromSeed(prover.seedPhrase);
   const proverSigner = resolveProverSigner({
@@ -389,6 +397,14 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
             categoryId: NATIVE_SCRIPT_DECODING_TEST_CATEGORY_ID_V1,
             scriptHash:
               contracts.nativeScriptDecoding.steps[0].spendingScriptHash,
+          },
+        }),
+    ...(contracts.missingSignature === undefined
+      ? {}
+      : {
+          missingSignature: {
+            categoryId: MISSING_SIGNATURE_TEST_CATEGORY_ID_V1,
+            scriptHash: contracts.missingSignature.steps[0].spendingScriptHash,
           },
         }),
   });

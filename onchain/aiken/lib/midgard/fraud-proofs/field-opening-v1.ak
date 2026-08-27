@@ -89,7 +89,8 @@ use midgard/native_tx_field_access_v1.{
   FieldCarriageV1, FieldViewV1, authenticated_field_view, field_item_count,
 }
 use midgard/native_tx_machine_walk_v1.{
-  FieldWalkCheckpointV1, open_field_walk, walk_fold, walk_is_complete,
+  FieldWalkCheckpointV1, open_field_walk, resume_field_walk_from_commitment,
+  walk_fold, walk_is_complete,
 }
 
 // §2.5's positional field table, named. Call sites pass one of these literals
@@ -453,6 +454,33 @@ pub fn opened_field_walk(
   anchored_field_walk(
     anchored_native_tx(tx_opening_of(opening), anchor),
     field_index,
+    carriage_of(opening),
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
+/// Resume a field walk from a checkpoint commitment carried by computation
+/// thread state. This is the follow-on counterpart to `opened_field_walk`:
+/// the transaction/witness anchor and the per-field pairing are re-checked in
+/// the fresh L1 context, while the opaque checkpoint is admitted only through
+/// `resume_field_walk_from_commitment`'s hash and view-binding checks.
+pub fn resume_opened_field_walk(
+  opening: FieldOpeningV1,
+  anchor: NativeTxAnchorV1,
+  field_index: Int,
+  committed_checkpoint_hash: ByteArray,
+  checkpoint_bytes: ByteArray,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {
+  let anchored = anchored_native_tx(tx_opening_of(opening), anchor)
+  expect field_pairs_with(anchored, field_index)
+  resume_field_walk_from_commitment(
+    anchored.verified,
+    anchored.witness_set,
+    committed_checkpoint_hash,
+    checkpoint_bytes,
     carriage_of(opening),
     reference_inputs,
     certificate_policy_id,

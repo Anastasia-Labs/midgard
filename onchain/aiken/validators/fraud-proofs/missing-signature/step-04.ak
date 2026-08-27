@@ -3,22 +3,31 @@ use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Input, OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, finalize}
+use midgard/fraud_proofs/common.{cancel, continue, finalize}
 use midgard/fraud_proofs/field_opening_v1.{
   FieldOpeningV1, WitnessAnchor, address_witnesses_field_index,
-  fold_opened_field, opened_field_walk,
+  opened_field_walk, resume_opened_field_walk,
 }
 use midgard/fraud_proofs/missing_signature/step_04.{
-  Args, Datum, SpendRedeemer, State,
+  Datum, Finalize, Scan, SpendRedeemer, State,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_address_witness_cbor, encode_midgard_address_witness,
 }
 use midgard/fraud_proofs/native_tx/types.{
-  MidgardAddressWitness, MidgardTransactionWitnessSet, NativeTxWitnessSetCompact,
+  MidgardAddressWitness, MidgardTransaction, MidgardTransactionWitnessSet,
+  NativeTxWitnessSetCompact,
 }
-use midgard/native_tx_field_access_v1.{encode_field_preimage}
+use midgard/native_tx_field_access_v1.{FieldViewV1, encode_field_preimage}
+use midgard/native_tx_machine_walk_v1.{
+  FieldWalkCheckpointV1, encode_field_walk_checkpoint,
+  field_walk_checkpoint_hash, walk_fold, walk_remaining,
+}
+
+/// Bounded against the real reference-script transaction context. Keeping the
+/// batch fixed makes every checkpoint deterministic and crash-reconstructible.
+pub const witness_scan_batch_size: Int = 32
 
 validator main(
   fraud_proof_token_policy_id: PolicyId,
@@ -42,18 +51,74 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Args {
+      ct.Continue(Scan {
+        input_index,
+        output_index,
+        addr_tx_wits_opening,
+        checkpoint_cbor,
+      }) -> {
+        let Transaction { inputs, outputs, reference_inputs, .. } = tx
+
+        expect Some(step_datum) = datum
+
+        let
+            own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data,
+            output_script_hash,
+            output_state_data
+          <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          inputs,
+          outputs,
+        )
+
+        expect Some(state) = m_input_state_data
+        let Pair(view, checkpoint) = open_or_resume_witness_walk(
+          state,
+          addr_tx_wits_opening,
+          checkpoint_cbor,
+          reference_inputs,
+          field_preimage_certificate_policy_id,
+        )
+        // A scan is legal only when a full batch remains after it; the last
+        // batch belongs to Finalize, so every honest checkpoint is unique.
+        expect walk_remaining(checkpoint) > witness_scan_batch_size
+        let Pair(required_signature_is_present, next_checkpoint) = walk_fold(
+          view,
+          checkpoint,
+          witness_scan_batch_size,
+          False,
+          witness_presence_fold(state.missing_required_signer_vkey),
+        )
+        expect required_signature_is_present == False
+        expect output_script_hash == own_script_hash
+        let expected_output_state: Data = State {
+          ..state,
+          field_walk_checkpoint_hash: field_walk_checkpoint_hash(
+            next_checkpoint,
+          ),
+        }
+        expect output_state_data == expected_output_state
+
+        True
+      }
+      ct.Continue(Finalize {
         input_index,
         output_index,
         fraud_proof_mint_redeemer_index,
         addr_tx_wits_opening,
+        checkpoint_cbor,
       }) -> {
         let Transaction { inputs, outputs, redeemers, reference_inputs, .. } = tx
 
         expect Some(step_datum) = datum
 
-        // 1. Specified input must be authentic and properly reproduced at the
-        //    fraud proof's spending address.
         let
             _own_script_hash,
             _computation_thread_token_asset_name,
@@ -73,57 +138,26 @@ validator main(
           redeemers,
         )
 
-        expect
-            Some(State {
-              missing_required_signer_vkey,
-              verified_tx_id,
-              verified_witness_set_hash,
-            })
-          = m_input_state_data
-
-        // 2. Field 7's preimage is authenticated through the §8.8 door, which
-        //    for a witness-set field also re-derives the supplied witness set
-        //    against `verified_witness_set_hash`.
-        //
-        //    That hash is thread state, not something re-derived here, and the
-        //    distinction is the whole security of this step. §3's transaction
-        //    id preimage is the *body*: the compact structure's trailing
-        //    `witness_set_hash` is outside it, so bytes carrying the genuine
-        //    body and an invented tail re-derive to this very
-        //    `verified_tx_id`. A door that checked only the id would accept the
-        //    empty witness set against any transaction, making "the required
-        //    signature is absent" true of every transaction ever committed.
-        //    Step-01 read the real value off the block-committed structure and
-        //    it has been carried here since.
-        let addr_tx_wits_walk = opened_field_walk(
+        expect Some(state) = m_input_state_data
+        let Pair(view, checkpoint) = open_or_resume_witness_walk(
+          state,
           addr_tx_wits_opening,
-          WitnessAnchor {
-            tx_id: verified_tx_id,
-            witness_set_hash: verified_witness_set_hash,
-          },
-          address_witnesses_field_index,
+          checkpoint_cbor,
           reference_inputs,
           field_preimage_certificate_policy_id,
         )
-
-        // 3. Required signer's verification key must not be in the
-        //    address-witness collection. An absence claim is the one shape that
-        //    genuinely has to see every item, so it walks the whole field once
-        //    — one pass over authenticated bytes, not a reproduction of the
-        //    collection followed by a re-hash of it.
-        let required_signature_is_present = fold_opened_field(
-          addr_tx_wits_walk,
+        let remaining = walk_remaining(checkpoint)
+        expect remaining <= witness_scan_batch_size
+        let Pair(required_signature_is_present, final_checkpoint) = walk_fold(
+          view,
+          checkpoint,
+          remaining,
           False,
-          fn(found, _index, item) {
-            or {
-              found,
-              decode_midgard_address_witness_cbor(item).verification_key == missing_required_signer_vkey,
-            }
-          },
+          witness_presence_fold(state.missing_required_signer_vkey),
         )
         expect required_signature_is_present == False
+        expect walk_remaining(final_checkpoint) == 0
 
-        // Done.
         True
       }
     }
@@ -131,6 +165,51 @@ validator main(
 
   else(_) {
     fail
+  }
+}
+
+fn open_or_resume_witness_walk(
+  state: State,
+  opening: FieldOpeningV1,
+  checkpoint_cbor: Option<ByteArray>,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {
+  let anchor = WitnessAnchor {
+    tx_id: state.verified_tx_id,
+    witness_set_hash: state.verified_witness_set_hash,
+  }
+  if state.field_walk_checkpoint_hash == #"" {
+    expect None = checkpoint_cbor
+    opened_field_walk(
+      opening,
+      anchor,
+      address_witnesses_field_index,
+      reference_inputs,
+      certificate_policy_id,
+    )
+  } else {
+    expect Some(checkpoint_bytes) = checkpoint_cbor
+    resume_opened_field_walk(
+      opening,
+      anchor,
+      address_witnesses_field_index,
+      state.field_walk_checkpoint_hash,
+      checkpoint_bytes,
+      reference_inputs,
+      certificate_policy_id,
+    )
+  }
+}
+
+fn witness_presence_fold(
+  missing_required_signer_vkey: ByteArray,
+) -> fn(Bool, Int, ByteArray) -> Bool {
+  fn(found, _index, item) {
+    or {
+      found,
+      decode_midgard_address_witness_cbor(item).verification_key == missing_required_signer_vkey,
+    }
   }
 }
 
@@ -155,6 +234,7 @@ fn run_finalize_against(
     missing_required_signer_vkey,
     verified_tx_id: anchored_block.tx_id,
     verified_witness_set_hash: anchored_block.compact.witness_set_hash,
+    field_walk_checkpoint_hash: #"",
   }
   let asset_name = fixture.ct_token_asset_name(anchored_block)
   main.spend(
@@ -169,7 +249,7 @@ fn run_finalize_against(
       },
     ),
     ct.Continue(
-      Args {
+      Finalize {
         input_index: 0,
         output_index: 0,
         fraud_proof_mint_redeemer_index: 0,
@@ -178,6 +258,7 @@ fn run_finalize_against(
           opened_block.witness_set_compact,
           carried_witnesses |> list.map(encode_midgard_address_witness),
         ),
+        checkpoint_cbor: None,
       },
     ),
     fixture.own_out_ref(),
@@ -202,6 +283,7 @@ fn run_finalize_with_opening(
     missing_required_signer_vkey,
     verified_tx_id: anchored_block.tx_id,
     verified_witness_set_hash: anchored_block.compact.witness_set_hash,
+    field_walk_checkpoint_hash: #"",
   }
   let asset_name = fixture.ct_token_asset_name(anchored_block)
   main.spend(
@@ -216,11 +298,12 @@ fn run_finalize_with_opening(
       },
     ),
     ct.Continue(
-      Args {
+      Finalize {
         input_index: 0,
         output_index: 0,
         fraud_proof_mint_redeemer_index: 0,
         addr_tx_wits_opening,
+        checkpoint_cbor: None,
       },
     ),
     fixture.own_out_ref(),
@@ -251,6 +334,311 @@ fn run_finalize(missing_required_signer_vkey: ByteArray) -> Bool {
     missing_required_signer_vkey,
     block.witness_set_compact,
     block.tx.witness_set.addr_tx_wits,
+  )
+}
+
+fn batched_block(count: Int) -> fixture.NativeBlockFixtureV1 {
+  let tx = fixture.valid_native_tx_v1()
+  fixture.native_block_fixture_v1(
+    MidgardTransaction {
+      ..tx,
+      witness_set: MidgardTransactionWitnessSet {
+        ..tx.witness_set,
+        addr_tx_wits: list.repeat(decoy_address_witness(), count),
+      },
+    },
+  )
+}
+
+fn checkpoint_after_one_batch(
+  block: fixture.NativeBlockFixtureV1,
+) -> Pair<ByteArray, ByteArray> {
+  let opening = fixture.inline_witness_opening(
+    block.compact_cbor,
+    block.witness_set_compact,
+    block.tx.witness_set.addr_tx_wits
+      |> list.map(encode_midgard_address_witness),
+  )
+  let Pair(view, checkpoint) = opened_field_walk(
+    opening,
+    WitnessAnchor {
+      tx_id: block.tx_id,
+      witness_set_hash: block.compact.witness_set_hash,
+    },
+    address_witnesses_field_index,
+    [],
+    fixture.test_certificate_policy_id,
+  )
+  let Pair(_, next_checkpoint) = walk_fold(
+    view,
+    checkpoint,
+    witness_scan_batch_size,
+    False,
+    witness_presence_fold(
+      #"7070707070707070707070707070707070707070707070707070707070707070",
+    ),
+  )
+  Pair(
+    encode_field_walk_checkpoint(next_checkpoint),
+    field_walk_checkpoint_hash(next_checkpoint),
+  )
+}
+
+/// A non-terminal scan consumes exactly the fixed batch and self-loops with
+/// only the authenticated checkpoint digest added to thread state.
+test missing_signature_step_04_scans_a_bounded_absence_batch() {
+  let block = batched_block(witness_scan_batch_size + 8)
+  let asset_name = fixture.ct_token_asset_name(block)
+  let Pair(_, checkpoint_hash) = checkpoint_after_one_batch(block)
+  let state = State {
+    missing_required_signer_vkey: #"7070707070707070707070707070707070707070707070707070707070707070",
+    verified_tx_id: block.tx_id,
+    verified_witness_set_hash: block.compact.witness_set_hash,
+    field_walk_checkpoint_hash: #"",
+  }
+  let expected_output_state: Data = State {
+    ..state,
+    field_walk_checkpoint_hash: checkpoint_hash,
+  }
+  main.spend(
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(state),
+      },
+    ),
+    ct.Continue(
+      Scan {
+        input_index: 0,
+        output_index: 0,
+        addr_tx_wits_opening: fixture.inline_witness_opening(
+          block.compact_cbor,
+          block.witness_set_compact,
+          block.tx.witness_set.addr_tx_wits
+            |> list.map(encode_midgard_address_witness),
+        ),
+        checkpoint_cbor: None,
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.continue_same_step_l1_tx_v1(asset_name, expected_output_state),
+  )
+}
+
+/// A fresh transaction can resume exclusively through the digest written by
+/// the preceding scan and finalize its short suffix.
+test missing_signature_step_04_resumes_and_finalizes_the_suffix() {
+  let block = batched_block(witness_scan_batch_size + 8)
+  let Pair(checkpoint_cbor, checkpoint_hash) = checkpoint_after_one_batch(block)
+  let asset_name = fixture.ct_token_asset_name(block)
+  main.spend(
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(
+          State {
+            missing_required_signer_vkey: #"7070707070707070707070707070707070707070707070707070707070707070",
+            verified_tx_id: block.tx_id,
+            verified_witness_set_hash: block.compact.witness_set_hash,
+            field_walk_checkpoint_hash: checkpoint_hash,
+          },
+        ),
+      },
+    ),
+    ct.Continue(
+      Finalize {
+        input_index: 0,
+        output_index: 0,
+        fraud_proof_mint_redeemer_index: 0,
+        addr_tx_wits_opening: fixture.inline_witness_opening(
+          block.compact_cbor,
+          block.witness_set_compact,
+          block.tx.witness_set.addr_tx_wits
+            |> list.map(encode_midgard_address_witness),
+        ),
+        checkpoint_cbor: Some(checkpoint_cbor),
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.finalize_step_l1_tx_v1(asset_name),
+  )
+}
+
+/// Thread state, not the redeemer, owns the position: even a canonical
+/// checkpoint for the same field is refused when its digest is not committed.
+test missing_signature_step_04_rejects_an_uncommitted_checkpoint() fail {
+  let block = batched_block(witness_scan_batch_size + 8)
+  let Pair(checkpoint_cbor, _) = checkpoint_after_one_batch(block)
+  let asset_name = fixture.ct_token_asset_name(block)
+  main.spend(
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(
+          State {
+            missing_required_signer_vkey: #"7070707070707070707070707070707070707070707070707070707070707070",
+            verified_tx_id: block.tx_id,
+            verified_witness_set_hash: block.compact.witness_set_hash,
+            field_walk_checkpoint_hash: #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          },
+        ),
+      },
+    ),
+    ct.Continue(
+      Finalize {
+        input_index: 0,
+        output_index: 0,
+        fraud_proof_mint_redeemer_index: 0,
+        addr_tx_wits_opening: fixture.inline_witness_opening(
+          block.compact_cbor,
+          block.witness_set_compact,
+          block.tx.witness_set.addr_tx_wits
+            |> list.map(encode_midgard_address_witness),
+        ),
+        checkpoint_cbor: Some(checkpoint_cbor),
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.finalize_step_l1_tx_v1(asset_name),
+  )
+}
+
+/// Finalize cannot skip an unwalked prefix: when more than one batch remains,
+/// only Scan is legal even though the terminal mint/burn transaction is
+/// otherwise well shaped.
+test missing_signature_step_04_rejects_early_finalization() fail {
+  let block = batched_block(witness_scan_batch_size + 8)
+  let asset_name = fixture.ct_token_asset_name(block)
+  main.spend(
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(
+          State {
+            missing_required_signer_vkey: #"7070707070707070707070707070707070707070707070707070707070707070",
+            verified_tx_id: block.tx_id,
+            verified_witness_set_hash: block.compact.witness_set_hash,
+            field_walk_checkpoint_hash: #"",
+          },
+        ),
+      },
+    ),
+    ct.Continue(
+      Finalize {
+        input_index: 0,
+        output_index: 0,
+        fraud_proof_mint_redeemer_index: 0,
+        addr_tx_wits_opening: fixture.inline_witness_opening(
+          block.compact_cbor,
+          block.witness_set_compact,
+          block.tx.witness_set.addr_tx_wits
+            |> list.map(encode_midgard_address_witness),
+        ),
+        checkpoint_cbor: None,
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.finalize_step_l1_tx_v1(asset_name),
+  )
+}
+
+/// Scan cannot delay terminal adjudication or create another checkpoint once
+/// the authenticated suffix fits in the final batch.
+test missing_signature_step_04_rejects_a_scan_of_the_terminal_batch() fail {
+  let block = batched_block(witness_scan_batch_size)
+  let asset_name = fixture.ct_token_asset_name(block)
+  let state = State {
+    missing_required_signer_vkey: #"7070707070707070707070707070707070707070707070707070707070707070",
+    verified_tx_id: block.tx_id,
+    verified_witness_set_hash: block.compact.witness_set_hash,
+    field_walk_checkpoint_hash: #"",
+  }
+  main.spend(
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(state),
+      },
+    ),
+    ct.Continue(
+      Scan {
+        input_index: 0,
+        output_index: 0,
+        addr_tx_wits_opening: fixture.inline_witness_opening(
+          block.compact_cbor,
+          block.witness_set_compact,
+          block.tx.witness_set.addr_tx_wits
+            |> list.map(encode_midgard_address_witness),
+        ),
+        checkpoint_cbor: None,
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.continue_same_step_l1_tx_v1(asset_name, state),
+  )
+}
+
+/// A valid batch cannot hand off an arbitrary digest: the output datum must
+/// commit the checkpoint returned by walking exactly the next 32 items.
+test missing_signature_step_04_rejects_a_skipped_output_checkpoint() fail {
+  let block = batched_block(witness_scan_batch_size + 8)
+  let asset_name = fixture.ct_token_asset_name(block)
+  let state = State {
+    missing_required_signer_vkey: #"7070707070707070707070707070707070707070707070707070707070707070",
+    verified_tx_id: block.tx_id,
+    verified_witness_set_hash: block.compact.witness_set_hash,
+    field_walk_checkpoint_hash: #"",
+  }
+  let skipped_output_state: Data = State {
+    ..state,
+    field_walk_checkpoint_hash: #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  }
+  main.spend(
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(state),
+      },
+    ),
+    ct.Continue(
+      Scan {
+        input_index: 0,
+        output_index: 0,
+        addr_tx_wits_opening: fixture.inline_witness_opening(
+          block.compact_cbor,
+          block.witness_set_compact,
+          block.tx.witness_set.addr_tx_wits
+            |> list.map(encode_midgard_address_witness),
+        ),
+        checkpoint_cbor: None,
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.continue_same_step_l1_tx_v1(asset_name, skipped_output_state),
   )
 }
 

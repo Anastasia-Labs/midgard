@@ -1347,6 +1347,23 @@ pub fn continue_mid_step_l1_tx_v1(
   }
 }
 
+/// L1 transaction that advances a resumable computation step while retaining
+/// the same validator. The output datum changes, but the thread NFT and script
+/// address remain pinned to the consumed position.
+pub fn continue_same_step_l1_tx_v1(
+  asset_name: ByteArray,
+  output_state_data: Data,
+) -> Transaction {
+  let output = next_step_output(asset_name, output_state_data)
+  Transaction {
+    ..placeholder,
+    inputs: [ct_thread_input(asset_name)],
+    outputs: [
+      Output { ..output, address: address.from_script(step_script_hash) },
+    ],
+  }
+}
+
 /// `finalize_step_l1_tx_v1` with carriage reference inputs attached — the shape
 /// a step that opens a field under tier 2 or tier 3 has to be run against,
 /// because the carriage lives in the L1 transaction's `reference_inputs` and

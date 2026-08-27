@@ -372,6 +372,9 @@ describe("zz609 the arity check is the only door", () => {
       // class as this gate's own self-entry below, which reads the bytes to
       // construct assertions rather than to load a script.
       "demo/midgard-fault-proofs/tests/native-script-decoding-envelope-v1.test.ts",
+      // Measurement-only reader for the missing-signature family's four
+      // unapplied size pins; it never deploys a bare blueprint body.
+      "demo/midgard-fault-proofs/tests/missing-signature-envelope-v1.test.ts",
       // The emulator harness's `getCompiledScript` (bare, same assertion) plus
       // `applyCompiledScript`, its arity-checking applying door (#610) — moved
       // from `submit-init-emulator-shared.ts` when that file became a barrel

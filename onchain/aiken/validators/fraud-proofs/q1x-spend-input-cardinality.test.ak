@@ -64,7 +64,8 @@ use fraud_proofs/no_input/step_02 as no_input_step_02_validator
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/double_spend/step_04 as double_spend_step_04
 use midgard/fraud_proofs/field_opening_v1.{
-  BodyFieldOpening, FieldOpeningV1, WitnessFieldOpening,
+  BodyFieldOpening, FieldOpeningV1, WitnessAnchor, WitnessFieldOpening,
+  address_witnesses_field_index, opened_field_walk,
 }
 use midgard/fraud_proofs/missing_native_script_tx/step_06 as missing_native_script_tx_step_06
 use midgard/fraud_proofs/missing_signature/step_04 as missing_signature_step_04
@@ -84,6 +85,7 @@ use midgard/native_tx_field_access_v1.{
   Inline, encode_field_preimage, maximum_cardano_spend_redeemer_count,
   spend_input_stride,
 }
+use midgard/native_tx_machine_walk_v1.{field_walk_checkpoint_hash, walk_fold}
 use midgard/script_proof_v1
 
 /// The cardinality #551 measured the defect at, and the one this module
@@ -600,35 +602,77 @@ fn missing_signature_step_04_at(count: Int) -> Bool {
     items,
   )
   let asset_name = fixture.ct_token_asset_name(block)
-  let l1_tx = fixture.finalize_step_l1_tx_v1(asset_name)
-  missing_signature_step_04_validator.main.spend(
-    fixture.fraud_proof_policy_id,
-    fixture.fraud_proof_token_address(),
-    fixture.computation_thread_policy_id,
-    fixture.test_certificate_policy_id,
-    Some(
-      ct.StepDatum {
-        fraud_prover: fixture.fraud_prover_key_hash,
-        data: Some(
-          missing_signature_step_04.State {
-            missing_required_signer_vkey: absent_verification_key(),
-            verified_tx_id: block.tx_id,
-            verified_witness_set_hash: block.compact.witness_set_hash,
-          },
-        ),
-      },
-    ),
-    ct.Continue(
-      missing_signature_step_04.Args {
-        input_index: 0,
-        output_index: 0,
-        fraud_proof_mint_redeemer_index: 0,
-        addr_tx_wits_opening: opening,
-      },
-    ),
-    fixture.own_out_ref(),
-    l1_tx,
+  let state = missing_signature_step_04.State {
+    missing_required_signer_vkey: absent_verification_key(),
+    verified_tx_id: block.tx_id,
+    verified_witness_set_hash: block.compact.witness_set_hash,
+    field_walk_checkpoint_hash: #"",
+  }
+  let datum = Some(
+    ct.StepDatum {
+      fraud_prover: fixture.fraud_prover_key_hash,
+      data: Some(state),
+    },
   )
+  if count > missing_signature_step_04_validator.witness_scan_batch_size {
+    let Pair(view, checkpoint) = opened_field_walk(
+      opening,
+      WitnessAnchor {
+        tx_id: block.tx_id,
+        witness_set_hash: block.compact.witness_set_hash,
+      },
+      address_witnesses_field_index,
+      [],
+      fixture.test_certificate_policy_id,
+    )
+    let Pair(_, next_checkpoint) = walk_fold(
+      view,
+      checkpoint,
+      missing_signature_step_04_validator.witness_scan_batch_size,
+      False,
+      fn(found, _index, _item) { found },
+    )
+    let expected_output_state: Data = missing_signature_step_04.State {
+      ..state,
+      field_walk_checkpoint_hash: field_walk_checkpoint_hash(next_checkpoint),
+    }
+    missing_signature_step_04_validator.main.spend(
+      fixture.fraud_proof_policy_id,
+      fixture.fraud_proof_token_address(),
+      fixture.computation_thread_policy_id,
+      fixture.test_certificate_policy_id,
+      datum,
+      ct.Continue(
+        missing_signature_step_04.Scan {
+          input_index: 0,
+          output_index: 0,
+          addr_tx_wits_opening: opening,
+          checkpoint_cbor: None,
+        },
+      ),
+      fixture.own_out_ref(),
+      fixture.continue_same_step_l1_tx_v1(asset_name, expected_output_state),
+    )
+  } else {
+    missing_signature_step_04_validator.main.spend(
+      fixture.fraud_proof_policy_id,
+      fixture.fraud_proof_token_address(),
+      fixture.computation_thread_policy_id,
+      fixture.test_certificate_policy_id,
+      datum,
+      ct.Continue(
+        missing_signature_step_04.Finalize {
+          input_index: 0,
+          output_index: 0,
+          fraud_proof_mint_redeemer_index: 0,
+          addr_tx_wits_opening: opening,
+          checkpoint_cbor: None,
+        },
+      ),
+      fixture.own_out_ref(),
+      fixture.finalize_step_l1_tx_v1(asset_name),
+    )
+  }
 }
 
 test q1x_f6_missing_signature_step_04_control_at_one_address_witness() {
@@ -796,7 +840,10 @@ test q1x_f6_step_06_at_the_admissible_maximum_refuses_a_present_script() fail {
 test q1x_f6_step_04_at_the_admissible_maximum_refuses_a_present_signature() fail {
   let count = admissible_address_witness_count
   let block = address_cardinality_block(count)
-  expect Some(present) = list.at(address_witnesses_of(count), count - 1)
+  expect Some(present) = list.at(
+    address_witnesses_of(count),
+    missing_signature_step_04_validator.witness_scan_batch_size - 1,
+  )
   let asset_name = fixture.ct_token_asset_name(block)
   missing_signature_step_04_validator.main.spend(
     fixture.fraud_proof_policy_id,
@@ -811,24 +858,33 @@ test q1x_f6_step_04_at_the_admissible_maximum_refuses_a_present_signature() fail
             missing_required_signer_vkey: present.verification_key,
             verified_tx_id: block.tx_id,
             verified_witness_set_hash: block.compact.witness_set_hash,
+            field_walk_checkpoint_hash: #"",
           },
         ),
       },
     ),
     ct.Continue(
-      missing_signature_step_04.Args {
+      missing_signature_step_04.Scan {
         input_index: 0,
         output_index: 0,
-        fraud_proof_mint_redeemer_index: 0,
         addr_tx_wits_opening: fixture.inline_witness_opening(
           block.compact_cbor,
           block.witness_set_compact,
           step_04_preimage_items(count),
         ),
+        checkpoint_cbor: None,
       },
     ),
     fixture.own_out_ref(),
-    fixture.finalize_step_l1_tx_v1(asset_name),
+    fixture.continue_same_step_l1_tx_v1(
+      asset_name,
+      missing_signature_step_04.State {
+        missing_required_signer_vkey: present.verification_key,
+        verified_tx_id: block.tx_id,
+        verified_witness_set_hash: block.compact.witness_set_hash,
+        field_walk_checkpoint_hash: #"",
+      },
+    ),
   )
 }
 

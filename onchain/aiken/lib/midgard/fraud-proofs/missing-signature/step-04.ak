@@ -14,19 +14,32 @@ pub type State {
   missing_required_signer_vkey: VerificationKey,
   verified_tx_id: MidgardTxId,
   verified_witness_set_hash: ByteArray,
+  /// Empty before the first batch; thereafter the §10 checkpoint hash emitted
+  /// by the preceding authenticated walk transaction.
+  field_walk_checkpoint_hash: ByteArray,
 }
 
 pub type Datum =
   ct.StepDatum<State>
 
 pub type Args {
-  input_index: Int,
-  output_index: Int,
-  fraud_proof_mint_redeemer_index: Int,
-  /// The prover's chosen §8 carriage for field 7's preimage, plus the witness
-  /// set the door checks against the thread-anchored
-  /// `verified_witness_set_hash`.
-  addr_tx_wits_opening: FieldOpeningV1,
+  /// Advance exactly one bounded absence batch and self-loop at step-04.
+  Scan {
+    input_index: Int,
+    output_index: Int,
+    addr_tx_wits_opening: FieldOpeningV1,
+    /// `None` only at the initial position; every resume supplies the exact
+    /// 53 bytes committed by `field_walk_checkpoint_hash`.
+    checkpoint_cbor: Option<ByteArray>,
+  }
+  /// Walk the final (at most one-batch) suffix and mint the permanent proof.
+  Finalize {
+    input_index: Int,
+    output_index: Int,
+    fraud_proof_mint_redeemer_index: Int,
+    addr_tx_wits_opening: FieldOpeningV1,
+    checkpoint_cbor: Option<ByteArray>,
+  }
 }
 
 pub type SpendRedeemer =
