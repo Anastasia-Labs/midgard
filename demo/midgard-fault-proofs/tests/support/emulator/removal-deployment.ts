@@ -10,6 +10,7 @@ import {
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   validationValueAndMintSemanticReferenceScriptDeploymentEntryV1,
 } from "../../../src/index.js";
+import { type L2TxMistagContractsV1 } from "../../../src/l2-tx-mistag/index.js";
 import { type NativeScriptDecodingContractsV1 } from "../../../src/native-script-decoding/index.js";
 import { deploymentManifest } from "./header-fixtures.js";
 import {
@@ -33,9 +34,12 @@ export type RemovalDeploymentReference = {
 export const NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofNativeScriptDecoding";
 
+export const L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1 = "fraudProofL2TxMistag";
+
 export const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators & {
     readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
+    readonly l2TxMistag?: L2TxMistagContractsV1;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -198,6 +202,13 @@ export const buildRemovalDeploymentInfo = (
             [NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
               scriptHash:
                 contracts.nativeScriptDecoding.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.l2TxMistag === undefined
+        ? {}
+        : {
+            [L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+              scriptHash: contracts.l2TxMistag.steps[0].spendingScriptHash,
             },
           }),
       fraudProofNonExistentInputNoIndex: {
