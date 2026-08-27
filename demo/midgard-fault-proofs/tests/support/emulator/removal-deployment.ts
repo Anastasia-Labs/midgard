@@ -4,6 +4,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 
+import { type CanonicalDecodabilityContractsV1 } from "../../../src/canonical-decodability/index.js";
 import {
   VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
@@ -40,11 +41,15 @@ export const MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY_V1 =
 export const MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofMissingNativeScriptTx";
 
+export const CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+  "fraudProofCanonicalDecodability";
+
 export const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators & {
     readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
     readonly missingSignature?: MissingSignatureContractsV1;
     readonly missingNativeScriptTx?: MissingNativeScriptTxContractsV1;
+    readonly canonicalDecodability?: CanonicalDecodabilityContractsV1;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -223,6 +228,14 @@ export const buildRemovalDeploymentInfo = (
             [MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
               scriptHash:
                 contracts.missingNativeScriptTx.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.canonicalDecodability === undefined
+        ? {}
+        : {
+            [CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+              scriptHash:
+                contracts.canonicalDecodability.steps[0].spendingScriptHash,
             },
           }),
       fraudProofNonExistentInputNoIndex: {
