@@ -312,6 +312,9 @@ export type FaultProofEmulatorHarnessV1 = {
  */
 export const NATIVE_SCRIPT_DECODING_TEST_CATEGORY_ID_V1 = "0000000d";
 
+/** Test-only expected reservation; production registration re-allocates it. */
+export const WITHDRAWN_REFERENCE_INPUT_TEST_CATEGORY_ID_V1 = "00000010";
+
 export const makeFaultProofEmulatorHarnessV1 = async ({
   contractOptions = {},
   accounts,
@@ -389,6 +392,15 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
             categoryId: NATIVE_SCRIPT_DECODING_TEST_CATEGORY_ID_V1,
             scriptHash:
               contracts.nativeScriptDecoding.steps[0].spendingScriptHash,
+          },
+        }),
+    ...(contracts.withdrawnReferenceInput === undefined
+      ? {}
+      : {
+          withdrawnReferenceInput: {
+            categoryId: WITHDRAWN_REFERENCE_INPUT_TEST_CATEGORY_ID_V1,
+            scriptHash:
+              contracts.withdrawnReferenceInput.steps[0].spendingScriptHash,
           },
         }),
   });

@@ -11,6 +11,7 @@ import {
   validationValueAndMintSemanticReferenceScriptDeploymentEntryV1,
 } from "../../../src/index.js";
 import { type NativeScriptDecodingContractsV1 } from "../../../src/native-script-decoding/index.js";
+import { type WithdrawnReferenceInputContractsV1 } from "../../../src/withdrawn-reference-input/index.js";
 import { deploymentManifest } from "./header-fixtures.js";
 import {
   publishValidationDisputeReferenceScript,
@@ -33,9 +34,13 @@ export type RemovalDeploymentReference = {
 export const NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofNativeScriptDecoding";
 
+export const WITHDRAWN_REFERENCE_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+  "fraudProofWithdrawnReferenceInput";
+
 export const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators & {
     readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
+    readonly withdrawnReferenceInput?: WithdrawnReferenceInputContractsV1;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -198,6 +203,14 @@ export const buildRemovalDeploymentInfo = (
             [NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
               scriptHash:
                 contracts.nativeScriptDecoding.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.withdrawnReferenceInput === undefined
+        ? {}
+        : {
+            [WITHDRAWN_REFERENCE_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+              scriptHash:
+                contracts.withdrawnReferenceInput.steps[0].spendingScriptHash,
             },
           }),
       fraudProofNonExistentInputNoIndex: {
