@@ -291,6 +291,12 @@ export type FaultProofEmulatorHarnessV1 = {
 };
 
 /**
+ * Reserved test-harness id for committed-field-shape. It is intentionally not
+ * a production catalogue allocation and is wired only through extraCategories.
+ */
+export const COMMITTED_FIELD_SHAPE_TEST_CATEGORY_ID_V1 = "00000012";
+
+/**
  * The journey preamble every fault-proof emulator suite opens with, in the
  * exact order the suites performed it: read both blueprints, stand up the
  * funder/prover party, register the PHAS membership reward account (then any
@@ -389,6 +395,15 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
             categoryId: NATIVE_SCRIPT_DECODING_TEST_CATEGORY_ID_V1,
             scriptHash:
               contracts.nativeScriptDecoding.steps[0].spendingScriptHash,
+          },
+        }),
+    ...(contracts.committedFieldShape === undefined
+      ? {}
+      : {
+          committedFieldShape: {
+            categoryId: COMMITTED_FIELD_SHAPE_TEST_CATEGORY_ID_V1,
+            scriptHash:
+              contracts.committedFieldShape.steps[0].spendingScriptHash,
           },
         }),
   });
