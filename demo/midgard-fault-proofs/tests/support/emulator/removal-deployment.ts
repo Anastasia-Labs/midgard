@@ -15,6 +15,7 @@ import {
 import { type MissingNativeScriptTxContractsV1 } from "../../../src/missing-native-script-tx/index.js";
 import { type MissingSignatureContractsV1 } from "../../../src/missing-signature/index.js";
 import { type NativeScriptDecodingContractsV1 } from "../../../src/native-script-decoding/index.js";
+import { type WithdrawnReferenceInputContractsV1 } from "../../../src/withdrawn-reference-input/index.js";
 import { deploymentManifest } from "./header-fixtures.js";
 import {
   publishValidationDisputeReferenceScript,
@@ -42,6 +43,9 @@ export const MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY_V1 =
 export const MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofMissingNativeScriptTx";
 
+export const WITHDRAWN_REFERENCE_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+  "fraudProofWithdrawnReferenceInput";
+
 export const CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofCanonicalDecodability";
 
@@ -53,6 +57,7 @@ export const buildRemovalDeploymentInfo = (
     readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
     readonly missingSignature?: MissingSignatureContractsV1;
     readonly missingNativeScriptTx?: MissingNativeScriptTxContractsV1;
+    readonly withdrawnReferenceInput?: WithdrawnReferenceInputContractsV1;
     readonly canonicalDecodability?: CanonicalDecodabilityContractsV1;
     readonly committedFieldShape?: CommittedFieldShapeContractsV1;
   },
@@ -233,6 +238,14 @@ export const buildRemovalDeploymentInfo = (
             [MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
               scriptHash:
                 contracts.missingNativeScriptTx.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.withdrawnReferenceInput === undefined
+        ? {}
+        : {
+            [WITHDRAWN_REFERENCE_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+              scriptHash:
+                contracts.withdrawnReferenceInput.steps[0].spendingScriptHash,
             },
           }),
       ...(contracts.canonicalDecodability === undefined

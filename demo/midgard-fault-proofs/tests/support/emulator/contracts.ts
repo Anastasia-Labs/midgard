@@ -56,6 +56,10 @@ import {
 import { type FabricatedDepositContractsV1 } from "../../../src/submit-fabricated-deposit-step-01.js";
 import { type FabricatedWithdrawalContractsV1 } from "../../../src/submit-fabricated-withdrawal-step-01.js";
 import {
+  WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES_V1,
+  type WithdrawnReferenceInputContractsV1,
+} from "../../../src/withdrawn-reference-input/contracts-v1.js";
+import {
   applyCompiledScript,
   type Blueprint,
   cloneBlueprint,
@@ -360,6 +364,58 @@ export const buildCanonicalDecodabilityChainV1 = ({
   return [step01, step02];
 };
 
+/** Applies the three withdrawn-reference-input validators back-to-front. */
+export const buildWithdrawnReferenceInputChainV1 = ({
+  realBlueprint,
+  computationThreadPolicyId,
+  fraudProofPolicyId,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+  hubOraclePolicyId,
+}: {
+  readonly realBlueprint: Blueprint;
+  readonly computationThreadPolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
+  readonly hubOraclePolicyId: string;
+}): readonly [
+  SdkSpendingValidator,
+  SdkSpendingValidator,
+  SdkSpendingValidator,
+] => {
+  const step03 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES_V1.step03,
+      [
+        fraudProofPolicyId,
+        fraudProofTokenAddressData,
+        computationThreadPolicyId,
+      ],
+    ),
+  );
+  const step02 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES_V1.step02,
+      [
+        step03.spendingScriptHash,
+        computationThreadPolicyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+    ),
+  );
+  const step01 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES_V1.step01,
+      [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
+    ),
+  );
+  return [step01, step02, step03];
+};
+
 export const buildMinimalFaultProofContracts = async (
   realBlueprint: Blueprint,
   alwaysBlueprint: Blueprint,
@@ -382,6 +438,7 @@ export const buildMinimalFaultProofContracts = async (
     realMissingNativeScriptTx = false,
     realCanonicalDecodability = false,
     realCommittedFieldShape = false,
+    realWithdrawnReferenceInput = false,
     alwaysFraudProofCatalogue = false,
   }: {
     readonly realNonExistentInput?: boolean;
@@ -401,6 +458,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realMissingNativeScriptTx?: boolean;
     readonly realCanonicalDecodability?: boolean;
     readonly realCommittedFieldShape?: boolean;
+    readonly realWithdrawnReferenceInput?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
 ): Promise<
@@ -412,6 +470,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly missingNativeScriptTx?: MissingNativeScriptTxContractsV1;
     readonly canonicalDecodability?: CanonicalDecodabilityContractsV1;
     readonly committedFieldShape?: CommittedFieldShapeContractsV1;
+    readonly withdrawnReferenceInput?: WithdrawnReferenceInputContractsV1;
   }
 > => {
   // This integration test proves the real active-operators slashing and
@@ -802,6 +861,39 @@ export const buildMinimalFaultProofContracts = async (
           };
         })()
       : undefined;
+  const withdrawnReferenceInput:
+    | WithdrawnReferenceInputContractsV1
+    | undefined = realWithdrawnReferenceInput
+    ? await (async () => {
+        const fraudProofTokenAddressData = await Effect.runPromise(
+          addressDataFromBech32(
+            doubleSpendContracts.fraudProof.spendingScriptAddress,
+          ).pipe(
+            Effect.map((addressData) =>
+              Data.from(Data.to(addressData, AddressData)),
+            ),
+          ),
+        );
+        return {
+          steps: buildWithdrawnReferenceInputChainV1({
+            realBlueprint,
+            computationThreadPolicyId:
+              doubleSpendContracts.computationThread.policyId,
+            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
+            fraudProofTokenAddressData,
+            fieldPreimageCertificatePolicyId:
+              base.fieldPreimageCertificate.policyId,
+            hubOraclePolicyId: hubOracle.policyId,
+          }),
+          computationThread: doubleSpendContracts.computationThread,
+          fraudProof: doubleSpendContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+          fieldPreimageCertificatePolicyId:
+            base.fieldPreimageCertificate.policyId,
+        };
+      })()
+    : undefined;
   const fabricatedWithdrawal: FabricatedWithdrawalContractsV1 | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
@@ -823,6 +915,9 @@ export const buildMinimalFaultProofContracts = async (
     ...(missingNativeScriptTx === undefined ? {} : { missingNativeScriptTx }),
     ...(canonicalDecodability === undefined ? {} : { canonicalDecodability }),
     ...(committedFieldShape === undefined ? {} : { committedFieldShape }),
+    ...(withdrawnReferenceInput === undefined
+      ? {}
+      : { withdrawnReferenceInput }),
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,
