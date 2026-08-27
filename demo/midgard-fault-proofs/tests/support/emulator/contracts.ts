@@ -42,6 +42,10 @@ import {
   type CommittedFieldShapeContractsV1,
 } from "../../../src/committed-field-shape/contracts-v1.js";
 import {
+  MIN_FEE_BLUEPRINT_TITLES_V1,
+  type MinFeeContractsV1,
+} from "../../../src/min-fee-contracts-v1.js";
+import {
   MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1,
   type MissingNativeScriptTxContractsV1,
 } from "../../../src/missing-native-script-tx/contracts-v1.js";
@@ -322,6 +326,40 @@ export const buildMissingNativeScriptTxChainV1 = ({
   return [step01, step02, step03, step04, step05, step06];
 };
 
+/** Applies the standalone min-fee chain in blueprint-declared order. */
+export const buildMinFeeChainV1 = ({
+  realBlueprint,
+  computationThreadPolicyId,
+  fraudProofPolicyId,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+  hubOraclePolicyId,
+}: {
+  readonly realBlueprint: Blueprint;
+  readonly computationThreadPolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
+  readonly hubOraclePolicyId: string;
+}): readonly [SdkSpendingValidator, SdkSpendingValidator] => {
+  const step02 = makeSpendingValidator(
+    applyCompiledScript(realBlueprint, MIN_FEE_BLUEPRINT_TITLES_V1.step02, [
+      fraudProofPolicyId,
+      fraudProofTokenAddressData,
+      computationThreadPolicyId,
+      fieldPreimageCertificatePolicyId,
+    ]),
+  );
+  const step01 = makeSpendingValidator(
+    applyCompiledScript(realBlueprint, MIN_FEE_BLUEPRINT_TITLES_V1.step01, [
+      step02.spendingScriptHash,
+      computationThreadPolicyId,
+      hubOraclePolicyId,
+    ]),
+  );
+  return [step01, step02];
+};
+
 /** Applies the two-step canonical-decodability family backwards. */
 export const buildCanonicalDecodabilityChainV1 = ({
   realBlueprint,
@@ -439,6 +477,7 @@ export const buildMinimalFaultProofContracts = async (
     realCanonicalDecodability = false,
     realCommittedFieldShape = false,
     realWithdrawnReferenceInput = false,
+    realMinFee = false,
     alwaysFraudProofCatalogue = false,
   }: {
     readonly realNonExistentInput?: boolean;
@@ -459,6 +498,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realCanonicalDecodability?: boolean;
     readonly realCommittedFieldShape?: boolean;
     readonly realWithdrawnReferenceInput?: boolean;
+    readonly realMinFee?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
 ): Promise<
@@ -471,6 +511,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly canonicalDecodability?: CanonicalDecodabilityContractsV1;
     readonly committedFieldShape?: CommittedFieldShapeContractsV1;
     readonly withdrawnReferenceInput?: WithdrawnReferenceInputContractsV1;
+    readonly minFee?: MinFeeContractsV1;
   }
 > => {
   // This integration test proves the real active-operators slashing and
@@ -894,6 +935,37 @@ export const buildMinimalFaultProofContracts = async (
         };
       })()
     : undefined;
+  const minFee: MinFeeContractsV1 | undefined = realMinFee
+    ? await (async () => {
+        const fraudProofTokenAddressData = await Effect.runPromise(
+          addressDataFromBech32(
+            doubleSpendContracts.fraudProof.spendingScriptAddress,
+          ).pipe(
+            Effect.map((addressData) =>
+              Data.from(Data.to(addressData, AddressData)),
+            ),
+          ),
+        );
+        return {
+          steps: buildMinFeeChainV1({
+            realBlueprint,
+            computationThreadPolicyId:
+              doubleSpendContracts.computationThread.policyId,
+            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
+            fraudProofTokenAddressData,
+            fieldPreimageCertificatePolicyId:
+              base.fieldPreimageCertificate.policyId,
+            hubOraclePolicyId: hubOracle.policyId,
+          }),
+          computationThread: doubleSpendContracts.computationThread,
+          fraudProof: doubleSpendContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+          fieldPreimageCertificatePolicyId:
+            base.fieldPreimageCertificate.policyId,
+        };
+      })()
+    : undefined;
   const fabricatedWithdrawal: FabricatedWithdrawalContractsV1 | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
@@ -918,6 +990,7 @@ export const buildMinimalFaultProofContracts = async (
     ...(withdrawnReferenceInput === undefined
       ? {}
       : { withdrawnReferenceInput }),
+    ...(minFee === undefined ? {} : { minFee }),
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,

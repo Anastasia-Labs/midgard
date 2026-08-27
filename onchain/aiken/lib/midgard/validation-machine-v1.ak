@@ -19,9 +19,9 @@ use midgard/fraud_proofs/native_tx/codec.{
 }
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_compact_v1, decode_native_tx_field_preimage_lengths_v1,
-  decode_native_tx_witness_set_compact, native_tx_canonical_size_v1,
-  native_tx_proof_commitment_v1, verify_native_tx_compact_cbor_v1,
-  verify_native_tx_proof_source_v1,
+  decode_native_tx_witness_set_compact, min_fee_lovelace_v1,
+  native_tx_canonical_size_v1, native_tx_proof_commitment_v1,
+  verify_native_tx_compact_cbor_v1, verify_native_tx_proof_source_v1,
 }
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_address_witness_cbor, decode_midgard_tx_input_cbor,
@@ -2682,7 +2682,11 @@ fn static_rules_rejection(
     body.network_id != context.expected_network_id,
   } {
     Some(reject_network_id_mismatch)
-  } else if body.fee < context.min_fee_a * canonical_tx_size + context.min_fee_b {
+  } else if body.fee < min_fee_lovelace_v1(
+    context.min_fee_a,
+    context.min_fee_b,
+    canonical_tx_size,
+  ) {
     Some(reject_min_fee)
   } else {
     None

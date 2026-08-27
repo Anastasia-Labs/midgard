@@ -71,8 +71,8 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
   release evidence remains pending.
 - Q13 adds the full `input-no-idx` lifecycle: canonical-evidence preparation,
   `submit-init`, four step commands (including resumable fold), inspection,
-  and an emulator chain through faulty-block removal. The remaining Q14–Q20
-  family-closure tasks are not promoted by that result.
+  and an emulator chain through faulty-block removal. Family-closure status is
+  tracked individually in [`catalogue-status.md`](catalogue-status.md).
 - The positional deployment catalogue has **eight** categories:
   `doubleSpend`, `nonExistentInput`, `nonExistentInputNoIndex`, `invalidRange`,
   `transitionTrace`, `zeroInput`, `validationTraceDispute`, and
@@ -82,7 +82,6 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 
 **2. Delivered but _not_ functional** (present but stubbed/inert/disabled):
 
-- `min-fee` proof — its `get_min_transaction_fee` is a `0`-returning stub, making its decisive check unsatisfiable. Cannot conclude. (`onchain/aiken/validators/fraud-proofs/min-fee/step-02.ak:64,78-80`)
 - Slashing **economics** — `slashing_penalty`, historical source identifier
   `fraud_prover_reward`, `required_bond`, and `inactivity_slashing_penalty` are all
   `0` in `env/default.ak` and `env/testnet.ak`. A successful proof slashes and
@@ -100,7 +99,8 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
   negative output value.
 - Fabricated deposit / fabricated withdrawal (spec asserts "detectable" but provides no construction).
 - Mis-tagged (valid→invalid) withdrawal proof.
-- Atomic closure for Q14–Q20, CLI wiring for `transition-trace`, and the
+- Remaining family atomic closures, production registration of the locally
+  complete min-fee family, CLI wiring for `transition-trace`, and the
   missing-family routes remain open despite the complete native-V1 binding.
 - Preprod end-to-end (an operator-local 2026-05-08 report recorded a canonical-root
   mismatch, but it is intentionally untracked and predates the counted-root work of PR

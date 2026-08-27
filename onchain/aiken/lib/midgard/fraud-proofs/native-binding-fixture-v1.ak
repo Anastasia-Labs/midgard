@@ -18,6 +18,7 @@ use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
 use aiken/merkle_patricia_forestry/helpers.{combine, nibble, nibbles, suffix}
 use aiken/merkle_patricia_forestry/merkling.{merkle_16}
+use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/address.{Address, Script}
 use cardano/assets
@@ -36,6 +37,7 @@ use midgard/fraud_proofs/common.{
 }
 use midgard/fraud_proofs/field_opening_v1
 use midgard/fraud_proofs/native_tx/compact as native_compact
+use midgard/fraud_proofs/native_tx/preimages as native_preimages
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/hub_oracle
@@ -301,6 +303,114 @@ pub fn miskeyed_block_fixture_v1(
 ) -> NativeBlockFixtureV1 {
   let base = native_block_fixture_v1(tx)
   committed_leaf_block_fixture_v1(base, committed_key, base.compact_cbor)
+}
+
+/// The same committed block under a different header fee schedule: replaces
+/// `min_fee_a` / `min_fee_b` and re-derives the header hash. The block's
+/// transactions stay untouched — the `min-fee` family's verdict is a function
+/// of the header parameters and the committed transaction together, so its
+/// selectors vary the schedule around a fixed transaction.
+pub fn min_fee_params_block_fixture_v1(
+  base: NativeBlockFixtureV1,
+  min_fee_a: Int,
+  min_fee_b: Int,
+) -> NativeBlockFixtureV1 {
+  let header = ledger_state.HeaderV1 { ..base.header, min_fee_a, min_fee_b }
+  let header_data: Data = header
+  NativeBlockFixtureV1 {
+    ..base,
+    header,
+    header_hash: utils.serialise_and_hash_28(header_data),
+  }
+}
+
+/// The nine §5.1 field-preimage byte lengths of `tx`, producer-computed —
+/// exactly the values `midgard_transaction_proof_source_v1` commits for the
+/// validation machine, exposed so a selector can price the canonical size of
+/// the fixture transaction it is challenging.
+pub fn field_preimage_lengths_v1(
+  tx: native_types.MidgardTransaction,
+) -> native_types.NativeTxFieldPreimageLengthsV1 {
+  native_types.NativeTxFieldPreimageLengthsV1 {
+    spend_inputs: bytearray.length(
+      native_preimages.encode_input_preimage(tx.body.inputs),
+    ),
+    reference_inputs: bytearray.length(
+      native_preimages.encode_input_preimage(tx.body.reference_inputs),
+    ),
+    outputs: bytearray.length(
+      native_preimages.encode_output_preimage(tx.body.outputs),
+    ),
+    required_observers: bytearray.length(
+      native_preimages.encode_hash28_list_preimage(tx.body.required_observers),
+    ),
+    required_signers: bytearray.length(
+      native_preimages.encode_hash28_list_preimage(tx.body.required_signers),
+    ),
+    mint: bytearray.length(native_preimages.encode_mint_preimage(tx.body.mint)),
+    address_witnesses: bytearray.length(
+      native_preimages.encode_address_witness_preimage(
+        tx.witness_set.addr_tx_wits,
+      ),
+    ),
+    script_witnesses: bytearray.length(
+      native_preimages.encode_script_witness_preimage(
+        tx.witness_set.script_tx_wits,
+      ),
+    ),
+    redeemers: bytearray.length(
+      native_preimages.encode_redeemer_witness_preimage(
+        tx.witness_set.redeemer_tx_wits,
+      ),
+    ),
+  }
+}
+
+/// Tier-1 carriage of all nine of `tx`'s field preimages, §2.5 index order
+/// (0 = spend inputs … 8 = redeemers) — the honest prover's redeemer for a
+/// step that must price every field, such as `min-fee` step-02.
+pub fn inline_field_carriages_v1(
+  tx: native_types.MidgardTransaction,
+) -> List<field_access.FieldCarriageV1> {
+  [
+    field_access.Inline {
+      preimage: native_preimages.encode_input_preimage(tx.body.inputs),
+    },
+    field_access.Inline {
+      preimage: native_preimages.encode_input_preimage(tx.body.reference_inputs),
+    },
+    field_access.Inline {
+      preimage: native_preimages.encode_output_preimage(tx.body.outputs),
+    },
+    field_access.Inline {
+      preimage: native_preimages.encode_hash28_list_preimage(
+        tx.body.required_observers,
+      ),
+    },
+    field_access.Inline {
+      preimage: native_preimages.encode_hash28_list_preimage(
+        tx.body.required_signers,
+      ),
+    },
+    field_access.Inline {
+      preimage: native_preimages.encode_mint_preimage(tx.body.mint),
+    },
+    field_access.Inline {
+      preimage: native_preimages.encode_script_witness_preimage(
+        tx.witness_set.script_tx_wits,
+      ),
+    },
+    field_access.Inline {
+      preimage: native_preimages.encode_address_witness_preimage(
+        tx.witness_set.addr_tx_wits,
+      ),
+    },
+    field_access.Inline {
+      preimage: native_preimages.encode_redeemer_witness_preimage(
+        tx.witness_set.redeemer_tx_wits,
+      ),
+    },
+  ]
 }
 
 pub fn ct_token_asset_name(fixture: NativeBlockFixtureV1) -> ByteArray {

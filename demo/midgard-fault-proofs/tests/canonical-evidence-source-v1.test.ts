@@ -33,6 +33,7 @@ import {
   fetchCanonicalBlockEvidenceV1,
   prepareDoubleSpendFromCanonicalEvidenceV1,
   prepareInvalidRangeFromCanonicalEvidenceV1,
+  prepareMinFeeFromCanonicalEvidenceV1,
   prepareNonExistentInputFromCanonicalEvidenceV1,
   prepareZeroInputFromCanonicalEvidenceV1,
 } from "../src/evidence/index.js";
@@ -117,6 +118,8 @@ const evidenceFor = async (
           transactions: fixture.transactions,
           startTime: fixture.header.startTime,
           endTime: fixture.header.endTime,
+          minFeeA: fixture.header.minFeeA,
+          minFeeB: fixture.header.minFeeB,
         })
       : fixture;
   const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
@@ -196,6 +199,9 @@ describe("Q03 provenance admission", () => {
     expect(
       FaultProofs.prepareNonExistentInputFromCanonicalEvidenceV1,
     ).toBeTypeOf("function");
+    expect(FaultProofs.prepareMinFeeFromCanonicalEvidenceV1).toBeTypeOf(
+      "function",
+    );
   });
 
   it("admits every enumerated public trust class at security grade", () => {
@@ -638,7 +644,7 @@ describe("Q03 canonical-evidence builders", () => {
     ).toBe("native_inclusion_root_unauthenticated");
   });
 
-  it("refuses to emit zero-input and invalid-range proofs on the same gate", async () => {
+  it("refuses to emit zero-input, invalid-range, and min-fee proofs on the same gate", async () => {
     const fixture = await doubleSpendBlock();
     const evidence = await evidenceFor(fixture);
     expect(
@@ -649,6 +655,11 @@ describe("Q03 canonical-evidence builders", () => {
     expect(
       await rejectionCode(async () =>
         prepareInvalidRangeFromCanonicalEvidenceV1({ evidence }),
+      ),
+    ).toBe("native_inclusion_root_unauthenticated");
+    expect(
+      await rejectionCode(async () =>
+        prepareMinFeeFromCanonicalEvidenceV1({ evidence }),
       ),
     ).toBe("native_inclusion_root_unauthenticated");
   });
@@ -678,6 +689,31 @@ describe("Q03 canonical-evidence builders", () => {
         })
       ).txCount,
     ).toBe(1);
+
+    const minFeeFixture = await buildCanonicalBlockFixtureV1({
+      transactionsRootMode: "nativeCompact",
+      minFeeB: 2n,
+      transactions: [
+        buildFixtureTransactionV1({
+          spendInputs: [outRefCbor(0x79, 0n)],
+          fee: 1n,
+        }),
+      ],
+    });
+    const minFee = await executeCanonicalPrepareCommandV1({
+      request: {
+        command: "prepare-min-fee",
+        categoryId: "00000013",
+      },
+      evidence: await evidenceFor(minFeeFixture),
+    });
+    if (!("threadTokenAssetName" in minFee) || !("tx" in minFee)) {
+      throw new Error("prepare-min-fee router returned a different family");
+    }
+    expect(minFee.tx.minimumFee).toBe(2n);
+    expect(minFee.threadTokenAssetName).toBe(
+      `00000013${minFeeFixture.headerHash}`,
+    );
 
     const invalidRangeFixture = await buildCanonicalBlockFixtureV1({
       transactionsRootMode: "nativeCompact",
@@ -746,6 +782,8 @@ describe("Q03 canonical-evidence builders", () => {
         await prepareInvalidRangeFromCanonicalEvidenceV1({
           evidence: downgraded,
         }),
+      async () =>
+        await prepareMinFeeFromCanonicalEvidenceV1({ evidence: downgraded }),
       async () =>
         await prepareNonExistentInputFromCanonicalEvidenceV1({
           evidence: downgraded,

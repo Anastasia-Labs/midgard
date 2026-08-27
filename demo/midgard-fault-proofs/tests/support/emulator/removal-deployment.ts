@@ -12,6 +12,7 @@ import {
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   validationValueAndMintSemanticReferenceScriptDeploymentEntryV1,
 } from "../../../src/index.js";
+import { type MinFeeContractsV1 } from "../../../src/min-fee-contracts-v1.js";
 import { type MissingNativeScriptTxContractsV1 } from "../../../src/missing-native-script-tx/index.js";
 import { type MissingSignatureContractsV1 } from "../../../src/missing-signature/index.js";
 import { type NativeScriptDecodingContractsV1 } from "../../../src/native-script-decoding/index.js";
@@ -51,6 +52,7 @@ export const CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY_V1 =
 
 export const COMMITTED_FIELD_SHAPE_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofCommittedFieldShape";
+export const MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY_V1 = "fraudProofMinFee";
 
 export const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators & {
@@ -60,6 +62,7 @@ export const buildRemovalDeploymentInfo = (
     readonly withdrawnReferenceInput?: WithdrawnReferenceInputContractsV1;
     readonly canonicalDecodability?: CanonicalDecodabilityContractsV1;
     readonly committedFieldShape?: CommittedFieldShapeContractsV1;
+    readonly minFee?: MinFeeContractsV1;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -262,6 +265,13 @@ export const buildRemovalDeploymentInfo = (
             [COMMITTED_FIELD_SHAPE_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
               scriptHash:
                 contracts.committedFieldShape.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.minFee === undefined
+        ? {}
+        : {
+            [MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+              scriptHash: contracts.minFee.steps[0].spendingScriptHash,
             },
           }),
       fraudProofNonExistentInputNoIndex: {

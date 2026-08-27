@@ -134,11 +134,15 @@ export const buildCanonicalBlockFixtureV1 = async ({
   transactions,
   startTime = 10n,
   endTime = 20n,
+  minFeeA = 0n,
+  minFeeB = 0n,
   transactionsRootMode = "payloadSource",
 }: {
   readonly transactions: readonly FixtureTransactionV1[];
   readonly startTime?: bigint;
   readonly endTime?: bigint;
+  readonly minFeeA?: bigint;
+  readonly minFeeB?: bigint;
   readonly transactionsRootMode?: CanonicalTransactionsRootModeV1;
 }): Promise<CanonicalBlockFixtureV1> => {
   const transactionEntries: SDK.DaPayloadEntry[] = transactions.map((tx) => [
@@ -250,8 +254,8 @@ export const buildCanonicalBlockFixtureV1 = async ({
     endTime,
     blockSlot: 0n,
     expectedNetworkId: 0n,
-    minFeeA: 0n,
-    minFeeB: 0n,
+    minFeeA,
+    minFeeB,
     prevHeaderHash: h28(90),
     operatorVkey: h28(91),
     protocolVersion: 1n,
