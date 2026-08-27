@@ -312,6 +312,9 @@ export type FaultProofEmulatorHarnessV1 = {
  */
 export const NATIVE_SCRIPT_DECODING_TEST_CATEGORY_ID_V1 = "0000000d";
 
+/** Reserved pre-registration emulator id; never a production assignment. */
+export const CANONICAL_DECODABILITY_TEST_CATEGORY_ID_V1 = "00000011";
+
 export const makeFaultProofEmulatorHarnessV1 = async ({
   contractOptions = {},
   accounts,
@@ -389,6 +392,15 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
             categoryId: NATIVE_SCRIPT_DECODING_TEST_CATEGORY_ID_V1,
             scriptHash:
               contracts.nativeScriptDecoding.steps[0].spendingScriptHash,
+          },
+        }),
+    ...(contracts.canonicalDecodability === undefined
+      ? {}
+      : {
+          canonicalDecodability: {
+            categoryId: CANONICAL_DECODABILITY_TEST_CATEGORY_ID_V1,
+            scriptHash:
+              contracts.canonicalDecodability.steps[0].spendingScriptHash,
           },
         }),
   });
