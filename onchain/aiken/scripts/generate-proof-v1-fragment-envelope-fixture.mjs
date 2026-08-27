@@ -30,6 +30,10 @@ const outputPath = path.resolve(
   scriptDir,
   "../lib/midgard/fraud-proofs/proof-v1-fragment-envelope.test.ak",
 );
+const plutarchOutputPath = path.resolve(
+  scriptDir,
+  "../../plutarch/tests/fixtures/proof-v1-fragment-envelope.json",
+);
 const limits = MIDGARD_CONSENSUS_LIMITS_V1;
 // Keep fixture generation bounded and deterministic. These are sample-shape
 // sizes, not consensus maxima; consensus-capability tests exercise larger
@@ -445,6 +449,57 @@ const predecessorReceiptLiteral = (predecessor) => {
     },
   )`;
 };
+const hexBytes = (bytes) => Buffer.from(bytes).toString("hex");
+const jsonFrontier = (frontier) =>
+  frontier.peaks.map(({ height, hash }) => ({
+    height: Number(height),
+    hash: hexBytes(hash),
+  }));
+const jsonCollectionProof = (proof) => ({
+  version: Number(proof.version),
+  fieldIndex: Number(proof.fieldIndex),
+  itemCount: Number(proof.itemCount),
+  itemIndex: Number(proof.itemIndex),
+  itemLength: Number(proof.itemLength),
+  itemCommitment: hexBytes(proof.itemCommitment),
+  frontier: jsonFrontier(proof.frontier),
+  siblings: proof.siblings.map(hexBytes),
+});
+const jsonChunkProof = (proof) => ({
+  version: Number(proof.version),
+  fieldIndex: Number(proof.fieldIndex),
+  itemIndex: Number(proof.itemIndex),
+  totalLength: Number(proof.totalLength),
+  chunkIndex: Number(proof.chunkIndex),
+  chunk: hexBytes(proof.chunk),
+  frontier: jsonFrontier(proof.frontier),
+  siblings: proof.siblings.map(hexBytes),
+});
+const jsonReceipt = ({ collectionProof, proof }) => ({
+  collectionProof: jsonCollectionProof(collectionProof),
+  chunkIndex: Number(proof.chunkIndex),
+  fieldEncodedSize: receiptStateByKey.get(chunkKey({ proof })),
+});
+const plutarchFixture = {
+  transactionId: hexBytes(transactionId),
+  transactionCommitment: hexBytes(transactionCommitment),
+  compactCbor: hexBytes(source.compactCbor),
+  witnessSetCompactCbor: hexBytes(source.witnessSetCompactCbor),
+  fieldPreimageLengthsCbor: hexBytes(source.fieldPreimageLengthsCbor),
+  canonicalTransactionBytes: canonicalCbor.length,
+  maximumCanonicalTransactionBytes: limits.maxTxCanonicalCborBytes,
+  terminalReceipt: jsonReceipt(terminalChunk),
+  scenarios: representativeScenarios.map(
+    ({ collectionProof, proof, predecessor }) => ({
+      name: `maximum_profile_field_${proof.fieldIndex}_item_${proof.itemIndex}_chunk_${proof.chunkIndex}_verifies_independently_on_l1`,
+      collectionProof: jsonCollectionProof(collectionProof),
+      chunkProof: jsonChunkProof(proof),
+      fieldEncodedSize: receiptStateByKey.get(chunkKey({ proof })),
+      predecessor:
+        predecessor === undefined ? null : jsonReceipt(predecessor),
+    }),
+  ),
+};
 const chunkConstants = constantChunks
   .map(
     ({ collectionProof, proof }) =>
@@ -816,10 +871,16 @@ test receipt_publication_without_the_referenced_fragment_fails_closed() fail {
 `;
 
 fs.writeFileSync(outputPath, generated);
+fs.mkdirSync(path.dirname(plutarchOutputPath), { recursive: true });
+fs.writeFileSync(
+  plutarchOutputPath,
+  `${JSON.stringify(plutarchFixture, null, 2)}\n`,
+);
 process.stdout.write(
   `${JSON.stringify(
     {
       outputPath,
+      plutarchOutputPath,
       canonicalTransactionBytes: canonicalCbor.length,
       maximumCanonicalTransactionBytes: limits.maxTxCanonicalCborBytes,
       representativeChunkProofs: representativeScenarios.length,

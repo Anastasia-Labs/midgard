@@ -565,7 +565,7 @@ pub fn encode_input_sets_scan_witness(
   expect spend_seen >= 0
   expect reference_seen >= 0
   expect
-    bytearray.length(previous_key) == 0 || bytearray.length(previous_key) == 36
+    bytearray.length(previous_key) == 0 || bytearray.length(previous_key) == 38
   expect bytearray.length(resolution_schedule_hash) == 32
   encode_definite_array_header(10)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
@@ -2180,7 +2180,7 @@ fn input_sets_control_is_bound(
         control.resolution_schedule_hash == empty_resolution_schedule_hash(),
       }
     } else {
-      bytearray.length(control.previous_key) == 36
+      bytearray.length(control.previous_key) == 38
     },
     bytearray.length(control.resolution_schedule_hash) == 32,
     witness.work_witness_cbor == encode_input_sets_scan_witness(
