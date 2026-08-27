@@ -36,3 +36,4 @@ export * from "./submit-reference-input-no-idx-step-03.js";
 export * from "./submit-reference-input-no-idx-step-04.js";
 export * from "./transition-trace/index.js";
 export * from "./validation-dispute/index.js";
+export * from "./withdrawal-mistag/index.js";

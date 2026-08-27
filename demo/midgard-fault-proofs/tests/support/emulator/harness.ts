@@ -13,6 +13,7 @@ import {
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
   ScriptHashSchema,
+  WITHDRAWAL_MISTAG_TEST_CATEGORY_ID_V1,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -389,6 +390,14 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
             categoryId: NATIVE_SCRIPT_DECODING_TEST_CATEGORY_ID_V1,
             scriptHash:
               contracts.nativeScriptDecoding.steps[0].spendingScriptHash,
+          },
+        }),
+    ...(contracts.withdrawalMistag === undefined
+      ? {}
+      : {
+          withdrawalMistag: {
+            categoryId: WITHDRAWAL_MISTAG_TEST_CATEGORY_ID_V1,
+            scriptHash: contracts.withdrawalMistag.steps[0].spendingScriptHash,
           },
         }),
   });
