@@ -16,6 +16,7 @@ export const makeNativeTx = ({
   referenceByte,
   outputByte,
   outputCbor,
+  outputCbors,
   witnessByte,
   addrTxWitsPreimageCbor,
   requiredSignerHashes = [],
@@ -29,6 +30,7 @@ export const makeNativeTx = ({
   readonly referenceByte?: string;
   readonly outputByte?: string;
   readonly outputCbor?: Buffer;
+  readonly outputCbors?: readonly Buffer[];
   readonly witnessByte?: string;
   readonly addrTxWitsPreimageCbor?: Buffer;
   readonly requiredSignerHashes?: readonly string[];
@@ -47,11 +49,13 @@ export const makeNativeTx = ({
           ? EMPTY_CBOR_LIST
           : encodeCbor([Buffer.from(h32(referenceByte), "hex")]),
       outputsPreimageCbor:
-        outputCbor !== undefined
-          ? encodeCbor([outputCbor])
-          : outputByte === undefined
-            ? EMPTY_CBOR_LIST
-            : encodeCbor([Buffer.from(h32(outputByte), "hex")]),
+        outputCbors !== undefined
+          ? encodeCbor([...outputCbors])
+          : outputCbor !== undefined
+            ? encodeCbor([outputCbor])
+            : outputByte === undefined
+              ? EMPTY_CBOR_LIST
+              : encodeCbor([Buffer.from(h32(outputByte), "hex")]),
       requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
       requiredSignersPreimageCbor: encodeCbor(
         requiredSignerHashes.map((hash) => {

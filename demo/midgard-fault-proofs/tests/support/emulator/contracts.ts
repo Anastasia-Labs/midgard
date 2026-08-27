@@ -34,6 +34,10 @@ import { Effect } from "effect";
 import { expect } from "vitest";
 
 import {
+  MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1,
+  type MissingNativeScriptTxContractsV1,
+} from "../../../src/missing-native-script-tx/contracts-v1.js";
+import {
   MISSING_SIGNATURE_BLUEPRINT_TITLES_V1,
   type MissingSignatureContractsV1,
 } from "../../../src/missing-signature/contracts-v1.js";
@@ -183,6 +187,87 @@ export const buildNativeScriptDecodingChainV1 = ({
   return [step01, step02, step03, step04];
 };
 
+/** Applies the six validators backwards in their blueprint-declared order. */
+export const buildMissingNativeScriptTxChainV1 = ({
+  realBlueprint,
+  computationThreadPolicyId,
+  fraudProofPolicyId,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+  hubOraclePolicyId,
+}: {
+  readonly realBlueprint: Blueprint;
+  readonly computationThreadPolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
+  readonly hubOraclePolicyId: string;
+}): readonly [
+  SdkSpendingValidator,
+  SdkSpendingValidator,
+  SdkSpendingValidator,
+  SdkSpendingValidator,
+  SdkSpendingValidator,
+  SdkSpendingValidator,
+] => {
+  const step06 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step06,
+      [
+        computationThreadPolicyId,
+        fraudProofPolicyId,
+        fraudProofTokenAddressData,
+        fieldPreimageCertificatePolicyId,
+      ],
+    ),
+  );
+  const step05 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step05,
+      [step06.spendingScriptHash, computationThreadPolicyId],
+    ),
+  );
+  const step04 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step04,
+      [
+        step05.spendingScriptHash,
+        computationThreadPolicyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+    ),
+  );
+  const step03 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step03,
+      [step04.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
+    ),
+  );
+  const step02 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step02,
+      [
+        step03.spendingScriptHash,
+        computationThreadPolicyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+    ),
+  );
+  const step01 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step01,
+      [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
+    ),
+  );
+  return [step01, step02, step03, step04, step05, step06];
+};
+
 export const buildMinimalFaultProofContracts = async (
   realBlueprint: Blueprint,
   alwaysBlueprint: Blueprint,
@@ -202,6 +287,7 @@ export const buildMinimalFaultProofContracts = async (
     realValidationTraceDispute = false,
     realNativeScriptDecoding = false,
     realMissingSignature = false,
+    realMissingNativeScriptTx = false,
     alwaysFraudProofCatalogue = false,
   }: {
     readonly realNonExistentInput?: boolean;
@@ -218,6 +304,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realValidationTraceDispute?: boolean;
     readonly realNativeScriptDecoding?: boolean;
     readonly realMissingSignature?: boolean;
+    readonly realMissingNativeScriptTx?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
 ): Promise<
@@ -226,6 +313,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly fabricatedWithdrawal?: FabricatedWithdrawalContractsV1;
     readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
     readonly missingSignature?: MissingSignatureContractsV1;
+    readonly missingNativeScriptTx?: MissingNativeScriptTxContractsV1;
   }
 > => {
   // This integration test proves the real active-operators slashing and
@@ -518,6 +606,38 @@ export const buildMinimalFaultProofContracts = async (
           };
         })()
       : undefined;
+  const missingNativeScriptTx: MissingNativeScriptTxContractsV1 | undefined =
+    realMissingNativeScriptTx
+      ? await (async () => {
+          const fraudProofTokenAddressData = await Effect.runPromise(
+            addressDataFromBech32(
+              doubleSpendContracts.fraudProof.spendingScriptAddress,
+            ).pipe(
+              Effect.map((addressData) =>
+                Data.from(Data.to(addressData, AddressData)),
+              ),
+            ),
+          );
+          return {
+            steps: buildMissingNativeScriptTxChainV1({
+              realBlueprint,
+              computationThreadPolicyId:
+                doubleSpendContracts.computationThread.policyId,
+              fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
+              fraudProofTokenAddressData,
+              fieldPreimageCertificatePolicyId:
+                base.fieldPreimageCertificate.policyId,
+              hubOraclePolicyId: hubOracle.policyId,
+            }),
+            computationThread: doubleSpendContracts.computationThread,
+            fraudProof: doubleSpendContracts.fraudProof,
+            hubOraclePolicyId: hubOracle.policyId,
+            stateQueuePolicyId: stateQueueMinting.policyId,
+            fieldPreimageCertificatePolicyId:
+              base.fieldPreimageCertificate.policyId,
+          };
+        })()
+      : undefined;
   const fabricatedWithdrawal: FabricatedWithdrawalContractsV1 | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
@@ -536,6 +656,7 @@ export const buildMinimalFaultProofContracts = async (
     ...(fabricatedWithdrawal === undefined ? {} : { fabricatedWithdrawal }),
     ...(nativeScriptDecoding === undefined ? {} : { nativeScriptDecoding }),
     ...(missingSignature === undefined ? {} : { missingSignature }),
+    ...(missingNativeScriptTx === undefined ? {} : { missingNativeScriptTx }),
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,

@@ -318,6 +318,9 @@ export const NATIVE_SCRIPT_DECODING_TEST_CATEGORY_ID_V1 = "0000000d";
  */
 export const MISSING_SIGNATURE_TEST_CATEGORY_ID_V1 = "0000000e";
 
+/** Reserved emulator-only id; production registration re-verifies next-free. */
+export const MISSING_NATIVE_SCRIPT_TX_TEST_CATEGORY_ID_V1 = "0000000f";
+
 export const makeFaultProofEmulatorHarnessV1 = async ({
   contractOptions = {},
   accounts,
@@ -405,6 +408,15 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
           missingSignature: {
             categoryId: MISSING_SIGNATURE_TEST_CATEGORY_ID_V1,
             scriptHash: contracts.missingSignature.steps[0].spendingScriptHash,
+          },
+        }),
+    ...(contracts.missingNativeScriptTx === undefined
+      ? {}
+      : {
+          missingNativeScriptTx: {
+            categoryId: MISSING_NATIVE_SCRIPT_TX_TEST_CATEGORY_ID_V1,
+            scriptHash:
+              contracts.missingNativeScriptTx.steps[0].spendingScriptHash,
           },
         }),
   });
