@@ -42,6 +42,10 @@ import {
   type CommittedFieldShapeContractsV1,
 } from "../../../src/committed-field-shape/contracts-v1.js";
 import {
+  DOUBLE_WITHDRAW_BLUEPRINT_TITLES_V1,
+  type DoubleWithdrawContractsV1,
+} from "../../../src/double-withdraw/contracts-v1.js";
+import {
   MIN_FEE_BLUEPRINT_TITLES_V1,
   type MinFeeContractsV1,
 } from "../../../src/min-fee-contracts-v1.js";
@@ -115,6 +119,42 @@ export const buildCommittedFieldShapeChainV1 = ({
         hubOraclePolicyId,
         fieldPreimageCertificatePolicyId,
       ],
+    ),
+  );
+  return [step01, step02];
+};
+
+/** Applies the pre-registration two-step `double-withdraw` chain backwards. */
+export const buildDoubleWithdrawChainV1 = ({
+  realBlueprint,
+  computationThreadPolicyId,
+  fraudProofPolicyId,
+  fraudProofTokenAddressData,
+  hubOraclePolicyId,
+}: {
+  readonly realBlueprint: Blueprint;
+  readonly computationThreadPolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofTokenAddressData: Data;
+  readonly hubOraclePolicyId: string;
+}): readonly [SdkSpendingValidator, SdkSpendingValidator] => {
+  const step02 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      DOUBLE_WITHDRAW_BLUEPRINT_TITLES_V1.step02,
+      [
+        fraudProofPolicyId,
+        fraudProofTokenAddressData,
+        computationThreadPolicyId,
+        hubOraclePolicyId,
+      ],
+    ),
+  );
+  const step01 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      DOUBLE_WITHDRAW_BLUEPRINT_TITLES_V1.step01,
+      [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
     ),
   );
   return [step01, step02];
@@ -478,6 +518,7 @@ export const buildMinimalFaultProofContracts = async (
     realCommittedFieldShape = false,
     realWithdrawnReferenceInput = false,
     realMinFee = false,
+    realDoubleWithdraw = false,
     alwaysFraudProofCatalogue = false,
   }: {
     readonly realNonExistentInput?: boolean;
@@ -499,6 +540,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realCommittedFieldShape?: boolean;
     readonly realWithdrawnReferenceInput?: boolean;
     readonly realMinFee?: boolean;
+    readonly realDoubleWithdraw?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
 ): Promise<
@@ -512,6 +554,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly committedFieldShape?: CommittedFieldShapeContractsV1;
     readonly withdrawnReferenceInput?: WithdrawnReferenceInputContractsV1;
     readonly minFee?: MinFeeContractsV1;
+    readonly doubleWithdraw?: DoubleWithdrawContractsV1;
   }
 > => {
   // This integration test proves the real active-operators slashing and
@@ -966,6 +1009,34 @@ export const buildMinimalFaultProofContracts = async (
         };
       })()
     : undefined;
+  const doubleWithdraw: DoubleWithdrawContractsV1 | undefined =
+    realDoubleWithdraw
+      ? await (async () => {
+          const fraudProofTokenAddressData = await Effect.runPromise(
+            addressDataFromBech32(
+              doubleSpendContracts.fraudProof.spendingScriptAddress,
+            ).pipe(
+              Effect.map((addressData) =>
+                Data.from(Data.to(addressData, AddressData)),
+              ),
+            ),
+          );
+          return {
+            steps: buildDoubleWithdrawChainV1({
+              realBlueprint,
+              computationThreadPolicyId:
+                doubleSpendContracts.computationThread.policyId,
+              fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
+              fraudProofTokenAddressData,
+              hubOraclePolicyId: hubOracle.policyId,
+            }),
+            computationThread: doubleSpendContracts.computationThread,
+            fraudProof: doubleSpendContracts.fraudProof,
+            hubOraclePolicyId: hubOracle.policyId,
+            stateQueuePolicyId: stateQueueMinting.policyId,
+          };
+        })()
+      : undefined;
   const fabricatedWithdrawal: FabricatedWithdrawalContractsV1 | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
@@ -991,6 +1062,7 @@ export const buildMinimalFaultProofContracts = async (
       ? {}
       : { withdrawnReferenceInput }),
     ...(minFee === undefined ? {} : { minFee }),
+    ...(doubleWithdraw === undefined ? {} : { doubleWithdraw }),
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,

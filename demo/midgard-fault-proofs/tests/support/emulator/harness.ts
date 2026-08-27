@@ -333,6 +333,9 @@ export const COMMITTED_FIELD_SHAPE_TEST_CATEGORY_ID_V1 = "00000012";
 /** Reserved pre-registration emulator id; never a production assignment. */
 export const MIN_FEE_TEST_CATEGORY_ID_V1 = "00000013";
 
+/** Reserved pre-registration emulator id; never a production assignment. */
+export const DOUBLE_WITHDRAW_TEST_CATEGORY_ID_V1 = "00000015";
+
 export const makeFaultProofEmulatorHarnessV1 = async ({
   contractOptions = {},
   accounts,
@@ -464,6 +467,14 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
           minFee: {
             categoryId: MIN_FEE_TEST_CATEGORY_ID_V1,
             scriptHash: contracts.minFee.steps[0].spendingScriptHash,
+          },
+        }),
+    ...(contracts.doubleWithdraw === undefined
+      ? {}
+      : {
+          doubleWithdraw: {
+            categoryId: DOUBLE_WITHDRAW_TEST_CATEGORY_ID_V1,
+            scriptHash: contracts.doubleWithdraw.steps[0].spendingScriptHash,
           },
         }),
   });

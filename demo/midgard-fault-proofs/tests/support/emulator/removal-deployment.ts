@@ -6,6 +6,7 @@ import { type Script, type UTxO } from "@lucid-evolution/lucid";
 
 import { type CanonicalDecodabilityContractsV1 } from "../../../src/canonical-decodability/index.js";
 import { type CommittedFieldShapeContractsV1 } from "../../../src/committed-field-shape/index.js";
+import type { DoubleWithdrawContractsV1 } from "../../../src/double-withdraw/contracts-v1.js";
 import {
   VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
@@ -53,6 +54,8 @@ export const CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY_V1 =
 export const COMMITTED_FIELD_SHAPE_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofCommittedFieldShape";
 export const MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY_V1 = "fraudProofMinFee";
+export const DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+  "fraudProofDoubleWithdraw";
 
 export const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators & {
@@ -63,6 +66,7 @@ export const buildRemovalDeploymentInfo = (
     readonly canonicalDecodability?: CanonicalDecodabilityContractsV1;
     readonly committedFieldShape?: CommittedFieldShapeContractsV1;
     readonly minFee?: MinFeeContractsV1;
+    readonly doubleWithdraw?: DoubleWithdrawContractsV1;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -272,6 +276,13 @@ export const buildRemovalDeploymentInfo = (
         : {
             [MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
               scriptHash: contracts.minFee.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.doubleWithdraw === undefined
+        ? {}
+        : {
+            [DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+              scriptHash: contracts.doubleWithdraw.steps[0].spendingScriptHash,
             },
           }),
       fraudProofNonExistentInputNoIndex: {
