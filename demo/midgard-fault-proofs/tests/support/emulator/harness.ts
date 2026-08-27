@@ -1,6 +1,7 @@
 import {} from "node:path";
 
 import {
+  CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   type FraudProofCatalogueCategoryDeploymentInfo,
   FraudProofComputationThreadRedeemer,
@@ -475,6 +476,15 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
           doubleWithdraw: {
             categoryId: DOUBLE_WITHDRAW_TEST_CATEGORY_ID_V1,
             scriptHash: contracts.doubleWithdraw.steps[0].spendingScriptHash,
+          },
+        }),
+    ...(contracts.crossBlockDuplicateEvent === undefined
+      ? {}
+      : {
+          crossBlockDuplicateEvent: {
+            categoryId: CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1,
+            scriptHash:
+              contracts.crossBlockDuplicateEvent.steps[0].spendingScriptHash,
           },
         }),
   });

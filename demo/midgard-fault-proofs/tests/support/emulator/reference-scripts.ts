@@ -16,6 +16,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import type { CrossBlockDuplicateEventContractsV1 } from "../../../src/cross-block-duplicate-event/index.js";
 import { network } from "./blueprints.js";
 import {
   type CompleteSignedTransactionMeasurement,
@@ -220,6 +221,26 @@ export const publishPlainReferenceScriptUtxo = async ({
     );
   }
   return { utxo: published[0]!, publicationMeasurement };
+};
+
+export const publishCrossBlockDuplicateEventReferenceScriptsV1 = async ({
+  lucid,
+  contracts,
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly contracts: CrossBlockDuplicateEventContractsV1;
+}): Promise<readonly [UTxO, UTxO]> => {
+  const first = await publishPlainReferenceScriptUtxo({
+    lucid,
+    script: contracts.steps[0].spendingScript,
+    label: "cross-block-duplicate-event step-01",
+  });
+  const second = await publishPlainReferenceScriptUtxo({
+    lucid,
+    script: contracts.steps[1].spendingScript,
+    label: "cross-block-duplicate-event step-02",
+  });
+  return [first.utxo, second.utxo];
 };
 
 // The validators `remove-fraudulent-block` needs, in the same roster order as

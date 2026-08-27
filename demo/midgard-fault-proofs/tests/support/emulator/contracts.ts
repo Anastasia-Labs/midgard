@@ -42,6 +42,10 @@ import {
   type CommittedFieldShapeContractsV1,
 } from "../../../src/committed-field-shape/contracts-v1.js";
 import {
+  CROSS_BLOCK_DUPLICATE_EVENT_BLUEPRINT_TITLES_V1,
+  type CrossBlockDuplicateEventContractsV1,
+} from "../../../src/cross-block-duplicate-event/index.js";
+import {
   DOUBLE_WITHDRAW_BLUEPRINT_TITLES_V1,
   type DoubleWithdrawContractsV1,
 } from "../../../src/double-withdraw/contracts-v1.js";
@@ -442,6 +446,40 @@ export const buildCanonicalDecodabilityChainV1 = ({
   return [step01, step02];
 };
 
+export const buildCrossBlockDuplicateEventChainV1 = ({
+  realBlueprint,
+  computationThreadPolicyId,
+  fraudProofPolicyId,
+  fraudProofTokenAddressData,
+  hubOraclePolicyId,
+}: {
+  readonly realBlueprint: Blueprint;
+  readonly computationThreadPolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofTokenAddressData: Data;
+  readonly hubOraclePolicyId: string;
+}): readonly [SdkSpendingValidator, SdkSpendingValidator] => {
+  const step02 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      CROSS_BLOCK_DUPLICATE_EVENT_BLUEPRINT_TITLES_V1.step02,
+      [
+        fraudProofPolicyId,
+        fraudProofTokenAddressData,
+        computationThreadPolicyId,
+      ],
+    ),
+  );
+  const step01 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      CROSS_BLOCK_DUPLICATE_EVENT_BLUEPRINT_TITLES_V1.step01,
+      [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
+    ),
+  );
+  return [step01, step02];
+};
+
 /** Applies the three withdrawn-reference-input validators back-to-front. */
 export const buildWithdrawnReferenceInputChainV1 = ({
   realBlueprint,
@@ -519,6 +557,7 @@ export const buildMinimalFaultProofContracts = async (
     realWithdrawnReferenceInput = false,
     realMinFee = false,
     realDoubleWithdraw = false,
+    realCrossBlockDuplicateEvent = false,
     alwaysFraudProofCatalogue = false,
   }: {
     readonly realNonExistentInput?: boolean;
@@ -541,6 +580,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realWithdrawnReferenceInput?: boolean;
     readonly realMinFee?: boolean;
     readonly realDoubleWithdraw?: boolean;
+    readonly realCrossBlockDuplicateEvent?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
 ): Promise<
@@ -555,6 +595,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly withdrawnReferenceInput?: WithdrawnReferenceInputContractsV1;
     readonly minFee?: MinFeeContractsV1;
     readonly doubleWithdraw?: DoubleWithdrawContractsV1;
+    readonly crossBlockDuplicateEvent?: CrossBlockDuplicateEventContractsV1;
   }
 > => {
   // This integration test proves the real active-operators slashing and
@@ -1037,6 +1078,35 @@ export const buildMinimalFaultProofContracts = async (
           };
         })()
       : undefined;
+  const crossBlockDuplicateEvent:
+    | CrossBlockDuplicateEventContractsV1
+    | undefined = realCrossBlockDuplicateEvent
+    ? await (async () => {
+        const fraudProofTokenAddressData = await Effect.runPromise(
+          addressDataFromBech32(
+            doubleSpendContracts.fraudProof.spendingScriptAddress,
+          ).pipe(
+            Effect.map((addressData) =>
+              Data.from(Data.to(addressData, AddressData)),
+            ),
+          ),
+        );
+        return {
+          steps: buildCrossBlockDuplicateEventChainV1({
+            realBlueprint,
+            computationThreadPolicyId:
+              doubleSpendContracts.computationThread.policyId,
+            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
+            fraudProofTokenAddressData,
+            hubOraclePolicyId: hubOracle.policyId,
+          }),
+          computationThread: doubleSpendContracts.computationThread,
+          fraudProof: doubleSpendContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+        };
+      })()
+    : undefined;
   const fabricatedWithdrawal: FabricatedWithdrawalContractsV1 | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
@@ -1063,6 +1133,9 @@ export const buildMinimalFaultProofContracts = async (
       : { withdrawnReferenceInput }),
     ...(minFee === undefined ? {} : { minFee }),
     ...(doubleWithdraw === undefined ? {} : { doubleWithdraw }),
+    ...(crossBlockDuplicateEvent === undefined
+      ? {}
+      : { crossBlockDuplicateEvent }),
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,
