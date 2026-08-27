@@ -27,6 +27,7 @@ export * from "./tokens.js";
 export * from "./validation-auxiliary-witness-v1.js";
 export * from "./validation-dispute.js";
 export * from "./validation-proof-item-v1.js";
+export * from "./withdrawal-mistag-v1.js";
 export * from "./withdrawn-input-v1.js";
 export * from "./withdrawn-reference-input-v1.js";
 export * from "./zero-input.js";
