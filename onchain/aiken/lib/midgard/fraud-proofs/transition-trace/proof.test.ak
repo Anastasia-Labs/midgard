@@ -23,6 +23,7 @@ use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/deposit
 use midgard/user_events/tx_order_v1 as tx_order
+use midgard/user_events/withdrawal
 use midgard/validation_claim_v1
 use midgard/validation_machine_v1
 use midgard/validation_trace_v1
@@ -184,6 +185,17 @@ fn empty_non_membership(
     count: 0,
     key,
     proof: [],
+  }
+}
+
+fn empty_root_count_proof(
+  domain: transition_trace.RootDomain,
+) -> transition_trace.RootCountProof {
+  transition_trace.RootCountProof {
+    domain,
+    root: env.empty_merkle_tree_root,
+    phas_root: env.empty_merkle_tree_root,
+    count: 0,
   }
 }
 
@@ -1149,6 +1161,94 @@ fn valid_withdrawal_info() -> ledger_state.WithdrawalInfo {
     ..invalid_withdrawal_info(),
     validity: ledger_state.WithdrawalIsValid,
   }
+}
+
+fn withdrawal_reference_input(
+  inclusion_time: Int,
+  event_asset_name: ByteArray,
+) -> Input {
+  let datum: withdrawal.Datum = user_events.OptimisticDatum {
+    event: ledger_state.WithdrawalEvent {
+      id: out_ref(0),
+      info: valid_withdrawal_info(),
+    },
+    inclusion_time,
+    witness: h28_a,
+    refund_address: dummy_address(),
+    refund_datum: NoDatum,
+  }
+  let datum_data: Data = datum
+  Input {
+    output_reference: out_ref(99),
+    output: Output {
+      address: dummy_address(),
+      value: assets.from_asset(h28_a, event_asset_name, 1),
+      datum: InlineDatum(datum_data),
+      reference_script: None,
+    },
+  }
+}
+
+fn omitted_withdrawal_event_is_valid(
+  header: ledger_state.HeaderV1,
+  inclusion_time: Int,
+  source_non_membership: transition_trace.RootNonMembershipProof<
+    ledger_state.WithdrawalId,
+  >,
+) -> Bool {
+  let event_asset_name = #"01"
+  proof.validate_l1_event_fault_proof(
+    prove(
+      header,
+      proof.OmittedDueL1Event {
+        witness: proof.OmittedDueWithdrawal {
+          event_ref_input_index: 0,
+          event_asset_name,
+          source_non_membership,
+        },
+      },
+    ),
+    asset_name_for(header),
+    dummy_hub_datum(),
+    [withdrawal_reference_input(inclusion_time, event_asset_name)],
+  )
+}
+
+fn out_of_window_withdrawal_is_valid(
+  inclusion_time: Int,
+  validity_override: ledger_state.WithdrawalValidity,
+  committed_validity: ledger_state.WithdrawalValidity,
+) -> Bool {
+  let event_asset_name = #"01"
+  let committed_info = ledger_state.WithdrawalInfo {
+    ..valid_withdrawal_info(),
+    validity: committed_validity,
+  }
+  let source_membership = withdrawal_source_membership(
+    out_ref(0),
+    committed_info,
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    withdrawals_root: source_membership.root,
+    withdrawal_count: 1,
+  }
+  proof.validate_l1_event_fault_proof(
+    prove(
+      header,
+      proof.OutOfWindowSourceEvent {
+        witness: proof.OutOfWindowWithdrawal {
+          event_ref_input_index: 0,
+          event_asset_name,
+          validity_override,
+          source_membership,
+        },
+      },
+    ),
+    asset_name_for(header),
+    dummy_hub_datum(),
+    [withdrawal_reference_input(inclusion_time, event_asset_name)],
+  )
 }
 
 test accepts_valid_withdrawal_delete_transition_fault() {
@@ -2386,12 +2486,9 @@ test accepts_duplicate_trace_event_fault() {
 }
 
 test accepts_count_fault() {
-  let proof_root = transition_trace.RootCountProof {
-    domain: transition_trace.TransitionTraceRootDomain,
-    root: env.empty_merkle_tree_root,
-    phas_root: env.empty_merkle_tree_root,
-    count: 0,
-  }
+  let proof_root = empty_root_count_proof(
+    transition_trace.TransitionTraceRootDomain,
+  )
   let header = ledger_state.HeaderV1 {
     ..base_header(),
     transition_step_count: 1,
@@ -2401,6 +2498,103 @@ test accepts_count_fault() {
     header,
     proof.CountFault {
       witness: proof.TransitionTraceRootCountMismatch { proof: proof_root },
+    },
+  )
+}
+
+test rejects_count_fault_when_transition_step_count_matches_committed_root() {
+  let header = base_header()
+  !valid_against_header(
+    header,
+    proof.CountFault {
+      witness: proof.TransitionTraceRootCountMismatch {
+        proof: empty_root_count_proof(
+          transition_trace.TransitionTraceRootDomain,
+        ),
+      },
+    },
+  )
+}
+
+test accepts_header_total_count_mismatch() {
+  let header = ledger_state.HeaderV1 { ..base_header(), total_event_count: 1 }
+  valid_against_header(
+    header,
+    proof.CountFault { witness: proof.HeaderTotalCountMismatch },
+  )
+}
+
+test rejects_header_total_count_mismatch_when_counts_match() {
+  let header = base_header()
+  !valid_against_header(
+    header,
+    proof.CountFault { witness: proof.HeaderTotalCountMismatch },
+  )
+}
+
+test accepts_header_transition_step_count_mismatch() {
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transition_step_count: 1,
+  }
+  valid_against_header(
+    header,
+    proof.CountFault { witness: proof.HeaderTransitionStepCountMismatch },
+  )
+}
+
+test rejects_header_transition_step_count_mismatch_when_counts_match() {
+  let header = base_header()
+  !valid_against_header(
+    header,
+    proof.CountFault { witness: proof.HeaderTransitionStepCountMismatch },
+  )
+}
+
+test accepts_withdrawals_source_root_count_mismatch() {
+  let header = ledger_state.HeaderV1 { ..base_header(), withdrawal_count: 1 }
+  valid_against_header(
+    header,
+    proof.CountFault {
+      witness: proof.SourceRootCountMismatch {
+        proof: empty_root_count_proof(transition_trace.WithdrawalsRootDomain),
+      },
+    },
+  )
+}
+
+test rejects_withdrawals_source_root_count_mismatch_when_count_matches() {
+  let header = base_header()
+  !valid_against_header(
+    header,
+    proof.CountFault {
+      witness: proof.SourceRootCountMismatch {
+        proof: empty_root_count_proof(transition_trace.WithdrawalsRootDomain),
+      },
+    },
+  )
+}
+
+test accepts_event_to_step_root_count_mismatch() {
+  let header = ledger_state.HeaderV1 { ..base_header(), total_event_count: 1 }
+  valid_against_header(
+    header,
+    proof.CountFault {
+      witness: proof.EventToStepRootCountMismatch {
+        proof: empty_root_count_proof(transition_trace.EventToStepRootDomain),
+      },
+    },
+  )
+}
+
+test rejects_event_to_step_root_count_mismatch_when_count_matches() {
+  let header = base_header()
+  !valid_against_header(
+    header,
+    proof.CountFault {
+      witness: proof.EventToStepRootCountMismatch {
+        proof: empty_root_count_proof(transition_trace.EventToStepRootDomain),
+      },
     },
   )
 }
@@ -2445,6 +2639,50 @@ test accepts_omitted_due_deposit_fault() {
   )
 }
 
+test accepts_omitted_withdrawal_at_authenticated_end_time_boundary() {
+  let header = base_header()
+  omitted_withdrawal_event_is_valid(
+    header,
+    header.end_time,
+    empty_non_membership(transition_trace.WithdrawalsRootDomain, out_ref(0)),
+  )
+}
+
+test rejects_omitted_withdrawal_at_excluded_start_time_boundary() {
+  let header = base_header()
+  !omitted_withdrawal_event_is_valid(
+    header,
+    header.start_time,
+    empty_non_membership(transition_trace.WithdrawalsRootDomain, out_ref(0)),
+  )
+}
+
+test rejects_omitted_withdrawal_published_after_challenged_block() {
+  let header = base_header()
+  !omitted_withdrawal_event_is_valid(
+    header,
+    header.end_time + 1,
+    empty_non_membership(transition_trace.WithdrawalsRootDomain, out_ref(0)),
+  )
+}
+
+test rejects_omitted_withdrawal_already_committed_in_source_root() {
+  let source_membership = withdrawal_source_membership(
+    out_ref(0),
+    valid_withdrawal_info(),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    withdrawals_root: source_membership.root,
+    withdrawal_count: 1,
+  }
+  !omitted_withdrawal_event_is_valid(
+    header,
+    header.end_time,
+    empty_non_membership(transition_trace.WithdrawalsRootDomain, out_ref(0)),
+  )
+}
+
 test accepts_omitted_forced_order_at_authenticated_end_time_boundary() {
   omitted_forced_event_is_valid(base_header().end_time)
 }
@@ -2483,6 +2721,30 @@ test accepts_late_forced_order_as_out_of_window_source_event() {
     asset_name_for(header),
     dummy_hub_datum(),
     [tx_order_reference_input(header.end_time + 1, event_asset_name)],
+  )
+}
+
+test accepts_late_withdrawal_as_out_of_window_source_event() {
+  out_of_window_withdrawal_is_valid(
+    base_header().end_time + 1,
+    ledger_state.IncorrectWithdrawalSignature,
+    ledger_state.IncorrectWithdrawalSignature,
+  )
+}
+
+test rejects_in_window_withdrawal_as_out_of_window_source_event() {
+  !out_of_window_withdrawal_is_valid(
+    base_header().end_time,
+    ledger_state.IncorrectWithdrawalSignature,
+    ledger_state.IncorrectWithdrawalSignature,
+  )
+}
+
+test rejects_out_of_window_withdrawal_with_mismatched_validity_override() {
+  !out_of_window_withdrawal_is_valid(
+    base_header().end_time + 1,
+    ledger_state.IncorrectWithdrawalSignature,
+    ledger_state.WithdrawalIsValid,
   )
 }
 

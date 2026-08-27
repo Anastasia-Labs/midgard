@@ -69,6 +69,21 @@ export const makeAuthenticatedValidator = (
   ...makeSpendingValidator(spendingScriptCBOR),
 });
 
+/**
+ * A test-only, uniquely hashed `\context -> ()` Plutus V3 program. Unlike the
+ * optimized always-succeeds blueprint entries, it does not alias every other
+ * scaffold validator's address and policy id. That isolation matters when a
+ * topology loader filters UTxOs by both address and policy.
+ */
+export const makeIsolatedAlwaysSucceedsAuthenticatedValidator =
+  (): AuthenticatedValidator => {
+    // Flat UPLC 1.1.0 `lambda (con unit ())`, wrapped once as blueprint-style
+    // CBOR before Lucid adds the ledger-facing second CBOR layer.
+    const isolatedCompiledCode = "450101002499";
+    const script = applyDoubleCborEncoding(isolatedCompiledCode);
+    return makeAuthenticatedValidator(script, script);
+  };
+
 export const alwaysTitle = (
   category: "midgard" | "fraud_proofs",
   baseName: string,

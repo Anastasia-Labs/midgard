@@ -26,6 +26,7 @@ import { neSubmitStep01FromFiles } from "./ne-submit-step-01.js";
 import { neSubmitStep02FromFiles } from "./ne-submit-step-02.js";
 import { neSubmitStep03FromFiles } from "./ne-submit-step-03.js";
 import { neSubmitStep04FromFiles } from "./ne-submit-step-04.js";
+import { prepareTransitionTraceFromDaEnvelopeV1 } from "./prepare-transition-trace.js";
 import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.js";
 import { type ProviderKind } from "./runtime.js";
 import { submitDaHashPreimageStep01FromFiles } from "./submit-da-hash-preimage-step-01.js";
@@ -54,6 +55,7 @@ import { submitStep01FromFiles } from "./submit-step-01.js";
 import { submitStep02FromFiles } from "./submit-step-02.js";
 import { submitStep03FromFiles } from "./submit-step-03.js";
 import { submitStep04FromFiles } from "./submit-step-04.js";
+import { submitTransitionTraceProofFromCborFile } from "./submit-transition-trace-proof.js";
 import { submitZeroInputStep01FromFiles } from "./submit-zero-input-step-01.js";
 import { submitZeroInputStep02FromFiles } from "./submit-zero-input-step-02.js";
 import {
@@ -102,6 +104,9 @@ export type ParsedArgs = {
   readonly tx1Id: string | undefined;
   readonly tx2Id: string | undefined;
   readonly outputDir: string | undefined;
+  readonly daPayloadEnvelopePath: string | undefined;
+  readonly transitionFaultProofPath: string | undefined;
+  readonly referenceInputOutRefs: readonly string[];
   readonly awaitConfirmation: boolean;
   readonly fraudCategory: SubmitInitFraudCategory | undefined;
   readonly blockValidFrom: string | undefined;
@@ -145,6 +150,8 @@ const usage = `Usage:
   --midgard-node-url, --transactions-file, and --sample-double-spend are labelled diagnostics only and are rejected before proof construction.
   midgard-fault-proofs scaffold-family --scaffold-spec <familyScaffoldSpecV1.json> [--repo-root <path>] [--dry-run]
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
+  midgard-fault-proofs prepare-transition-trace --da-payload-envelope <retained-da-envelope.cbor(.json)> --header-hash <committed 28-byte header hash, hex> [--output-dir <dir>]
+  midgard-fault-proofs submit-transition-trace-proof --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --transition-fault-proof <proof.cbor(.json)> [--reference-input <txHash#outputIndex> ...] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|validationTraceDispute|daHashPreimage|noReferenceInput|referenceInputNoIdx|invalidSignature>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -251,6 +258,9 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let tx1Id: string | undefined;
   let tx2Id: string | undefined;
   let outputDir: string | undefined;
+  let daPayloadEnvelopePath: string | undefined;
+  let transitionFaultProofPath: string | undefined;
+  const referenceInputOutRefs: string[] = [];
   let awaitConfirmation = true;
   let fraudCategory: SubmitInitFraudCategory | undefined;
   let blockValidFrom: string | undefined;
@@ -391,6 +401,22 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--output-dir":
         outputDir = rest[++index];
         break;
+      case "--da-payload-envelope":
+        daPayloadEnvelopePath = rest[++index];
+        break;
+      case "--transition-fault-proof":
+        transitionFaultProofPath = rest[++index];
+        break;
+      case "--reference-input": {
+        const outRef = rest[++index];
+        if (outRef === undefined) {
+          throw new Error(
+            "--reference-input requires a txHash#outputIndex value",
+          );
+        }
+        referenceInputOutRefs.push(outRef);
+        break;
+      }
       case "--fraud-category":
         fraudCategory = parseFraudCategory(rest[++index]);
         break;
@@ -555,6 +581,9 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     tx1Id,
     tx2Id,
     outputDir,
+    daPayloadEnvelopePath,
+    transitionFaultProofPath,
+    referenceInputOutRefs,
     awaitConfirmation,
     fraudCategory,
     blockValidFrom,
@@ -747,6 +776,38 @@ export const main = async (): Promise<void> => {
     return;
   }
 
+  // Unlike the legacy caller-asserted prepare inputs below, the retained DA
+  // envelope is authenticated byte-for-byte against the pinned committed
+  // header hash before any proof artifact is written. Keep this security-grade
+  // route ahead of the generic prepare rejection gate.
+  if (args.command === "prepare-transition-trace") {
+    if (args.daPayloadEnvelopePath === undefined) {
+      throw new Error(
+        `Missing required --da-payload-envelope <path>.\n${usage}`,
+      );
+    }
+    if (args.headerHash === undefined) {
+      throw new Error(`Missing required --header-hash <hex>.\n${usage}`);
+    }
+    if (
+      args.midgardNodeUrl !== undefined ||
+      args.transactionsPath !== undefined ||
+      args.sampleDoubleSpend
+    ) {
+      throw new Error(
+        "prepare-transition-trace accepts only authenticated retained-DA evidence; legacy --midgard-node-url, --transactions-file, and --sample-double-spend inputs are forbidden",
+      );
+    }
+    writeJson(
+      await prepareTransitionTraceFromDaEnvelopeV1({
+        daPayloadEnvelopePath: args.daPayloadEnvelopePath,
+        headerHash: args.headerHash,
+        ...(args.outputDir === undefined ? {} : { outputDir: args.outputDir }),
+      }),
+    );
+    return;
+  }
+
   if (
     args.command !== "prepare-double-spend" &&
     args.command !== "prepare-invalid-range" &&
@@ -794,6 +855,7 @@ export const main = async (): Promise<void> => {
     args.command !== "submit-validation-dispute-award" &&
     args.command !== "submit-validation-dispute-enter-timeout" &&
     args.command !== "submit-validation-dispute-timeout" &&
+    args.command !== "submit-transition-trace-proof" &&
     args.command !== "remove-fraudulent-block"
   ) {
     throw new Error(
@@ -843,6 +905,40 @@ export const main = async (): Promise<void> => {
   }
   if (args.deploymentInfoPath === undefined) {
     throw new Error(`Missing required --deployment-info <path>.\n${usage}`);
+  }
+
+  if (args.command === "submit-transition-trace-proof") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.transitionFaultProofPath === undefined) {
+      throw new Error(
+        `Missing required --transition-fault-proof <path>.\n${usage}`,
+      );
+    }
+    writeJson(
+      await submitTransitionTraceProofFromCborFile({
+        blueprintPath: args.blueprintPath,
+        deploymentInfoPath: args.deploymentInfoPath,
+        network: parseNetwork(args.network),
+        provider: args.provider,
+        blockfrostApiUrl: args.blockfrostApiUrl,
+        blockfrostKey: args.blockfrostKey,
+        kupoUrl: args.kupoUrl,
+        ogmiosUrl: args.ogmiosUrl,
+        walletSeedPhrase: args.walletSeedPhrase,
+        walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+        walletPrivateKey: args.walletPrivateKey,
+        walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+        threadOutRef: args.threadOutRef,
+        transitionFaultProofPath: args.transitionFaultProofPath,
+        referenceInputOutRefs: args.referenceInputOutRefs,
+        awaitConfirmation: args.awaitConfirmation,
+      }),
+    );
+    return;
   }
 
   if (args.command === "submit-init") {

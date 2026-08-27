@@ -4,6 +4,8 @@
 > contemporaneous working tree; reconstructed on clean base `55afdc54`. Code map for the
 > TypeScript side: evidence construction, submission CLI, state correction, DA retrieval,
 > and local validation. Historical `fraud-proof` source paths are preserved literally.
+> Transition-trace CLI status was reconciled on 2026-08-26 against the current
+> working tree; the broader audit provenance is unchanged.
 
 ## 1. Package roles
 
@@ -20,20 +22,22 @@
 ## 2. CLI surface (`demo/midgard-fault-proofs/src/bin.ts`)
 
 `prepare-double-spend` · `prepare-invalid-range` · `prepare-non-existent-input` · `prepare-zero-input` ·
+`prepare-transition-trace` ·
 `inspect-contracts` · `submit-init` · `submit-step-01..04` ·
 `submit-invalid-range-step-01..02` · `submit-non-existent-input-step-01..04` ·
 `submit-zero-input-step-01..02` · `submit-da-hash-preimage-step-01..02` ·
 `submit-input-no-idx-step-01..04` (and `submit-input-no-idx-fold`) ·
+`submit-transition-trace-proof` ·
 `remove-fraudulent-block`.
 
 `submit-init --fraud-category` accepts exactly eleven values — `doubleSpend |
 nonExistentInput | nonExistentInputNoIndex | invalidRange | transitionTrace |
 zeroInput | validationTraceDispute | daHashPreimage | noReferenceInput |
 referenceInputNoIdx | invalidSignature` — matching the catalogue and
-inspector. Q13 added the `nonExistentInputNoIndex` lifecycle. **No
-transition-trace proof-submission command exists** — `bin.ts` never imports
-`./transition-trace/`; `submitTransitionTraceProofFromFiles`
-(`src/transition-trace/submit.ts:421-439`) is library-only.
+inspector. Transition-trace preparation accepts only a retained-DA envelope
+pinned to the committed header hash. Submission strictly decodes canonical
+`TransitionFaultProof` Data CBOR and resolves each repeatable
+`--reference-input` from the live provider.
 
 All `submit-*` commands hit a real L1 (Blockfrost/Kupmios via
 `runtime.ts:makeLucidForSubmit`, `src/runtime.ts:99-159`) and sign/submit; all `prepare-*`
@@ -108,15 +112,20 @@ automatic tier-2 case (140 witnesses) and the maximum admissible field-7 vector
 submits the worst-depth step-01 binding transaction under those limits. No
 smaller off-chain evidence claim is used.
 
-### transition-trace (library-only)
+### transition-trace (3 manual commands; route→final is internal)
 
 `transition-trace/detect.ts` (fault detection over reconstructed payloads),
 `reconstruct.ts` (rebuild ledger/roots from raw DA payload CBOR and centralize direct
 `SDK.decodeDaPayloadV1` use), `witnesses.ts` (PHAS membership/non-membership
 builders), `phas.ts` (MPF root/proof library shared across families), `fetch.ts`
 (`DaLibp2pRetainedDaSource` — the only real libp2p DA retrieval in the package,
-hash-verifying every response), `submit.ts` (terminal step: burns thread, mints token).
-No `prepare-transition-trace` and no submit CLI.
+hash-verifying every response), `submit.ts` (authenticated route→selected
+final, thread burn, token mint). `prepare-transition-trace` reconstructs a
+caller-pinned retained-DA envelope, writes each header-derivable proof plus an
+auditable `plan.json`, and records explicit guidance for variants needing
+external L1 or ledger evidence. `submit-transition-trace-proof` strictly reads
+that proof and accepts repeatable live reference-input outrefs for L1-event
+witnesses.
 
 ### Faulty-block removal (all families)
 

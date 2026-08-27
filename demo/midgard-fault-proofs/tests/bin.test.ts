@@ -1,9 +1,13 @@
-import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import * as SDK from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildRemoveFraudulentBlockCliConfig,
@@ -12,7 +16,238 @@ import {
   parseArgs,
 } from "../src/bin.js";
 
+const makeEmptyTransitionTraceEnvelope = async () => {
+  const counts = {
+    withdrawalCount: 0n,
+    forcedTransactionCount: 0n,
+    l2TransactionCount: 0n,
+    depositCount: 0n,
+    totalEventCount: 0n,
+    transitionStepCount: 0n,
+    validationTraceCount: 0n,
+  };
+  const header: SDK.HeaderV1 = {
+    prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    ...counts,
+    startTime: 10n,
+    endTime: 20n,
+    blockSlot: 0n,
+    expectedNetworkId: 0n,
+    minFeeA: 0n,
+    minFeeB: 0n,
+    prevHeaderHash: "11".repeat(28),
+    operatorVkey: "22".repeat(28),
+    protocolVersion: 1n,
+  };
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
+  const payload: SDK.DaPayloadV1 = {
+    version: SDK.DA_PAYLOAD_V1_VERSION,
+    block_body: {
+      header_hash: headerHash,
+      header,
+      utxos: [],
+      withdrawals: [],
+      forced_transactions: [],
+      transactions: [],
+      transaction_preimages: [],
+      forced_transaction_preimages: [],
+      cek_program_material: [],
+      deposits: [],
+      transition_trace: [],
+      event_to_step: [],
+      validation_traces: [],
+      counts,
+    },
+  };
+  return {
+    header,
+    headerHash,
+    envelope: await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), {
+      mode: "identity",
+    }),
+  };
+};
+
 describe("fault-proof CLI argument parsing", () => {
+  it("parses transition-trace prepare and repeatable submit reference inputs", () => {
+    const prepared = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "prepare-transition-trace",
+      "--da-payload-envelope",
+      "payload.cbor.json",
+      "--header-hash",
+      "33".repeat(28),
+      "--output-dir",
+      "proofs",
+    ]);
+    expect(prepared).toMatchObject({
+      command: "prepare-transition-trace",
+      daPayloadEnvelopePath: "payload.cbor.json",
+      headerHash: "33".repeat(28),
+      outputDir: "proofs",
+    });
+
+    const submitted = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "submit-transition-trace-proof",
+      "--transition-fault-proof",
+      "proof.cbor",
+      "--reference-input",
+      `${"44".repeat(32)}#0`,
+      "--reference-input",
+      `${"55".repeat(32)}#1`,
+    ]);
+    expect(submitted).toMatchObject({
+      command: "submit-transition-trace-proof",
+      transitionFaultProofPath: "proof.cbor",
+      referenceInputOutRefs: [`${"44".repeat(32)}#0`, `${"55".repeat(32)}#1`],
+    });
+  });
+
+  it("dispatches authenticated transition-trace preparation before the legacy prepare gate", async () => {
+    const fixture = await makeEmptyTransitionTraceEnvelope();
+    const tempDir = mkdtempSync(join(tmpdir(), "transition-trace-bin-"));
+    const envelopePath = join(tempDir, "payload.cbor.json");
+    const outputDir = join(tempDir, "proofs");
+    writeFileSync(
+      envelopePath,
+      JSON.stringify({ cborHex: fixture.envelope.toString("hex") }),
+    );
+    const previousArgv = process.argv;
+    const stdout = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    process.argv = [
+      "node",
+      "midgard-fault-proofs",
+      "prepare-transition-trace",
+      "--da-payload-envelope",
+      envelopePath,
+      "--header-hash",
+      fixture.headerHash,
+      "--output-dir",
+      outputDir,
+    ];
+    try {
+      await expect(main()).resolves.toBeUndefined();
+    } finally {
+      process.argv = previousArgv;
+      stdout.mockRestore();
+    }
+
+    const plan = JSON.parse(
+      readFileSync(join(outputDir, "plan.json"), "utf8"),
+    ) as {
+      readonly headerHash: string;
+      readonly proofCount: number;
+      readonly detections: readonly unknown[];
+      readonly guidance: readonly unknown[];
+    };
+    expect(plan).toMatchObject({
+      headerHash: fixture.headerHash,
+      proofCount: 0,
+      detections: [],
+    });
+    expect(plan.guidance).toHaveLength(4);
+  });
+
+  it("keeps legacy diagnostic inputs outside the authenticated transition-trace prepare lane", async () => {
+    const previousArgv = process.argv;
+    process.argv = [
+      "node",
+      "midgard-fault-proofs",
+      "prepare-transition-trace",
+      "--da-payload-envelope",
+      "must-not-be-read.cbor",
+      "--header-hash",
+      "66".repeat(28),
+      "--transactions-file",
+      "caller-asserted.json",
+    ];
+    try {
+      await expect(main()).rejects.toThrow(
+        "accepts only authenticated retained-DA evidence",
+      );
+    } finally {
+      process.argv = previousArgv;
+    }
+  });
+
+  it("dispatches transition-trace submission outside the retired legacy boundary", async () => {
+    const previousArgv = process.argv;
+    process.argv = [
+      "node",
+      "midgard-fault-proofs",
+      "submit-transition-trace-proof",
+      "--blueprint",
+      "must-not-be-read-blueprint.json",
+      "--deployment-info",
+      "must-not-be-read-deployment.json",
+      "--thread-out-ref",
+      `${"77".repeat(32)}#0`,
+    ];
+    try {
+      await expect(main()).rejects.toThrow(
+        "Missing required --transition-fault-proof",
+      );
+    } finally {
+      process.argv = previousArgv;
+    }
+  });
+
+  it("strictly decodes transition proofs and rejects duplicate live reference inputs before provider construction", async () => {
+    const fixture = await makeEmptyTransitionTraceEnvelope();
+    const tempDir = mkdtempSync(join(tmpdir(), "transition-trace-submit-bin-"));
+    const proofPath = join(tempDir, "proof.cbor");
+    writeFileSync(
+      proofPath,
+      Data.to(
+        SDK.makeTransitionFaultProof({
+          challengedHeaderHash: fixture.headerHash,
+          header: fixture.header,
+          fault: SDK.countFault("HeaderTotalCountMismatch"),
+        }),
+        SDK.TransitionFaultProof,
+      ),
+    );
+    const duplicateReferenceInput = `${"88".repeat(32)}#0`;
+    const previousArgv = process.argv;
+    process.argv = [
+      "node",
+      "midgard-fault-proofs",
+      "submit-transition-trace-proof",
+      "--blueprint",
+      "must-not-be-read-blueprint.json",
+      "--deployment-info",
+      "must-not-be-read-deployment.json",
+      "--thread-out-ref",
+      `${"77".repeat(32)}#0`,
+      "--transition-fault-proof",
+      proofPath,
+      "--reference-input",
+      duplicateReferenceInput,
+      "--reference-input",
+      duplicateReferenceInput,
+    ];
+    try {
+      await expect(main()).rejects.toThrow(
+        "--reference-input values must be unique",
+      );
+    } finally {
+      process.argv = previousArgv;
+    }
+  });
+
   it("rejects the retired incompatible-output bypass", () => {
     expect(() =>
       parseArgs([

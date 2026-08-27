@@ -71,6 +71,16 @@ describe("RF-043 legacy submission boundary", () => {
         fraudCategory: "validationTraceDispute",
       }),
     ).toBe(false);
+    expect(
+      isRetiredUnauthenticatedSubmissionRouteV1({
+        command: "prepare-transition-trace",
+      }),
+    ).toBe(false);
+    expect(
+      isRetiredUnauthenticatedSubmissionRouteV1({
+        command: "submit-transition-trace-proof",
+      }),
+    ).toBe(false);
   });
 
   it("uses one deterministic error for the retired command surface", () => {

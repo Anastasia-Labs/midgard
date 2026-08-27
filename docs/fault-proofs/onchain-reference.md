@@ -3,6 +3,8 @@
 > Audited 2026-07-10 against branch `tx-validation` (HEAD `269bf6b3`) plus its
 > contemporaneous working tree; reconstructed on clean base `55afdc54`. Code map for `onchain/aiken` and `onchain/plutarch` as they implement the
 > fault-proof system. Anchors drift — re-check on each audit.
+> The transition-trace sub-variant matrix was reconciled on 2026-08-26 against
+> the current working tree; the broader audit provenance is unchanged.
 
 ## 1. Layout
 
@@ -137,7 +139,7 @@ Environment selected via `aiken build --env <name>`
 
 | File                                                                             | Tests              | Coverage                                                                                                                                                                                                                                                     |
 | -------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `lib/midgard/fraud-proofs/transition-trace/proof.test.ak`                        | canonical V1 suite | direct transition families plus accepted validation-claim binding; both `SourcePhaseMismatch` directions and valid/invalid forced outcomes are covered                                                                                                       |
+| `lib/midgard/fraud-proofs/transition-trace/proof.test.ak`                        | canonical V1 suite | direct transition families plus accepted validation-claim binding; both `SourcePhaseMismatch` directions, valid/invalid forced outcomes, all omitted/out-of-window source-event variants, and positive/negative pairs for all five count-fault variants are covered |
 | `lib/midgard/transition-trace.test.ak`                                           | 4                  | counted-root primitives                                                                                                                                                                                                                                      |
 | `lib/midgard/fraud-proofs/native-tx.test.ak` (+ high-cardinality, size-balanced) | 7+1+1              | CBOR round-trips + fixture regressions                                                                                                                                                                                                                       |
 | `validators/fraud-proofs/invalid-range/step-01.ak:140-155`                       | 3                  | range normalization (inline)                                                                                                                                                                                                                                 |

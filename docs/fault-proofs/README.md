@@ -64,6 +64,9 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 - Generic machinery: catalogue, computation-thread minting policy (`Init`/`Success`/`BurnForCancellation`), step transition helpers, permanent fault-proof token, state-queue removal + operator slashing wiring, Plutarch MPF membership/non-membership (`phas`/`pexcludes`) primitives, counted/domain-tagged roots.
 - 10 of 12 proof types with real verification logic: `zero-input`, `no-input`, `double-spend`, `input-no-idx`, `invalid-range`, `invalid-signature`, `missing-native-script-tx`, `missing-signature`, `no-reference-input`, `withdrawn-reference-input`.
 - The `transition-trace` state-transition engine (9 top-level fault families: boundary, link, event-to-step, source-membership — incl. its phase-mismatch sub-variant — invalid one-step transition, duplicate-event, count, omitted-due-L1-event, out-of-window).
+- The transition-trace retained-DA prepare CLI, strict proof-submit CLI,
+  complete omitted/out-of-window/count Aiken sub-variant matrix, and emulator
+  journeys through real finals 0/3/6 and faulty-block removal.
 - Canonical V1 valid forced transactions use the same accepted ledger-delta
   validation claim as normal transactions; invalid forced transactions use an
   exact rejected no-op. Wrong verdicts, wrong roots, and either source-phase
@@ -99,9 +102,8 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
   negative output value.
 - Fabricated deposit / fabricated withdrawal (spec asserts "detectable" but provides no construction).
 - Mis-tagged (valid→invalid) withdrawal proof.
-- Remaining family atomic closures, production registration of the locally
-  complete min-fee family, CLI wiring for `transition-trace`, and the
-  missing-family routes remain open despite the complete native-V1 binding.
+- Remaining family production registration and missing-family routes remain
+  open despite the complete native-V1 binding.
 - Preprod end-to-end (an operator-local 2026-05-08 report recorded a canonical-root
   mismatch, but it is intentionally untracked and predates the counted-root work of PR
   #458 and the MPF rewrite of the proof builders; readiness remains unconfirmed until a
