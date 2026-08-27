@@ -38,6 +38,10 @@ import {
   type CanonicalDecodabilityContractsV1,
 } from "../../../src/canonical-decodability/contracts-v1.js";
 import {
+  COMMITTED_FIELD_SHAPE_BLUEPRINT_TITLES_V1,
+  type CommittedFieldShapeContractsV1,
+} from "../../../src/committed-field-shape/contracts-v1.js";
+import {
   MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1,
   type MissingNativeScriptTxContractsV1,
 } from "../../../src/missing-native-script-tx/contracts-v1.js";
@@ -65,6 +69,48 @@ import {
   makeMintingValidator,
   makeSpendingValidator,
 } from "./validators.js";
+
+/** Applies step 02 first, then pins its hash into step 01 in blueprint order. */
+export const buildCommittedFieldShapeChainV1 = ({
+  realBlueprint,
+  computationThreadPolicyId,
+  fraudProofPolicyId,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+  hubOraclePolicyId,
+}: {
+  readonly realBlueprint: Blueprint;
+  readonly computationThreadPolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
+  readonly hubOraclePolicyId: string;
+}): readonly [SdkSpendingValidator, SdkSpendingValidator] => {
+  const step02 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      COMMITTED_FIELD_SHAPE_BLUEPRINT_TITLES_V1.step02,
+      [
+        fraudProofPolicyId,
+        fraudProofTokenAddressData,
+        computationThreadPolicyId,
+      ],
+    ),
+  );
+  const step01 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      COMMITTED_FIELD_SHAPE_BLUEPRINT_TITLES_V1.step01,
+      [
+        step02.spendingScriptHash,
+        computationThreadPolicyId,
+        hubOraclePolicyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+    ),
+  );
+  return [step01, step02];
+};
 
 /** Apply the missing-signature chain backwards in blueprint parameter order. */
 export const buildMissingSignatureChainV1 = ({
@@ -335,6 +381,7 @@ export const buildMinimalFaultProofContracts = async (
     realMissingSignature = false,
     realMissingNativeScriptTx = false,
     realCanonicalDecodability = false,
+    realCommittedFieldShape = false,
     alwaysFraudProofCatalogue = false,
   }: {
     readonly realNonExistentInput?: boolean;
@@ -353,6 +400,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realMissingSignature?: boolean;
     readonly realMissingNativeScriptTx?: boolean;
     readonly realCanonicalDecodability?: boolean;
+    readonly realCommittedFieldShape?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
 ): Promise<
@@ -363,6 +411,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly missingSignature?: MissingSignatureContractsV1;
     readonly missingNativeScriptTx?: MissingNativeScriptTxContractsV1;
     readonly canonicalDecodability?: CanonicalDecodabilityContractsV1;
+    readonly committedFieldShape?: CommittedFieldShapeContractsV1;
   }
 > => {
   // This integration test proves the real active-operators slashing and
@@ -720,6 +769,39 @@ export const buildMinimalFaultProofContracts = async (
           };
         })()
       : undefined;
+  const committedFieldShape: CommittedFieldShapeContractsV1 | undefined =
+    realCommittedFieldShape
+      ? await (async () => {
+          const fraudProofTokenAddressData = await Effect.runPromise(
+            addressDataFromBech32(
+              doubleSpendContracts.fraudProof.spendingScriptAddress,
+            ).pipe(
+              Effect.map((addressData) =>
+                Data.from(Data.to(addressData, AddressData)),
+              ),
+            ),
+          );
+          const steps = buildCommittedFieldShapeChainV1({
+            realBlueprint,
+            computationThreadPolicyId:
+              doubleSpendContracts.computationThread.policyId,
+            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
+            fraudProofTokenAddressData,
+            fieldPreimageCertificatePolicyId:
+              base.fieldPreimageCertificate.policyId,
+            hubOraclePolicyId: hubOracle.policyId,
+          });
+          return {
+            steps,
+            computationThread: doubleSpendContracts.computationThread,
+            fraudProof: doubleSpendContracts.fraudProof,
+            hubOraclePolicyId: hubOracle.policyId,
+            stateQueuePolicyId: stateQueueMinting.policyId,
+            fieldPreimageCertificatePolicyId:
+              base.fieldPreimageCertificate.policyId,
+          };
+        })()
+      : undefined;
   const fabricatedWithdrawal: FabricatedWithdrawalContractsV1 | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
@@ -740,6 +822,7 @@ export const buildMinimalFaultProofContracts = async (
     ...(missingSignature === undefined ? {} : { missingSignature }),
     ...(missingNativeScriptTx === undefined ? {} : { missingNativeScriptTx }),
     ...(canonicalDecodability === undefined ? {} : { canonicalDecodability }),
+    ...(committedFieldShape === undefined ? {} : { committedFieldShape }),
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,

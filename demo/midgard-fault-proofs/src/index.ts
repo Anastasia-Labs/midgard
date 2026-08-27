@@ -1,5 +1,6 @@
 export * from "./aiken-blueprint-data.js";
 export * from "./canonical-decodability/index.js";
+export * from "./committed-field-shape/index.js";
 export * from "./evidence/index.js";
 export * from "./family-scaffold/index.js";
 export * from "./inspect-contracts.js";

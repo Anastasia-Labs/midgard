@@ -5,6 +5,7 @@ import {
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 
 import { type CanonicalDecodabilityContractsV1 } from "../../../src/canonical-decodability/index.js";
+import { type CommittedFieldShapeContractsV1 } from "../../../src/committed-field-shape/index.js";
 import {
   VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
@@ -44,12 +45,16 @@ export const MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY_V1 =
 export const CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofCanonicalDecodability";
 
+export const COMMITTED_FIELD_SHAPE_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+  "fraudProofCommittedFieldShape";
+
 export const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators & {
     readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
     readonly missingSignature?: MissingSignatureContractsV1;
     readonly missingNativeScriptTx?: MissingNativeScriptTxContractsV1;
     readonly canonicalDecodability?: CanonicalDecodabilityContractsV1;
+    readonly committedFieldShape?: CommittedFieldShapeContractsV1;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -236,6 +241,14 @@ export const buildRemovalDeploymentInfo = (
             [CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
               scriptHash:
                 contracts.canonicalDecodability.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.committedFieldShape === undefined
+        ? {}
+        : {
+            [COMMITTED_FIELD_SHAPE_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+              scriptHash:
+                contracts.committedFieldShape.steps[0].spendingScriptHash,
             },
           }),
       fraudProofNonExistentInputNoIndex: {
