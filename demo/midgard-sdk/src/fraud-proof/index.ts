@@ -5,6 +5,7 @@ export * from "./computation-threads.js";
 export * from "./contracts.js";
 export * from "./da-hash-preimage.js";
 export * from "./double-spend.js";
+export * from "./double-withdraw-v1.js";
 export * from "./evidence-source-v1.js";
 export * from "./fabricated-deposit-v1.js";
 export * from "./fabricated-withdrawal-v1.js";

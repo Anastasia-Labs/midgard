@@ -312,6 +312,9 @@ export type FaultProofEmulatorHarnessV1 = {
  */
 export const NATIVE_SCRIPT_DECODING_TEST_CATEGORY_ID_V1 = "0000000d";
 
+/** Wave-reserved emulator-only id; production registration remains deferred. */
+export const DOUBLE_WITHDRAW_TEST_CATEGORY_ID_V1 = "00000015";
+
 export const makeFaultProofEmulatorHarnessV1 = async ({
   contractOptions = {},
   accounts,
@@ -389,6 +392,14 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
             categoryId: NATIVE_SCRIPT_DECODING_TEST_CATEGORY_ID_V1,
             scriptHash:
               contracts.nativeScriptDecoding.steps[0].spendingScriptHash,
+          },
+        }),
+    ...(contracts.doubleWithdraw === undefined
+      ? {}
+      : {
+          doubleWithdraw: {
+            categoryId: DOUBLE_WITHDRAW_TEST_CATEGORY_ID_V1,
+            scriptHash: contracts.doubleWithdraw.steps[0].spendingScriptHash,
           },
         }),
   });

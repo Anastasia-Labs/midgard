@@ -4,6 +4,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 
+import type { DoubleWithdrawContractsV1 } from "../../../src/double-withdraw/contracts-v1.js";
 import {
   VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
@@ -33,9 +34,13 @@ export type RemovalDeploymentReference = {
 export const NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofNativeScriptDecoding";
 
+export const DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+  "fraudProofDoubleWithdraw";
+
 export const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators & {
     readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
+    readonly doubleWithdraw?: DoubleWithdrawContractsV1;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -198,6 +203,13 @@ export const buildRemovalDeploymentInfo = (
             [NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
               scriptHash:
                 contracts.nativeScriptDecoding.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.doubleWithdraw === undefined
+        ? {}
+        : {
+            [DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+              scriptHash: contracts.doubleWithdraw.steps[0].spendingScriptHash,
             },
           }),
       fraudProofNonExistentInputNoIndex: {

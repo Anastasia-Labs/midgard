@@ -34,6 +34,10 @@ import { Effect } from "effect";
 import { expect } from "vitest";
 
 import {
+  DOUBLE_WITHDRAW_BLUEPRINT_TITLES_V1,
+  type DoubleWithdrawContractsV1,
+} from "../../../src/double-withdraw/contracts-v1.js";
+import {
   NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1,
   type NativeScriptDecodingContractsV1,
 } from "../../../src/native-script-decoding/contracts-v1.js";
@@ -123,6 +127,42 @@ export const buildNativeScriptDecodingChainV1 = ({
   return [step01, step02, step03, step04];
 };
 
+/** Applies the pre-registration two-step `double-withdraw` chain backwards. */
+export const buildDoubleWithdrawChainV1 = ({
+  realBlueprint,
+  computationThreadPolicyId,
+  fraudProofPolicyId,
+  fraudProofTokenAddressData,
+  hubOraclePolicyId,
+}: {
+  readonly realBlueprint: Blueprint;
+  readonly computationThreadPolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofTokenAddressData: Data;
+  readonly hubOraclePolicyId: string;
+}): readonly [SdkSpendingValidator, SdkSpendingValidator] => {
+  const step02 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      DOUBLE_WITHDRAW_BLUEPRINT_TITLES_V1.step02,
+      [
+        fraudProofPolicyId,
+        fraudProofTokenAddressData,
+        computationThreadPolicyId,
+        hubOraclePolicyId,
+      ],
+    ),
+  );
+  const step01 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      DOUBLE_WITHDRAW_BLUEPRINT_TITLES_V1.step01,
+      [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
+    ),
+  );
+  return [step01, step02];
+};
+
 export const buildMinimalFaultProofContracts = async (
   realBlueprint: Blueprint,
   alwaysBlueprint: Blueprint,
@@ -141,6 +181,7 @@ export const buildMinimalFaultProofContracts = async (
     realInvalidSignature = false,
     realValidationTraceDispute = false,
     realNativeScriptDecoding = false,
+    realDoubleWithdraw = false,
     alwaysFraudProofCatalogue = false,
   }: {
     readonly realNonExistentInput?: boolean;
@@ -156,6 +197,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realInvalidSignature?: boolean;
     readonly realValidationTraceDispute?: boolean;
     readonly realNativeScriptDecoding?: boolean;
+    readonly realDoubleWithdraw?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
 ): Promise<
@@ -163,6 +205,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly fabricatedDeposit?: FabricatedDepositContractsV1;
     readonly fabricatedWithdrawal?: FabricatedWithdrawalContractsV1;
     readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
+    readonly doubleWithdraw?: DoubleWithdrawContractsV1;
   }
 > => {
   // This integration test proves the real active-operators slashing and
@@ -433,12 +476,41 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueueMinting.policyId,
           categoryId: FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
         };
+  const doubleWithdraw: DoubleWithdrawContractsV1 | undefined =
+    realDoubleWithdraw
+      ? await (async () => {
+          const fraudProofTokenAddressData = await Effect.runPromise(
+            addressDataFromBech32(
+              doubleSpendContracts.fraudProof.spendingScriptAddress,
+            ).pipe(
+              Effect.map((addressData) =>
+                Data.from(Data.to(addressData, AddressData)),
+              ),
+            ),
+          );
+          return {
+            steps: buildDoubleWithdrawChainV1({
+              realBlueprint,
+              computationThreadPolicyId:
+                doubleSpendContracts.computationThread.policyId,
+              fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
+              fraudProofTokenAddressData,
+              hubOraclePolicyId: hubOracle.policyId,
+            }),
+            computationThread: doubleSpendContracts.computationThread,
+            fraudProof: doubleSpendContracts.fraudProof,
+            hubOraclePolicyId: hubOracle.policyId,
+            stateQueuePolicyId: stateQueueMinting.policyId,
+          };
+        })()
+      : undefined;
 
   return {
     ...withScheduler,
     ...(fabricatedDeposit === undefined ? {} : { fabricatedDeposit }),
     ...(fabricatedWithdrawal === undefined ? {} : { fabricatedWithdrawal }),
     ...(nativeScriptDecoding === undefined ? {} : { nativeScriptDecoding }),
+    ...(doubleWithdraw === undefined ? {} : { doubleWithdraw }),
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,
