@@ -70,22 +70,26 @@ on:
 # All four arms of rider 1's pin, so a reviewer on other hardware can reproduce
 # the toolchain rather than take it on trust:
 #   repo    https://github.com/Anastasia-Labs/aiken   (org-controlled)
-#   tag     midgard-2a78108c                          (annotated, immutable)
-#   commit  2a78108ccb184161689b8a06c84d942e13b5b209
-#   md5     b3acfdf348235798cb6b921d0f87750a          (published in the tag
+#   tag     midgard-5adf7837                          (annotated, immutable)
+#   commit  5adf7837cbddb5d329fd51d9c0cd73f561eaf95c
+#   md5     ea9b39054f166e94771f838a662712f7          (published in the tag
 #                                                      message, so it is fixed
 #                                                      once for everyone)
-# The version string `v1.1.23+2a78108` is derived from the commit at build
-# time, so it is the arm that reproduces from source anywhere; the md5 is a
-# released-artifact hash and is pinned as provenance, not as a build-time
-# equality check (two honest builds of one tag on two machines need not agree
-# byte for byte).
+# The version string `v1.1.23+5adf783` is derived from the commit at build
+# time, so it is the arm that reproduces from source anywhere; the md5 is the
+# tagging build's own artifact hash and is pinned as provenance, not as a
+# build-time equality check (two honest builds of one tag on two machines need
+# not agree byte for byte).
+#
+# The 2026-08-27 advance from midgard-2a78108c to midgard-5adf7837, and the
+# measured blueprint/exunit invariance that makes it a pin bump rather than a
+# re-derivation, are recorded once in `.github/workflows/aiken-ci.yml`.
 env:
   AIKEN_FORK_REPO: https://github.com/Anastasia-Labs/aiken
-  AIKEN_FORK_TAG: midgard-2a78108c
-  AIKEN_FORK_REV: 2a78108ccb184161689b8a06c84d942e13b5b209
-  AIKEN_FORK_VERSION: aiken v1.1.23+2a78108
-  AIKEN_FORK_BINARY_MD5: b3acfdf348235798cb6b921d0f87750a
+  AIKEN_FORK_TAG: midgard-5adf7837
+  AIKEN_FORK_REV: 5adf7837cbddb5d329fd51d9c0cd73f561eaf95c
+  AIKEN_FORK_VERSION: aiken v1.1.23+5adf783
+  AIKEN_FORK_BINARY_MD5: ea9b39054f166e94771f838a662712f7
 
 jobs:
   test:

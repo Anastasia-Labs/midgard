@@ -417,7 +417,7 @@ toolchains.
   reification/tracing fix. The undeployed compiler pin and both CI actions were
   replaced in place with v1.1.22 at the time. SUPERSEDED by #579 owner ruling A
   (2026-08-13): stock v1.1.22 is retired from every role and the pin is now the
-  patched fork v1.1.23+2a78108 (`Anastasia-Labs/aiken`, tag `midgard-2a78108c`),
+  patched fork v1.1.23+5adf783 (`Anastasia-Labs/aiken`, tag `midgard-5adf7837`),
   which carries the same fix. The finding above still stands on its own terms —
   it is the record of why v1.1.21 was abandoned. Do not weaken the vector or add
   compatibility behavior; rebuild `plutus.json` once at final IG1.
@@ -640,7 +640,7 @@ toolchains.
   `fsync=off/full_page_writes=off`; it is evidence infrastructure only, never
   a production setting.
 - Exact repository compiler — the patched fork `v1.1.23+2a78108`
-  (`Anastasia-Labs/aiken`, tag `midgard-2a78108c`) — is installed at the pinned
+  (`Anastasia-Labs/aiken`, tag `midgard-5adf7837`) — is installed at the pinned
   version path and must be invoked directly for evidence. It is the sole
   authority for `build`, `check` and `fmt`; a stock binary on PATH is not the
   repository compiler and the gates that name it fail closed on one. Final blueprint and

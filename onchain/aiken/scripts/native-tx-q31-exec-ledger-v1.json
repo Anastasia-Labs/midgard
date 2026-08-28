@@ -17,8 +17,8 @@
       ],
       "rows": {
         "reference_input_no_idx_step_02_forwards_the_committed_out_of_range_input": {
-          "mem": 1858588,
-          "cpu": 781154725,
+          "mem": 1857988,
+          "cpu": 781058725,
           "basisFit": "within"
         }
       }
@@ -31,11 +31,12 @@
       ],
       "rows": {
         "reference_input_no_idx_step_04_accepts_out_of_range_index": {
-          "mem": 1849252,
-          "cpu": 779487410,
+          "mem": 1848652,
+          "cpu": 779391410,
           "basisFit": "within"
         }
       }
     }
-  ]
+  ],
+  "compiler": "Readings re-taken under the canonical patched fork `aiken v1.1.23+5adf783` (repo https://github.com/Anastasia-Labs/aiken, tag `midgard-5adf7837`, rev 5adf7837cbddb5d329fd51d9c0cd73f561eaf95c, binary md5 ea9b39054f166e94771f838a662712f7); stock v1.1.22 is compile/blueprint only and never a reading source. The movement from the previously pinned rows is NOT compiler-caused. Every row fell by exactly 6 CEK machine steps: the CEK step cost is a constant `mem: 100, cpu: 16000` (`default_machine_cost()` in the fork's `crates/uplc/src/machine/cost_model.rs`), so -600/-96,000 is 6 steps and nothing else. The cause is source, not codegen: `c2237b30` (feat(fault-proofs): complete missing-signature lifecycle) rewrote `onchain/aiken/lib/midgard/fraud-proofs/field-opening-v1.ak`, adding `resume_opened_field_walk` over the machine-walk resume entry point, which shortens the field-opening path by that fixed step count. Git archaeology confirms no other source this ledger's modules depend on changed after the rows were last pinned. The same per-opening quantum (-300 mem / -48,000 cpu) appears in the canonical-decodability ledger, where a control re-measurement under that ledger's own former rev `2a78108` reproduced the identical shift, establishing the movement as source drift rather than a compiler difference. Both rows remain far inside the GOAL_SPEC 3.3 basis after the re-take (1,857,988 and 1,848,652 mem against a 13,200,000 basis), and no `basisFit` label changed. This ledger derives nothing from its rows, so there is no net to restate."
 }

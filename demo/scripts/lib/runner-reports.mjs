@@ -225,7 +225,7 @@ export const deriveVitestOutcome = ({
 export const aikenBinary = () => process.env.MIDGARD_AIKEN_BIN ?? "aiken";
 
 // `.github/workflows/aiken-ci.yml` runs ONE compiler: the patched fork
-// v1.1.23+2a78108 (Anastasia-Labs/aiken, tag midgard-2a78108c) is the authority
+// v1.1.23+5adf783 (Anastasia-Labs/aiken, tag midgard-5adf7837) is the authority
 // for compilation, for every applied validator hash, and for executing the test
 // suite. Stock aiken was retired from all roles — it is not a second authority
 // to agree with, because the stock v1.1.22 build that used to hold the

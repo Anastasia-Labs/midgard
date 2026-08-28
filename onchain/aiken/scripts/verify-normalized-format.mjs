@@ -123,12 +123,12 @@ const stripTrailingLineWhitespace = (bytes) => {
 // v1.1.23, and a version-prefix-only check would then accept it here — the exact
 // failure this gate exists to prevent, arriving silently. So the REV is checked
 // too: `.github/workflows/aiken-ci.yml` pins AIKEN_FORK_REV
-// 2a78108ccb184161689b8a06c84d942e13b5b209 at tag midgard-2a78108c and asserts
+// 5adf7837cbddb5d329fd51d9c0cd73f561eaf95c at tag midgard-5adf7837 and asserts
 // the installed binary reports `aiken v1.1.23+${AIKEN_FORK_REV:0:7}` (line 105).
 // This gate asserts the same two halves, so a stock build of the same version,
 // or a fork built from a different commit, fails closed rather than formatting.
 const FORK_VERSION_PREFIX = "aiken v1.1.23";
-const FORK_REV_SUFFIX = "+2a78108";
+const FORK_REV_SUFFIX = "+5adf783";
 
 const resolveForkBinary = () => {
   const named = ["MIDGARD_AIKEN_BIN", "MIDGARD_FORK_AIKEN_BIN"].find(

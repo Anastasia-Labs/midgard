@@ -18,34 +18,46 @@ env:
   # All four arms of rider 1's pin, so a reviewer on other hardware can
   # reproduce the toolchain rather than take it on trust:
   #   repo    https://github.com/Anastasia-Labs/aiken   (org-controlled)
-  #   tag     midgard-2a78108c                          (annotated, immutable)
-  #   commit  2a78108ccb184161689b8a06c84d942e13b5b209
-  #   md5     b3acfdf348235798cb6b921d0f87750a          (published in the tag
+  #   tag     midgard-5adf7837                          (annotated, immutable)
+  #   commit  5adf7837cbddb5d329fd51d9c0cd73f561eaf95c
+  #   md5     ea9b39054f166e94771f838a662712f7          (published in the tag
   #                                                      message, so it is fixed
   #                                                      once for everyone)
-  # The version string `v1.1.23+2a78108` is derived from the commit at build
-  # time, so it is the arm that reproduces from source anywhere; the md5 is a
-  # released-artifact hash and is pinned as provenance, not as a build-time
-  # equality check (two honest builds of one tag on two machines need not agree
-  # byte for byte).
+  # The version string `v1.1.23+5adf783` is derived from the commit at build
+  # time, so it is the arm that reproduces from source anywhere; the md5 is the
+  # tagging build's own artifact hash and is pinned as provenance, not as a
+  # build-time equality check (two honest builds of one tag on two machines
+  # need not agree byte for byte).
   #
-  # Why the pin advanced from 6d14ab2d to the tag: the owner's 2026-08-13
-  # ruling B settles the immutable tag at 2a78108c. The wall-clock figure the
-  # previous pin was chosen on (`aiken check` in 735.9 s / 819 tests / 0
-  # failures on 4 vCPU) has NOT been re-taken on the tip; it is recorded as
-  # not-re-measured rather than quietly restated. The headroom makes that safe
-  # to defer: 735.9 s is 12.3 minutes against this job's 360-minute ceiling.
-  # The diff between the two revisions is `chore: satisfy clippy 1.97` — lint
-  # idiom across the LSP, blueprint, telemetry and `tx simulate` paths plus one
-  # `Display` helper in `uplc::flat`, with no file under code generation or
-  # evaluation touched — and the equivalence is verified rather than argued:
-  # the #574 §8.10 carriage ledger, pinned under 6d14ab2, re-verifies to the
-  # unit under 2a78108.
+  # Why the pin advanced from midgard-2a78108c to midgard-5adf7837: the
+  # 2026-08-27 owner directive consolidates onto a single canonical compiler
+  # carrying the two perf commits midgard-2a78108c predates — 133151f2
+  # `perf(uplc): make CEK list builtins linear in host memory and time` and
+  # 0dcd62e0 `perf: run the UPLC shrinker during parallel test runs, not
+  # collection`. The old pin is the rev that OOM-killed a 35 GB `aiken`
+  # locally, so the advance is the point of the batch rather than a drive-by.
+  #
+  # The advance changes nothing measured, and that is verified rather than
+  # argued. Same source tree, `--env testnet`, one compiler swapped:
+  #   blueprint   all 480 validators byte-identical on `hash` and
+  #               `compiledCode`, `definitions` equal, the whole file identical
+  #               except `preamble.compiler.version`. Deployed script identity
+  #               does not move, so no applied hash is re-derived here.
+  #   exunits     the canonical-decodability execution ledger re-measures to
+  #               the unit under 2a78108, under 133151f2 alone, and under
+  #               5adf7837. The CEK change is guarded by `is_constant()`, so it
+  #               only skips an argument-size walk the costing function cannot
+  #               observe.
+  #   build cost  28.6 s wall, 821 MB peak RSS for the full 480-validator
+  #               blueprint. `aiken build` was never the OOM vector.
+  # `aiken check` wall-clock on 4 vCPU has NOT been re-taken on this rev; it is
+  # recorded as not-re-measured rather than quietly restated, and the same
+  # headroom that made that safe to defer at the previous advance still holds.
   AIKEN_FORK_REPO: https://github.com/Anastasia-Labs/aiken
-  AIKEN_FORK_TAG: midgard-2a78108c
-  AIKEN_FORK_REV: 2a78108ccb184161689b8a06c84d942e13b5b209
-  AIKEN_FORK_VERSION: aiken v1.1.23+2a78108
-  AIKEN_FORK_BINARY_MD5: b3acfdf348235798cb6b921d0f87750a
+  AIKEN_FORK_TAG: midgard-5adf7837
+  AIKEN_FORK_REV: 5adf7837cbddb5d329fd51d9c0cd73f561eaf95c
+  AIKEN_FORK_VERSION: aiken v1.1.23+5adf783
+  AIKEN_FORK_BINARY_MD5: ea9b39054f166e94771f838a662712f7
 
 jobs:
   build:
@@ -254,7 +266,7 @@ jobs:
       #
       # Final divergence snapshot, both blueprints built from the same tree:
       #
-      #   validator                      stock v1.1.22+39d6b04   fork v1.1.23+2a78108
+      #   validator                      stock v1.1.22+39d6b04   fork v1.1.23+5adf783
       #   user_events/tx_order_v1.mint   81fa79f4…  9,851 bytes  b5541807…  10,071 bytes
       #
       # ONE validator diverged, and the stock side is the WRONG artifact. Stock
@@ -272,6 +284,6 @@ jobs:
       # The guard is not replaced by another gate. With one compiler there is
       # no second opinion to compare against, so the property it protected is
       # now carried by the pin itself: the identity assertion above fails
-      # closed if anything but `v1.1.23+2a78108` ever compiles this tree.
+      # closed if anything but `v1.1.23+5adf783` ever compiles this tree.
       - name: Check that aiken.lock is up-to-date
         run: git diff --name-only --exit-code aiken.lock
