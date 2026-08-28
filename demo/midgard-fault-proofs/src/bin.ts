@@ -16,6 +16,10 @@ import {
   SAMPLE_EVIDENCE_DIAGNOSTIC_PROVENANCE_V1,
 } from "./evidence/diagnostic-evidence-v1.js";
 import {
+  resolveFabricatedDepositCliContractsV1,
+  resolveFabricatedWithdrawalCliContractsV1,
+} from "./fabricated-cli-contracts-v1.js";
+import {
   generateFraudProofFamilyScaffoldV1,
   writeFraudProofFamilyScaffoldV1,
 } from "./family-scaffold/generate-v1.js";
@@ -34,6 +38,14 @@ import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.
 import { type ProviderKind } from "./runtime.js";
 import { submitDaHashPreimageStep01FromFiles } from "./submit-da-hash-preimage-step-01.js";
 import { submitDaHashPreimageStep02FromFiles } from "./submit-da-hash-preimage-step-02.js";
+import { submitFabricatedDepositStep01FromFiles } from "./submit-fabricated-deposit-step-01.js";
+import { submitFabricatedDepositStep02FromFiles } from "./submit-fabricated-deposit-step-02.js";
+import { submitFabricatedDepositStep03FromFiles } from "./submit-fabricated-deposit-step-03.js";
+import { submitFabricatedDepositStep04FromFiles } from "./submit-fabricated-deposit-step-04.js";
+import { submitFabricatedWithdrawalStep01FromFiles } from "./submit-fabricated-withdrawal-step-01.js";
+import { submitFabricatedWithdrawalStep02FromFiles } from "./submit-fabricated-withdrawal-step-02.js";
+import { submitFabricatedWithdrawalStep03FromFiles } from "./submit-fabricated-withdrawal-step-03.js";
+import { submitFabricatedWithdrawalStep04FromFiles } from "./submit-fabricated-withdrawal-step-04.js";
 import {
   type SubmitInitFraudCategory,
   submitInitFromFiles,
@@ -120,6 +132,10 @@ export type ParsedArgs = {
   readonly prevUtxosRoot: string | undefined;
   readonly prevBlockPayloadPath: string | undefined;
   readonly inputsPreimagePath: string | undefined;
+  readonly depositInclusionPath: string | undefined;
+  readonly withdrawalInclusionPath: string | undefined;
+  readonly eventOutRef: string | undefined;
+  readonly authenticContentPath: string | undefined;
   readonly outputsPreimagePath: string | undefined;
   readonly ledgerNonMembershipProofPath: string | undefined;
   readonly txsNonMembershipProofPath: string | undefined;
@@ -164,6 +180,14 @@ const usage = `Usage:
   midgard-fault-proofs submit-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx2-inputs <raw-input-cbor-list.json> --native-tx-compact <tx2-compact.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-invalid-range-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-invalid-range-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-fabricated-deposit-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --deposit-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--no-await-confirmation]
+  midgard-fault-proofs submit-fabricated-deposit-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--event-out-ref <txHash#outputIndex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--no-await-confirmation]
+  midgard-fault-proofs submit-fabricated-deposit-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--authentic-content <path>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--no-await-confirmation]
+  midgard-fault-proofs submit-fabricated-deposit-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--no-await-confirmation]
+  midgard-fault-proofs submit-fabricated-withdrawal-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --withdrawal-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--no-await-confirmation]
+  midgard-fault-proofs submit-fabricated-withdrawal-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--event-out-ref <txHash#outputIndex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--no-await-confirmation]
+  midgard-fault-proofs submit-fabricated-withdrawal-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--authentic-content <path>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--no-await-confirmation]
+  midgard-fault-proofs submit-fabricated-withdrawal-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--no-await-confirmation]
   midgard-fault-proofs submit-non-existent-input-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-non-existent-input-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --inputs-preimage <path> --native-tx-compact <native-tx-compact.json> --bad-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-non-existent-input-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --ledger-non-membership-proof <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -267,6 +291,10 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let prevUtxosRoot: string | undefined;
   let prevBlockPayloadPath: string | undefined;
   let inputsPreimagePath: string | undefined;
+  let depositInclusionPath: string | undefined;
+  let withdrawalInclusionPath: string | undefined;
+  let eventOutRef: string | undefined;
+  let authenticContentPath: string | undefined;
   let outputsPreimagePath: string | undefined;
   let ledgerNonMembershipProofPath: string | undefined;
   let txsNonMembershipProofPath: string | undefined;
@@ -440,6 +468,18 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--inputs-preimage":
         inputsPreimagePath = rest[++index];
         break;
+      case "--deposit-inclusion":
+        depositInclusionPath = rest[++index];
+        break;
+      case "--withdrawal-inclusion":
+        withdrawalInclusionPath = rest[++index];
+        break;
+      case "--event-out-ref":
+        eventOutRef = rest[++index];
+        break;
+      case "--authentic-content":
+        authenticContentPath = rest[++index];
+        break;
       case "--outputs-preimage":
         outputsPreimagePath = rest[++index];
         break;
@@ -590,6 +630,10 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     prevUtxosRoot,
     prevBlockPayloadPath,
     inputsPreimagePath,
+    depositInclusionPath,
+    withdrawalInclusionPath,
+    eventOutRef,
+    authenticContentPath,
     outputsPreimagePath,
     ledgerNonMembershipProofPath,
     txsNonMembershipProofPath,
@@ -818,6 +862,14 @@ export const main = async (): Promise<void> => {
     args.command !== "submit-step-04" &&
     args.command !== "submit-invalid-range-step-01" &&
     args.command !== "submit-invalid-range-step-02" &&
+    args.command !== "submit-fabricated-deposit-step-01" &&
+    args.command !== "submit-fabricated-deposit-step-02" &&
+    args.command !== "submit-fabricated-deposit-step-03" &&
+    args.command !== "submit-fabricated-deposit-step-04" &&
+    args.command !== "submit-fabricated-withdrawal-step-01" &&
+    args.command !== "submit-fabricated-withdrawal-step-02" &&
+    args.command !== "submit-fabricated-withdrawal-step-03" &&
+    args.command !== "submit-fabricated-withdrawal-step-04" &&
     args.command !== "submit-non-existent-input-step-01" &&
     args.command !== "submit-non-existent-input-step-02" &&
     args.command !== "submit-non-existent-input-step-03" &&
@@ -2160,6 +2212,364 @@ export const main = async (): Promise<void> => {
       nativeTxCompactPath: args.nativeTxCompactPath,
       doubleSpentInputIndex: args.doubleSpentInputIndex,
       awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-fabricated-deposit-step-01") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.stateQueueBlockOutRef === undefined) {
+      throw new Error(
+        `Missing required --state-queue-block-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.depositInclusionPath === undefined) {
+      throw new Error(`Missing required --deposit-inclusion <path>.\n${usage}`);
+    }
+    const { contracts, referenceScriptUtxo } =
+      await resolveFabricatedDepositCliContractsV1({
+        config: {
+          blueprintPath: args.blueprintPath,
+          deploymentInfoPath: args.deploymentInfoPath,
+          network: parseNetwork(args.network),
+          provider: args.provider,
+          blockfrostApiUrl: args.blockfrostApiUrl,
+          blockfrostKey: args.blockfrostKey,
+          kupoUrl: args.kupoUrl,
+          ogmiosUrl: args.ogmiosUrl,
+        },
+        stepIndex: 0,
+      });
+    const output = await submitFabricatedDepositStep01FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
+      depositInclusionPath: args.depositInclusionPath,
+      awaitConfirmation: args.awaitConfirmation,
+      contracts,
+      referenceScriptUtxo,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-fabricated-deposit-step-02") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    const { contracts, referenceScriptUtxo } =
+      await resolveFabricatedDepositCliContractsV1({
+        config: {
+          blueprintPath: args.blueprintPath,
+          deploymentInfoPath: args.deploymentInfoPath,
+          network: parseNetwork(args.network),
+          provider: args.provider,
+          blockfrostApiUrl: args.blockfrostApiUrl,
+          blockfrostKey: args.blockfrostKey,
+          kupoUrl: args.kupoUrl,
+          ogmiosUrl: args.ogmiosUrl,
+        },
+        stepIndex: 1,
+      });
+    const output = await submitFabricatedDepositStep02FromFiles({
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      eventOutRef: args.eventOutRef,
+      awaitConfirmation: args.awaitConfirmation,
+      contracts,
+      referenceScriptUtxo,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-fabricated-deposit-step-03") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    const { contracts, referenceScriptUtxo } =
+      await resolveFabricatedDepositCliContractsV1({
+        config: {
+          blueprintPath: args.blueprintPath,
+          deploymentInfoPath: args.deploymentInfoPath,
+          network: parseNetwork(args.network),
+          provider: args.provider,
+          blockfrostApiUrl: args.blockfrostApiUrl,
+          blockfrostKey: args.blockfrostKey,
+          kupoUrl: args.kupoUrl,
+          ogmiosUrl: args.ogmiosUrl,
+        },
+        stepIndex: 2,
+      });
+    const output = await submitFabricatedDepositStep03FromFiles({
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      authenticContentPath: args.authenticContentPath,
+      awaitConfirmation: args.awaitConfirmation,
+      contracts,
+      referenceScriptUtxo,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-fabricated-deposit-step-04") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    const { contracts, referenceScriptUtxo } =
+      await resolveFabricatedDepositCliContractsV1({
+        config: {
+          blueprintPath: args.blueprintPath,
+          deploymentInfoPath: args.deploymentInfoPath,
+          network: parseNetwork(args.network),
+          provider: args.provider,
+          blockfrostApiUrl: args.blockfrostApiUrl,
+          blockfrostKey: args.blockfrostKey,
+          kupoUrl: args.kupoUrl,
+          ogmiosUrl: args.ogmiosUrl,
+        },
+        stepIndex: 3,
+      });
+    const output = await submitFabricatedDepositStep04FromFiles({
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      awaitConfirmation: args.awaitConfirmation,
+      contracts,
+      referenceScriptUtxo,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-fabricated-withdrawal-step-01") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.stateQueueBlockOutRef === undefined) {
+      throw new Error(
+        `Missing required --state-queue-block-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.withdrawalInclusionPath === undefined) {
+      throw new Error(
+        `Missing required --withdrawal-inclusion <path>.\n${usage}`,
+      );
+    }
+    const { contracts, referenceScriptUtxo } =
+      await resolveFabricatedWithdrawalCliContractsV1({
+        config: {
+          blueprintPath: args.blueprintPath,
+          deploymentInfoPath: args.deploymentInfoPath,
+          network: parseNetwork(args.network),
+          provider: args.provider,
+          blockfrostApiUrl: args.blockfrostApiUrl,
+          blockfrostKey: args.blockfrostKey,
+          kupoUrl: args.kupoUrl,
+          ogmiosUrl: args.ogmiosUrl,
+        },
+        stepIndex: 0,
+      });
+    const output = await submitFabricatedWithdrawalStep01FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
+      withdrawalInclusionPath: args.withdrawalInclusionPath,
+      awaitConfirmation: args.awaitConfirmation,
+      contracts,
+      referenceScriptUtxo,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-fabricated-withdrawal-step-02") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    const { contracts, referenceScriptUtxo } =
+      await resolveFabricatedWithdrawalCliContractsV1({
+        config: {
+          blueprintPath: args.blueprintPath,
+          deploymentInfoPath: args.deploymentInfoPath,
+          network: parseNetwork(args.network),
+          provider: args.provider,
+          blockfrostApiUrl: args.blockfrostApiUrl,
+          blockfrostKey: args.blockfrostKey,
+          kupoUrl: args.kupoUrl,
+          ogmiosUrl: args.ogmiosUrl,
+        },
+        stepIndex: 1,
+      });
+    const output = await submitFabricatedWithdrawalStep02FromFiles({
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      eventOutRef: args.eventOutRef,
+      awaitConfirmation: args.awaitConfirmation,
+      contracts,
+      referenceScriptUtxo,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-fabricated-withdrawal-step-03") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    const { contracts, referenceScriptUtxo } =
+      await resolveFabricatedWithdrawalCliContractsV1({
+        config: {
+          blueprintPath: args.blueprintPath,
+          deploymentInfoPath: args.deploymentInfoPath,
+          network: parseNetwork(args.network),
+          provider: args.provider,
+          blockfrostApiUrl: args.blockfrostApiUrl,
+          blockfrostKey: args.blockfrostKey,
+          kupoUrl: args.kupoUrl,
+          ogmiosUrl: args.ogmiosUrl,
+        },
+        stepIndex: 2,
+      });
+    const output = await submitFabricatedWithdrawalStep03FromFiles({
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      authenticContentPath: args.authenticContentPath,
+      awaitConfirmation: args.awaitConfirmation,
+      contracts,
+      referenceScriptUtxo,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-fabricated-withdrawal-step-04") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    const { contracts, referenceScriptUtxo } =
+      await resolveFabricatedWithdrawalCliContractsV1({
+        config: {
+          blueprintPath: args.blueprintPath,
+          deploymentInfoPath: args.deploymentInfoPath,
+          network: parseNetwork(args.network),
+          provider: args.provider,
+          blockfrostApiUrl: args.blockfrostApiUrl,
+          blockfrostKey: args.blockfrostKey,
+          kupoUrl: args.kupoUrl,
+          ogmiosUrl: args.ogmiosUrl,
+        },
+        stepIndex: 3,
+      });
+    const output = await submitFabricatedWithdrawalStep04FromFiles({
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      awaitConfirmation: args.awaitConfirmation,
+      contracts,
+      referenceScriptUtxo,
     });
 
     writeJson(output);
