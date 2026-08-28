@@ -47,6 +47,7 @@ import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "./runtime.js";
+import { excludeUtxo } from "./spend-input-witness.js";
 import { selectFeeInput } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 
@@ -252,7 +253,14 @@ export const submitMinFeeStep02 = async ({
       }),
   ) as unknown as MinFeeStep02Args["field_carriages"];
 
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  // A fresh tier-2 publication carries enough min-ADA to top the fee sort;
+  // never spend anything this transaction must read.
+  const feeInput = selectFeeInput(
+    referenceInputs.reduce<readonly UTxO[]>(
+      (candidates, utxo) => excludeUtxo(candidates, utxo),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,

@@ -1,5 +1,10 @@
 /** Real lifecycle for the registered standalone single-party min-fee proof. */
-import { outRefLabel } from "@al-ft/midgard-core";
+import {
+  encodeMidgardFieldPreimageV1,
+  MIDGARD_CHUNK_BYTES_K_V1,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  outRefLabel,
+} from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -31,6 +36,14 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+
+/**
+ * 365 committed spend inputs (constant §5.3 stride of 40 bytes each) make a
+ * 14,603-byte field-0 preimage: past §8.4's tier-1 bound, inside the
+ * single-publication tier-2 window `(14,336, 15,148]` — the size alone
+ * selects `RawUtxo`.
+ */
+const TIER2_SPEND_INPUT_COUNT = 365;
 
 const fieldItemCbors = (
   fields: readonly (readonly string[])[],
@@ -76,13 +89,15 @@ const setupScenario = async ({
   harness,
   fee,
   headerMinimum,
+  spendInputs = [outRefCbor(0x31, 0n)],
 }: {
   readonly harness: Harness;
   readonly fee: bigint;
   readonly headerMinimum: bigint;
+  readonly spendInputs?: readonly Buffer[];
 }) => {
   const tx = buildFixtureTransactionV1({
-    spendInputs: [outRefCbor(0x31, 0n)],
+    spendInputs,
     fee,
   });
   const block = await buildCanonicalBlockFixtureV1({
@@ -376,6 +391,68 @@ describe("min-fee emulator lifecycle", () => {
         requireReferenceScripts: true,
       }),
     ).rejects.toThrow(/State queue does not contain block/u);
+  }, 600_000);
+
+  it("routes an oversized field-0 preimage through tier-2 published carriage to the conviction", async () => {
+    // 365 committed spend inputs put field 0's §5.1 preimage at 14,603 bytes —
+    // past §8.4's 14,336-byte tier-1 redeemer bound, inside the
+    // single-publication tier-2 window — so the ladder itself routes that one
+    // field to `RawUtxo` while the other eight ride inline. Nothing forces
+    // the tier; the committed data's size does.
+    const harness = await makeHarness();
+    const scenario = await setupScenario({
+      harness,
+      fee: 999n,
+      headerMinimum: 1_000n,
+      spendInputs: Array.from({ length: TIER2_SPEND_INPUT_COUNT }, (_, index) =>
+        outRefCbor(0x31, BigInt(index)),
+      ),
+    });
+    const preimageBytes = encodeMidgardFieldPreimageV1(
+      scenario.fieldItemCbors[0],
+    ).length;
+    expect(preimageBytes).toBeGreaterThan(
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+    );
+    expect(preimageBytes).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K_V1);
+
+    const init = await initThread(harness, scenario);
+    const bound = await advanceStep01(harness, scenario, init.nextThreadOutRef);
+    const finalized = await submitMinFeeStep02({
+      lucid: harness.proverLucid,
+      contracts: harness.minFee,
+      categoryId: harness.category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: bound.nextThreadOutRef,
+      nativeTxCompactCbor: scenario.prepared.tx.nativeTxCompactCbor,
+      witnessSet: scenario.prepared.tx.witnessSet,
+      fieldItemCbors: scenario.fieldItemCbors,
+      referenceScriptUtxo: scenario.refs[1],
+    });
+    expect(finalized.fee).toBe(999n);
+    expect(finalized.minimumFee).toBe(1_000n);
+    expect(finalized.fieldCarriageTiers[0]).toBe("RawUtxo");
+    expect(
+      finalized.fieldCarriageTiers.slice(1).every((tier) => tier === "Inline"),
+    ).toBe(true);
+    expect(finalized.fieldPreimageLengths[0]).toBe(preimageBytes);
+
+    // The tier-2 publication really exists at the prover's address as a
+    // bytes-only inline datum, referenced rather than spent by the step.
+    const expectedDatum = SDK.fieldPreimagePublicationDatumCborV1(
+      encodeMidgardFieldPreimageV1(scenario.fieldItemCbors[0]),
+    );
+    const publications = (
+      await harness.proverLucid.utxosAt(harness.proverSigner.address)
+    ).filter((utxo) => utxo.datum === expectedDatum);
+    expect(publications).toHaveLength(1);
+
+    const proofUtxo = await expectSingleUtxoWithUnit(
+      harness.proverLucid,
+      harness.minFee.fraudProof.spendingScriptAddress,
+      finalized.fraudProofUnit,
+    );
+    expect(outRefLabel(proofUtxo)).toBe(finalized.fraudProofOutRef);
   }, 600_000);
 
   it("reaches step-02 and lets the compiled validator refuse an honest exact fee", async () => {
