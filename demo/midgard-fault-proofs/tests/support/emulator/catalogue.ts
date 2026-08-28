@@ -53,9 +53,31 @@ export const ledgerOrderedIndex = (
   return BigInt(index);
 };
 
+/**
+ * A catalogue category registered on top of the canonical registered set —
+ * pre-registration families whose production registration is parent-owned
+ * (currently the `input-set-uniqueness` reserved slot). With no extras the
+ * emitted root and every base proof are byte-identical to the one-argument
+ * behaviour, so no measured fixture moves.
+ */
+export type CatalogueExtraCategoryV1 = {
+  readonly categoryId: string;
+  readonly scriptHash: string;
+  readonly membershipProofCbor: string;
+};
+
 export const buildCatalogueDeploymentInfo = async (
   fraudProofs: FraudProofs,
-): Promise<FraudProofCatalogueDeploymentInfo> => {
+  extraCategories: Readonly<
+    Record<string, { readonly categoryId: string; readonly scriptHash: string }>
+  > = {},
+): Promise<
+  FraudProofCatalogueDeploymentInfo & {
+    readonly extraCategories: Readonly<
+      Record<string, CatalogueExtraCategoryV1>
+    >;
+  }
+> => {
   const categories = Object.fromEntries(
     FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name) => [
       name,
@@ -77,6 +99,12 @@ export const buildCatalogueDeploymentInfo = async (
       encodeCatalogueValue(category.scriptHash),
     );
   }
+  for (const extra of Object.values(extraCategories)) {
+    await trie.insert(
+      encodeCatalogueKey(extra.categoryId),
+      encodeCatalogueValue(extra.scriptHash),
+    );
+  }
   const categoriesWithProofs = { ...categories };
   for (const name of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
     const category = categories[name];
@@ -86,8 +114,18 @@ export const buildCatalogueDeploymentInfo = async (
       membershipProofCbor: proof.toCBOR().toString("hex"),
     };
   }
+  const extraCategoriesWithProofs: Record<string, CatalogueExtraCategoryV1> =
+    {};
+  for (const [name, extra] of Object.entries(extraCategories)) {
+    const proof = await trie.prove(encodeCatalogueKey(extra.categoryId));
+    extraCategoriesWithProofs[name] = {
+      ...extra,
+      membershipProofCbor: proof.toCBOR().toString("hex"),
+    };
+  }
   return {
     root: trieRootHex(trie),
     categories: categoriesWithProofs,
+    extraCategories: extraCategoriesWithProofs,
   };
 };

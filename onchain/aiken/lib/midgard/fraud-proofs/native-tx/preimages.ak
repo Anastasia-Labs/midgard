@@ -495,7 +495,14 @@ fn decode_mint_policy_items_at(
   }
 }
 
-fn decode_mint_policy_item_cbor(
+/// Decode one canonical field-5 per-policy item (`82 ‖ bytes(policy) ‖ map`)
+/// into its policy id and `asset_name → quantity` pairs, enforcing exactly the
+/// canonical-form rules the whole-preimage decoder enforces per item: 28-byte
+/// policy, ≤32-byte names in canonical order, non-zero quantities, no trailing
+/// bytes. `pub` so the value-not-preserved family can fold the mint field
+/// item-by-item through the §8.8 door under the very decoder the canonical
+/// mint preimage is defined by, rather than growing a second mint reading.
+pub fn decode_mint_policy_item_cbor(
   item_cbor: ByteArray,
 ) -> Pair<ByteArray, List<Pair<Data, Data>>> {
   let offset = expect_byte(item_cbor, 0, 130)

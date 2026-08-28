@@ -18,6 +18,7 @@ import {
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   validationValueAndMintSemanticReferenceScriptDeploymentEntryV1,
 } from "../../../src/index.js";
+import { type InputSetUniquenessContractsV1 } from "../../../src/input-set-uniqueness/index.js";
 import { type L2TxMistagContractsV1 } from "../../../src/l2-tx-mistag/index.js";
 import { type MinFeeContractsV1 } from "../../../src/min-fee-contracts-v1.js";
 import { type MissingNativeScriptTxContractsV1 } from "../../../src/missing-native-script-tx/index.js";
@@ -72,6 +73,17 @@ export const WITHDRAWN_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1 =
 export const WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofWithdrawalMistag";
 
+/**
+ * Manifest entry pinning the `input-set-uniqueness` step-01 script hash for
+ * removal. The name is caller-chosen because the family predates its
+ * catalogue registration (same pre-registration shape #635 introduced):
+ * `submitRemoveFraudulentBlock` checks the explicit category record's step-01
+ * hash against whatever entry the record names, and this is the name the
+ * emulator manifests use.
+ */
+export const INPUT_SET_UNIQUENESS_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+  "fraudProofInputSetUniqueness";
+
 const requireReferenceScriptAuthPolicy = (
   policy: MidgardValidators["referenceScriptAuth"],
 ): ReferenceScriptAuthPolicy => {
@@ -103,6 +115,7 @@ export const buildRemovalDeploymentInfo = (
     readonly l2TxMistag?: L2TxMistagContractsV1;
     readonly withdrawnInput?: WithdrawnInputContractsV1;
     readonly withdrawalMistag?: WithdrawalMistagContractsV1;
+    readonly inputSetUniqueness?: InputSetUniquenessContractsV1;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -400,6 +413,14 @@ export const buildRemovalDeploymentInfo = (
             [WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
               scriptHash:
                 contracts.withdrawalMistag.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.inputSetUniqueness === undefined
+        ? {}
+        : {
+            [INPUT_SET_UNIQUENESS_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+              scriptHash:
+                contracts.inputSetUniqueness.steps[0].spendingScriptHash,
             },
           }),
       fraudProofNonExistentInputNoIndex: {

@@ -643,7 +643,11 @@ fn validate_source_membership_mismatch(
   }
 }
 
-fn ledger_trie(root: ByteArray) {
+/// The ledger MPF at `root`. `pub` because it is *the* protocol reading of a
+/// ledger root: the value-not-preserved family authenticates spent-input
+/// descriptors against `header.prev_utxos_root` through this same trie
+/// constructor rather than growing a second one.
+pub fn ledger_trie(root: ByteArray) {
   if root == env.empty_merkle_tree_root {
     mpf.empty
   } else {
@@ -669,7 +673,12 @@ pub fn ledger_outref_key(outref: OutputReference) -> ByteArray {
   )
 }
 
-fn verify_ledger_membership(
+/// Membership of `(key, value)` in the ledger MPF at `root`. `pub` for the
+/// same reason as [`ledger_trie`](#ledger_trie): this is the single
+/// ledger-membership witness path (`apply_l2_spends` fetches spent-input
+/// descriptors through it), and the value-not-preserved family must fetch
+/// them the identical way rather than through a second binding path.
+pub fn verify_ledger_membership(
   root: ByteArray,
   key: ByteArray,
   value: ByteArray,

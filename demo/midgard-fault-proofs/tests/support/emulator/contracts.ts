@@ -64,6 +64,10 @@ import {
   DOUBLE_WITHDRAW_BLUEPRINT_TITLES_V1,
   type DoubleWithdrawContractsV1,
 } from "../../../src/double-withdraw/contracts-v1.js";
+import {
+  INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES_V1,
+  type InputSetUniquenessContractsV1,
+} from "../../../src/input-set-uniqueness/contracts-v1.js";
 import { type L2TxMistagContractsV1 } from "../../../src/l2-tx-mistag/contracts-v1.js";
 import { type MinFeeContractsV1 } from "../../../src/min-fee-contracts-v1.js";
 import {
@@ -642,6 +646,54 @@ export const buildWithdrawalMistagChainV1 = ({
   return [step01, step02, step03, step04, step05];
 };
 
+/**
+ * Applies the two-step `input-set-uniqueness` chain in blueprint-declared
+ * parameter order (the order note lives on
+ * `INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES_V1`). Applied backwards, step 02
+ * first, because step 01 is parameterized by its successor's script hash.
+ * Both steps deploy as reference scripts in production per the standing
+ * reference-script ruling. The family predates its catalogue registration,
+ * so unlike the chains above it has no SDK canonical builder yet — this
+ * test-support builder is the family's only parameterization site until the
+ * parent registers it.
+ */
+export const buildInputSetUniquenessChainV1 = ({
+  realBlueprint,
+  computationThreadPolicyId,
+  fraudProofPolicyId,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+  hubOraclePolicyId,
+}: {
+  readonly realBlueprint: Blueprint;
+  readonly computationThreadPolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
+  readonly hubOraclePolicyId: string;
+}): readonly [SdkSpendingValidator, SdkSpendingValidator] => {
+  const step02 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES_V1.step02,
+      [
+        fraudProofPolicyId,
+        fraudProofTokenAddressData,
+        computationThreadPolicyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+    ),
+  );
+  const step01 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES_V1.step01,
+      [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
+    ),
+  );
+  return [step01, step02];
+};
+
 export const buildMinimalFaultProofContracts = async (
   realBlueprint: Blueprint,
   alwaysBlueprint: Blueprint,
@@ -671,6 +723,7 @@ export const buildMinimalFaultProofContracts = async (
     realL2TxMistag = false,
     realWithdrawnInput = false,
     realWithdrawalMistag = false,
+    realInputSetUniqueness = false,
     alwaysFraudProofCatalogue = false,
     alwaysStateQueue = false,
   }: {
@@ -698,6 +751,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realL2TxMistag?: boolean;
     readonly realWithdrawnInput?: boolean;
     readonly realWithdrawalMistag?: boolean;
+    readonly realInputSetUniqueness?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
     /**
      * Test-only admission bypass for faults whose malformed header is rejected
@@ -723,6 +777,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly l2TxMistag?: L2TxMistagContractsV1;
     readonly withdrawnInput?: WithdrawnInputContractsV1;
     readonly withdrawalMistag?: WithdrawalMistagContractsV1;
+    readonly inputSetUniqueness?: InputSetUniquenessContractsV1;
   }
 > => {
   // This integration test proves the real active-operators slashing and
@@ -1141,6 +1196,44 @@ export const buildMinimalFaultProofContracts = async (
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueueMinting.policyId,
         };
+  // Pre-registration shape for the `input-set-uniqueness` family: the
+  // two-step chain is applied from the double-spend family's shared
+  // computation-thread and fraud-proof policies (the same policies the
+  // catalogue, thread mints, and removal all key on), with the real §8.6
+  // field-preimage certificate policy as parameter plumbing. There is no SDK
+  // canonical builder or `FaultProofContractChains` key yet — both land with
+  // parent-owned catalogue registration.
+  const inputSetUniqueness: InputSetUniquenessContractsV1 | undefined =
+    realInputSetUniqueness
+      ? await (async () => {
+          const fraudProofTokenAddressData = await Effect.runPromise(
+            addressDataFromBech32(
+              doubleSpendContracts.fraudProof.spendingScriptAddress,
+            ).pipe(
+              Effect.map((addressData) =>
+                Data.from(Data.to(addressData, AddressData)),
+              ),
+            ),
+          );
+          const steps = buildInputSetUniquenessChainV1({
+            realBlueprint,
+            computationThreadPolicyId:
+              doubleSpendContracts.computationThread.policyId,
+            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
+            fraudProofTokenAddressData,
+            fieldPreimageCertificatePolicyId,
+            hubOraclePolicyId: hubOracle.policyId,
+          });
+          return {
+            steps,
+            computationThread: doubleSpendContracts.computationThread,
+            fraudProof: doubleSpendContracts.fraudProof,
+            hubOraclePolicyId: hubOracle.policyId,
+            stateQueuePolicyId: stateQueueMinting.policyId,
+            fieldPreimageCertificatePolicyId,
+          };
+        })()
+      : undefined;
   const fabricatedWithdrawal: FabricatedWithdrawalContractsV1 | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
@@ -1263,6 +1356,7 @@ export const buildMinimalFaultProofContracts = async (
     ...(l2TxMistag === undefined ? {} : { l2TxMistag }),
     ...(withdrawnInput === undefined ? {} : { withdrawnInput }),
     ...(withdrawalMistag === undefined ? {} : { withdrawalMistag }),
+    ...(inputSetUniqueness === undefined ? {} : { inputSetUniqueness }),
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,

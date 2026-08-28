@@ -1618,6 +1618,58 @@ describe("Q02 generated shape matches the deployed families", () => {
         conforming.push(terminal.id);
         continue;
       }
+      if (terminal.id === "input-set-uniqueness/step-02.ak") {
+        // This terminal is deliberately a closed three-constructor sum — one
+        // arm per uniqueness violation (duplicate spends, duplicate reference
+        // inputs, spend/reference overlap) — rather than the ordinary
+        // one-record terminal shape. Keep this exception exact: every arm
+        // retains the standard positional/mint prefix, and each names the
+        // prover-chosen item indices plus its own field carriage.
+        expect(aikenSumConstructorNames(source, "Args")).toEqual([
+          "DuplicateSpendInputs",
+          "DuplicateReferenceInputs",
+          "SpendReferenceOverlap",
+        ]);
+        expect(
+          aikenSumConstructorFieldNames(source, "Args", "DuplicateSpendInputs"),
+        ).toEqual([
+          ...prefix,
+          "first_index",
+          "second_index",
+          "spend_inputs_opening",
+        ]);
+        expect(
+          aikenSumConstructorFieldNames(
+            source,
+            "Args",
+            "DuplicateReferenceInputs",
+          ),
+        ).toEqual([
+          ...prefix,
+          "first_index",
+          "second_index",
+          "reference_inputs_opening",
+        ]);
+        expect(
+          aikenSumConstructorFieldNames(
+            source,
+            "Args",
+            "SpendReferenceOverlap",
+          ),
+        ).toEqual([
+          ...prefix,
+          "spend_index",
+          "reference_index",
+          "native_tx_compact_cbor",
+          "spend_inputs_carriage",
+          "reference_inputs_carriage",
+        ]);
+        expect(source).toContain(
+          "pub type SpendRedeemer =\n  ct.StepRedeemer<Args>",
+        );
+        conforming.push(terminal.id);
+        continue;
+      }
       // A parser that quietly stopped finding fields would report every module
       // conforming, so an empty field list is a failure for every ordinary
       // record-shaped terminal.

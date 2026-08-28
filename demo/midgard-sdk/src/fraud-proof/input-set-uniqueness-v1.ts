@@ -1,0 +1,124 @@
+/**
+ * Input-set-uniqueness fault-proof family (pre-registration): schema twins of
+ * `midgard/fraud_proofs/input_set_uniqueness/step_01` / `step_02`.
+ *
+ * The family convicts an operator-ACCEPTED committed transaction whose
+ * intra-transaction input sets violate uniqueness/disjointness — the
+ * single-party conversion of the validation machine's InputSets rule
+ * (`reject_duplicate_input`). Step-01 binds the leaf through the counted
+ * `transactions_root` and refuses any leaf whose embedded validity scalar is
+ * not `TxIsValid`; step-02 opens §2.5 fields 0/1 through the §8.8 door against
+ * the carried anchor and concludes on byte equality of two door-authenticated
+ * §5.3 items.
+ *
+ * Deliberately absent from `catalogue.ts` / the category order: like
+ * native-script-decoding, this family predates its catalogue registration.
+ */
+
+import { Data } from "@lucid-evolution/lucid";
+
+import { H32Schema } from "@/common.js";
+import { FieldCarriageV1Schema } from "@/native-tx-field-access-v1.js";
+
+import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import {
+  faultProofStepDatumSchema,
+  faultProofStepRedeemerSchema,
+  NativeTxInclusionCarriageSchema,
+} from "./native.js";
+
+export const InputSetUniquenessStep01DatumSchema = faultProofStepDatumSchema(
+  Data.Any(),
+);
+export type InputSetUniquenessStep01Datum = Data.Static<
+  typeof InputSetUniquenessStep01DatumSchema
+>;
+export const InputSetUniquenessStep01Datum =
+  InputSetUniquenessStep01DatumSchema as unknown as InputSetUniquenessStep01Datum;
+
+export const InputSetUniquenessStep01SpendRedeemerSchema =
+  faultProofStepRedeemerSchema(NativeTxInclusionCarriageSchema);
+export type InputSetUniquenessStep01SpendRedeemer = Data.Static<
+  typeof InputSetUniquenessStep01SpendRedeemerSchema
+>;
+export const InputSetUniquenessStep01SpendRedeemer =
+  InputSetUniquenessStep01SpendRedeemerSchema as unknown as InputSetUniquenessStep01SpendRedeemer;
+
+/**
+ * Mirrors `midgard/fraud_proofs/input_set_uniqueness/step_02.State`: the
+ * thread carries the disputed transaction's §2.5 anchor and nothing else.
+ */
+export const InputSetUniquenessStep02StateSchema = Data.Object({
+  bad_tx_id: H32Schema,
+});
+export type InputSetUniquenessStep02State = Data.Static<
+  typeof InputSetUniquenessStep02StateSchema
+>;
+export const InputSetUniquenessStep02State =
+  InputSetUniquenessStep02StateSchema as unknown as InputSetUniquenessStep02State;
+
+export const InputSetUniquenessStep02DatumSchema = faultProofStepDatumSchema(
+  InputSetUniquenessStep02StateSchema,
+);
+export type InputSetUniquenessStep02Datum = Data.Static<
+  typeof InputSetUniquenessStep02DatumSchema
+>;
+export const InputSetUniquenessStep02Datum =
+  InputSetUniquenessStep02DatumSchema as unknown as InputSetUniquenessStep02Datum;
+
+/**
+ * Mirrors `midgard/fraud_proofs/input_set_uniqueness/step_02.Args`.
+ * Constructor order is wire format: `DuplicateSpendInputs` 0,
+ * `DuplicateReferenceInputs` 1, `SpendReferenceOverlap` 2.
+ *
+ * All indices name §5.3 **items**, never byte offsets: the door derives item
+ * positions arithmetically from the fixed stride and refuses anything outside
+ * `0 <= index < count`.
+ */
+export const InputSetUniquenessStep02ArgsSchema = Data.Enum([
+  Data.Object({
+    DuplicateSpendInputs: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      fraud_proof_mint_redeemer_index: Data.Integer(),
+      first_index: Data.Integer(),
+      second_index: Data.Integer(),
+      spend_inputs_opening: FieldOpeningV1Schema,
+    }),
+  }),
+  Data.Object({
+    DuplicateReferenceInputs: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      fraud_proof_mint_redeemer_index: Data.Integer(),
+      first_index: Data.Integer(),
+      second_index: Data.Integer(),
+      reference_inputs_opening: FieldOpeningV1Schema,
+    }),
+  }),
+  Data.Object({
+    SpendReferenceOverlap: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      fraud_proof_mint_redeemer_index: Data.Integer(),
+      spend_index: Data.Integer(),
+      reference_index: Data.Integer(),
+      native_tx_compact_cbor: Data.Bytes(),
+      spend_inputs_carriage: FieldCarriageV1Schema,
+      reference_inputs_carriage: FieldCarriageV1Schema,
+    }),
+  }),
+]);
+export type InputSetUniquenessStep02Args = Data.Static<
+  typeof InputSetUniquenessStep02ArgsSchema
+>;
+export const InputSetUniquenessStep02Args =
+  InputSetUniquenessStep02ArgsSchema as unknown as InputSetUniquenessStep02Args;
+
+export const InputSetUniquenessStep02SpendRedeemerSchema =
+  faultProofStepRedeemerSchema(InputSetUniquenessStep02ArgsSchema);
+export type InputSetUniquenessStep02SpendRedeemer = Data.Static<
+  typeof InputSetUniquenessStep02SpendRedeemerSchema
+>;
+export const InputSetUniquenessStep02SpendRedeemer =
+  InputSetUniquenessStep02SpendRedeemerSchema as unknown as InputSetUniquenessStep02SpendRedeemer;

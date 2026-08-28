@@ -277,6 +277,15 @@ export const submitFabricatedFamilyInitV1 = async ({
   };
 };
 
+/**
+ * Test-only catalogue id for the `input-set-uniqueness` family. The
+ * production id is assigned only at catalogue registration; `0000001a` is
+ * the reserved-but-not-promised slot, and the emulator suites register it as
+ * an extra category exactly the way the pre-registration families before it
+ * did.
+ */
+export const INPUT_SET_UNIQUENESS_TEST_CATEGORY_ID_V1 = "0000001a";
+
 export type FaultProofEmulatorHarnessV1 = {
   readonly realBlueprint: Blueprint;
   readonly alwaysBlueprint: Blueprint;
@@ -368,7 +377,17 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
       emulator.now(),
     ),
   };
-  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs, {
+    ...(contracts.inputSetUniqueness === undefined
+      ? {}
+      : {
+          inputSetUniqueness: {
+            categoryId: INPUT_SET_UNIQUENESS_TEST_CATEGORY_ID_V1,
+            scriptHash:
+              contracts.inputSetUniqueness.steps[0].spendingScriptHash,
+          },
+        }),
+  });
   return {
     realBlueprint,
     alwaysBlueprint,

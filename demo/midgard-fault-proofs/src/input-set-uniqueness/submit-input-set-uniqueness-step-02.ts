@@ -1,0 +1,462 @@
+/**
+ * `input-set-uniqueness` step-02 submitter — the step that both concludes and
+ * finalizes the proof: the claimed items are opened through the §8.8 door
+ * against the thread's anchored transaction id, the byte-equality conviction
+ * is re-checked locally, and then the computation-thread NFT burns while the
+ * permanent fraud-proof token mints to the fraud-proof address.
+ *
+ * Three claim arms, mirroring the validator:
+ *
+ * - `duplicateSpendInputs` / `duplicateReferenceInputs` open one field (0 or
+ *   1) via `opened_field_view` and compare two of its §5.3 items at
+ *   `first_index < second_index`.
+ * - `spendReferenceOverlap` pays the §3 anchor once (`anchored_native_tx`),
+ *   opens both fields against it, and compares one item of each — no index
+ *   relation, since the same position in two different lists is only a fault
+ *   when the out-refs match.
+ *
+ * Every conviction predicate is twinned locally fail-closed before anything
+ * is paid for: indices in range, `first < second` where the arm requires it,
+ * and byte equality of the claimed items — §2.5 fields 0/1 share the §5.3
+ * out-ref item encoding, so item byte equality *is* out-ref equality.
+ */
+import {
+  FraudProofComputationThreadRedeemer,
+  FraudProofTokenDatum,
+  FraudProofTokenMintRedeemer,
+  InputSetUniquenessStep02Args,
+  InputSetUniquenessStep02Datum,
+  InputSetUniquenessStep02SpendRedeemer,
+  type InputSetUniquenessStep02State,
+  MIDGARD_FIELD_INDEX_V1,
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk";
+import {
+  type BuildTxWithRedeemer,
+  Data,
+  type LucidEvolution,
+  toUnit,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+
+import {
+  faultProofFieldCarriageV1,
+  type FaultProofFieldOpeningPlanV1,
+  faultProofFieldOpeningV1,
+  planFaultProofFieldOpeningV1,
+} from "../field-opening-v1.js";
+import {
+  DEFAULT_CONFIRMATION_POLL_MS,
+  type ResolvedProverSigner,
+} from "../runtime.js";
+import { selectFeeInput } from "../submit-step-01.js";
+import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
+import type { InputSetUniquenessContractsV1 } from "./contracts-v1.js";
+import type { InputSetUniquenessClaimV1 } from "./scan-v1.js";
+import {
+  inputSetUniquenessStepLabelV1,
+  inputSetUniquenessSubmitError,
+  requireInputSetUniquenessReferenceScriptV1,
+  requireInputSetUniquenessStepStateV1,
+  requireInputSetUniquenessThreadUtxoV1,
+} from "./submit-common-v1.js";
+
+const STEP_LABEL = inputSetUniquenessStepLabelV1(1);
+
+export type SubmitInputSetUniquenessStep02Result = {
+  readonly txHash: string;
+  readonly walletSource: string;
+  readonly proverAddress: string;
+  readonly fraudProver: string;
+  readonly threadOutRef: string;
+  readonly fraudProofOutRef: string;
+  readonly fraudulentHeaderHash: string;
+  readonly computationThreadUnit: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofAssetName: string;
+  readonly fraudProofUnit: string;
+  readonly fraudProofAddress: string;
+  /** The anchored transaction the conviction opened. */
+  readonly badTxId: string;
+  readonly claim: InputSetUniquenessClaimV1;
+  readonly inputIndex: number;
+  readonly outputIndex: number;
+  readonly computationThreadMintRedeemerIndex: number;
+  readonly fraudProofMintRedeemerIndex: number;
+  readonly awaitedConfirmation: boolean;
+};
+
+type Step02SpendLayout = {
+  readonly inputIndex: bigint;
+  readonly outputIndex: bigint;
+  readonly fraudProofMintRedeemerIndex: bigint;
+};
+
+const normalizedItems = (
+  items: readonly string[],
+  fieldLabel: string,
+): readonly string[] =>
+  items.map((item, index) => {
+    const lowered = item.toLowerCase();
+    if (!/^([0-9a-f]{2})+$/u.test(lowered)) {
+      throw inputSetUniquenessSubmitError(
+        `${STEP_LABEL} ${fieldLabel} item ${index.toString()} is not hexadecimal.`,
+      );
+    }
+    return lowered;
+  });
+
+const requireItemAt = (
+  items: readonly string[],
+  index: bigint,
+  fieldLabel: string,
+): string => {
+  if (index < 0n || index >= BigInt(items.length)) {
+    throw inputSetUniquenessSubmitError(
+      `${STEP_LABEL} ${fieldLabel} index ${index.toString()} is outside the field's ${items.length.toString()} committed items.`,
+    );
+  }
+  return items[Number(index)] as string;
+};
+
+/** Twin of the validator's per-arm conviction predicate, fail-closed. */
+export const assertInputSetUniquenessClaimConvictsV1 = ({
+  claim,
+  spendInputItemCbors,
+  referenceInputItemCbors,
+}: {
+  readonly claim: InputSetUniquenessClaimV1;
+  readonly spendInputItemCbors: readonly string[];
+  readonly referenceInputItemCbors: readonly string[];
+}): void => {
+  const spends = normalizedItems(spendInputItemCbors, "spend-input");
+  const references = normalizedItems(
+    referenceInputItemCbors,
+    "reference-input",
+  );
+  if (claim.kind === "spendReferenceOverlap") {
+    const spendItem = requireItemAt(spends, claim.spendIndex, "spend-input");
+    const referenceItem = requireItemAt(
+      references,
+      claim.referenceIndex,
+      "reference-input",
+    );
+    if (spendItem !== referenceItem) {
+      throw inputSetUniquenessSubmitError(
+        `${STEP_LABEL} spend input ${claim.spendIndex.toString()} and reference input ${claim.referenceIndex.toString()} name different out-refs; the sets are disjoint at the claimed positions.`,
+      );
+    }
+    return;
+  }
+  const fieldLabel =
+    claim.kind === "duplicateSpendInputs" ? "spend-input" : "reference-input";
+  const items = claim.kind === "duplicateSpendInputs" ? spends : references;
+  if (claim.firstIndex >= claim.secondIndex) {
+    throw inputSetUniquenessSubmitError(
+      `${STEP_LABEL} duplicate claim needs first_index < second_index; got ${claim.firstIndex.toString()} and ${claim.secondIndex.toString()}.`,
+    );
+  }
+  const first = requireItemAt(items, claim.firstIndex, fieldLabel);
+  const second = requireItemAt(items, claim.secondIndex, fieldLabel);
+  if (first !== second) {
+    throw inputSetUniquenessSubmitError(
+      `${STEP_LABEL} ${fieldLabel} items ${claim.firstIndex.toString()} and ${claim.secondIndex.toString()} name different out-refs; there is no duplicate at the claimed positions.`,
+    );
+  }
+};
+
+export const submitInputSetUniquenessStep02 = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  claim,
+  nativeTxCompactCbor,
+  spendInputItemCbors,
+  referenceInputItemCbors,
+  referenceScriptUtxo,
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: InputSetUniquenessContractsV1;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly claim: InputSetUniquenessClaimV1;
+  /** The disputed transaction's compact CBOR — the door re-derives the anchored id from these bytes. */
+  readonly nativeTxCompactCbor: string;
+  /** §2.5 field 0's canonical §5.3 items, hex, in committed order. */
+  readonly spendInputItemCbors: readonly string[];
+  /** §2.5 field 1's canonical §5.3 items, hex, in committed order. */
+  readonly referenceInputItemCbors: readonly string[];
+  /** The published step-02 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
+  readonly awaitConfirmation?: boolean;
+}): Promise<SubmitInputSetUniquenessStep02Result> => {
+  const { threadUtxo, threadToken } =
+    await requireInputSetUniquenessThreadUtxoV1({
+      lucid,
+      contracts,
+      categoryId,
+      stepIndex: 1,
+      threadOutRef,
+    });
+  const state: InputSetUniquenessStep02State =
+    requireInputSetUniquenessStepStateV1({
+      threadUtxo,
+      signer,
+      schema: InputSetUniquenessStep02Datum,
+      stepIndex: 1,
+    });
+  const badTxId = state.bad_tx_id;
+
+  // Local twin of the validator's conviction predicate, before any planning.
+  assertInputSetUniquenessClaimConvictsV1({
+    claim,
+    spendInputItemCbors,
+    referenceInputItemCbors,
+  });
+
+  // The door's own pairing checks, run off-chain: the compact bytes must
+  // re-derive to the thread's anchored id, and each supplied item list must
+  // commit to the §2.5 slot it claims. The family's openings are §5.3
+  // fixed-stride out-ref lists — tiny — so the plans always land on tier-1
+  // inline carriage and nothing needs publishing.
+  const planField = (fieldIndex: number, items: readonly string[]) =>
+    planFaultProofFieldOpeningV1({
+      fieldIndex,
+      anchorTxId: badTxId,
+      nativeTxCompactCbor,
+      itemCbors: items.map((item) => Buffer.from(item, "hex")),
+      owner: signer.paymentKeyHash,
+      label: STEP_LABEL,
+    });
+  let plannedSpend: FaultProofFieldOpeningPlanV1 | undefined;
+  let plannedReference: FaultProofFieldOpeningPlanV1 | undefined;
+  if (claim.kind !== "duplicateReferenceInputs") {
+    plannedSpend = planField(
+      MIDGARD_FIELD_INDEX_V1.spendInputs,
+      spendInputItemCbors,
+    );
+  }
+  if (claim.kind !== "duplicateSpendInputs") {
+    plannedReference = planField(
+      MIDGARD_FIELD_INDEX_V1.referenceInputs,
+      referenceInputItemCbors,
+    );
+  }
+
+  const claimArgs = (
+    layout: Step02SpendLayout,
+  ): InputSetUniquenessStep02Args => {
+    const common = {
+      input_index: layout.inputIndex,
+      output_index: layout.outputIndex,
+      fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
+    };
+    if (claim.kind === "duplicateSpendInputs") {
+      if (plannedSpend === undefined) {
+        throw inputSetUniquenessSubmitError(
+          `${STEP_LABEL} did not plan the spend-inputs opening.`,
+        );
+      }
+      return {
+        DuplicateSpendInputs: {
+          ...common,
+          first_index: claim.firstIndex,
+          second_index: claim.secondIndex,
+          spend_inputs_opening: faultProofFieldOpeningV1({
+            planned: plannedSpend,
+            label: STEP_LABEL,
+          }),
+        },
+      };
+    }
+    if (claim.kind === "duplicateReferenceInputs") {
+      if (plannedReference === undefined) {
+        throw inputSetUniquenessSubmitError(
+          `${STEP_LABEL} did not plan the reference-inputs opening.`,
+        );
+      }
+      return {
+        DuplicateReferenceInputs: {
+          ...common,
+          first_index: claim.firstIndex,
+          second_index: claim.secondIndex,
+          reference_inputs_opening: faultProofFieldOpeningV1({
+            planned: plannedReference,
+            label: STEP_LABEL,
+          }),
+        },
+      };
+    }
+    if (plannedSpend === undefined || plannedReference === undefined) {
+      throw inputSetUniquenessSubmitError(
+        `${STEP_LABEL} did not plan both field openings for the overlap claim.`,
+      );
+    }
+    return {
+      SpendReferenceOverlap: {
+        ...common,
+        spend_index: claim.spendIndex,
+        reference_index: claim.referenceIndex,
+        native_tx_compact_cbor: plannedSpend.nativeTxCompactCbor,
+        spend_inputs_carriage: faultProofFieldCarriageV1({
+          planned: plannedSpend,
+          label: STEP_LABEL,
+        }),
+        reference_inputs_carriage: faultProofFieldCarriageV1({
+          planned: plannedReference,
+          label: STEP_LABEL,
+        }),
+      },
+    };
+  };
+
+  signer.selectWallet(lucid);
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const fraudProofUnit = toUnit(
+    contracts.fraudProof.policyId,
+    threadToken.assetName,
+  );
+  const fraudProofDatum = Data.to(
+    { fraud_prover: signer.paymentKeyHash },
+    FraudProofTokenDatum,
+  );
+  const fraudProofOutputMatches = outputWithDatumAndUnitPredicate({
+    address: contracts.fraudProof.spendingScriptAddress,
+    datum: fraudProofDatum,
+    unit: fraudProofUnit,
+  });
+  let spendLayout: Step02SpendLayout | undefined;
+  let computationThreadMintRedeemerIndex: bigint | undefined;
+
+  const spendRedeemer = ((ctx) => {
+    requireOwnSpendPurpose(ctx, threadUtxo, STEP_LABEL);
+    const layout: Step02SpendLayout = {
+      inputIndex: requireInputIndex(ctx, threadUtxo, STEP_LABEL),
+      outputIndex: requireUniqueOutputIndex(
+        ctx.outputs,
+        fraudProofOutputMatches,
+        `${STEP_LABEL} fraud-proof`,
+      ),
+      fraudProofMintRedeemerIndex: requireMintRedeemerIndex(
+        ctx,
+        contracts.fraudProof.policyId,
+        `${STEP_LABEL} fraud-proof`,
+      ),
+    };
+    spendLayout = layout;
+    return Data.to(
+      { Continue: [claimArgs(layout)] },
+      InputSetUniquenessStep02SpendRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+  const threadBurnRedeemer = ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      contracts.computationThread.policyId,
+      `${STEP_LABEL} computation-thread burn`,
+    );
+    return Data.to(
+      { Success: { burning_token_asset_name: threadToken.assetName } },
+      FraudProofComputationThreadRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+  const fraudProofMintRedeemer = ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      contracts.fraudProof.policyId,
+      `${STEP_LABEL} fraud-proof mint`,
+    );
+    computationThreadMintRedeemerIndex = requireMintRedeemerIndex(
+      ctx,
+      contracts.computationThread.policyId,
+      `${STEP_LABEL} computation-thread burn`,
+    );
+    return Data.to(
+      {
+        computation_thread_token_asset_name: threadToken.assetName,
+        computation_thread_mint_redeemer_index:
+          computationThreadMintRedeemerIndex,
+      },
+      FraudProofTokenMintRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+  const base = lucid
+    .newTx()
+    .collectFrom([feeInput])
+    .collectFrom([threadUtxo], spendRedeemer)
+    .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
+    .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
+    .pay.ToContract(
+      contracts.fraudProof.spendingScriptAddress,
+      { kind: "inline", value: fraudProofDatum },
+      {
+        lovelace: threadUtxo.assets.lovelace ?? 0n,
+        [fraudProofUnit]: 1n,
+      },
+    )
+    .addSignerKey(signer.paymentKeyHash)
+    .attach.MintingPolicy(contracts.computationThread.mintingScript)
+    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+  const tx =
+    referenceScriptUtxo === undefined
+      ? base.attach.SpendingValidator(contracts.steps[1].spendingScript)
+      : base.readFrom([
+          requireInputSetUniquenessReferenceScriptV1({
+            utxo: referenceScriptUtxo,
+            expectedScriptHash: contracts.steps[1].spendingScriptHash,
+            stepIndex: 1,
+          }),
+        ]);
+
+  const unsigned = await tx.complete({ localUPLCEval: true });
+  if (
+    spendLayout === undefined ||
+    computationThreadMintRedeemerIndex === undefined
+  ) {
+    throw inputSetUniquenessSubmitError(
+      "BuildTxWithRedeemer did not resolve the step-02 layout.",
+    );
+  }
+  const signed = await unsigned.sign.withWallet().complete();
+  const txHash = await signed.submit();
+  if (awaitConfirmation) {
+    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+  }
+
+  return {
+    txHash,
+    walletSource: signer.source,
+    proverAddress: signer.address,
+    fraudProver: signer.paymentKeyHash,
+    threadOutRef,
+    fraudProofOutRef: `${txHash}#${spendLayout.outputIndex.toString()}`,
+    fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
+    computationThreadUnit: threadToken.unit,
+    fraudProofPolicyId: contracts.fraudProof.policyId,
+    fraudProofAssetName: threadToken.assetName,
+    fraudProofUnit,
+    fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
+    badTxId,
+    claim,
+    inputIndex: Number(spendLayout.inputIndex),
+    outputIndex: Number(spendLayout.outputIndex),
+    computationThreadMintRedeemerIndex: Number(
+      computationThreadMintRedeemerIndex,
+    ),
+    fraudProofMintRedeemerIndex: Number(
+      spendLayout.fraudProofMintRedeemerIndex,
+    ),
+    awaitedConfirmation: awaitConfirmation,
+  };
+};
