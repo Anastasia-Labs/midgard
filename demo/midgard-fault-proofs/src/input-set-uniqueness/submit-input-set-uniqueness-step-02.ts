@@ -21,6 +21,8 @@
  * out-ref item encoding, so item byte equality *is* out-ref equality.
  */
 import {
+  type FieldCarriageV1,
+  fieldOpeningV1ForField,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
@@ -33,6 +35,7 @@ import {
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
+  requireReferenceInputIndex,
   requireUniqueOutputIndex,
 } from "@al-ft/midgard-sdk";
 import {
@@ -48,6 +51,7 @@ import {
   type FaultProofFieldOpeningPlanV1,
   faultProofFieldOpeningV1,
   planFaultProofFieldOpeningV1,
+  publishFaultProofFieldCarriageV1,
 } from "../field-opening-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -94,6 +98,18 @@ type Step02SpendLayout = {
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
   readonly fraudProofMintRedeemerIndex: bigint;
+};
+
+const uniqueUtxos = (utxos: readonly UTxO[]): readonly UTxO[] => {
+  const seen = new Set<string>();
+  return utxos.filter((utxo) => {
+    const key = `${utxo.txHash}#${utxo.outputIndex.toString()}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 };
 
 const normalizedItems = (
@@ -181,6 +197,7 @@ export const submitInputSetUniquenessStep02 = async ({
   referenceInputItemCbors,
   referenceScriptUtxo,
   awaitConfirmation = true,
+  unsafeSpendFieldRawUtxoForTest,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: InputSetUniquenessContractsV1;
@@ -197,6 +214,14 @@ export const submitInputSetUniquenessStep02 = async ({
   /** The published step-02 reference script; inline-attached when absent. */
   readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
+  /**
+   * Test-only adversarial injection for the tier-2 refusal suite: the
+   * `DuplicateSpendInputs` redeemer names this UTxO as the field's `RawUtxo`
+   * publication (it is added to the transaction's reference inputs) instead
+   * of the honestly published one, so the door's `field_commitment` re-hash
+   * is what refuses the transaction on-chain. Never set outside tests.
+   */
+  readonly unsafeSpendFieldRawUtxoForTest?: UTxO;
 }): Promise<SubmitInputSetUniquenessStep02Result> => {
   const { threadUtxo, threadToken } =
     await requireInputSetUniquenessThreadUtxoV1({
@@ -225,8 +250,11 @@ export const submitInputSetUniquenessStep02 = async ({
   // The door's own pairing checks, run off-chain: the compact bytes must
   // re-derive to the thread's anchored id, and each supplied item list must
   // commit to the §2.5 slot it claims. The family's openings are §5.3
-  // fixed-stride out-ref lists — tiny — so the plans always land on tier-1
-  // inline carriage and nothing needs publishing.
+  // fixed-stride out-ref lists, so a typical committed input set lands on
+  // tier-1 inline carriage; §8.4 partitions on the preimage's size alone, and
+  // a genuinely large input set (over the 14,336-byte tier-1 bound — roughly
+  // 358 forty-byte out-ref items) plans a tier-2 `RawUtxo` publication, which
+  // is published below and consumed as a reference input.
   const planField = (fieldIndex: number, items: readonly string[]) =>
     planFaultProofFieldOpeningV1({
       fieldIndex,
@@ -251,8 +279,49 @@ export const submitInputSetUniquenessStep02 = async ({
     );
   }
 
+  // §8.4: whatever the plans require published (a tier-2 `RawUtxo`
+  // publication, tier-3 chunks) must exist before the step transaction
+  // references it; tier-1 plans publish nothing and this loop is a no-op.
+  // Publications share the prover wallet, so they run serially.
+  const published: UTxO[] = [];
+  for (const [fieldLabel, planned] of [
+    ["spend-inputs", plannedSpend],
+    ["reference-inputs", plannedReference],
+  ] as const) {
+    if (planned !== undefined) {
+      published.push(
+        ...(await publishFaultProofFieldCarriageV1({
+          lucid,
+          signer,
+          planned,
+          publisherAddress: signer.address,
+          label: `${STEP_LABEL} ${fieldLabel} field`,
+        })),
+      );
+    }
+  }
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireInputSetUniquenessReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: contracts.steps[1].spendingScriptHash,
+          stepIndex: 1,
+        });
+  // §8.7: positional carriage indices count into the ledger's canonically
+  // sorted reference-input list, so the carriage resolvers must see the
+  // transaction's complete reference-input set.
+  const referenceInputs = uniqueUtxos([
+    ...published,
+    ...(unsafeSpendFieldRawUtxoForTest === undefined
+      ? []
+      : [unsafeSpendFieldRawUtxoForTest]),
+    ...(stepReference === undefined ? [] : [stepReference]),
+  ]);
+
   const claimArgs = (
     layout: Step02SpendLayout,
+    ctx: Parameters<BuildTxWithRedeemer>[0],
   ): InputSetUniquenessStep02Args => {
     const common = {
       input_index: layout.inputIndex,
@@ -270,10 +339,26 @@ export const submitInputSetUniquenessStep02 = async ({
           ...common,
           first_index: claim.firstIndex,
           second_index: claim.secondIndex,
-          spend_inputs_opening: faultProofFieldOpeningV1({
-            planned: plannedSpend,
-            label: STEP_LABEL,
-          }),
+          spend_inputs_opening:
+            unsafeSpendFieldRawUtxoForTest === undefined
+              ? faultProofFieldOpeningV1({
+                  planned: plannedSpend,
+                  referenceInputs,
+                  label: STEP_LABEL,
+                })
+              : fieldOpeningV1ForField({
+                  fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+                  nativeTxCompactCbor: plannedSpend.nativeTxCompactCbor,
+                  carriage: {
+                    RawUtxo: {
+                      ref_input_index: requireReferenceInputIndex(
+                        ctx,
+                        unsafeSpendFieldRawUtxoForTest,
+                        `${STEP_LABEL} substituted publication`,
+                      ),
+                    },
+                  } satisfies FieldCarriageV1,
+                }),
         },
       };
     }
@@ -290,6 +375,7 @@ export const submitInputSetUniquenessStep02 = async ({
           second_index: claim.secondIndex,
           reference_inputs_opening: faultProofFieldOpeningV1({
             planned: plannedReference,
+            referenceInputs,
             label: STEP_LABEL,
           }),
         },
@@ -308,10 +394,12 @@ export const submitInputSetUniquenessStep02 = async ({
         native_tx_compact_cbor: plannedSpend.nativeTxCompactCbor,
         spend_inputs_carriage: faultProofFieldCarriageV1({
           planned: plannedSpend,
+          referenceInputs,
           label: STEP_LABEL,
         }),
         reference_inputs_carriage: faultProofFieldCarriageV1({
           planned: plannedReference,
+          referenceInputs,
           label: STEP_LABEL,
         }),
       },
@@ -319,7 +407,15 @@ export const submitInputSetUniquenessStep02 = async ({
   };
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  // A tier-2/3 publication sits at the prover's own address under a large
+  // inline datum (and the min-ADA that goes with it), so it can top the fee
+  // selector's descending-lovelace sort — it must not be spent by the very
+  // transaction that references it.
+  const feeInput = selectFeeInput(
+    (await lucid.wallet().getUtxos()).filter(
+      (utxo) => utxo.datum == null && utxo.datumHash == null,
+    ),
+  );
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -353,7 +449,7 @@ export const submitInputSetUniquenessStep02 = async ({
     };
     spendLayout = layout;
     return Data.to(
-      { Continue: [claimArgs(layout)] },
+      { Continue: [claimArgs(layout, ctx)] },
       InputSetUniquenessStep02SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
@@ -408,16 +504,14 @@ export const submitInputSetUniquenessStep02 = async ({
     .addSignerKey(signer.paymentKeyHash)
     .attach.MintingPolicy(contracts.computationThread.mintingScript)
     .attach.MintingPolicy(contracts.fraudProof.mintingScript);
-  const tx =
-    referenceScriptUtxo === undefined
+  const withStepScript =
+    stepReference === undefined
       ? base.attach.SpendingValidator(contracts.steps[1].spendingScript)
-      : base.readFrom([
-          requireInputSetUniquenessReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[1].spendingScriptHash,
-            stepIndex: 1,
-          }),
-        ]);
+      : base;
+  const tx =
+    referenceInputs.length === 0
+      ? withStepScript
+      : withStepScript.readFrom([...referenceInputs]);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (
