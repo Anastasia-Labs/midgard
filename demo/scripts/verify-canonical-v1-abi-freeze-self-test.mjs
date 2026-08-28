@@ -233,7 +233,7 @@ mustReject(
 
 mustReject(
   "validator directory dropped from the catalogue binding",
-  /- catalogueBinding\.validatorDirectories must equal the 26 directories the index carries/u,
+  /- catalogueBinding\.validatorDirectories must equal the 29 directories the index carries/u,
   (candidate) => {
     candidate.catalogueBinding.validatorDirectories =
       candidate.catalogueBinding.validatorDirectories.filter(
@@ -248,9 +248,9 @@ mustReject(
 
 mustReject(
   "understated blueprint validator count",
-  /- blueprintIdentity\.validatorCount is 479 but the built blueprint measures 480/u,
+  /- blueprintIdentity\.validatorCount is 501 but the built blueprint measures 502/u,
   (candidate) => {
-    candidate.blueprintIdentity.validatorCount = 479;
+    candidate.blueprintIdentity.validatorCount = 501;
   },
 );
 
@@ -312,7 +312,7 @@ mustReject(
 
 mustReject(
   "family inventory truncated",
-  /- ig2ProofFamilies\.families must enumerate exactly the 26 directories that carry verifier logic/u,
+  /- ig2ProofFamilies\.families must enumerate exactly the 29 directories that carry verifier logic/u,
   (candidate) => {
     candidate.ig2ProofFamilies.families.pop();
   },

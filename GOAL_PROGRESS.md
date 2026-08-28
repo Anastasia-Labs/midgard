@@ -6311,3 +6311,98 @@ files landed at HEAD without a map re-record), CG1 (blueprint hash and
 roster-source staleness), fault-proof-reconciliation (coverage row 153
 opens with the legend-undefined 🟢 glyph). All remain owner-pending, as
 before.
+
+## 2026-08-28 — Tier-2 wave lands: value-not-preserved, input-set-uniqueness, mint-authorization
+
+The three 2026-08-27 tier-2 worktree agents (value-not-preserved,
+input-set-uniqueness, mint-authorization; reserved category ids
+`00000019`/`0000001a`/`0000001b`) are landed on the checkpoint branch.
+Each worktree's authoritative state was its working tree (inherited
+parent overlay ≈ `41c2b679` plus the family work), not its stale
+pre-fork commit, so landing extracted each tree's delta against
+`41c2b679` and applied the three patches onto `079a97c2` — all clean;
+the only cross-family overlaps were one-line barrel exports, and the
+one HEAD-drift collision (`catalogue-status.md`, which the
+input-set-uniqueness agent had left with unresolved conflict markers)
+was excluded and re-written by hand.
+
+What landed per family:
+
+- **value-not-preserved** (4-step chain): onchain steps + lib modules
+  (thread fixtures included), full offchain module set
+  (init/step-01..04/cancel submitters, prover, evidence, finding,
+  schemas), plan doc. The plan records the owner-mandated resolution of
+  decision gate **D-C1** as the single-asset claim (thread names one
+  asset + direction; chain folds only that asset's totals; prover
+  searches offchain) — recorded in-plan, owner review owed. Also
+  promotes `decode_mint_policy_item_cbor`, `ledger_trie` and
+  `verify_ledger_membership` to `pub` so the family folds mint items
+  and fetches spent-input descriptors through the canonical decoders
+  rather than growing second readings. NO emulator suites yet
+  (Aiken-level selectors/fixtures only) — owed under the 2026-08-25
+  both-polarity directive.
+- **input-set-uniqueness** (2-step chain): onchain steps, SDK schema
+  module, offchain scan + init/step-01/step-02 submitters, emulator
+  support extensions (extra-categories catalogue trie, removal
+  deployment entry), and BOTH-POLARITY emulator suites. The agent's
+  worktree failed `tsc` and its lifecycle removal leg failed at
+  runtime (`categories.[object Object]`): the explicit-category removal
+  record type was declared but the consuming branch was never written.
+  Landed here with the missing branch implemented
+  (`buildExplicitRemovalContracts` in `remove-fraudulent-block.ts`):
+  the caller's already-resolved facts stand in for canonical
+  resolution while every fail-closed cross-check still runs
+  (fraud-proof pair vs `fraudProofMint`/`fraudProofSpend` entries,
+  step-01 hash vs the named entry, category id vs every canonical
+  registered id). Both suites now green in the main tree (5/5,
+  lifecycle removal leg included).
+- **mint-authorization** (5-step chain): onchain steps + engine (with
+  `engine.test.ak`), offchain init/step-01..05 submitters, prover,
+  evidence modules, SDK schema module, plan doc. The plan adopts a
+  reading of formally-OPEN decision gate **D-S3** (mint/burn stay in
+  the consensus language; the native-policy leg is single-party
+  adjudicable) — owner review owed. Agent self-marked the offchain
+  lane WIP; NO emulator suites yet — owed as above.
+
+None of the three is registered: `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`
+stays at 25 and the manifest identity is untouched; registration is a
+separate wave (append rows 26–28, fresh genesis/redeployment
+consequences). Matrices updated: catalogue-status §1 grows rows 26–28
+(twenty-nine directories) and its §6 machine-covered rows for the three
+identifiers now point at the built families; coverage-matrix's
+owed-family table annotates the three as built pre-registration.
+
+The wave's tier-2 `RawUtxo` witness mandate is PARTIALLY delivered:
+the §8.8 field-carriage plumbing rides the landed submitters where the
+families open fields (isu step-02, vnp step-03/schemas/evidence), but
+the mandated forced-tier-2 override tests and tampered-predeployed-
+preimage refusal coverage are not in any landed suite — they remain
+owed with the vnp/ma emulator suites.
+
+Fallout fixed while landing: `family-scaffold-v1.test.ts` Q02 gains an
+exact-exception branch for `input-set-uniqueness/step-02.ak` (a closed
+three-constructor sum — one arm per uniqueness violation — mirroring
+the existing `missing-signature/step-04` exception; every arm keeps
+the standard positional/mint prefix), and one import-order lint fix.
+
+The ABI-freeze artifact is re-captured through its own
+`--print-bootstrap` regeneration path (the gate measures the index and
+the built blueprint): the three directories are declared uncategorised
+pre-registration in the gate's owned sets with `FAMILY_OFFCHAIN_MODULES`
+entries, the blueprint identity moves 480 → 502 validator titles
+(digest re-recorded; `measuredEnv` corrected to `default`, which is what
+CI's plain `aiken build` produces), `ig2ProofFamilies` grows the three
+non-integrated entries (29 directories; violations stay 25 — the count
+is over integrated families), and CG4's `abiFreezeBinding` re-pins the
+new artifact+verifier shas. abi-freeze, its self-test (23 mutations),
+CG4 and its self-test (18 mutations) all green at the landed index.
+
+Verification at the landed tree: `aiken check` exit 0 with the three
+families compiled (blueprint rebuilt locally; plutus.json stays
+gitignored/stale-at-HEAD as before); fault-proofs vitest 105 files —
+588 passing incl. both isu suites and 48/48 family-scaffold, 1 skipped
+(pre-existing); midgard-sdk 375/375 + typecheck + lint green;
+fault-proofs typecheck + lint green. Pre-existing reds unchanged
+(manifest-quality, format-registry, watcher-dependency-map, CG1,
+fault-proof-reconciliation's row-153 🟢 glyph — that gate still fails
+on the same pre-existing row, not on the new family rows).

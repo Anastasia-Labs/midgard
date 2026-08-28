@@ -351,8 +351,8 @@ registered single-party family.
 
 | Identifier                                                                                                                          | Matrix row(s)                                    |
 | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `value-not-preserved`, `mint-authorization`, `min-ada`                                                                              | §4 (Q24/Q25 are executable structural N/A)       |
-| `input-set-uniqueness`                                                                                                              | §2 (intra-tx duplicate input), §3 (disjointness) |
+| `value-not-preserved` (built pre-registration, catalogue-status §1 row 26), `mint-authorization` (built pre-registration, row 28), `min-ada` | §4 (Q24/Q25 are executable structural N/A)       |
+| `input-set-uniqueness` (built and emulator-proven pre-registration, catalogue-status §1 row 27)                                    | §2 (intra-tx duplicate input), §3 (disjointness) |
 | `req-signer-set` (beyond registered `missingSignature`), `missing-native-script-utxo`, `native-script-invalid`                      | §5                                               |
 | `network-id`, `hash-field-consistency`, `size-limits`                                                                              | §1, §11b                                         |
 | `valid-forced-transition` (extends `transition-trace`)                                                                              | §7 forced-tx row                                 |

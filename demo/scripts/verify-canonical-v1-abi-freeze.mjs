@@ -387,7 +387,17 @@ const CATEGORY_BY_VALIDATOR_DIRECTORY = new Map([
  * fault-proof validator directories are registered in the production
  * catalogue by the canonical V1 registration wave.
  */
-const UNCATEGORISED_VALIDATOR_DIRECTORIES = ["mpf-chunked-proof"];
+// `mpf-chunked-proof` is shared verifier infrastructure. The other three are
+// PRE-REGISTRATION families (2026-08-28 tier-2 wave): built and compiled with
+// category ids 00000019/0000001a/0000001b reserved, deliberately absent from
+// `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` until the registration wave, so the
+// catalogue cannot cover them yet.
+const UNCATEGORISED_VALIDATOR_DIRECTORIES = [
+  "input-set-uniqueness",
+  "mint-authorization",
+  "mpf-chunked-proof",
+  "value-not-preserved",
+];
 
 /** GOAL_SPEC §11 IG2, in the order the clause names them. */
 const IG2_DIMENSION_IDS = [
@@ -611,10 +621,21 @@ const FAMILY_OFFCHAIN_MODULES = new Map([
     ["demo/midgard-fault-proofs/src/prepare-fabricated-withdrawal.ts"],
   ],
   ["input-no-idx", ["demo/midgard-fault-proofs/src/prepare-input-no-idx.ts"]],
+  // The three 2026-08-28 pre-registration families keep the whole offchain
+  // lane under a family directory (no `prepare-*` shim): the named module is
+  // the family's builder entry point, with the submit-* modules behind it.
+  [
+    "input-set-uniqueness",
+    ["demo/midgard-fault-proofs/src/input-set-uniqueness/scan-v1.ts"],
+  ],
   ["invalid-range", ["demo/midgard-fault-proofs/src/prepare-invalid-range.ts"]],
   [
     "invalid-signature",
     ["demo/midgard-fault-proofs/src/prepare-invalid-signature.ts"],
+  ],
+  [
+    "mint-authorization",
+    ["demo/midgard-fault-proofs/src/mint-authorization/prover-v1.ts"],
   ],
   [
     "cross-block-duplicate-event",
@@ -661,6 +682,10 @@ const FAMILY_OFFCHAIN_MODULES = new Map([
   [
     "validation-trace",
     ["demo/midgard-fault-proofs/src/validation-dispute/submit.ts"],
+  ],
+  [
+    "value-not-preserved",
+    ["demo/midgard-fault-proofs/src/value-not-preserved/prover-v1.ts"],
   ],
   [
     "withdrawal-mistag",
