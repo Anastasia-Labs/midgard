@@ -139,15 +139,31 @@ export type WithdrawnReferenceInputScenarioV1 = {
 export const setupWithdrawnReferenceInputScenarioV1 = async ({
   harness,
   withdrawalInfo = withdrawnReferenceInputInfoV1(),
+  decoyReferenceInputCount = 0,
 }: {
   readonly harness: WithdrawnReferenceInputEmulatorHarnessV1;
   readonly withdrawalInfo?: SDK.WithdrawalInfo;
+  /**
+   * Pads the committed field-1 preimage (each item a constant 40 §5.1 bytes)
+   * so a caller can size the field past §8.4's tier-1 bound; decoys are never
+   * in the withdrawals set, so the accused reference input stays the fault.
+   */
+  readonly decoyReferenceInputCount?: number;
 }): Promise<WithdrawnReferenceInputScenarioV1> => {
-  const referenceInputCbor = SDK.encodeMidgardTxInputCanonicalV1(
+  const referenceInputCbors = [
     WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF_V1,
-  );
+    ...Array.from(
+      { length: decoyReferenceInputCount },
+      (_unused, index): SDK.MidgardTxInput => ({
+        tx_id: (index + 1).toString(16).padStart(64, "0"),
+        output_index: 0n,
+      }),
+    ),
+  ]
+    .map(SDK.encodeMidgardTxInputCanonicalV1)
+    .sort(Buffer.compare);
   const nativeTx = decodingSubjectTransactionV1({
-    referenceInputCbors: [referenceInputCbor],
+    referenceInputCbors,
     fee: 1_000n,
   });
   const txId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");

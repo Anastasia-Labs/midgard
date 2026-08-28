@@ -100,13 +100,32 @@ const withdrawalInfo = ({
 
 export const buildWithdrawnInputBlockFixtureV1 = async (
   mode: WithdrawnInputFixtureModeV1,
+  { decoySpendInputCount = 0 }: { readonly decoySpendInputCount?: number } = {},
 ): Promise<WithdrawnInputBlockFixtureV1> => {
   const withdrawnInput: MidgardTxInput = {
     tx_id: "71".repeat(32),
     output_index: 3n,
   };
+  // Decoys pad the committed field-0 preimage (each item a constant 40 §5.1
+  // bytes) so a caller can size the field past §8.4's tier-1 bound; they are
+  // never in the withdrawals set, so the withdrawn input stays the fault.
+  const spendInputs = [
+    withdrawnInput,
+    ...Array.from({ length: decoySpendInputCount }, (_unused, index) => ({
+      tx_id: (index + 1).toString(16).padStart(64, "0"),
+      output_index: 0n,
+    })),
+  ].sort((left, right) => Buffer.compare(inputCbor(left), inputCbor(right)));
+  const badInputIndex = spendInputs.findIndex(
+    (input) =>
+      input.tx_id === withdrawnInput.tx_id &&
+      input.output_index === withdrawnInput.output_index,
+  );
+  if (badInputIndex < 0) {
+    throw new Error("withdrawn input missing from the canonical spend list");
+  }
   const transaction = makeNativeTx({
-    spendInputCbors: [inputCbor(withdrawnInput)],
+    spendInputCbors: spendInputs.map(inputCbor),
     fee: 7n,
   });
   const txId = computeMidgardNativeTxIdV1(transaction).toString("hex");
@@ -210,8 +229,8 @@ export const buildWithdrawnInputBlockFixtureV1 = async (
     l2TransactionCount: 1n,
     withdrawalCount: 1n,
     txInclusion,
-    spendInputs: [withdrawnInput],
-    badInputIndex: 0,
+    spendInputs,
+    badInputIndex,
     withdrawnInput,
     committedWithdrawal,
     claimedWithdrawal,
@@ -223,6 +242,7 @@ export const buildWithdrawnInputBlockFixtureV1 = async (
 
 export const makeWithdrawnInputEmulatorScenarioV1 = async (
   mode: WithdrawnInputFixtureModeV1,
+  fixtureOptions: { readonly decoySpendInputCount?: number } = {},
 ) => {
   const harness = await makeFaultProofEmulatorHarnessV1({
     contractOptions: {
@@ -235,7 +255,7 @@ export const makeWithdrawnInputEmulatorScenarioV1 = async (
   if (contracts === undefined || category === undefined) {
     throw new Error("withdrawn-input emulator contracts/category missing");
   }
-  const fixture = await buildWithdrawnInputBlockFixtureV1(mode);
+  const fixture = await buildWithdrawnInputBlockFixtureV1(mode, fixtureOptions);
   const references: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {
     references.push(

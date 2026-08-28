@@ -47,11 +47,13 @@ import {
 import {
   faultProofFieldOpeningV1,
   planFaultProofFieldOpeningV1,
+  publishFaultProofFieldCarriageV1,
 } from "../field-opening-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { WithdrawnReferenceInputContractsV1 } from "./contracts-v1.js";
@@ -79,6 +81,8 @@ export type SubmitWithdrawnReferenceInputStep02Result = {
   /** The door's authenticated item count for field 1. */
   readonly referenceInputsItemCount: number;
   readonly badReferenceInputIndex: number;
+  /** The §8.4 tier the ladder picked for field 1 — decided by size alone. */
+  readonly carriageTier: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly referenceScriptOutRef: string;
@@ -148,15 +152,40 @@ export const submitWithdrawnReferenceInputStep02 = async ({
     label: "Withdrawn-reference-input step 02 reference-inputs",
   });
   const verifiedTxReferenceInputsHash = planned.commitment;
+  const stepReference = requireWithdrawnReferenceInputReferenceScriptV1({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: steps[1].spendingScriptHash,
+    stepIndex: 1,
+  });
+  signer.selectWallet(lucid);
+  // §8's ladder decides whether anything has to exist on-chain first. Tier 1
+  // publishes nothing; tier 2 publishes raw carriage located by content
+  // (§8.7), and a publication that already exists at this address is reused
+  // rather than republished.
+  const carriageUtxos = await publishFaultProofFieldCarriageV1({
+    lucid,
+    signer,
+    planned,
+    publisherAddress: signer.address,
+    label: "Withdrawn-reference-input step 02 reference-inputs",
+  });
+  const transactionReferenceInputs = [...carriageUtxos, stepReference];
   const referenceInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
+    referenceInputs: transactionReferenceInputs,
     label: "Withdrawn-reference-input step 02 reference-inputs",
   });
   const missingReferenceInput =
     referenceInputs[Number(badReferenceInputIndex)]!;
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  // A fresh tier-2 publication carries enough min-ADA to top the fee sort;
+  // never spend anything this transaction must read.
+  const feeInput = selectFeeInput(
+    transactionReferenceInputs.reduce<readonly UTxO[]>(
+      (candidates, utxo) => excludeUtxo(candidates, utxo),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const step03Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -212,16 +241,11 @@ export const submitWithdrawnReferenceInputStep02 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const stepReference = requireWithdrawnReferenceInputReferenceScriptV1({
-    utxo: referenceScriptUtxo,
-    expectedScriptHash: steps[1].spendingScriptHash,
-    stepIndex: 1,
-  });
   const unsigned = await lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom([stepReference])
+    .readFrom([...transactionReferenceInputs])
     .pay.ToContract(
       steps[2].spendingScriptAddress,
       { kind: "inline", value: step03Datum },
@@ -255,6 +279,7 @@ export const submitWithdrawnReferenceInputStep02 = async ({
     verifiedTxReferenceInputsHash,
     referenceInputsItemCount: planned.itemCount,
     badReferenceInputIndex: Number(badReferenceInputIndex),
+    carriageTier: planned.plan.tier,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     referenceScriptOutRef: `${stepReference.txHash}#${stepReference.outputIndex.toString()}`,
