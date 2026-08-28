@@ -19,7 +19,12 @@
 import { createHash } from "node:crypto";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { outRefLabel } from "@al-ft/midgard-core";
+import {
+  encodeMidgardFieldPreimageV1,
+  MIDGARD_CHUNK_BYTES_K_V1,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  outRefLabel,
+} from "@al-ft/midgard-core";
 import {
   computeMidgardNativeTxIdV1,
   encodeCbor,
@@ -78,6 +83,13 @@ import {
 
 /** The out-of-range output index the fraudulent spender claims. */
 const CHALLENGED_OUTPUT_INDEX = 7n;
+
+/**
+ * 365 spend inputs (constant §5.3 stride of 40 bytes each) make a 14,603-byte
+ * field-0 preimage: past §8.4's tier-1 bound, inside the single-publication
+ * tier-2 window `(14,336, 15,148]` — the size alone selects `RawUtxo`.
+ */
+const TIER2_SPEND_INPUT_COUNT = 365;
 
 // Public BIP39 vectors used only by this emulator test. They are not secrets
 // and must never fund a real wallet.
@@ -683,10 +695,25 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     // computation thread and one prover; this one references a
     // nothing-but-bytes §8.5 publication located by content, which is what makes
     // it healable by anyone (§8.7).
+    //
+    // 365 spend inputs put the §5.1 field-0 preimage at 14,603 bytes — past
+    // §8.4's 14,336-byte tier-1 redeemer bound, inside the single-publication
+    // window — so the ladder itself routes to `RawUtxo`. Nothing forces the
+    // tier; the committed data's size does.
     const harness = await makeEmulatorHarness();
     const fixture = await buildInputNoIdxBlockFixture({
       producingOutputCount: 0,
+      badSpendInputCount: TIER2_SPEND_INPUT_COUNT,
     });
+    const preimageBytes = encodeMidgardFieldPreimageV1(
+      fixture.badInputs.map((input) =>
+        inputCbor(input.tx_id, input.output_index),
+      ),
+    ).length;
+    expect(preimageBytes).toBeGreaterThan(
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+    );
+    expect(preimageBytes).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K_V1);
     const { deploymentInfo, secondStepUtxo } =
       await startInputNoIdxStep02Thread({ harness, fixture });
 
@@ -706,9 +733,6 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
             badInputsIndex: fixture.badInputsIndex,
           },
           nativeTxCompactCbor: fixture.badTxInclusion.nativeTxCompactCbor,
-          // The one tier choice §8 leaves open: spend a prior transaction's
-          // bytes rather than this one's.
-          publishCarriage: true,
           awaitConfirmation: true,
         }),
     );

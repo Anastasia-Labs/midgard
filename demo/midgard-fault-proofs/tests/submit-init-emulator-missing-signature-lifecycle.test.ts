@@ -1,5 +1,9 @@
 /** Both positive planes for the pre-registration missing-signature family. */
-import { outRefLabel } from "@al-ft/midgard-core";
+import {
+  MIDGARD_CHUNK_BYTES_K_V1,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  outRefLabel,
+} from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -162,7 +166,7 @@ describe("missing-signature positive emulator lifecycle", () => {
     ).rejects.toThrow(/State queue does not contain block/u);
   }, 600_000);
 
-  it("drives every submitter directly and exercises published field carriage", async () => {
+  it("drives every submitter directly at tier-1 inline carriage", async () => {
     const harness = await makeMissingSignatureEmulatorHarnessV1();
     const scenario = await setupMissingSignatureScenarioV1({ harness });
     if (scenario.block.txInclusion === null) {
@@ -209,7 +213,6 @@ describe("missing-signature positive emulator lifecycle", () => {
       requiredSignerHashes: scenario.subject.requiredSignerHashes,
       nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
       badRequiredSignerHashIndex: 0n,
-      publishCarriage: true,
       referenceScriptUtxo: step02Ref,
     });
     const three = await submitMissingSignatureStep03({
@@ -230,7 +233,6 @@ describe("missing-signature positive emulator lifecycle", () => {
       addrTxWits: scenario.subject.addrTxWits,
       nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
       witnessSetCompact: scenario.subject.witnessSetCompact,
-      publishCarriage: true,
       referenceScriptUtxo: step04Ref,
     });
     expect(four.kind).toBe("proven");
@@ -246,11 +248,24 @@ describe("missing-signature positive emulator lifecycle", () => {
   }, 600_000);
 
   it("proves a fat field-7 subject through tier-2 published carriage", async () => {
+    // 142 decoy witnesses put field 7's §5.1 preimage at 14,628 bytes — past
+    // §8.4's 14,336-byte tier-1 redeemer bound, inside the single-publication
+    // tier-2 window — so the ladder itself routes step-04's opening to
+    // `RawUtxo`. Nothing forces the tier; the committed data's size does. The
+    // required-signer field stays one hash and rides inline at tier 1, and
+    // the 142-item witness scan spans five 32-item step-04 batches.
     const harness = await makeMissingSignatureEmulatorHarnessV1();
     const scenario = await setupMissingSignatureScenarioV1({
       harness,
-      decoyWitnessCount: 32,
+      decoyWitnessCount: TIER2_DECOY_WITNESS_COUNT,
     });
+    const preimageBytes = SDK.encodeAddressWitnessPreimage(
+      scenario.subject.addrTxWits,
+    ).length;
+    expect(preimageBytes).toBeGreaterThan(
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+    );
+    expect(preimageBytes).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K_V1);
     const [step01, step02, step03, step04] =
       await publishMissingSignatureReferenceScriptsV1({
         lucid: harness.funderLucid,
@@ -262,10 +277,7 @@ describe("missing-signature positive emulator lifecycle", () => {
       referenceScriptUtxos: { step01, step02, step03, step04 },
     });
     const outcome = await Effect.runPromise(
-      proveMissingSignatureFaultV1(missingSignatureFindingV1(scenario), {
-        ...deps,
-        publishCarriage: true,
-      }),
+      proveMissingSignatureFaultV1(missingSignatureFindingV1(scenario), deps),
     );
     if (outcome.kind !== "proven") {
       throw new Error(
@@ -282,5 +294,12 @@ describe("missing-signature positive emulator lifecycle", () => {
     );
   }, 600_000);
 });
+
+/**
+ * 142 decoy address witnesses (~103 preimage bytes each) make a 14,628-byte
+ * field-7 preimage: past §8.4's tier-1 bound, inside the single-publication
+ * tier-2 window `(14,336, 15,148]` — the size alone selects `RawUtxo`.
+ */
+const TIER2_DECOY_WITNESS_COUNT = 142;
 
 const findingVkey = (): string => "11".repeat(32);
