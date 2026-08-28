@@ -174,8 +174,7 @@ const FRAUD_PROOF_LIB_ROOT = join(
 /**
  * Field names of an Aiken record declaration, in declared order.
  *
- * Same idiom the Q11 family gate already parses with
- * (`demo/scripts/verify-canonical-v1-proof-family-q11.mjs`): `aiken fmt` — which
+ * `aiken fmt` — which
  * the pre-commit hook and CI both enforce — puts every field of a `pub type`
  * record at exactly two spaces of indentation, so a two-space `name:` line is a
  * field while a `///` doc line and the continuation lines of a multi-line

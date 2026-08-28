@@ -1344,8 +1344,7 @@ const semanticDocUnits = (source) =>
 //   2. Nothing counted how much was inspected, so a shrunk
 //      `documentationAnchorScope`, a `semanticDocUnits` that stopped splitting,
 //      or a `currentBlockerWord` that stopped matching would all leave the gate
-//      exiting 0 in silence. The scan now fails closed on an empty corpus, in
-//      the shape already used by verify-canonical-v1-structural-na-q47.mjs.
+//      exiting 0 in silence. The scan now fails closed on an empty corpus.
 let inspectedDocUnits = 0;
 let inspectedBlockerUnits = 0;
 for (const path of documentationAnchorScope) {

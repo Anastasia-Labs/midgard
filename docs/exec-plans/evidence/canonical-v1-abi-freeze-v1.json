@@ -251,10 +251,10 @@
     "validatorCount": 480,
     "uniqueValidatorTitles": 480,
     "validatorTitleDigest": "b035f824982f0b602bc8170e3502036c625b1060afb778b804ee074a55383ab0",
-    "compilerVersion": "v1.1.23+2a78108",
+    "compilerVersion": "v1.1.23+5adf783",
     "plutusVersion": "v3",
     "declaredCompiler": "v1.1.23",
-    "measuredSha256": "78a2d3cc328a60a845cecabe243d92f500893847b3e5dcaf50829dff4cd5b71a",
+    "measuredSha256": "17deea781a5e1ee877c40e1c0fc95e9edc551dc601c230d7e1b0cb137542267b",
     "measuredEnv": "testnet"
   },
   "boundGates": [
@@ -622,9 +622,8 @@
           },
           "valid_block_rejection": {
             "status": "BLOCKED",
-            "evidence": "Q39 measures LOCAL_PASS on outputs 1-5 and 7 with 16/16 selectors, but outputs 6, 8 and 9 remain OPEN and no per-family valid-block rejection sweep is recorded; F20 records 49 open coverage rows and QG1 is OPEN.",
+            "evidence": "the family carries emulator soundness and honest-block-refusal tests in demo/midgard-fault-proofs, but no per-family valid-block rejection sweep is recorded; F20 records open coverage rows and QG1 is OPEN.",
             "paths": [
-              "docs/exec-plans/evidence/canonical-v1-proof-family-q39-v1.json",
               "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json"
             ]
           },
@@ -692,16 +691,15 @@
             ]
           },
           "matrix_evidence": {
-            "status": "BLOCKED",
-            "evidence": "docs/fault-proofs/coverage-matrix.md does not name fabricated-withdrawal; F20 owns the missing row or classification",
-            "paths": []
+            "status": "PASS",
+            "evidence": "docs/fault-proofs/coverage-matrix.md names fabricated-withdrawal",
+            "paths": ["docs/fault-proofs/coverage-matrix.md"]
           }
         },
         "violates": [
           "valid_block_rejection",
           "maximum_proof_fit",
-          "correction",
-          "matrix_evidence"
+          "correction"
         ]
       },
       {

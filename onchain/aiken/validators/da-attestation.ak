@@ -589,13 +589,10 @@ validator da_attestation(
 
 // midgard:test-fixtures-below
 //
-// Everything below this line is fixture and test code. The Q62 gate
-// (`demo/scripts/verify-canonical-v1-q62-da-rotation.mjs`) measures the
-// committee-hash re-derivation only *above* it, so fixtures — which legitimately
-// call `blake2b_256` to build params — cannot inflate the count that the
-// "re-derived exactly once per params read" claim rests on. Removing or
-// renaming this sentinel fails that gate closed rather than silently widening
-// the region it measures.
+// Everything below this line is fixture and test code. The committee-hash
+// re-derivation claim ("re-derived exactly once per params read") is scoped to
+// the code *above* it, so fixtures — which legitimately call `blake2b_256` to
+// build params — sit outside that count.
 
 // ---------------------------------------------------------------------------
 // Fixtures — Q62 (decision row D-DA4, non-retroactive committee rotation) and

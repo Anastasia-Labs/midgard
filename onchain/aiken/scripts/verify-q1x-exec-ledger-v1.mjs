@@ -67,11 +67,9 @@
  *
  * It does **not** carry a row per lifecycle step, and that is a scoping
  * decision rather than an omission. Per-step lifecycle re-measurement across
- * the whole correction path is GOAL_SPEC §3.3's *maturity fit* threshold, whose
- * evidence artifact is
- * `docs/exec-plans/evidence/canonical-v1-proof-family-q1x-v1.json` and whose
- * Q10/Q11 output-5 cells `GOAL_PROGRESS.md` deliberately holds OPEN for the
- * Phase-7 re-measurement against the Phase-6 blueprint. Taking those numbers
+ * the whole correction path is GOAL_SPEC §3.3's *maturity fit* threshold,
+ * deliberately held for the Phase-7 re-measurement against the Phase-6
+ * blueprint. Taking those numbers
  * here, against a pre-blueprint build, would produce figures Phase 7 must
  * discard and re-take; what a *lane* ledger can honestly assert is that no
  * shape the lane introduced is unmeasured, which is what the four families

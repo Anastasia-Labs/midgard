@@ -273,22 +273,22 @@
     ],
     "reconciliation": {
       "total": 70,
-      "locallyComplete": 8,
+      "locallyComplete": 9,
       "structuralOrNA": 13,
-      "open": 49,
+      "open": 48,
       "preprodComplete": 0
     },
     "publishedAcceptance": "OPEN"
   },
   "abiFreezeBinding": {
     "artifactPath": "docs/exec-plans/evidence/canonical-v1-abi-freeze-v1.json",
-    "artifactSha256": "11444381670578c12a99faffdd8932e0b281625e867fcc6dbbdf49ed66eaf7e9",
+    "artifactSha256": "ab0b2e69def9a5e88a6e015242b42b85cd654e7b6a198042942ef1d9f7ac78f3",
     "verifierPath": "demo/scripts/verify-canonical-v1-abi-freeze.mjs",
-    "verifierSha256": "568e2f7a387c1875330a7de46ebe26e956f6fcc458f284f5a1cfc6077ba14d5c",
+    "verifierSha256": "9260bcdd76fd749359ffddf07a76ecf6057f41232707a271007944a077a34284",
     "freezeStatus": "BLOCKED",
     "ig2Status": "BLOCKED",
-    "ig2Violations": 11,
-    "driftFindings": 1
+    "ig2Violations": 25,
+    "driftFindings": 2
   },
   "zeroDebt": {
     "missingFundSafetyRows": 6,

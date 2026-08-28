@@ -439,9 +439,31 @@
 | Q11             | Q00–Q03           | parent (#481 B13 integration) | Q11 per-family §9.1 closure surfaces: `canonical-v1-proof-family-q11-v1.json` gated by `demo/scripts/verify-canonical-v1-proof-family-q11.mjs`; outputs 5–8 delegated to the shared Q1x artifact | PASS | `3870f467` | Outputs 1–10 LOCAL_PASS. Measured at the gate under aiken v1.1.23+2a78108: 18/18 on-chain selectors across four step modules (8 positive, 4 valid-block negative, 6 further negative; the #545 published-chunk arms and both #582 witness-faithful exclusion arms are census-held), 32/32 canonical-evidence, 12/12 prepare-non-existent-input, 5/5 field-opening-v1, 53 tests over 4 suites with 22 required titles, this family's one emulator lifecycle inside the 4/4 shared ledger-rules suite; outputs 5–8 hard-delegated to the Q1x cells; output 10 closed by this integration pass's matrix edits (coverage-matrix.md L94, catalogue-status.md L20). The two output-9 gaps stay owned as Q11-F4/Q11-F5 (emulator valid-block negative, slashing assertion). LIVE_PASS remains Q57/QG3 and is not claimed. |
 | Q12             | Q00–Q03           | parent (#481 B13 integration) | Q12 per-family §9.1 closure surfaces: `canonical-v1-proof-family-q12-v1.json` gated by `demo/scripts/verify-canonical-v1-proof-family-q12.mjs`; outputs 5–8 delegated to the shared Q1x artifact | PASS | `11739a53` | Outputs 1–10 LOCAL_PASS. Measured at the gate under aiken v1.1.23+2a78108: 10/10 on-chain selectors across the two step modules (6 positive of which 3 are step-scoped proof-step positives and 3 module-local normalizer unit cases, 2 valid-block negative, 2 further negative; the gate holds a step-scoped-positive floor per module), 32/32 canonical-evidence, 30/30 SDK fault-proof, 6/6 prepare-invalid-range, 72 tests over 4 suites with 16 required titles, this family's one emulator lifecycle inside the 4/4 shared ledger-rules suite; output 3 LOCAL_PASS as a measured committed-field absence (0 of 9 opened, bound to the spec tables); outputs 5–8 hard-delegated to the Q1x cells with the spend-input cardinality axis measured out of scope for this family and gated bidirectionally; output 10 closed by this integration pass's matrix edits (coverage-matrix.md L137, catalogue-status.md L21, in the pinned Q13 form). The output-9 gaps stay owned as Q12-F4/Q12-F5 (no emulator valid-block negative; no adversarial assertion in the journey block — parent/#482). LIVE_PASS remains Q57/QG3 and is not claimed. |
 | Q14             | Q00–Q03           | parent (#481 B13 integration) | Q14 per-family §9.1 closure surfaces: `canonical-v1-proof-family-q14-v1.json` gated by `demo/scripts/verify-canonical-v1-proof-family-q14.mjs`; outputs 5–8 delegated to the shared Q1x artifact | PASS | `3d00322a` | Outputs 1–10 LOCAL_PASS. Measured at the gate under aiken v1.1.23+2a78108: 8/8 on-chain selectors across the two step modules (5 in step_01, 3 in step_02; 3 positive all step-scoped — scope derived by fixed-point reachability of main.spend — 2 valid-block negative one per step, 3 further negative, 0 module-helper), 32/32 canonical-evidence, 30/30 SDK fault-proof, 7/7 prepare-zero-input, 5/5 field-opening-v1, 78 tests over 5 suites with 22 required titles, and 2 of the shared ledger-rules suite's 4 emulator blocks this family's — 1 lifecycle and 1 genuine valid-block negative; output 3 LOCAL_PASS as a measured opening: committed field 0 (spend inputs) opened through the §8.8 door with field_item_count(spend_inputs_view) == 0 pinned and FieldOpeningV1 bound positionally by wire index; outputs 5–8 hard-delegated to the Q1x cells with the spend-input cardinality axis measured out of scope across the 4 family-owned Aiken modules and gated bidirectionally; output 10 closed by this integration pass's matrix edits (coverage-matrix.md L93, catalogue-status.md L24, in the pinned Q13 form). The remaining gaps stay owned as Q14-F5/Q14-F6 (both adversarial refusals measured raised off-chain; four absent assertions in the negative block — parent/#482). LIVE_PASS remains Q57/QG3 and is not claimed. |
-| Q39             | Q00–Q03           | parent (#482 B14 integration) | Q39 per-family §9.1 closure surfaces: `canonical-v1-proof-family-q39-v1.json` gated by `demo/scripts/verify-canonical-v1-proof-family-q39.mjs`; family landed `f4c41818`/`5dadd5d1` | LOCAL_PASS (7/10; outputs 6, 8, 9 ride #617) | `5dadd5d1` | Outputs 1–5, 7 and 10 LOCAL_PASS; outputs 6, 8, 9 OPEN owned by #617 (catalogue registration, CLI verbs, blueprint regeneration — all statuses DERIVED so the wave closes them without artifact edits). Measured at the gate under aiken v1.1.23+2a78108: 16/16 on-chain selectors across four step modules (4 positive, 4 valid-block negative, 8 further negative, all 16 step-scoped), 24/24 vitest across 3 suites (16 family + 8 SDK byte twins), 1 emulator block collected and measured `skipped` at the frozen-blueprint boundary (8 titles absent, control title present), 13 verifier self-tests. Adversarial proof-fit at max_deposit_count_v1 = 10,000 leaves: worst-case membership proof 770 bytes over 6 levels (closed form asserted against a 5-rung real-trie ladder), binding step step_01 payload 1,132 bytes, L1 byte margin 15,252 of 16,384; depth ceiling 115 levels (~2^460 grind) with cardinality measured NOT the binding axis — the binding axis is DepositInfo.l2_datum (committed ceiling 14,786 bytes, opened 15,386), which has NO normative size bound: owned as Q39-F5 (soundness-adjacent, ESCALATED to owner — an oversized committed l2_datum makes the leaf unchallengeable in either arm). Output 10 closed by this pass's matrix edits (coverage-matrix.md L150, catalogue-status.md row 13 L31, in the sibling pinned form with the #617 rider). 9 residual findings owned. LIVE_PASS remains Q57/QG3 and is not claimed. |
+| Q39             | Q00–Q03           | parent (#482 B14 integration) | Q39 per-family §9.1 closure surfaces: `canonical-v1-proof-family-q39-v1.json` gated by `demo/scripts/verify-canonical-v1-proof-family-q39.mjs`; family landed `f4c41818`/`5dadd5d1` | LOCAL_PASS (10/10) | `5dadd5d1` | All ten 9.1 outputs LOCAL_PASS. Outputs 6, 8, 9 and 10 were OPEN as built and every one of those statuses was DERIVED from a measurement of the surface it named, so each closed when the tree changed rather than when the artifact's prose did — the gate then failed because cells had closed while the artifact still recorded OPEN, which is what produced this re-recording. Output 6: `fabricatedDeposit` registered at index 11 of the 25-entry append-only order (the reserved index and the registered index are the same 11, so nothing downstream renumbered) and all 4 step titles present WITH `compiledCode` in a 480-validator blueprint. Output 8: `bin.ts` gained `submit-fabricated-deposit-step-01..04` (and the withdrawal twin's four), 29 family-scoped verbs measured against 0. Output 9: the frozen-blueprint boundary is gone, so the purpose-built skip derivation was retired and the suite now goes through the shared passage discipline — 3/3 blocks passed (off-chain handoff derivation, end-to-end conviction through the permanent fraud-proof token, honest-block refusal). Output 10: both matrix Status cells re-measured onto the sibling citation form the registration wave had replaced with uncited prose. Re-measured at the gate under aiken v1.1.23+5adf783 (was 2a78108): 16/16 on-chain selectors, 24/24 vitest over 3 suites, 13 verifier self-tests. Four positive selectors drifted uniformly cheaper by whole CEK steps (-3, -6, -6, -6; the machine step is exactly 100 mem / 16,000 cpu) — attributable to the transition-trace walker rewrite the family's step-01 reaches, not to the compiler; the negative selectors, which fail early, are unchanged. New peak 2,896,617 mem / 1,295,254,660 cpu. Findings Q39-F1 through Q39-F4 retired (matrix rows, frozen blueprint, unregistered catalogue, absent CLI verbs); 5 remain, including Q39-F5 (soundness-adjacent, still ESCALATED) and Q39-F6, whose blocker changed from "no compiledCode" to "a forced-depth selector would break the exact 16-selector census". Also corrected: both fabricated families' matrix rows claimed an emulator "lifecycle through removal" that neither suite exercises — the lifecycle ends at conviction and the thread burn; state-queue removal is a sibling's helper. LIVE_PASS remains Q57/QG3 and is not claimed. |
 
 ## Decisions
+
+- 2026-08-28, **OWNER RULING — the canonical-V1 evidence-artifact program
+  is retired and deleted (Philip DiSarro, in-session).** The per-question
+  evidence artifacts and their verifier gates are removed from the tree so
+  the work centers on the deliverable, not bookkeeping around it: the
+  proof-family artifacts and gates (Q10/Q11/Q12/Q14/Q1x/Q39), Q47, Q49,
+  Q60, Q62, Q63, status-role-control, P3-totality,
+  transaction-count-cap-priority, WG1 + watcher-local-gate,
+  evidence-measured-diff (gate, self-test, artifact and pnpm scripts),
+  P7/P8, parent-surface-touches, feature-inventory,
+  catalogue-order-reconcile, D3/D4 reward routing, tx-order
+  receipt-identity, and the W44 crash-rollback matrix — 38 files. What
+  stays is the live safety layer: header-v1-abi (the only ABI
+  comparison), abi-freeze, CG1, CG4, format-registry, goal-static-policy,
+  goal-task-manifest quality, the watcher dependency-map/focused-tests
+  gates, the two reconciliation inventories the kept gates read, the goal
+  manifest/closure/verification-plan program files, the necessity notes
+  (read by CG1 and product tests), and the aiken-ci exec-ledgers (L1
+  cost-budget guards). GOAL_SPEC §9.1 per-family closure surfaces are
+  superseded by this ruling: local verification of a family is its Aiken
+  selector suites, emulator lifecycle and CLI wiring in-repo; live
+  evidence remains Q57/QG3.
 
 - 2026-08-08, **OWNER AMENDMENT — flat field-hash reversion bound at scheme
   altitude; `docs/spec/` authority layer established (Philip DiSarro, via
@@ -6157,3 +6179,135 @@ native_script_decoding` filter matched ZERO tests (aiken treats a bare
 — earlier "green" runs under that exact filter were vacuous. Working
 filters: `-m 'native_script_decoding/'` (family) or `-m
 decoding_step_03` (module).
+
+## 2026-08-27 — Q39 closes 10/10; fabricated CLI verbs land
+
+The Q39 gate had been failing in the direction that matters: it refuses
+a cell that closed while the artifact still records OPEN. Three of its
+four OPEN cells had been closed by the tree — catalogue registration
+put `fabricatedDeposit` at index 11 of the now-25-entry append-only
+order, blueprint regeneration gave all four step titles `compiledCode`
+in a 480-validator `plutus.json`, and the emulator suite had grown from
+one deliberately-skipped boundary block to three passing legs. The
+artifact still recorded 7/10 against a frozen blueprint. Re-recorded,
+and the fourth cell (output 8) closed in the same pass by wiring the
+CLI.
+
+**Output 8 — the CLI half.** `bin.ts` carried zero verbs for either
+fabricated family; the module chains and their resumability contract
+were already complete. New `src/fabricated-cli-contracts-v1.ts` resolves
+each family's four step scripts and their deployed reference scripts
+from the blueprint plus deployment info; `bin.ts` gains four flags
+(`--deposit-inclusion`, `--withdrawal-inclusion`, `--event-out-ref`,
+`--authentic-content`) and eight dispatch blocks, covering
+`submit-fabricated-deposit-step-01..04` and the withdrawal twin.
+Reference scripts are mandatory, per the standing ruling — never inline
+attach. Verb counts measured 29 for each family, against 0. `tsc
+--noEmit` clean, `eslint --max-warnings=0` clean, full fault-proofs
+suite green (102 files / 583 tests, 1 skipped).
+
+**Output 9 — the derivation got simpler and stricter.** The gate had a
+purpose-built `deriveBoundaryOutcome` that required exactly one
+collected block whose status was exactly `skipped`, because the shared
+`deriveVitestOutcome` refuses a skipped test outright and the suite was
+claiming a boundary rather than a passage. With the boundary gone that
+special case is retired: the suite now goes through the shared
+discipline, which additionally refuses a report whose totals contradict
+its own per-test results and a nonzero exit after a green run. On top
+of it the gate pins the pending count to zero and requires all three
+declared legs by name — a suite that quietly lost the honest-block
+refusal would otherwise still measure green while no longer proving the
+proof cannot be turned against a valid block.
+
+**Output 6 — presence is not identity.** The title list used to be
+derived from an array in the emulator suite, which registration
+deleted. It now derives from `FABRICATED_DEPOSIT_FAULT_PROOF_TITLES` in
+the SDK's `fraud-proof/contracts.ts` — the declaration the contracts
+builder actually resolves against, so a drift there breaks real
+deployment rather than only a test. Blueprint presence alone is no
+longer accepted as a deployed identity: a validator entry without
+`compiledCode` has no script to hash, no address to pay to and no
+reference-script identity to deploy, so the derivation counts titles
+present WITH compiled code. The `.else` companions Aiken emits are
+carried by the blueprint and never resolved by the builder, so they are
+not part of the family's deployed identity and are no longer counted.
+
+**Output 1 — the SDK constant stopped being a literal.**
+`FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1` is now an alias for
+`FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.fabricatedDeposit` rather than the
+literal `"0000000b"`, so the gate's marker check no longer matched. It
+is checked in two halves instead, which is stronger than the literal
+was: the alias must bind to the catalogue map keyed by this family's
+category, and the catalogue's entry under that key must equal the id
+the append-only order derives. A constant that reverted to a literal,
+or aliased a sibling's key, fails the first; a map entry that drifted
+from its own order position fails the second.
+
+**Exec-unit drift, attributed.** Four selectors moved, all four
+positive, all uniformly cheaper by whole CEK machine steps (-3, -6, -6,
+-6 x 100 mem / 16,000 cpu). The negative selectors, which fail early,
+are unchanged — consistent with the transition-trace walker rewrite the
+family's `step-01` reaches, and not with a compiler change. Re-recorded
+rather than re-baselined; new peak 2,896,617 mem / 1,295,254,660 cpu on
+`accepts_authenticated_l1_deposit_evidence`.
+
+**Two doc corrections.** Both fabricated families' coverage-matrix rows
+claimed an emulator "lifecycle through removal". Neither suite
+exercises state-queue removal — the lifecycle ends at conviction, with
+the permanent fraud-proof token minted and the computation thread
+burned. Removal is a family-specific test helper that siblings such as
+withdrawal-mistag have and these two do not. Separately, the
+registration wave had replaced both Status cells' artifact citation
+with uncited prose; the sibling citation form is restored, and
+`canonical-v1-fault-proof-reconciliation-v1.json` moves coverage row
+150 from `openRows` to `locallyCompleteRows` to match.
+
+Findings Q39-F1 through Q39-F4 retired — they owned exactly the four
+surfaces that closed. Five remain, including Q39-F5 (soundness-adjacent,
+still ESCALATED: `DepositInfo.l2_datum` has no normative size bound) and
+Q39-F6, whose blocker changed rather than lifted — measuring the
+execution envelope at adversarial depth is now a census decision, not a
+blueprint dependency.
+
+**Left red, not mine to call.**
+`verify-canonical-v1-fault-proof-reconciliation.mjs` still fails on
+coverage row 153 (withdrawal validity mis-tagging), whose Status cell
+opens with a green-circle glyph the matrix's own `**Status**` legend
+does not define, so no disposition can be derived for it. Pre-existing
+at HEAD and unrelated to this pass. The fix is one character, but
+choosing which legal glyph replaces it (complete-and-verified vs
+implemented-not-fully-verified) is a disposition call on that family's
+work, and the reconciliation artifact's row 153 needs the matching
+move. Also still red at HEAD, untouched here:
+`verify-canonical-v1-q49-structural-handoff.mjs` (line 294 separator)
+and `goal:tasks:quality:verify` (23 defects).
+
+## 2026-08-28 — Evidence-artifact program retired and deleted
+
+Executed the owner ruling recorded under Decisions: 38 files removed
+(21 evidence artifacts including the testnet W44 matrix, 17 verifier
+gates including the measured-diff self-test) plus the three
+`evidence:measured-diff:*` pnpm scripts. No CI workflow ran any deleted
+gate, so the workflows are untouched; the evidence-integrity, aiken-ci
+and node-ci step lists are exactly what they were.
+
+Fallout fixed in the same pass: the abi-freeze artifact's
+fabricated-deposit `valid_block_rejection` cell re-cited onto the
+surviving reconciliation inventory (its gate fails closed on citations
+absent from the index); the CG4 `abiFreezeBinding` re-recorded from the
+index; the Q63 floor-provenance SDK test now recomputes `ceil(2n/3)`
+inline over all 257 set sizes instead of comparing a digest published in
+the deleted artifact (17/17 green); both fault-proof matrices' Status
+cells re-cited from artifact filenames onto the in-repo suites; four
+stale comments (family-scaffold, da-attestation sentinel, q1x
+exec-ledger, reconciliation) stopped naming deleted files.
+
+Pre-existing reds, unchanged byte-for-byte by the deletion (verified
+against a clean HEAD worktree, and Evidence Integrity CI was already
+red at origin `41c2b679` on the manifest-quality step):
+goal-task-manifest-quality (23 unaccepted defects), format-registry in
+both modes (N11/L04/P03 drift), watcher-dependency-map (three watcher
+files landed at HEAD without a map re-record), CG1 (blueprint hash and
+roster-source staleness), fault-proof-reconciliation (coverage row 153
+opens with the legend-undefined 🟢 glyph). All remain owner-pending, as
+before.

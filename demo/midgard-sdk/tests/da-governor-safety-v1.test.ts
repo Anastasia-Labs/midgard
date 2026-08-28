@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
@@ -388,39 +387,24 @@ describe("Q63 single-owner governance consequence", () => {
 });
 
 // Review finding E3. Quoting F04's floor text proves the decision record still
-// says what Q63 cited; it does not prove the implementation computes it. This
-// binds the SDK's floor to a digest of the whole floor table published in the
-// Q63 evidence artifact, and
-// `demo/scripts/verify-canonical-v1-q63-da-governor-safety.mjs` independently
-// recomputes `ceil(2n/3)` and asserts the same digest. A floor/ceil
-// transcription error on either side breaks one of the two legs.
+// says what the review cited; it does not prove the implementation computes
+// it. This recomputes the F04 arithmetic — `ceil(2n/3)` — directly and binds
+// the SDK's floor to it over every representable set size, so a floor/ceil
+// transcription error in the implementation breaks this leg.
 describe("Q63 floor arithmetic provenance", () => {
   it("provenance — the SDK floor reproduces the F04 arithmetic over every representable set size", () => {
-    const evidence: unknown = JSON.parse(
-      readRepositoryFile(
-        "docs/exec-plans/evidence/canonical-v1-q63-da-governor-safety-v1.json",
-      ),
-    );
-    const { floorTable } = evidence as {
-      floorTable: { range: readonly number[]; sha256: string };
-    };
-
-    // The Aiken constant, the artifact's published range, and the size the
-    // attested-signer bitmap can index are all the same number.
+    // The Aiken constant and the size the attested-signer bitmap can index
+    // are the same number.
     expect(MAX_INDEXED_SIGNER_COUNT).toBe(256);
-    expect(floorTable.range).toStrictEqual([0, MAX_INDEXED_SIGNER_COUNT]);
 
-    const table: number[] = [];
     for (
       let setLength = 0;
       setLength <= MAX_INDEXED_SIGNER_COUNT;
       setLength++
     ) {
-      table.push(governedThresholdFloor(setLength));
+      expect(governedThresholdFloor(setLength)).toBe(
+        Math.ceil((2 * setLength) / 3),
+      );
     }
-
-    expect(
-      createHash("sha256").update(JSON.stringify(table)).digest("hex"),
-    ).toBe(floorTable.sha256);
   });
 });

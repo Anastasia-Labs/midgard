@@ -147,7 +147,7 @@ mustReject(
 
 mustReject(
   "QG1 promoted while its verifier does not exist",
-  /- qg1Route is PASS while its verifier is absent and the reconciliation carries 49 open rows/u,
+  /- qg1Route is PASS while its verifier is absent and the reconciliation carries 48 open rows/u,
   (candidate) => {
     candidate.qg1Route.status = "PASS";
   },
