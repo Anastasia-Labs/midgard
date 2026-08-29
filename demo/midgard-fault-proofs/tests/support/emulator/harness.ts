@@ -287,6 +287,14 @@ export const submitFabricatedFamilyInitV1 = async ({
  */
 export const INPUT_SET_UNIQUENESS_TEST_CATEGORY_ID_V1 = "0000001a";
 
+/**
+ * Test-only catalogue id for the `mint-authorization` family. The production
+ * id is assigned only at catalogue registration; `0000001b` is the
+ * reserved-but-not-promised slot, and the emulator suites register it as an
+ * extra category exactly the way the pre-registration families before it did.
+ */
+export const MINT_AUTHORIZATION_TEST_CATEGORY_ID_V1 = "0000001b";
+
 export type FaultProofEmulatorHarnessV1 = {
   readonly realBlueprint: Blueprint;
   readonly alwaysBlueprint: Blueprint;
@@ -394,6 +402,14 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
           valueNotPreserved: {
             categoryId: VALUE_NOT_PRESERVED_RESERVED_CATEGORY_ID_V1,
             scriptHash: contracts.valueNotPreserved.steps[0].spendingScriptHash,
+          },
+        }),
+    ...(contracts.mintAuthorization === undefined
+      ? {}
+      : {
+          mintAuthorization: {
+            categoryId: MINT_AUTHORIZATION_TEST_CATEGORY_ID_V1,
+            scriptHash: contracts.mintAuthorization.steps[0].spendingScriptHash,
           },
         }),
   });

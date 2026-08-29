@@ -21,6 +21,7 @@ import {
 import { type InputSetUniquenessContractsV1 } from "../../../src/input-set-uniqueness/index.js";
 import { type L2TxMistagContractsV1 } from "../../../src/l2-tx-mistag/index.js";
 import { type MinFeeContractsV1 } from "../../../src/min-fee-contracts-v1.js";
+import { type MintAuthorizationContractsV1 } from "../../../src/mint-authorization/index.js";
 import { type MissingNativeScriptTxContractsV1 } from "../../../src/missing-native-script-tx/index.js";
 import { type MissingSignatureContractsV1 } from "../../../src/missing-signature/index.js";
 import { type NativeScriptDecodingContractsV1 } from "../../../src/native-script-decoding/index.js";
@@ -96,6 +97,17 @@ export const INPUT_SET_UNIQUENESS_REMOVAL_DEPLOYMENT_ENTRY_V1 =
 export const VALUE_NOT_PRESERVED_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofValueNotPreserved";
 
+/**
+ * Manifest entry pinning the `mint-authorization` step-01 script hash for
+ * removal. Caller-chosen because the family predates its catalogue
+ * registration (the pre-registration shape #635 introduced):
+ * `submitRemoveFraudulentBlock` checks the explicit category record's step-01
+ * hash against whatever entry the record names, and this is the name the
+ * emulator manifests use.
+ */
+export const MINT_AUTHORIZATION_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+  "fraudProofMintAuthorization";
+
 const requireReferenceScriptAuthPolicy = (
   policy: MidgardValidators["referenceScriptAuth"],
 ): ReferenceScriptAuthPolicy => {
@@ -129,6 +141,7 @@ export const buildRemovalDeploymentInfo = (
     readonly withdrawalMistag?: WithdrawalMistagContractsV1;
     readonly inputSetUniqueness?: InputSetUniquenessContractsV1;
     readonly valueNotPreserved?: ValueNotPreservedContractsV1;
+    readonly mintAuthorization?: MintAuthorizationContractsV1;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -442,6 +455,14 @@ export const buildRemovalDeploymentInfo = (
             [VALUE_NOT_PRESERVED_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
               scriptHash:
                 contracts.valueNotPreserved.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.mintAuthorization === undefined
+        ? {}
+        : {
+            [MINT_AUTHORIZATION_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+              scriptHash:
+                contracts.mintAuthorization.steps[0].spendingScriptHash,
             },
           }),
       fraudProofNonExistentInputNoIndex: {

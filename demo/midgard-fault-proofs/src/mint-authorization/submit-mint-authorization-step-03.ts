@@ -36,7 +36,6 @@ import type {
   NativeTxWitnessSetCompact,
 } from "@al-ft/midgard-sdk";
 import {
-  fieldOpeningV1ForField,
   hashHexWithBlake2b,
   MIDGARD_FIELD_INDEX_V1,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1,
@@ -58,9 +57,15 @@ import {
 import { Effect } from "effect";
 
 import {
+  faultProofFieldOpeningV1,
+  planFaultProofFieldOpeningV1,
+  publishFaultProofFieldCarriageV1,
+} from "../field-opening-v1.js";
+import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { MintAuthorizationContractsV1 } from "./contracts-v1.js";
@@ -99,6 +104,8 @@ type Step03Shared = {
   readonly nativeTxCompactCbor: string;
   /** The bound transaction's witness-set compact (three §5.1 hashes). */
   readonly witnessSet: NativeTxWitnessSetCompact;
+  /** Pre-minted §8.6 certificate when the planner selects tier 3. */
+  readonly certificateUtxo?: UTxO;
   /** The published step-03 reference script; inline-attached when absent. */
   readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
@@ -133,6 +140,10 @@ const submitPreparedStep03 = async ({
   shared,
   threadUtxo,
   threadToken,
+  planned,
+  carriageUtxos,
+  fieldReferenceInputs,
+  fieldIndex,
   nextStepIndex,
   nextStepDatum,
   argsOf,
@@ -143,17 +154,49 @@ const submitPreparedStep03 = async ({
     readonly unit: string;
     readonly fraudulentHeaderHash: string;
   };
+  readonly planned: ReturnType<typeof planFaultProofFieldOpeningV1>;
+  readonly carriageUtxos: readonly UTxO[];
+  readonly fieldReferenceInputs: readonly UTxO[];
+  readonly fieldIndex: number;
   readonly nextStepIndex: 3 | 4;
   readonly nextStepDatum: string;
-  readonly argsOf: (layout: {
-    readonly inputIndex: bigint;
-    readonly outputIndex: bigint;
-  }) => MintAuthorizationStep03Args;
+  readonly argsOf: (
+    layout: {
+      readonly inputIndex: bigint;
+      readonly outputIndex: bigint;
+    },
+    fieldOpening: ReturnType<typeof faultProofFieldOpeningV1>,
+  ) => MintAuthorizationStep03Args;
 }): Promise<SubmitMintAuthorizationStep03Result> => {
   const { lucid, contracts, signer, referenceScriptUtxo } = shared;
   const awaitConfirmation = shared.awaitConfirmation ?? true;
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  // §8.7 indices count into the transaction's COMPLETE reference-input set:
+  // the field carriage plus the step's own reference script.
+  const referenceInputs = [
+    ...fieldReferenceInputs,
+    ...(referenceScriptUtxo === undefined
+      ? []
+      : [
+          requireMintAuthorizationReferenceScriptV1({
+            utxo: referenceScriptUtxo,
+            expectedScriptHash: contracts.steps[2].spendingScriptHash,
+            stepIndex: 2,
+          }),
+        ]),
+  ];
+  const fieldOpening = faultProofFieldOpeningV1({
+    planned,
+    referenceInputs,
+    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+    label: `${STEP_LABEL} field ${fieldIndex.toString()}`,
+  });
+  const walletUtxos = await lucid.wallet().getUtxos();
+  const walletUtxosSansCarriage = carriageUtxos.reduce<readonly UTxO[]>(
+    (candidates, utxo) => excludeUtxo(candidates, utxo),
+    walletUtxos,
+  );
+  const feeInput = selectFeeInput(walletUtxosSansCarriage);
   const nextOutputMatches = computationThreadOutputPredicate({
     address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextStepDatum,
@@ -174,7 +217,7 @@ const submitPreparedStep03 = async ({
     };
     resolvedLayout = layout;
     return Data.to(
-      { Continue: [argsOf(layout)] },
+      { Continue: [argsOf(layout, fieldOpening)] },
       MintAuthorizationStep03SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
@@ -183,11 +226,16 @@ const submitPreparedStep03 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const base = lucid
+  const withInputs = lucid
     .newTx()
     .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer)
-    .pay.ToContract(
+    .collectFrom([threadUtxo], redeemer);
+  const withReferences =
+    referenceInputs.length === 0
+      ? withInputs
+      : withInputs.readFrom(referenceInputs);
+  const paid = withReferences.pay
+    .ToContract(
       contracts.steps[nextStepIndex].spendingScriptAddress,
       { kind: "inline", value: nextStepDatum },
       threadAssets,
@@ -195,16 +243,15 @@ const submitPreparedStep03 = async ({
     .addSignerKey(signer.paymentKeyHash);
   const tx =
     referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[2].spendingScript)
-      : base.readFrom([
-          requireMintAuthorizationReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[2].spendingScriptHash,
-            stepIndex: 2,
-          }),
-        ]);
+      ? paid.attach.SpendingValidator(contracts.steps[2].spendingScript)
+      : paid;
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await tx.complete({
+    localUPLCEval: true,
+    ...(carriageUtxos.length === 0
+      ? {}
+      : { presetWalletInputs: walletUtxosSansCarriage as UTxO[] }),
+  });
   if (resolvedLayout === undefined) {
     throw mintAuthorizationSubmitError(
       "BuildTxWithRedeemer did not resolve the step-03 layout.",
@@ -237,11 +284,15 @@ const submitPreparedStep03 = async ({
  * language — hashing to the claimed policy id.
  */
 export const submitMintAuthorizationStep03WitnessAbsence = async ({
-  scriptTxWitsPreimageCborHex,
+  scriptTxWitsItemCbors,
   ...shared
 }: Step03Shared & {
-  /** The committed field-6 preimage bytes, hex — the Inline carriage. */
-  readonly scriptTxWitsPreimageCborHex: string;
+  /**
+   * The committed field-6 items — each §5.5 versioned-script item's canonical
+   * bytes, hex, in committed order. The §8 planner re-envelopes them and picks
+   * the carriage tier from the resulting preimage's own byte length.
+   */
+  readonly scriptTxWitsItemCbors: readonly string[];
 }): Promise<SubmitMintAuthorizationStep03Result> => {
   const { threadUtxo, threadToken, state } = await prepareThread(shared);
   if (state.direction !== MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1) {
@@ -249,10 +300,22 @@ export const submitMintAuthorizationStep03WitnessAbsence = async ({
       `the thread's direction is ${state.direction.toString()}; the WitnessAbsence arm is direction A (0).`,
     );
   }
+  // Witness field: the door pairs the compact witness set against the thread's
+  // anchored `witness_set_hash`, so the plan carries both.
+  const planned = planFaultProofFieldOpeningV1({
+    fieldIndex: MIDGARD_FIELD_INDEX_V1.scriptWitnesses,
+    anchorTxId: state.bad_tx_id,
+    nativeTxCompactCbor: shared.nativeTxCompactCbor,
+    itemCbors: scriptTxWitsItemCbors.map((hex) => Buffer.from(hex, "hex")),
+    owner: shared.signer.paymentKeyHash,
+    witnessSet: shared.witnessSet,
+    anchorWitnessSetHash: state.bad_tx_witness_set_hash,
+    label: `${STEP_LABEL} script-witnesses`,
+  });
   // Doomed-transaction refusal: an inline script hashing to the policy
   // makes the absence fold fail on-chain.
   const inlineScripts = decodeMidgardScriptWitnessFieldPreimageV1(
-    Buffer.from(scriptTxWitsPreimageCborHex, "hex"),
+    planned.preimage,
   );
   for (const script of inlineScripts) {
     if (hashMidgardVersionedScript(script) === state.policy_id) {
@@ -261,12 +324,18 @@ export const submitMintAuthorizationStep03WitnessAbsence = async ({
       );
     }
   }
-  const opening = fieldOpeningV1ForField({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.scriptWitnesses,
-    nativeTxCompactCbor: shared.nativeTxCompactCbor,
-    carriage: { Inline: { preimage: scriptTxWitsPreimageCborHex } },
-    witnessSet: shared.witnessSet,
+  shared.signer.selectWallet(shared.lucid);
+  const carriageUtxos = await publishFaultProofFieldCarriageV1({
+    lucid: shared.lucid,
+    signer: shared.signer,
+    planned,
+    publisherAddress: shared.signer.address,
+    label: `${STEP_LABEL} script-witnesses`,
   });
+  const fieldReferenceInputs = [
+    ...(shared.certificateUtxo === undefined ? [] : [shared.certificateUtxo]),
+    ...carriageUtxos,
+  ];
   const step04State: MintAuthorizationStep04StateV1 = {
     policy_id: state.policy_id,
     bad_tx_id: state.bad_tx_id,
@@ -281,9 +350,13 @@ export const submitMintAuthorizationStep03WitnessAbsence = async ({
     shared,
     threadUtxo,
     threadToken,
+    planned,
+    carriageUtxos,
+    fieldReferenceInputs,
+    fieldIndex: MIDGARD_FIELD_INDEX_V1.scriptWitnesses,
     nextStepIndex: 3,
     nextStepDatum: step04Datum,
-    argsOf: (layout) => ({
+    argsOf: (layout, opening) => ({
       WitnessAbsence: {
         input_index: layout.inputIndex,
         output_index: layout.outputIndex,
@@ -299,13 +372,18 @@ export const submitMintAuthorizationStep03WitnessAbsence = async ({
  */
 export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
   scriptBytesHex,
-  addrTxWitsPreimageCborHex,
+  addrTxWitsItemCbors,
   ...shared
 }: Step03Shared & {
   /** The policy's canonical native payload bytes, hex. */
   readonly scriptBytesHex: string;
-  /** The committed field-7 preimage bytes, hex — the Inline carriage. */
-  readonly addrTxWitsPreimageCborHex: string;
+  /**
+   * The committed field-7 items — each §5.3 address-witness item's canonical
+   * bytes (fixed 101 bytes), hex, in committed order. The §8 planner
+   * re-envelopes them and picks the carriage tier from the resulting
+   * preimage's own byte length.
+   */
+  readonly addrTxWitsItemCbors: readonly string[];
 }): Promise<SubmitMintAuthorizationStep03Result> => {
   const { threadUtxo, threadToken, state } = await prepareThread(shared);
   if (state.direction !== MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED_V1) {
@@ -324,8 +402,18 @@ export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
       `the supplied native payload hashes to ${pinnedHash}, not the claimed policy ${state.policy_id}.`,
     );
   }
+  const planned = planFaultProofFieldOpeningV1({
+    fieldIndex: MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+    anchorTxId: state.bad_tx_id,
+    nativeTxCompactCbor: shared.nativeTxCompactCbor,
+    itemCbors: addrTxWitsItemCbors.map((hex) => Buffer.from(hex, "hex")),
+    owner: shared.signer.paymentKeyHash,
+    witnessSet: shared.witnessSet,
+    anchorWitnessSetHash: state.bad_tx_witness_set_hash,
+    label: `${STEP_LABEL} address-witnesses`,
+  });
   const witnesses = decodeMidgardAddressWitnessFieldPreimageV1(
-    Buffer.from(addrTxWitsPreimageCborHex, "hex"),
+    planned.preimage,
   );
   const signerHashes = new Set(
     witnesses.map((witness) =>
@@ -353,12 +441,18 @@ export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
       "the committed signer set and validity interval SATISFY the policy's native script — there is no fault to prove.",
     );
   }
-  const opening = fieldOpeningV1ForField({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.addressWitnesses,
-    nativeTxCompactCbor: shared.nativeTxCompactCbor,
-    carriage: { Inline: { preimage: addrTxWitsPreimageCborHex } },
-    witnessSet: shared.witnessSet,
+  shared.signer.selectWallet(shared.lucid);
+  const carriageUtxos = await publishFaultProofFieldCarriageV1({
+    lucid: shared.lucid,
+    signer: shared.signer,
+    planned,
+    publisherAddress: shared.signer.address,
+    label: `${STEP_LABEL} address-witnesses`,
   });
+  const fieldReferenceInputs = [
+    ...(shared.certificateUtxo === undefined ? [] : [shared.certificateUtxo]),
+    ...carriageUtxos,
+  ];
   const step05State: MintAuthorizationStep05StateV1 = {
     policy_id: state.policy_id,
     direction: MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED_V1,
@@ -371,9 +465,13 @@ export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
     shared,
     threadUtxo,
     threadToken,
+    planned,
+    carriageUtxos,
+    fieldReferenceInputs,
+    fieldIndex: MIDGARD_FIELD_INDEX_V1.addressWitnesses,
     nextStepIndex: 4,
     nextStepDatum: step05Datum,
-    argsOf: (layout) => ({
+    argsOf: (layout, opening) => ({
       EvaluateUnsatisfied: {
         input_index: layout.inputIndex,
         output_index: layout.outputIndex,

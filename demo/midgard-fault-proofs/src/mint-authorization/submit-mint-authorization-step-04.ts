@@ -28,7 +28,6 @@ import type {
   MintAuthorizationStep05StateV1,
 } from "@al-ft/midgard-sdk";
 import {
-  fieldOpeningV1ForField,
   MIDGARD_FIELD_INDEX_V1,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1,
   MintAuthorizationStep04Datum,
@@ -46,9 +45,15 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  faultProofFieldOpeningV1,
+  planFaultProofFieldOpeningV1,
+  publishFaultProofFieldCarriageV1,
+} from "../field-opening-v1.js";
+import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { MintAuthorizationContractsV1 } from "./contracts-v1.js";
@@ -91,8 +96,14 @@ type Step04Shared = {
   readonly threadOutRef: string;
   /** The bound transaction's compact CBOR, hex. */
   readonly nativeTxCompactCbor: string;
-  /** The committed field-1 preimage bytes, hex — the Inline carriage. */
-  readonly referenceInputsPreimageCborHex: string;
+  /**
+   * The committed field-1 items — each §5.3 spend-input item's canonical
+   * bytes, hex, in committed order. The §8 planner re-envelopes them and
+   * picks the carriage tier from the resulting preimage's own byte length.
+   */
+  readonly referenceInputsItemCbors: readonly string[];
+  /** Pre-minted §8.6 certificate when the planner selects tier 3. */
+  readonly certificateUtxo?: UTxO;
   /** The published step-04 reference script; inline-attached when absent. */
   readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
@@ -114,21 +125,50 @@ const prepareStep04 = async (shared: Step04Shared) => {
       schema: MintAuthorizationStep04Datum,
       stepIndex: 3,
     });
-  const referenceItems = decodeMidgardFieldPreimageV1(
-    Buffer.from(shared.referenceInputsPreimageCborHex, "hex"),
-  );
-  const opening = fieldOpeningV1ForField({
+  // The §8.8 door: plan field 1 against the bound tx id, then let the byte
+  // length pick the tier — a scan over a large committed reference-input list
+  // publishes tier-2 carriage rather than forcing it.
+  const planned = planFaultProofFieldOpeningV1({
     fieldIndex: MIDGARD_FIELD_INDEX_V1.referenceInputs,
+    anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor: shared.nativeTxCompactCbor,
-    carriage: { Inline: { preimage: shared.referenceInputsPreimageCborHex } },
+    itemCbors: shared.referenceInputsItemCbors.map((hex) =>
+      Buffer.from(hex, "hex"),
+    ),
+    owner: shared.signer.paymentKeyHash,
+    label: `${STEP_LABEL} reference-inputs`,
   });
-  return { threadUtxo, threadToken, state, referenceItems, opening };
+  const referenceItems = decodeMidgardFieldPreimageV1(planned.preimage);
+  shared.signer.selectWallet(shared.lucid);
+  const carriageUtxos = await publishFaultProofFieldCarriageV1({
+    lucid: shared.lucid,
+    signer: shared.signer,
+    planned,
+    publisherAddress: shared.signer.address,
+    label: `${STEP_LABEL} reference-inputs`,
+  });
+  const fieldReferenceInputs = [
+    ...(shared.certificateUtxo === undefined ? [] : [shared.certificateUtxo]),
+    ...carriageUtxos,
+  ];
+  return {
+    threadUtxo,
+    threadToken,
+    state,
+    referenceItems,
+    planned,
+    carriageUtxos,
+    fieldReferenceInputs,
+  };
 };
 
 const submitPreparedStep04 = async ({
   shared,
   threadUtxo,
   threadToken,
+  planned,
+  carriageUtxos,
+  fieldReferenceInputs,
   nextStepIndex,
   nextStepDatum,
   nextRefCursor,
@@ -140,19 +180,51 @@ const submitPreparedStep04 = async ({
     readonly unit: string;
     readonly fraudulentHeaderHash: string;
   };
+  readonly planned: ReturnType<typeof planFaultProofFieldOpeningV1>;
+  readonly carriageUtxos: readonly UTxO[];
+  readonly fieldReferenceInputs: readonly UTxO[];
   /** 3 = the self-loop back to step-04's own address, 4 = step-05. */
   readonly nextStepIndex: 3 | 4;
   readonly nextStepDatum: string;
   readonly nextRefCursor: bigint | null;
-  readonly argsOf: (layout: {
-    readonly inputIndex: bigint;
-    readonly outputIndex: bigint;
-  }) => MintAuthorizationStep04Args;
+  readonly argsOf: (
+    layout: {
+      readonly inputIndex: bigint;
+      readonly outputIndex: bigint;
+    },
+    referenceInputsOpening: ReturnType<typeof faultProofFieldOpeningV1>,
+  ) => MintAuthorizationStep04Args;
 }): Promise<SubmitMintAuthorizationStep04Result> => {
   const { lucid, contracts, signer, referenceScriptUtxo } = shared;
   const awaitConfirmation = shared.awaitConfirmation ?? true;
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  // The §8.7 positional indices count into the transaction's COMPLETE
+  // reference-input set, so the step's own reference script joins the field
+  // carriage before the opening resolves.
+  const referenceInputs = [
+    ...fieldReferenceInputs,
+    ...(referenceScriptUtxo === undefined
+      ? []
+      : [
+          requireMintAuthorizationReferenceScriptV1({
+            utxo: referenceScriptUtxo,
+            expectedScriptHash: contracts.steps[3].spendingScriptHash,
+            stepIndex: 3,
+          }),
+        ]),
+  ];
+  const referenceInputsOpening = faultProofFieldOpeningV1({
+    planned,
+    referenceInputs,
+    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+    label: `${STEP_LABEL} reference-inputs`,
+  });
+  const walletUtxos = await lucid.wallet().getUtxos();
+  const walletUtxosSansCarriage = carriageUtxos.reduce<readonly UTxO[]>(
+    (candidates, utxo) => excludeUtxo(candidates, utxo),
+    walletUtxos,
+  );
+  const feeInput = selectFeeInput(walletUtxosSansCarriage);
   const nextOutputMatches = computationThreadOutputPredicate({
     address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextStepDatum,
@@ -173,7 +245,7 @@ const submitPreparedStep04 = async ({
     };
     resolvedLayout = layout;
     return Data.to(
-      { Continue: [argsOf(layout)] },
+      { Continue: [argsOf(layout, referenceInputsOpening)] },
       MintAuthorizationStep04SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
@@ -182,11 +254,16 @@ const submitPreparedStep04 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const base = lucid
+  const withInputs = lucid
     .newTx()
     .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer)
-    .pay.ToContract(
+    .collectFrom([threadUtxo], redeemer);
+  const withReferences =
+    referenceInputs.length === 0
+      ? withInputs
+      : withInputs.readFrom(referenceInputs);
+  const paid = withReferences.pay
+    .ToContract(
       contracts.steps[nextStepIndex].spendingScriptAddress,
       { kind: "inline", value: nextStepDatum },
       threadAssets,
@@ -194,16 +271,15 @@ const submitPreparedStep04 = async ({
     .addSignerKey(signer.paymentKeyHash);
   const tx =
     referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[3].spendingScript)
-      : base.readFrom([
-          requireMintAuthorizationReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[3].spendingScriptHash,
-            stepIndex: 3,
-          }),
-        ]);
+      ? paid.attach.SpendingValidator(contracts.steps[3].spendingScript)
+      : paid;
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await tx.complete({
+    localUPLCEval: true,
+    ...(carriageUtxos.length === 0
+      ? {}
+      : { presetWalletInputs: walletUtxosSansCarriage as UTxO[] }),
+  });
   if (resolvedLayout === undefined) {
     throw mintAuthorizationSubmitError(
       "BuildTxWithRedeemer did not resolve the step-04 layout.",
@@ -243,8 +319,15 @@ export const submitMintAuthorizationStep04ResolveNext = async ({
   /** The scanned outpoint's ledger descriptor bytes, hex (the MPF value). */
   readonly descriptorCborHex: string;
 }): Promise<SubmitMintAuthorizationStep04Result> => {
-  const { threadUtxo, threadToken, state, referenceItems, opening } =
-    await prepareStep04(shared);
+  const {
+    threadUtxo,
+    threadToken,
+    state,
+    referenceItems,
+    planned,
+    carriageUtxos,
+    fieldReferenceInputs,
+  } = await prepareStep04(shared);
   const cursor = state.ref_cursor;
   if (cursor < 0n || cursor >= BigInt(referenceItems.length)) {
     throw mintAuthorizationSubmitError(
@@ -283,10 +366,13 @@ export const submitMintAuthorizationStep04ResolveNext = async ({
     shared,
     threadUtxo,
     threadToken,
+    planned,
+    carriageUtxos,
+    fieldReferenceInputs,
     nextStepIndex: 3,
     nextStepDatum,
     nextRefCursor: nextState.ref_cursor,
-    argsOf: (layout) => ({
+    argsOf: (layout, opening) => ({
       ResolveNext: {
         input_index: layout.inputIndex,
         output_index: layout.outputIndex,
@@ -302,8 +388,15 @@ export const submitMintAuthorizationStep04ResolveNext = async ({
 export const submitMintAuthorizationStep04AdvanceComplete = async (
   shared: Step04Shared,
 ): Promise<SubmitMintAuthorizationStep04Result> => {
-  const { threadUtxo, threadToken, state, referenceItems, opening } =
-    await prepareStep04(shared);
+  const {
+    threadUtxo,
+    threadToken,
+    state,
+    referenceItems,
+    planned,
+    carriageUtxos,
+    fieldReferenceInputs,
+  } = await prepareStep04(shared);
   if (state.ref_cursor !== BigInt(referenceItems.length)) {
     throw mintAuthorizationSubmitError(
       `ref cursor ${state.ref_cursor.toString()} has not covered the committed field 1's ${referenceItems.length.toString()} items — the scan is incomplete.`,
@@ -321,10 +414,13 @@ export const submitMintAuthorizationStep04AdvanceComplete = async (
     shared,
     threadUtxo,
     threadToken,
+    planned,
+    carriageUtxos,
+    fieldReferenceInputs,
     nextStepIndex: 4,
     nextStepDatum,
     nextRefCursor: null,
-    argsOf: (layout) => ({
+    argsOf: (layout, opening) => ({
       AdvanceComplete: {
         input_index: layout.inputIndex,
         output_index: layout.outputIndex,

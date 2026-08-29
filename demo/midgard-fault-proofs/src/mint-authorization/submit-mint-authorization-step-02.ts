@@ -5,7 +5,9 @@
  * off the committed field-5 item. The disputed header rides the redeemer,
  * the event's transition step and event→step leaf are opened from the
  * transition-trace reconstruction, and the committed mint field opens
- * through the §8.8 door on the Inline carriage. Every check the validator
+ * through the §8.8 door on whatever §8 carriage tier its own byte length
+ * selects — a small mint rides tier-1 inline, a large one is published as
+ * tier-2 RawUtxo and read back, never a forced tier. Every check the validator
  * makes that this process can make locally is made locally first, so a
  * doomed transaction is refused before it costs anything:
  *
@@ -22,7 +24,6 @@
 import { decodeMidgardMintFieldPreimageV1 } from "@al-ft/midgard-core";
 import type { MintAuthorizationStep03StateV1 } from "@al-ft/midgard-sdk";
 import {
-  fieldOpeningV1ForField,
   hashHexWithBlake2b,
   HeaderV1,
   MIDGARD_FIELD_INDEX_V1,
@@ -44,9 +45,15 @@ import {
 import { Effect } from "effect";
 
 import {
+  faultProofFieldOpeningV1,
+  planFaultProofFieldOpeningV1,
+  publishFaultProofFieldCarriageV1,
+} from "../field-opening-v1.js";
+import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
@@ -89,7 +96,8 @@ export const submitMintAuthorizationStep02 = async ({
   policyIndex,
   direction,
   nativeTxCompactCbor,
-  mintPreimageCborHex,
+  mintItemCbors,
+  certificateUtxo,
   referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
@@ -106,8 +114,15 @@ export const submitMintAuthorizationStep02 = async ({
   readonly direction: bigint;
   /** The bound transaction's compact CBOR, hex (the id preimage). */
   readonly nativeTxCompactCbor: string;
-  /** The committed field-5 preimage bytes, hex — the Inline carriage. */
-  readonly mintPreimageCborHex: string;
+  /**
+   * The committed field-5 items — each §5.6 mint policy item's canonical
+   * bytes, hex, in committed order. The §8 planner re-envelopes them and picks
+   * the carriage tier from the resulting preimage's own length; nothing here
+   * forces a tier.
+   */
+  readonly mintItemCbors: readonly string[];
+  /** Pre-minted §8.6 certificate when the planner selects tier 3. */
+  readonly certificateUtxo?: UTxO;
   /** The published step-02 reference script; inline-attached when absent. */
   readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
@@ -144,9 +159,18 @@ export const submitMintAuthorizationStep02 = async ({
       `direction ${direction.toString()} is outside {0, 1}.`,
     );
   }
-  const mintItems = decodeMidgardMintFieldPreimageV1(
-    Buffer.from(mintPreimageCborHex, "hex"),
-  );
+  // The §8.8 door: plan from the committed items (which re-derives and
+  // re-commits them against the anchored transaction), then let the planner
+  // pick the carriage tier from the resulting preimage's own byte length.
+  const planned = planFaultProofFieldOpeningV1({
+    fieldIndex: MIDGARD_FIELD_INDEX_V1.mint,
+    anchorTxId: anchorState.bad_tx_id,
+    nativeTxCompactCbor,
+    itemCbors: mintItemCbors.map((hex) => Buffer.from(hex, "hex")),
+    owner: signer.paymentKeyHash,
+    label: `${STEP_LABEL} mint`,
+  });
+  const mintItems = decodeMidgardMintFieldPreimageV1(planned.preimage);
   if (policyIndex < 0n || policyIndex >= BigInt(mintItems.length)) {
     throw mintAuthorizationSubmitError(
       `policy index ${policyIndex.toString()} is outside the committed mint field's ${mintItems.length.toString()} items.`,
@@ -173,14 +197,43 @@ export const submitMintAuthorizationStep02 = async ({
     prior_ledger_root: priorLedgerRoot,
   };
 
-  const mintOpening = fieldOpeningV1ForField({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.mint,
-    nativeTxCompactCbor,
-    carriage: { Inline: { preimage: mintPreimageCborHex } },
-  });
-
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  // Publish whatever the tier demands (nothing for tier-1 inline), then open
+  // against the transaction's COMPLETE reference-input set — the carriage
+  // publications, an optional §8.6 certificate, and the step's own reference
+  // script all count into the §8.7 positional indices.
+  const carriageUtxos = await publishFaultProofFieldCarriageV1({
+    lucid,
+    signer,
+    planned,
+    publisherAddress: signer.address,
+    label: `${STEP_LABEL} mint`,
+  });
+  const referenceInputs = [
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ...carriageUtxos,
+    ...(referenceScriptUtxo === undefined
+      ? []
+      : [
+          requireMintAuthorizationReferenceScriptV1({
+            utxo: referenceScriptUtxo,
+            expectedScriptHash: contracts.steps[1].spendingScriptHash,
+            stepIndex: 1,
+          }),
+        ]),
+  ];
+  const mintOpening = faultProofFieldOpeningV1({
+    planned,
+    referenceInputs,
+    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+    label: `${STEP_LABEL} mint`,
+  });
+  const walletUtxos = await lucid.wallet().getUtxos();
+  const walletUtxosSansCarriage = carriageUtxos.reduce<readonly UTxO[]>(
+    (candidates, utxo) => excludeUtxo(candidates, utxo),
+    walletUtxos,
+  );
+  const feeInput = selectFeeInput(walletUtxosSansCarriage);
   const step03Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: step03State },
     MintAuthorizationStep03Datum,
@@ -227,28 +280,34 @@ export const submitMintAuthorizationStep02 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const base = lucid
+  const withInputs = lucid
     .newTx()
     .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer)
-    .pay.ToContract(
+    .collectFrom([threadUtxo], redeemer);
+  const withReferences =
+    referenceInputs.length === 0
+      ? withInputs
+      : withInputs.readFrom(referenceInputs);
+  const paid = withReferences.pay
+    .ToContract(
       contracts.steps[2].spendingScriptAddress,
       { kind: "inline", value: step03Datum },
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
+  // The reference script rides `referenceInputs` when supplied; only the
+  // CLI's no-reference path inline-attaches the spending validator.
   const tx =
     referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[1].spendingScript)
-      : base.readFrom([
-          requireMintAuthorizationReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[1].spendingScriptHash,
-            stepIndex: 1,
-          }),
-        ]);
+      ? paid.attach.SpendingValidator(contracts.steps[1].spendingScript)
+      : paid;
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await tx.complete({
+    localUPLCEval: true,
+    ...(carriageUtxos.length === 0
+      ? {}
+      : { presetWalletInputs: walletUtxosSansCarriage as UTxO[] }),
+  });
   if (resolvedLayout === undefined) {
     throw mintAuthorizationSubmitError(
       "BuildTxWithRedeemer did not resolve the step-02 layout.",
