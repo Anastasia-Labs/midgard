@@ -5,31 +5,6 @@
   "waivers": [],
   "createsC70Snapshots": false,
   "liveOrReadinessClaims": 0,
-  "dependencyFreshness": {
-    "dependsOn": ["C11", "C12", "C13"],
-    "recordedIn": {
-      "path": "GOAL_PROGRESS.md",
-      "heading": "## #479 (B02, C10-C13 + CG1) measured: four sub-gates PASS, CG1's aggregate verifier was never built (2026-08-17)"
-    },
-    "rows": {
-      "C11": {
-        "status": "PASS",
-        "quote": "**C11 PASS** \u2014 dispute-hub fit suites 11/11 (pin was 9/9: growth, the"
-      },
-      "C12": {
-        "status": "PASS",
-        "quote": "**C12 PASS** \u2014 resolver routing totality 8/8 + dispute totality 1/1 +"
-      },
-      "C13": {
-        "status": "PASS",
-        "quote": "**C13 PASS modulo the accepted #597 red** \u2014 ABI selectors 7/7 and 11/11"
-      }
-    },
-    "priorCg1Status": {
-      "quote": "**CG1 MEASUREMENT-BLOCKED, structurally** \u2014 CG1's manifest row names",
-      "meaning": "GOAL_PROGRESS.md recorded CG1 as measurement-blocked purely because this artifact and its verifier did not exist yet; that same ledger entry names the CG1 aggregate fit verifier and pinned evidence artifact as the next advanceable item. This artifact and demo/scripts/verify-canonical-v1-cg1-control-publication-fit.mjs are that discharge."
-    }
-  },
   "hashBasis": {
     "blueprintPath": "onchain/aiken/plutus.json",
     "blueprintTrackedInGit": false,
@@ -513,14 +488,6 @@
       "reason": "Deliberately outside the required referenceScripts publication set: the applied cek_v1 direct-resolver body (162,145 bytes) alone exceeds the 16,384-byte L1 publication envelope, so no single-target publication transaction can fit it. It never appears as a name in nodeRuntimeReferenceScriptTargets's output; it is tracked as an open item by the separate P1 oversized-validator gate, not by CG1.",
       "recordedIn": [
         {
-          "path": "GOAL_PROGRESS.md",
-          "quote": "deliberately NOT the required referenceScripts publication set, because the resolver body exceeds the L1 publication envelope"
-        },
-        {
-          "path": "GOAL_PROGRESS.md",
-          "quote": "**162,660 signed bytes, L1 margin \u2212146,276**"
-        },
-        {
           "path": "docs/exec-plans/evidence/necessity/cek-program-material-v1.md",
           "quote": "a4bfbd01e9a07dc2165a2cc8c4e00a4775b82fa754e3136c878d2666`, **162,145 bytes**"
         }
@@ -536,8 +503,7 @@
     "missingRosterEntries": 0,
     "extraRosterEntries": 0,
     "unjustifiedExclusions": 0,
-    "staleBlueprintPins": 0,
-    "dependencyRowsNotPass": 0
+    "staleBlueprintPins": 0
   },
   "gateStatus": "PASS",
   "openItems": [
@@ -567,7 +533,7 @@
         "fits": true,
         "submitted": "Accepted and confirmed by the emulator at maxTxSize 16,384; exactly one live reference-script UTxO at output index 1.",
         "versusPinnedExclusion": "The pinned exclusion records appliedScriptHash a4bfbd01..., 162,145 applied bytes, 162,660 signed bytes and an L1 margin of -146,276. Re-measured against the regenerated blueprint the same role is 5,471 applied bytes, 5,984 signed bytes and an L1 margin of +10,400 -- it fits the publication envelope with 10,400 bytes to spare, and does so by real submission rather than by arithmetic.",
-        "decisionNotTakenHere": "exclusions[0] is left exactly as pinned. This gate requires its single exclusion to measure above 16,384 bytes, so replacing the triple with the measured one would make the exclusion self-contradictory; and the consequence of the role fitting is that it belongs in nodeRuntimeReferenceScriptTargets -- a runtime roster plus deployment-manifest movement, with the same numbers restated in the owner-signed cek-program-material necessity document and in the GOAL_PROGRESS.md ledger quote ('162,660 signed bytes, L1 margin -146,276'), both owner-owned surfaces. Per #623's ruling the executing lane brings the measured basis to the owner rather than editing them. Measurement delivered; the exclusion decision is the owner's.",
+        "decisionNotTakenHere": "exclusions[0] is left exactly as pinned. Replacing the triple with the measured one would make the exclusion self-contradictory, and the consequence of the role fitting is that it belongs in nodeRuntimeReferenceScriptTargets -- a runtime roster and deployment-manifest decision. Measurement delivered; the exclusion decision remains open.",
         "rosterReproduction": "The 34 roster rows above were re-measured in the same pass (pnpm --dir demo/midgard-node exec vitest run tests/scratch-cg1-publication-fit.test.ts, MIDGARD_CG1_EMIT set) and reproduced byte-for-byte: every appliedScriptHash, serializedScriptBytes, completeSignedTransactionBytes, l1ByteMarginBytes and feeLovelace is identical to the pinned row. The only per-run difference is txHash, which the gate does not read and which the emulator derives from run-specific wallet seeds; the roster's fit claims are therefore reproducible and its transaction hashes are not."
       }
     }

@@ -40,8 +40,8 @@
 //// `verify_deposit_evidence_v1` is the piece Q40 mirrors: the same
 //// unspent-nonce and hub-registered-event-NFT arguments hold for withdrawals
 //// against `hub_datum.withdrawal`. It lives in this family's own lib module
-//// because `GOAL_PROGRESS.md`'s triage requires Q39 and Q40 to keep disjoint
-//// family paths.
+//// because the deposit and withdrawal families bind different hub fields and
+//// datum shapes.
 
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}

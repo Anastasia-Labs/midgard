@@ -9,9 +9,8 @@
 //
 // `statusRole` reduces a status to its leading role token and `isPassStatus` is
 // the base-role PASS test. Both were introduced inside
-// `verify-canonical-v1-goal-task-manifest-quality.mjs` (aea33532) and are
-// extracted here unchanged so that every consumer shares one convention
-// instead of growing a second, subtly different one.
+// Keep status parsing shared between the remaining domain reconciliation
+// checks instead of growing subtly different conventions in each script.
 
 export const statusRole = (status) =>
   (status ?? "")

@@ -78,25 +78,6 @@ jobs:
           node-version-file: demo/.nvmrc
           cache: pnpm
           cache-dependency-path: demo/pnpm-lock.yaml
-      # #519 V-7: the F05 task-manifest quality gate was referenced by nothing
-      # automated, so a published dependency claim ("blockedOn contains exactly
-      # 1 current non-PASS dependency") stayed false until a manual audit found
-      # it. These two steps run before the workspace install because both are
-      # pure-node and need no dependencies; the workflow's unfiltered
-      # `pull_request` trigger means every change to the manifest, its
-      # templates, or the GOAL_PROGRESS.md queue it is reconciled against is
-      # gated here.
-      # The gate runs against the ruling-B accepted-defect enumeration
-      # (owner-accepted 2026-08-14, re-pinned by #613): the strict measurement
-      # still reports every defect, but only defects OUTSIDE the standing
-      # enumeration fail CI. The gate fails closed (exit 2) if the artifact is
-      # missing or carries no standing enumeration (#614).
-      - name: Verify canonical V1 Goal task-manifest quality
-        run: >-
-          node demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs
-          --accepted-defects=docs/exec-plans/evidence/canonical-v1-strict-manifest-quality-accepted-defects-v1.json
-      - name: Self-test the task-manifest blocked-on reconciliation
-        run: node demo/scripts/verify-canonical-v1-goal-task-manifest-quality-self-test.mjs
       # Scripts must run here (matching midgard-node-ci's install): the
       # @aiken-lang/merkle-patricia-forestry git dependency only gains its
       # dist/ (and type declarations) from its prepare script, and
@@ -115,12 +96,8 @@ jobs:
           pnpm --dir demo/midgard-sdk run build &&
           pnpm --dir demo/midgard-validation run build &&
           pnpm --dir demo/midgard-fault-proofs run build
-      # Deliberately NOT part of `goal:verify:static`. The verification plan
-      # forbids `--allow-incomplete` in any plan command, and the registry's
-      # strict run is the `evidence` phase's `evidence-format-registry-strict`
-      # gate for release. Until the remaining UNVERIFIED rows are closed, the
-      # structural (incomplete-tolerant) form is the honest CI gate and is
-      # invoked here directly rather than weakening a plan phase.
+      # Until the remaining UNVERIFIED rows are closed, CI checks the registry's
+      # structure in incomplete-tolerant mode. Release checks remain strict.
       - name: Verify incomplete canonical V1 format registry structure
         run: node demo/scripts/verify-canonical-v1-format-registry.mjs --allow-incomplete
       # #519 V-6: the registry's cross-language "not applicable" excuses were
@@ -280,112 +257,3 @@ jobs:
       # the cross-package comparison cannot be satisfied by the artifact alone.
       - name: Self-test the ABI freeze against seeded drift
         run: node demo/scripts/verify-canonical-v1-abi-freeze-self-test.mjs
-
-  # GOAL_SPEC.md §7 F40: "wires `goal:verify:static` into repository CI for the
-  # Goal branch so drift is caught between checkpoints." This job runs the
-  # static phase exactly as the plan defines it — no extra commands, no removed
-  # ones — so CI and a local `pnpm --dir demo run goal:verify:static` cannot
-  # disagree.
-  goal-static:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          # The closure verifier asserts that the checked-out branch equals the
-          # manifest's declared branch and that the recorded revision descends
-          # into HEAD. A detached PR merge commit has no branch name and a
-          # shallow clone has no ancestry, so check out the head branch itself
-          # at full depth.
-          ref: ${{ github.head_ref || github.ref }}
-          fetch-depth: 0
-      - name: Resolve the Goal branch this closure manifest binds
-        id: scope
-        run: |
-          set -euo pipefail
-          declared="$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync("docs/exec-plans/evidence/canonical-v1-goal-closure-v1.json","utf8")).revision.branch)')"
-          actual="$(git branch --show-current)"
-          printf 'declared Goal branch: %s\nchecked-out branch:  %s\n' "$declared" "$actual"
-          if [ "$declared" = "$actual" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "Not the Goal branch: the static Goal phase is scoped to ${declared} and is not run here."
-          fi
-      # The static phase asserts that the compiler on PATH agrees with the
-      # version `onchain/aiken/aiken.toml` declares. That assertion used to be
-      # the argument FOR the released pin; it is now the argument against it.
-      # aiken.toml declares `v1.1.23` — the compiler this tree is defined by
-      # under the owner's 2026-08-13 ruling A — and the policy gate
-      # (`demo/scripts/verify-canonical-v1-goal-static-policy.mjs`) compares the
-      # arm left of the `+`, so the fork's `aiken v1.1.23+5adf783` satisfies it
-      # and stock v1.1.22 no longer can. The phase then runs `aiken check
-      # --skip-tests` against `onchain/aiken`, which is a type-check of the
-      # deployed tree and so has to run under the compiler that defines it.
-      #
-      # Installed exactly as in `header-v1-abi` above and in `aiken-ci`; every
-      # step carries this job's scope guard as well, because the whole phase is
-      # skipped off the Goal branch and building a compiler for a phase that
-      # will not run is pure cost.
-      - name: Cache the pinned Aiken fork
-        id: aiken-fork
-        if: steps.scope.outputs.run == 'true'
-        uses: actions/cache@v4
-        with:
-          path: ~/.aiken-fork
-          key: aiken-fork-${{ env.AIKEN_FORK_REV }}-${{ runner.os }}
-      - name: Build the pinned Aiken fork
-        if: steps.scope.outputs.run == 'true' && steps.aiken-fork.outputs.cache-hit != 'true'
-        run: |
-          rustup toolchain install 1.94.1 --profile minimal
-          # --locked honours the fork's committed Cargo.lock; without it cargo
-          # re-resolves every dependency on each cache miss, so an unrelated
-          # crate release could redden this branch or silently change the
-          # compiler the static phase was verified under.
-          cargo +1.94.1 install \
-            --git "$AIKEN_FORK_REPO" \
-            --rev "$AIKEN_FORK_REV" \
-            --locked \
-            --root ~/.aiken-fork \
-            aiken
-      # Assert, don't just print: a cache poisoned by an earlier rev must fail
-      # here rather than silently changing which compiler the phase ran under.
-      # Putting the fork on PATH is what makes it the compiler for the phase's
-      # `aiken check --skip-tests` and for the policy gate's own `aiken
-      # --version` probe, both of which spawn a bare `aiken`.
-      - name: Assert the pinned compiler identity and put it on PATH
-        if: steps.scope.outputs.run == 'true'
-        run: |
-          set -euo pipefail
-          patched="$(~/.aiken-fork/bin/aiken --version)"
-          printf 'pinned fork: %s\nexpected:    %s\n' "$patched" "$AIKEN_FORK_VERSION"
-          test "$patched" = "$AIKEN_FORK_VERSION"
-          test "$patched" = "aiken v1.1.23+${AIKEN_FORK_REV:0:7}"
-          echo "$HOME/.aiken-fork/bin" >> "$GITHUB_PATH"
-      - name: Assert no stock compiler is reachable
-        if: steps.scope.outputs.run == 'true'
-        run: |
-          set -euo pipefail
-          # Fail closed if a stock binary ever returns to PATH: a phase that
-          # silently type-checked under v1.1.22 would report a verdict about a
-          # tree no deployment compiles, and this is the cheapest place to
-          # notice.
-          resolved="$(command -v aiken)"
-          version="$(aiken --version)"
-          printf 'aiken on PATH: %s (%s)\n' "$resolved" "$version"
-          test "$version" = "$AIKEN_FORK_VERSION"
-      - uses: pnpm/action-setup@v4
-        if: steps.scope.outputs.run == 'true'
-        with:
-          version: 9
-      - uses: actions/setup-node@v4
-        if: steps.scope.outputs.run == 'true'
-        with:
-          node-version-file: demo/.nvmrc
-          cache: pnpm
-          cache-dependency-path: demo/pnpm-lock.yaml
-      - name: Install workspace dependencies
-        if: steps.scope.outputs.run == 'true'
-        run: pnpm --dir demo install --frozen-lockfile
-      - name: Run the Goal static verification phase
-        if: steps.scope.outputs.run == 'true'
-        run: pnpm --dir demo run goal:verify:static

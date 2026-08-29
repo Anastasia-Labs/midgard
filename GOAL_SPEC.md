@@ -9,8 +9,8 @@
   revision incorporates its corrections).
 - **Integrity:** this file is tracked in Git at the repository root (§2.4);
   Git already content-addresses it, so amendment history and drift detection
-  come from `git log -p -- GOAL_SPEC.md`. Do not record this file's SHA-256
-  in the ledger or bind it inside evidence artifacts. (Owner amendment
+  come from `git log -p -- GOAL_SPEC.md`. Do not duplicate its identity in a
+  progress ledger or bind it inside bookkeeping artifacts. (Owner amendment
   2026-08-01: the former rebind-cascade rule caught no defect in the
   program's history, produced six divergent recorded hashes and fifteen
   rebinding commits, and left the capability-reconciliation gate failing on
@@ -24,22 +24,16 @@
   acceptance criteria. This amendment edits §1, §2.1 (the G1 carriage
   bullets), §3 invariants 2 and 5, §3.1(2), §3.2 (including its heading),
   §3.3 (basis note), §8.2 (preamble and the C21/CG2 rows), §9.1 output 3,
-  §9.2 Q00, §10.3 W27, §12, §13.1 (`goal:verify:capability` tier
-  vocabulary), §13.2 (renumbered §1 item pointer), and §13.3. It is the
+  §9.2 Q00, §10.3 W27, §12, §13, and §13.3. It is the
   first amendment to touch §12 itself: AC-Q12, AC-C20, and AC-C21
   named the retired counted/typed-root scheme, and criteria stability yields
   to scheme truth. Deliberate non-edits, stated to prevent scope creep:
   §3.1(5)/Q58 DA payload framing, MPF trie roots and `mpf-chunked-verify`,
   and the §3.3 thresholds themselves — all out of reversion scope; the §3.3
   thresholds continue to govern every reversion measurement.
-  Counted-scheme evidence rows are superseded-not-deleted per §3
-  invariant 14, with dispositions ledgered in `GOAL_PROGRESS.md`: the 36 F05
-  manifest rows Q00, Q10–Q22, Q31, C20-0–C20-8, C21–C26, C29–C33, and W27,
-  plus the task-queue and validation-ledger cells enumerated in that file's
-  supersession statement. The Q1x artifact's Q10/Q11 output-5 cells are not
-  superseded — they stay OPEN under the verifier's derived-cell rules until
-  the sequencing re-measurement lands, because the artifact, not the issue,
-  is the honest gate. Rationale: `docs/midgard/decisions/0004`.
+  Historical counted-scheme notes remain useful provenance but are not a
+  machine-readable completion surface. Rationale:
+  `docs/midgard/decisions/0004`.
 
 This document is the complete and authoritative execution specification for
 one repository Goal with three inseparable outcomes:
@@ -54,7 +48,7 @@ one repository Goal with three inseparable outcomes:
 The Goal is not complete when code exists, an emulator test passes, a matrix
 looks mostly green, or a watcher detects a fault. It is complete only when
 every acceptance criterion in §12 is satisfied at the `releaseCommit` defined
-in §0.2 and the verification in §13 proves it.
+in §0.2 and direct verification in §13 proves the affected behavior.
 
 This is a long-running production-L2 closure program. Correctness, safety,
 liveness, performance, and convenience are prioritized in that order.
@@ -73,45 +67,18 @@ against source at the revision being changed.
 The checkout was already dirty when this specification was authored. A future
 Goal run must record its own starting revision and dirty state. Pre-existing
 and in-flight work is input to the Goal: integrate and finish it wherever the
-Goal's outcomes require it, recording provenance in `GOAL_PROGRESS.md`, and
-never delete or descope it merely to simplify delivery (§3 invariant 14).
+Goal's outcomes require it, preserving provenance in Git history and review
+notes, and never delete or descope it merely to simplify delivery (§3
+invariant 14).
 
 ### 0.2 Release and evidence revisions
 
-Goal completion binds two kinds of revision, because a commit cannot contain
-its own hash:
-
-- **`releaseCommit`** — the final integration commit containing every
-  source-bearing deliverable: production source, schemas, migrations, tests,
-  fixtures, generated validators, blueprint, and documentation. Deployment,
-  testnet acceptance, the release-evidence digest, and every source-bearing
-  claim bind exactly this commit.
-- **Evidence commits** — zero or more descendants of `releaseCommit` whose
-  diffs touch only the declared evidence paths below. Live acceptance
-  evidence, the closure manifest, the completion report, and ledger updates
-  produced after `releaseCommit` land here. The Goal pull request's final head
-  is the last evidence commit, or `releaseCommit` itself when nothing needed
-  recording afterward.
-
-Declared evidence paths: `GOAL_PROGRESS.md`,
-`docs/exec-plans/canonical-v1-goal-completion-report.md`, and
-`docs/exec-plans/evidence/`.
-
-Binding rules:
-
-- The closure manifest and all other evidence identify `releaseCommit`
-  exactly. No artifact is ever required to record the hash of the commit that
-  contains it.
-- The closure verifier resolves the current checkout itself and passes only
-  when HEAD is `releaseCommit` or a descendant whose entire
-  `releaseCommit..HEAD` diff is confined to the declared evidence paths.
-- An evidence commit must not change source, generated validators, schemas,
-  commands, or any behavior-bearing file. Such a change moves `releaseCommit`
-  and invalidates every piece of evidence bound to the old one.
-- A live-acceptance discovery that changes a readiness claim — a failed
-  drill, a new §9.5 residual launch blocker, a weakened capability
-  statement — legitimately moves `releaseCommit`. Only pure evidence
-  recording stays in evidence commits.
+`releaseCommit` is the final reviewed commit containing the production source,
+schemas, migrations, tests, fixtures, generated validators, blueprint, and
+documentation being released. Deployment and testnet acceptance records must
+identify that commit. Any later behavior-bearing change creates a new release
+commit and requires the affected checks to be rerun. No generated closure
+manifest or Markdown-ledger verifier participates in this binding.
 
 ## 1. Authority and conflict rules
 
@@ -169,8 +136,8 @@ Conflict handling:
 - A matrix or plan status is not evidence by itself. Update stale status only
   after source and executable evidence agree.
 - If two normative sources genuinely require incompatible behavior, record the
-  exact conflict in `GOAL_PROGRESS.md`, exhaust source/history/spec evidence,
-  and treat it as a blocker. Do not select the easier behavior.
+  exact conflict in an issue or decision record, exhaust source/history/spec
+  evidence, and treat it as a blocker. Do not select the easier behavior.
 
 ## 2. Scope
 
@@ -282,36 +249,23 @@ cannot otherwise be satisfied.
 
 The final tree must contain:
 
-- `GOAL_SPEC.md` itself, tracked in Git at the repository root. The root path
-  is bound by existing machine-readable evidence artifacts
-  (`docs/exec-plans/evidence/*.json` reference `GOAL_SPEC.md`) and must not
-  move during this Goal. Notwithstanding §0.1, staging and committing this one
-  previously untracked file is explicitly authorized and required;
+- `GOAL_SPEC.md` itself, tracked in Git at the repository root;
 - all production source, schemas, migrations, tests, fixtures, commands, and
   generated validators required by G1, G2, and G4;
 - a fully implemented `demo/midgard-watcher` workspace package;
 - updated canonical P2, fault-coverage, catalogue, and public-readiness status
   documents that agree with executable evidence (the public-readiness document
   is root `public_testnet_readiness.md`);
-- `GOAL_PROGRESS.md` as the durable execution/criterion ledger;
 - `docs/exec-plans/canonical-v1-goal-completion-report.md` as the concise
   human-readable final evidence index;
-- `docs/exec-plans/evidence/canonical-v1-goal-closure-v1.json` as the canonical
-  machine-readable closure manifest;
-- a repo-owned schema/decoder and verifier for that manifest;
-- `docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json` (F05),
-  kept current through integration;
-- the exact aggregate scripts in §13.1; and
 - coherent checkpoint commits plus one final integration commit, without
-  rewriting pre-existing history; and
+  rewriting pre-existing history;
 - exactly one long-lived Goal pull request targeting the `tx-validation`
-  branch, containing `releaseCommit` plus its §0.2 evidence commits.
+  branch, containing `releaseCommit`.
 
 Large logs, databases, secrets, temporary corpora, and disposable deployment
-state are not deliverables. The closure manifest references committed
-evidence by path and records how to regenerate anything too large or
-transient to commit, rather than committing unsafe or irreproducible runtime
-state (§13.4).
+state are not deliverables. The completion report links to committed evidence
+and explains how to regenerate anything too large or transient to commit.
 
 ## 3. Non-negotiable invariants
 
@@ -370,8 +324,7 @@ state (§13.4).
     incomplete, complete it. Pre-existing and in-flight work, including
     uncommitted checkpoints from other tasks, may be edited, overwritten,
     staged, committed, and claimed whenever doing so advances it toward the
-    Goal's outcomes; record the provenance of such integrations in
-    `GOAL_PROGRESS.md`.
+    Goal's outcomes; preserve the provenance in Git history and review notes.
 
 ### 3.1 Required protocol decisions for this Goal
 
@@ -525,9 +478,8 @@ family, a canonical necessity artifact must:
 6. show that no simpler authenticated representation closes that limit.
 
 A necessity artifact binds the exact validator hashes and parameter digests
-it measured. Any change to those hashes or digests invalidates the artifact —
-tracked through F05 invalidation triggers — and requires re-measurement
-before CG5.
+it measured. Any change to those hashes or digests invalidates the measurement
+and requires re-measurement before CG5.
 
 If tier-3 support is justified, the tier-1 direct or tier-2 single raw-UTxO
 reference path remains enabled for every item for which it fits. Both
@@ -582,9 +534,9 @@ are:
    memory cap; #606 measured that claim false in every part — at 296 both
    proofs BUILD and EVALUATE (625,256 and 495,554 memory units, far inside
    either basis) and the tier-1 inline shape misses on L1 bytes alone. The
-   companion clause that `GOAL_PROGRESS.md` deliberately holds the Q10/Q11
-   output-5 cells OPEN for the Phase-7 re-measurement is likewise
-   superseded: the Phase-7 record itself was superseded at #606, and the
+   companion historical note that held the Q10/Q11 output-5 cells OPEN for
+   the Phase-7 re-measurement is likewise superseded: the Phase-7 record itself
+   was superseded at #606, and the
    cells closed at #612's measured §8 tier-2 carriage routing
    (`spendInputTierRoutedCarriage` in the same artifact), not by any basis
    change. Apart from those
@@ -625,40 +577,24 @@ The active parent must:
    re-read is required only when `git diff` shows this file changed since the
    revision recorded as last read, or when no prior complete read exists;
    otherwise §0–§6 plus the sections owning current-phase tasks suffice.
-2. Record `git rev-parse HEAD`, branch, `git status --short`, tool versions,
-   and a secret-safe external-credential inventory in `GOAL_PROGRESS.md`:
-   credential names, presence, source type, public addresses/identities, and
-   readiness only. Never record a secret value, seed phrase, or key byte in
-   any Goal artifact.
+2. Inspect `git rev-parse HEAD`, branch, `git status --short`, tool versions,
+   and the secret-safe external-credential inventory before acting. Never
+   commit a secret value, seed phrase, or key byte to a progress or evidence
+   document.
 3. Reconcile current source against the live P2, fault-proof, and watcher
    matrices before assigning implementation work.
 4. Create the compact plan and immediately perform a material read, edit,
    command, or test.
 5. Continue until all criteria pass or a genuine external blocker remains.
 
-### 4.2 `GOAL_PROGRESS.md` schema
+### 4.2 Progress notes are human-only
 
-Maintain these sections and no diary-style transcript:
-
-- **Baseline:** revision, branch, dirty paths, tool versions, Graphify
-  indexed revision, and external services/credentials available (secret-safe
-  per §4.1). Do not record SHA-256 values of tracked repository files here;
-  Git already content-addresses them.
-- **Criterion ledger:** every `AC-*` from §12 with `TODO`, `IN_PROGRESS`,
-  `BLOCKED`, or `PASS`, plus exact evidence.
-- **Task queue:** task ID, dependencies, owner, owned paths, status, commit,
-  focused verification.
-- **Decisions:** only consequential decisions and why existing authority
-  selected them.
-- **Validation ledger:** exact command, revision/artifact identity, result,
-  count, duration where material.
-- **Current next action:** one concrete action.
-- **Blockers:** exact external dependency, evidence, exhausted alternatives,
-  and smallest unlock action.
-
-An item may be `PASS` only when its final-tree evidence meets this file. A
-historical green command against an incompatible blueprint, stale source
-revision, different parameter snapshot, or changed ABI is not a pass.
+`GOAL_PROGRESS.md` is retained as historical working context. It is not an
+authoritative database, does not define task state, and must not be parsed by
+scripts, CI, closure manifests, or release gates. Current truth comes from the
+source, focused tests, domain documentation, open issues/decisions, and the
+final human-readable completion report. Stale historical notes are corrected
+when useful; they do not create implementation blockers by themselves.
 
 ### 4.3 Worktree and commit discipline
 
@@ -691,12 +627,10 @@ Deliver the entire Goal through one long-lived pull request:
 - Never force-push or rewrite published Goal history. Push coherent commits to
   the same head branch.
 - Push completed work promptly; unpushed work is lost work. A push is not
-  final Goal completion. The pull-request description points at
-  `GOAL_PROGRESS.md` rather than restating it.
+  final Goal completion. Keep the pull-request description concise and current.
 - Keep the pull request draft while any mandatory `AC-*` is not `PASS`. Mark
   it ready for review only as the final §15 delivery action, after every
-  technical and acceptance check succeeds and `releaseCommit`, its evidence
-  commits, and the closure evidence are pushed.
+  technical and acceptance check succeeds and `releaseCommit` is pushed.
 
 Push order follows the §6 dependency graph; a push is coherent when every gate
 it claims has passed at that revision.
@@ -727,8 +661,7 @@ to be removed.
 (Owner amendment 2026-08-01: this section previously enumerated seven numbered
 push checkpoints — a second copy of the §6 dependency graph that could drift
 from it — and required, at every one, a hand-maintained pull-request
-description mirroring `GOAL_PROGRESS.md`, a duplicate evidence record already
-mandated by §4.2, and a ~200-second journey rerun regardless of whether
+description mirroring a progress diary, plus a ~200-second journey rerun regardless of whether
 anything it exercises had changed. The protective content is retained above;
 the per-push ceremony is not. §12 is byte-identical after this change.)
 
@@ -746,8 +679,7 @@ Concurrent changes to these surfaces yield incoherent integrations rather than
 honest merge conflicts, so changes to them must be serialized however the work
 is organized:
 
-- `GOAL_SPEC.md`, `GOAL_PROGRESS.md`, live closure matrices, and completion
-  reports;
+- `GOAL_SPEC.md`, live coverage matrices, and completion reports;
 - root/workspace package manifests and lockfiles;
 - canonical format registries, consensus profile, deployment manifest, release
   evidence, and capability parity;
@@ -774,7 +706,8 @@ Every task below must produce:
 4. Cross-language vectors where data crosses TypeScript/Aiken.
 5. Focused typecheck/lint/format/static checks.
 6. An explicit path/diff audit.
-7. Exact evidence recorded in `GOAL_PROGRESS.md`.
+7. Exact evidence available from test output, committed artifacts, or the
+   completion report.
 
 “Already implemented” is a valid outcome only if final-tree source and all
 listed evidence prove the task's acceptance; then update the authoritative
@@ -784,9 +717,7 @@ matrix rather than reimplementing it.
 
 ```text
 F00 current-truth freeze
- ├─ F01–F03 preflight ─────────> F04 economics record · F05 task manifest
- │                                └─ F41 evidence schema ──> F40 harness
- │                                   (F40 also needs F10 + F20 + F30)
+ ├─ F01–F03 preflight ─────────> F04 economics record
  ├─ F10 capability inventory ──> C20-* + C21–C33 (P2) ──> CG2
  │                                └──────────────────────> C40–C53 (P3) ──> CG3
  │                                                               └──────> C60–C68 (P4)
@@ -818,20 +749,13 @@ compatible-looking helper exists.
 | F02 | Final format/ABI registry audit                 | F00           | Every serialized/authenticated format has one V1 schema and exact cross-language tag/arity tests; obsolete pre-launch branches are absent.                                                                                                                                                                                                                                                       |
 | F03 | Target-network authority preflight              | F00           | Select and identify the trusted Cardano L1-source mode/topology, effective/pending parameter query, testnet network, finality policy inputs, and credentials. Local-node mode records the watcher-operated node and aligned query/index services; external-provider mode records every independent provider. Missing external credentials are recorded (secret-safe per §4.1) before P5/P6 but do not block local work. F03 emits exactly one machine-readable L1-source declaration (mode, network, endpoints/identities, finality inputs) that every later task consumes. For this Goal the accepted acceptance-mode selection is `Preprod` + `local_node` + aligned local Kupmios — the only mode current repository tooling supports; selecting `external_providers` instead requires first deliberately building that acceptance path and amending this file. |
 | F04 | Quantitative economics and margin decision record | F03         | One approved decision record under `docs/midgard/decisions/` fixes: bond, slashing penalty, inactivity penalty, prover reward, fee/collateral floors, confirmation/finality depths per L1-source mode, retry budget, DA availability deadlines, `da_attestation_timeout` (Q61), governed DA-governor lower bounds (Q63), local acceptance-topology container ceilings (C80) plus the separate owner-set production hardware floor (documented through W46 and the readiness document), and confirms the §3.3 thresholds. Q53, W04, W12, C74, C80, Q61, and Q63 consume these values; no later task invents its own number. Values may enter as `PROVISIONAL` to unblock local work; owner approval is required before CG5 binds them into the release identity. Testnet deadline/timeout values must keep the complete C83–C87 live sweep executable inside a bounded acceptance window (target ≤ 48 hours) without violating §3.3. |
-| F05 | Machine-readable task manifest                  | F01–F03, F20–F21, F30, F41 | `docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json` lists every §7–§10 task with: ID, dependencies, exact source anchors, writable paths, paths it must not touch, required evidence outputs, focused verification commands, expected nonzero counts, invalidation triggers, and a size (S/M/L/XL) and risk classification. Assignments quote the manifest entry; inventory findings update it before dependent work is assigned. The manifest may decompose an oversized task into ordered sub-assignments (`Q22a`, `Q22b`, …) with their own path sets and focused commands while closure is judged for the whole ID. F05 also ships worked examples under `docs/exec-plans/templates/`: a golden manifest row, a §3.2 necessity artifact, an executable structural `N/A`, and a task assignment brief — templates, excluded from evidence aggregation. |
 | F10 | P0/P1/P2 evidence reconciliation                | F01–F02       | Re-run or invalidate every claimed P0/P1/P2 pass against current source; update the P2 task queue without weakening the matrix definition.                                                                                                                                                                                                                                                       |
 | F20 | Fault-proof matrix and catalogue reconciliation | F01–F02       | For every coverage row, identify rule, enabled state, proof family, current binding, catalogue reachability, tooling, tests, emulator/preprod evidence, and remaining task ID. F20 also emits the initial concrete §9.1 launch-scope family list.                                                                                                                                                                                                                   |
 | F21 | Structural/N/A claim audit                      | F20           | Each “unrepresentable”, “L1-enforced”, or “reduces to another proof” row has an executable adversarial test. Unsupported prose-only N/A claims become open tasks.                                                                                                                                                                                                                                |
 | F30 | Watcher dependency/source map                   | F00–F02       | Resolve current public DA/proof-bundle, validation, proof tooling, manifest, L1-source, state-queue, and removal APIs by source path. No watcher design relies on operator-private DB/admin APIs.                                                                                                                                                                                                |
-| F40 | Goal verification harness                       | F10, F20, F30, F41 | Add exact `demo/package.json` entry points described in §13.1 and deterministic report verifiers consuming the F41 schema. Local verification never silently skips tests; state-changing acceptance is separate. F40 also adds the non-gating `goal:tasks:ready` helper (§13.1) and wires `goal:verify:static` into repository CI for the Goal branch so drift is caught between checkpoints.                                                                                                                                                                            |
-| F41 | Evidence manifest schema                        | F00–F03       | Define the canonical machine-readable closure manifest binding revision per §0.2 (`releaseCommit`, branch, worktree state — never the hash of the commit containing the manifest), dirty baseline, compiler/tool versions, both C70 parameter snapshots, blueprint, validator hashes, deployment identity, fixtures, commands, results, tx hashes, timings, §9.5 residual launch blockers, and all `AC-*` statuses. Reconcile the existing v1 schema/verifier to §0.2: drop manifest-head equality and verify descent plus evidence-only diffs instead. |
 
 `F01`, `F02`, `F20`, and `F30` may discover that recent source has advanced
 past older plans. Preserve valid implementation; repair the evidence ledger.
-
-`F41` deliberately precedes `F40` and all broad implementation work: the
-evidence schema exists first so early tasks record evidence in its final
-shape rather than retrofitting it later.
 
 ## 8. G1 work packages — canonical V1 capability
 
@@ -995,11 +919,9 @@ A family task is `LOCAL_PASS` only when all applicable outputs exist:
 9. Emulator lifecycle: init, every step, permanent proof token, fraudulent
    header/claim removal, correct slashing/reward.
 10. Coverage and catalogue rows changed to `LOCAL_PASS` at integration.
-    `LIVE_PASS` is recorded only from Q57/QG3 evidence, and only in the
-    closure manifest and completion report (§0.2 evidence paths); in-repo
-    matrices state local status and reference the manifest for live status,
-    so live results never edit a source-bearing document after
-    `releaseCommit`.
+    `LIVE_PASS` is recorded only from Q57/QG3 evidence in the completion report;
+    in-repo matrices state local status, so live results do not rewrite source
+    status documents.
 
 If a rule is structurally enforced elsewhere, task acceptance is an
 adversarial executable proof of that fact, removal of unreachable proof
@@ -1064,8 +986,8 @@ do not overlap. Shared catalogue, CLI unions,
 blueprint, and matrices are integrated later by the parent.
 
 Q21, Q22, and Q45–Q48 are substantially larger than typical rows — the
-interactive validation-trace game especially. Decompose them into ordered F05
-sub-assignments with their own path sets and focused commands; §9.1 closure is
+interactive validation-trace game especially. Decompose them into ordered
+implementation changes with their own path sets and focused commands; §9.1 closure is
 still judged for the whole family.
 
 ### 9.4 Shared correction lifecycle
@@ -1096,8 +1018,8 @@ outcome must be exactly one of:
 1. an implemented protection with adversarial positive/negative tests;
 2. an executable structural `N/A` proving the protection is unnecessary; or
 3. a named residual launch blocker, recorded in root
-   `public_testnet_readiness.md` and the closure manifest with the owner's
-   explicit acceptance — never silence.
+   `public_testnet_readiness.md` with the owner's explicit acceptance — never
+   silence.
 
 | ID  | Deliverable                                       | Depends on        | Acceptance                                                                                                                                                                                                                                                                                                                                              |
 | --- | ------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1197,7 +1119,7 @@ blueprint change:
 Schedule for ABI stability once CG3 and QG1 pass. Any later schema,
 constructor, resolver-index, or catalogue-order change pays the full IG1
 cascade plus re-measurement of every bound §3.2 necessity artifact and C74
-measurement (tracked by F05 invalidation triggers) — the most expensive
+measurement — the most expensive
 rework path in this program.
 
 ### IG2 — Proof-family gate
@@ -1219,8 +1141,8 @@ Do not set or compile the release-evidence digest until CG1–CG4, QG1–QG2, an
 WG1 pass against the same final blueprint and target parameter snapshot. CG5
 then proves the resulting digest and generated release identity. QG3 and WG2
 prove that exact release on the fresh target-testnet deployment; their live
-evidence enters the final closure manifest rather than creating a
-self-referential compiled digest.
+evidence is summarized in the completion report rather than compiled into the
+release digest.
 
 ### IG5 — Live acceptance gate
 
@@ -1250,8 +1172,8 @@ the flat field commitments and §3.2 carriage tiers per
 
 ### Repository and identity
 
-- **AC-00:** `GOAL_PROGRESS.md` contains a complete criterion/task/evidence
-  ledger and no unresolved non-external blocker.
+- **AC-00:** The source, tests, coverage documents, open issues/decisions, and
+  completion report agree on what is implemented and what remains open.
 - **AC-01:** All pre-existing user work is preserved; all Goal-owned work is
   committed in coherent checkpoints; final state is clean relative to the
   recorded baseline; diff/static checks pass.
@@ -1362,71 +1284,20 @@ the flat field commitments and §3.2 carriage tiers per
   maturity threshold: at most half the canonical maturity window under the
   configured response deadlines.
 - **AC-X12:** All final evidence identifies the same `releaseCommit` and
-  release identity (§0.2) and is reproducible by §13; anything recorded after
-  `releaseCommit` lives only in evidence commits whose diffs are confined to
-  the §0.2 declared evidence paths.
+  release identity (§0.2) and is reproducible by §13.
 - **AC-X13:** No acceptance claim relies solely on documentation, a synthetic
   helper, representative framing, an emulator-only limit, test-name filtering
   that collects zero tests, skipped suites, or stale historical artifacts.
 
 ## 13. Specified verification
 
-### 13.1 Required repository commands
+### 13.1 Direct verification only
 
-`F40` must add and document these exact scripts in `demo/package.json`:
-
-```text
-goal:verify:static
-goal:verify:capability
-goal:verify:fault-proofs
-goal:verify:watcher
-goal:verify:local
-goal:accept:testnet
-goal:verify:evidence
-goal:verify:all
-```
-
-Required behavior:
-
-- `goal:verify:static` checks dirty-baseline policy, forbidden legacy,
-  unauthenticated-object, and unjustified bounded-only patterns, format
-  registry, generated docs, diff/format/lint/typecheck/build,
-  compiler/blueprint identity, catalogue/manifest consistency, and exact test
-  selectors.
-- `goal:verify:capability` proves CG1–CG5 locally, including deterministic
-  maximum/adjacent corpora, retained normal/forced reconstruction,
-  complete-item tier-1/tier-2 direct and publication/reference paths, every
-  required §3.2 necessity artifact, exact equivalence for any tier-3
-  fallback, exhaustive TS terminals, exact Aiken vectors, proof fit, and
-  release-digest reproduction.
-- `goal:verify:fault-proofs` proves QG1 and QG2 for every family,
-  including valid-block negatives, reachability, tooling, correction, and
-  coverage-matrix verifier.
-- `goal:verify:watcher` proves WG1: unit/property, multi-process,
-  public-data-only, replay, classifier totality, crash/rollback, and autonomous
-  emulator correction.
-- `goal:verify:local` runs the four preceding commands serially with bounded
-  resources.
-- `goal:accept:testnet` is the explicit state-changing fresh target-testnet
-  acceptance. It executes C80–C87, Q57/QG3, and W45–W46/WG2 against one exact
-  final deployment. It requires credentials/preflight, uses the E2E acceptance
-  skill and orchestrator as extended by C79, writes immutable redacted
-  evidence, and never targets mainnet.
-- `goal:verify:evidence` verifies the testnet artifacts, release identity,
-  tx/chain evidence, QG3, WG2, all `AC-*`, that every referenced evidence
-  path exists, and absence of secrets without resubmitting transactions. It enforces the §0.2
-  revision model: the closure manifest binds `releaseCommit` — never the hash
-  of the commit containing the manifest — and verification passes only when
-  HEAD equals `releaseCommit` or is a descendant whose entire
-  `releaseCommit..HEAD` diff is confined to the declared evidence paths.
-- `goal:verify:all` runs `goal:verify:local` then
-  `goal:verify:evidence`; it fails if target-testnet evidence is absent, stale,
-  incomplete, mismatched, or from another revision/release.
-
-F40 additionally provides a non-gating `goal:tasks:ready` helper that joins
-the F05 task manifest with the `GOAL_PROGRESS.md` task queue and prints
-dependency-ready tasks with their owned paths and focused commands. It is
-scheduling tooling, not a gate; no acceptance claim may cite it.
+There is no Goal-wide verification harness, task-manifest checker, progress
+tracker parser, or generated closure manifest. Run the repository's normal
+component commands and the narrow domain checks that exercise the behavior
+being claimed. A final acceptance report must name the exact commands and
+release commit it relies on.
 
 No command may use `--passWithNoTests`, ignored exit codes, hidden skips, or a
 test filter without asserting a positive exact collected count for a required
@@ -1434,7 +1305,7 @@ suite.
 
 ### 13.2 Minimum direct toolchain verification
 
-The aggregate scripts must include, at minimum, equivalent coverage for:
+Final validation must include, at minimum, the applicable coverage below:
 
 ```bash
 # The workspace Nix shell is defined at demo/flake.nix — there is no root
@@ -1447,7 +1318,7 @@ nix develop ./demo --command bash -c 'node --version && pnpm --version'
 make spec
 
 # Aiken runs from onchain/aiken with the exact compiler version declared in
-# aiken.toml. The verification harness must fail on a different version.
+# aiken.toml.
 aiken --version
 aiken fmt --check
 aiken check --skip-tests
@@ -1555,11 +1426,10 @@ work is exhausted are:
   required test impossible; or
 - a genuine contradiction among accepted protocol authorities.
 
-For a blocker, `GOAL_PROGRESS.md` must contain the exact failed operation,
-evidence, safe alternatives attempted, preserved completed work, and the
-smallest user action needed. Missing effort, a failing test, a difficult
-compiler issue, stale documentation, or an incomplete family is not a
-blocker.
+For a blocker, the handoff must state the exact failed operation, evidence,
+safe alternatives attempted, preserved completed work, and the smallest user
+action needed. Missing effort, a failing test, a difficult compiler issue,
+stale documentation, or an incomplete family is not a blocker.
 
 ## 15. Completion rule
 
@@ -1567,16 +1437,14 @@ Before any response claiming Goal completion:
 
 1. Re-read every `AC-*`.
 2. Verify each is `PASS` with final-tree evidence.
-3. Run `pnpm --dir demo run goal:verify:all`.
-4. Verify goal-owned commits and baseline-relative worktree cleanliness.
-5. Reproduce the release-evidence digest and completion manifest.
+3. Run the applicable direct component and acceptance checks from §13.
+4. Verify goal-owned commits and worktree cleanliness.
+5. Reproduce the release-evidence digest and completion report.
 6. Confirm no external blocker or unresolved decision remains.
 7. Verify that exactly one Goal pull request exists, it targets
    `tx-validation`, and its head contains every Goal-owned commit.
-8. Push the final evidence commit and closure evidence to that pull request,
-   verify that its remote head is `releaseCommit` or an evidence-only
-   descendant of it per §0.2, and mark it ready for review without opening a
-   replacement pull request.
+8. Push `releaseCommit` and the completion report to that pull request and mark
+   it ready for review without opening a replacement pull request.
 
 Only then may the Goal be marked complete. The final response must contain
 only completed changes, important decisions, exact validation results, and

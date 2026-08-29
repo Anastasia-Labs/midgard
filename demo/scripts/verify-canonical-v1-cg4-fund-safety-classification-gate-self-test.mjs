@@ -5,8 +5,8 @@
  * The gate's whole value is that it cannot be talked into PASS, so this suite
  * spawns the real gate binary against seeded artifacts and requires each run to
  * exit non-zero WITH its specific diagnostic. Only the CG4 artifact is
- * redirected: the F05 task manifest, the F20 reconciliation, the ABI freeze and
- * the git index all stay real, so a seeded claim is judged against reality.
+ * redirected: the F20 reconciliation, the ABI freeze, and the git index stay
+ * real, so a seeded claim is judged against reality.
  *
  * Opening and closing positive controls bracket the mutations, so a gate that
  * rejected everything could not pass this suite either.
@@ -81,23 +81,7 @@ const classificationRow = (candidate, id) =>
 
 mustAccept("opening control");
 
-/* --- The nine rows are reconciled against the manifest, not restated. --- */
-
-mustReject(
-  "row restates its own acceptance",
-  /- C60 acceptance does not match the manifest row/u,
-  (candidate) => {
-    classificationRow(candidate, "C60").acceptance = "Anything goes.";
-  },
-);
-
-mustReject(
-  "row understates its manifest dependencies",
-  /- C64 publishes blockedOn \[\] but the manifest declares \["C60","C61","C62","C63"\]/u,
-  (candidate) => {
-    classificationRow(candidate, "C64").blockedOn = [];
-  },
-);
+/* --- The nine rows are reconciled against the source tree. --- */
 
 mustReject(
   "row hides a prescribed surface it does not have",
@@ -109,7 +93,7 @@ mustReject(
 
 mustReject(
   "row invents a prescribed surface",
-  /- C60 prescribedSurfaces must equal the manifest row's writablePaths/u,
+  /- C60 publishes 0 missing surfaces but the index measures 1/u,
   (candidate) => {
     classificationRow(candidate, "C60").prescribedSurfaces = [
       "demo/does-not-matter.ts",
@@ -126,8 +110,8 @@ mustReject(
 );
 
 mustReject(
-  "row promoted while the manifest still blocks it",
-  /- C67 is PASS while the manifest still blocks it on C60, C61, C62, C63, C64, C65, C66: fund safety may never be inferred/u,
+  "row promoted while it remains blocked",
+  /- C67 is PASS while it is still blocked on C60, C61, C62, C63, C64, C65, C66: fund safety may never be inferred/u,
   (candidate) => {
     const row = classificationRow(candidate, "C67");
     row.status = "PASS";

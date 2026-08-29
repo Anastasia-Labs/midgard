@@ -24,8 +24,8 @@
 //// ### Mirror of `fabricated-deposit` (Q39)
 ////
 //// This mirrors `midgard/fraud_proofs/fabricated_deposit/step_04`'s establishment
-//// rule; it lives in this family's own lib module because `GOAL_PROGRESS.md`'s
-//// triage requires Q39 and Q40 to keep disjoint family paths.
+//// rule; it lives in this family's own lib module because the two families
+//// establish faults from different event datum shapes.
 
 use midgard/common/types.{PosixTime}
 use midgard/computation_thread as ct

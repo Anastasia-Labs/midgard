@@ -54,8 +54,8 @@
 //// ### Mirror of `fabricated-deposit` (Q39)
 ////
 //// The category binding, header authentication and counted-root membership
-//// helpers below are family-local on purpose: `GOAL_PROGRESS.md`'s triage records
-//// that Q39 and Q40 share machinery but must keep disjoint family paths, so this
+//// helpers below are family-local on purpose: the two fabricated-event families
+//// share machinery but bind different roots and datum shapes, so this
 //// module mirrors `midgard/fraud_proofs/fabricated_deposit/step_01` against
 //// `withdrawals_root` rather than importing it or editing a shared parent-owned
 //// file.

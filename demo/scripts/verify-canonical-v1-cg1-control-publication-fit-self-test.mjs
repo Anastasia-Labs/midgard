@@ -6,9 +6,8 @@
  * spawns the real gate binary against seeded artifacts and requires each run
  * to exit non-zero WITH its specific diagnostic. Only the CG1 artifact is
  * redirected (`--gate-under-test=`); the roster source, the auth-token map,
- * the working-tree blueprint and GOAL_PROGRESS.md all stay real, so every
- * seeded claim is judged against reality rather than a second seeded copy of
- * it.
+ * and the working-tree blueprint all stay real, so every seeded claim is
+ * judged against reality rather than a second seeded copy of it.
  *
  * Opening and closing positive controls bracket the mutations, so a gate that
  * rejected everything could not pass this suite either. The mutation list
@@ -206,15 +205,6 @@ mustReject(
 );
 
 mustReject(
-  "exclusion's ledger citation fabricated",
-  /cites a quote not found verbatim/u,
-  (candidate) => {
-    candidate.exclusions[0].recordedIn[0].quote =
-      "this sentence was never written in GOAL_PROGRESS.md";
-  },
-);
-
-mustReject(
   "exclusion count inflated with a second, fabricated exclusion",
   /exclusions must record exactly one entry/u,
   (candidate) => {
@@ -267,33 +257,6 @@ mustReject(
   /invalidationTrigger must name issue #510/u,
   (candidate) => {
     candidate.hashBasis.invalidationTrigger = "nothing ever invalidates this";
-  },
-);
-
-/* --- Dependency freshness (C11/C12/C13) is read from the real ledger. --- */
-
-mustReject(
-  "dependency row promoted to PASS with a fabricated quote",
-  /rows\.C12\.quote must be a literal substring of GOAL_PROGRESS\.md/u,
-  (candidate) => {
-    candidate.dependencyFreshness.rows.C12.quote =
-      "C12 was fabricated for this self-test and never appears in the ledger";
-  },
-);
-
-mustReject(
-  "dependency row status overstated while its quote is dropped",
-  /rows\.C13\.quote must be a literal substring/u,
-  (candidate) => {
-    delete candidate.dependencyFreshness.rows.C13.quote;
-  },
-);
-
-mustReject(
-  "dependency row removed entirely",
-  /dependencyFreshness\.rows\.C11 is required/u,
-  (candidate) => {
-    delete candidate.dependencyFreshness.rows.C11;
   },
 );
 

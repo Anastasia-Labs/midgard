@@ -6,7 +6,8 @@ shape, tradeoff order, verification expectations). Read it before making
 changes.
 
 For Goal-program work, `GOAL_SPEC.md` is the authoritative execution
-specification and `GOAL_PROGRESS.md` is the durable execution ledger.
+specification. `GOAL_PROGRESS.md` is historical human context only; never parse
+it or treat it as a task, readiness, or completion authority.
 
 ## Agent skills
 

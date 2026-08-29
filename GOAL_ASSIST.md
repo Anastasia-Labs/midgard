@@ -7,9 +7,9 @@ This file is the coordination surface for the assistant supervising Codex task
 here rather than through task messages.
 
 `GOAL_SPEC.md` remains authoritative for scope and acceptance.
-`GOAL_PROGRESS.md` remains authoritative for durable execution state. This
-file records only concise recovery handoffs, independent review findings, and
-development papercuts that can materially accelerate the Goal.
+`GOAL_PROGRESS.md` is historical human context only, not an execution-state
+database. This file records only concise recovery handoffs, independent review
+findings, and development papercuts that can materially accelerate the Goal.
 
 ## Current recovery handoff
 
@@ -306,8 +306,8 @@ development papercuts that can materially accelerate the Goal.
 - The E2E/API slice passed parent review. Its previously host-invalid
   process-backed cases pass under the declared Node `22.22.2` environment;
   host Node 24 remains unsuitable evidence for child-process capture.
-- Parent-owned shared surfaces, including the canonical format registry and
-  `GOAL_PROGRESS.md`, remain the only promotion authority.
+- Parent-owned shared surfaces, including the canonical format registry,
+  remain the promotion authority for their domains.
 
 ## Independent assessment
 

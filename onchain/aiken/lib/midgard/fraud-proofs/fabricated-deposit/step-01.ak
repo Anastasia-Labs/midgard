@@ -47,9 +47,9 @@
 //// ### Shared with `fabricated-withdrawal` (Q40)
 ////
 //// The category binding, header authentication and counted-root membership
-//// helpers below are family-local on purpose: `GOAL_PROGRESS.md`'s triage
-//// records that Q39 and Q40 share machinery but must keep disjoint family
-//// paths, so Q40 mirrors these four modules against `withdrawals_root` rather
+//// helpers below are family-local on purpose: the deposit and withdrawal
+//// families share machinery but bind different roots and datum shapes, so the
+//// withdrawal family mirrors these modules against `withdrawals_root` rather
 //// than editing a shared parent-owned file.
 
 use aiken/builtin

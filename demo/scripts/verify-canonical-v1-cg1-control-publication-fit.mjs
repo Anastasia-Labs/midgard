@@ -18,15 +18,13 @@
  *   - the one deliberate exclusion (the oversized CEK direct resolver) is
  *     checked against the same source for genuine absence, checked against
  *     the reference-script auth-token map for being a real role (not an
- *     invented name), and its citations are checked against the ledger/
- *     necessity documents they claim to quote;
+ *     invented name), and its necessity citation is checked against the
+ *     document it claims to quote;
  *   - every roster entry's fit arithmetic (`l1ByteMarginBytes = 16384 -
  *     completeSignedTransactionBytes`) is re-derived and must be positive;
  *   - the blueprint this artifact's hashes are bound to is re-hashed from the
  *     working tree (it is gitignored, so there is no committed copy to check
- *     against) and must match the pin exactly; and
- *   - the C11/C12/C13 dependency quotes this artifact cites are checked as
- *     literal substrings of the real GOAL_PROGRESS.md ledger.
+ *     against) and must match the pin exactly.
  *
  * A gate that could green a stale, invented or mismeasured claim would be
  * worse than no gate, so every check here fails closed rather than trusting
@@ -53,7 +51,6 @@ const blueprintOptional = process.argv.includes("--blueprint-optional");
 const ROSTER_SOURCE_PATH =
   "demo/midgard-node/src/transactions/reference-scripts.ts";
 const AUTH_TOKEN_MAP_PATH = "demo/midgard-sdk/src/reference-scripts.ts";
-const GOAL_PROGRESS_PATH = "GOAL_PROGRESS.md";
 const NECESSITY_DOC_PATH =
   "docs/exec-plans/evidence/necessity/cek-program-material-v1.md";
 const RESOLVER_APPLIED_HASHES_TEST_PATH =
@@ -257,17 +254,6 @@ const authTokenMapSourceSha256 = authTokenMapSourceText
   ? createHash("sha256").update(authTokenMapSourceText, "utf8").digest("hex")
   : null;
 
-/* Dependency freshness: C11/C12/C13, read as literal substrings of the real,
- * append-only GOAL_PROGRESS.md ledger. Nothing here is redirectable: a
- * self-test proves a mutation is rejected by making the ARTIFACT disagree
- * with the real ledger, never by feeding this gate a fake one. */
-const goalProgressText = indexHas(GOAL_PROGRESS_PATH)
-  ? readIndexed(GOAL_PROGRESS_PATH)
-  : "";
-if (!indexHas(GOAL_PROGRESS_PATH)) {
-  fail(`${GOAL_PROGRESS_PATH} is not in the index`);
-}
-
 const necessityDocText = indexHas(NECESSITY_DOC_PATH)
   ? readIndexed(NECESSITY_DOC_PATH)
   : "";
@@ -330,53 +316,7 @@ if (gate.liveOrReadinessClaims !== 0) {
   fail("CG1 must publish exactly 0 live or readiness claims");
 }
 
-/* --- 1. Dependency freshness (C11, C12, C13) ------------------------ */
-
-const REQUIRED_DEPENDENCIES = ["C11", "C12", "C13"];
-const depends = gate.dependencyFreshness;
-if (depends === undefined || depends === null) {
-  fail("dependencyFreshness is required: CG1 depends on C11, C12 and C13");
-} else {
-  if (!sameJson(depends.dependsOn, REQUIRED_DEPENDENCIES)) {
-    fail(
-      `dependencyFreshness.dependsOn must be ${JSON.stringify(REQUIRED_DEPENDENCIES)}`,
-    );
-  }
-  const heading = depends.recordedIn?.heading;
-  if (
-    typeof heading !== "string" ||
-    heading.length === 0 ||
-    (goalProgressText && !goalProgressText.includes(heading))
-  ) {
-    fail(
-      "dependencyFreshness.recordedIn.heading must be a literal substring of GOAL_PROGRESS.md",
-    );
-  }
-  if (depends.recordedIn?.path !== GOAL_PROGRESS_PATH) {
-    fail(`dependencyFreshness.recordedIn.path must be ${GOAL_PROGRESS_PATH}`);
-  }
-  for (const id of REQUIRED_DEPENDENCIES) {
-    const row = depends.rows?.[id];
-    if (row === undefined || row === null) {
-      fail(`dependencyFreshness.rows.${id} is required`);
-      continue;
-    }
-    if (row.status !== "PASS") {
-      fail(`dependencyFreshness.rows.${id}.status must be PASS`);
-    }
-    if (
-      typeof row.quote !== "string" ||
-      row.quote.length === 0 ||
-      (goalProgressText && !goalProgressText.includes(row.quote))
-    ) {
-      fail(
-        `dependencyFreshness.rows.${id}.quote must be a literal substring of GOAL_PROGRESS.md`,
-      );
-    }
-  }
-}
-
-/* --- 2. Hash basis: the blueprint this artifact is bound to ---------- */
+/* --- 1. Hash basis: the blueprint this artifact is bound to ---------- */
 
 const hashBasis = gate.hashBasis;
 if (hashBasis === undefined || hashBasis === null) {
@@ -611,11 +551,7 @@ if (publishedExclusions.length !== 1) {
   }
   for (const citation of citations) {
     const citationText =
-      citation?.path === GOAL_PROGRESS_PATH
-        ? goalProgressText
-        : citation?.path === NECESSITY_DOC_PATH
-          ? necessityDocText
-          : null;
+      citation?.path === NECESSITY_DOC_PATH ? necessityDocText : null;
     if (citationText === null) {
       fail(
         `exclusion "${exclusion.name}" cites unsupported path ${JSON.stringify(citation?.path)}`,
@@ -669,14 +605,6 @@ const measuredZeroDebt = {
     : blueprintOptional
       ? 0
       : 1,
-  dependencyRowsNotPass: REQUIRED_DEPENDENCIES.filter((id) => {
-    const row = gate.dependencyFreshness?.rows?.[id];
-    return (
-      row?.status !== "PASS" ||
-      typeof row.quote !== "string" ||
-      !goalProgressText.includes(row.quote)
-    );
-  }).length,
 };
 
 if (!sameJson(gate.zeroDebt, measuredZeroDebt)) {
@@ -693,7 +621,6 @@ const everythingMeasuredPass =
   measuredZeroDebt.extraRosterEntries === 0 &&
   measuredZeroDebt.unjustifiedExclusions === 0 &&
   measuredZeroDebt.staleBlueprintPins === 0 &&
-  measuredZeroDebt.dependencyRowsNotPass === 0 &&
   publishedRoster.length === derivedRosterNames.length &&
   derivedRosterNames.length > 0;
 
@@ -702,7 +629,7 @@ if (gate.gateStatus !== "PASS" && gate.gateStatus !== "BLOCKED") {
 }
 if (gate.gateStatus === "PASS" && !everythingMeasuredPass) {
   fail(
-    "gateStatus is PASS while the roster, exclusions, blueprint hash basis or dependency freshness are not all measured clean",
+    "gateStatus is PASS while the roster, exclusions, or blueprint hash basis are not all measured clean",
   );
 }
 if (
@@ -711,7 +638,7 @@ if (
   errors.length === 0
 ) {
   fail(
-    "every roster entry fits, the exclusion is justified, the blueprint hash basis matches and dependencies are fresh, but gateStatus is not PASS: the artifact is stale",
+    "every roster entry fits, the exclusion is justified, and the blueprint hash basis matches, but gateStatus is not PASS: the artifact is stale",
   );
 }
 
@@ -729,7 +656,6 @@ process.stdout.write(
     `gateStatus: ${gate.gateStatus}`,
     `roster: ${String(publishedRoster.length)} validators, all fit: ${String(gate.rosterAllFit)}`,
     `exclusions: ${String(publishedExclusions.length)} (${publishedExclusions.map((entry) => entry.name).join(", ")})`,
-    `dependencies: C11/C12/C13 all PASS with ledger quotes matched`,
     `blueprint: sha256 ${String(blueprintSha256)}, md5 ${String(blueprintMd5)}, ${String(blueprintValidatorCount)} validators, tracked in git: ${String(blueprintIsIndexed)}`,
     `waivers: ${String(gate.waivers.length)}; C70 snapshots: ${String(gate.createsC70Snapshots)}; live/readiness claims: ${String(gate.liveOrReadinessClaims)}`,
     "",

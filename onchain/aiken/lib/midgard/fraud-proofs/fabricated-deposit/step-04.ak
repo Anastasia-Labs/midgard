@@ -22,9 +22,8 @@
 ////
 //// ### Shared with `fabricated-withdrawal` (Q40)
 ////
-//// `fabricated_deposit_fault_is_established_v1` is the piece Q40 mirrors; it
-//// lives in this family's own lib module because `GOAL_PROGRESS.md`'s triage
-//// requires Q39 and Q40 to keep disjoint family paths.
+//// `fabricated_deposit_fault_is_established_v1` is mirrored by the withdrawal
+//// family; each establishment rule remains in its family's own module.
 
 use midgard/common/types.{PosixTime}
 use midgard/computation_thread as ct

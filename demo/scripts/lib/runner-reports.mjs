@@ -6,7 +6,7 @@
 // passed. Nine throwing test bodies, an `it.skip`, or a selector that collects
 // nothing all leave those counts untouched (issue #519, finding V-2).
 //
-// `verify-canonical-v1-fault-proof-reconciliation.mjs` (commit d2344969)
+// the canonical V1 domain checks
 // established the remedy for the Vitest side: spawn the runner, read its
 // machine-readable report, and derive every published number from that report
 // alone. This module is that same mechanism, generalized so the sibling gates

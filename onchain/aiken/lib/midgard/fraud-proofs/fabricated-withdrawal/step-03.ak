@@ -44,7 +44,7 @@
 ////
 //// This mirrors `midgard/fraud_proofs/fabricated_deposit/step_03`'s opening rule
 //// against `WithdrawalEvent`; it lives in this family's own lib module because
-//// `GOAL_PROGRESS.md`'s triage requires Q39 and Q40 to keep disjoint family paths.
+//// the two families open different event datum shapes.
 
 use midgard/common/types.{PosixTime}
 use midgard/common/utils

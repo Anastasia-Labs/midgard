@@ -1,5 +1,13 @@
 # Canonical V1 Goal Progress
 
+> **Human notes only (owner ruling 2026-08-29).** This file is retained as
+> historical working context. It is not an authoritative task database or a
+> release gate, and no script or CI job may parse it to decide implementation,
+> readiness, or completion. Current truth comes from source, tests, domain
+> documentation, open issues/decisions, and the final completion report. The
+> generated task manifest, closure manifest, verification plan, aggregate Goal
+> harness, and their verifiers have been retired and deleted.
+
 ## Execution policy
 
 - `GOAL_SPEC.md` remains the complete, authoritative objective: §15 and every

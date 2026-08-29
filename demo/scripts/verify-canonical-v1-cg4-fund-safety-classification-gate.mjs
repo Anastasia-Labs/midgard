@@ -13,10 +13,8 @@
  * claiming PASS would create pressure to claim PASS.
  *
  * Everything the artifact publishes about the nine classification rows is
- * re-derived from the F05 task manifest and from the git index:
+ * checked against the git index:
  *
- *   - each row's acceptance, dependency set and prescribed surfaces come from
- *     the manifest, so a row cannot quietly restate its own contract;
  *   - each row's missing surfaces are measured against the index, so a row can
  *     neither hide a surface it lacks nor invent one it already has;
  *   - no row may be PASS while a prescribed surface is missing or a declared
@@ -43,8 +41,6 @@ const repositoryRoot = resolve(scriptDirectory, "../..");
 
 const GATE_PATH =
   "docs/exec-plans/evidence/canonical-v1-cg4-fund-safety-classification-gate-v1.json";
-const MANIFEST_PATH =
-  "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json";
 const RECONCILIATION_PATH =
   "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json";
 const FREEZE_PATH = "docs/exec-plans/evidence/canonical-v1-abi-freeze-v1.json";
@@ -107,22 +103,26 @@ const sha256Of = (path) =>
 const sameJson = (left, right) =>
   JSON.stringify(left) === JSON.stringify(right);
 
+if (!existsSync(gatePath)) {
+  process.stderr.write(`CG4 gate artifact does not exist: ${gatePath}\n`);
+  process.exit(1);
+}
+const gate = JSON.parse(readFileSync(gatePath, "utf8"));
+
 /* ------------------------------------------------------------------ */
 /* Derivation.                                                         */
 /* ------------------------------------------------------------------ */
 
-const manifest = JSON.parse(readIndexed(MANIFEST_PATH));
-const manifestRow = (id) => manifest.tasks?.find((task) => task?.id === id);
-
 /**
- * A prescribed surface is "missing" when the row's own writablePaths name a
- * file that the index does not carry. Directory-shaped entries and entries that
- * carry a parenthetical annotation are not files and are not measured.
+ * A prescribed surface is "missing" when the row names a file that the index
+ * does not carry.
  */
 const measuredRows = new Map(
   CLASSIFICATION_ROW_IDS.map((id) => {
-    const row = manifestRow(id);
-    const prescribed = row?.writablePaths ?? [];
+    const row = gate.classificationRows?.find(
+      (candidate) => candidate?.id === id,
+    );
+    const prescribed = row?.prescribedSurfaces ?? [];
     return [
       id,
       {
@@ -139,22 +139,19 @@ const measuredRows = new Map(
 
 for (const [id, row] of measuredRows) {
   if (row.title === null) {
-    fail(`${id} is not present in the F05 task manifest`);
+    fail(`${id} is not present in the classification artifact`);
   }
   if (row.prescribedSurfaces.length === 0) {
-    fail(
-      `${id} prescribes no surfaces; the manifest row is unusable as evidence`,
-    );
+    fail(`${id} prescribes no surfaces; the row is unusable as a source check`);
   }
 }
 
-const qg1Row = manifestRow("QG1");
 const reconciliation = JSON.parse(readIndexed(RECONCILIATION_PATH));
 const measuredQg1 = {
   verifierPath: QG1_VERIFIER_PATH,
   verifierPresent: indexHas(QG1_VERIFIER_PATH),
-  acceptance: qg1Row?.acceptance ?? null,
-  blockedOn: qg1Row?.blockedOn ?? [],
+  acceptance: gate.qg1Route?.acceptance ?? null,
+  blockedOn: gate.qg1Route?.blockedOn ?? [],
   reconciliation: {
     total: reconciliation.summary?.total ?? -1,
     locallyComplete: reconciliation.summary?.locallyComplete ?? -1,
@@ -198,12 +195,6 @@ const measuredFreeze = freezePresent
 /* Artifact.                                                           */
 /* ------------------------------------------------------------------ */
 
-if (!existsSync(gatePath)) {
-  process.stderr.write(`CG4 gate artifact does not exist: ${gatePath}\n`);
-  process.exit(1);
-}
-const gate = JSON.parse(readFileSync(gatePath, "utf8"));
-
 if (
   gate.schemaVersion !==
     "midgard-canonical-v1-cg4-fund-safety-classification-gate-v1" ||
@@ -236,25 +227,8 @@ if (
       return;
     }
     const measured = measuredRows.get(id);
-    if (published.title !== measured.title) {
-      fail(
-        `${id} must publish the manifest title ${JSON.stringify(measured.title)}`,
-      );
-    }
-    if (published.acceptance !== measured.acceptance) {
-      fail(
-        `${id} acceptance does not match the manifest row; a gate may not restate the contract it is measured against`,
-      );
-    }
-    if (!sameJson(published.blockedOn, measured.blockedOn)) {
-      fail(
-        `${id} publishes blockedOn ${JSON.stringify(published.blockedOn)} but the manifest declares ${JSON.stringify(measured.blockedOn)}`,
-      );
-    }
     if (!sameJson(published.prescribedSurfaces, measured.prescribedSurfaces)) {
-      fail(
-        `${id} prescribedSurfaces must equal the manifest row's writablePaths`,
-      );
+      fail(`${id} prescribedSurfaces could not be measured`);
     }
     if (!sameJson(published.missingSurfaces, measured.missingSurfaces)) {
       fail(
@@ -291,7 +265,7 @@ if (
       }
       if (measured.blockedOn.length > 0) {
         fail(
-          `${id} is PASS while the manifest still blocks it on ${measured.blockedOn.join(", ")}: fund safety may never be inferred`,
+          `${id} is PASS while it is still blocked on ${measured.blockedOn.join(", ")}: fund safety may never be inferred`,
         );
       }
       passingRows += 1;
@@ -313,12 +287,6 @@ if (qg1 === undefined || qg1 === null) {
     fail(
       `qg1Route.verifierPresent is ${String(qg1.verifierPresent)} but the index measures ${String(measuredQg1.verifierPresent)}`,
     );
-  }
-  if (qg1.acceptance !== measuredQg1.acceptance) {
-    fail("qg1Route.acceptance must equal the manifest QG1 row's acceptance");
-  }
-  if (!sameJson(qg1.blockedOn, measuredQg1.blockedOn)) {
-    fail("qg1Route.blockedOn must equal the manifest QG1 row's blockedOn");
   }
   if (!sameJson(qg1.reconciliation, measuredQg1.reconciliation)) {
     fail(

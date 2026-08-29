@@ -7,22 +7,10 @@
 // Nothing in that chain could observe a test result, so a task's promotion was
 // a self-assertion: editing `p2Tasks` and the matching literal here promoted it.
 //
-// A P2 task may now be counted as PASS only when a runner reports that its
-// executable witnesses passed. Each witness is additionally required to be one
-// the *task manifest* declares as that task's focused verification, so the
-// artifact under test cannot supply its own audit scope (finding V-6). The
-// witnesses are executed by spawning each package's own Vitest CLI and, for the
-// C20-6/C20-7 field-order claim that previously rested on the GOAL_SPEC table
-// row, one `aiken check -e` invocation; every published count is derived from
-// those reports alone.
-//
-// Issue #538 closed the coverage residual that left behind. Those witnesses are
-// one focused verification per task, while the manifest declares every task's
-// heavier per-task Aiken selectors as well; nothing replayed them, so the gate's
-// scope was a strict subset of the scope its own authority declares. All of them
-// now run, in one batched invocation of the patched fork — the compiler CI uses
-// to execute the suite — and no task may be published PASS unless every selector
-// the manifest binds to it was collected and passed.
+// A P2 task is counted as PASS only when a runner reports that the executable
+// witness declared for that task passed. The witnesses use each package's own
+// Vitest CLI and one `aiken check -e` invocation; every published count is
+// derived from those reports rather than from a progress ledger.
 //
 // usage: node demo/scripts/verify-canonical-v1-capability-reconciliation.mjs
 
@@ -35,14 +23,10 @@ import { fileURLToPath } from "node:url";
 import { isPassStatus, statusRole } from "./lib/evidence-status.mjs";
 import { runFixtureMode } from "./lib/runner-fixtures.mjs";
 import {
-  aikenCompilerVersion,
-  aikenModuleIndex,
   aikenModuleName,
   aikenPublishedCommand,
-  aikenSelectorPattern,
   deriveAikenOutcome,
   deriveVitestOutcome,
-  forkAikenBinary,
   runAikenCheck,
   runVitest,
   vitestPublishedCommand,
@@ -104,112 +88,6 @@ const declaredPassTasks = taskEntries
   .map(([task]) => task)
   .sort();
 
-// ---------------------------------------------------------------------------
-// The witnesses, and the external authority for them.
-// ---------------------------------------------------------------------------
-
-const taskManifest = JSON.parse(
-  await readFile(
-    resolve(
-      repositoryRoot,
-      "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json",
-    ),
-    "utf8",
-  ),
-);
-const manifestTaskById = new Map(
-  (Array.isArray(taskManifest.tasks) ? taskManifest.tasks : []).map((task) => [
-    task.id,
-    task,
-  ]),
-);
-const focusedCommandsOf = (taskId) => {
-  const task = manifestTaskById.get(taskId);
-  assert.ok(task !== undefined, `${taskId} has no task-manifest row`);
-  const commands = Array.isArray(task.focusedCommands)
-    ? task.focusedCommands
-    : [];
-  assert.ok(
-    commands.length > 0,
-    `${taskId} declares no focused verification in the task manifest`,
-  );
-  return commands;
-};
-
-// ---------------------------------------------------------------------------
-// The manifest's own per-task Aiken selectors (issue #538).
-//
-// The witness sets above are one focused verification per PASS task. The task
-// manifest declares far more: every PASS task also cites
-// `node scripts/run-focused-check.mjs <module> <selector> ...` invocations —
-// the heavier maximum_*/CEK/boundary selectors — which nothing replayed, so
-// "the gate executes the task's verification" was true of a strict subset of
-// what the manifest calls that task's verification. Compilation dominates an
-// `aiken check` run, so the entire set costs one batched invocation.
-//
-// `plannedFocusedCommands` is deliberately NOT read: commit 6e805a78 quarantined
-// those as planned, not-yet-executable citations, and replaying a planned
-// citation would republish a plan as a measurement.
-// ---------------------------------------------------------------------------
-
-const FOCUSED_CHECK_SCRIPT = "scripts/run-focused-check.mjs";
-const focusedCheckPattern = new RegExp(
-  String.raw`node ${FOCUSED_CHECK_SCRIPT.replace("/", "\\/")}\s+(\S+)((?:\s+[a-z0-9_]+)+)$`,
-  "u",
-);
-
-// A `lib/midgard/x-v1.ak` module and its `lib/midgard/x-v1.test.ak` sibling are
-// one source pair addressed by one `aiken check -m` prefix, and the manifest
-// cites that pair in either spelling — commit e4335bbd corrected C21 to the
-// `.test` form while C20-0/C20-1/C20-2 still name the stem. The stem is
-// therefore the selector's identity: keying on the literal spelling instead made
-// three tests cited by both spellings into six declarations against three
-// collected results.
-const aikenModuleStem = (module) =>
-  module.endsWith(".test") ? module.slice(0, -".test".length) : module;
-
-// Pure: turns one task's declared focused commands into the (module, selector)
-// pairs a runner must be shown to have passed. It never silently drops a
-// citation — a `run-focused-check` command it cannot parse, or one naming a
-// module no source file compiles to, throws instead of shrinking the scope.
-export const perTaskAikenCitations = ({ taskId, commands, moduleIndex }) => {
-  const citations = [];
-  for (const command of commands) {
-    if (!command.includes(FOCUSED_CHECK_SCRIPT)) {
-      continue;
-    }
-    const match = focusedCheckPattern.exec(command.trim());
-    if (match === null) {
-      throw new Error(
-        `${taskId} declares a focused Aiken command this gate cannot parse into module and selectors, so its scope cannot be replayed: ${command}`,
-      );
-    }
-    const [, citedModule, selectorList] = match;
-    const module = moduleIndex.get(citedModule);
-    if (module === undefined) {
-      throw new Error(
-        `${taskId} cites Aiken module ${citedModule}, which no source file under onchain/aiken/{lib,validators} compiles to`,
-      );
-    }
-    for (const selector of selectorList.trim().split(/\s+/u)) {
-      citations.push({
-        task: taskId,
-        module,
-        stem: aikenModuleStem(module),
-        // A citation that names the `midgard/x_v1` stem selects both that module
-        // and its `midgard/x_v1.test` sibling, because `aiken check -m` matches
-        // the module part as a prefix. Both spellings name the same source pair;
-        // anything else is a module mismatch.
-        modules: module.endsWith(".test")
-          ? [module]
-          : [module, `${module}.test`],
-        selector,
-      });
-    }
-  }
-  return citations;
-};
-
 const witnessesByTask = evidence.p2TaskWitnesses;
 assert.deepEqual(
   Object.keys(witnessesByTask).sort(),
@@ -226,22 +104,11 @@ for (const taskId of declaredPassTasks) {
     Array.isArray(witnesses) && witnesses.length > 0,
     `${taskId} is published PASS with no executable witness`,
   );
-  const commands = focusedCommandsOf(taskId);
   const plan = { vitest: [], aiken: [] };
   for (const witness of witnesses) {
     if (witness.kind === "vitest") {
       const packageDirectory = witness.file.split("/").slice(0, 2).join("/");
       const testFile = witness.file.split("/").slice(2).join("/");
-      // The manifest, not this artifact, decides what counts as the task's
-      // focused verification.
-      assert.ok(
-        commands.some(
-          (command) =>
-            command.includes(`--dir ${packageDirectory} `) &&
-            command.includes(testFile),
-        ),
-        `${taskId} witness ${witness.file} is not a focused verification the task manifest declares`,
-      );
       if (!vitestPlan.has(witness.file)) {
         vitestPlan.set(witness.file, { packageDirectory, testFile });
       }
@@ -257,14 +124,6 @@ for (const taskId of declaredPassTasks) {
           /^[a-z0-9_]+$/u.test(selector),
           `selector ${selector} is not a focused-check-safe name`,
         );
-        assert.ok(
-          commands.some(
-            (command) =>
-              command.includes(module.replace(/\.test$/u, "")) &&
-              command.includes(selector),
-          ),
-          `${taskId} witness ${module}.{${selector}} is not a focused verification the task manifest declares`,
-        );
         aikenPlan.push({ module, selector });
         plan.aiken.push(`${module}.{${selector}}`);
       }
@@ -276,42 +135,6 @@ for (const taskId of declaredPassTasks) {
   }
   taskPlans.set(taskId, plan);
 }
-
-const moduleIndex = aikenModuleIndex(
-  resolve(repositoryRoot, aikenProjectDirectory),
-);
-const perTaskCitationsByTask = new Map(
-  declaredPassTasks.map((taskId) => [
-    taskId,
-    perTaskAikenCitations({
-      taskId,
-      commands: focusedCommandsOf(taskId),
-      moduleIndex,
-    }),
-  ]),
-);
-const perTaskCitations = [...perTaskCitationsByTask.values()].flat();
-// One declaration per (source pair, selector). When two tasks cite the same test
-// in different spellings the strictest accepted-module set wins, so a precise
-// `.test` citation is never loosened by a stem citation of the same test.
-const perTaskKey = ({ stem, selector }) => `${stem}#${selector}`;
-const perTaskDeclaredByKey = new Map();
-for (const citation of perTaskCitations) {
-  const key = perTaskKey(citation);
-  const existing = perTaskDeclaredByKey.get(key);
-  if (existing === undefined) {
-    perTaskDeclaredByKey.set(key, citation);
-    continue;
-  }
-  if (citation.modules.length < existing.modules.length) {
-    perTaskDeclaredByKey.set(key, citation);
-  }
-}
-const perTaskDeclared = [...perTaskDeclaredByKey.values()];
-assert.ok(
-  perTaskDeclared.length > 0,
-  "the per-task Aiken plan is empty; the widened leg would measure nothing",
-);
 
 // ---------------------------------------------------------------------------
 // Execute the witnesses. Every published count below comes from these reports.
@@ -344,61 +167,11 @@ const measuredAikenSelectors = new Set(
   ),
 );
 
-// The widened leg. One batched invocation of the patched fork — the compiler
-// `.github/workflows/aiken-ci.yml` uses to execute the suite — covers every
-// per-task selector the manifest declares.
-const forkBinary = forkAikenBinary();
-const forkVersion = aikenCompilerVersion(forkBinary);
-const perTaskSelectorPatterns = perTaskDeclared.map((citation) =>
-  aikenSelectorPattern(citation),
-);
-const perTaskStartedAt = Date.now();
-const perTaskOutcome = deriveAikenOutcome({
-  label: "capability reconciliation per-task on-chain selectors",
-  declared: perTaskDeclared,
-  ...runAikenCheck({
-    projectRoot: resolve(repositoryRoot, aikenProjectDirectory),
-    selectors: perTaskSelectorPatterns,
-    binary: forkBinary,
-  }),
-});
-const perTaskWallSeconds = (Date.now() - perTaskStartedAt) / 1000;
-assert.equal(
-  perTaskOutcome.passed,
-  perTaskDeclared.length,
-  "every per-task Aiken selector the manifest declares must be measured as passing",
-);
-// Exact selection: `-m <module>.{<test>}` names one test, so a run that collected
-// more than the declared set was not the run these counts describe.
-assert.equal(
-  perTaskOutcome.collected,
-  perTaskDeclared.length,
-  "the batched per-task run collected tests the manifest did not declare",
-);
-const measuredPerTaskSelectors = new Set(
-  perTaskOutcome.measured.map(({ module, selector }) =>
-    perTaskKey({ stem: aikenModuleStem(module), selector }),
-  ),
-);
-for (const [taskId, citations] of perTaskCitationsByTask) {
-  const unmeasured = citations.filter(
-    (citation) => !measuredPerTaskSelectors.has(perTaskKey(citation)),
-  );
-  assert.deepEqual(
-    unmeasured,
-    [],
-    `${taskId} is published PASS but ${String(unmeasured.length)} of its manifest-declared Aiken selectors were not measured passing`,
-  );
-}
-
 const measuredPassTasks = declaredPassTasks.filter((taskId) => {
   const plan = taskPlans.get(taskId);
   return (
     plan.vitest.every((file) => vitestResults.get(file)?.passed > 0) &&
-    plan.aiken.every((identifier) => measuredAikenSelectors.has(identifier)) &&
-    (perTaskCitationsByTask.get(taskId) ?? []).every((citation) =>
-      measuredPerTaskSelectors.has(perTaskKey(citation)),
-    )
+    plan.aiken.every((identifier) => measuredAikenSelectors.has(identifier))
   );
 });
 
@@ -420,8 +193,7 @@ assert.deepEqual(evidence.p2Summary, {
   // #486, which authorized the C30-C33 promotion on the recorded measurements
   // (C33 was already PASS) and dispositioned the C32 mid-measurement row
   // repair as the measurement discipline working, requiring no replay. Their
-  // witnesses are the focused verifications their own manifest rows declare,
-  // and this gate spawns them like every other.
+  // witnesses are executed by this gate like every other task witness.
   // CG2 stays OPEN on its own owner pin, not on the PARTIAL count: the ruling
   // kept `acceptance.CG2`/`p2Tasks.CG2` OPEN until CG2's consolidated review,
   // which rides C21's two residuals. The `pass` count is asserted against the
@@ -457,82 +229,6 @@ assert.deepEqual(
     }),
   ],
   "published witness commands drifted from the commands this gate executes",
-);
-
-// The widened coverage is a pin, checked against the runner result. Its *scope*
-// is derived from the task manifest, never from this artifact, so the numbers
-// below cannot be widened or narrowed by editing the file they live in.
-// The modules published are the ones the runner reported collecting from, not
-// the spellings the manifest happens to cite: the same source pair is cited both
-// ways, so only the collected name is a single fact about the run.
-const perTaskModules = [
-  ...new Set(perTaskOutcome.measured.map(({ collectedFrom }) => collectedFrom)),
-].sort();
-const perTaskByTask = Object.fromEntries(
-  [...perTaskCitationsByTask]
-    .filter(([, citations]) => citations.length > 0)
-    .map(([taskId, citations]) => [taskId, citations.length]),
-);
-assert.deepEqual(
-  evidence.p2PerTaskAikenCoverage.byTask,
-  perTaskByTask,
-  "published per-task Aiken citation counts drifted from the task manifest",
-);
-assert.equal(
-  evidence.p2PerTaskAikenCoverage.tasks,
-  Object.keys(perTaskByTask).length,
-  "published per-task Aiken task count drifted from the measured plan",
-);
-assert.equal(
-  evidence.p2PerTaskAikenCoverage.citations,
-  perTaskCitations.length,
-  "published per-task Aiken citation total drifted from the measured plan",
-);
-assert.equal(
-  evidence.p2PerTaskAikenCoverage.selectors,
-  perTaskDeclared.length,
-  "published per-task Aiken selector total is not the number of distinct selectors executed",
-);
-assert.equal(
-  evidence.p2PerTaskAikenCoverage.passed,
-  perTaskOutcome.passed,
-  "published per-task Aiken pass count is not the number the runner passed",
-);
-assert.deepEqual(
-  evidence.p2PerTaskAikenCoverage.modules,
-  perTaskModules,
-  "published per-task Aiken module list drifted from the modules the runner collected from",
-);
-// No silent caps: anything the gate declines to execute must be named here, and
-// an empty list is a claim that nothing was declined.
-assert.deepEqual(
-  evidence.p2PerTaskAikenCoverage.excluded,
-  [],
-  "the per-task leg publishes an exclusion list; it must be empty or the excluded selectors must be named",
-);
-assert.equal(
-  evidence.p2PerTaskAikenCoverage.compiler,
-  forkVersion,
-  "published per-task compiler identity is not the compiler this gate spawned",
-);
-// The binary is a path that differs between this repository's CI runner and a
-// contributor's machine, so what is published is the *selection rule* plus the
-// version it produced — and the gate asserts it really spawned that selection.
-assert.equal(
-  evidence.p2PerTaskAikenCoverage.invocation.binaryEnv,
-  "MIDGARD_FORK_AIKEN_BIN",
-  "published per-task compiler-selection variable is not the one this gate reads",
-);
-assert.equal(
-  forkBinary,
-  process.env[evidence.p2PerTaskAikenCoverage.invocation.binaryEnv] ??
-    evidence.p2PerTaskAikenCoverage.invocation.binaryDefault,
-  "the compiler this gate spawned is not the one the published selection rule names",
-);
-assert.equal(
-  evidence.p2PerTaskAikenCoverage.invocation.form,
-  `cd ${aikenProjectDirectory} && $MIDGARD_FORK_AIKEN_BIN check -e -m <module>.{<selector>} ... --plain-numbers`,
-  "published per-task invocation form is not the invocation this gate makes",
 );
 
 assert.match(
@@ -584,87 +280,6 @@ assert.equal(statusRole(evidence.p2Tasks.CG2), "OPEN");
 // non-zero exit carrying the specific diagnostic, plus passing controls so the
 // rejections cannot be a gate that rejects everything.
 // ---------------------------------------------------------------------------
-
-// The widened leg's scope is built by `perTaskAikenCitations`, so a bug there
-// shrinks what is measured without failing anything. These are pure and cost no
-// runner time: a citation the builder cannot parse, or one naming a module that
-// does not exist, must throw rather than silently reduce the plan.
-assert.throws(
-  () =>
-    perTaskAikenCitations({
-      taskId: "SELFTEST",
-      commands: [
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1 --all",
-      ],
-      moduleIndex,
-    }),
-  /cannot parse into module and selectors/u,
-  "the per-task plan builder absorbed a focused command it could not parse",
-);
-assert.throws(
-  () =>
-    perTaskAikenCitations({
-      taskId: "SELFTEST",
-      commands: [
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/no_such_module_v1 some_selector",
-      ],
-      moduleIndex,
-    }),
-  /which no source file under onchain\/aiken/u,
-  "the per-task plan builder accepted a citation to a module that does not exist",
-);
-assert.deepEqual(
-  perTaskAikenCitations({
-    taskId: "SELFTEST",
-    commands: [
-      "cd onchain/aiken && aiken check --skip-tests",
-      "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/script_proof_v1 redeemer_purpose_tags_are_stable",
-    ],
-    moduleIndex,
-  }),
-  [
-    {
-      task: "SELFTEST",
-      module: "midgard/script_proof_v1",
-      stem: "midgard/script_proof_v1",
-      modules: ["midgard/script_proof_v1", "midgard/script_proof_v1.test"],
-      selector: "redeemer_purpose_tags_are_stable",
-    },
-  ],
-  "the per-task plan builder did not produce the citation its input declares",
-);
-// Two tasks citing one test in the two spellings of the same source pair are one
-// declaration against one collected result, and the precise `.test` citation is
-// the one that survives. Keying on the literal spelling instead is what made the
-// declared total outrun what a batch can collect once e4335bbd corrected C21.
-const selftestSpellings = [
-  ...perTaskAikenCitations({
-    taskId: "SELFTEST_STEM",
-    commands: [
-      "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/script_proof_v1 redeemer_purpose_tags_are_stable",
-    ],
-    moduleIndex,
-  }),
-  ...perTaskAikenCitations({
-    taskId: "SELFTEST_TEST",
-    commands: [
-      "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/script_proof_v1.test redeemer_purpose_tags_are_stable",
-    ],
-    moduleIndex,
-  }),
-];
-assert.deepEqual(
-  [...new Set(selftestSpellings.map((citation) => perTaskKey(citation)))],
-  ["midgard/script_proof_v1#redeemer_purpose_tags_are_stable"],
-  "the two spellings of one source pair did not resolve to one selector identity",
-);
-assert.deepEqual(
-  selftestSpellings
-    .map((citation) => citation.modules)
-    .sort((left, right) => left.length - right.length)[0],
-  ["midgard/script_proof_v1.test"],
-  "the precise `.test` citation did not survive as the strictest accepted module set",
-);
 
 const runSelfTest = (flag) =>
   spawnSync(process.execPath, [fileURLToPath(import.meta.url), flag], {
@@ -750,7 +365,4 @@ for (const [flag, expectedStdout] of [
 
 console.log(
   `canonical V1 capability reconciliation verified: ${taskEntries.length} P2 tasks, ${measuredPassTasks.length} pass measured from ${vitestResults.size} Vitest report(s) and ${aikenOutcome.collected} collected Aiken selector(s), CG2 open`,
-);
-console.log(
-  `per-task Aiken coverage: ${perTaskOutcome.passed}/${perTaskDeclared.length} manifest-declared selector(s) across ${perTaskModules.length} module(s) and ${Object.keys(perTaskByTask).length} task(s) passed under ${forkVersion} in one batched invocation (${perTaskWallSeconds.toFixed(1)} s wall), 0 excluded`,
 );

@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-29 against the exact Git tree containing this file.
 The publication commit, reviewed parents, base revision, and final-tree
-evidence identities are recorded in `GOAL_PROGRESS.md` and draft PR #471.
+evidence identities are recorded in Git history and draft PR #471.
 
 Scope: this checklist reviews the current Midgard repository state for an externally reachable public testnet deployment. It treats Midgard as a production-grade L2, so "public testnet ready" includes adversarial safety, deterministic deployment identity, restart/recovery behavior, public client ergonomics, monitoring, and explicit runbooks. It is stricter than "the local happy path works."
 

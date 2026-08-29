@@ -55,8 +55,7 @@
 ////
 //// The unspent-nonce and hub-registered-event-NFT arguments are the same ones
 //// `midgard/fraud_proofs/fabricated_deposit/step_02` makes for deposits. This
-//// module mirrors rather than imports them: `GOAL_PROGRESS.md`'s triage requires
-//// Q39 and Q40 to keep disjoint family paths, and the two families read different
+//// module mirrors rather than imports them because the two families read different
 //// hub fields and different datum shapes (a withdrawal event datum has five
 //// fields, a `DepositDatum` three).
 

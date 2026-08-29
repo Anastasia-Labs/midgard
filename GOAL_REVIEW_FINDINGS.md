@@ -16,9 +16,9 @@
   excluded from the review range and preserved.
 
 This document records review findings only. `GOAL_SPEC.md` remains authoritative
-for Goal scope and acceptance, and `GOAL_PROGRESS.md` remains authoritative for
-durable execution state. Line numbers below refer to the reviewed head revision
-and may move as findings are repaired.
+for Goal scope and acceptance. `GOAL_PROGRESS.md` is historical human context,
+not an execution-state authority. Line numbers below refer to the reviewed head
+revision and may move as findings are repaired.
 
 Priority meanings:
 
@@ -271,6 +271,11 @@ evidence” rule checks only list length.
 **Smallest repair:** require `isBoundFile` for every required nested artifact
 before release-ready status is accepted.
 
+**Retired (2026-08-29):** the Goal closure manifest, decoder, verifier,
+self-test, verification plan, and aggregate harness were deleted. Progress
+notes no longer participate in release readiness, so this failure mode no
+longer exists.
+
 ### RF-023 — Reconciliation and closure evidence is stale
 
 The following files carry hashes that do not match the reviewed tree while
@@ -278,8 +283,7 @@ their surrounding ledger claims PASS:
 
 - `docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json:5-8,29-32`;
 - `docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json:4-7`;
-- `docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json:5-8`;
-- `docs/exec-plans/evidence/canonical-v1-goal-closure-v1.json:16-49,192-212`.
+- the now-retired Goal task and closure manifests.
 
 **Smallest repair:** regenerate and bind evidence from the final source tree, or
 truthfully mark each unavailable artifact OPEN.

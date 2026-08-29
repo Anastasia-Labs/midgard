@@ -5,7 +5,7 @@
   "updateContract": {
     "verifier": "demo/scripts/verify-canonical-v1-capability-reconciliation.mjs",
     "generator": "none - this artifact is hand-maintained; the verifier is the only contract",
-    "note": "Issue #529: p2Summary.pass is no longer established by counting 'PASS' strings in p2Tasks. Every task published as PASS must appear in p2TaskWitnesses with at least one executable witness; the verifier spawns those witnesses (each package's own Vitest CLI, plus one `aiken check -e` invocation) and derives the pass count from the runner reports alone. A witness that collects nothing, fails, or is skipped fails the gate closed. Each witness must additionally be declared as that task's focused verification in canonical-v1-goal-task-manifest-v1.json, so this artifact cannot supply its own audit scope. The p2Summary literal {tasks:22,pass:22,partial:0,open:0,authoritativeConflict:0,gate:'OPEN'} is still pinned in the verifier and is cross-checked against both the measured result and the base-role classification of p2Tasks, so promoting or demoting a task requires editing p2Tasks, p2TaskWitnesses, p2WitnessCommands and the verifier literals together — and the promotion only holds if the new witness actually passes. Superseded literal, retained verbatim as provenance: {tasks:22,pass:19,partial:3,open:0,authoritativeConflict:0,gate:'OPEN'}, which stood until the 2026-08-18 owner ruling on issue #486 authorized the C30-C33 promotion PARTIAL->PASS on the recorded measurements (C33 was already PASS; C30, C31 and C32 moved here, and the ruling dispositioned C32's mid-measurement row repair as measurement discipline working, requiring no replay). gate stays OPEN on its own owner pin rather than on the PARTIAL count: that same ruling kept CG2 owner-pinned OPEN until its consolidated review, which rides C21's two residuals. acceptance.CG2 and p2Tasks.CG2 are separately pinned to OPEN, and authorityConflict.tasks/disposition are pinned to ['C20-6','C20-7'] / 'RESOLVED'."
+    "note": "Issue #529: p2Summary.pass is not established by counting PASS strings. Every task published as PASS must have an executable witness, and this check derives the pass count from the actual Vitest and Aiken runner reports. A witness that collects nothing, fails, or is skipped fails the check. The progress notes are not read or interpreted."
   },
   "sources": {
     "goalSpec": {
@@ -254,7 +254,7 @@
       }
     ]
   },
-  "p2WitnessNote": "Executable witnesses for every P2 task published as PASS. The verifier runs these and derives p2Summary.pass from the runner reports; a task with no passing witness cannot be counted. Each witness must also appear as that task's focused verification in docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json, so this artifact cannot widen or narrow its own audit scope.",
+  "p2WitnessNote": "Executable witnesses for every P2 task published as PASS. The check runs these and derives p2Summary.pass from runner reports; a task with no passing witness cannot be counted.",
   "p2WitnessCommands": [
     "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-spend-inputs-boundary-v1.test.ts",
     "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-reference-inputs-boundary-v1.test.ts",
@@ -277,58 +277,6 @@
     "pnpm --dir demo/midgard-validation exec vitest run tests/redeemer-collateral-schema-feasibility-v1.test.ts",
     "cd onchain/aiken && aiken check -e -m inline_carriage_authenticates_a_witness_set_field"
   ],
-  "p2PerTaskAikenCoverage": {
-    "note": "Issue #538. p2TaskWitnesses is one focused verification per PASS task; canonical-v1-goal-task-manifest-v1.json declares more for every one of them — the per-task `node scripts/run-focused-check.mjs <module> <selector> ...` citations covering the heavier maximum_*/CEK/boundary selectors — and nothing replayed those, so the gate's scope was a strict subset of the scope its own authority declares. The verifier now derives this plan from the manifest's focusedCommands (never from plannedFocusedCommands, which commit 6e805a78 quarantined as planned rather than executable, and never from this artifact), executes every distinct selector in one batched `check -e` invocation of the patched fork, and refuses to publish a task as PASS unless each selector the manifest binds to it was collected from its declared module and passed. The counts below are pins asserted against that runner report; they are not compared to each other. A selector's identity is its source pair, not the spelling a citation happens to use: `lib/midgard/x-v1.ak` and `lib/midgard/x-v1.test.ak` are one pair addressed by one `aiken check -m` prefix, and the manifest cites it both ways (commit e4335bbd corrected C21 to the `.test` form while C20-0/C20-1/C20-2 still name the stem). `selectors` therefore counts distinct source-pair selectors, `citations` counts every manifest mention of one, and `modules` lists the module names the runner reported collecting from rather than either citation spelling.",
-    "tasks": 20,
-    "citations": 165,
-    "selectors": 119,
-    "passed": 119,
-    "excluded": [],
-    "compiler": "aiken v1.1.23+5adf783",
-    "invocation": {
-      "binaryEnv": "MIDGARD_FORK_AIKEN_BIN",
-      "binaryDefault": "aiken-fork",
-      "form": "cd onchain/aiken && $MIDGARD_FORK_AIKEN_BIN check -e -m <module>.{<selector>} ... --plain-numbers"
-    },
-    "modules": [
-      "midgard/cek_data_breadth_v1.test",
-      "midgard/cek_data_traverse.max_cardano.test",
-      "midgard/cek_proof_v1.test",
-      "midgard/fraud_proofs/c26_unary_depth_v1.test",
-      "midgard/fraud_proofs/native_tx.max_redeemers.test",
-      "midgard/fraud_proofs/native_tx_v1.test",
-      "midgard/ledger_output_proof_v1.test",
-      "midgard/ledger_output_value.max_cardano.test",
-      "midgard/ledger_output_value_v1.test",
-      "midgard/redeemer_item_proof_v1.test",
-      "midgard/script_language_views_v1.test",
-      "midgard/script_proof_v1.test",
-      "midgard/user_events/tx_order_v1.test",
-      "midgard/validation_machine_v1.test"
-    ],
-    "byTask": {
-      "C20-0": 3,
-      "C20-1": 5,
-      "C20-2": 2,
-      "C20-3": 6,
-      "C20-4": 3,
-      "C20-5": 4,
-      "C20-6": 23,
-      "C20-7": 23,
-      "C20-8": 7,
-      "C21": 6,
-      "C22": 5,
-      "C23": 4,
-      "C24": 4,
-      "C25": 4,
-      "C26": 4,
-      "C27": 5,
-      "C28": 5,
-      "C29": 4,
-      "C32": 43,
-      "C33": 5
-    }
-  },
   "p2Summary": {
     "tasks": 22,
     "pass": 22,

@@ -28,9 +28,8 @@
 //// ### Shared with `fabricated-withdrawal` (Q40)
 ////
 //// `open_authentic_deposit_content_v1` is the piece Q40 mirrors against
-//// `WithdrawalEvent`; it lives in this family's own lib module because
-//// `GOAL_PROGRESS.md`'s triage requires Q39 and Q40 to keep disjoint family
-//// paths.
+//// `WithdrawalEvent`; it lives in this family's own lib module because the
+//// deposit and withdrawal families open different event datum shapes.
 
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
