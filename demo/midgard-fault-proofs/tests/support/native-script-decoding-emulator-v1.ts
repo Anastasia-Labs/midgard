@@ -1284,11 +1284,13 @@ const rawSubjectFieldOpeningV1 = async ({
   state,
   nativeTxCompactCbor,
   subjectFieldInputs,
+  referenceScriptUtxo,
 }: {
   readonly harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarnessV1>>;
   readonly state: SDK.NativeScriptDecodingScanThreadStateV1;
   readonly nativeTxCompactCbor: string;
   readonly subjectFieldInputs: readonly MidgardTxInput[];
+  readonly referenceScriptUtxo?: UTxO;
 }): Promise<{
   readonly opening: SDK.FieldOpeningV1;
   readonly carriageUtxos: readonly UTxO[];
@@ -1315,7 +1317,12 @@ const rawSubjectFieldOpeningV1 = async ({
   return {
     opening: faultProofFieldOpeningV1({
       planned,
-      referenceInputs: carriageUtxos,
+      // Positional indices resolve against the transaction's complete
+      // reference-input set — the step reference rides with the carriage.
+      referenceInputs: [
+        ...carriageUtxos,
+        ...(referenceScriptUtxo === undefined ? [] : [referenceScriptUtxo]),
+      ],
       certificatePolicyId: harness.decoding.fieldPreimageCertificatePolicyId,
       label: "raw decoding subject field",
     }),
@@ -1348,6 +1355,7 @@ export const submitRawDecodingBindOutOfDomainV1 = async ({
     state,
     nativeTxCompactCbor,
     subjectFieldInputs,
+    referenceScriptUtxo,
   });
   return submitRawDecodingStepV1({
     lucid: harness.proverLucid,
@@ -1446,6 +1454,7 @@ export const submitRawDecodingTag0ContradictionCloseV1 = async ({
     state,
     nativeTxCompactCbor,
     subjectFieldInputs,
+    referenceScriptUtxo,
   });
   return submitRawDecodingStepV1({
     lucid: harness.proverLucid,

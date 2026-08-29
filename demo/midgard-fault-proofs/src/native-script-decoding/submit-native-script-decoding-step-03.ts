@@ -534,9 +534,17 @@ export const submitNativeScriptDecodingStep03BindOutpoint = async ({
     publisherAddress: signer.address,
     label: `${STEP_LABEL} subject field`,
   });
+  // The opening's positional chunk indices resolve against the transaction's
+  // complete reference-input set, which carries the step reference alongside
+  // the carriage.
+  const stepReference = requireNativeScriptDecodingReferenceScriptV1({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: contracts.steps[2].spendingScriptHash,
+    stepIndex: 2,
+  });
   const subjectFieldOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
-    referenceInputs: carriageUtxos,
+    referenceInputs: [...carriageUtxos, stepReference],
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
     label: `${STEP_LABEL} subject field`,
   });
@@ -893,9 +901,14 @@ export const submitNativeScriptDecodingStep03BindOutOfDomain = async ({
       publisherAddress: signer.address,
       label: `${STEP_LABEL} out-of-domain subject field`,
     });
+    const stepReference = requireNativeScriptDecodingReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      expectedScriptHash: contracts.steps[2].spendingScriptHash,
+      stepIndex: 2,
+    });
     subjectFieldOpening = faultProofFieldOpeningV1({
       planned,
-      referenceInputs: carriageUtxos,
+      referenceInputs: [...carriageUtxos, stepReference],
       certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
       label: `${STEP_LABEL} out-of-domain subject field`,
     });
