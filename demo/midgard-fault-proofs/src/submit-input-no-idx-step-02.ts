@@ -84,6 +84,7 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import { witnessSpendingValidatorCarriageV1 } from "./witness-reference-scripts-v1.js";
 
 /** Prepared spend-inputs preimage produced by `prepare-input-no-idx`. */
 export type SubmitInputNoIdxInputsPreimage = {
@@ -242,6 +243,7 @@ export const submitInputNoIdxStep02 = async ({
   inputsPreimage,
   nativeTxCompactCbor,
   publishCarriage = false,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -255,6 +257,8 @@ export const submitInputNoIdxStep02 = async ({
   readonly nativeTxCompactCbor: string;
   /** Force §8 tier 2; see {@link SubmitInputNoIdxStep02CliConfig.publishCarriage}. */
   readonly publishCarriage?: boolean;
+  /** The published step-02 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInputNoIdxStep02Result> => {
   const { nonExistentInputNoIndexCategory, contracts } =
@@ -324,9 +328,18 @@ export const submitInputNoIdxStep02 = async ({
       walletUtxos,
     ),
   );
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: chain.steps[1].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "input-no-idx step 02 validator",
+  });
+  const referenceInputs = [
+    ...carriageUtxos,
+    ...stepScriptCarriage.referenceInputs,
+  ];
   const spendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
-    referenceInputs: carriageUtxos,
+    referenceInputs,
     label: "Input-no-idx step 02 spend-inputs",
   });
 
@@ -381,24 +394,24 @@ export const submitInputNoIdxStep02 = async ({
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer);
   const txWithReferences =
-    carriageUtxos.length === 0
+    referenceInputs.length === 0
       ? txWithInputs
-      : txWithInputs.readFrom([...carriageUtxos]);
+      : txWithInputs.readFrom([...referenceInputs]);
   const tx = txWithReferences.pay
     .ToContract(
       chain.steps[2].spendingScriptAddress,
       { kind: "inline", value: step03Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(chain.steps[1].spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = stepScriptCarriage.attach(tx);
 
-  const unsigned = await tx.complete({
+  const unsigned = await completedTx.complete({
     localUPLCEval: true,
-    ...(carriageUtxos.length === 0
+    ...(referenceInputs.length === 0
       ? {}
       : {
-          presetWalletInputs: carriageUtxos.reduce<readonly UTxO[]>(
+          presetWalletInputs: referenceInputs.reduce<readonly UTxO[]>(
             (candidates, utxo) => excludeUtxo(candidates, utxo),
             walletUtxos,
           ) as UTxO[],

@@ -50,6 +50,10 @@ import {
   type SubmitStep01TxInclusion,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 const STEP_LABEL = minFeeStepLabelV1(0);
 
@@ -78,6 +82,7 @@ export const submitMinFeeStep01 = async ({
   stateQueueBlockOutRef,
   txInclusion,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -91,6 +96,8 @@ export const submitMinFeeStep01 = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   /** Mandatory: min-fee validators are reference-script-only. */
   readonly referenceScriptUtxo: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMinFeeStep01Result> => {
   const { threadUtxo, threadToken } = await requireMinFeeThreadUtxoV1({
@@ -160,6 +167,17 @@ export const submitMinFeeStep01 = async ({
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
   const phasRewardAddress = phasMembershipRewardAddress(network, phasScript);
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasScript,
+    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+    label: `${STEP_LABEL} PHAS membership`,
+  });
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    stepReference,
+    ...phasMembershipCarriage.referenceInputs,
+  ];
   let resolved:
     | { readonly inputIndex: bigint; readonly outputIndex: bigint }
     | undefined;
@@ -207,11 +225,11 @@ export const submitMinFeeStep01 = async ({
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const tx = lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom([hubOracleUtxo, stateQueueBlockUtxo, stepReference])
+    .readFrom(referenceInputs)
     .withdraw(
       phasRewardAddress,
       0n,
@@ -230,8 +248,8 @@ export const submitMinFeeStep01 = async ({
         [threadToken.unit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.WithdrawalValidator(phasScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = phasMembershipCarriage.attach(base);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolved === undefined) {
     throw minFeeSubmitError("step-01 layout was not resolved.");

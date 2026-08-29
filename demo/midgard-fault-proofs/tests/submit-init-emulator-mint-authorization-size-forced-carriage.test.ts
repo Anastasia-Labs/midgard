@@ -103,6 +103,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       },
       signer: proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const step01 = await submitMintAuthorizationStep01({
       lucid: proverLucid,
@@ -115,6 +116,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
       txInclusion: block.txInclusion,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const step02 = await submitMintAuthorizationStep02({
       lucid: proverLucid,
@@ -157,6 +159,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       signer: proverSigner,
       threadOutRef: step04.nextThreadOutRef,
       referenceScriptUtxo: step05Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const [fraudProofUtxo] = await proverLucid.utxosAtWithUnit(
       step05.fraudProofAddress,
@@ -220,6 +223,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       },
       signer: proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const step01 = await submitMintAuthorizationStep01({
       lucid: proverLucid,
@@ -232,6 +236,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
       txInclusion: block.txInclusion,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const step02 = await submitMintAuthorizationStep02({
       lucid: proverLucid,
@@ -281,6 +286,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       signer: proverSigner,
       threadOutRef: step03.nextThreadOutRef,
       referenceScriptUtxo: step05Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const [fraudProofUtxo] = await proverLucid.utxosAtWithUnit(
       step05.fraudProofAddress,

@@ -71,6 +71,7 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import { witnessSpendingValidatorCarriageV1 } from "./witness-reference-scripts-v1.js";
 
 /** Prepared reference-inputs preimage produced by `prepare-reference-input-no-idx`. */
 export type SubmitReferenceInputNoIdxReferenceInputsPreimage = {
@@ -220,6 +221,7 @@ export const submitReferenceInputNoIdxStep02 = async ({
   threadOutRef,
   referenceInputsPreimage,
   nativeTxCompactCbor,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -231,6 +233,8 @@ export const submitReferenceInputNoIdxStep02 = async ({
   readonly referenceInputsPreimage: SubmitReferenceInputNoIdxReferenceInputsPreimage;
   /** The disputed transaction's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
+  /** The published step-02 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitReferenceInputNoIdxStep02Result> => {
   const { referenceInputNoIdxCategory, contracts } =
@@ -274,8 +278,17 @@ export const submitReferenceInputNoIdxStep02 = async ({
     label: "Reference-input-no-idx step 02 reference-inputs",
   });
   const verifiedTxReferenceInputsHash = planned.commitment;
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: chain.steps[1].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "reference-input-no-idx step 02 validator",
+  });
+  // The complete reference-input set the built transaction will declare, in
+  // build order — the opening derivation must see all of it (bug fc635c8f).
+  const referenceInputs = [...stepScriptCarriage.referenceInputs];
   const referenceInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
+    referenceInputs,
     label: "Reference-input-no-idx step 02 reference-inputs",
   });
   const badReferenceInput =
@@ -339,19 +352,27 @@ export const submitReferenceInputNoIdxStep02 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const tx = lucid
+  const collected = lucid
     .newTx()
     .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer)
-    .pay.ToContract(
+    .collectFrom([threadUtxo], redeemer);
+  // Without a published witness this step reads nothing, and `readFrom([])`
+  // is an error rather than a no-op, so the branch is on whether the carriage
+  // produced reference inputs at all.
+  const tx = (
+    referenceInputs.length === 0
+      ? collected
+      : collected.readFrom([...referenceInputs])
+  ).pay
+    .ToContract(
       chain.steps[2].spendingScriptAddress,
       { kind: "inline", value: step03Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(chain.steps[1].spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = stepScriptCarriage.attach(tx);
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve reference-input-no-idx step 02 layout.",

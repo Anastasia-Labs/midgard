@@ -63,6 +63,8 @@ import {
 } from "../../src/spend-input-witness.js";
 import { selectFeeInput } from "../../src/submit-step-01.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
+import type { FaultProofWitnessReferenceScriptsV1 } from "../../src/witness-reference-scripts-v1.js";
+import { publishFaultProofWitnessReferenceScriptsV1 } from "./emulator/reference-scripts.js";
 import {
   buildDecodingBlockFixtureV1,
   buildDecodingLedgerFixtureV1,
@@ -450,7 +452,9 @@ export type MintAuthorizationHarnessV1 = Awaited<
 export type MintAuthorizationScenarioV1 = {
   readonly subject: MintAuthorizationSubjectV1;
   readonly block: DecodingBlockFixtureV1;
-  readonly setup: Awaited<ReturnType<typeof submitSetupTx>>;
+  readonly setup: Awaited<ReturnType<typeof submitSetupTx>> & {
+    readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  };
 };
 
 /**
@@ -467,6 +471,14 @@ export const setupMintAuthorizationScenarioV1 = async ({
   /** The block's pre-state ledger root; the step-04 ResolveNext trie root. */
   readonly priorLedgerRoot?: string;
 }): Promise<MintAuthorizationScenarioV1> => {
+  const witnessReferenceScripts =
+    await publishFaultProofWitnessReferenceScriptsV1({
+      lucid: harness.proverLucid,
+      realBlueprint: harness.realBlueprint,
+      computationThreadMintingScript:
+        harness.family.computationThread.mintingScript,
+      fraudProofMintingScript: harness.family.fraudProof.mintingScript,
+    });
   const operatorVkey = await funderPaymentKeyHash(harness.funderLucid);
   const startTime = BigInt(
     alignUnixTimeToEmulatorSlotBoundary(
@@ -487,7 +499,11 @@ export const setupMintAuthorizationScenarioV1 = async ({
     catalogue: harness.catalogue,
     header: block.header,
   });
-  return { subject, block, setup };
+  return {
+    subject,
+    block,
+    setup: { ...setup, witnessReferenceScripts },
+  };
 };
 
 /** Publishes all five step validators as reference scripts (deployment shape). */

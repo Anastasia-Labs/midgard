@@ -65,6 +65,10 @@ import {
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { MintAuthorizationContractsV1 } from "./contracts-v1.js";
 import {
   mintAuthorizationStepLabelV1,
@@ -104,6 +108,7 @@ export const submitMintAuthorizationStep01 = async ({
   txInclusion,
   publishedProofChunks,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -119,6 +124,8 @@ export const submitMintAuthorizationStep01 = async ({
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
   /** The published step-01 reference script; inline-attached when absent. */
   readonly referenceScriptUtxo?: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMintAuthorizationStep01Result> => {
   const { threadUtxo, threadToken } =
@@ -176,20 +183,6 @@ export const submitMintAuthorizationStep01 = async ({
   const feeInput = selectFeeInput(
     walletInputsExcludingChunks({ walletUtxos, chunks }),
   );
-  const referenceInputs = [
-    hubOracleUtxo,
-    stateQueueBlockUtxo,
-    ...chunks.map((chunk) => chunk.utxo),
-    ...(referenceScriptUtxo === undefined
-      ? []
-      : [
-          requireMintAuthorizationReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[0].spendingScriptHash,
-            stepIndex: 0,
-          }),
-        ]),
-  ];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -203,6 +196,32 @@ export const submitMintAuthorizationStep01 = async ({
     network,
     chunkedVerifyScript,
   );
+  const inclusionCarriage = carriedByChunks
+    ? witnessWithdrawalValidatorCarriageV1({
+        script: chunkedVerifyScript,
+        referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        label: `${STEP_LABEL} chunked verify`,
+      })
+    : witnessWithdrawalValidatorCarriageV1({
+        script: phasMembershipScript,
+        referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        label: `${STEP_LABEL} PHAS membership`,
+      });
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    ...chunks.map((chunk) => chunk.utxo),
+    ...(referenceScriptUtxo === undefined
+      ? []
+      : [
+          requireMintAuthorizationReferenceScriptV1({
+            utxo: referenceScriptUtxo,
+            expectedScriptHash: contracts.steps[0].spendingScriptHash,
+            stepIndex: 0,
+          }),
+        ]),
+    ...inclusionCarriage.referenceInputs,
+  ];
   const resolvedChunkIndices = derivedChunkReferenceIndices({
     referenceInputs,
     chunks,
@@ -321,9 +340,7 @@ export const submitMintAuthorizationStep01 = async ({
     referenceScriptUtxo === undefined
       ? paid.attach.SpendingValidator(contracts.steps[0].spendingScript)
       : paid;
-  const completedTx = carriedByChunks
-    ? withStepScript.attach.WithdrawalValidator(chunkedVerifyScript)
-    : withStepScript.attach.WithdrawalValidator(phasMembershipScript);
+  const completedTx = inclusionCarriage.attach(withStepScript);
 
   const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {

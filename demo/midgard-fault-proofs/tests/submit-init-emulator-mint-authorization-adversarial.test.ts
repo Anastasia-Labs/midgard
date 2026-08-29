@@ -90,6 +90,7 @@ const driveInit = async (
     },
     signer: proverSigner,
     fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+    witnessReferenceScripts: setup.witnessReferenceScripts,
   });
   return { initResult, refs: [step01Ref, step02Ref, step03Ref] };
 };
@@ -126,6 +127,7 @@ describe("mint-authorization emulator adversarial polarity", () => {
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         txInclusion: block.txInclusion,
         referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: setup.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/is not an acceptance/u);
   }, 600_000);
@@ -158,6 +160,7 @@ describe("mint-authorization emulator adversarial polarity", () => {
       stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
       txInclusion: block.txInclusion,
       referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const step02 = await submitMintAuthorizationStep02({
       lucid: harness.proverLucid,
@@ -217,6 +220,7 @@ describe("mint-authorization emulator adversarial polarity", () => {
       stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
       txInclusion: block.txInclusion,
       referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const step02 = await submitMintAuthorizationStep02({
       lucid: harness.proverLucid,
@@ -303,6 +307,7 @@ describe("mint-authorization emulator adversarial polarity", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const step01 = await submitMintAuthorizationStep01({
       lucid: harness.proverLucid,
@@ -315,6 +320,7 @@ describe("mint-authorization emulator adversarial polarity", () => {
       stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
       txInclusion: block.txInclusion,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
 
     await expectOnchainRefusalV1(() =>

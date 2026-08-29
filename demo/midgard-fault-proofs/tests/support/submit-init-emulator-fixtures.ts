@@ -136,6 +136,8 @@ import {
   buildForcedValidationDisputeCommitments,
   buildMinimalFaultProofContracts,
   buildRemovalDeploymentInfo,
+  captureEmulatorSubmission,
+  type CompleteSignedTransactionMeasurement,
   EMULATOR_PROTOCOL_PARAMETERS,
   expectSingleUtxoWithUnit,
   firstWalletUtxo,
@@ -1585,7 +1587,9 @@ export type ProvedDoubleSpendFixture = {
   readonly deploymentInfo: ReturnType<typeof buildRemovalDeploymentInfo>;
   readonly fraudulentBlockOutRef: string;
   readonly submitInitResult: Awaited<ReturnType<typeof submitInit>>;
+  readonly submitInitMeasurement: CompleteSignedTransactionMeasurement;
   readonly step04Result: Awaited<ReturnType<typeof submitStep04>>;
+  readonly step04Measurement: CompleteSignedTransactionMeasurement;
   readonly doubleSpendStepReferenceScripts: Awaited<
     ReturnType<typeof publishFraudProofChainReferenceScripts>
   >;
@@ -1848,16 +1852,20 @@ export const buildProvedDoubleSpendFixture = async ({
   const fraudulentBlockOutRef =
     successors[0]?.continuedAnchorOutRef ?? setup.fraudulentBlockOutRef;
 
-  const submitInitResult = await submitInit({
-    lucid: proverLucid,
-    blueprint: realBlueprint,
-    deploymentInfo,
-    network,
-    signer: proverSigner,
-    fraudulentBlockOutRef,
-    witnessReferenceScripts,
-    awaitConfirmation: true,
-  });
+  const submitInitCapture = await captureEmulatorSubmission(emulator, () =>
+    submitInit({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudulentBlockOutRef,
+      witnessReferenceScripts,
+      awaitConfirmation: true,
+    }),
+  );
+  const submitInitResult = submitInitCapture.result;
+  const submitInitMeasurement = submitInitCapture.measurement;
 
   expect(submitInitResult.txHash).toHaveLength(64);
   expect(submitInitResult.fraudulentHeaderHash).toBe(headerHash);
@@ -2028,26 +2036,30 @@ export const buildProvedDoubleSpendFixture = async ({
     1n,
   );
 
-  const step04Result = await submitStep04({
-    lucid: proverLucid,
-    blueprint: realBlueprint,
-    deploymentInfo,
-    network,
-    signer: proverSigner,
-    threadOutRef: outRefLabel(fourthStepUtxo),
-    tx2SpendInputCbors: parseSpendInputCbors(
-      transactionInclusion.tx2SpendInputCbors,
-      "--tx2-inputs",
-    ),
-    nativeTxCompactCbor: parseSubmitStep01TxInclusion(
-      transactionInclusion.tx2.inclusion,
-    ).nativeTxCompactCbor,
-    doubleSpentInputIndex: 1n,
-    referenceScriptUtxo:
-      doubleSpendStepReferenceScripts["fraudProofDoubleSpendStep04"]!.utxo,
-    witnessReferenceScripts,
-    awaitConfirmation: true,
-  });
+  const step04Capture = await captureEmulatorSubmission(emulator, () =>
+    submitStep04({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(fourthStepUtxo),
+      tx2SpendInputCbors: parseSpendInputCbors(
+        transactionInclusion.tx2SpendInputCbors,
+        "--tx2-inputs",
+      ),
+      nativeTxCompactCbor: parseSubmitStep01TxInclusion(
+        transactionInclusion.tx2.inclusion,
+      ).nativeTxCompactCbor,
+      doubleSpentInputIndex: 1n,
+      referenceScriptUtxo:
+        doubleSpendStepReferenceScripts["fraudProofDoubleSpendStep04"]!.utxo,
+      witnessReferenceScripts,
+      awaitConfirmation: true,
+    }),
+  );
+  const step04Result = step04Capture.result;
+  const step04Measurement = step04Capture.measurement;
 
   expect(step04Result.txHash).toHaveLength(64);
   expect(step04Result.doubleSpentInputIndex).toBe(1);
@@ -2108,7 +2120,9 @@ export const buildProvedDoubleSpendFixture = async ({
     deploymentInfo,
     fraudulentBlockOutRef,
     submitInitResult,
+    submitInitMeasurement,
     step04Result,
+    step04Measurement,
     doubleSpendStepReferenceScripts,
     witnessReferenceScripts,
     fraudProofUtxo,

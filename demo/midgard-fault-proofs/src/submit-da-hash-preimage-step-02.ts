@@ -47,6 +47,11 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessSpendingValidatorCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 export type SubmitDaHashPreimageStep02CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -254,6 +259,8 @@ export const submitDaHashPreimageStep02 = async ({
   network,
   signer,
   threadOutRef,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -262,6 +269,10 @@ export const submitDaHashPreimageStep02 = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
+  /** The published step-02 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitDaHashPreimageStep02Result> => {
   const { daHashPreimageCategory, contracts } =
@@ -324,8 +335,28 @@ export const submitDaHashPreimageStep02 = async ({
   };
   let spendLayout: DaHashPreimageStep02SpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.daHashPreimage.steps[1].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "da-hash-preimage step 02 validator",
+  });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "da-hash-preimage step 02 computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "da-hash-preimage step 02 fraud-proof mint",
+  });
+  const referenceInputs = [
+    ...stepScriptCarriage.referenceInputs,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
 
-  const tx = lucid
+  const withInputs = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom(
@@ -364,10 +395,16 @@ export const submitDaHashPreimageStep02 = async ({
       { kind: "inline", value: fraudProofDatum },
       fraudProofAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.daHashPreimage.steps[1].spendingScript)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  // `readFrom([])` is an error rather than a no-op, so the branch is on
+  // whether any witness published a reference script at all.
+  const chained =
+    referenceInputs.length === 0
+      ? withInputs
+      : withInputs.readFrom(referenceInputs);
+  const tx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(stepScriptCarriage.attach(chained)),
+  );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (

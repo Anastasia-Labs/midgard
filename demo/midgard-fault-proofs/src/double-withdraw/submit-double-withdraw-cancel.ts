@@ -25,6 +25,10 @@ import {
   requireComputationThreadToken,
   selectFeeInput,
 } from "../submit-step-01.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { DoubleWithdrawContractsV1 } from "./contracts-v1.js";
 import {
   doubleWithdrawStepLabelV1,
@@ -68,6 +72,7 @@ export const submitDoubleWithdrawCancel = async ({
   signer,
   threadOutRef,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -76,6 +81,8 @@ export const submitDoubleWithdrawCancel = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitDoubleWithdrawCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -142,20 +149,28 @@ export const submitDoubleWithdrawCancel = async ({
       FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const base = lucid
-    .newTx()
-    .collectFrom([feeInput])
-    .collectFrom([threadUtxo], spendRedeemer)
-    .mintAssets({ [threadToken.unit]: -1n }, burnRedeemer)
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript);
-  const tx = base.readFrom([
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${stepLabel} cancel computation-thread mint`,
+  });
+  const referenceInputs = [
     requireDoubleWithdrawReferenceScriptV1({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
       stepIndex,
     }),
-  ]);
+    ...computationThreadMintCarriage.referenceInputs,
+  ];
+  const base = lucid
+    .newTx()
+    .collectFrom([feeInput])
+    .collectFrom([threadUtxo], spendRedeemer)
+    .mintAssets({ [threadToken.unit]: -1n }, burnRedeemer)
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = computationThreadMintCarriage.attach(
+    base.readFrom(referenceInputs),
+  );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (inputIndex === undefined || mintIndex === undefined) {
     throw doubleWithdrawSubmitError("cancel layout was not resolved.");

@@ -70,6 +70,10 @@ import {
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { NativeScriptDecodingContractsV1 } from "./contracts-v1.js";
 import {
   nativeScriptDecodingStepLabelV1,
@@ -131,6 +135,7 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
   txInclusion,
   publishedProofChunks,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -146,6 +151,8 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
   /** Q3: the mandatory published step-01 reference script. */
   readonly referenceScriptUtxo: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep01Result> => {
   const { threadUtxo, threadToken } =
@@ -202,16 +209,6 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
   const feeInput = selectFeeInput(
     walletInputsExcludingChunks({ walletUtxos, chunks }),
   );
-  const referenceInputs = [
-    hubOracleUtxo,
-    stateQueueBlockUtxo,
-    ...chunks.map((chunk) => chunk.utxo),
-    requireNativeScriptDecodingReferenceScriptV1({
-      utxo: referenceScriptUtxo,
-      expectedScriptHash: contracts.steps[0].spendingScriptHash,
-      stepIndex: 0,
-    }),
-  ];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -225,6 +222,32 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
     network,
     chunkedVerifyScript,
   );
+  // On the chunked route the merkelized published-chunk verifier stands in
+  // for the `phas` membership withdrawal.
+  const inclusionCarriage = carriedByChunks
+    ? witnessWithdrawalValidatorCarriageV1({
+        script: chunkedVerifyScript,
+        referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        label: `${STEP_LABEL} chunked verify`,
+      })
+    : witnessWithdrawalValidatorCarriageV1({
+        script: phasMembershipScript,
+        referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        label: `${STEP_LABEL} PHAS membership`,
+      });
+  // The complete final reference-input set MUST stand before any chunk
+  // reference-index derivation runs (bug fc635c8f).
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    ...chunks.map((chunk) => chunk.utxo),
+    requireNativeScriptDecodingReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      expectedScriptHash: contracts.steps[0].spendingScriptHash,
+      stepIndex: 0,
+    }),
+    ...inclusionCarriage.referenceInputs,
+  ];
   const resolvedChunkIndices = derivedChunkReferenceIndices({
     referenceInputs,
     chunks,
@@ -339,9 +362,7 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
-  const completedTx = carriedByChunks
-    ? paid.attach.WithdrawalValidator(chunkedVerifyScript)
-    : paid.attach.WithdrawalValidator(phasMembershipScript);
+  const completedTx = inclusionCarriage.attach(paid);
 
   const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {

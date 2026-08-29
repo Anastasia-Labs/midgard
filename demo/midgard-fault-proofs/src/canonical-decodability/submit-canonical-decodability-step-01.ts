@@ -55,6 +55,10 @@ import {
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { CanonicalDecodabilityContractsV1 } from "./contracts-v1.js";
 import { prepareCanonicalDecodabilityV1 } from "./prepare-canonical-decodability-v1.js";
 import {
@@ -100,6 +104,7 @@ export const submitCanonicalDecodabilityStep01 = async ({
   witnessSet,
   publishedProofChunks,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -117,6 +122,8 @@ export const submitCanonicalDecodabilityStep01 = async ({
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
   /** Published step-01 reference script. Inline attachment is forbidden. */
   readonly referenceScriptUtxo: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCanonicalDecodabilityStep01Result> => {
   const { threadUtxo, threadToken } =
@@ -194,12 +201,6 @@ export const submitCanonicalDecodabilityStep01 = async ({
       chunks,
     }),
   );
-  const referenceInputs = [
-    hubOracleUtxo,
-    stateQueueBlockUtxo,
-    ...chunks.map((chunk) => chunk.utxo),
-    stepReference,
-  ];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -213,6 +214,26 @@ export const submitCanonicalDecodabilityStep01 = async ({
     network,
     chunkedVerifyScript,
   );
+  const inclusionCarriage = carriedByChunks
+    ? witnessWithdrawalValidatorCarriageV1({
+        script: chunkedVerifyScript,
+        referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        label: `${STEP_LABEL} chunked verify`,
+      })
+    : witnessWithdrawalValidatorCarriageV1({
+        script: phasMembershipScript,
+        referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        label: `${STEP_LABEL} PHAS membership`,
+      });
+  // The complete reference-input set must stand before chunk indices derive
+  // from it; a partial set makes ref_input_index a per-run coin flip.
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    ...chunks.map((chunk) => chunk.utxo),
+    stepReference,
+    ...inclusionCarriage.referenceInputs,
+  ];
   const resolvedChunkIndices = derivedChunkReferenceIndices({
     referenceInputs,
     chunks,
@@ -326,9 +347,7 @@ export const submitCanonicalDecodabilityStep01 = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const completedTx = carriedByChunks
-    ? paid.attach.WithdrawalValidator(chunkedVerifyScript)
-    : paid.attach.WithdrawalValidator(phasMembershipScript);
+  const completedTx = inclusionCarriage.attach(paid);
 
   const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {

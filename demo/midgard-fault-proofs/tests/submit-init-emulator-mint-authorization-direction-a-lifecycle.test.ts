@@ -104,6 +104,7 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
       },
       signer: proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     expect(initResult.computationThreadAssetName).toBe(
       `${category.categoryId}${setup.headerHash}`,
@@ -120,6 +121,7 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
       stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
       txInclusion: block.txInclusion,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     expect(step01.step02State.bad_tx_id).toBe(block.nativeTxId);
 
@@ -168,6 +170,7 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
       signer: proverSigner,
       threadOutRef: step04.nextThreadOutRef,
       referenceScriptUtxo: step05Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
 
     // The permanent token is minted and the thread NFT is burned.
@@ -345,6 +348,7 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
       },
       signer: proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const step01 = await submitMintAuthorizationStep01({
       lucid: proverLucid,
@@ -357,6 +361,7 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
       stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
       txInclusion: block.txInclusion,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const step02 = await submitMintAuthorizationStep02({
       lucid: proverLucid,
@@ -415,6 +420,7 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
       signer: proverSigner,
       threadOutRef: advance.nextThreadOutRef,
       referenceScriptUtxo: step05Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const [fraudProofUtxo] = await proverLucid.utxosAtWithUnit(
       step05.fraudProofAddress,

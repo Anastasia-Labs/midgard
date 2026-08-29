@@ -52,6 +52,11 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessSpendingValidatorCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 export const PEXCLUDES_EXCLUSION_WITHDRAW_TITLE =
   "pexcludes.exclusion.withdraw";
@@ -135,6 +140,8 @@ export const neSubmitStep03 = async ({
   signer,
   threadOutRef,
   ledgerNonMembershipProofCbor,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -144,6 +151,10 @@ export const neSubmitStep03 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly ledgerNonMembershipProofCbor: string;
+  /** The published step-03 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<NeSubmitStep03Result> => {
   const { nonExistentInputCategory, contracts } =
@@ -185,6 +196,20 @@ export const neSubmitStep03 = async ({
     network,
     pexcludesScript,
   );
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: steps[2].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "non-existent-input step 03 validator",
+  });
+  const pexcludesCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: pexcludesScript,
+    referenceUtxo: witnessReferenceScripts?.pexcludesWithdraw,
+    label: "non-existent-input step 03 pexcludes exclusion",
+  });
+  const referenceInputs = [
+    ...stepScriptCarriage.referenceInputs,
+    ...pexcludesCarriage.referenceInputs,
+  ];
   const step04Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -251,10 +276,18 @@ export const neSubmitStep03 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const unsigned = await lucid
+  const collected = lucid
     .newTx()
     .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer)
+    .collectFrom([threadUtxo], redeemer);
+  // Without published witnesses this step reads nothing, and `readFrom([])`
+  // is an error rather than a no-op, so the branch is on whether the
+  // carriages produced reference inputs at all.
+  const tx = (
+    referenceInputs.length === 0
+      ? collected
+      : collected.readFrom([...referenceInputs])
+  )
     .withdraw(
       pexcludesRewardAddress,
       0n,
@@ -269,10 +302,9 @@ export const neSubmitStep03 = async ({
       { kind: "inline", value: step04Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(steps[2].spendingScript)
-    .attach.WithdrawalValidator(pexcludesScript)
-    .complete({ localUPLCEval: true });
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = pexcludesCarriage.attach(stepScriptCarriage.attach(tx));
+  const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve non-existent-input step 03 layout.",

@@ -57,6 +57,10 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 export const requireFabricatedDepositStep04Datum = ({
   threadUtxo,
@@ -154,6 +158,7 @@ export const submitFabricatedDepositStep04 = async ({
   signer,
   threadOutRef,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -161,6 +166,8 @@ export const submitFabricatedDepositStep04 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedDepositStep04Result> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -270,7 +277,17 @@ export const submitFabricatedDepositStep04 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const tx = lucid
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "fabricated-deposit step 04 computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "fabricated-deposit step 04 fraud-proof mint",
+  });
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
@@ -281,6 +298,8 @@ export const submitFabricatedDepositStep04 = async ({
         categoryLabel: FABRICATED_DEPOSIT_CATEGORY_LABEL,
         stepIndex: 3,
       }),
+      ...computationThreadMintCarriage.referenceInputs,
+      ...fraudProofMintCarriage.referenceInputs,
     ])
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
@@ -292,9 +311,10 @@ export const submitFabricatedDepositStep04 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(base),
+  );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (

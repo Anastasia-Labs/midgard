@@ -15,6 +15,7 @@ import {
   requireInitialStepDatum,
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
+import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
 import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
 import { requireMissingNativeScriptTxThreadUtxoV1 } from "./submit-common-v1.js";
 import { submitMissingNativeScriptTxBindingV1 } from "./submit-native-binding-v1.js";
@@ -40,6 +41,7 @@ export const submitMissingNativeScriptTxStep01 = async ({
   stateQueueBlockOutRef,
   txInclusion,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -52,6 +54,8 @@ export const submitMissingNativeScriptTxStep01 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingNativeScriptTxStep01Result> => {
   const { threadUtxo, threadToken } =
@@ -88,6 +92,7 @@ export const submitMissingNativeScriptTxStep01 = async ({
     nextDatum,
     spendRedeemerSchema: MissingNativeScriptTxStep01SpendRedeemer,
     referenceScriptUtxo,
+    witnessReferenceScripts,
     awaitConfirmation,
   });
   return {

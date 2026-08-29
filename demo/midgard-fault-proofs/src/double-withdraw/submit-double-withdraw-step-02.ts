@@ -38,6 +38,10 @@ import {
 } from "../runtime.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { DoubleWithdrawContractsV1 } from "./contracts-v1.js";
 import {
   doubleWithdrawSubmitError,
@@ -96,6 +100,7 @@ export const submitDoubleWithdrawStep02 = async ({
   stateQueueBlockOutRef,
   inclusion,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -107,6 +112,8 @@ export const submitDoubleWithdrawStep02 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly inclusion: SubmitDoubleWithdrawInclusionV1;
   readonly referenceScriptUtxo: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitDoubleWithdrawStep02Result> => {
   const [{ threadUtxo, threadToken }, hubOracleUtxo, stateQueueBlockUtxo] =
@@ -264,11 +271,32 @@ export const submitDoubleWithdrawStep02 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "double-withdraw step-02 computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "double-withdraw step-02 fraud-proof mint",
+  });
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    requireDoubleWithdrawReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      expectedScriptHash: contracts.steps[1].spendingScriptHash,
+      stepIndex: 1,
+    }),
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
   const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom([hubOracleUtxo, stateQueueBlockUtxo])
+    .readFrom(referenceInputs)
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
     .pay.ToContract(
@@ -279,16 +307,10 @@ export const submitDoubleWithdrawStep02 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
-  const tx = base.readFrom([
-    requireDoubleWithdrawReferenceScriptV1({
-      utxo: referenceScriptUtxo,
-      expectedScriptHash: contracts.steps[1].spendingScriptHash,
-      stepIndex: 1,
-    }),
-  ]);
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(base),
+  );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (
     layout === undefined ||

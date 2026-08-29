@@ -34,6 +34,11 @@ import {
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../witness-reference-scripts-v1.js";
+import {
   L2_TX_MISTAG_CATEGORY_LABEL,
   type L2TxMistagContractsV1,
 } from "./contracts-v1.js";
@@ -71,6 +76,7 @@ export const submitL2TxMistagInit = async ({
   signer,
   fraudulentBlockOutRef,
   fraudulentHeaderHash,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -86,6 +92,8 @@ export const submitL2TxMistagInit = async ({
   readonly signer: ResolvedProverSigner;
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitL2TxMistagInitResult> => {
   if (category.scriptHash !== contracts.steps[0].spendingScriptHash) {
@@ -140,6 +148,23 @@ export const submitL2TxMistagInit = async ({
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${L2_TX_MISTAG_CATEGORY_LABEL} init computation-thread mint`,
+  });
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasMembershipScript,
+    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+    label: `${L2_TX_MISTAG_CATEGORY_LABEL} init PHAS membership`,
+  });
+  const referenceInputs = [
+    catalogueUtxo,
+    hubOracleUtxo,
+    fraudulentBlockUtxo,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...phasMembershipCarriage.referenceInputs,
+  ];
   const phasRewardAddress = phasMembershipRewardAddress(
     network,
     phasMembershipScript,
@@ -204,7 +229,7 @@ export const submitL2TxMistagInit = async ({
   signer.selectWallet(lucid);
   const tx = lucid
     .newTx()
-    .readFrom([catalogueUtxo, hubOracleUtxo, fraudulentBlockUtxo])
+    .readFrom(referenceInputs)
     .withdraw(
       phasRewardAddress,
       0n,
@@ -233,11 +258,11 @@ export const submitL2TxMistagInit = async ({
       { kind: "inline", value: firstStepDatum },
       { [computationThreadUnit]: 1n },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.WithdrawalValidator(phasMembershipScript);
+    .addSignerKey(signer.paymentKeyHash);
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await phasMembershipCarriage
+    .attach(computationThreadMintCarriage.attach(tx))
+    .complete({ localUPLCEval: true });
   if (firstStepOutputIndex === undefined) {
     throw l2TxMistagSubmitError("init output index was not resolved.");
   }

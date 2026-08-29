@@ -36,6 +36,10 @@ import {
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
 import {
   type MissingNativeScriptTxStepIndexV1,
@@ -68,6 +72,7 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
   nextDatum,
   spendRedeemerSchema,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation,
 }: {
   readonly lucid: LucidEvolution;
@@ -86,6 +91,8 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
   readonly nextDatum: string;
   readonly spendRedeemerSchema: Parameters<typeof Data.to>[1];
   readonly referenceScriptUtxo: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation: boolean;
 }): Promise<MissingNativeScriptTxBindingResultV1> => {
   const label = missingNativeScriptTxStepLabelV1(
@@ -185,6 +192,11 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
       spendRedeemerSchema,
     );
   }) satisfies BuildTxWithRedeemer;
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasScript,
+    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+    label: `${label} PHAS membership`,
+  });
   const referenceInputs = [
     hubOracleUtxo,
     stateQueueBlockUtxo,
@@ -193,6 +205,7 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
       expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
       stepIndex,
     }),
+    ...phasMembershipCarriage.referenceInputs,
   ];
   const base = lucid
     .newTx()
@@ -217,9 +230,9 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
         [threadToken.unit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.WithdrawalValidator(phasScript);
-  const unsigned = await base.complete({ localUPLCEval: true });
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = phasMembershipCarriage.attach(base);
+  const unsigned = await tx.complete({ localUPLCEval: true });
   if (layout === undefined) {
     throw missingNativeScriptTxSubmitError(
       `BuildTxWithRedeemer did not resolve ${label} layout.`,

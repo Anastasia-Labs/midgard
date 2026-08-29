@@ -57,6 +57,7 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import { witnessSpendingValidatorCarriageV1 } from "./witness-reference-scripts-v1.js";
 
 /** One spend input of the bad transaction, as committed by its inputs hash. */
 export type NeInputPreimageEntry = {
@@ -147,6 +148,7 @@ export const neSubmitStep02 = async ({
   nativeTxCompactCbor,
   badInputIndex,
   publishCarriage = false,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -169,6 +171,8 @@ export const neSubmitStep02 = async ({
    * spend-input cardinality at the L1 byte frontier (#612).
    */
   readonly publishCarriage?: boolean;
+  /** The published step-02 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<NeSubmitStep02Result> => {
   const { nonExistentInputCategory, contracts } =
@@ -230,9 +234,18 @@ export const neSubmitStep02 = async ({
     publisherAddress: signer.address,
     label: "Non-existent-input step 02 spend-inputs",
   });
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: steps[1].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "non-existent-input step 02 validator",
+  });
+  const referenceInputs = [
+    ...carriageUtxos,
+    ...stepScriptCarriage.referenceInputs,
+  ];
   const spendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
-    referenceInputs: carriageUtxos,
+    referenceInputs,
     label: "Non-existent-input step 02 spend-inputs",
   });
   const walletUtxos = await lucid.wallet().getUtxos();
@@ -299,32 +312,32 @@ export const neSubmitStep02 = async ({
     .collectFrom([threadUtxo], redeemer);
   // Tier 1 references nothing, and `readFrom([])` is an error rather than a
   // no-op, so the branch is on whether §8 produced carriage at all.
-  const unsigned = await (
-    carriageUtxos.length === 0
+  const tx = (
+    referenceInputs.length === 0
       ? txWithInputs
-      : txWithInputs.readFrom([...carriageUtxos])
+      : txWithInputs.readFrom([...referenceInputs])
   ).pay
     .ToContract(
       steps[2].spendingScriptAddress,
       { kind: "inline", value: step03Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(steps[1].spendingScript)
-    .complete({
-      localUPLCEval: true,
-      // With carriage published at the prover's own address, balancing must
-      // not pick those UTxOs back up as wallet inputs while the redeemer
-      // references them — same guard as `submitInputNoIdxStep02`.
-      ...(carriageUtxos.length === 0
-        ? {}
-        : {
-            presetWalletInputs: carriageUtxos.reduce<readonly UTxO[]>(
-              (candidates, utxo) => excludeUtxo(candidates, utxo),
-              walletUtxos,
-            ) as UTxO[],
-          }),
-    });
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = stepScriptCarriage.attach(tx);
+  const unsigned = await completedTx.complete({
+    localUPLCEval: true,
+    // With carriage published at the prover's own address, balancing must
+    // not pick those UTxOs back up as wallet inputs while the redeemer
+    // references them — same guard as `submitInputNoIdxStep02`.
+    ...(referenceInputs.length === 0
+      ? {}
+      : {
+          presetWalletInputs: referenceInputs.reduce<readonly UTxO[]>(
+            (candidates, utxo) => excludeUtxo(candidates, utxo),
+            walletUtxos,
+          ) as UTxO[],
+        }),
+  });
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve non-existent-input step 02 layout.",

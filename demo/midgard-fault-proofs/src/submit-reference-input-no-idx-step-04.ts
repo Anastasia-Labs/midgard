@@ -70,6 +70,11 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessSpendingValidatorCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 /** Prepared outputs preimage produced by `prepare-reference-input-no-idx`. */
 export type SubmitReferenceInputNoIdxOutputsPreimage = {
@@ -331,6 +336,8 @@ export const submitReferenceInputNoIdxStep04 = async ({
   threadOutRef,
   outputsPreimage,
   nativeTxCompactCbor,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -342,6 +349,10 @@ export const submitReferenceInputNoIdxStep04 = async ({
   readonly outputsPreimage: SubmitReferenceInputNoIdxOutputsPreimage;
   /** The **producing** transaction's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
+  /** The published step-04 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitReferenceInputNoIdxStep04Result> => {
   const { referenceInputNoIdxCategory, contracts } =
@@ -385,8 +396,31 @@ export const submitReferenceInputNoIdxStep04 = async ({
     label: "Reference-input-no-idx step 04 outputs",
   });
   const producingTxOutputsHash = planned.commitment;
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: chain.steps[3].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "reference-input-no-idx step 04 validator",
+  });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "reference-input-no-idx step 04 computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "reference-input-no-idx step 04 fraud-proof mint",
+  });
+  // The complete reference-input set the built transaction will declare, in
+  // build order — the opening derivation must see all of it (bug fc635c8f).
+  const referenceInputs = [
+    ...stepScriptCarriage.referenceInputs,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
   const outputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
+    referenceInputs,
     label: "Reference-input-no-idx step 04 outputs",
   });
   // §5.2: the count the verdict rests on is the door's authenticated one, which
@@ -420,7 +454,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
   let spendLayout: ReferenceInputNoIdxStep04SpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
 
-  const tx = lucid
+  const collected = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom(
@@ -436,7 +470,15 @@ export const submitReferenceInputNoIdxStep04 = async ({
           spendLayout = layout;
         },
       }),
-    )
+    );
+  // Without published witnesses this step reads nothing, and `readFrom([])`
+  // is an error rather than a no-op, so the branch is on whether the
+  // carriages produced reference inputs at all.
+  const tx = (
+    referenceInputs.length === 0
+      ? collected
+      : collected.readFrom([...referenceInputs])
+  )
     .mintAssets(
       { [threadToken.unit]: -1n },
       makeComputationThreadSuccessRedeemer({
@@ -460,12 +502,12 @@ export const submitReferenceInputNoIdxStep04 = async ({
       { kind: "inline", value: fraudProofDatum },
       fraudProofAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(chain.steps[3].spendingScript)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(stepScriptCarriage.attach(tx)),
+  );
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined

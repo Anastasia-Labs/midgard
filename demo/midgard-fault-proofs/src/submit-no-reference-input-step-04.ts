@@ -72,6 +72,12 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessSpendingValidatorCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 export type SubmitNoReferenceInputStep04CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -146,6 +152,8 @@ export const submitNoReferenceInputStep04 = async ({
   signer,
   threadOutRef,
   txsNonMembershipProofCbor,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -155,6 +163,10 @@ export const submitNoReferenceInputStep04 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly txsNonMembershipProofCbor: string;
+  /** The published step-04 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNoReferenceInputStep04Result> => {
   const { noReferenceInputCategory, contracts } =
@@ -195,6 +207,32 @@ export const submitNoReferenceInputStep04 = async ({
     network,
     pexcludesScript,
   );
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: steps[3].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "no-reference-input step 04 validator",
+  });
+  const pexcludesCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: pexcludesScript,
+    referenceUtxo: witnessReferenceScripts?.pexcludesWithdraw,
+    label: "no-reference-input step 04 pexcludes exclusion",
+  });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "no-reference-input step 04 computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "no-reference-input step 04 fraud-proof mint",
+  });
+  const referenceInputs = [
+    ...stepScriptCarriage.referenceInputs,
+    ...pexcludesCarriage.referenceInputs,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -298,10 +336,18 @@ export const submitNoReferenceInputStep04 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const unsigned = await lucid
+  const collected = lucid
     .newTx()
     .collectFrom([feeInput])
-    .collectFrom([threadUtxo], spendRedeemer)
+    .collectFrom([threadUtxo], spendRedeemer);
+  // Without published witnesses this step reads nothing, and `readFrom([])`
+  // is an error rather than a no-op, so the branch is on whether the
+  // carriages produced reference inputs at all.
+  const chained = (
+    referenceInputs.length === 0
+      ? collected
+      : collected.readFrom([...referenceInputs])
+  )
     .withdraw(
       pexcludesRewardAddress,
       0n,
@@ -318,12 +364,13 @@ export const submitNoReferenceInputStep04 = async ({
       { kind: "inline", value: fraudProofDatum },
       fraudProofAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(steps[3].spendingScript)
-    .attach.WithdrawalValidator(pexcludesScript)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript)
-    .complete({ localUPLCEval: true });
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(
+      pexcludesCarriage.attach(stepScriptCarriage.attach(chained)),
+    ),
+  );
+  const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined

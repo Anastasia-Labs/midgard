@@ -36,6 +36,10 @@ import {
 } from "../runtime.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { MintAuthorizationContractsV1 } from "./contracts-v1.js";
 import {
   mintAuthorizationStepLabelV1,
@@ -96,6 +100,7 @@ export const submitMintAuthorizationStep05 = async ({
   signer,
   threadOutRef,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -105,6 +110,8 @@ export const submitMintAuthorizationStep05 = async ({
   readonly threadOutRef: string;
   /** The published step-05 reference script; inline-attached when absent. */
   readonly referenceScriptUtxo?: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMintAuthorizationStep05Result> => {
   const { threadUtxo, threadToken } =
@@ -205,6 +212,29 @@ export const submitMintAuthorizationStep05 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${STEP_LABEL} computation-thread mint`,
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: `${STEP_LABEL} fraud-proof mint`,
+  });
+  const referenceInputs = [
+    ...(referenceScriptUtxo === undefined
+      ? []
+      : [
+          requireMintAuthorizationReferenceScriptV1({
+            utxo: referenceScriptUtxo,
+            expectedScriptHash: contracts.steps[4].spendingScriptHash,
+            stepIndex: 4,
+          }),
+        ]),
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
   const base = lucid
     .newTx()
     .collectFrom([feeInput])
@@ -219,19 +249,18 @@ export const submitMintAuthorizationStep05 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
-  const tx =
+    .addSignerKey(signer.paymentKeyHash);
+  const withReferences =
+    referenceInputs.length === 0 ? base : base.readFrom(referenceInputs);
+  const withStepScript =
     referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[4].spendingScript)
-      : base.readFrom([
-          requireMintAuthorizationReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[4].spendingScriptHash,
-            stepIndex: 4,
-          }),
-        ]);
+      ? withReferences.attach.SpendingValidator(
+          contracts.steps[4].spendingScript,
+        )
+      : withReferences;
+  const tx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(withStepScript),
+  );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (

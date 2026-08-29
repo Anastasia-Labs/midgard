@@ -654,6 +654,26 @@ describe("fault-proof emulator integration", () => {
 
   it("removes a tail double-spend block without acquiring a lease", async () => {
     const fixture = await buildProvedDoubleSpendFixture();
+    // Owner ruling 2026-08-26: witness scripts resolve from published
+    // reference scripts — the init and step-04 transactions must carry no
+    // inline script witnesses at all (every script is a reference input).
+    for (const measurement of [
+      fixture.submitInitMeasurement,
+      fixture.step04Measurement,
+    ]) {
+      expect(measurement.plutusV1ScriptCount).toBe(0);
+      expect(measurement.plutusV2ScriptCount).toBe(0);
+      expect(measurement.plutusV3ScriptCount).toBe(0);
+      expect(measurement.nativeScriptCount).toBe(0);
+    }
+    expect(
+      fixture.submitInitMeasurement.referenceInputCount,
+    ).toBeGreaterThanOrEqual(5);
+    // Step-04 resolves its step spend, the computation-thread mint, and the
+    // fraud-proof mint from three published reference scripts.
+    expect(
+      fixture.step04Measurement.referenceInputCount,
+    ).toBeGreaterThanOrEqual(3);
     const events: RemovalEvent[] = [];
     const removeResult = await submitRemovalForFixture(fixture, {
       lucid: instrumentLucidForRemoval({

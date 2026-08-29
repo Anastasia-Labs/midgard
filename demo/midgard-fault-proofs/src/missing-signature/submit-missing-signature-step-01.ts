@@ -63,6 +63,10 @@ import {
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../witness-reference-scripts-v1.js";
+import {
   MISSING_SIGNATURE_CATEGORY_LABEL,
   type MissingSignatureContractsV1,
 } from "./contracts-v1.js";
@@ -116,6 +120,7 @@ export const submitMissingSignatureStep01 = async ({
   stateQueueBlockOutRef,
   txInclusion,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -129,6 +134,8 @@ export const submitMissingSignatureStep01 = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   /** §2.3: the published step-01 reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingSignatureStep01Result> => {
   const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxoV1(
@@ -181,7 +188,6 @@ export const submitMissingSignatureStep01 = async ({
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const referenceInputs = [hubOracleUtxo, stateQueueBlockUtxo];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -190,6 +196,21 @@ export const submitMissingSignatureStep01 = async ({
     network,
     phasMembershipScript,
   );
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasMembershipScript,
+    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+    label: `${STEP_LABEL} PHAS membership`,
+  });
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    requireMissingSignatureReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      expectedScriptHash: contracts.steps[0].spendingScriptHash,
+      stepIndex: 0,
+    }),
+    ...phasMembershipCarriage.referenceInputs,
+  ];
   const step02Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: step02State },
     MissingSignatureStep02Datum,
@@ -255,14 +276,7 @@ export const submitMissingSignatureStep01 = async ({
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom([
-      ...referenceInputs,
-      requireMissingSignatureReferenceScriptV1({
-        utxo: referenceScriptUtxo,
-        expectedScriptHash: contracts.steps[0].spendingScriptHash,
-        stepIndex: 0,
-      }),
-    ])
+    .readFrom(referenceInputs)
     .withdraw(
       phasRewardAddress,
       0n,
@@ -278,9 +292,9 @@ export const submitMissingSignatureStep01 = async ({
       { kind: "inline", value: step02Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.WithdrawalValidator(phasMembershipScript);
-  const unsigned = await base.complete({ localUPLCEval: true });
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = phasMembershipCarriage.attach(base);
+  const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
     throw missingSignatureSubmitError(
       "BuildTxWithRedeemer did not resolve the step-01 layout.",

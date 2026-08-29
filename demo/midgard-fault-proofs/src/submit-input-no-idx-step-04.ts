@@ -72,6 +72,11 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessSpendingValidatorCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 /** Prepared outputs preimage produced by `prepare-input-no-idx`. */
 export type SubmitInputNoIdxOutputsPreimage = {
@@ -326,6 +331,8 @@ export const submitInputNoIdxStep04 = async ({
   threadOutRef,
   outputsPreimage,
   nativeTxCompactCbor,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -337,6 +344,10 @@ export const submitInputNoIdxStep04 = async ({
   readonly outputsPreimage: SubmitInputNoIdxOutputsPreimage;
   /** The **producing** transaction's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
+  /** The published step-04 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInputNoIdxStep04Result> => {
   const { nonExistentInputNoIndexCategory, contracts } =
@@ -391,9 +402,30 @@ export const submitInputNoIdxStep04 = async ({
     publisherAddress: signer.address,
     label: "Input-no-idx step 04 outputs",
   });
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: chain.steps[3].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "input-no-idx step 04 validator",
+  });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "input-no-idx step 04 computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "input-no-idx step 04 fraud-proof mint",
+  });
+  const referenceInputs = [
+    ...carriageUtxos,
+    ...stepScriptCarriage.referenceInputs,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
   const outputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
-    referenceInputs: carriageUtxos,
+    referenceInputs,
     label: "Input-no-idx step 04 outputs",
   });
   // §5.2: the count the verdict rests on is the door's authenticated one.
@@ -434,9 +466,9 @@ export const submitInputNoIdxStep04 = async ({
 
   const txWithInputs = lucid.newTx().collectFrom([feeInput]);
   const txWithReferences =
-    carriageUtxos.length === 0
+    referenceInputs.length === 0
       ? txWithInputs
-      : txWithInputs.readFrom([...carriageUtxos]);
+      : txWithInputs.readFrom([...referenceInputs]);
   const tx = txWithReferences
     .collectFrom(
       [threadUtxo],
@@ -475,12 +507,12 @@ export const submitInputNoIdxStep04 = async ({
       { kind: "inline", value: fraudProofDatum },
       fraudProofAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(chain.steps[3].spendingScript)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(stepScriptCarriage.attach(tx)),
+  );
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined

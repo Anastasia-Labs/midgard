@@ -43,6 +43,11 @@ import { type FabricatedDepositContractsV1 } from "../../../src/submit-fabricate
 import { type FabricatedWithdrawalContractsV1 } from "../../../src/submit-fabricated-withdrawal-step-01.js";
 import { computationThreadOutputPredicate } from "../../../src/tx-layout.js";
 import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../../../src/witness-reference-scripts-v1.js";
+import {
   alwaysSucceedsBlueprintPath,
   type Blueprint,
   getCompiledScript,
@@ -100,6 +105,7 @@ export const submitFabricatedFamilyInitV1 = async ({
   familyLabel,
   signer,
   fraudulentBlockOutRef,
+  witnessReferenceScripts,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly realBlueprint: Blueprint;
@@ -115,6 +121,8 @@ export const submitFabricatedFamilyInitV1 = async ({
   readonly familyLabel: string;
   readonly signer: ReturnType<typeof resolveProverSigner>;
   readonly fraudulentBlockOutRef: string;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
 }): Promise<{
   readonly txHash: string;
   readonly fraudulentHeaderHash: string;
@@ -235,9 +243,27 @@ export const submitFabricatedFamilyInitV1 = async ({
   }) satisfies BuildTxWithRedeemer;
 
   signer.selectWallet(lucid);
-  const unsigned = await lucid
+  // Owner ruling 2026-08-26: witness scripts resolve from published reference
+  // scripts wherever the scenario provides them; absent entries inline-attach.
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: family.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${familyLabel} init computation-thread mint`,
+  });
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasMembershipScript,
+    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+    label: `${familyLabel} init phas membership withdrawal`,
+  });
+  const chainedTx = lucid
     .newTx()
-    .readFrom([catalogueUtxo, hubOracleUtxo, fraudulentBlockUtxo])
+    .readFrom([
+      catalogueUtxo,
+      hubOracleUtxo,
+      fraudulentBlockUtxo,
+      ...computationThreadMintCarriage.referenceInputs,
+      ...phasMembershipCarriage.referenceInputs,
+    ])
     .withdraw(
       phasRewardAddress,
       0n,
@@ -254,9 +280,9 @@ export const submitFabricatedFamilyInitV1 = async ({
       { kind: "inline", value: firstStepDatum },
       { [computationThreadUnit]: 1n },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(family.computationThread.mintingScript)
-    .attach.WithdrawalValidator(phasMembershipScript)
+    .addSignerKey(signer.paymentKeyHash);
+  const unsigned = await phasMembershipCarriage
+    .attach(computationThreadMintCarriage.attach(chainedTx))
     .complete({ localUPLCEval: true });
   if (firstStepOutputIndex === undefined) {
     throw new Error(
