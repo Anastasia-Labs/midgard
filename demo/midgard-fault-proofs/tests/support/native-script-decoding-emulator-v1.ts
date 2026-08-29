@@ -19,9 +19,10 @@
  *    The reference-script facts are supplied rather than derived, because the
  *    whole premise of a direction-A decoding fault is a descriptor the
  *    operator admitted over bytes the canonical builder would have refused.
- * 3. **The four step validators published as reference scripts.** Design §10
- *    Q3: step-03's applied body alone is 25,767 bytes, so no step of this
- *    family can inline-attach.
+ * 3. **The six step validators published as reference scripts.** The former
+ *    step-03 is split into open-subject, bind-descriptor, and
+ *    advance-or-close validators so every applied body remains below the
+ *    transaction-size ceiling. No step in this family inline-attaches.
  *
  * The payload fixtures are deliberately tiny (§8.2's "a handful of nodes"):
  * the multi-chunk direction-A item crosses exactly one 4,095-byte chunk
@@ -32,7 +33,6 @@ import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   buildMidgardBoundedItemV1,
   buildMidgardLedgerOutputMaterialV1,
-  decodeMidgardLedgerOutputCommitmentV1,
   encodeMidgardNativeScript,
   encodeMidgardTxOutput,
   MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
@@ -82,25 +82,15 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
-} from "../../src/field-opening-v1.js";
 import type { NativeScriptDecodingContractsV1 } from "../../src/native-script-decoding/contracts-v1.js";
 import type { NativeScriptDecodingLedgerTrieHandleV1 } from "../../src/native-script-decoding/evidence-v1.js";
-import {
-  buildNativeScriptDecodingLedgerMembershipV1,
-  nativeScriptDecodingOutpointKeyV1,
-  nativeScriptDecodingSubjectFieldIndexV1,
-} from "../../src/native-script-decoding/evidence-v1.js";
+import { nativeScriptDecodingOutpointKeyV1 } from "../../src/native-script-decoding/evidence-v1.js";
 import {
   NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS_V1,
   type NativeScriptDecodingProverDepsV1,
   type NativeScriptDecodingProverEventV1,
   type NativeScriptDecodingProverPolicyV1,
 } from "../../src/native-script-decoding/prover-v1.js";
-import { requireNativeScriptDecodingThreadUtxoV1 } from "../../src/native-script-decoding/submit-common-v1.js";
 import {
   type ResolvedProverSigner,
   resolveProverSigner,
@@ -751,7 +741,7 @@ export const buildDecodingBlockFixtureV1 = async ({
 // ---------------------------------------------------------------------------
 
 /**
- * The decoding-family harness: the real four-step chain built from the
+ * The decoding-family harness: the real six-validator chain built from the
  * regenerated blueprint and registered in its canonical production catalogue
  * category.
  */
@@ -794,10 +784,7 @@ export const makeDecodingEmulatorHarnessV1 = async () => {
 };
 
 /**
- * Publishes all four step validators as reference scripts (design §10 Q3).
- * Step-03's 25,767-byte applied body needs the oversized publication shape;
- * publishing every step the same way keeps the four consuming transactions
- * uniform.
+ * Publishes all six custody validators as reference scripts.
  */
 export const publishDecodingReferenceScriptsV1 = async ({
   lucid,
@@ -807,7 +794,7 @@ export const publishDecodingReferenceScriptsV1 = async ({
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
   readonly contracts: NativeScriptDecodingContractsV1;
-}): Promise<readonly [UTxO, UTxO, UTxO, UTxO]> => {
+}): Promise<readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO]> => {
   const published: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {
     const script: Script = step.spendingScript;
@@ -819,7 +806,7 @@ export const publishDecodingReferenceScriptsV1 = async ({
     });
     published.push(utxo);
   }
-  return published as unknown as readonly [UTxO, UTxO, UTxO, UTxO];
+  return published as unknown as readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO];
 };
 
 // ---------------------------------------------------------------------------
@@ -1240,262 +1227,6 @@ export const fundDecodingOutsiderV1 = async (
     .complete();
   const signed = await funding.sign.withWallet().complete();
   await harness.funderLucid.awaitTx(await signed.submit());
-};
-
-/** What every raw step-03 bind builder below needs from the harness. */
-type RawDecodingBindContextV1 = {
-  readonly harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarnessV1>>;
-  readonly threadOutRef: string;
-  readonly nativeTxCompactCbor: string;
-  readonly subjectFieldInputs: readonly MidgardTxInput[];
-  readonly referenceScriptUtxo: UTxO;
-};
-
-/** Reads a step-03 thread's scan state without the submitters' pre-checks. */
-const rawStep03StateV1 = async (
-  harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarnessV1>>,
-  threadOutRef: string,
-): Promise<{
-  readonly threadUtxo: UTxO;
-  readonly threadUnit: string;
-  readonly state: SDK.NativeScriptDecodingScanThreadStateV1;
-}> => {
-  const { threadUtxo, threadToken } =
-    await requireNativeScriptDecodingThreadUtxoV1({
-      lucid: harness.proverLucid,
-      contracts: harness.decoding,
-      categoryId: harness.category.categoryId,
-      stepIndex: 2,
-      threadOutRef,
-    });
-  const datum = Data.from(
-    threadUtxo.datum!,
-    SDK.NativeScriptDecodingStep03Datum,
-  );
-  if (datum.data === null) {
-    throw new Error("step-03 thread carries no scan state");
-  }
-  return { threadUtxo, threadUnit: threadToken.unit, state: datum.data };
-};
-
-/** Opens the accused field through the §8.8 door for a raw step-03 bind. */
-const rawSubjectFieldOpeningV1 = async ({
-  harness,
-  state,
-  nativeTxCompactCbor,
-  subjectFieldInputs,
-  referenceScriptUtxo,
-}: {
-  readonly harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarnessV1>>;
-  readonly state: SDK.NativeScriptDecodingScanThreadStateV1;
-  readonly nativeTxCompactCbor: string;
-  readonly subjectFieldInputs: readonly MidgardTxInput[];
-  readonly referenceScriptUtxo?: UTxO;
-}): Promise<{
-  readonly opening: SDK.FieldOpeningV1;
-  readonly carriageUtxos: readonly UTxO[];
-}> => {
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: nativeScriptDecodingSubjectFieldIndexV1(
-      state.outpoint_source_kind,
-    ),
-    anchorTxId: state.verified_tx_id,
-    nativeTxCompactCbor,
-    itemCbors: subjectFieldInputs.map(encodeMidgardTxInputCanonicalV1),
-    owner: harness.proverSigner.paymentKeyHash,
-    publish: false,
-    label: "raw decoding subject field",
-  });
-  harness.proverSigner.selectWallet(harness.proverLucid);
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
-    lucid: harness.proverLucid,
-    signer: harness.proverSigner,
-    planned,
-    publisherAddress: harness.proverSigner.address,
-    label: "raw decoding subject field",
-  });
-  return {
-    opening: faultProofFieldOpeningV1({
-      planned,
-      // Positional indices resolve against the transaction's complete
-      // reference-input set — the step reference rides with the carriage.
-      referenceInputs: [
-        ...carriageUtxos,
-        ...(referenceScriptUtxo === undefined ? [] : [referenceScriptUtxo]),
-      ],
-      certificatePolicyId: harness.decoding.fieldPreimageCertificatePolicyId,
-      label: "raw decoding subject field",
-    }),
-    carriageUtxos,
-  };
-};
-
-/**
- * A test-only raw `BindOutOfDomain`, built with NO face classification.
- *
- * The submitter refuses an in-domain pair before it pays for anything
- * (`the accused pair is in-domain — bind it through BindOutpoint instead`);
- * this builder exists so the same close reaches the validator's own
- * neutralisation check — the arm the Aiken selector
- * `decoding_step_03_rejects_an_in_domain_ordinal_close` twins.
- */
-export const submitRawDecodingBindOutOfDomainV1 = async ({
-  harness,
-  threadOutRef,
-  nativeTxCompactCbor,
-  subjectFieldInputs,
-  referenceScriptUtxo,
-}: RawDecodingBindContextV1): Promise<string> => {
-  const { threadUtxo, threadUnit, state } = await rawStep03StateV1(
-    harness,
-    threadOutRef,
-  );
-  const { opening, carriageUtxos } = await rawSubjectFieldOpeningV1({
-    harness,
-    state,
-    nativeTxCompactCbor,
-    subjectFieldInputs,
-    referenceScriptUtxo,
-  });
-  return submitRawDecodingStepV1({
-    lucid: harness.proverLucid,
-    contracts: harness.decoding,
-    signer: harness.proverSigner,
-    stepIndex: 2,
-    threadUtxo,
-    threadUnit,
-    destinationAddress: harness.decoding.steps[3]!.spendingScriptAddress,
-    nextDatumCbor: Data.to(
-      {
-        fraud_prover: harness.proverSigner.paymentKeyHash,
-        data: {
-          ...state,
-          refusal_class: SDK.NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
-        },
-      },
-      SDK.NativeScriptDecodingStep03Datum,
-    ),
-    buildRedeemer: (layout) =>
-      Data.to(
-        {
-          Continue: [
-            {
-              BindOutOfDomain: {
-                input_index: layout.inputIndex,
-                output_index: layout.outputIndex,
-                subject_field_opening: opening,
-              },
-            },
-          ],
-        },
-        SDK.NativeScriptDecodingStep03SpendRedeemer,
-      ),
-    carriageUtxos,
-    referenceScriptUtxo,
-  });
-};
-
-/**
- * A test-only raw `BindOutpoint` shaped as the direction-B
- * DESCRIPTOR-CONTRADICTION close — straight to step-04, class-malformed, no
- * first chunk proof and no machine start — while the descriptor it carries
- * is the authentic TAG-0 one the ledger really holds.
- *
- * The contradiction close exists for descriptors that name a non-native
- * language; firing it on a tag-0 descriptor would convict an operator for a
- * payload the canonical decoder is perfectly willing to read. The submitter
- * refuses this plan locally ("the plan claims a descriptor contradiction,
- * but the bound descriptor is tag-0"); this builder carries it to the
- * validator.
- */
-export const submitRawDecodingTag0ContradictionCloseV1 = async ({
-  harness,
-  threadOutRef,
-  nativeTxCompactCbor,
-  subjectFieldInputs,
-  descriptorCbor,
-  ledgerTrie,
-  referenceScriptUtxo,
-}: RawDecodingBindContextV1 & {
-  readonly descriptorCbor: string;
-  readonly ledgerTrie: NativeScriptDecodingLedgerTrieHandleV1;
-}): Promise<string> => {
-  const { threadUtxo, threadUnit, state } = await rawStep03StateV1(
-    harness,
-    threadOutRef,
-  );
-  const subjectOutpoint = subjectFieldInputs[Number(state.outpoint_cursor)]!;
-  const descriptor = decodeMidgardLedgerOutputCommitmentV1(
-    Buffer.from(descriptorCbor, "hex"),
-  );
-  const outpointKey = nativeScriptDecodingOutpointKeyV1({
-    txIdHex: subjectOutpoint.tx_id,
-    outputIndex: Number(subjectOutpoint.output_index),
-  });
-  const ledgerMembershipProof =
-    await buildNativeScriptDecodingLedgerMembershipV1({
-      trie: ledgerTrie,
-      outpointKey,
-      priorLedgerRootHex: state.prior_ledger_root,
-    });
-  const bound = await Effect.runPromise(
-    SDK.nativeScriptDecodingBoundScanStateV1({
-      state,
-      outpointKeyBytes: outpointKey.toString("hex"),
-      referenceScriptLanguage: BigInt(descriptor.referenceScriptLanguage),
-      outputIndex: BigInt(descriptor.outputIndex),
-      referenceScriptTotalLength: BigInt(descriptor.referenceScriptTotalLength),
-      referenceScriptItemCommitment:
-        descriptor.referenceScriptItemCommitment.toString("hex"),
-    }),
-  );
-  const { opening, carriageUtxos } = await rawSubjectFieldOpeningV1({
-    harness,
-    state,
-    nativeTxCompactCbor,
-    subjectFieldInputs,
-    referenceScriptUtxo,
-  });
-  return submitRawDecodingStepV1({
-    lucid: harness.proverLucid,
-    contracts: harness.decoding,
-    signer: harness.proverSigner,
-    stepIndex: 2,
-    threadUtxo,
-    threadUnit,
-    destinationAddress: harness.decoding.steps[3]!.spendingScriptAddress,
-    nextDatumCbor: Data.to(
-      {
-        fraud_prover: harness.proverSigner.paymentKeyHash,
-        data: {
-          ...bound,
-          refusal_class: SDK.NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
-        },
-      },
-      SDK.NativeScriptDecodingStep03Datum,
-    ),
-    buildRedeemer: (layout) =>
-      Data.to(
-        {
-          Continue: [
-            {
-              BindOutpoint: {
-                input_index: layout.inputIndex,
-                output_index: layout.outputIndex,
-                subject_field_opening: opening,
-                descriptor_cbor: descriptorCbor,
-                ledger_membership_proof: ledgerMembershipProof,
-                // The contradiction close reads no chunk window.
-                first_chunk_proof: null,
-              },
-            },
-          ],
-        },
-        SDK.NativeScriptDecodingStep03SpendRedeemer,
-      ),
-    carriageUtxos,
-    referenceScriptUtxo,
-  });
 };
 
 /**

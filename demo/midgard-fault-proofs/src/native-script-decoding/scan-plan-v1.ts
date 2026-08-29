@@ -89,16 +89,16 @@ export const NATIVE_SCRIPT_DECODING_EXEC_PINS_V1 = {
    */
   scanStepEnvelopeMemoryUnits: 1_000_000,
   /**
-   * CPU envelope: the whole pinned scan step row — a complete fixture step
-   * including its own fold, so strictly conservative as an envelope.
+   * CPU envelope: the pinned direction-B terminal close — a complete fixture
+   * step including its own fold, so conservative for the shorter partial row.
    */
-  scanStepEnvelopeCpuUnits: 1_786_546_593,
-  /** `decoding_step_03_verdict_proves_a_malformed_payload`. */
-  verdictWrongfulAcceptance: { mem: 3_199_717, cpu: 1_362_715_211 },
-  /** `decoding_step_03_verdict_proves_the_terminal_for_direction_b`. */
-  verdictWrongfulRejection: { mem: 3_396_356, cpu: 1_417_909_444 },
-  /** `decoding_step_03_closes_a_descriptor_contradiction_for_direction_b`. */
-  descriptorContradictionClose: { mem: 3_646_253, cpu: 1_443_683_241 },
+  scanStepEnvelopeCpuUnits: 1_438_286_068,
+  /** `advance_or_close_closes_a_direction_a_refusal`. */
+  verdictWrongfulAcceptance: { mem: 2_708_220, cpu: 1_118_982_047 },
+  /** `advance_or_close_closes_direction_b_at_the_exact_terminal`. */
+  verdictWrongfulRejection: { mem: 3_579_557, cpu: 1_438_286_068 },
+  /** `bind_descriptor_closes_a_non_native_direction_b_descriptor`. */
+  descriptorContradictionClose: { mem: 2_602_137, cpu: 1_021_459_663 },
 } as const;
 
 /**

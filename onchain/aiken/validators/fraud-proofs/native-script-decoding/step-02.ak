@@ -34,7 +34,7 @@ use midgard/rejection_reason_v1.{ForcedTxInvalid, ForcedTxValid}
 use midgard/transition_trace
 
 validator main(
-  step_03_validator_script_hash: ScriptHash,
+  step_03_open_subject_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
 ) {
   spend(
@@ -191,8 +191,8 @@ validator main(
           }
         }
 
-        // 4. The thread advances to step-03 with the pre-bind scan state.
-        expect output_script_hash == step_03_validator_script_hash
+        // 4. The thread advances to OpenSubject with the pre-bind scan state.
+        expect output_script_hash == step_03_open_subject_validator_script_hash
         let expected_output_state: Data = scan_state
         expect output_state_data == expected_output_state
 

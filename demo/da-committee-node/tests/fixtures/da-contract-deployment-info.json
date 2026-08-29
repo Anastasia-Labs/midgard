@@ -763,9 +763,31 @@
       },
       "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
     },
-    "fraudProofNativeScriptDecodingStep03": {
+    "fraudProofNativeScriptDecodingStep03OpenSubject": {
       "refScriptUTxO": {
         "txHash": "4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofNativeScriptDecodingStep03BindDescriptor": {
+      "refScriptUTxO": {
+        "txHash": "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofNativeScriptDecodingStep03AdvanceOrClose": {
+      "refScriptUTxO": {
+        "txHash": "e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2",
         "outputIndex": 0
       },
       "contract": {

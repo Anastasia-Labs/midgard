@@ -31,12 +31,17 @@
  * never reclaims wasm linear memory and vitest isolates per FILE. See
  * tests/support/uplc-heap-guard.ts.
  */
-import { MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1 } from "@al-ft/midgard-core";
+import {
+  decodeMidgardLedgerOutputCommitmentV1,
+  MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
+} from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildNativeScriptDecodingChunkProofV1,
+  buildNativeScriptDecodingLedgerMembershipV1,
   buildNativeScriptDecodingScanPlanV1,
   buildNativeScriptDecodingStep02EvidenceV1,
   type NativeScriptDecodingContractsV1,
@@ -51,8 +56,9 @@ import {
   submitNativeScriptDecodingStep01BindNormal,
   submitNativeScriptDecodingStep01RecordForced,
   submitNativeScriptDecodingStep02,
-  submitNativeScriptDecodingStep03BindOutpoint,
-  submitNativeScriptDecodingStep03Scan,
+  submitNativeScriptDecodingStep03AdvanceOrCloseSegment,
+  submitNativeScriptDecodingStep03BindDescriptor,
+  submitNativeScriptDecodingStep03OpenSubject,
 } from "../src/native-script-decoding/index.js";
 import type { ResolvedProverSigner } from "../src/runtime.js";
 import {
@@ -69,14 +75,13 @@ import {
   setupDecodingScenarioV1,
   submitRawDecodingCancelV1,
   submitRawDecodingStepV1,
-  submitRawDecodingTag0ContradictionCloseV1,
 } from "./support/native-script-decoding-emulator-v1.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
 type DecodingHarnessV1 = Awaited<
   ReturnType<typeof makeDecodingEmulatorHarnessV1>
 >;
-type DecodingReferenceScriptsV1 = readonly [UTxO, UTxO, UTxO, UTxO];
+type DecodingReferenceScriptsV1 = readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO];
 
 /** The §2.4.3(e) rejection direction B disputes, accusing (reference, 0). */
 const MALFORMED_REJECTION_VERDICT: SDK.OperatorVerdictV1 = {
@@ -91,6 +96,7 @@ const MALFORMED_REJECTION_VERDICT: SDK.OperatorVerdictV1 = {
 const readStep03Thread = async (
   harness: DecodingHarnessV1,
   threadOutRef: string,
+  stepIndex: 2 | 3 | 4 = 4,
 ): Promise<{
   readonly threadUtxo: UTxO;
   readonly threadUnit: string;
@@ -101,18 +107,23 @@ const readStep03Thread = async (
       lucid: harness.proverLucid,
       contracts: harness.decoding,
       categoryId: harness.category.categoryId,
-      stepIndex: 2,
+      stepIndex,
       threadOutRef,
     });
   const datum = Data.from(
     threadUtxo.datum!,
-    SDK.NativeScriptDecodingStep03Datum,
+    SDK.NativeScriptDecodingStep03AdvanceOrCloseDatum,
   );
   if (datum.data === null) {
     throw new Error("step-03 thread carries no scan state");
   }
   return { threadUtxo, threadUnit: threadToken.unit, state: datum.data };
 };
+
+const subjectOutpointKeyCbor = (scenario: DecodingScenarioV1): string =>
+  Buffer.from(
+    SDK.encodeMidgardTxInputCanonicalV1(scenario.subjectFieldInputs[0]!),
+  ).toString("hex");
 
 /** Init → step-01 (normal) → step-02: the honest prefix every attack shares. */
 const driveNormalThreadToStep03 = async ({
@@ -227,7 +238,7 @@ const bindAndScanHonestly = async ({
   readonly threadOutRef: string;
 }): Promise<string> => {
   const { proverLucid, proverSigner, decoding, category } = harness;
-  const bind = await submitNativeScriptDecodingStep03BindOutpoint({
+  const opened = await submitNativeScriptDecodingStep03OpenSubject({
     lucid: proverLucid,
     contracts: decoding,
     categoryId: category.categoryId,
@@ -235,15 +246,27 @@ const bindAndScanHonestly = async ({
     threadOutRef,
     nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
     subjectFieldInputs: scenario.subjectFieldInputs,
+    referenceScriptUtxo: refs[2],
+  });
+  const subjectOutpoint = scenario.subjectFieldInputs[0]!;
+  const bind = await submitNativeScriptDecodingStep03BindDescriptor({
+    lucid: proverLucid,
+    contracts: decoding,
+    categoryId: category.categoryId,
+    signer: proverSigner,
+    threadOutRef: opened.nextThreadOutRef,
+    outpointKeyCbor: Buffer.from(
+      SDK.encodeMidgardTxInputCanonicalV1(subjectOutpoint),
+    ).toString("hex"),
     descriptorCbor: scenario.ledger.descriptorCbor,
     ledgerTrie: scenario.ledger.trie,
     plan,
     referenceScriptItemBytes: item,
-    referenceScriptUtxo: refs[2],
+    referenceScriptUtxo: refs[3],
   });
   let cursor = bind.nextThreadOutRef;
   for (const segment of plan.segments) {
-    const scan = await submitNativeScriptDecodingStep03Scan({
+    const scan = await submitNativeScriptDecodingStep03AdvanceOrCloseSegment({
       lucid: proverLucid,
       contracts: decoding,
       categoryId: category.categoryId,
@@ -251,14 +274,14 @@ const bindAndScanHonestly = async ({
       threadOutRef: cursor,
       segment,
       referenceScriptItemBytes: item,
-      referenceScriptUtxo: refs[2],
+      referenceScriptUtxo: refs[4],
     });
     cursor = scan.nextThreadOutRef;
   }
   return cursor;
 };
 
-/** The raw step-03 `Verdict` an adversary's patched tooling would submit. */
+/** A raw AdvanceOrClose transition an adversary's patched tooling would submit. */
 const submitRawVerdict = async ({
   harness,
   contracts,
@@ -301,33 +324,33 @@ const submitRawVerdict = async ({
       fraud_prover: signer.paymentKeyHash,
       data: { ...state, refusal_class: refusalClass },
     },
-    SDK.NativeScriptDecodingStep03Datum,
+    SDK.NativeScriptDecodingStep03AdvanceOrCloseDatum,
   );
   return submitRawDecodingStepV1({
     lucid: harness.proverLucid,
     contracts,
     signer,
-    stepIndex: 2,
+    stepIndex: 4,
     threadUtxo,
     threadUnit,
-    destinationAddress: contracts.steps[3]!.spendingScriptAddress,
+    destinationAddress: contracts.steps[5]!.spendingScriptAddress,
     nextDatumCbor,
     buildRedeemer: (layout) =>
       Data.to(
         {
           Continue: [
             {
-              Verdict: {
-                input_index: layout.inputIndex,
-                output_index: layout.outputIndex,
-                control_cbor: controlCbor,
-                chunk_proof: proofs.chunk_proof,
-                next_chunk_proof: proofs.next_chunk_proof,
-              },
+              input_index: layout.inputIndex,
+              output_index: layout.outputIndex,
+              control_cbor: controlCbor,
+              chunk_proof: proofs.chunk_proof,
+              next_chunk_proof: proofs.next_chunk_proof,
+              frames: [],
+              step_budget: window === undefined ? 0n : 1n,
             },
           ],
         },
-        SDK.NativeScriptDecodingStep03SpendRedeemer,
+        SDK.NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer,
       ),
     referenceScriptUtxo,
   });
@@ -354,7 +377,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       buildNativeScriptDecodingScanPlanV1({ itemBytes: item, direction: 0 }),
     ).toThrow(/there is no wrongful\s+acceptance to prove/);
 
-    // On-chain plane. `BindOutpoint` and `Scan` are direction-agnostic — the
+    // On-chain plane. BindDescriptor and scan advances are direction-agnostic — the
     // machine they run is the payload's, not the accusation's — so an
     // adversary can reach the Verdict arm by scanning the honest trace. The
     // fabricated verdict claims the accepting terminal refuses.
@@ -394,7 +417,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
         threadOutRef: scanned,
         controlCbor: honestTrace.verdict.control!.cborHex,
         refusalClass: 0n,
-        referenceScriptUtxo: refs[2],
+        referenceScriptUtxo: refs[4],
       }),
     );
     expect(message.length).toBeGreaterThan(0);
@@ -406,7 +429,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
     );
     await expect(
       harness.proverLucid.utxosAtWithUnit(
-        harness.decoding.steps[3]!.spendingScriptAddress,
+        harness.decoding.steps[5]!.spendingScriptAddress,
         after.threadUnit,
       ),
     ).resolves.toHaveLength(0);
@@ -480,7 +503,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
         threadOutRef: scanned,
         controlCbor: honestTrace.verdict.control!.cborHex,
         refusalClass: SDK.NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
-        referenceScriptUtxo: refs[2],
+        referenceScriptUtxo: refs[4],
       }),
     );
     expect(message.length).toBeGreaterThan(0);
@@ -521,21 +544,30 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       scenario,
       refs,
     });
+    const opened = await submitNativeScriptDecodingStep03OpenSubject({
+      lucid: harness.proverLucid,
+      contracts: harness.decoding,
+      categoryId: harness.category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: step03OutRef,
+      nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
+      subjectFieldInputs: scenario.subjectFieldInputs,
+      referenceScriptUtxo: refs[2],
+    });
 
     const bindWith = (trie: typeof scenario.ledger.trie) =>
-      submitNativeScriptDecodingStep03BindOutpoint({
+      submitNativeScriptDecodingStep03BindDescriptor({
         lucid: harness.proverLucid,
         contracts: harness.decoding,
         categoryId: harness.category.categoryId,
         signer: harness.proverSigner,
-        threadOutRef: step03OutRef,
-        nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
-        subjectFieldInputs: scenario.subjectFieldInputs,
+        threadOutRef: opened.nextThreadOutRef,
+        outpointKeyCbor: subjectOutpointKeyCbor(scenario),
         descriptorCbor: forged.descriptorCbor,
         ledgerTrie: trie,
         plan: forgedPlan,
         referenceScriptItemBytes: forgedItem,
-        referenceScriptUtxo: refs[2],
+        referenceScriptUtxo: refs[3],
       });
 
     // Offchain plane: the honest tooling refuses a trie that is not the
@@ -554,23 +586,22 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
     expect(message.length).toBeGreaterThan(0);
 
     // The thread never bound.
-    const after = await readStep03Thread(harness, step03OutRef);
+    const after = await readStep03Thread(harness, opened.nextThreadOutRef, 3);
     expect(after.state.machine_state_hash).toBe("");
-    expect(after.state.outpoint_key_hash).toBe("");
+    expect(after.state.outpoint_key_hash).not.toBe("");
 
     // Control, so the refusal above is attributable to the forged ledger
     // evidence and nothing else: the SAME bind with the block's own
     // descriptor and its own trie lands. (The plan is the direction-1 trace
-    // of the honest payload — `BindOutpoint` runs the payload's machine, not
+    // of the honest payload — BindDescriptor runs the payload's machine, not
     // the accusation's, so the arm is direction-agnostic.)
-    const honestBind = await submitNativeScriptDecodingStep03BindOutpoint({
+    const honestBind = await submitNativeScriptDecodingStep03BindDescriptor({
       lucid: harness.proverLucid,
       contracts: harness.decoding,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
-      threadOutRef: step03OutRef,
-      nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
-      subjectFieldInputs: scenario.subjectFieldInputs,
+      threadOutRef: opened.nextThreadOutRef,
+      outpointKeyCbor: subjectOutpointKeyCbor(scenario),
       descriptorCbor: scenario.ledger.descriptorCbor,
       ledgerTrie: scenario.ledger.trie,
       plan: buildNativeScriptDecodingScanPlanV1({
@@ -578,7 +609,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
         direction: 1,
       }),
       referenceScriptItemBytes: item,
-      referenceScriptUtxo: refs[2],
+      referenceScriptUtxo: refs[3],
     });
     expect(honestBind.scanState.outpoint_key_hash).not.toBe("");
   }, 600_000);
@@ -604,7 +635,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       scenario,
       refs,
     });
-    const bind = await submitNativeScriptDecodingStep03BindOutpoint({
+    const opened = await submitNativeScriptDecodingStep03OpenSubject({
       lucid: harness.proverLucid,
       contracts: harness.decoding,
       categoryId: harness.category.categoryId,
@@ -612,11 +643,20 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       threadOutRef: step03OutRef,
       nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
       subjectFieldInputs: scenario.subjectFieldInputs,
+      referenceScriptUtxo: refs[2],
+    });
+    const bind = await submitNativeScriptDecodingStep03BindDescriptor({
+      lucid: harness.proverLucid,
+      contracts: harness.decoding,
+      categoryId: harness.category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: opened.nextThreadOutRef,
+      outpointKeyCbor: subjectOutpointKeyCbor(scenario),
       descriptorCbor: scenario.ledger.descriptorCbor,
       ledgerTrie: scenario.ledger.trie,
       plan,
       referenceScriptItemBytes: item,
-      referenceScriptUtxo: refs[2],
+      referenceScriptUtxo: refs[3],
     });
 
     // One byte of the first chunk, rewritten. The frozen anchor commits the
@@ -627,7 +667,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
 
     // Offchain plane.
     await expect(
-      submitNativeScriptDecodingStep03Scan({
+      submitNativeScriptDecodingStep03AdvanceOrCloseSegment({
         lucid: harness.proverLucid,
         contracts: harness.decoding,
         categoryId: harness.category.categoryId,
@@ -635,7 +675,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
         threadOutRef: bind.nextThreadOutRef,
         segment,
         referenceScriptItemBytes: substituted,
-        referenceScriptUtxo: refs[2],
+        referenceScriptUtxo: refs[4],
       }),
     ).rejects.toThrow(/do not rebuild the frozen item commitment/);
 
@@ -655,10 +695,10 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
         lucid: harness.proverLucid,
         contracts: harness.decoding,
         signer: harness.proverSigner,
-        stepIndex: 2,
+        stepIndex: 4,
         threadUtxo,
         threadUnit,
-        destinationAddress: harness.decoding.steps[2]!.spendingScriptAddress,
+        destinationAddress: harness.decoding.steps[4]!.spendingScriptAddress,
         nextDatumCbor: Data.to(
           {
             fraud_prover: harness.proverSigner.paymentKeyHash,
@@ -667,28 +707,26 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
               machine_state_hash: segment.controlAfter.hashHex,
             },
           },
-          SDK.NativeScriptDecodingStep03Datum,
+          SDK.NativeScriptDecodingStep03AdvanceOrCloseDatum,
         ),
         buildRedeemer: (layout) =>
           Data.to(
             {
               Continue: [
                 {
-                  Scan: {
-                    input_index: layout.inputIndex,
-                    output_index: layout.outputIndex,
-                    control_cbor: evidence.control_cbor,
-                    chunk_proof: evidence.chunk_proof,
-                    next_chunk_proof: evidence.next_chunk_proof,
-                    frames: [...evidence.frames],
-                    step_budget: evidence.step_budget,
-                  },
+                  input_index: layout.inputIndex,
+                  output_index: layout.outputIndex,
+                  control_cbor: evidence.control_cbor,
+                  chunk_proof: evidence.chunk_proof,
+                  next_chunk_proof: evidence.next_chunk_proof,
+                  frames: [...evidence.frames],
+                  step_budget: evidence.step_budget,
                 },
               ],
             },
-            SDK.NativeScriptDecodingStep03SpendRedeemer,
+            SDK.NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer,
           ),
-        referenceScriptUtxo: refs[2],
+        referenceScriptUtxo: refs[4],
       });
     };
     const message = await expectOnchainRefusalV1(() =>
@@ -723,17 +761,19 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       refusalClass: BigInt(plan.verdict.refusalClass!),
       window: plan.verdict.window,
       referenceScriptItemBytes: item,
-      referenceScriptUtxo: refs[2],
+      referenceScriptUtxo: refs[4],
     });
     const classed = await harness.proverLucid.utxosByOutRef([
       { txHash: verdictTxHash, outputIndex: 0 },
     ]);
     expect(classed[0]!.address).toBe(
-      harness.decoding.steps[3]!.spendingScriptAddress,
+      harness.decoding.steps[5]!.spendingScriptAddress,
     );
     expect(
-      Data.from(classed[0]!.datum!, SDK.NativeScriptDecodingStep03Datum).data!
-        .refusal_class,
+      Data.from(
+        classed[0]!.datum!,
+        SDK.NativeScriptDecodingStep03AdvanceOrCloseDatum,
+      ).data!.refusal_class,
     ).toBe(0n);
   }, 600_000);
 
@@ -823,7 +863,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
             fraud_prover: harness.proverSigner.paymentKeyHash,
             data: scanState,
           },
-          SDK.NativeScriptDecodingStep03Datum,
+          SDK.NativeScriptDecodingStep03OpenSubjectDatum,
         ),
         buildRedeemer: (layout) =>
           Data.to(
@@ -918,7 +958,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       scenario,
       refs,
     });
-    const bind = await submitNativeScriptDecodingStep03BindOutpoint({
+    const opened = await submitNativeScriptDecodingStep03OpenSubject({
       lucid: harness.proverLucid,
       contracts: harness.decoding,
       categoryId: harness.category.categoryId,
@@ -926,11 +966,20 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       threadOutRef: step03OutRef,
       nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
       subjectFieldInputs: scenario.subjectFieldInputs,
+      referenceScriptUtxo: refs[2],
+    });
+    const bind = await submitNativeScriptDecodingStep03BindDescriptor({
+      lucid: harness.proverLucid,
+      contracts: harness.decoding,
+      categoryId: harness.category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: opened.nextThreadOutRef,
+      outpointKeyCbor: subjectOutpointKeyCbor(scenario),
       descriptorCbor: scenario.ledger.descriptorCbor,
       ledgerTrie: scenario.ledger.trie,
       plan,
       referenceScriptItemBytes: item,
-      referenceScriptUtxo: refs[2],
+      referenceScriptUtxo: refs[3],
     });
     const { outsiderLucid, outsiderSigner: outsider } = harness;
     const segment = plan.segments[0]!;
@@ -938,7 +987,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
     // Offchain plane, drive: the tooling refuses to sign for a thread it does
     // not own.
     await expect(
-      submitNativeScriptDecodingStep03Scan({
+      submitNativeScriptDecodingStep03AdvanceOrCloseSegment({
         lucid: outsiderLucid,
         contracts: harness.decoding,
         categoryId: harness.category.categoryId,
@@ -946,7 +995,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
         threadOutRef: bind.nextThreadOutRef,
         segment,
         referenceScriptItemBytes: item,
-        referenceScriptUtxo: refs[2],
+        referenceScriptUtxo: refs[4],
       }),
     ).rejects.toThrow(/names fraud prover .*, not the signing wallet/);
 
@@ -958,7 +1007,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
         categoryId: harness.category.categoryId,
         signer: outsider,
         threadOutRef: bind.nextThreadOutRef,
-        referenceScriptUtxo: refs[2],
+        referenceScriptUtxo: refs[4],
       }),
     ).rejects.toThrow(/only the prover can cancel/);
 
@@ -980,10 +1029,10 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
         lucid: outsiderLucid,
         contracts: harness.decoding,
         signer: outsider,
-        stepIndex: 2,
+        stepIndex: 4,
         threadUtxo,
         threadUnit,
-        destinationAddress: harness.decoding.steps[2]!.spendingScriptAddress,
+        destinationAddress: harness.decoding.steps[4]!.spendingScriptAddress,
         nextDatumCbor: Data.to(
           {
             fraud_prover: fraudProver,
@@ -992,28 +1041,26 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
               machine_state_hash: segment.controlAfter.hashHex,
             },
           },
-          SDK.NativeScriptDecodingStep03Datum,
+          SDK.NativeScriptDecodingStep03AdvanceOrCloseDatum,
         ),
         buildRedeemer: (layout) =>
           Data.to(
             {
               Continue: [
                 {
-                  Scan: {
-                    input_index: layout.inputIndex,
-                    output_index: layout.outputIndex,
-                    control_cbor: evidence.control_cbor,
-                    chunk_proof: evidence.chunk_proof,
-                    next_chunk_proof: evidence.next_chunk_proof,
-                    frames: [...evidence.frames],
-                    step_budget: evidence.step_budget,
-                  },
+                  input_index: layout.inputIndex,
+                  output_index: layout.outputIndex,
+                  control_cbor: evidence.control_cbor,
+                  chunk_proof: evidence.chunk_proof,
+                  next_chunk_proof: evidence.next_chunk_proof,
+                  frames: [...evidence.frames],
+                  step_budget: evidence.step_budget,
                 },
               ],
             },
-            SDK.NativeScriptDecodingStep03SpendRedeemer,
+            SDK.NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer,
           ),
-        referenceScriptUtxo: refs[2],
+        referenceScriptUtxo: refs[4],
       });
     // The theft: the continuation names the outsider.
     const driveMessage = await expectOnchainRefusalV1(() =>
@@ -1028,11 +1075,11 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
         lucid: outsiderLucid,
         contracts: harness.decoding,
         signer: outsider,
-        stepIndex: 2,
+        stepIndex: 4,
         threadUtxo,
         threadUnit,
         threadAssetName: `${harness.category.categoryId}${scenario.setup.headerHash}`,
-        referenceScriptUtxo: refs[2],
+        referenceScriptUtxo: refs[4],
       }),
     );
     expect(cancelMessage.length).toBeGreaterThan(0);
@@ -1054,8 +1101,10 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       segment.controlAfter.hashHex,
     );
     expect(
-      Data.from(advanced.threadUtxo.datum!, SDK.NativeScriptDecodingStep03Datum)
-        .fraud_prover,
+      Data.from(
+        advanced.threadUtxo.datum!,
+        SDK.NativeScriptDecodingStep03AdvanceOrCloseDatum,
+      ).fraud_prover,
     ).toBe(harness.proverSigner.paymentKeyHash);
   }, 600_000);
 
@@ -1091,8 +1140,18 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       forcedOrderKey: scenario.block.forcedOrderKey!,
       referenceScriptUtxo: refs[1],
     });
+    const opened = await submitNativeScriptDecodingStep03OpenSubject({
+      lucid: harness.proverLucid,
+      contracts: harness.decoding,
+      categoryId: harness.category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: step02.nextThreadOutRef,
+      nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
+      subjectFieldInputs: scenario.subjectFieldInputs,
+      referenceScriptUtxo: refs[2],
+    });
 
-    // The close the adversary wants: `BindOutpoint` shaped as the direction-B
+    // The close the adversary wants: BindDescriptor shaped as the direction-B
     // descriptor contradiction — straight to step-04, class-malformed, no
     // machine ever started — over a descriptor that names no contradiction at
     // all. Firing it here would convict the operator for a payload the
@@ -1108,41 +1167,94 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       NativeScriptDecodingPlanRoutesV1.DescriptorContradiction,
     );
     await expect(
-      submitNativeScriptDecodingStep03BindOutpoint({
+      submitNativeScriptDecodingStep03BindDescriptor({
         lucid: harness.proverLucid,
         contracts: harness.decoding,
         categoryId: harness.category.categoryId,
         signer: harness.proverSigner,
-        threadOutRef: step02.nextThreadOutRef,
-        nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
-        subjectFieldInputs: scenario.subjectFieldInputs,
+        threadOutRef: opened.nextThreadOutRef,
+        outpointKeyCbor: subjectOutpointKeyCbor(scenario),
         descriptorCbor: scenario.ledger.descriptorCbor,
         ledgerTrie: scenario.ledger.trie,
         plan: contradictionPlan,
         referenceScriptItemBytes: item,
-        referenceScriptUtxo: refs[2],
+        referenceScriptUtxo: refs[3],
       }),
     ).rejects.toThrow(
-      /the plan claims a descriptor contradiction, but the bound descriptor is tag-0/u,
+      /the plan claims a descriptor contradiction for a tag-0 descriptor/u,
     );
 
     // On-chain plane: the same close, assembled by hand with the AUTHENTIC
     // tag-0 descriptor and the block's own membership proof, has to die in
     // the validator's language branch.
+    const openedThread = await readStep03Thread(
+      harness,
+      opened.nextThreadOutRef,
+      3,
+    );
+    const outpointKeyCbor = subjectOutpointKeyCbor(scenario);
+    const descriptor = decodeMidgardLedgerOutputCommitmentV1(
+      Buffer.from(scenario.ledger.descriptorCbor, "hex"),
+    );
+    const membershipProof = await buildNativeScriptDecodingLedgerMembershipV1({
+      trie: scenario.ledger.trie,
+      outpointKey: Buffer.from(outpointKeyCbor, "hex"),
+      priorLedgerRootHex: openedThread.state.prior_ledger_root,
+    });
+    const boundState = SDK.nativeScriptDecodingBoundDescriptorStateV1({
+      state: openedThread.state,
+      referenceScriptLanguage: BigInt(descriptor.referenceScriptLanguage),
+      referenceScriptTotalLength: BigInt(descriptor.referenceScriptTotalLength),
+      referenceScriptItemCommitment:
+        descriptor.referenceScriptItemCommitment.toString("hex"),
+    });
     await expectOnchainRefusalV1(() =>
-      submitRawDecodingTag0ContradictionCloseV1({
-        harness,
-        threadOutRef: step02.nextThreadOutRef,
-        nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
-        subjectFieldInputs: scenario.subjectFieldInputs,
-        descriptorCbor: scenario.ledger.descriptorCbor,
-        ledgerTrie: scenario.ledger.trie,
-        referenceScriptUtxo: refs[2],
+      submitRawDecodingStepV1({
+        lucid: harness.proverLucid,
+        contracts: harness.decoding,
+        signer: harness.proverSigner,
+        stepIndex: 3,
+        threadUtxo: openedThread.threadUtxo,
+        threadUnit: openedThread.threadUnit,
+        destinationAddress: harness.decoding.steps[5]!.spendingScriptAddress,
+        nextDatumCbor: Data.to(
+          {
+            fraud_prover: harness.proverSigner.paymentKeyHash,
+            data: {
+              ...boundState,
+              refusal_class:
+                SDK.NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
+            },
+          },
+          SDK.NativeScriptDecodingStep03BindDescriptorDatum,
+        ),
+        buildRedeemer: (layout) =>
+          Data.to(
+            {
+              Continue: [
+                {
+                  input_index: layout.inputIndex,
+                  output_index: layout.outputIndex,
+                  outpoint_key_cbor: outpointKeyCbor,
+                  descriptor_cbor: scenario.ledger.descriptorCbor,
+                  ledger_membership_proof: membershipProof,
+                  first_chunk_proof: buildNativeScriptDecodingChunkProofV1({
+                    fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
+                    itemIndex: descriptor.outputIndex,
+                    itemBytes: item,
+                    chunkIndex: 0,
+                  }),
+                },
+              ],
+            },
+            SDK.NativeScriptDecodingStep03BindDescriptorSpendRedeemer,
+          ),
+        referenceScriptUtxo: refs[3],
       }),
     );
     await expect(
       harness.proverLucid.utxosAtWithUnit(
-        harness.decoding.steps[3]!.spendingScriptAddress,
+        harness.decoding.steps[5]!.spendingScriptAddress,
         toUnit(
           harness.decoding.computationThread.policyId,
           `${harness.category.categoryId}${scenario.setup.headerHash}`,
@@ -1161,19 +1273,18 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
       itemBytes: item,
       direction: 0,
     });
-    const bound = await submitNativeScriptDecodingStep03BindOutpoint({
+    const bound = await submitNativeScriptDecodingStep03BindDescriptor({
       lucid: harness.proverLucid,
       contracts: harness.decoding,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
-      threadOutRef: step02.nextThreadOutRef,
-      nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
-      subjectFieldInputs: scenario.subjectFieldInputs,
+      threadOutRef: opened.nextThreadOutRef,
+      outpointKeyCbor,
       descriptorCbor: scenario.ledger.descriptorCbor,
       ledgerTrie: scenario.ledger.trie,
       plan: machinePlan,
       referenceScriptItemBytes: item,
-      referenceScriptUtxo: refs[2],
+      referenceScriptUtxo: refs[3],
     });
     expect(bound.scanState.machine_state_hash).toBe(
       machinePlan.segments[0]!.controlBefore.hashHex,

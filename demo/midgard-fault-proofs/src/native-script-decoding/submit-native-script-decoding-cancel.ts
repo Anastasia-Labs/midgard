@@ -65,7 +65,7 @@ export type SubmitNativeScriptDecodingCancelResult = {
   readonly fraudProver: string;
   readonly threadOutRef: string;
   /** The step the thread was cancelled out of. */
-  readonly cancelledStepIndex: 0 | 1 | 2 | 3;
+  readonly cancelledStepIndex: 0 | 1 | 2 | 3 | 4 | 5;
   readonly fraudulentHeaderHash: string;
   readonly computationThreadUnit: string;
   /** The thread UTxO's lovelace, returned to the prover wallet as change. */
@@ -75,15 +75,15 @@ export type SubmitNativeScriptDecodingCancelResult = {
   readonly awaitedConfirmation: boolean;
 };
 
-/** Finds which of the family's four step addresses holds the thread UTxO. */
+/** Finds which of the family's six validator addresses holds the thread UTxO. */
 const locateStepIndex = ({
   threadUtxo,
   contracts,
 }: {
   readonly threadUtxo: UTxO;
   readonly contracts: NativeScriptDecodingContractsV1;
-}): 0 | 1 | 2 | 3 => {
-  for (const stepIndex of [0, 1, 2, 3] as const) {
+}): 0 | 1 | 2 | 3 | 4 | 5 => {
+  for (const stepIndex of [0, 1, 2, 3, 4, 5] as const) {
     if (
       threadUtxo.address === contracts.steps[stepIndex].spendingScriptAddress
     ) {
@@ -91,7 +91,7 @@ const locateStepIndex = ({
     }
   }
   throw nativeScriptDecodingSubmitError(
-    `thread UTxO ${outRefLabel(threadUtxo)} is not locked at any of the family's four step addresses — a finished or already-cancelled thread has nothing to cancel.`,
+    `thread UTxO ${outRefLabel(threadUtxo)} is not locked at any of the family's six validator addresses — a finished or already-cancelled thread has nothing to cancel.`,
   );
 };
 

@@ -91,3 +91,6 @@ targets another environment.
 Open `docs/agents/production-l2.md`, `state-reset.md`,
 `transaction-finalization.md`, `midgard-node.md`, or `README.md` only when the
 task enters that domain.
+
+Withdraw-zero yielding: open `docs/agents/withdraw-zero-yielding.md` when a
+spending validator delegates a redeemer arm to a rewarding validator.

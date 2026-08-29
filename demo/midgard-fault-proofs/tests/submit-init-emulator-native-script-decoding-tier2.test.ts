@@ -2,7 +2,7 @@
  * `native-script-decoding` emulator tier-2 carriage: the §8.4 size partition
  * exercised with a genuinely large committed subject field.
  *
- * Step-03's `BindOutpoint` opens the accused §2.5 field through the §8.8
+ * OpenSubject opens the accused §2.5 field through the §8.8
  * door, and §8.4 partitions the carriage tier on the preimage's size alone —
  * the tier is never a caller's argument. This journey commits a subject
  * transaction whose reference-input set is large enough (365 forty-byte
@@ -101,11 +101,17 @@ describe("native-script-decoding emulator tier-2 carriage", () => {
     });
     expect(plan.route).toBe(NativeScriptDecodingPlanRoutesV1.Machine);
 
-    const [step01Ref, step02Ref, step03Ref, step04Ref] =
-      await publishDecodingReferenceScriptsV1({
-        lucid: funderLucid,
-        contracts: decoding,
-      });
+    const [
+      step01Ref,
+      step02Ref,
+      step03OpenSubjectRef,
+      step03BindDescriptorRef,
+      step03AdvanceOrCloseRef,
+      step04Ref,
+    ] = await publishDecodingReferenceScriptsV1({
+      lucid: funderLucid,
+      contracts: decoding,
+    });
 
     const finding: NativeScriptDecodingFindingV1 = {
       direction: 0n,
@@ -122,7 +128,7 @@ describe("native-script-decoding emulator tier-2 carriage", () => {
         outputIndex: 0,
         totalLength: item.length,
       },
-      estimatedThreadTxCount: 6,
+      estimatedThreadTxCount: 7,
     };
     const journal: string[] = [];
     const deps: NativeScriptDecodingProverDepsV1 = {
@@ -164,7 +170,9 @@ describe("native-script-decoding emulator tier-2 carriage", () => {
       referenceScriptUtxos: {
         step01: step01Ref,
         step02: step02Ref,
-        step03: step03Ref,
+        step03OpenSubject: step03OpenSubjectRef,
+        step03BindDescriptor: step03BindDescriptorRef,
+        step03AdvanceOrClose: step03AdvanceOrCloseRef,
         step04: step04Ref,
       },
     };

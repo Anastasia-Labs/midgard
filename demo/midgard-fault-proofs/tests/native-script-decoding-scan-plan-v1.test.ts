@@ -157,27 +157,36 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
     expect(deep17.cpu - deep9.cpu).toStrictEqual(pins.deepCpuSlopeNumerator);
     expect(pins.slopeDenominator).toStrictEqual(17 - 9);
 
-    const step03 = rowsOf("native_script_decoding/step_03");
+    const bindDescriptor = rowsOf(
+      "native_script_decoding/step_03_bind_descriptor",
+    );
+    const advanceOrClose = rowsOf(
+      "native_script_decoding/step_03_advance_or_close",
+    );
     expect(
-      step03["decoding_step_03_scans_a_signature_script_to_terminal"]!.cpu,
+      advanceOrClose[
+        "advance_or_close_closes_direction_b_at_the_exact_terminal"
+      ]!.cpu,
     ).toStrictEqual(pins.scanStepEnvelopeCpuUnits);
     expect(
-      step03["decoding_step_03_verdict_proves_a_malformed_payload"],
+      advanceOrClose["advance_or_close_closes_a_direction_a_refusal"],
     ).toStrictEqual({
       mem: pins.verdictWrongfulAcceptance.mem,
       cpu: pins.verdictWrongfulAcceptance.cpu,
       basisFit: "within",
     });
     expect(
-      step03["decoding_step_03_verdict_proves_the_terminal_for_direction_b"],
+      advanceOrClose[
+        "advance_or_close_closes_direction_b_at_the_exact_terminal"
+      ],
     ).toStrictEqual({
       mem: pins.verdictWrongfulRejection.mem,
       cpu: pins.verdictWrongfulRejection.cpu,
       basisFit: "within",
     });
     expect(
-      step03[
-        "decoding_step_03_closes_a_descriptor_contradiction_for_direction_b"
+      bindDescriptor[
+        "bind_descriptor_closes_a_non_native_direction_b_descriptor"
       ],
     ).toStrictEqual({
       mem: pins.descriptorContradictionClose.mem,

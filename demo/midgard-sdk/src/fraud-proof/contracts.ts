@@ -119,7 +119,12 @@ export const FABRICATED_WITHDRAWAL_FAULT_PROOF_TITLES = {
 export const NATIVE_SCRIPT_DECODING_FAULT_PROOF_TITLES = {
   step01: "fraud_proofs/native_script_decoding/step_01.main.spend",
   step02: "fraud_proofs/native_script_decoding/step_02.main.spend",
-  step03: "fraud_proofs/native_script_decoding/step_03.main.spend",
+  step03OpenSubject:
+    "fraud_proofs/native_script_decoding/step_03_open_subject.main.spend",
+  step03BindDescriptor:
+    "fraud_proofs/native_script_decoding/step_03_bind_descriptor.main.spend",
+  step03AdvanceOrClose:
+    "fraud_proofs/native_script_decoding/step_03_advance_or_close.main.spend",
   step04: "fraud_proofs/native_script_decoding/step_04.main.spend",
 } as const;
 
@@ -631,6 +636,8 @@ export type NativeScriptDecodingFaultProofContracts = {
   readonly fraudProof: AuthenticatedValidator;
   readonly nativeScriptDecoding: FraudProofChain & {
     readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -2349,20 +2356,37 @@ const buildNativeScriptDecodingChain = ({
       ],
       "Failed to build native-script-decoding step 04",
     );
-    const step03 = yield* buildFaultProofSpendingStep(
+    const step03AdvanceOrClose = yield* buildFaultProofSpendingStep(
       context,
-      NATIVE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step03,
+      NATIVE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step03AdvanceOrClose,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build native-script-decoding step 03 advance-or-close",
+    );
+    const step03BindDescriptor = yield* buildFaultProofSpendingStep(
+      context,
+      NATIVE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step03BindDescriptor,
       [
+        step03AdvanceOrClose.spendingScriptHash,
+        step04.spendingScriptHash,
+        computationThread.policyId,
+      ],
+      "Failed to build native-script-decoding step 03 bind-descriptor",
+    );
+    const step03OpenSubject = yield* buildFaultProofSpendingStep(
+      context,
+      NATIVE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step03OpenSubject,
+      [
+        step03BindDescriptor.spendingScriptHash,
         step04.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
       ],
-      "Failed to build native-script-decoding step 03",
+      "Failed to build native-script-decoding step 03 open-subject",
     );
     const step02 = yield* buildFaultProofSpendingStep(
       context,
       NATIVE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step02,
-      [step03.spendingScriptHash, computationThread.policyId],
+      [step03OpenSubject.spendingScriptHash, computationThread.policyId],
       "Failed to build native-script-decoding step 02",
     );
     const step01 = yield* buildFaultProofSpendingStep(
@@ -2375,7 +2399,17 @@ const buildNativeScriptDecodingChain = ({
       ],
       "Failed to build native-script-decoding step 01",
     );
-    return { firstStep: step01, steps: [step01, step02, step03, step04] };
+    return {
+      firstStep: step01,
+      steps: [
+        step01,
+        step02,
+        step03OpenSubject,
+        step03BindDescriptor,
+        step03AdvanceOrClose,
+        step04,
+      ],
+    };
   });
 
 const buildMissingSignatureChain = ({

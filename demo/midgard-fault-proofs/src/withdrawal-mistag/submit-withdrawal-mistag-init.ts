@@ -1,8 +1,10 @@
 /** Pre-registration Init; reuses the protocol-generic catalogue/PHAS builder. */
 import type { LucidEvolution, Network } from "@lucid-evolution/lucid";
 
-import type { NativeScriptDecodingContractsV1 } from "../native-script-decoding/contracts-v1.js";
-import { submitNativeScriptDecodingInit } from "../native-script-decoding/submit-native-script-decoding-init.js";
+import {
+  type NativeScriptDecodingInitContractsV1,
+  submitNativeScriptDecodingInit,
+} from "../native-script-decoding/submit-native-script-decoding-init.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   type WithdrawalMistagCatalogueCategoryV1,
@@ -11,7 +13,7 @@ import {
 
 const genericInitContracts = (
   contracts: WithdrawalMistagContractsV1,
-): NativeScriptDecodingContractsV1 => ({
+): NativeScriptDecodingInitContractsV1 => ({
   steps: [
     contracts.steps[0],
     contracts.steps[1],

@@ -51,7 +51,7 @@ import {
   requireNativeScriptDecodingThreadUtxoV1,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = nativeScriptDecodingStepLabelV1(3);
+const STEP_LABEL = nativeScriptDecodingStepLabelV1(5);
 
 const IN_DOMAIN_CLASSES: readonly bigint[] = [
   NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
@@ -150,7 +150,7 @@ export const submitNativeScriptDecodingStep04 = async ({
       lucid,
       contracts,
       categoryId,
-      stepIndex: 3,
+      stepIndex: 5,
       threadOutRef,
     });
   const state: NativeScriptDecodingScanThreadStateV1 =
@@ -158,7 +158,7 @@ export const submitNativeScriptDecodingStep04 = async ({
       threadUtxo,
       signer,
       schema: NativeScriptDecodingStep04Datum,
-      stepIndex: 3,
+      stepIndex: 5,
     });
   assertNativeScriptDecodingStep04FinalizableV1(state);
 
@@ -263,8 +263,8 @@ export const submitNativeScriptDecodingStep04 = async ({
   const tx = base.readFrom([
     requireNativeScriptDecodingReferenceScriptV1({
       utxo: referenceScriptUtxo,
-      expectedScriptHash: contracts.steps[3].spendingScriptHash,
-      stepIndex: 3,
+      expectedScriptHash: contracts.steps[5].spendingScriptHash,
+      stepIndex: 5,
     }),
   ]);
 

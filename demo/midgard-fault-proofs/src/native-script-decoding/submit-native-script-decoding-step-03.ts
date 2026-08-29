@@ -1,23 +1,6 @@
 /**
- * `native-script-decoding` step-03 submitters (offchain plan §4.2) — the
- * thread's working step, one submitter per redeemer arm:
- *
- * - `submitNativeScriptDecodingStep03BindOutpoint`: opens the accused field
- *   through the §8.8 door, authenticates the ledger's own resolution of the
- *   accused outpoint under `prior_ledger_root`, and freezes the scan anchor.
- *   Tag-0 descriptors either start the frozen machine (self-loop into Scan)
- *   or close for direction A on an undecodable wrapper; a non-tag-0
- *   descriptor closes for direction B (descriptor contradiction).
- * - `submitNativeScriptDecodingStep03Scan`: one planned self-loop segment —
- *   the planner's control/window/frames/budget ride the redeemer verbatim,
- *   with chunk proofs rebuilt over the authenticated reference-script item.
- * - `submitNativeScriptDecodingStep03Verdict`: hands the classed state to
- *   step-04 — direction A exhibits the single refusing step, direction B the
- *   exact canonical terminal.
- * - `submitNativeScriptDecodingStep03BindOutOfDomain`: the #633 §7.2 closing
- *   arm — the accusation's verbatim pair names a subject the committed
- *   transaction does not have; the face decides whether a door opening is
- *   owed at all.
+ * Submitters for the three split `native-script-decoding` step-03 spending
+ * validators: OpenSubject, BindDescriptor, and AdvanceOrClose.
  *
  * Every validator abort this process can predict locally is refused before
  * anything is paid for, with the failure message naming the check.
@@ -25,6 +8,7 @@
 import {
   buildMidgardBoundedItemV1,
   decodeMidgardLedgerOutputCommitmentV1,
+  isExactMidgardNativeScriptStructureTerminalV1,
   MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
   type MidgardLedgerOutputCommitmentV1,
 } from "@al-ft/midgard-core";
@@ -32,7 +16,6 @@ import type {
   BoundedItemChunkProofV1,
   FieldOpeningV1,
   NativeScriptDecodingScanThreadStateV1,
-  NativeScriptDecodingStep03Args,
   Proof,
 } from "@al-ft/midgard-sdk";
 import {
@@ -42,9 +25,12 @@ import {
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1,
   NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
-  nativeScriptDecodingBoundScanStateV1,
-  NativeScriptDecodingStep03Datum,
-  NativeScriptDecodingStep03SpendRedeemer,
+  nativeScriptDecodingBoundDescriptorStateV1,
+  nativeScriptDecodingOpenedSubjectStateV1,
+  NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer,
+  NativeScriptDecodingStep03BindDescriptorSpendRedeemer,
+  NativeScriptDecodingStep03OpenSubjectDatum,
+  NativeScriptDecodingStep03OpenSubjectSpendRedeemer,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -76,7 +62,6 @@ import {
   classifyNativeScriptDecodingOutOfDomainFaceV1,
   type NativeScriptDecodingLedgerTrieHandleV1,
   NativeScriptDecodingOutOfDomainFacesV1,
-  nativeScriptDecodingOutpointKeyV1,
   nativeScriptDecodingScanArgsEvidenceV1,
   nativeScriptDecodingSubjectFieldIndexV1,
   nativeScriptDecodingWindowProofsV1,
@@ -95,7 +80,11 @@ import {
   requireNativeScriptDecodingThreadUtxoV1,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = nativeScriptDecodingStepLabelV1(2);
+const OPEN_SUBJECT_INDEX = 2 as const;
+const BIND_DESCRIPTOR_INDEX = 3 as const;
+const ADVANCE_OR_CLOSE_INDEX = 4 as const;
+const STEP_04_INDEX = 5 as const;
+const OPEN_SUBJECT_LABEL = nativeScriptDecodingStepLabelV1(OPEN_SUBJECT_INDEX);
 
 export type SubmitNativeScriptDecodingStep03Result = {
   readonly txHash: string;
@@ -125,18 +114,20 @@ type Step03Layout = {
 const requireStep03State = ({
   threadUtxo,
   signer,
+  stepIndex,
 }: {
   readonly threadUtxo: UTxO;
   readonly signer: ResolvedProverSigner;
+  readonly stepIndex: 2 | 3 | 4;
 }): NativeScriptDecodingScanThreadStateV1 =>
   requireNativeScriptDecodingStepStateV1({
     threadUtxo,
     signer,
-    schema: NativeScriptDecodingStep03Datum,
-    stepIndex: 2,
+    schema: NativeScriptDecodingStep03OpenSubjectDatum,
+    stepIndex,
   });
 
-const requirePreBindState = (
+const requirePreOpenState = (
   state: NativeScriptDecodingScanThreadStateV1,
 ): void => {
   if (
@@ -145,7 +136,22 @@ const requirePreBindState = (
     state.outpoint_key_hash !== ""
   ) {
     throw nativeScriptDecodingSubmitError(
-      "the thread is already bound; the bind arms run exactly once, on a pre-bind state.",
+      "OpenSubject runs exactly once on step-02's sentinel state.",
+    );
+  }
+};
+
+const requireOpenedState = (
+  state: NativeScriptDecodingScanThreadStateV1,
+): void => {
+  if (
+    state.outpoint_key_hash === "" ||
+    state.output_index < 0n ||
+    state.machine_state_hash !== "" ||
+    state.refusal_class !== NATIVE_SCRIPT_DECODING_CLASS_PENDING_V1
+  ) {
+    throw nativeScriptDecodingSubmitError(
+      "BindDescriptor requires an opened, unbound subject state.",
     );
   }
 };
@@ -210,7 +216,8 @@ const advanceStep03Thread = async ({
   threadUnit,
   destinationAddress,
   nextState,
-  buildArgs,
+  spendingStepIndex,
+  buildRedeemer,
   carriageUtxos,
   referenceScriptUtxo,
   awaitConfirmation,
@@ -222,11 +229,13 @@ const advanceStep03Thread = async ({
   readonly threadUnit: string;
   readonly destinationAddress: string;
   readonly nextState: NativeScriptDecodingScanThreadStateV1;
-  readonly buildArgs: (layout: Step03Layout) => NativeScriptDecodingStep03Args;
+  readonly spendingStepIndex: 2 | 3 | 4;
+  readonly buildRedeemer: (layout: Step03Layout) => string;
   readonly carriageUtxos: readonly UTxO[];
   readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation: boolean;
 }): Promise<{ readonly txHash: string; readonly layout: Step03Layout }> => {
+  const stepLabel = nativeScriptDecodingStepLabelV1(spendingStepIndex);
   signer.selectWallet(lucid);
   const walletUtxos = await lucid.wallet().getUtxos();
   const walletUtxosSansCarriage = carriageUtxos.reduce<readonly UTxO[]>(
@@ -236,7 +245,7 @@ const advanceStep03Thread = async ({
   const feeInput = selectFeeInput(walletUtxosSansCarriage);
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextState },
-    NativeScriptDecodingStep03Datum,
+    NativeScriptDecodingStep03OpenSubjectDatum,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: destinationAddress,
@@ -245,20 +254,17 @@ const advanceStep03Thread = async ({
   });
   let resolvedLayout: Step03Layout | undefined;
   const redeemer = ((ctx) => {
-    requireOwnSpendPurpose(ctx, threadUtxo, STEP_LABEL);
+    requireOwnSpendPurpose(ctx, threadUtxo, stepLabel);
     const layout: Step03Layout = {
-      inputIndex: requireInputIndex(ctx, threadUtxo, STEP_LABEL),
+      inputIndex: requireInputIndex(ctx, threadUtxo, stepLabel),
       outputIndex: requireUniqueOutputIndex(
         ctx.outputs,
         outputMatches,
-        `${STEP_LABEL} output`,
+        `${stepLabel} output`,
       ),
     };
     resolvedLayout = layout;
-    return Data.to(
-      { Continue: [buildArgs(layout)] },
-      NativeScriptDecodingStep03SpendRedeemer,
-    );
+    return buildRedeemer(layout);
   }) satisfies BuildTxWithRedeemer;
   const threadAssets = {
     lovelace: threadUtxo.assets.lovelace ?? 0n,
@@ -269,8 +275,8 @@ const advanceStep03Thread = async ({
     ...carriageUtxos,
     requireNativeScriptDecodingReferenceScriptV1({
       utxo: referenceScriptUtxo,
-      expectedScriptHash: contracts.steps[2].spendingScriptHash,
-      stepIndex: 2,
+      expectedScriptHash: contracts.steps[spendingStepIndex].spendingScriptHash,
+      stepIndex: spendingStepIndex,
     }),
   ];
   const withInputs = lucid
@@ -346,9 +352,9 @@ const step03Result = ({
   awaitedConfirmation: awaitConfirmation,
 });
 
-// ## BindOutpoint
+// ## OpenSubject
 
-export const submitNativeScriptDecodingStep03BindOutpoint = async ({
+export const submitNativeScriptDecodingStep03OpenSubject = async ({
   lucid,
   contracts,
   categoryId,
@@ -356,10 +362,6 @@ export const submitNativeScriptDecodingStep03BindOutpoint = async ({
   threadOutRef,
   nativeTxCompactCbor,
   subjectFieldInputs,
-  descriptorCbor,
-  ledgerTrie,
-  plan,
-  referenceScriptItemBytes,
   publishCarriage = false,
   referenceScriptUtxo,
   awaitConfirmation = true,
@@ -369,19 +371,9 @@ export const submitNativeScriptDecodingStep03BindOutpoint = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  /** The committed transaction's compact bytes (§2.5 anchor: `verified_tx_id`). */
-  readonly nativeTxCompactCbor: string;
-  /** The accused field's complete §5.1 item list, in committed order. */
-  readonly subjectFieldInputs: readonly MidgardTxInput[];
-  /** The ledger's resolution of the accused outpoint, canonical CBOR hex. */
-  readonly descriptorCbor: string;
-  /** Pre-state ledger trie whose root is the thread's `prior_ledger_root`. */
-  readonly ledgerTrie: NativeScriptDecodingLedgerTrieHandleV1;
-  /** The staged scan plan. Required for tag-0 descriptors; unused otherwise. */
-  readonly plan?: NativeScriptDecodingScanPlanV1;
-  /** The reference-script item bytes. Required for tag-0 descriptors. */
-  readonly referenceScriptItemBytes?: Uint8Array;
-  /** Force §8 tier 2 carriage publication. */
+  /** Required whenever the accusation names a real field and non-negative ordinal. */
+  readonly nativeTxCompactCbor?: string;
+  readonly subjectFieldInputs?: readonly MidgardTxInput[];
   readonly publishCarriage?: boolean;
   readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
@@ -391,33 +383,212 @@ export const submitNativeScriptDecodingStep03BindOutpoint = async ({
       lucid,
       contracts,
       categoryId,
-      stepIndex: 2,
+      stepIndex: OPEN_SUBJECT_INDEX,
       threadOutRef,
     });
-  const state = requireStep03State({ threadUtxo, signer });
-  requirePreBindState(state);
+  const state = requireStep03State({
+    threadUtxo,
+    signer,
+    stepIndex: OPEN_SUBJECT_INDEX,
+  });
+  requirePreOpenState(state);
 
-  // §7.3 abort-never-clamp: a pair outside the committed domain can never
-  // bind — it is the closing arm's to consume.
-  const fieldIndex = nativeScriptDecodingSubjectFieldIndexV1(
-    state.outpoint_source_kind,
-  );
+  const face = classifyNativeScriptDecodingOutOfDomainFaceV1({
+    outpointSourceKind: state.outpoint_source_kind,
+    outpointCursor: state.outpoint_cursor,
+    itemCount:
+      subjectFieldInputs === undefined
+        ? null
+        : BigInt(subjectFieldInputs.length),
+  });
   if (
-    state.outpoint_cursor < 0n ||
-    state.outpoint_cursor >= BigInt(subjectFieldInputs.length)
+    face !== null &&
+    state.direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1
   ) {
     throw nativeScriptDecodingSubmitError(
-      `accused ordinal ${state.outpoint_cursor.toString()} is outside the field's ${subjectFieldInputs.length.toString()} items — close the thread through BindOutOfDomain instead.`,
+      "an out-of-domain accusation can close only for direction B.",
     );
   }
-  const subjectOutpoint = subjectFieldInputs[Number(state.outpoint_cursor)]!;
 
-  // The descriptor must be the accused outpoint's own resolution.
+  const needsOpening =
+    face === null || face === NativeScriptDecodingOutOfDomainFacesV1.CountFace;
+  let subjectFieldOpening: FieldOpeningV1 | null = null;
+  let carriageUtxos: readonly UTxO[] = [];
+  if (needsOpening) {
+    if (nativeTxCompactCbor === undefined || subjectFieldInputs === undefined) {
+      throw nativeScriptDecodingSubmitError(
+        "the accused pair names a field and non-negative ordinal; supply its compact transaction and complete field items.",
+      );
+    }
+    const fieldIndex = nativeScriptDecodingSubjectFieldIndexV1(
+      state.outpoint_source_kind,
+    );
+    const planned = planFaultProofFieldOpeningV1({
+      fieldIndex,
+      anchorTxId: state.verified_tx_id,
+      nativeTxCompactCbor,
+      itemCbors: subjectFieldInputs.map(encodeMidgardTxInputCanonicalV1),
+      owner: signer.paymentKeyHash,
+      publish: publishCarriage,
+      label: `${OPEN_SUBJECT_LABEL} subject field`,
+    });
+    signer.selectWallet(lucid);
+    carriageUtxos = await publishFaultProofFieldCarriageV1({
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: `${OPEN_SUBJECT_LABEL} subject field`,
+    });
+    const stepReference = requireNativeScriptDecodingReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      expectedScriptHash:
+        contracts.steps[OPEN_SUBJECT_INDEX].spendingScriptHash,
+      stepIndex: OPEN_SUBJECT_INDEX,
+    });
+    subjectFieldOpening = faultProofFieldOpeningV1({
+      planned,
+      referenceInputs: [...carriageUtxos, stepReference],
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${OPEN_SUBJECT_LABEL} subject field`,
+    });
+  }
+
+  let nextState: NativeScriptDecodingScanThreadStateV1;
+  let destinationAddress: string;
+  if (face === null) {
+    if (subjectFieldInputs === undefined) {
+      throw nativeScriptDecodingSubmitError(
+        "an in-domain subject requires the complete field item list.",
+      );
+    }
+    const subjectOutpoint = subjectFieldInputs[Number(state.outpoint_cursor)];
+    if (subjectOutpoint === undefined) {
+      throw nativeScriptDecodingSubmitError(
+        "the accused ordinal is not present in the supplied field.",
+      );
+    }
+    const outpointKeyCbor = Buffer.from(
+      encodeMidgardTxInputCanonicalV1(subjectOutpoint),
+    ).toString("hex");
+    nextState = await Effect.runPromise(
+      nativeScriptDecodingOpenedSubjectStateV1({
+        state,
+        outpointKeyBytes: outpointKeyCbor,
+        outputIndex: subjectOutpoint.output_index,
+      }),
+    );
+    destinationAddress =
+      contracts.steps[BIND_DESCRIPTOR_INDEX].spendingScriptAddress;
+  } else {
+    nextState = {
+      ...state,
+      refusal_class: NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
+    };
+    destinationAddress = contracts.steps[STEP_04_INDEX].spendingScriptAddress;
+  }
+
+  const opening = subjectFieldOpening;
+  const { txHash, layout } = await advanceStep03Thread({
+    lucid,
+    contracts,
+    signer,
+    threadUtxo,
+    threadUnit: threadToken.unit,
+    destinationAddress,
+    nextState,
+    spendingStepIndex: OPEN_SUBJECT_INDEX,
+    buildRedeemer: (resolved) =>
+      Data.to(
+        {
+          Continue: [
+            {
+              input_index: resolved.inputIndex,
+              output_index: resolved.outputIndex,
+              subject_field_opening: opening,
+            },
+          ],
+        },
+        NativeScriptDecodingStep03OpenSubjectSpendRedeemer,
+      ),
+    carriageUtxos,
+    referenceScriptUtxo,
+    awaitConfirmation,
+  });
+  return step03Result({
+    txHash,
+    layout,
+    signer,
+    threadOutRef,
+    threadToken,
+    destinationAddress,
+    scanState: nextState,
+    awaitConfirmation,
+  });
+};
+
+// ## BindDescriptor
+
+export const submitNativeScriptDecodingStep03BindDescriptor = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  outpointKeyCbor,
+  descriptorCbor,
+  ledgerTrie,
+  plan,
+  referenceScriptItemBytes,
+  referenceScriptUtxo,
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: NativeScriptDecodingContractsV1;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly outpointKeyCbor: string;
+  readonly descriptorCbor: string;
+  readonly ledgerTrie: NativeScriptDecodingLedgerTrieHandleV1;
+  readonly plan?: NativeScriptDecodingScanPlanV1;
+  readonly referenceScriptItemBytes?: Uint8Array;
+  readonly referenceScriptUtxo: UTxO;
+  readonly awaitConfirmation?: boolean;
+}): Promise<SubmitNativeScriptDecodingStep03Result> => {
+  const { threadUtxo, threadToken } =
+    await requireNativeScriptDecodingThreadUtxoV1({
+      lucid,
+      contracts,
+      categoryId,
+      stepIndex: BIND_DESCRIPTOR_INDEX,
+      threadOutRef,
+    });
+  const state = requireStep03State({
+    threadUtxo,
+    signer,
+    stepIndex: BIND_DESCRIPTOR_INDEX,
+  });
+  requireOpenedState(state);
+
+  const reopened = await Effect.runPromise(
+    nativeScriptDecodingOpenedSubjectStateV1({
+      state,
+      outpointKeyBytes: outpointKeyCbor,
+      outputIndex: state.output_index,
+    }),
+  );
+  if (reopened.outpoint_key_hash !== state.outpoint_key_hash) {
+    throw nativeScriptDecodingSubmitError(
+      "the supplied outpoint key is not the key committed by OpenSubject.",
+    );
+  }
+
   const descriptor: MidgardLedgerOutputCommitmentV1 =
     decodeMidgardLedgerOutputCommitmentV1(Buffer.from(descriptorCbor, "hex"));
-  if (BigInt(descriptor.outputIndex) !== subjectOutpoint.output_index) {
+  if (BigInt(descriptor.outputIndex) !== state.output_index) {
     throw nativeScriptDecodingSubmitError(
-      `the descriptor resolves output index ${descriptor.outputIndex.toString()}, but the accused outpoint names ${subjectOutpoint.output_index.toString()}.`,
+      `the descriptor resolves output index ${descriptor.outputIndex.toString()}, but OpenSubject fixed ${state.output_index.toString()}.`,
     );
   }
   if (descriptor.totalLength <= 0) {
@@ -425,37 +596,27 @@ export const submitNativeScriptDecodingStep03BindOutpoint = async ({
       "the descriptor commits a non-positive output item length.",
     );
   }
-
-  const outpointKey = nativeScriptDecodingOutpointKeyV1({
-    txIdHex: subjectOutpoint.tx_id,
-    outputIndex: Number(subjectOutpoint.output_index),
-  });
   const ledgerMembershipProof: Proof =
     await buildNativeScriptDecodingLedgerMembershipV1({
       trie: ledgerTrie,
-      outpointKey,
+      outpointKey: Buffer.from(outpointKeyCbor, "hex"),
       priorLedgerRootHex: state.prior_ledger_root,
     });
-  const bound = await Effect.runPromise(
-    nativeScriptDecodingBoundScanStateV1({
-      state,
-      outpointKeyBytes: outpointKey.toString("hex"),
-      referenceScriptLanguage: BigInt(descriptor.referenceScriptLanguage),
-      outputIndex: BigInt(descriptor.outputIndex),
-      referenceScriptTotalLength: BigInt(descriptor.referenceScriptTotalLength),
-      referenceScriptItemCommitment:
-        descriptor.referenceScriptItemCommitment.toString("hex"),
-    }),
-  );
+  const bound = nativeScriptDecodingBoundDescriptorStateV1({
+    state,
+    referenceScriptLanguage: BigInt(descriptor.referenceScriptLanguage),
+    referenceScriptTotalLength: BigInt(descriptor.referenceScriptTotalLength),
+    referenceScriptItemCommitment:
+      descriptor.referenceScriptItemCommitment.toString("hex"),
+  });
 
-  // Branch on the bound descriptor's language, mirroring the validator.
   let nextState: NativeScriptDecodingScanThreadStateV1;
   let destinationAddress: string;
   let firstChunkProof: BoundedItemChunkProofV1 | null;
   if (descriptor.referenceScriptLanguage === 0) {
     if (plan === undefined || referenceScriptItemBytes === undefined) {
       throw nativeScriptDecodingSubmitError(
-        "a tag-0 descriptor needs the scan plan and the reference-script item bytes.",
+        "a tag-0 descriptor needs the scan plan and reference-script item bytes.",
       );
     }
     requireAnchoredItemBytes({
@@ -480,24 +641,25 @@ export const submitNativeScriptDecodingStep03BindOutpoint = async ({
         );
       }
       nextState = { ...bound, machine_state_hash: bindControl.hashHex };
-      destinationAddress = contracts.steps[2].spendingScriptAddress;
+      destinationAddress =
+        contracts.steps[ADVANCE_OR_CLOSE_INDEX].spendingScriptAddress;
     } else if (plan.route === NativeScriptDecodingPlanRoutesV1.BindMalformed) {
       if (
         state.direction !==
         NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1
       ) {
         throw nativeScriptDecodingSubmitError(
-          "an undecodable wrapper closes the bind for direction A only; for direction B it merely corroborates the accusation.",
+          "a malformed wrapper closes only a wrongful-acceptance claim.",
         );
       }
       nextState = {
         ...bound,
         refusal_class: NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
       };
-      destinationAddress = contracts.steps[3].spendingScriptAddress;
+      destinationAddress = contracts.steps[STEP_04_INDEX].spendingScriptAddress;
     } else {
       throw nativeScriptDecodingSubmitError(
-        "the plan claims a descriptor contradiction, but the bound descriptor is tag-0.",
+        "the plan claims a descriptor contradiction for a tag-0 descriptor.",
       );
     }
   } else {
@@ -505,7 +667,7 @@ export const submitNativeScriptDecodingStep03BindOutpoint = async ({
       state.direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1
     ) {
       throw nativeScriptDecodingSubmitError(
-        "a non-tag-0 descriptor contradicts a decoding accusation and closes for direction B only; direction A has nothing to prove here.",
+        "a non-tag-0 descriptor closes only a wrongful-rejection contradiction.",
       );
     }
     firstChunkProof = null;
@@ -513,42 +675,10 @@ export const submitNativeScriptDecodingStep03BindOutpoint = async ({
       ...bound,
       refusal_class: NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
     };
-    destinationAddress = contracts.steps[3].spendingScriptAddress;
+    destinationAddress = contracts.steps[STEP_04_INDEX].spendingScriptAddress;
   }
 
-  // The §8.8 door: plan, publish whatever the tier demands, open.
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex,
-    anchorTxId: state.verified_tx_id,
-    nativeTxCompactCbor,
-    itemCbors: subjectFieldInputs.map(encodeMidgardTxInputCanonicalV1),
-    owner: signer.paymentKeyHash,
-    publish: publishCarriage,
-    label: `${STEP_LABEL} subject field`,
-  });
-  signer.selectWallet(lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
-    lucid,
-    signer,
-    planned,
-    publisherAddress: signer.address,
-    label: `${STEP_LABEL} subject field`,
-  });
-  // The opening's positional chunk indices resolve against the transaction's
-  // complete reference-input set, which carries the step reference alongside
-  // the carriage.
-  const stepReference = requireNativeScriptDecodingReferenceScriptV1({
-    utxo: referenceScriptUtxo,
-    expectedScriptHash: contracts.steps[2].spendingScriptHash,
-    stepIndex: 2,
-  });
-  const subjectFieldOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
-    planned,
-    referenceInputs: [...carriageUtxos, stepReference],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${STEP_LABEL} subject field`,
-  });
-
+  const proof = firstChunkProof;
   const { txHash, layout } = await advanceStep03Thread({
     lucid,
     contracts,
@@ -557,108 +687,23 @@ export const submitNativeScriptDecodingStep03BindOutpoint = async ({
     threadUnit: threadToken.unit,
     destinationAddress,
     nextState,
-    buildArgs: (layout) => ({
-      BindOutpoint: {
-        input_index: layout.inputIndex,
-        output_index: layout.outputIndex,
-        subject_field_opening: subjectFieldOpening,
-        descriptor_cbor: descriptorCbor,
-        ledger_membership_proof: ledgerMembershipProof,
-        first_chunk_proof: firstChunkProof,
-      },
-    }),
-    carriageUtxos,
-    referenceScriptUtxo,
-    awaitConfirmation,
-  });
-  return step03Result({
-    txHash,
-    layout,
-    signer,
-    threadOutRef,
-    threadToken,
-    destinationAddress,
-    scanState: nextState,
-    awaitConfirmation,
-  });
-};
-
-// ## Scan (self-loop)
-
-export const submitNativeScriptDecodingStep03Scan = async ({
-  lucid,
-  contracts,
-  categoryId,
-  signer,
-  threadOutRef,
-  segment,
-  referenceScriptItemBytes,
-  referenceScriptUtxo,
-  awaitConfirmation = true,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly contracts: NativeScriptDecodingContractsV1;
-  readonly categoryId: string;
-  readonly signer: ResolvedProverSigner;
-  readonly threadOutRef: string;
-  /** The plan segment whose `controlBefore` is the thread's committed machine. */
-  readonly segment: NativeScriptDecodingScanSegmentPlanV1;
-  readonly referenceScriptItemBytes: Uint8Array;
-  readonly referenceScriptUtxo: UTxO;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitNativeScriptDecodingStep03Result> => {
-  const { threadUtxo, threadToken } =
-    await requireNativeScriptDecodingThreadUtxoV1({
-      lucid,
-      contracts,
-      categoryId,
-      stepIndex: 2,
-      threadOutRef,
-    });
-  const state = requireStep03State({ threadUtxo, signer });
-  requireBoundPendingState(state);
-  if (segment.controlBefore.hashHex !== state.machine_state_hash) {
-    throw nativeScriptDecodingSubmitError(
-      "the segment's control is not the thread's committed machine — resume the plan from the committed control.",
-    );
-  }
-  requireAnchoredItemBytes({
-    itemBytes: referenceScriptItemBytes,
-    itemIndex: Number(state.output_index),
-    totalLength: state.total_length,
-    itemCommitmentHex: state.item_commitment,
-  });
-  const evidence = nativeScriptDecodingScanArgsEvidenceV1({
-    segment,
-    fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
-    itemIndex: Number(state.output_index),
-    itemBytes: referenceScriptItemBytes,
-  });
-  const nextState: NativeScriptDecodingScanThreadStateV1 = {
-    ...state,
-    machine_state_hash: segment.controlAfter.hashHex,
-  };
-  const destinationAddress = contracts.steps[2].spendingScriptAddress;
-
-  const { txHash, layout } = await advanceStep03Thread({
-    lucid,
-    contracts,
-    signer,
-    threadUtxo,
-    threadUnit: threadToken.unit,
-    destinationAddress,
-    nextState,
-    buildArgs: (layout) => ({
-      Scan: {
-        input_index: layout.inputIndex,
-        output_index: layout.outputIndex,
-        control_cbor: evidence.control_cbor,
-        chunk_proof: evidence.chunk_proof,
-        next_chunk_proof: evidence.next_chunk_proof,
-        frames: [...evidence.frames],
-        step_budget: evidence.step_budget,
-      },
-    }),
+    spendingStepIndex: BIND_DESCRIPTOR_INDEX,
+    buildRedeemer: (resolved) =>
+      Data.to(
+        {
+          Continue: [
+            {
+              input_index: resolved.inputIndex,
+              output_index: resolved.outputIndex,
+              outpoint_key_cbor: outpointKeyCbor,
+              descriptor_cbor: descriptorCbor,
+              ledger_membership_proof: ledgerMembershipProof,
+              first_chunk_proof: proof,
+            },
+          ],
+        },
+        NativeScriptDecodingStep03BindDescriptorSpendRedeemer,
+      ),
     carriageUtxos: [],
     referenceScriptUtxo,
     awaitConfirmation,
@@ -675,9 +720,118 @@ export const submitNativeScriptDecodingStep03Scan = async ({
   });
 };
 
-// ## Verdict
+// ## AdvanceOrClose
 
-export const submitNativeScriptDecodingStep03Verdict = async ({
+export const submitNativeScriptDecodingStep03AdvanceOrCloseSegment = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  segment,
+  referenceScriptItemBytes,
+  referenceScriptUtxo,
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: NativeScriptDecodingContractsV1;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly segment: NativeScriptDecodingScanSegmentPlanV1;
+  readonly referenceScriptItemBytes: Uint8Array;
+  readonly referenceScriptUtxo: UTxO;
+  readonly awaitConfirmation?: boolean;
+}): Promise<SubmitNativeScriptDecodingStep03Result> => {
+  const { threadUtxo, threadToken } =
+    await requireNativeScriptDecodingThreadUtxoV1({
+      lucid,
+      contracts,
+      categoryId,
+      stepIndex: ADVANCE_OR_CLOSE_INDEX,
+      threadOutRef,
+    });
+  const state = requireStep03State({
+    threadUtxo,
+    signer,
+    stepIndex: ADVANCE_OR_CLOSE_INDEX,
+  });
+  requireBoundPendingState(state);
+  if (segment.controlBefore.hashHex !== state.machine_state_hash) {
+    throw nativeScriptDecodingSubmitError(
+      "the segment's control is not the thread's committed machine.",
+    );
+  }
+  requireAnchoredItemBytes({
+    itemBytes: referenceScriptItemBytes,
+    itemIndex: Number(state.output_index),
+    totalLength: state.total_length,
+    itemCommitmentHex: state.item_commitment,
+  });
+  const evidence = nativeScriptDecodingScanArgsEvidenceV1({
+    segment,
+    fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
+    itemIndex: Number(state.output_index),
+    itemBytes: referenceScriptItemBytes,
+  });
+
+  const closesTerminal =
+    state.direction ===
+      NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1 &&
+    isExactMidgardNativeScriptStructureTerminalV1(segment.controlAfter.control);
+  const nextState: NativeScriptDecodingScanThreadStateV1 = closesTerminal
+    ? {
+        ...state,
+        refusal_class: NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
+      }
+    : { ...state, machine_state_hash: segment.controlAfter.hashHex };
+  const destinationAddress = closesTerminal
+    ? contracts.steps[STEP_04_INDEX].spendingScriptAddress
+    : contracts.steps[ADVANCE_OR_CLOSE_INDEX].spendingScriptAddress;
+
+  const { txHash, layout } = await advanceStep03Thread({
+    lucid,
+    contracts,
+    signer,
+    threadUtxo,
+    threadUnit: threadToken.unit,
+    destinationAddress,
+    nextState,
+    spendingStepIndex: ADVANCE_OR_CLOSE_INDEX,
+    buildRedeemer: (resolved) =>
+      Data.to(
+        {
+          Continue: [
+            {
+              input_index: resolved.inputIndex,
+              output_index: resolved.outputIndex,
+              control_cbor: evidence.control_cbor,
+              chunk_proof: evidence.chunk_proof,
+              next_chunk_proof: evidence.next_chunk_proof,
+              frames: [...evidence.frames],
+              step_budget: evidence.step_budget,
+            },
+          ],
+        },
+        NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer,
+      ),
+    carriageUtxos: [],
+    referenceScriptUtxo,
+    awaitConfirmation,
+  });
+  return step03Result({
+    txHash,
+    layout,
+    signer,
+    threadOutRef,
+    threadToken,
+    destinationAddress,
+    scanState: nextState,
+    awaitConfirmation,
+  });
+};
+
+export const submitNativeScriptDecodingStep03AdvanceOrCloseClose = async ({
   lucid,
   contracts,
   categoryId,
@@ -693,9 +847,7 @@ export const submitNativeScriptDecodingStep03Verdict = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  /** The plan's verdict: the committed control plus, for direction A, the refusing step's window and class. */
   readonly verdict: NativeScriptDecodingVerdictPlanV1;
-  /** Required whenever the verdict's refusing step reads a chunk window. */
   readonly referenceScriptItemBytes?: Uint8Array;
   readonly referenceScriptUtxo: UTxO;
   readonly awaitConfirmation?: boolean;
@@ -705,54 +857,59 @@ export const submitNativeScriptDecodingStep03Verdict = async ({
       lucid,
       contracts,
       categoryId,
-      stepIndex: 2,
+      stepIndex: ADVANCE_OR_CLOSE_INDEX,
       threadOutRef,
     });
-  const state = requireStep03State({ threadUtxo, signer });
+  const state = requireStep03State({
+    threadUtxo,
+    signer,
+    stepIndex: ADVANCE_OR_CLOSE_INDEX,
+  });
   requireBoundPendingState(state);
   if (verdict.control === null) {
     throw nativeScriptDecodingSubmitError(
-      "the plan's verdict carries no control — a close-at-bind route never reaches Verdict.",
+      "the close plan carries no machine control.",
     );
   }
   if (verdict.control.hashHex !== state.machine_state_hash) {
     throw nativeScriptDecodingSubmitError(
-      "the verdict's control is not the thread's committed machine — run the remaining Scan segments first.",
+      "the close control is not the thread's committed machine.",
     );
   }
 
   let refusalClass: bigint;
+  let stepBudget: bigint;
   let chunkProof: BoundedItemChunkProofV1 | null = null;
   let nextChunkProof: BoundedItemChunkProofV1 | null = null;
   if (
     state.direction === NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1
   ) {
-    // Direction B: the exact canonical terminal, no window.
-    if (verdict.window !== null) {
+    if (
+      verdict.window !== null ||
+      !isExactMidgardNativeScriptStructureTerminalV1(verdict.control.control)
+    ) {
       throw nativeScriptDecodingSubmitError(
-        "direction B's verdict is the exact terminal; it reads no chunk window.",
+        "direction B closes only an exact, windowless terminal.",
       );
     }
     refusalClass = NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1;
+    stepBudget = 0n;
   } else {
     if (
       state.direction !==
-      NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1
+        NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1 ||
+      verdict.refusalClass === null
     ) {
       throw nativeScriptDecodingSubmitError(
-        `thread state carries direction ${state.direction.toString()}, outside {0, 1}.`,
-      );
-    }
-    if (verdict.refusalClass === null) {
-      throw nativeScriptDecodingSubmitError(
-        "direction A's verdict needs the refusing step's predicted class; the plan carries none.",
+        "direction A closes only with the planner's refusing primitive step.",
       );
     }
     refusalClass = BigInt(verdict.refusalClass);
+    stepBudget = 1n;
     if (verdict.window !== null) {
       if (referenceScriptItemBytes === undefined) {
         throw nativeScriptDecodingSubmitError(
-          "the verdict's refusing step reads a chunk window; supply the reference-script item bytes.",
+          "the refusing step reads a chunk window; supply the item bytes.",
         );
       }
       requireAnchoredItemBytes({
@@ -771,13 +928,13 @@ export const submitNativeScriptDecodingStep03Verdict = async ({
       nextChunkProof = proofs.next_chunk_proof;
     }
   }
+
   const nextState: NativeScriptDecodingScanThreadStateV1 = {
     ...state,
     refusal_class: refusalClass,
   };
-  const destinationAddress = contracts.steps[3].spendingScriptAddress;
-
-  const controlCbor = verdict.control.cborHex;
+  const destinationAddress =
+    contracts.steps[STEP_04_INDEX].spendingScriptAddress;
   const { txHash, layout } = await advanceStep03Thread({
     lucid,
     contracts,
@@ -786,157 +943,25 @@ export const submitNativeScriptDecodingStep03Verdict = async ({
     threadUnit: threadToken.unit,
     destinationAddress,
     nextState,
-    buildArgs: (layout) => ({
-      Verdict: {
-        input_index: layout.inputIndex,
-        output_index: layout.outputIndex,
-        control_cbor: controlCbor,
-        chunk_proof: chunkProof,
-        next_chunk_proof: nextChunkProof,
-      },
-    }),
+    spendingStepIndex: ADVANCE_OR_CLOSE_INDEX,
+    buildRedeemer: (resolved) =>
+      Data.to(
+        {
+          Continue: [
+            {
+              input_index: resolved.inputIndex,
+              output_index: resolved.outputIndex,
+              control_cbor: verdict.control!.cborHex,
+              chunk_proof: chunkProof,
+              next_chunk_proof: nextChunkProof,
+              frames: [],
+              step_budget: stepBudget,
+            },
+          ],
+        },
+        NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer,
+      ),
     carriageUtxos: [],
-    referenceScriptUtxo,
-    awaitConfirmation,
-  });
-  return step03Result({
-    txHash,
-    layout,
-    signer,
-    threadOutRef,
-    threadToken,
-    destinationAddress,
-    scanState: nextState,
-    awaitConfirmation,
-  });
-};
-
-// ## BindOutOfDomain (#633 §7.2 closing arm)
-
-export const submitNativeScriptDecodingStep03BindOutOfDomain = async ({
-  lucid,
-  contracts,
-  categoryId,
-  signer,
-  threadOutRef,
-  nativeTxCompactCbor,
-  subjectFieldInputs,
-  publishCarriage = false,
-  referenceScriptUtxo,
-  awaitConfirmation = true,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly contracts: NativeScriptDecodingContractsV1;
-  readonly categoryId: string;
-  readonly signer: ResolvedProverSigner;
-  readonly threadOutRef: string;
-  /**
-   * The committed transaction's compact bytes and the named field's complete
-   * item list — required for the count face only, where the contradiction is
-   * proven against the door's authenticated count.
-   */
-  readonly nativeTxCompactCbor?: string;
-  readonly subjectFieldInputs?: readonly MidgardTxInput[];
-  readonly publishCarriage?: boolean;
-  readonly referenceScriptUtxo: UTxO;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitNativeScriptDecodingStep03Result> => {
-  const { threadUtxo, threadToken } =
-    await requireNativeScriptDecodingThreadUtxoV1({
-      lucid,
-      contracts,
-      categoryId,
-      stepIndex: 2,
-      threadOutRef,
-    });
-  const state = requireStep03State({ threadUtxo, signer });
-  if (
-    state.direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1
-  ) {
-    throw nativeScriptDecodingSubmitError(
-      "the out-of-domain close is direction B's alone: only a committed rejection can accuse a subject the transaction does not have.",
-    );
-  }
-  requirePreBindState(state);
-
-  const face = classifyNativeScriptDecodingOutOfDomainFaceV1({
-    outpointSourceKind: state.outpoint_source_kind,
-    outpointCursor: state.outpoint_cursor,
-    itemCount:
-      subjectFieldInputs === undefined
-        ? null
-        : BigInt(subjectFieldInputs.length),
-  });
-  if (face === null) {
-    throw nativeScriptDecodingSubmitError(
-      "the accused pair is in-domain — bind it through BindOutpoint instead.",
-    );
-  }
-
-  let subjectFieldOpening: FieldOpeningV1 | null = null;
-  let carriageUtxos: readonly UTxO[] = [];
-  if (face === NativeScriptDecodingOutOfDomainFacesV1.CountFace) {
-    if (nativeTxCompactCbor === undefined || subjectFieldInputs === undefined) {
-      throw nativeScriptDecodingSubmitError(
-        "the count face proves against the door's authenticated count; supply the compact bytes and the named field's item list.",
-      );
-    }
-    const fieldIndex = nativeScriptDecodingSubjectFieldIndexV1(
-      state.outpoint_source_kind,
-    );
-    const planned = planFaultProofFieldOpeningV1({
-      fieldIndex,
-      anchorTxId: state.verified_tx_id,
-      nativeTxCompactCbor,
-      itemCbors: subjectFieldInputs.map(encodeMidgardTxInputCanonicalV1),
-      owner: signer.paymentKeyHash,
-      publish: publishCarriage,
-      label: `${STEP_LABEL} out-of-domain subject field`,
-    });
-    signer.selectWallet(lucid);
-    carriageUtxos = await publishFaultProofFieldCarriageV1({
-      lucid,
-      signer,
-      planned,
-      publisherAddress: signer.address,
-      label: `${STEP_LABEL} out-of-domain subject field`,
-    });
-    const stepReference = requireNativeScriptDecodingReferenceScriptV1({
-      utxo: referenceScriptUtxo,
-      expectedScriptHash: contracts.steps[2].spendingScriptHash,
-      stepIndex: 2,
-    });
-    subjectFieldOpening = faultProofFieldOpeningV1({
-      planned,
-      referenceInputs: [...carriageUtxos, stepReference],
-      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-      label: `${STEP_LABEL} out-of-domain subject field`,
-    });
-  }
-
-  const nextState: NativeScriptDecodingScanThreadStateV1 = {
-    ...state,
-    refusal_class: NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
-  };
-  const destinationAddress = contracts.steps[3].spendingScriptAddress;
-
-  const opening = subjectFieldOpening;
-  const { txHash, layout } = await advanceStep03Thread({
-    lucid,
-    contracts,
-    signer,
-    threadUtxo,
-    threadUnit: threadToken.unit,
-    destinationAddress,
-    nextState,
-    buildArgs: (layout) => ({
-      BindOutOfDomain: {
-        input_index: layout.inputIndex,
-        output_index: layout.outputIndex,
-        subject_field_opening: opening,
-      },
-    }),
-    carriageUtxos,
     referenceScriptUtxo,
     awaitConfirmation,
   });

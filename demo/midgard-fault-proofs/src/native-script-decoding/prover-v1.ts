@@ -3,15 +3,15 @@
  * 2026-08-25): a consumer-agnostic driver over the per-step submitters,
  * consumable by the watcher (autonomous) and the CLI (manual) alike.
  *
- * The core drives Init → step-01 → step-02 → Bind → (Scan)* → Verdict →
- * step-04, feeding `nextThreadOutRef` forward. Its contract:
+ * The core drives Init → step-01 → step-02 → OpenSubject → BindDescriptor →
+ * (AdvanceOrClose)* → step-04, feeding `nextThreadOutRef` forward.
  *
  * - **Capability-injected.** `deps` carries everything environmental —
  *   signer, chain provider, evidence sources, observations, journal sink,
  *   policy. The core imports nothing from either consumer.
  * - **Resumable and idempotent-by-reconstruction** (§7.1). Invoked against
  *   a header whose thread already exists, it locates the thread by asset
- *   name across the four step addresses, reads the on-chain `StepDatum`,
+ *   name across the six validator addresses, reads the on-chain `StepDatum`,
  *   recovers the position (including mid-loop via the `machine_state_hash`
  *   boundary search against the re-derived plan), and continues.
  * - **Policy as data.** The core enforces whatever
@@ -29,6 +29,7 @@ import {
   type MidgardNativeScriptDecodingDirectionV1,
 } from "@al-ft/midgard-core";
 import {
+  encodeMidgardTxInputCanonicalV1,
   FraudProofComputationThreadStepDatum,
   type MidgardTxInput,
   NATIVE_SCRIPT_DECODING_CLASS_PENDING_V1,
@@ -36,7 +37,7 @@ import {
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1,
   NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1,
   type NativeScriptDecodingScanThreadStateV1,
-  NativeScriptDecodingStep03Datum,
+  NativeScriptDecodingStep03OpenSubjectDatum,
   OutputReference,
 } from "@al-ft/midgard-sdk";
 import {
@@ -75,10 +76,10 @@ import {
 } from "./submit-native-script-decoding-step-01.js";
 import { submitNativeScriptDecodingStep02 } from "./submit-native-script-decoding-step-02.js";
 import {
-  submitNativeScriptDecodingStep03BindOutOfDomain,
-  submitNativeScriptDecodingStep03BindOutpoint,
-  submitNativeScriptDecodingStep03Scan,
-  submitNativeScriptDecodingStep03Verdict,
+  submitNativeScriptDecodingStep03AdvanceOrCloseClose,
+  submitNativeScriptDecodingStep03AdvanceOrCloseSegment,
+  submitNativeScriptDecodingStep03BindDescriptor,
+  submitNativeScriptDecodingStep03OpenSubject,
 } from "./submit-native-script-decoding-step-03.js";
 import { submitNativeScriptDecodingStep04 } from "./submit-native-script-decoding-step-04.js";
 
@@ -178,9 +179,10 @@ export type NativeScriptDecodingProverEventV1 = {
     | "init"
     | "step01"
     | "step02"
-    | "bind"
-    | "scan"
-    | "verdict"
+    | "openSubject"
+    | "bindDescriptor"
+    | "advanceOrClose"
+    | "close"
     | "step04"
     | "outcome";
   readonly message: string;
@@ -211,7 +213,9 @@ export type NativeScriptDecodingProverDepsV1 = {
   readonly referenceScriptUtxos?: {
     readonly step01?: UTxO;
     readonly step02?: UTxO;
-    readonly step03?: UTxO;
+    readonly step03OpenSubject?: UTxO;
+    readonly step03BindDescriptor?: UTxO;
+    readonly step03AdvanceOrClose?: UTxO;
     readonly step04?: UTxO;
   };
   /** Force §8 tier-2 carriage publication on the bind transaction. */
@@ -254,16 +258,15 @@ export type NativeScriptDecodingThreadPositionV1 =
       readonly threadUtxo: UTxO;
     }
   | {
-      readonly step: "step03";
+      readonly step:
+        | "step03OpenSubject"
+        | "step03BindDescriptor"
+        | "step03AdvanceOrClose";
       readonly threadUtxo: UTxO;
       readonly state: NativeScriptDecodingScanThreadStateV1;
     };
 
-/**
- * Locates the live thread carrying `threadUnit` across the family's four
- * step addresses (§7.1: the asset name, `category_id ‖ header_hash`, is the
- * thread's identity; the address identifies the step).
- */
+/** Locates the live thread by its NFT across all six custody addresses. */
 export const locateNativeScriptDecodingThreadV1 = async ({
   lucid,
   contracts,
@@ -273,7 +276,7 @@ export const locateNativeScriptDecodingThreadV1 = async ({
   readonly contracts: NativeScriptDecodingContractsV1;
   readonly threadUnit: string;
 }): Promise<NativeScriptDecodingThreadPositionV1> => {
-  for (const stepIndex of [0, 1, 2, 3] as const) {
+  for (const stepIndex of [0, 1, 2, 3, 4, 5] as const) {
     const utxos = await lucid.utxosAtWithUnit(
       contracts.steps[stepIndex].spendingScriptAddress,
       threadUnit,
@@ -282,17 +285,23 @@ export const locateNativeScriptDecodingThreadV1 = async ({
     if (threadUtxo === undefined) {
       continue;
     }
-    if (stepIndex === 2) {
+    if (stepIndex >= 2 && stepIndex <= 4) {
       const datum = Data.from(
         requireDatum(threadUtxo),
-        NativeScriptDecodingStep03Datum,
+        NativeScriptDecodingStep03OpenSubjectDatum,
       );
       if (datum.data === null) {
         throw nativeScriptDecodingSubmitError(
-          `thread ${outRefLabel(threadUtxo)} at step 03 carries no state.`,
+          `thread ${outRefLabel(threadUtxo)} at split step 03 carries no state.`,
         );
       }
-      return { step: "step03", threadUtxo, state: datum.data };
+      const step =
+        stepIndex === 2
+          ? "step03OpenSubject"
+          : stepIndex === 3
+            ? "step03BindDescriptor"
+            : "step03AdvanceOrClose";
+      return { step, threadUtxo, state: datum.data };
     }
     const step =
       stepIndex === 0 ? "step01" : stepIndex === 1 ? "step02" : "step04";
@@ -309,41 +318,41 @@ const requireDatum = (utxo: UTxO): string => {
   }
   return utxo.datum;
 };
-
-const isPreBind = (state: NativeScriptDecodingScanThreadStateV1): boolean =>
-  state.machine_state_hash === "" &&
-  state.refusal_class === NATIVE_SCRIPT_DECODING_CLASS_PENDING_V1 &&
-  state.outpoint_key_hash === "";
-
 // ## The drive cursor
 
 type DriveState =
   | { readonly at: "init" }
   | { readonly at: "step01"; readonly threadOutRef: string }
   | { readonly at: "step02"; readonly threadOutRef: string }
-  | { readonly at: "bind"; readonly threadOutRef: string }
+  | { readonly at: "openSubject"; readonly threadOutRef: string }
+  | { readonly at: "bindDescriptor"; readonly threadOutRef: string }
   | {
-      readonly at: "scan";
+      readonly at: "advanceOrClose";
       readonly threadOutRef: string;
       readonly segmentIndex: number;
     }
-  | { readonly at: "verdict"; readonly threadOutRef: string }
+  | { readonly at: "close"; readonly threadOutRef: string }
   | { readonly at: "step04"; readonly threadOutRef: string };
 
-/** Step-03 transactions the route still owes from its start. */
 const step03TxCount = (
   finding: NativeScriptDecodingFindingV1,
   plan: NativeScriptDecodingScanPlanV1 | null,
 ): number => {
   if (
-    finding.provability !== NativeScriptDecodingProvabilityV1.MachineRoute ||
-    plan === null
+    finding.provability ===
+    NativeScriptDecodingProvabilityV1.OutOfDomainAccusation
   ) {
     return 1;
   }
-  return plan.route === NativeScriptDecodingPlanRoutesV1.Machine
-    ? 1 + plan.segments.length + 1
-    : 1;
+  if (plan?.route !== NativeScriptDecodingPlanRoutesV1.Machine) {
+    return 2;
+  }
+  const explicitClose =
+    finding.direction ===
+    NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1
+      ? 1
+      : 0;
+  return 2 + plan.segments.length + explicitClose;
 };
 
 const remainingTxCount = (
@@ -359,11 +368,21 @@ const remainingTxCount = (
       return 2 + step03 + 1;
     case "step02":
       return 1 + step03 + 1;
-    case "bind":
+    case "openSubject":
       return step03 + 1;
-    case "scan":
-      return (plan?.segments.length ?? 0) - cursor.segmentIndex + 2;
-    case "verdict":
+    case "bindDescriptor":
+      return step03;
+    case "advanceOrClose": {
+      const explicitClose =
+        finding.direction ===
+        NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1
+          ? 1
+          : 0;
+      return (
+        (plan?.segments.length ?? 0) - cursor.segmentIndex + explicitClose + 1
+      );
+    }
+    case "close":
       return 2;
     case "step04":
       return 1;
@@ -391,11 +410,13 @@ export const runNativeScriptDecodingProverV1 = async (
   if (
     referenceScriptUtxos?.step01 === undefined ||
     referenceScriptUtxos.step02 === undefined ||
-    referenceScriptUtxos.step03 === undefined ||
+    referenceScriptUtxos.step03OpenSubject === undefined ||
+    referenceScriptUtxos.step03BindDescriptor === undefined ||
+    referenceScriptUtxos.step03AdvanceOrClose === undefined ||
     referenceScriptUtxos.step04 === undefined
   ) {
     throw nativeScriptDecodingSubmitError(
-      "production proving requires authenticated reference-script UTxOs for steps 01 through 04.",
+      "production proving requires authenticated reference-script UTxOs for all six custody validators.",
     );
   }
   const headerHash = finding.headerHash;
@@ -479,11 +500,11 @@ export const runNativeScriptDecodingProverV1 = async (
   let plan: NativeScriptDecodingScanPlanV1 | null = null;
   let descriptorCbor: string | null = null;
   let referenceScriptItemBytes: Uint8Array | null = null;
-  const needsBindOutpoint =
+  const needsDescriptorBinding =
     finding.provability !==
     NativeScriptDecodingProvabilityV1.OutOfDomainAccusation;
   try {
-    if (needsBindOutpoint) {
+    if (needsDescriptorBinding) {
       const resolved = await deps.evidence.descriptor(finding);
       descriptorCbor = resolved.descriptorCbor;
       referenceScriptItemBytes = resolved.referenceScriptItemBytes;
@@ -525,53 +546,62 @@ export const runNativeScriptDecodingProverV1 = async (
   let cursor: DriveState;
   if (position.step === "none") {
     cursor = { at: "init" };
-  } else if (position.step !== "step03") {
+  } else if (position.step === "step01" || position.step === "step02") {
     cursor = {
       at: position.step,
       threadOutRef: outRefLabel(position.threadUtxo),
     };
+  } else if (position.step === "step04") {
+    cursor = {
+      at: "step04",
+      threadOutRef: outRefLabel(position.threadUtxo),
+    };
+  } else if (position.step === "step03OpenSubject") {
+    cursor = {
+      at: "openSubject",
+      threadOutRef: outRefLabel(position.threadUtxo),
+    };
+  } else if (position.step === "step03BindDescriptor") {
+    cursor = {
+      at: "bindDescriptor",
+      threadOutRef: outRefLabel(position.threadUtxo),
+    };
   } else {
+    if (position.step !== "step03AdvanceOrClose") {
+      throw nativeScriptDecodingSubmitError(
+        `unhandled thread position ${position.step}`,
+      );
+    }
     const threadOutRef = outRefLabel(position.threadUtxo);
     const state = position.state;
-    if (isPreBind(state)) {
-      cursor = { at: "bind", threadOutRef };
-    } else if (
-      state.refusal_class === NATIVE_SCRIPT_DECODING_CLASS_PENDING_V1
-    ) {
-      // §7.1 mid-loop: find the unique plan boundary whose control hashes
-      // to the committed machine state.
-      if (
-        plan === null ||
-        plan.route !== NativeScriptDecodingPlanRoutesV1.Machine
-      ) {
-        return stalled(
-          "the thread is mid-scan but the finding's route derives no scan plan — evidence and chain state disagree.",
-          threadOutRef,
-          null,
-        );
-      }
-      const committed = state.machine_state_hash;
-      const segmentIndex = plan.segments.findIndex(
-        (segment) => segment.controlBefore.hashHex === committed,
-      );
-      if (segmentIndex >= 0) {
-        cursor = { at: "scan", threadOutRef, segmentIndex };
-      } else if (plan.verdict.control?.hashHex === committed) {
-        cursor = { at: "verdict", threadOutRef };
-      } else {
-        // No boundary matches: the local item bytes differ from the
-        // committed item. An evidence error, surfaced loudly (§7.1).
-        return stalled(
-          `no plan boundary hashes to the committed machine state ${committed} — local evidence differs from the committed item.`,
-          threadOutRef,
-          null,
-        );
-      }
-    } else {
-      // A closed verdict at the step-03 address cannot exist (closes pay
-      // to step-04), but fail loudly rather than guess.
+    if (state.refusal_class !== NATIVE_SCRIPT_DECODING_CLASS_PENDING_V1) {
       return stalled(
-        `thread at step 03 carries a closed refusal class ${state.refusal_class.toString()} — unexpected chain state.`,
+        `thread at AdvanceOrClose carries closed class ${state.refusal_class.toString()} instead of paying step-04.`,
+        threadOutRef,
+        null,
+      );
+    }
+    if (
+      plan === null ||
+      plan.route !== NativeScriptDecodingPlanRoutesV1.Machine
+    ) {
+      return stalled(
+        "the thread is at AdvanceOrClose but local evidence derives no machine plan.",
+        threadOutRef,
+        null,
+      );
+    }
+    const committed = state.machine_state_hash;
+    const segmentIndex = plan.segments.findIndex(
+      (segment) => segment.controlBefore.hashHex === committed,
+    );
+    if (segmentIndex >= 0) {
+      cursor = { at: "advanceOrClose", threadOutRef, segmentIndex };
+    } else if (plan.verdict.control?.hashHex === committed) {
+      cursor = { at: "close", threadOutRef };
+    } else {
+      return stalled(
+        `no plan boundary hashes to committed machine state ${committed}.`,
         threadOutRef,
         null,
       );
@@ -751,90 +781,107 @@ export const runNativeScriptDecodingProverV1 = async (
             txHash: result.txHash,
             threadOutRef: currentOutRef,
           });
-          cursor = { at: "bind", threadOutRef: currentOutRef };
+          cursor = { at: "openSubject", threadOutRef: currentOutRef };
           break;
         }
-        case "bind": {
-          const shared = {
+        case "openSubject": {
+          const namesField =
+            (finding.accusedOutpointSourceKind === 0n ||
+              finding.accusedOutpointSourceKind === 1n) &&
+            finding.accusedOutpointCursor >= 0n;
+          const subject = namesField
+            ? await deps.evidence.subjectTx(finding)
+            : null;
+          const result = await submitNativeScriptDecodingStep03OpenSubject({
             lucid,
             contracts,
             categoryId: deps.category.categoryId,
             signer,
             threadOutRef: cursor.threadOutRef,
-            referenceScriptUtxo: referenceScriptUtxos.step03,
-          };
-          if (!needsBindOutpoint) {
-            // §7.2 cardinality close. The count face proves against the
-            // door's authenticated count and needs the subject items.
-            const needsCount =
-              (finding.accusedOutpointSourceKind === 0n ||
-                finding.accusedOutpointSourceKind === 1n) &&
-              finding.accusedOutpointCursor >= 0n;
-            const subject = needsCount
-              ? await deps.evidence.subjectTx(finding)
-              : null;
-            const result =
-              await submitNativeScriptDecodingStep03BindOutOfDomain({
-                ...shared,
-                nativeTxCompactCbor: subject?.nativeTxCompactCbor,
-                subjectFieldInputs: subject?.subjectFieldInputs,
-                publishCarriage: deps.publishCarriage,
-              });
-            txHashes.push(result.txHash);
-            currentOutRef = result.nextThreadOutRef;
-            await journal({
-              phase: "bind",
-              message: "out-of-domain accusation closed",
-              txHash: result.txHash,
-              threadOutRef: currentOutRef,
-            });
-            cursor = { at: "step04", threadOutRef: currentOutRef };
-            break;
-          }
+            nativeTxCompactCbor: subject?.nativeTxCompactCbor,
+            subjectFieldInputs: subject?.subjectFieldInputs,
+            publishCarriage: deps.publishCarriage,
+            referenceScriptUtxo: referenceScriptUtxos.step03OpenSubject,
+          });
+          txHashes.push(result.txHash);
+          const nextOutRef = result.nextThreadOutRef;
+          currentOutRef = nextOutRef;
+          const opened = needsDescriptorBinding;
+          await journal({
+            phase: "openSubject",
+            message: opened
+              ? "accused outpoint opened"
+              : "out-of-domain accusation closed",
+            txHash: result.txHash,
+            threadOutRef: nextOutRef,
+          });
+          cursor = opened
+            ? { at: "bindDescriptor", threadOutRef: nextOutRef }
+            : { at: "step04", threadOutRef: nextOutRef };
+          break;
+        }
+        case "bindDescriptor": {
           if (descriptorCbor === null) {
             throw nativeScriptDecodingSubmitError(
-              "bind reached without descriptor evidence.",
+              "BindDescriptor reached without descriptor evidence.",
             );
           }
           const subject = await deps.evidence.subjectTx(finding);
-          const result = await submitNativeScriptDecodingStep03BindOutpoint({
-            ...shared,
-            nativeTxCompactCbor: subject.nativeTxCompactCbor,
-            subjectFieldInputs: subject.subjectFieldInputs,
+          const accused =
+            subject.subjectFieldInputs[Number(finding.accusedOutpointCursor)];
+          if (accused === undefined) {
+            throw nativeScriptDecodingSubmitError(
+              "BindDescriptor cannot recover the outpoint opened on-chain.",
+            );
+          }
+          const outpointKeyCbor = Buffer.from(
+            encodeMidgardTxInputCanonicalV1(accused),
+          ).toString("hex");
+          const result = await submitNativeScriptDecodingStep03BindDescriptor({
+            lucid,
+            contracts,
+            categoryId: deps.category.categoryId,
+            signer,
+            threadOutRef: cursor.threadOutRef,
+            outpointKeyCbor,
             descriptorCbor,
             ledgerTrie: await deps.evidence.ledgerTrie(finding),
             plan: plan ?? undefined,
             referenceScriptItemBytes: referenceScriptItemBytes ?? undefined,
-            publishCarriage: deps.publishCarriage,
+            referenceScriptUtxo: referenceScriptUtxos.step03BindDescriptor,
           });
           txHashes.push(result.txHash);
-          currentOutRef = result.nextThreadOutRef;
+          const nextOutRef = result.nextThreadOutRef;
+          currentOutRef = nextOutRef;
           const machinePlan =
-            plan !== null &&
-            plan.route === NativeScriptDecodingPlanRoutesV1.Machine
+            plan?.route === NativeScriptDecodingPlanRoutesV1.Machine
               ? plan
               : null;
           await journal({
-            phase: "bind",
+            phase: "bindDescriptor",
             message:
-              machinePlan !== null
-                ? "outpoint bound, machine committed"
-                : "outpoint bound, closed at bind",
+              machinePlan === null
+                ? "descriptor bound and closed"
+                : "descriptor bound, machine committed",
             txHash: result.txHash,
-            threadOutRef: currentOutRef,
+            threadOutRef: nextOutRef,
           });
           cursor =
             machinePlan === null
-              ? { at: "step04", threadOutRef: currentOutRef }
+              ? { at: "step04", threadOutRef: nextOutRef }
               : machinePlan.segments.length > 0
-                ? { at: "scan", threadOutRef: currentOutRef, segmentIndex: 0 }
-                : { at: "verdict", threadOutRef: currentOutRef };
+                ? {
+                    at: "advanceOrClose",
+                    threadOutRef: nextOutRef,
+                    segmentIndex: 0,
+                  }
+                : { at: "close", threadOutRef: nextOutRef };
           break;
         }
-        case "scan": {
+        case "advanceOrClose": {
           if (plan === null || referenceScriptItemBytes === null) {
             throw nativeScriptDecodingSubmitError(
-              "scan reached without a plan.",
+              "AdvanceOrClose reached without a machine plan.",
             );
           }
           const segment = plan.segments[cursor.segmentIndex];
@@ -843,62 +890,72 @@ export const runNativeScriptDecodingProverV1 = async (
               `plan has no segment ${cursor.segmentIndex.toString()}.`,
             );
           }
-          const result = await submitNativeScriptDecodingStep03Scan({
-            lucid,
-            contracts,
-            categoryId: deps.category.categoryId,
-            signer,
-            threadOutRef: cursor.threadOutRef,
-            segment,
-            referenceScriptItemBytes,
-            referenceScriptUtxo: referenceScriptUtxos.step03,
-          });
+          const result =
+            await submitNativeScriptDecodingStep03AdvanceOrCloseSegment({
+              lucid,
+              contracts,
+              categoryId: deps.category.categoryId,
+              signer,
+              threadOutRef: cursor.threadOutRef,
+              segment,
+              referenceScriptItemBytes,
+              referenceScriptUtxo: referenceScriptUtxos.step03AdvanceOrClose,
+            });
           txHashes.push(result.txHash);
-          currentOutRef = result.nextThreadOutRef;
+          const nextOutRef = result.nextThreadOutRef;
+          currentOutRef = nextOutRef;
+          const closed =
+            result.destinationAddress ===
+            contracts.steps[5].spendingScriptAddress;
           await journal({
-            phase: "scan",
-            message: `segment ${(cursor.segmentIndex + 1).toString()}/${plan.segments.length.toString()} advanced`,
+            phase: "advanceOrClose",
+            message: closed
+              ? "exact terminal closed"
+              : `segment ${(cursor.segmentIndex + 1).toString()}/${plan.segments.length.toString()} advanced`,
             txHash: result.txHash,
-            threadOutRef: currentOutRef,
+            threadOutRef: nextOutRef,
           });
-          cursor =
-            cursor.segmentIndex + 1 < plan.segments.length
+          cursor = closed
+            ? { at: "step04", threadOutRef: nextOutRef }
+            : cursor.segmentIndex + 1 < plan.segments.length
               ? {
-                  at: "scan",
-                  threadOutRef: currentOutRef,
+                  at: "advanceOrClose",
+                  threadOutRef: nextOutRef,
                   segmentIndex: cursor.segmentIndex + 1,
                 }
-              : { at: "verdict", threadOutRef: currentOutRef };
+              : { at: "close", threadOutRef: nextOutRef };
           break;
         }
-        case "verdict": {
+        case "close": {
           if (plan === null) {
             throw nativeScriptDecodingSubmitError(
-              "verdict reached without a plan.",
+              "AdvanceOrClose close reached without a plan.",
             );
           }
-          const result = await submitNativeScriptDecodingStep03Verdict({
-            lucid,
-            contracts,
-            categoryId: deps.category.categoryId,
-            signer,
-            threadOutRef: cursor.threadOutRef,
-            verdict: plan.verdict,
-            referenceScriptItemBytes:
-              plan.verdict.window === null
-                ? undefined
-                : (referenceScriptItemBytes ?? undefined),
-            referenceScriptUtxo: referenceScriptUtxos.step03,
-          });
+          const result =
+            await submitNativeScriptDecodingStep03AdvanceOrCloseClose({
+              lucid,
+              contracts,
+              categoryId: deps.category.categoryId,
+              signer,
+              threadOutRef: cursor.threadOutRef,
+              verdict: plan.verdict,
+              referenceScriptItemBytes:
+                plan.verdict.window === null
+                  ? undefined
+                  : (referenceScriptItemBytes ?? undefined),
+              referenceScriptUtxo: referenceScriptUtxos.step03AdvanceOrClose,
+            });
           txHashes.push(result.txHash);
-          currentOutRef = result.nextThreadOutRef;
+          const nextOutRef = result.nextThreadOutRef;
+          currentOutRef = nextOutRef;
           await journal({
-            phase: "verdict",
-            message: "verdict closed",
+            phase: "close",
+            message: "scan claim closed",
             txHash: result.txHash,
-            threadOutRef: currentOutRef,
+            threadOutRef: nextOutRef,
           });
-          cursor = { at: "step04", threadOutRef: currentOutRef };
+          cursor = { at: "step04", threadOutRef: nextOutRef };
           break;
         }
         case "step04": {

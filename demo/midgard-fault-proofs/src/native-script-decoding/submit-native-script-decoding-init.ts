@@ -46,6 +46,7 @@ import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   NATIVE_SCRIPT_DECODING_CATEGORY_LABEL,
   type NativeScriptDecodingContractsV1,
+  type NativeScriptDecodingStepContractV1,
 } from "./contracts-v1.js";
 import {
   type NativeScriptDecodingCatalogueCategoryV1,
@@ -53,6 +54,16 @@ import {
 } from "./submit-common-v1.js";
 
 type LucidDataSchema = Parameters<typeof Data.to>[1];
+
+export type NativeScriptDecodingInitContractsV1 = Omit<
+  NativeScriptDecodingContractsV1,
+  "steps"
+> & {
+  readonly steps: readonly [
+    NativeScriptDecodingStepContractV1,
+    ...NativeScriptDecodingStepContractV1[],
+  ];
+};
 
 export type SubmitNativeScriptDecodingInitResult = {
   readonly txHash: string;
@@ -87,7 +98,7 @@ export const submitNativeScriptDecodingInit = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: NativeScriptDecodingContractsV1;
+  readonly contracts: NativeScriptDecodingInitContractsV1;
   readonly category: NativeScriptDecodingCatalogueCategoryV1;
   /** The deployed fraud-proof catalogue: its NFT policy, spend address, and MPF root. */
   readonly catalogue: {

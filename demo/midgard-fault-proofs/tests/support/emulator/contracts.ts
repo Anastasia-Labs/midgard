@@ -276,14 +276,9 @@ export const buildMissingSignatureChainV1 = ({
 };
 
 /**
- * Applies the four-step `native-script-decoding` chain in blueprint-declared
- * parameter order (offchain design §1; the order note lives on
- * `NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1`). Applied backwards, step 04
- * first, because each step is parameterized by its successor's script hash.
- * All four steps deploy as reference scripts (design §10 Q3): step 03's
- * 25,767-byte applied body cannot inline inside the 16,384-byte L1 fault-proof
- * envelope, so the family rides the same oversized reference-script
- * publication pattern as the semantic resolvers below.
+ * Applies the six-validator `native-script-decoding` chain in
+ * blueprint-declared parameter order. It is built backwards because every
+ * custody step is parameterized by its successor's script hash.
  */
 export const buildNativeScriptDecodingChainV1 = ({
   realBlueprint,
@@ -304,6 +299,8 @@ export const buildNativeScriptDecodingChainV1 = ({
   SdkSpendingValidator,
   SdkSpendingValidator,
   SdkSpendingValidator,
+  SdkSpendingValidator,
+  SdkSpendingValidator,
 ] => {
   const step04 = makeSpendingValidator(
     applyCompiledScript(
@@ -316,11 +313,30 @@ export const buildNativeScriptDecodingChainV1 = ({
       ],
     ),
   );
-  const step03 = makeSpendingValidator(
+  const step03AdvanceOrClose = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.step03,
+      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.step03AdvanceOrClose,
+      [step04.spendingScriptHash, computationThreadPolicyId],
+    ),
+  );
+  const step03BindDescriptor = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.step03BindDescriptor,
       [
+        step03AdvanceOrClose.spendingScriptHash,
+        step04.spendingScriptHash,
+        computationThreadPolicyId,
+      ],
+    ),
+  );
+  const step03OpenSubject = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.step03OpenSubject,
+      [
+        step03BindDescriptor.spendingScriptHash,
         step04.spendingScriptHash,
         computationThreadPolicyId,
         fieldPreimageCertificatePolicyId,
@@ -331,7 +347,7 @@ export const buildNativeScriptDecodingChainV1 = ({
     applyCompiledScript(
       realBlueprint,
       NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.step02,
-      [step03.spendingScriptHash, computationThreadPolicyId],
+      [step03OpenSubject.spendingScriptHash, computationThreadPolicyId],
     ),
   );
   const step01 = makeSpendingValidator(
@@ -341,7 +357,14 @@ export const buildNativeScriptDecodingChainV1 = ({
       [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
     ),
   );
-  return [step01, step02, step03, step04];
+  return [
+    step01,
+    step02,
+    step03OpenSubject,
+    step03BindDescriptor,
+    step03AdvanceOrClose,
+    step04,
+  ];
 };
 
 /** Applies the six validators backwards in their blueprint-declared order. */

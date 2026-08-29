@@ -527,7 +527,9 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
   nativeScriptDecoding: [
     "fraudProofNativeScriptDecoding",
     "fraudProofNativeScriptDecodingStep02",
-    "fraudProofNativeScriptDecodingStep03",
+    "fraudProofNativeScriptDecodingStep03OpenSubject",
+    "fraudProofNativeScriptDecodingStep03BindDescriptor",
+    "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
     "fraudProofNativeScriptDecodingStep04",
   ],
   missingSignature: [

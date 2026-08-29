@@ -126,7 +126,9 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "fraudProofFabricatedWithdrawalStep04",
   "fraudProofNativeScriptDecoding",
   "fraudProofNativeScriptDecodingStep02",
-  "fraudProofNativeScriptDecodingStep03",
+  "fraudProofNativeScriptDecodingStep03OpenSubject",
+  "fraudProofNativeScriptDecodingStep03BindDescriptor",
+  "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
   "fraudProofNativeScriptDecodingStep04",
   "fraudProofMissingSignature",
   "fraudProofMissingSignatureStep02",
@@ -241,8 +243,12 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofNativeScriptDecoding",
     "V1 fraud-proof native-script-decoding step-02":
       "fraudProofNativeScriptDecodingStep02",
-    "V1 fraud-proof native-script-decoding step-03":
-      "fraudProofNativeScriptDecodingStep03",
+    "V1 fraud-proof native-script-decoding step-03 open-subject":
+      "fraudProofNativeScriptDecodingStep03OpenSubject",
+    "V1 fraud-proof native-script-decoding step-03 bind-descriptor":
+      "fraudProofNativeScriptDecodingStep03BindDescriptor",
+    "V1 fraud-proof native-script-decoding step-03 advance-or-close":
+      "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
     "V1 fraud-proof native-script-decoding step-04":
       "fraudProofNativeScriptDecodingStep04",
     "V1 fraud-proof missing-signature step-01": "fraudProofMissingSignature",

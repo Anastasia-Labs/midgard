@@ -44,9 +44,10 @@ import {
   submitNativeScriptDecodingInit,
   submitNativeScriptDecodingStep01BindNormal,
   submitNativeScriptDecodingStep02,
-  submitNativeScriptDecodingStep03BindOutpoint,
-  submitNativeScriptDecodingStep03Scan,
-  submitNativeScriptDecodingStep03Verdict,
+  submitNativeScriptDecodingStep03AdvanceOrCloseClose,
+  submitNativeScriptDecodingStep03AdvanceOrCloseSegment,
+  submitNativeScriptDecodingStep03BindDescriptor,
+  submitNativeScriptDecodingStep03OpenSubject,
   submitNativeScriptDecodingStep04,
 } from "../src/native-script-decoding/index.js";
 import {
@@ -104,11 +105,17 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
     });
     expect(plan.verdict.refusalClass).toBe(0);
 
-    const [step01Ref, step02Ref, step03Ref, step04Ref] =
-      await publishDecodingReferenceScriptsV1({
-        lucid: funderLucid,
-        contracts: decoding,
-      });
+    const [
+      step01Ref,
+      step02Ref,
+      step03OpenSubjectRef,
+      step03BindDescriptorRef,
+      step03AdvanceOrCloseRef,
+      step04Ref,
+    ] = await publishDecodingReferenceScriptsV1({
+      lucid: funderLucid,
+      contracts: decoding,
+    });
 
     const finding: NativeScriptDecodingFindingV1 = {
       direction: 0n,
@@ -167,7 +174,9 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       referenceScriptUtxos: {
         step01: step01Ref,
         step02: step02Ref,
-        step03: step03Ref,
+        step03OpenSubject: step03OpenSubjectRef,
+        step03BindDescriptor: step03BindDescriptorRef,
+        step03AdvanceOrClose: step03AdvanceOrCloseRef,
         step04: step04Ref,
       },
     };
@@ -180,8 +189,8 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
         `expected a proven outcome, got ${outcome.kind}: ${JSON.stringify(outcome)}`,
       );
     }
-    // init, step-01, step-02, bind, one Scan, verdict, step-04.
-    expect(outcome.txHashes).toHaveLength(7);
+    // init, step-01, step-02, open, bind, one advance, close, step-04.
+    expect(outcome.txHashes).toHaveLength(8);
     expect(journal).toContain("outcome:proven");
 
     // The permanent token is minted and the thread NFT is burned: no step
@@ -349,11 +358,17 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
     if (block.txInclusion === null) {
       throw new Error("normal-source fixture carries no tx inclusion");
     }
-    const [step01Ref, step02Ref, step03Ref, step04Ref] =
-      await publishDecodingReferenceScriptsV1({
-        lucid: funderLucid,
-        contracts: decoding,
-      });
+    const [
+      step01Ref,
+      step02Ref,
+      step03OpenSubjectRef,
+      step03BindDescriptorRef,
+      step03AdvanceOrCloseRef,
+      step04Ref,
+    ] = await publishDecodingReferenceScriptsV1({
+      lucid: funderLucid,
+      contracts: decoding,
+    });
     const plan = buildNativeScriptDecodingScanPlanV1({
       itemBytes: item,
       direction: 0,
@@ -423,7 +438,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
     expect(step02.scanState.prior_ledger_root).toBe(ledger.rootHex);
     expect(step02.scanState.machine_state_hash).toBe("");
 
-    const bind = await submitNativeScriptDecodingStep03BindOutpoint({
+    const open = await submitNativeScriptDecodingStep03OpenSubject({
       lucid: proverLucid,
       contracts: decoding,
       categoryId: category.categoryId,
@@ -431,17 +446,31 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       threadOutRef: step02.nextThreadOutRef,
       nativeTxCompactCbor: block.nativeTxCompactCbor,
       subjectFieldInputs: scenario.subjectFieldInputs,
+      referenceScriptUtxo: step03OpenSubjectRef,
+    });
+    expect(open.scanState.outpoint_key_hash).not.toBe("");
+
+    const accused = scenario.subjectFieldInputs[0]!;
+    const bind = await submitNativeScriptDecodingStep03BindDescriptor({
+      lucid: proverLucid,
+      contracts: decoding,
+      categoryId: category.categoryId,
+      signer: proverSigner,
+      threadOutRef: open.nextThreadOutRef,
+      outpointKeyCbor: Buffer.from(
+        SDK.encodeMidgardTxInputCanonicalV1(accused),
+      ).toString("hex"),
       descriptorCbor: ledger.descriptorCbor,
       ledgerTrie: ledger.trie,
       plan,
       referenceScriptItemBytes: item,
-      referenceScriptUtxo: step03Ref,
+      referenceScriptUtxo: step03BindDescriptorRef,
     });
     expect(bind.scanState.machine_state_hash).toBe(
       plan.segments[0]!.controlBefore.hashHex,
     );
 
-    const scan = await submitNativeScriptDecodingStep03Scan({
+    const scan = await submitNativeScriptDecodingStep03AdvanceOrCloseSegment({
       lucid: proverLucid,
       contracts: decoding,
       categoryId: category.categoryId,
@@ -449,13 +478,13 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       threadOutRef: bind.nextThreadOutRef,
       segment: plan.segments[0]!,
       referenceScriptItemBytes: item,
-      referenceScriptUtxo: step03Ref,
+      referenceScriptUtxo: step03AdvanceOrCloseRef,
     });
     expect(scan.scanState.machine_state_hash).toBe(
       plan.verdict.control!.hashHex,
     );
 
-    const verdict = await submitNativeScriptDecodingStep03Verdict({
+    const verdict = await submitNativeScriptDecodingStep03AdvanceOrCloseClose({
       lucid: proverLucid,
       contracts: decoding,
       categoryId: category.categoryId,
@@ -463,7 +492,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       threadOutRef: scan.nextThreadOutRef,
       verdict: plan.verdict,
       referenceScriptItemBytes: item,
-      referenceScriptUtxo: step03Ref,
+      referenceScriptUtxo: step03AdvanceOrCloseRef,
     });
     expect(verdict.scanState.refusal_class).toBe(0n);
 

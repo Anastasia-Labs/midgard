@@ -42,7 +42,9 @@ import {
   type FieldCarriageV1,
   NativeScriptDecodingStep01SpendRedeemer,
   NativeScriptDecodingStep02SpendRedeemer,
-  NativeScriptDecodingStep03SpendRedeemer,
+  NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer,
+  NativeScriptDecodingStep03BindDescriptorSpendRedeemer,
+  NativeScriptDecodingStep03OpenSubjectSpendRedeemer,
   NativeScriptDecodingStep04SpendRedeemer,
   Proof,
 } from "@al-ft/midgard-sdk";
@@ -65,7 +67,6 @@ import {
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildNativeScriptDecodingChainV1,
-  EMULATOR_PROTOCOL_PARAMETERS,
   h32,
   makeHeader,
   makeNativeTx,
@@ -93,17 +94,16 @@ const STEP_TX_OVERHEAD_ALLOWANCE_BYTES = 2_048;
 const ADVERSARY_LOG2_WORK = 128;
 
 /**
- * Applied compiled sizes pinned from the wave-branch blueprint (patched fork,
+ * Unapplied compiled sizes pinned from the wave-branch blueprint (patched fork,
  * design §2.3). This is the suite's first pinned datum: a byte drift in any
  * step validator invalidates every frontier this file derives.
  */
 const EXPECTED_UNAPPLIED_SIZES_BYTES = {
   step01: 6_783,
   step02: 11_507,
-  // 24,862 before the #633 §7.2 BindOutOfDomain closing arm landed on
-  // step-03 (2026-08-25); still over the 16,384 inline envelope, so the Q3
-  // reference-scripts conclusion is unchanged.
-  step03: 25_767,
+  step03OpenSubject: 8_175,
+  step03BindDescriptor: 12_504,
+  step03AdvanceOrClose: 11_498,
   step04: 1_673,
 } as const;
 
@@ -148,7 +148,7 @@ const chunkProofToData = (
 describe("native-script-decoding compiled sizes and deployability (Q3)", () => {
   const blueprint = readBlueprint(realBlueprintPath);
 
-  it("pins the four unapplied validator sizes to the design §2.3 numbers", () => {
+  it("pins all six unapplied validator sizes", () => {
     for (const [step, title] of Object.entries(
       NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1,
     )) {
@@ -168,12 +168,13 @@ describe("native-script-decoding compiled sizes and deployability (Q3)", () => {
   });
 
   it("proves Q3 by arithmetic and fits every applied step in the publication host", async () => {
-    // Q3 is arithmetic, not preference: step 03 alone exceeds the whole
-    // fault-proof envelope, so inline carriage of the validator is impossible
-    // and all four steps deploy as reference scripts for uniformity.
-    expect(EXPECTED_UNAPPLIED_SIZES_BYTES.step03).toBeGreaterThan(
-      L1_ENVELOPE_BYTES,
-    );
+    for (const [name, bytes] of Object.entries(
+      EXPECTED_UNAPPLIED_SIZES_BYTES,
+    )) {
+      expect(bytes, `${name} exceeds the L1 transaction limit`).toBeLessThan(
+        L1_ENVELOPE_BYTES,
+      );
+    }
 
     // Parameter VALUES do not change applied sizes (all three parameter kinds
     // are fixed-width: 28-byte policies/hashes and a constant-shape address),
@@ -196,24 +197,37 @@ describe("native-script-decoding compiled sizes and deployability (Q3)", () => {
       hubOraclePolicyId: "55".repeat(28),
     });
 
-    // Four distinct scripts: equal hashes would mean a parameter list was
+    // Six distinct scripts: equal hashes would mean a parameter list was
     // mis-ordered into another step's (the #609/#610 guards check arity, not
     // order).
-    expect(new Set(steps.map((step) => step.spendingScriptHash)).size).toBe(4);
+    expect(new Set(steps.map((step) => step.spendingScriptHash)).size).toBe(6);
+
+    const appliedSizes = Object.fromEntries(
+      steps.map((step, index) => [
+        Object.keys(EXPECTED_UNAPPLIED_SIZES_BYTES)[index]!,
+        step.spendingScriptCBOR.length / 2,
+      ]),
+    );
+    printChartV1(
+      "native-script-decoding applied validator sizes",
+      appliedSizes,
+    );
 
     for (const [index, step] of steps.entries()) {
       const appliedBytes = step.spendingScriptCBOR.length / 2;
       expect(appliedBytes).toBeGreaterThanOrEqual(
         Object.values(EXPECTED_UNAPPLIED_SIZES_BYTES)[index]!,
       );
-      // The oversized-publication host (semantic-resolver precedent): each
-      // applied step must publish in one transaction under the raised
-      // emulator maxTxSize, parked at the unspendable credential; consuming
-      // transactions stay inside the 16,384 envelope via readFrom.
+      expect(
+        appliedBytes,
+        `applied step_0${(index + 1).toString()} exceeds the L1 envelope before transaction overhead`,
+      ).toBeLessThan(L1_ENVELOPE_BYTES);
+      // Reference deployment itself also fits the consensus-floor envelope;
+      // consumption transactions source the script through readFrom.
       expect(
         appliedBytes + STEP_TX_OVERHEAD_ALLOWANCE_BYTES,
-        `applied step_0${(index + 1).toString()} no longer fits the oversized reference-script publication host`,
-      ).toBeLessThanOrEqual(EMULATOR_PROTOCOL_PARAMETERS.maxTxSize);
+        `applied step_0${(index + 1).toString()} no longer fits a reference-script publication transaction`,
+      ).toBeLessThanOrEqual(L1_ENVELOPE_BYTES);
     }
   });
 });
@@ -605,7 +619,7 @@ describe("step-03 redeemer envelope chart (windows, frames, tier frontier)", () 
     required: 65_535n,
   }));
 
-  it("fits the worst Scan window (two full chunk proofs) and the windowless Verdict", () => {
+  it("fits the worst AdvanceOrClose window and its small closing form", () => {
     const midChunk = chunkProofToData(
       buildMidgardBoundedItemChunkProofV1(item, 3),
     );
@@ -617,10 +631,10 @@ describe("step-03 redeemer envelope chart (windows, frames, tier frontier)", () 
       MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
     );
 
-    const scanRedeemer: NativeScriptDecodingStep03SpendRedeemer = {
-      Continue: [
-        {
-          Scan: {
+    const scanRedeemer: NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer =
+      {
+        Continue: [
+          {
             input_index: 0n,
             output_index: 0n,
             control_cbor: controlCbor,
@@ -629,32 +643,38 @@ describe("step-03 redeemer envelope chart (windows, frames, tier frontier)", () 
             frames: worstFrames,
             step_budget: 16n,
           },
-        },
-      ],
-    };
+        ],
+      };
     const scanBytes = dataBytes(
-      Data.to(scanRedeemer, NativeScriptDecodingStep03SpendRedeemer),
+      Data.to(
+        scanRedeemer,
+        NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer,
+      ),
     );
     expect(
       scanBytes + STEP_TX_OVERHEAD_ALLOWANCE_BYTES,
       "worst two-chunk Scan window no longer fits the L1 envelope; the §5.2 planner's window geometry has no smaller legal cut to fall back to",
     ).toBeLessThanOrEqual(L1_ENVELOPE_BYTES);
 
-    const verdictRedeemer: NativeScriptDecodingStep03SpendRedeemer = {
-      Continue: [
-        {
-          Verdict: {
+    const verdictRedeemer: NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer =
+      {
+        Continue: [
+          {
             input_index: 0n,
             output_index: 0n,
             control_cbor: controlCbor,
             chunk_proof: midChunk,
             next_chunk_proof: nextChunk,
+            frames: [],
+            step_budget: 1n,
           },
-        },
-      ],
-    };
+        ],
+      };
     const verdictBytes = dataBytes(
-      Data.to(verdictRedeemer, NativeScriptDecodingStep03SpendRedeemer),
+      Data.to(
+        verdictRedeemer,
+        NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer,
+      ),
     );
     expect(verdictBytes).toBeLessThan(scanBytes);
     expect(verdictBytes + STEP_TX_OVERHEAD_ALLOWANCE_BYTES).toBeLessThanOrEqual(
@@ -662,7 +682,7 @@ describe("step-03 redeemer envelope chart (windows, frames, tier frontier)", () 
     );
   });
 
-  it("charts BindOutpoint at adversarial ledger depth and derives the tier-1 opening frontier", async () => {
+  it("charts the split opening and descriptor proofs independently", async () => {
     // Real deep ledger-trie proof for the accused outpoint key.
     const accusedKey = outputReferenceCbor({
       transactionId: h32("e1"),
@@ -697,49 +717,68 @@ describe("step-03 redeemer envelope chart (windows, frames, tier frontier)", () 
       deriveMidgardNativeTxProofSourceV1(compactTx).compactCbor,
     ).toString("hex");
 
-    const bindWithCarriage = (carriage: FieldCarriageV1): number => {
-      const redeemer: NativeScriptDecodingStep03SpendRedeemer = {
+    const openWithCarriage = (carriage: FieldCarriageV1): number => {
+      const redeemer: NativeScriptDecodingStep03OpenSubjectSpendRedeemer = {
         Continue: [
           {
-            BindOutpoint: {
-              input_index: 0n,
-              output_index: 0n,
-              subject_field_opening: {
-                BodyFieldOpening: {
-                  native_tx_compact_cbor: compactCborHex,
-                  carriage,
-                },
+            input_index: 0n,
+            output_index: 0n,
+            subject_field_opening: {
+              BodyFieldOpening: {
+                native_tx_compact_cbor: compactCborHex,
+                carriage,
               },
-              // Descriptor frontier: bounded token descriptors, generously
-              // over-allowed at 128 bytes.
-              descriptor_cbor: Buffer.alloc(128, 0x84).toString("hex"),
-              ledger_membership_proof: ledgerProof,
-              first_chunk_proof: firstChunk,
             },
           },
         ],
       };
       return dataBytes(
-        Data.to(redeemer, NativeScriptDecodingStep03SpendRedeemer),
+        Data.to(redeemer, NativeScriptDecodingStep03OpenSubjectSpendRedeemer),
       );
     };
+
+    const bindRedeemer: NativeScriptDecodingStep03BindDescriptorSpendRedeemer =
+      {
+        Continue: [
+          {
+            input_index: 0n,
+            output_index: 0n,
+            outpoint_key_cbor: accusedKey.toString("hex"),
+            descriptor_cbor: Buffer.alloc(128, 0x84).toString("hex"),
+            ledger_membership_proof: ledgerProof,
+            first_chunk_proof: firstChunk,
+          },
+        ],
+      };
+    const bindBytes = dataBytes(
+      Data.to(
+        bindRedeemer,
+        NativeScriptDecodingStep03BindDescriptorSpendRedeemer,
+      ),
+    );
+    expect(
+      bindBytes + STEP_TX_OVERHEAD_ALLOWANCE_BYTES,
+      "BindDescriptor at adversarial ledger depth no longer fits the L1 envelope",
+    ).toBeLessThanOrEqual(L1_ENVELOPE_BYTES);
 
     // Tier 2 (RawUtxo): the production-default carriage for large subject
     // fields — must fit at adversarial ledger depth with the full chunk-0
     // proof aboard.
-    const tier2Bytes = bindWithCarriage({ RawUtxo: { ref_input_index: 3n } });
+    const tier2Bytes = openWithCarriage({
+      RawUtxo: { ref_input_index: 3n },
+    });
     expect(
       tier2Bytes + STEP_TX_OVERHEAD_ALLOWANCE_BYTES,
-      "tier-2 BindOutpoint at adversarial ledger depth no longer fits the L1 envelope",
+      "tier-2 OpenSubject no longer fits the L1 envelope",
     ).toBeLessThanOrEqual(L1_ENVELOPE_BYTES);
 
     // Tier-1 frontier: the largest inline subject-field preimage BindOutpoint
     // can still carry. Derived, recorded, and bounded — the §5.2 planner picks
     // tier 1 only under this number; the spec-side per-field tier-1 cap is
     // 14,336 (§8.1), so the frontier can never exceed it.
-    const emptyInlineBytes = bindWithCarriage({ Inline: { preimage: "" } });
+    const emptyInlineBytes = openWithCarriage({ Inline: { preimage: "" } });
     const probeBytes = 4_096;
-    const probeInlineBytes = bindWithCarriage({
+    const probeInlineBytes = openWithCarriage({
       Inline: { preimage: Buffer.alloc(probeBytes, 0x85).toString("hex") },
     });
     const perPreimageByte = (probeInlineBytes - emptyInlineBytes) / probeBytes;

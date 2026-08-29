@@ -262,7 +262,12 @@ test decoding_engine_thread_state_encoding_is_flat_and_injective() {
     engine.outpoint_source_spend,
     0,
   )
-  let bound = engine.bound_scan_state_v1(pre, descriptor, #"8258205555")
+  let opened = engine.opened_subject_scan_state_v1(
+    pre,
+    #"8258205555",
+    descriptor.output_index,
+  )
+  let bound = engine.bound_descriptor_scan_state_v1(opened, descriptor)
   and {
     bytearray.length(engine.encode_scan_thread_state_v1(bound)) < 300,
     engine.encode_scan_thread_state_v1(pre) != engine.encode_scan_thread_state_v1(

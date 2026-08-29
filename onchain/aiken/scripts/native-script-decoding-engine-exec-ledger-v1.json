@@ -111,47 +111,68 @@
       }
     },
     {
-      "module": "fraud_proofs/native_script_decoding/step_03",
-      "neutralisationNote": "The two §7 substitution axes the working step exists to kill must both be live: a chunk of some other item (payload substitution, §7.5) and a control the thread never committed (cursor replay, §7.4) must each refuse. The §7.2 closing arm adds a third: an in-domain ordinal must refuse the out-of-domain close — were the count comparison neutralised, a prover could convict an operator whose in-domain rejection was correct without disproving it.",
+      "module": "fraud_proofs/native_script_decoding/step_03_open_subject",
+      "neutralisationNote": "OpenSubject must reject the two state-machine substitutions at its boundary: an out-of-domain direction-A close and a second opening of an already committed subject.",
       "neutralisation": [
-        "decoding_step_03_rejects_a_substituted_chunk",
-        "decoding_step_03_rejects_a_control_the_thread_never_committed",
-        "decoding_step_03_rejects_an_in_domain_ordinal_close"
+        "open_subject_rejects_an_out_of_domain_direction_a_ordinal",
+        "open_subject_rejects_a_second_open"
       ],
       "rows": {
-        "decoding_step_03_binds_a_spend_outpoint_and_starts_the_machine": {
-          "mem": 4573719,
-          "cpu": 1819948618,
+        "open_subject_commits_the_authenticated_outpoint": {
+          "mem": 2643685,
+          "cpu": 1139876543,
           "basisFit": "within"
         },
-        "decoding_step_03_closes_a_descriptor_contradiction_for_direction_b": {
-          "mem": 3646253,
-          "cpu": 1443683241,
+        "open_subject_closes_an_out_of_domain_direction_b_ordinal": {
+          "mem": 2494535,
+          "cpu": 1089747584,
+          "basisFit": "within"
+        }
+      }
+    },
+    {
+      "module": "fraud_proofs/native_script_decoding/step_03_bind_descriptor",
+      "neutralisationNote": "BindDescriptor must reject substitution of the OpenSubject key, substitution of the ledger's descriptor, and the wrong polarity for a non-native descriptor contradiction.",
+      "neutralisation": [
+        "bind_descriptor_rejects_a_substituted_outpoint_key",
+        "bind_descriptor_rejects_a_descriptor_the_ledger_never_held",
+        "bind_descriptor_rejects_direction_a_for_a_non_native_descriptor"
+      ],
+      "rows": {
+        "bind_descriptor_authenticates_and_starts_the_machine": {
+          "mem": 3529483,
+          "cpu": 1396940410,
           "basisFit": "within"
         },
-        "decoding_step_03_scans_a_signature_script_to_terminal": {
-          "mem": 4300096,
-          "cpu": 1786546593,
+        "bind_descriptor_closes_a_non_native_direction_b_descriptor": {
+          "mem": 2602137,
+          "cpu": 1021459663,
+          "basisFit": "within"
+        }
+      }
+    },
+    {
+      "module": "fraud_proofs/native_script_decoding/step_03_advance_or_close",
+      "neutralisationNote": "AdvanceOrClose keeps both §7 substitution axes live (cursor replay and payload substitution) and rejects a refusing scan in direction B, where it corroborates rather than contradicts the operator.",
+      "neutralisation": [
+        "advance_or_close_rejects_a_replayed_control",
+        "advance_or_close_rejects_substituted_chunk_bytes",
+        "advance_or_close_rejects_a_direction_b_refusal"
+      ],
+      "rows": {
+        "advance_or_close_commits_a_partial_advance": {
+          "mem": 3329705,
+          "cpu": 1368407064,
           "basisFit": "within"
         },
-        "decoding_step_03_verdict_proves_a_malformed_payload": {
-          "mem": 3199717,
-          "cpu": 1362715211,
+        "advance_or_close_closes_direction_b_at_the_exact_terminal": {
+          "mem": 3579557,
+          "cpu": 1438286068,
           "basisFit": "within"
         },
-        "decoding_step_03_verdict_proves_the_terminal_for_direction_b": {
-          "mem": 3396356,
-          "cpu": 1417909444,
-          "basisFit": "within"
-        },
-        "decoding_step_03_closes_an_out_of_domain_ordinal": {
-          "mem": 2382579,
-          "cpu": 1016343454,
-          "basisFit": "within"
-        },
-        "decoding_step_03_closes_an_out_of_domain_reference_ordinal": {
-          "mem": 2388802,
-          "cpu": 1018687200,
+        "advance_or_close_closes_a_direction_a_refusal": {
+          "mem": 2708220,
+          "cpu": 1118982047,
           "basisFit": "within"
         }
       }

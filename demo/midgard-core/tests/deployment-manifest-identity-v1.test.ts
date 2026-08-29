@@ -255,13 +255,13 @@ describe("DeploymentManifestV1 shared identity", () => {
       "inputSetUniqueness",
       "mintAuthorization",
     ]);
-    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(118);
+    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(120);
     expect(
       Object.keys(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
-    ).toHaveLength(101);
+    ).toHaveLength(103);
     expect(
       Object.keys(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES),
-    ).toHaveLength(102);
+    ).toHaveLength(104);
     expect(
       DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
         "V1 fraud-proof withdrawn-input step-03"
@@ -276,7 +276,6 @@ describe("DeploymentManifestV1 shared identity", () => {
     const appendedLinearFamilies = [
       ["FabricatedDeposit", "fabricated-deposit", 4],
       ["FabricatedWithdrawal", "fabricated-withdrawal", 4],
-      ["NativeScriptDecoding", "native-script-decoding", 4],
       ["MissingSignature", "missing-signature", 4],
       ["MissingNativeScriptTx", "missing-native-script-tx", 6],
       ["WithdrawnReferenceInput", "withdrawn-reference-input", 3],
@@ -305,6 +304,39 @@ describe("DeploymentManifestV1 shared identity", () => {
           ],
         ).toBe(contractName);
       }
+    }
+
+    const nativeScriptDecodingContracts = [
+      [
+        "V1 fraud-proof native-script-decoding step-01",
+        "fraudProofNativeScriptDecoding",
+      ],
+      [
+        "V1 fraud-proof native-script-decoding step-02",
+        "fraudProofNativeScriptDecodingStep02",
+      ],
+      [
+        "V1 fraud-proof native-script-decoding step-03 open-subject",
+        "fraudProofNativeScriptDecodingStep03OpenSubject",
+      ],
+      [
+        "V1 fraud-proof native-script-decoding step-03 bind-descriptor",
+        "fraudProofNativeScriptDecodingStep03BindDescriptor",
+      ],
+      [
+        "V1 fraud-proof native-script-decoding step-03 advance-or-close",
+        "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
+      ],
+      [
+        "V1 fraud-proof native-script-decoding step-04",
+        "fraudProofNativeScriptDecodingStep04",
+      ],
+    ] as const;
+    for (const [role, contractName] of nativeScriptDecodingContracts) {
+      expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toContain(contractName);
+      expect(
+        DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[role],
+      ).toBe(contractName);
     }
 
     const transitionFinalContracts = [

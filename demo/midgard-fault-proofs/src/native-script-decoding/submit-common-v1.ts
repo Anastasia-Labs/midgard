@@ -6,11 +6,7 @@
  * explicit `NativeScriptDecodingContractsV1` record plus the category id the
  * thread NFT rides — see `contracts-v1.ts`. This module owns what all five
  * submitters share: locating and validating the thread UTxO at a given step,
- * reading the step datum fail-closed, and the Q3 reference-script sourcing
- * (all four steps deploy as reference scripts in production because step 03's
- * applied body cannot inline inside the 16,384-byte envelope; each submitter
- * therefore accepts the published reference-script UTxO and verifies the
- * carried script hashes to the step it is spending before building anything).
+ * reading the step datum fail-closed, and reference-script sourcing.
  */
 import type { UTxO } from "@lucid-evolution/lucid";
 import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
@@ -44,9 +40,21 @@ export type NativeScriptDecodingCatalogueCategoryV1 = {
 export const nativeScriptDecodingSubmitError = (message: string): Error =>
   new Error(`${NATIVE_SCRIPT_DECODING_CATEGORY_LABEL}: ${message}`);
 
-/** One-based step number → human label used in failure messages. */
-export const nativeScriptDecodingStepLabelV1 = (stepIndex: 0 | 1 | 2 | 3) =>
-  `${NATIVE_SCRIPT_DECODING_CATEGORY_LABEL} step 0${(stepIndex + 1).toString()}`;
+export type NativeScriptDecodingStepIndexV1 = 0 | 1 | 2 | 3 | 4 | 5;
+
+const STEP_LABELS = [
+  "step 01",
+  "step 02",
+  "step 03 open-subject",
+  "step 03 bind-descriptor",
+  "step 03 advance-or-close",
+  "step 04",
+] as const;
+
+/** Physical chain index → human label used in failure messages. */
+export const nativeScriptDecodingStepLabelV1 = (
+  stepIndex: NativeScriptDecodingStepIndexV1,
+) => `${NATIVE_SCRIPT_DECODING_CATEGORY_LABEL} ${STEP_LABELS[stepIndex]}`;
 
 /**
  * Fetches the thread UTxO, requires it to sit at the expected step's address,
@@ -62,7 +70,7 @@ export const requireNativeScriptDecodingThreadUtxoV1 = async ({
   readonly lucid: Parameters<typeof fetchUtxoByOutRef>[0]["lucid"];
   readonly contracts: NativeScriptDecodingContractsV1;
   readonly categoryId: string;
-  readonly stepIndex: 0 | 1 | 2 | 3;
+  readonly stepIndex: NativeScriptDecodingStepIndexV1;
   readonly threadOutRef: string;
 }): Promise<{
   readonly threadUtxo: UTxO;
@@ -102,7 +110,7 @@ export const requireNativeScriptDecodingReferenceScriptV1 = ({
 }: {
   readonly utxo: UTxO;
   readonly expectedScriptHash: string;
-  readonly stepIndex: 0 | 1 | 2 | 3;
+  readonly stepIndex: NativeScriptDecodingStepIndexV1;
 }): UTxO => {
   if (utxo.scriptRef == null) {
     throw nativeScriptDecodingSubmitError(
@@ -132,7 +140,7 @@ export const requireNativeScriptDecodingStepStateV1 = <State>({
   readonly threadUtxo: UTxO;
   readonly signer: ResolvedProverSigner;
   readonly schema: { fraud_prover: string; data: State | null };
-  readonly stepIndex: 0 | 1 | 2 | 3;
+  readonly stepIndex: NativeScriptDecodingStepIndexV1;
 }): State => {
   const label = nativeScriptDecodingStepLabelV1(stepIndex);
   if (threadUtxo.datum == null) {

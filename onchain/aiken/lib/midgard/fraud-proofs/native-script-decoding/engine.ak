@@ -135,9 +135,10 @@ pub type ScanThreadStateV1 {
   outpoint_source_kind: Int,
   outpoint_cursor: Int,
   /// blake2b-256 of the canonical CBOR of the accused outpoint — the exact
-  /// ledger-trie key bytes; `#""` until bind.
+  /// ledger-trie key bytes; `#""` until `OpenSubject`.
   outpoint_key_hash: ByteArray,
-  /// Frozen verbatim from the bound descriptor; sentinels until bind.
+  /// The accused outpoint's output index is fixed by `OpenSubject`; the other
+  /// reference-script fields are frozen verbatim from the bound descriptor.
   reference_script_language: Int,
   output_index: Int,
   total_length: Int,
@@ -145,9 +146,8 @@ pub type ScanThreadStateV1 {
   /// `hash_machine_control_v1` of the current scan control; `#""` until the
   /// scan machine is initialised (and forever, on paths that close at bind).
   machine_state_hash: ByteArray,
-  /// `class_pending` until the verdict step; then the proven refusal class
-  /// (direction A) or `refusal_class_malformed` as the contradiction marker
-  /// (direction B).
+  /// `class_pending` until close; then the proven refusal class (direction A)
+  /// or `refusal_class_malformed` as the contradiction marker (direction B).
   refusal_class: Int,
 }
 
@@ -204,23 +204,35 @@ pub fn pre_bind_scan_state_v1(
   }
 }
 
-/// The bind step's freeze: the accused outpoint's trie-key hash plus the
-/// bound descriptor's reference-script anchor fields, copied verbatim. The
-/// scan is anchored to the reference-script ITEM commitment
-/// (`reference_script_item_commitment` / `reference_script_total_length`), in
-/// item-relative coordinates — the same anchor
-/// `ledger_output_commitment_v1.verify_reference_script_chunk` authenticates
-/// against.
-pub fn bound_scan_state_v1(
+/// The open-subject step's freeze: the exact accused outpoint's trie-key hash
+/// and output index. The hash lets the descriptor step accept the key bytes
+/// without reopening the committed transaction field.
+pub fn opened_subject_scan_state_v1(
   state: ScanThreadStateV1,
-  descriptor: LedgerOutputCommitmentV1,
   outpoint_key_bytes: ByteArray,
+  output_index: Int,
 ) -> ScanThreadStateV1 {
   ScanThreadStateV1 {
     ..state,
     outpoint_key_hash: blake2b_256(outpoint_key_bytes),
+    output_index,
+  }
+}
+
+/// The descriptor step's freeze: the authenticated descriptor's
+/// reference-script anchor fields, copied verbatim onto an already-opened
+/// subject. The scan is anchored to the reference-script ITEM commitment
+/// (`reference_script_item_commitment` / `reference_script_total_length`), in
+/// item-relative coordinates — the same anchor
+/// `ledger_output_commitment_v1.verify_reference_script_chunk` authenticates
+/// against.
+pub fn bound_descriptor_scan_state_v1(
+  state: ScanThreadStateV1,
+  descriptor: LedgerOutputCommitmentV1,
+) -> ScanThreadStateV1 {
+  ScanThreadStateV1 {
+    ..state,
     reference_script_language: descriptor.reference_script_language,
-    output_index: descriptor.output_index,
     total_length: descriptor.reference_script_total_length,
     item_commitment: descriptor.reference_script_item_commitment,
   }
@@ -357,7 +369,7 @@ pub type ScanOutcomeV1 {
   /// The fold stopped without a refusal: budget exhausted, terminal reached,
   /// frames exhausted, or the safe-read margin stopped a token read.
   ScanAdvancedV1 { control: NativeScriptStructureControlV1 }
-  /// A primitive step refused; the class survives to the verdict step.
+  /// A primitive step refused; the class survives to the closing transition.
   ScanRefusedV1 { refusal_class: Int }
 }
 

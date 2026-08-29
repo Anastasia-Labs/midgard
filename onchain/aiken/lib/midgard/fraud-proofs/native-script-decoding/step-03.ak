@@ -1,9 +1,6 @@
-//// Datum and redeemer wire shapes for the decoding-fault thread's third
-//// step: bind the accused outpoint's resolved descriptor, then fold the
-//// frozen scan primitives under a prover-chosen budget (self-loop), then
-//// consume the verdict (#635, #633) — or, direction B only, close an
-//// accusation whose pair names a subject outside the committed
-//// transaction's domain (#633 §7.2).
+//// Datum and redeemer wire shapes for the decoding-fault thread's split
+//// third step (#635, #633): open the accused subject, bind its resolved
+//// descriptor, then advance or close the frozen scan machine.
 
 use aiken/merkle_patricia_forestry as mpf
 use midgard/bounded_item_v1
@@ -18,59 +15,49 @@ pub type State =
 pub type Datum =
   ct.StepDatum<State>
 
-pub type Args {
-  /// One-shot: open the accused field at the accused ordinal through the §8.8
-  /// door, authenticate the resolved output's descriptor under the pre-state
-  /// ledger root, freeze the scan anchor, and either initialise the machine
-  /// (self-loop) or close at the bind step (wrapper malformed for direction
-  /// A; descriptor contradiction for direction B).
-  BindOutpoint {
-    input_index: Int,
-    output_index: Int,
-    subject_field_opening: FieldOpeningV1,
-    descriptor_cbor: ByteArray,
-    ledger_membership_proof: mpf.Proof,
-    /// Required (chunk 0) whenever the descriptor names a tag-0 script.
-    first_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
-  }
-  /// Self-loop: advance the machine by up to `step_budget` primitive steps
-  /// over a once-authenticated chunk window. Chunk proofs may be omitted for
-  /// frame/finalize-only stretches.
-  Scan {
-    input_index: Int,
-    output_index: Int,
-    control_cbor: ByteArray,
-    chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
-    next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
-    frames: List<NativeScriptFrameV1>,
-    step_budget: Int,
-  }
-  /// Consume the machine state: direction A exhibits exactly one refusing
-  /// primitive step; direction B exhibits the exact canonical terminal.
-  Verdict {
-    input_index: Int,
-    output_index: Int,
-    control_cbor: ByteArray,
-    chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
-    next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
-  }
-  /// One-shot, direction B only — the #633 §7.2 closing arm (decided
-  /// 2026-08-25): the accusation's pair names a subject outside the committed
-  /// transaction's domain, so the machine could never have resolved it and
-  /// the accusation is contradicted with no descriptor to bind. Three faces,
-  /// one obligation each: a `source_kind` naming no field and a negative
-  /// ordinal are out of domain on their own (no opening supplied); an
-  /// ordinal at or past the named field's item count is proven against the
-  /// §8.8 door's authenticated count. Closes straight to step-04 with the
-  /// class-0 contradiction marker.
-  BindOutOfDomain {
-    input_index: Int,
-    output_index: Int,
-    /// Required exactly when the named field exists and the ordinal is
-    /// non-negative — the one face that needs the committed field's count.
-    subject_field_opening: Option<FieldOpeningV1>,
-  }
+/// `step_03_open_subject`: authenticate the accused field and either open the
+/// exact in-domain outpoint or close an out-of-domain direction-B claim.
+pub type OpenSubjectArgs {
+  input_index: Int,
+  output_index: Int,
+  /// Required exactly when the source kind names a field and the ordinal is
+  /// non-negative. The authenticated count then distinguishes in-domain from
+  /// out-of-domain without a second redeemer arm.
+  subject_field_opening: Option<FieldOpeningV1>,
 }
 
-pub type SpendRedeemer =
-  ct.StepRedeemer<Args>
+/// `step_03_bind_descriptor`: authenticate the ledger's value for the opened
+/// outpoint, freeze the reference-script anchor, and initialise or close the
+/// scan machine.
+pub type BindDescriptorArgs {
+  input_index: Int,
+  output_index: Int,
+  /// Canonical outpoint bytes whose hash was committed by `OpenSubject`.
+  outpoint_key_cbor: ByteArray,
+  descriptor_cbor: ByteArray,
+  ledger_membership_proof: mpf.Proof,
+  /// Required (chunk 0) whenever the descriptor names a tag-0 script.
+  first_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+}
+
+/// `step_03_advance_or_close`: advance the machine under a bounded fold,
+/// self-loop when more work remains, or close on a direction-A refusal / the
+/// direction-B exact terminal.
+pub type AdvanceOrCloseArgs {
+  input_index: Int,
+  output_index: Int,
+  control_cbor: ByteArray,
+  chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  frames: List<NativeScriptFrameV1>,
+  step_budget: Int,
+}
+
+pub type OpenSubjectSpendRedeemer =
+  ct.StepRedeemer<OpenSubjectArgs>
+
+pub type BindDescriptorSpendRedeemer =
+  ct.StepRedeemer<BindDescriptorArgs>
+
+pub type AdvanceOrCloseSpendRedeemer =
+  ct.StepRedeemer<AdvanceOrCloseArgs>

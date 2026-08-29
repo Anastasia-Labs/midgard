@@ -60,7 +60,7 @@ const MALFORMED_REJECTION_VERDICT: SDK.OperatorVerdictV1 = {
   },
 };
 
-/** Asserts the thread NFT is gone from all four steps and the token is live. */
+/** Asserts the thread NFT is gone from all six validators and the token is live. */
 const expectProvenAndBurned = async (
   harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarnessV1>>,
   scenario: DecodingScenarioV1,
@@ -101,11 +101,17 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
     // Direction B's terminal is the whole item, so the verdict reads nothing.
     expect(plan.verdict.window).toBeNull();
 
-    const [step01, step02, step03, step04] =
-      await publishDecodingReferenceScriptsV1({
-        lucid: harness.funderLucid,
-        contracts: harness.decoding,
-      });
+    const [
+      step01,
+      step02,
+      step03OpenSubject,
+      step03BindDescriptor,
+      step03AdvanceOrClose,
+      step04,
+    ] = await publishDecodingReferenceScriptsV1({
+      lucid: harness.funderLucid,
+      contracts: harness.decoding,
+    });
     const finding: NativeScriptDecodingFindingV1 = {
       direction: 1n,
       sourceKind: 1n,
@@ -133,7 +139,14 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
           harness,
           scenario,
           referenceScriptItemBytes: item,
-          referenceScriptUtxos: { step01, step02, step03, step04 },
+          referenceScriptUtxos: {
+            step01,
+            step02,
+            step03OpenSubject,
+            step03BindDescriptor,
+            step03AdvanceOrClose,
+            step04,
+          },
         }),
       ),
     );
@@ -155,11 +168,17 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
       referenceScriptLanguage: 3,
       source: { kind: "forced", verdict: MALFORMED_REJECTION_VERDICT },
     });
-    const [step01, step02, step03, step04] =
-      await publishDecodingReferenceScriptsV1({
-        lucid: harness.funderLucid,
-        contracts: harness.decoding,
-      });
+    const [
+      step01,
+      step02,
+      step03OpenSubject,
+      step03BindDescriptor,
+      step03AdvanceOrClose,
+      step04,
+    ] = await publishDecodingReferenceScriptsV1({
+      lucid: harness.funderLucid,
+      contracts: harness.decoding,
+    });
     const finding: NativeScriptDecodingFindingV1 = {
       direction: 1n,
       sourceKind: 1n,
@@ -178,7 +197,7 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
         outputIndex: 0,
         totalLength: item.length,
       },
-      estimatedThreadTxCount: 5,
+      estimatedThreadTxCount: 6,
     };
     const outcome = await Effect.runPromise(
       proveNativeScriptDecodingFaultV1(
@@ -188,7 +207,14 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
           scenario,
           // The contradiction is the descriptor's own; no item is scanned.
           referenceScriptItemBytes: null,
-          referenceScriptUtxos: { step01, step02, step03, step04 },
+          referenceScriptUtxos: {
+            step01,
+            step02,
+            step03OpenSubject,
+            step03BindDescriptor,
+            step03AdvanceOrClose,
+            step04,
+          },
         }),
       ),
     );
@@ -198,7 +224,7 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
       );
     }
     // init, step-01, step-02, bind (closing), step-04 — the machine never runs.
-    expect(outcome.txHashes).toHaveLength(5);
+    expect(outcome.txHashes).toHaveLength(6);
     await expectProvenAndBurned(harness, scenario, outcome.fraudProofUnit);
   }, 600_000);
 
@@ -214,11 +240,17 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
       itemBytes: item,
       direction: 0,
     });
-    const [step01, step02, step03, step04] =
-      await publishDecodingReferenceScriptsV1({
-        lucid: harness.funderLucid,
-        contracts: harness.decoding,
-      });
+    const [
+      step01,
+      step02,
+      step03OpenSubject,
+      step03BindDescriptor,
+      step03AdvanceOrClose,
+      step04,
+    ] = await publishDecodingReferenceScriptsV1({
+      lucid: harness.funderLucid,
+      contracts: harness.decoding,
+    });
     const finding: NativeScriptDecodingFindingV1 = {
       direction: 0n,
       sourceKind: 1n,
@@ -237,7 +269,7 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
         outputIndex: 0,
         totalLength: item.length,
       },
-      estimatedThreadTxCount: 6 + plan.segments.length,
+      estimatedThreadTxCount: 7 + plan.segments.length,
     };
     const outcome = await Effect.runPromise(
       proveNativeScriptDecodingFaultV1(
@@ -246,7 +278,14 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
           harness,
           scenario,
           referenceScriptItemBytes: item,
-          referenceScriptUtxos: { step01, step02, step03, step04 },
+          referenceScriptUtxos: {
+            step01,
+            step02,
+            step03OpenSubject,
+            step03BindDescriptor,
+            step03AdvanceOrClose,
+            step04,
+          },
         }),
       ),
     );
@@ -255,7 +294,7 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
         `expected a proven outcome, got ${outcome.kind}: ${JSON.stringify(outcome)}`,
       );
     }
-    expect(outcome.txHashes).toHaveLength(6 + plan.segments.length);
+    expect(outcome.txHashes).toHaveLength(7 + plan.segments.length);
     await expectProvenAndBurned(harness, scenario, outcome.fraudProofUnit);
   }, 600_000);
 });

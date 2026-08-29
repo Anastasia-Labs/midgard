@@ -189,11 +189,13 @@ export const WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1 = Object.freeze({
   },
   nativeScriptDecoding: {
     familyId: "native-script-decoding",
-    stepCount: 4,
+    stepCount: 6,
     deployedStepContractNames: [
       "fraudProofNativeScriptDecoding",
       "fraudProofNativeScriptDecodingStep02",
-      "fraudProofNativeScriptDecodingStep03",
+      "fraudProofNativeScriptDecodingStep03OpenSubject",
+      "fraudProofNativeScriptDecodingStep03BindDescriptor",
+      "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
       "fraudProofNativeScriptDecodingStep04",
     ],
   },

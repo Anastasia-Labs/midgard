@@ -38,7 +38,7 @@ import {
   nativeScriptDecodingPreBindScanStateV1,
   NativeScriptDecodingStep02Datum,
   NativeScriptDecodingStep02SpendRedeemer,
-  NativeScriptDecodingStep03Datum,
+  NativeScriptDecodingStep03OpenSubjectDatum,
   OutputReference as OutputReferenceSchema,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -287,7 +287,7 @@ export const submitNativeScriptDecodingStep02 = async ({
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const step03Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: scanState },
-    NativeScriptDecodingStep03Datum,
+    NativeScriptDecodingStep03OpenSubjectDatum,
   );
   const step03OutputMatches = computationThreadOutputPredicate({
     address: contracts.steps[2].spendingScriptAddress,

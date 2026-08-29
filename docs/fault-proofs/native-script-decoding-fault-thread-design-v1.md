@@ -1,7 +1,7 @@
 # Native-script decoding fault: standalone computation-thread family (design v1)
 
 > **Registration update (2026-08-26):** the designed family is registered as
-> `nativeScriptDecoding` at `0000000d`. Its four-step topology and all four
+> `nativeScriptDecoding` at `0000000d`. Its six-validator topology and all six
 > mandatory authenticated reference scripts are part of canonical deployment
 > identity. Watcher topology registration does not mount the autonomous
 > detector/prover. Adoption is a fresh genesis/redeployment with no migration
@@ -20,10 +20,10 @@ catalogue** (`docs/fault-proofs/rejection-reason-catalogue-v1.md`, committed
 on this branch) as the normative arm inventory for `RejectionReasonV1`:
 §2.4.1 now defers to it instead of restating a reason type of its own.
 
-This document is the architecture and specification for a NEW standalone
+This document is the architecture and specification for a standalone
 single-party fault-proof computation-thread family covering the native-script
-decoding/canonicity fault. It is a design document only: no validator, library,
-or off-chain code is changed by it, and nothing in it re-opens the decisions
+decoding/canonicity fault. The family is implemented on-chain and off-chain;
+nothing in this document re-opens the decisions
 recorded in `docs/fault-proofs/architecture.md` §2 ("Application: native-script
 structural canonicity", recorded 2026-08-24). Where this document depends on a
 commitment that does not exist yet, the dependency is marked **OPEN** rather
@@ -163,9 +163,10 @@ Mirrors the double-spend family
    forced leaf's verdict where one is involved — `ForcedTxInvalid` with a
    scan-borne reason for direction B, `ForcedTxValid` for direction A's
    forced arm — and sources the pre-state root from the transition trace;
-   step-03 binds the accused outpoint's descriptor and scans its payload
-   bytes under the pinned per-node budget, as many L1 transactions as
-   needed; step-04 concludes via `common.finalize`
+   OpenSubject authenticates and commits the accused outpoint,
+   BindDescriptor authenticates its descriptor, and AdvanceOrClose scans its
+   payload bytes under the pinned per-node budget for as many L1 transactions
+   as needed; step-04 concludes via `common.finalize`
    (`onchain/aiken/lib/midgard/fraud-proofs/common.ak:579-673`), minting the
    permanent `fraud_proof` token at the fraud-proof address.
 5. **Removal**: the `fraud_proof` token authorizes state-queue
@@ -173,7 +174,7 @@ Mirrors the double-spend family
    rule binds the whole proof against **half** of that window
    (`architecture.md:283-286`).
 
-A duplicate Init by a second prover mints a second unit of the *same* asset
+A duplicate Init by a second prover mints a second unit of the _same_ asset
 name — benign under the recorded analysis (`architecture.md:159-164`); see
 §7.3.
 
@@ -205,7 +206,7 @@ Both directions:
      `L2TransactionEventKey { tx_id }`; Forced:
      `ForcedTransactionEventKey { tx_order_id }` —
      `ledger-state.ak:553-558`) yields `EventToStepValue { step_index,
-     phase }` (`ledger-state.ak:560-563`), opened exactly as
+phase }` (`ledger-state.ak:560-563`), opened exactly as
      `verify_event_to_step_membership` (`validation-claim-v1.ak:187-201`;
      domain `EventToStepRootDomain`, count `header.total_event_count`).
   2. `transition_trace_root` at that `step_index` yields the
@@ -213,14 +214,14 @@ Both directions:
      (`validation-claim-v1.ak:164-185`; domain `TransitionTraceRootDomain`,
      count `header.transition_step_count`, with `key == value.step_index`
      and the schema-version check).
-  Cross-checks mirrored from `committed_claim_structure_is_valid`
-  (`validation-claim-v1.ak:357-361`): the step's `event_key` equals the
-  opened event key, and `phase == phase_for_event_key(event_key)`
-  (`validation-claim-v1.ak:320-330`). The thread's `prior_ledger_root` is
-  the opened step's `pre_utxos_root`. (For a Rejected forced event the claim
-  machinery additionally forces `pre_utxos_root == post_utxos_root`,
-  `validation-claim-v1.ak:429-430` — consistent with a rejection applying no
-  delta.)
+     Cross-checks mirrored from `committed_claim_structure_is_valid`
+     (`validation-claim-v1.ak:357-361`): the step's `event_key` equals the
+     opened event key, and `phase == phase_for_event_key(event_key)`
+     (`validation-claim-v1.ak:320-330`). The thread's `prior_ledger_root` is
+     the opened step's `pre_utxos_root`. (For a Rejected forced event the claim
+     machinery additionally forces `pre_utxos_root == post_utxos_root`,
+     `validation-claim-v1.ak:429-430` — consistent with a rejection applying no
+     delta.)
 - **Ledger trie (pre-state)**: for a resolved outpoint K, membership of the
   leaf `key = cbor(K)`, `value = cbor(LedgerOutputCommitmentV1)` under
   `prior_ledger_root` — the exact check the validation machine itself performs
@@ -239,7 +240,7 @@ Both directions:
   `onchain/aiken/lib/midgard/fraud-proofs/field-opening-v1.ak:102-106`, fixed
   38-byte stride reads via `native_tx_machine_walk_v1.spend_input_at`,
   `onchain/aiken/lib/midgard/native-tx-machine-walk-v1.ak:532`). This is
-  deliberately the positionally-openable coordinate: the §8.8 stride read *is*
+  deliberately the positionally-openable coordinate: the §8.8 stride read _is_
   the ordinal's semantics. The §2.4 leaf arms present the **same coordinate
   as a pair** `{ source_kind, input_index }` — catalogue convention:
   `source_kind` 0 = spend (field 0), 1 = reference (field 1), `input_index`
@@ -247,7 +248,7 @@ Both directions:
   (`rejection-reason-catalogue-v1.md` §5, coordinate conventions) — which
   flattens injectively onto the thread's cursor as `input_index` (spend) /
   `spend_count + input_index` (reference). Note honestly that the machine's
-  internal resolution-schedule *hash* sorts scheduled inputs by encoded key
+  internal resolution-schedule _hash_ sorts scheduled inputs by encoded key
   (`transaction_resolution_schedule_hash`,
   `validation-machine-v1.ak:859-885`; comparator at `:852-857`) — that sorted
   position is a different, non-positionally-openable ordering and is **not**
@@ -279,7 +280,7 @@ Direction A additionally, for a **Normal**-source transaction:
   `:381-390`; type-level `MidgardTxCompact.validity` at
   `ledger-state.ak:473-477`; the V1 leaf wrapper is `L2TransactionSourceV1`,
   `ledger-state.ak:532-536`). Direction A requires `validity_code ==
-  TxIsValid` (code 0, `codec.ak:31-46`) **on this leaf, full stop** — that
+TxIsValid` (code 0, `codec.ak:31-46`) **on this leaf, full stop** — that
   field is the acceptance claim the fault contradicts (follow-up ruling
   2026-08-24). Its authority is established by the §2.4.3 authoritativeness
   predicates, which ride the same format wave direction B is gated on; the
@@ -323,7 +324,7 @@ Direction B additionally:
   machinery — and why the code hash alone could not attribute (the same
   codes are emitted from CanonicalDecode, `validation-machine-v1.ak:1627`,
   `:1941`, and PhaseANativeScripts, `:4041-4069`, among ~50 sites) — is
-  retained as the design *rationale* for the per-arm subject coordinates,
+  retained as the design _rationale_ for the per-arm subject coordinates,
   now developed in full by the catalogue's §2 ambiguity map (§2.4.1).
 - The forced leaf's `source.compact_cbor` supplies the committed transaction
   bytes for the field-opening door (same §8.8 coordinate as direction A);
@@ -373,8 +374,8 @@ Direction B additionally:
 
 The maximum reference-script payload reachable through committed L2 outputs is
 16,341 bytes = 5,447 nodes (pinned ledger,
-`native-script-scan-exec-ledger-v1.json`), and 5,447 < 16,384. So *within the
-byte caps* the node-limit and depth-limit codes are wrongful per se. But
+`native-script-scan-exec-ledger-v1.json`), and 5,447 < 16,384. So _within the
+byte caps_ the node-limit and depth-limit codes are wrongful per se. But
 until the `total_length` cap lands (folded B-2, §2.2) the thread cannot
 conclude from the codes alone; it proves canonicity by scanning, and this
 lemma only explains why honest blocks never charge those codes to a resolved
@@ -414,7 +415,7 @@ branch; audited 2026-08-24 against the same machine revision, phase by
 phase over every emission site). This document **defers** to the catalogue
 and does not restate its 47 arms: the catalogue is the single source of
 truth for the arm list, payloads, emission-site anchors, refutability
-classes, and design notes. What follows is the type's *shape* and the arms
+classes, and design notes. What follows is the type's _shape_ and the arms
 this thread consumes.
 
 **Shape (catalogue §5).** **47 constructors**, derived from the machine's
@@ -463,7 +464,7 @@ names them (catalogue §5, ResolveInputs group; emission sites
 `input_index` the item ordinal within that field — the §2.1 field-order
 coordinate presented as a pair. Two neighbouring resolved-outpoint arms
 are deliberately **not** in this thread's domain:
-`InputSpentOutputNonCanonical { source_kind, input_index }` (the *output*
+`InputSpentOutputNonCanonical { source_kind, input_index }` (the _output_
 canonicity scan, `:6458-6463` — the D-S10 output-well-formedness overlap,
 §9 Q3) and the own-output twins (`OutputReferenceScript*`, ScriptSources
 stage 5 — the witness/own-bytes sibling concern of §9 Q4).
@@ -479,7 +480,7 @@ document's old OPEN (B-1) and re-scoped direction B to one named outpoint.
 A reason that **misattributes** the subject space — e.g. a genuinely
 resolved-outpoint scan fault recorded as `WitnessNativeScriptMalformed` —
 is a trace-detail fault for the interactive family, exactly as the
-misattributed-phase residual was before (§7.6). The 47-way split *shrinks*
+misattributed-phase residual was before (§7.6). The 47-way split _shrinks_
 that residual: each arm carries its own single-party refutation procedure
 (catalogue §3), so a wrongly-chosen arm whose named subject does not
 exhibit its named fault is refutable under that arm's own procedure without
@@ -499,7 +500,7 @@ hash:
   catalogue's §5.1 — this document does not duplicate it (mechanically, a
   single `when`-expression). The bridge to the FROZEN descriptor format is
   unchanged: `hash_rejection_code(rejection_code_of(reason)) ==
-  descriptor.rejection_code_hash` (`hash_rejection_code` at
+descriptor.rejection_code_hash` (`hash_rejection_code` at
   `onchain/aiken/lib/midgard/validation-trace-v1.ak:239-243`, domain-tagged
   blake2b-256).
 - **(b) `coarse_bucket_of(reason: RejectionReasonV1) -> MidgardTxValidity`**
@@ -532,7 +533,7 @@ hash:
   committed code hash: `verdict is ForcedTxInvalid { reason }` ⇒
   `descriptor.verdict == Rejected` and
   `hash_rejection_code(rejection_code_of(reason)) ==
-  descriptor.rejection_code_hash`; `ForcedTxValid` ⇒
+descriptor.rejection_code_hash`; `ForcedTxValid` ⇒
   `descriptor.verdict == Accepted`.
 - **Module hosting (readiness-review resolution, 2026-08-24).** A new
   module `onchain/aiken/lib/midgard/rejection-reason-v1.ak` hosts
@@ -572,7 +573,7 @@ to it — full stop, no descriptor path, gated on the wave like direction B.
   §2.4.2(c) extension: `ForcedTxValid` ⇒
   `verified.tx_compact.validity_code == 0`; `ForcedTxInvalid { reason }` ⇒
   `verified.tx_compact.validity_code ==
-  validity_to_code(coarse_bucket_of(reason))` (`validity_to_code`,
+validity_to_code(coarse_bucket_of(reason))` (`validity_to_code`,
   `codec.ak:48`; `coarse_bucket_of`, §2.4.2(b)). This is **never a
   cross-root opening**: the two validation sources open disjoint roots
   (§2.1, `validation-claim-v1.ak:233` vs `:254`), forced transactions do
@@ -581,7 +582,7 @@ to it — full stop, no descriptor path, gated on the wave like direction B.
   (readiness-review resolution, 2026-08-24).** The same wave retires
   `MidgardTxValidity`'s five rejection arms (catalogue C-3; §2.4.2(b), §8),
   so the normative post-wave state is: `MidgardTxValidity = TxIsValid |
-  TxIsInvalid`; the compact wire scalar takes exactly two values (0 =
+TxIsInvalid`; the compact wire scalar takes exactly two values (0 =
   valid, 1 = invalid); `expect_validity_code` bounds shrink to 0..1 and
   `validity_from_code` / `validity_to_code` shrink with them
   (`codec.ak:25-56` — this changes the canonical compact bytes, in-wave
@@ -600,7 +601,7 @@ to it — full stop, no descriptor path, gated on the wave like direction B.
   `:261`). The additions are constant-cost field equalities on
   already-decoded values: no new root opening, no new hashing, no format
   change to any leaf beyond the §2.4 revision itself. This is also the
-  *soundest* placement examined: `source_binding_is_exact` receives the
+  _soundest_ placement examined: `source_binding_is_exact` receives the
   raw membership, not the decoded view, so putting the checks there would
   re-pay the decode; no cheaper site exists because every claim already
   passes through this function.
@@ -617,33 +618,36 @@ to it — full stop, no descriptor path, gated on the wave like direction B.
 
 ## 3. Contract set
 
-Four spending validators plus reuse of the existing generic machinery. Names
+Six spending validators plus reuse of the existing generic machinery. Names
 follow the double-spend family's convention.
 
-| # | Validator (new) | Role |
-|---|---|---|
-| 1 | `validators/fraud-proofs/native-script-decoding/step-01.ak` | Bind the faulted transaction T to the header (direction A); record the direction and pass through (direction B) |
-| 2 | `validators/fraud-proofs/native-script-decoding/step-02.ak` | Direction B: bind the forced leaf's verdict; both: source the pre-state root from the transition trace; branch on direction |
-| 3 | `validators/fraud-proofs/native-script-decoding/step-03.ak` | Self-looping resolve-and-scan engine (multi-arm redeemer) |
-| 4 | `validators/fraud-proofs/native-script-decoding/step-04.ak` | Conclude: `common.finalize`, mint `fraud_proof` |
+| #   | Validator (new)                                                              | Role                                                                                                                        |
+| --- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `validators/fraud-proofs/native-script-decoding/step-01.ak`                  | Bind the faulted transaction T to the header (direction A); record the direction and pass through (direction B)             |
+| 2   | `validators/fraud-proofs/native-script-decoding/step-02.ak`                  | Direction B: bind the forced leaf's verdict; both: source the pre-state root from the transition trace; branch on direction |
+| 3   | `validators/fraud-proofs/native-script-decoding/step-03-open-subject.ak`     | Authenticate the accused field and commit its exact outpoint, or close an out-of-domain direction-B claim                   |
+| 4   | `validators/fraud-proofs/native-script-decoding/step-03-bind-descriptor.ak`  | Authenticate the committed outpoint's ledger descriptor and initialize or close the scan                                    |
+| 5   | `validators/fraud-proofs/native-script-decoding/step-03-advance-or-close.ak` | Self-looping budgeted scan; close a direction-A refusal or direction-B exact terminal                                       |
+| 6   | `validators/fraud-proofs/native-script-decoding/step-04.ak`                  | Conclude: `common.finalize`, mint `fraud_proof`                                                                             |
 
 ### 3.1 Parameterization (acyclic chain)
 
 - step-01(`step_02_hash`, `computation_thread_policy_id`, `hub_oracle`)
-- step-02(`step_03_hash`, `computation_thread_policy_id`)
-- step-03(`step_04_hash`, `computation_thread_policy_id`,
-  `field_preimage_certificate_policy_id`)
+- step-02(`step_03_open_subject_hash`, `computation_thread_policy_id`)
+- step-03-open-subject(`step_03_bind_descriptor_hash`, `step_04_hash`,
+  `computation_thread_policy_id`, `field_preimage_certificate_policy_id`)
+- step-03-bind-descriptor(`step_03_advance_or_close_hash`, `step_04_hash`,
+  `computation_thread_policy_id`)
+- step-03-advance-or-close(`step_04_hash`,
+  `computation_thread_policy_id`)
 - step-04(`computation_thread_policy_id`, `fraud_proof_token_policy_id`,
   `fraud_proof_token_address`)
 
-A naive design would put "bind outpoint" and "scan payload" in two validators
-that hand off to each other; that is a parameterization **cycle** (each needs
-the other's hash) and is impossible under hash parameterization. Step-03 is
-therefore a **single self-looping validator**: its continuation output is
-either its own script address (next arm / next scan window) or step-04's. A
-validator knows its own hash from `own_out_ref` resolution, so the self-loop
-needs no self-parameter; only the forward edge to step-04 is a parameter.
-The chain 01→02→03→(03)*→04 is acyclic in parameters.
+The chain is acyclic in parameters:
+01→02→OpenSubject→BindDescriptor→(AdvanceOrClose)\*→04. OpenSubject and
+BindDescriptor may also close directly to step-04. AdvanceOrClose knows its
+own hash from `own_out_ref` resolution, so its scan self-loop needs no
+self-parameter.
 
 ### 3.2 Redeemer arms
 
@@ -653,7 +657,7 @@ Every step carries `ct.Cancel` via `common.cancel`
 steps do. The Continue arms:
 
 - **step-01** `Continue(BindTransaction { direction, source_kind,
-  carriage })` — one source root per thread (§2.1):
+carriage })` — one source root per thread (§2.1):
   - Direction A, Normal source: verbatim reuse of
     `pass_native_tx_to_next_step_carried` (`common.ak:149-252`) including
     the published-chunk carriage duality (#545), as in
@@ -682,7 +686,7 @@ steps do. The Continue arms:
      event key, then `transition_trace_root` at the yielded `step_index`,
      with the §2.1 cross-checks (the openings of
      `validation-claim-v1.ak:164-201`); freeze `prior_ledger_root :=
-     transition_step.pre_utxos_root` into the state.
+transition_step.pre_utxos_root` into the state.
   3. Direction A, Normal source (`BindVerdict { event_step_openings }`):
      nothing beyond item 2 — the acceptance verdict was already bound at
      step-01 from the tx leaf's own validity field (follow-up ruling
@@ -690,7 +694,7 @@ steps do. The Continue arms:
      the prover-chosen ordinal. No descriptor membership exists in the
      redeemer.
   4. Forced-source threads (`BindVerdict { forced_membership,
-     event_step_openings }`): open the `ForcedInclusionTxV1` leaf at
+event_step_openings }`): open the `ForcedInclusionTxV1` leaf at
      `ForcedTransactionEventKey { tx_order_id }` (the
      `verify_source_authentication` opening,
      `validation-claim-v1.ak:215-241`), authenticate the source triple
@@ -709,82 +713,35 @@ steps do. The Continue arms:
        field-order cursor — `input_index` for spend (arm `source_kind` 0),
        `spend_count + input_index` for reference (arm `source_kind` 1),
        per §2.1 — into the state.
-     **No descriptor opening, no terminal-state preimage, no phase check**
-     — the constructor arm is the attribution.
+       **No descriptor opening, no terminal-state preimage, no phase check**
+       — the constructor arm is the attribution.
   5. Output state: the §4 schema, cursor frozen at the accused ordinal
      (direction B) or at the prover-chosen ordinal (direction A, either
      source kind).
-- **step-03**, four Continue arms:
-  - `BindOutpoint { field_opening, outpoint_index, ledger_membership,
-    descriptor_bytes }`: open T's field 0 or 1 through the §8.8 door
-    (`opened_field_view` + the 38-byte stride read, as
-    `double-spend/step-03.ak:78-92`), read outpoint K at the cursor index;
-    prove `mpf.has(prior_ledger_root, cbor(K), descriptor_bytes, proof)`
-    (mirroring `validation-machine-v1.ak:6398-6407`); decode the descriptor
-    (`ledger-output-commitment-v1.ak:162`) and check
-    `descriptor_is_well_formed` (`:113-133`). The bound ordinal must equal
-    the frozen cursor — direction B binds **exactly the accused outpoint**,
-    direction A the prover-chosen one. If
-    `reference_script_language != 0` (not tag-0 native): direction B is
-    **already done** — a scan-borne rejection charged to an outpoint whose
-    trie-authenticated descriptor is not a tag-0 native script is
-    contradicted by the descriptor alone; record the contradiction and hand
-    off toward step-04. Direction A **fails** the arm (the prover picked the
-    wrong K — direction A needs exactly one faulting K). If tag-0:
-    initialize the inner machine with
-    `ledger_output_proof_v1.initial_control_v1(output_index, total_length,
-    item_commitment)` (`onchain/aiken/lib/midgard/ledger-output-proof-v1.ak:279-300`)
-    advanced to the native-script stage bound to the descriptor's
-    reference-script window
-    (`ledger-output-proof-v1.ak:102-113` binds
-    `native_control.start_offset == output_scan.reference_script_offset` etc.).
-  - `Scan { control_bytes, chunk_window, budget_witness }`: the budgeted fold
-    (§3.3). Decode-and-re-encode `control_bytes`
-    (`decode_control_v1` re-encodes for canonicity,
-    `ledger-output-proof-v1.ak:445`), check
-    `blake2b_256(domain ‖ control_bytes)` equals the carried machine hash,
-    authenticate the 1–2 adjacent 4095-byte chunks **once** via
-    `authenticated_chunk_window` (`ledger-output-proof-v1.ak:490-534`,
-    backed by `bounded_item_v1.verify_chunk`,
-    `bounded-item-v1.ak:145`), then loop the frozen per-node primitives
-    (`structure_token_step_v1` `native-script-scan-v1.ak:805-863`,
-    `structure_frame_step_v1` `:868-911`) up to the per-transaction node
-    budget, and carry the new control hash. Terminal within the window:
-    `finalize_structure_v1` (`:913-938`) /
-    `structure_terminal_is_exact_v1` (`:940-947`).
-  - `Verdict { … }`: consume the inner machine's terminal.
-    - Direction A: **any refusal** of the frozen machine on the committed
-      bytes (invalid-field-type, node-limit, depth-limit — the same
-      distinctions the result mapping draws,
-      `validation-machine-v1.ak:6458-6484`) proves the contradiction with
-      `Accepted`; hand off to step-04 with the refusal class recorded.
-    - Direction B: the machine must reach the **exact canonical terminal**
-      (`terminal_is_exact` discipline as
-      `ledger-output-proof-v1.ak:1286` / descriptor exactness `:1336`) on the
-      accused outpoint; that single terminal contradicts the leaf's
-      scan-borne reason, and the thread hands off to step-04. No iteration
-      over other outpoints exists any more (the universal quantification of
-      the superseded V1-format binding is a §6 historical note).
-  - `BindOutOfDomain { subject_field_opening }` (decided 2026-08-25, the
-    offchain plan's §7.2 closing arm; direction B only, once, on a pre-bind
-    state): the forced leaf's verbatim accusation pair names a subject the
-    committed transaction does not have, so `BindOutpoint` aborts on it
-    (§7.3 abort-never-clamp) and the thread would otherwise strand — yet the
-    machine never emits such a pair, so its presence in a committed
-    rejection reason is itself the contradiction. Three faces, one
-    obligation each: a `source_kind` outside `{0, 1}` names no field and a
-    negative ordinal names no item (both close with no opening — the
-    canonical redeemer carries `None`); an ordinal at/past the named field's
-    item count is proven by opening the accused field through the §8.8 door
-    and reading its authenticated item count. Closes straight to step-04
-    with the class-0 contradiction marker on the still-unbound state, which
-    step-04's direction-B gate consumes unchanged. The `source_kind` and
-    negative faces are a deliberate strict superset (owner-approved
-    2026-08-25) of the decision text's
-    `outpoint_cursor ≥ |field|`: step-02's direction-B copy is verbatim by
-    the "store the pair" ruling, so all three faces reach step-03, and each
-    is the same fault statement — the accusation names a subject the
-    machine could never have resolved.
+- **step-03 OpenSubject** `Continue { subject_field_opening, … }`: runs once
+  on step-02's sentinel state. If the source kind names spend/reference and
+  the ordinal is non-negative, open T's corresponding field through the
+  §8.8 door and use its authenticated item count. An in-domain ordinal commits
+  `blake2b_256(cbor(K))` and K's output index, then pays BindDescriptor. An
+  out-of-domain subject (unknown field, negative ordinal, or ordinal at/past
+  the authenticated count) closes only in direction B, paying step-04 with
+  the class-0 contradiction marker.
+- **step-03 BindDescriptor** `Continue { outpoint_key_cbor,
+descriptor_cbor, ledger_membership_proof, first_chunk_proof, … }`: require
+  the supplied canonical K bytes to hash to OpenSubject's commitment, then
+  prove `mpf.has(prior_ledger_root, cbor(K), descriptor_cbor, proof)` and
+  require the descriptor's output index to equal the opened one. A non-tag-0
+  descriptor closes only direction B. A tag-0 descriptor authenticates chunk
+  zero, freezes the item anchor, and either initializes the machine at
+  AdvanceOrClose or closes a malformed wrapper only in direction A.
+- **step-03 AdvanceOrClose** `Continue { control_cbor, chunk_proof,
+next_chunk_proof, frames, step_budget, … }`: require the control hash and
+  frozen descriptor anchor, authenticate the 1–2 adjacent chunks once, and
+  run the bounded fold. A non-terminal advance self-loops. A direction-B
+  advance reaching the exact canonical terminal closes to step-04 in that
+  same transaction. A refusal closes only direction A with its exact class.
+  A separately committed direction-B terminal may also close canonically
+  with a zero-budget, windowless transition.
 - **step-04** `Continue(Finalize { … })`: `common.finalize`
   (`common.ak:579-673`) exactly as `double-spend/step-04.ak:53-72`; re-check
   the carried terminal marker (direction A: refusal recorded; direction B:
@@ -804,7 +761,7 @@ illustrative), containing:
 
 - the §4 state type and its canonical encoder;
 - `budgeted_scan_v1(control, window_bytes, max_nodes) -> control`: the thin
-  fold described above. This is NEW code, deliberately *not* a reuse of
+  fold described above. This is NEW code, deliberately _not_ a reuse of
   `ledger_output_proof_v1.step_v1` (`ledger-output-proof-v1.ak:1028-1063`)
   in a loop: `step_v1` re-authenticates its chunk window per invocation,
   which at one call per node would multiply the chunk-hash cost ~60-fold per
@@ -859,7 +816,7 @@ pub type ScanThreadStateV1 {
                                      // kind — distinct from this state's Normal/Forced
                                      // source_kind field), per §2.1;
                                      // direction A: prover-chosen
-  outpoint_key_hash: ByteArray,      // 32B blake2b_256(cbor(K)); binds BindOutpoint → Scan
+  outpoint_key_hash: ByteArray,      // 32B blake2b_256(cbor(K)); binds OpenSubject → BindDescriptor
   reference_script_language: Int,    // from the bound descriptor: -1 | 0 | 3 | 128
   output_index: Int,
   total_length: Int,                 // descriptor.reference_script_total_length
@@ -881,19 +838,19 @@ constant-size (< 300 bytes) regardless of payload size.
 2026-08-24).** Both directions bind **exactly one** outpoint per thread, so
 `outpoint_cursor` is frozen at step-02 and never advances: direction B's
 comes from the forced leaf's reason, direction A's is prover-chosen (one
-refusal contradicts `Accepted`). `BindOutpoint` may only fire when
-`machine_state_hash` is the pre-bind sentinel, and must bind the outpoint at
+refusal contradicts `Accepted`). `OpenSubject` may only fire when
+`machine_state_hash` is the pre-open sentinel, and must open the outpoint at
 exactly `outpoint_cursor` (the 38-byte stride read is positional, so the
-ordinal *is* the identity — `double-spend/step-03.ak:89-92` precedent). A
+ordinal _is_ the identity — `double-spend/step-03.ak:89-92` precedent). A
 prover cannot substitute an outpoint: the frozen ordinal is the key,
-`outpoint_key_hash` pins K across the Bind→Scan→Verdict arc, and
+`outpoint_key_hash` pins K across the OpenSubject→BindDescriptor boundary, and
 `item_commitment` pins the bytes (§5). `machine_state_hash` carries the inner
 cursor between L1 transactions exactly as the pushdown template's
 `script_digest`-protected cursor does
 (`native-tx-script-pushdown-v1.ak:643-654`), and the frozen control is already
 constant-size (`NativeScriptStructureControlV1`: version, stage, start_offset,
 cursor, end_offset, stack_root hash-chain, stack_depth, node_count). Replays
-of an old redeemer fail the hash chain; replaying an old *state* is impossible
+of an old redeemer fail the hash chain; replaying an old _state_ is impossible
 because the thread is a single linear UTxO (§7.4).
 
 ---
@@ -910,7 +867,7 @@ already commits the full output bytes as `item_commitment`, a 32-byte
 commitment over 4095-byte chunks
 (`ledger-output-commitment-v1.ak:31-48`; chunk size
 `bounded-item-v1.ak:12`; verification `bounded-item-v1.ak:145`). The
-`BindOutpoint` arm inherits it via `initial_control_v1(output_index,
+BindDescriptor inherits it via `initial_control_v1(output_index,
 total_length, item_commitment)` (`ledger-output-proof-v1.ak:279-300`), and
 each `Scan` transaction authenticates a 1–2-chunk adjacent window once via
 `authenticated_chunk_window` (`ledger-output-proof-v1.ak:490-534`) and steps
@@ -939,7 +896,7 @@ Publishing chunk bytes as reference-input datums (the #545 published-chunk
 duality, `double-spend/step-01.ak:153-243`,
 `common.ak` `NativeTxInclusionCarriage`) lets a step transaction pay two
 small integers and reference inputs instead of inlining bytes. This is a
-*transport* optimization, not an authentication root: the parked chunks still
+_transport_ optimization, not an authentication root: the parked chunks still
 verify against `item_commitment`. The design permits a published-chunk
 transport for `Scan` windows mirroring #545, but the security argument never
 rests on it.
@@ -968,8 +925,8 @@ CPU is non-binding: 61 × 66.1M ≈ 4.03B < 8B.
 **Worst-case step count** (single maximal 5,447-node payload):
 
 - scan steps, deep: ⌈5,447 / 61⌉ = **90 transactions**
-- plus binding/structure overhead: step-01, step-02, one `BindOutpoint`,
-  the `Verdict` arm, step-04 — call it ~10 more. Both directions bind
+- plus binding/structure overhead: step-01, step-02, OpenSubject,
+  BindDescriptor, the closing transition, and step-04 — call it ~10 more. Both directions bind
   exactly one outpoint (ruled 2026-08-24). **Worst case ≈ 100 L1
   transactions, in either direction.**
 
@@ -1043,7 +1000,7 @@ machinery).
 Covered in §4: the frozen single-outpoint `outpoint_cursor`, arm-gating on
 the pre-bind sentinel, positional binding of K to the frozen ordinal, and
 the inner `machine_state_hash` chain. A prover replaying an old redeemer
-against a new state fails the hash chain; replaying an old *state* is
+against a new state fails the hash chain; replaying an old _state_ is
 impossible because the thread is a single linear UTxO (the token conservation
 check admits exactly one continuation).
 
@@ -1091,14 +1048,14 @@ the same hash.
   single-party refutable as a bounded thread (catalogue §3 #41), so the
   split keeps the carve-out from leaking onto a static fact that merely
   shared the legacy `E_PLUTUS_SCRIPT_INVALID` code (catalogue §2 item 7,
-  design note 10). The leaf still *represents* the interactive arm so the
+  design note 10). The leaf still _represents_ the interactive arm so the
   format stays total; its refutation belongs to the interactive machinery,
   which should consume the arm's `execution_index` subject to select the
   single execution under dispute (catalogue design note 10).
 - **Non-native reference scripts**: a scan-borne reason charged to an
   outpoint whose trie-authenticated descriptor carries language 3 / 128 / -1
   is contradicted by the descriptor alone — direction B finishes at
-  `BindOutpoint` without running the scan (§3.2). No Plutus-script bytes can
+  `BindDescriptor` without running the scan (§3.2). No Plutus-script bytes can
   be dressed up as a scan target, and a prover cannot skip a tag-0 payload by
   lying about the language (the descriptor is trie-authenticated, not
   prover-supplied).
@@ -1108,7 +1065,7 @@ the same hash.
   or an ordinal at/past the named field's item count — is contradicted
   without any descriptor: the machine resolves only subjects that exist, so
   such a pair in a committed reason is not the machine's verdict. Direction
-  B closes at step-03's `BindOutOfDomain` arm (§3.2); the count face is
+  B closes at OpenSubject (§3.2); the count face is
   proven against the §8.8 door's authenticated item count, the other two
   faces on the state alone. Soundness runs one way only: an honest
   operator's reasons always name in-domain subjects, so the arm can never
@@ -1119,7 +1076,7 @@ the same hash.
 
 - Direction A accepts **any** refusal class of the frozen machine (not only
   the three scan refusal classes that mirror §2.4.1's direction-B arms): if
-  the committed verdict is `Accepted`, *any*
+  the committed verdict is `Accepted`, _any_
   divergence the staged machine exhibits on the committed bytes (including
   `InvalidOutput`-class refusals from earlier stages of the output machine)
   contradicts it. Whether to keep this breadth or narrow to the
@@ -1132,7 +1089,7 @@ the same hash.
   payloads include a non-canonical tag-0 script is attacked by direction A's
   forced-source arm — the acceptance claim, the transaction bytes, and the
   field-opening door all come from the one forced leaf (§2.1, §3.2), so the
-  proof shape is identical to the Normal case from `BindOutpoint` onward.
+  proof shape is identical to the Normal case from OpenSubject onward.
 
 ---
 
@@ -1145,7 +1102,7 @@ whole file, 83 lines) and its semantics
 (`verify_resolve_inputs_membership_step_semantics_v1`,
 `validation-machine-v1.ak:6387-6499`) are not modified by this family — this
 document's constraints forbid touching any `.ak` file, and the settled
-decision is a *standalone* family, not a surgery on the interactive machine.
+decision is a _standalone_ family, not a surgery on the interactive machine.
 Off-chain policy (watcher/prover routing) directs scan-borne faults to the new
 thread; the interactive step remains deployed, measured-over-cap
 (`architecture.md:89-109`), and simply never chosen. No datum or redeemer
@@ -1280,18 +1237,18 @@ Numbered; each with a recommendation.
    The breadth is kept as designed; the overlap is recorded in
    `catalogue-status.md`; D-S10's scoping now subtracts the registered family.
 4. **PhaseA witness-script twin.** `reject_invalid_field_type` and the limit
-   codes are also emitted for *witness-set* native scripts in
+   codes are also emitted for _witness-set_ native scripts in
    PhaseANativeScripts (`validation-machine-v1.ak:3882-4069`, `:4528-4900`);
    those bytes are committed differently (witness-set compact CBOR, not
-   ledger descriptors). The §2.4 leaf already *represents* those rejections
+   ledger descriptors). The §2.4 leaf already _represents_ those rejections
    (the catalogue's `WitnessScriptHeaderMalformed` /
    `WitnessNativeScript{Malformed,NodeLimit,DepthLimit,False}` arms), so a
-   twin family would slot into the same reason format. *Recommendation:* a twin family sharing the engine but
+   twin family would slot into the same reason format. _Recommendation:_ a twin family sharing the engine but
    with a witness-set byte-authentication front end; out of scope here.
-5. **Refusal-class fidelity.** The thread's `Verdict` arm preserves the
+5. **Refusal-class fidelity.** AdvanceOrClose preserves the
    staged machine's three-way distinction (invalid / node-limit / depth-limit,
    `validation-machine-v1.ak:6458-6484`) in `refusal_class`.
-   *Recommendation:* keep it — it costs one `Int` and makes the minted proof
+   _Recommendation:_ keep it — it costs one `Int` and makes the minted proof
    auditable against the descriptor's code without re-running anything.
 6. **Direction-A leaf-validity authority — RESOLVED by the follow-up
    ruling (2026-08-24).** The interim descriptor binding is removed; the
@@ -1324,7 +1281,7 @@ Numbered; each with a recommendation.
    claim machinery's own pin is `:407`), and opens no machine-state preimage
    at all. The old question — whether to cross-check the initial-state
    preimage's root against the trace — dissolved with the preimage itself: a
-   header whose *machine states* lie about the pre-root is a
+   header whose _machine states_ lie about the pre-root is a
    validation-trace fault for the interactive family, and this thread's
    proof is a genuine contradiction within the header's own transition-trace
    commitments either way.
@@ -1346,14 +1303,14 @@ Numbered; each with a recommendation.
     bare step-relation conjuncts (oversized field-6 script items, the
     derived collection-count caps, malformed out-ref and address-witness
     items, deep field-5 mint shape — the catalogue's §4.3 verified
-    anchors) make a violating transaction **stall**: no accepting *or*
+    anchors) make a violating transaction **stall**: no accepting _or_
     rejecting successor exists. The owner ruled that the L1 forced-order
     publication path (`docs/spec/midgard-tx.md` §8.11) **already excludes
     such preimages** — a stall-class transaction never becomes a forced
     order, so the operator always has an honest verdict and the reserved
     `GuardrailExceeded` family stays unpopulated (catalogue design
     note 6's second branch). The leaf-format freeze is not gated on this.
-    *Residual (evidence, non-gating):* record the exclusion as the
+    _Residual (evidence, non-gating):_ record the exclusion as the
     invariant that keeps the family unreserved by documenting the
     per-conjunct coverage mapping — each §4.3 conjunct to the §8.11 door
     check that excludes it — tracked as #641.

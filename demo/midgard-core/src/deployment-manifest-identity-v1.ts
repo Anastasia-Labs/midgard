@@ -119,7 +119,9 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "fraudProofFabricatedWithdrawalStep04",
   "fraudProofNativeScriptDecoding",
   "fraudProofNativeScriptDecodingStep02",
-  "fraudProofNativeScriptDecodingStep03",
+  "fraudProofNativeScriptDecodingStep03OpenSubject",
+  "fraudProofNativeScriptDecodingStep03BindDescriptor",
+  "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
   "fraudProofNativeScriptDecodingStep04",
   "fraudProofMissingSignature",
   "fraudProofMissingSignatureStep02",
@@ -288,8 +290,12 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofNativeScriptDecoding",
     "V1 fraud-proof native-script-decoding step-02":
       "fraudProofNativeScriptDecodingStep02",
-    "V1 fraud-proof native-script-decoding step-03":
-      "fraudProofNativeScriptDecodingStep03",
+    "V1 fraud-proof native-script-decoding step-03 open-subject":
+      "fraudProofNativeScriptDecodingStep03OpenSubject",
+    "V1 fraud-proof native-script-decoding step-03 bind-descriptor":
+      "fraudProofNativeScriptDecodingStep03BindDescriptor",
+    "V1 fraud-proof native-script-decoding step-03 advance-or-close":
+      "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
     "V1 fraud-proof native-script-decoding step-04":
       "fraudProofNativeScriptDecodingStep04",
     "V1 fraud-proof missing-signature step-01": "fraudProofMissingSignature",
@@ -445,8 +451,12 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES =
       "V1FpNativeScriptDecodingS01",
     "V1 fraud-proof native-script-decoding step-02":
       "V1FpNativeScriptDecodingS02",
-    "V1 fraud-proof native-script-decoding step-03":
-      "V1FpNativeScriptDecodingS03",
+    "V1 fraud-proof native-script-decoding step-03 open-subject":
+      "V1FpNativeScriptDecodingS03Open",
+    "V1 fraud-proof native-script-decoding step-03 bind-descriptor":
+      "V1FpNativeScriptDecodingS03Bind",
+    "V1 fraud-proof native-script-decoding step-03 advance-or-close":
+      "V1FpNativeScriptDecodingS03Scan",
     "V1 fraud-proof native-script-decoding step-04":
       "V1FpNativeScriptDecodingS04",
     "V1 fraud-proof missing-signature step-01": "V1FpMissingSignatureS01",

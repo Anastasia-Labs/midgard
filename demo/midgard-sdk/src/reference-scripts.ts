@@ -85,8 +85,12 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
     "V1FpNativeScriptDecodingS01",
   "V1 fraud-proof native-script-decoding step-02":
     "V1FpNativeScriptDecodingS02",
-  "V1 fraud-proof native-script-decoding step-03":
-    "V1FpNativeScriptDecodingS03",
+  "V1 fraud-proof native-script-decoding step-03 open-subject":
+    "V1FpNativeScriptDecodingS03Open",
+  "V1 fraud-proof native-script-decoding step-03 bind-descriptor":
+    "V1FpNativeScriptDecodingS03Bind",
+  "V1 fraud-proof native-script-decoding step-03 advance-or-close":
+    "V1FpNativeScriptDecodingS03Scan",
   "V1 fraud-proof native-script-decoding step-04":
     "V1FpNativeScriptDecodingS04",
   "V1 fraud-proof missing-signature step-01": "V1FpMissingSignatureS01",

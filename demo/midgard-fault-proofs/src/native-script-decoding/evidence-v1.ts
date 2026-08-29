@@ -124,7 +124,7 @@ export type NativeScriptDecodingLedgerTrieHandleV1 = {
 };
 
 /**
- * The `ledger_membership_proof` a `BindOutpoint` redeemer carries: the MPF
+ * The `ledger_membership_proof` a `BindDescriptor` redeemer carries: the MPF
  * proof of the accused outpoint's descriptor under the thread's committed
  * `prior_ledger_root`. Refuses a trie whose root is not that commitment —
  * a proof from any other tree would abort on-chain after the thread's
@@ -207,7 +207,7 @@ export const buildNativeScriptDecodingChunkProofV1 = ({
 // ## Planner plan → redeemer wire pieces
 
 /**
- * The two chunk-proof slots a `Scan`/`Verdict` redeemer carries for one
+ * The two chunk-proof slots an `AdvanceOrClose` redeemer carries for one
  * planned window: the window's chunk, and the mandatory adjacent next chunk
  * whenever the item has one (`needNext`). A windowless plan carries `null`
  * in both slots.
@@ -352,7 +352,7 @@ export type NativeScriptDecodingScanAccusationV1 = {
  * decoding rejection arms map onto refusal classes 0/1/2 with the accused
  * pair copied verbatim; any other rejection is a foreign arm this family
  * cannot dispute in direction B. Deliberately no domain filtering — an
- * out-of-domain pair is step-03's `BindOutOfDomain` close, not a refusal
+ * out-of-domain pair is OpenSubject's direction-B close, not a refusal
  * here.
  */
 export const nativeScriptDecodingScanAccusationOfV1 = (

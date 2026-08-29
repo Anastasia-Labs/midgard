@@ -27,14 +27,17 @@ import {
   NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED_V1,
   NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1,
   NativeScriptDecodingBindStateV1,
-  nativeScriptDecodingBoundScanStateV1,
+  nativeScriptDecodingBoundDescriptorStateV1,
+  nativeScriptDecodingOpenedSubjectStateV1,
   nativeScriptDecodingPreBindScanStateV1,
   type NativeScriptDecodingScanThreadStateV1,
   NativeScriptDecodingScanThreadStateV1 as ScanThreadStateV1Type,
   NativeScriptDecodingStep01Args,
   NativeScriptDecodingStep02Args,
-  NativeScriptDecodingStep03Args,
-  NativeScriptDecodingStep03Datum,
+  NativeScriptDecodingStep03AdvanceOrCloseArgs,
+  NativeScriptDecodingStep03AdvanceOrCloseDatum,
+  NativeScriptDecodingStep03BindDescriptorArgs,
+  NativeScriptDecodingStep03OpenSubjectArgs,
   NativeScriptDecodingStep04Args,
   nativeScriptDecodingThreadTokenAssetNameV1,
 } from "../src/fraud-proof/native-script-decoding-v1.js";
@@ -81,16 +84,19 @@ const preBindState = nativeScriptDecodingPreBindScanStateV1({
   outpointCursor: 0n,
 });
 
-const boundState: NativeScriptDecodingScanThreadStateV1 = Effect.runSync(
-  nativeScriptDecodingBoundScanStateV1({
+const openedState: NativeScriptDecodingScanThreadStateV1 = Effect.runSync(
+  nativeScriptDecodingOpenedSubjectStateV1({
     state: preBindState,
     outpointKeyBytes: "8258205555",
-    referenceScriptLanguage: 0n,
     outputIndex: 0n,
-    referenceScriptTotalLength: 36n,
-    referenceScriptItemCommitment: itemCommitment,
   }),
 );
+const boundState = nativeScriptDecodingBoundDescriptorStateV1({
+  state: openedState,
+  referenceScriptLanguage: 0n,
+  referenceScriptTotalLength: 36n,
+  referenceScriptItemCommitment: itemCommitment,
+});
 
 describe("native-script-decoding thread token", () => {
   it("concatenates category id and challenged header hash", () => {
@@ -123,7 +129,9 @@ describe("native-script-decoding thread states", () => {
     );
   });
 
-  it("bound scan state matches engine.bound_scan_state_v1 bytes (v2)", () => {
+  it("split open/bind state matches the engine handoff bytes (v2)", () => {
+    expect(openedState.outpoint_key_hash).toBe(outpointKeyHash);
+    expect(openedState.output_index).toBe(0n);
     expect(boundState.outpoint_key_hash).toBe(outpointKeyHash);
     expect(Data.to(boundState, ScanThreadStateV1Type)).toBe(
       `d8799f00005820${h32C}40205820${h32C}00005820${outpointKeyHash}000018245820${itemCommitment}4020ff`,
@@ -224,54 +232,61 @@ describe("native-script-decoding step arguments", () => {
     );
   });
 
-  it("step-03 Scan args match the full Aiken wire shape (v5)", () => {
-    const args: NativeScriptDecodingStep03Args = {
-      Scan: {
-        input_index: 0n,
-        output_index: 0n,
-        control_cbor: "88010004041824400000",
-        chunk_proof: {
-          version: 1n,
-          field_index: 2n,
-          item_index: 0n,
-          total_length: 36n,
-          chunk_index: 0n,
-          chunk: signatureItemHex,
-          frontier: [{ height: 0n, hash: itemFrontierHash }],
-          siblings: [],
-        },
-        next_chunk_proof: null,
-        frames: [
-          {
-            tail: "",
-            kind: 1n,
-            child_count: 2n,
-            remaining: 2n,
-            valid_count: 0n,
-            required: 0n,
-          },
-        ],
-        step_budget: 16n,
+  it("step-03 AdvanceOrClose args match the direct record wire shape (v5)", () => {
+    const args: NativeScriptDecodingStep03AdvanceOrCloseArgs = {
+      input_index: 0n,
+      output_index: 0n,
+      control_cbor: "88010004041824400000",
+      chunk_proof: {
+        version: 1n,
+        field_index: 2n,
+        item_index: 0n,
+        total_length: 36n,
+        chunk_index: 0n,
+        chunk: signatureItemHex,
+        frontier: [{ height: 0n, hash: itemFrontierHash }],
+        siblings: [],
       },
+      next_chunk_proof: null,
+      frames: [
+        {
+          tail: "",
+          kind: 1n,
+          child_count: 2n,
+          remaining: 2n,
+          valid_count: 0n,
+          required: 0n,
+        },
+      ],
+      step_budget: 16n,
     };
-    expect(Data.to(args, NativeScriptDecodingStep03Args)).toBe(
-      `d87a9f00004a88010004041824400000d8799fd8799f0102001824005824${signatureItemHex}9fd8799f005820${itemFrontierHash}ffff80ffffd87a809fd8799f400102020000ffff10ff`,
+    expect(Data.to(args, NativeScriptDecodingStep03AdvanceOrCloseArgs)).toBe(
+      `d8799f00004a88010004041824400000d8799fd8799f0102001824005824${signatureItemHex}9fd8799f005820${itemFrontierHash}ffff80ffffd87a809fd8799f400102020000ffff10ff`,
     );
   });
 
-  it("step-03 BindOutOfDomain args ride the appended fourth tag (v8)", () => {
-    // The #633 §7.2 closing arm is appended LAST so the
-    // BindOutpoint/Scan/Verdict tags are unmoved: constructor index 3.
-    // The negative-ordinal and unknown-source-kind faces carry no opening.
-    const args: NativeScriptDecodingStep03Args = {
-      BindOutOfDomain: {
-        input_index: 0n,
-        output_index: 1n,
-        subject_field_opening: null,
-      },
+  it("step-03 OpenSubject uses one direct record for both domain branches", () => {
+    const args: NativeScriptDecodingStep03OpenSubjectArgs = {
+      input_index: 0n,
+      output_index: 1n,
+      subject_field_opening: null,
     };
-    expect(Data.to(args, NativeScriptDecodingStep03Args)).toBe(
-      "d87c9f0001d87a80ff",
+    expect(Data.to(args, NativeScriptDecodingStep03OpenSubjectArgs)).toBe(
+      "d8799f0001d87a80ff",
+    );
+  });
+
+  it("step-03 BindDescriptor carries the opened key preimage", () => {
+    const args: NativeScriptDecodingStep03BindDescriptorArgs = {
+      input_index: 0n,
+      output_index: 1n,
+      outpoint_key_cbor: "8258205555",
+      descriptor_cbor: "80",
+      ledger_membership_proof: [],
+      first_chunk_proof: null,
+    };
+    expect(Data.to(args, NativeScriptDecodingStep03BindDescriptorArgs)).toBe(
+      "d8799f0001458258205555418080d87a80ff",
     );
   });
 
@@ -289,11 +304,11 @@ describe("native-script-decoding step arguments", () => {
 
 describe("native-script-decoding step datums", () => {
   it("step-03 datum wraps the bound state under StepDatum (v7)", () => {
-    const datum: NativeScriptDecodingStep03Datum = {
+    const datum: NativeScriptDecodingStep03AdvanceOrCloseDatum = {
       fraud_prover: h28Y,
       data: boundState,
     };
-    expect(Data.to(datum, NativeScriptDecodingStep03Datum)).toBe(
+    expect(Data.to(datum, NativeScriptDecodingStep03AdvanceOrCloseDatum)).toBe(
       `d8799f581c${h28Y}d8799fd8799f00005820${h32C}40205820${h32C}00005820${outpointKeyHash}000018245820${itemCommitment}4020ffffff`,
     );
   });

@@ -121,7 +121,7 @@ export const NativeScriptDecodingScanThreadStateV1Schema = Data.Object({
   prior_ledger_root: MerkleRootSchema,
   outpoint_source_kind: Data.Integer(),
   outpoint_cursor: Data.Integer(),
-  /** blake2b-256 of the accused outpoint's trie-key bytes; `""` until bind. */
+  /** blake2b-256 of the accused outpoint's trie-key bytes; `""` until OpenSubject. */
   outpoint_key_hash: Data.Bytes(),
   reference_script_language: Data.Integer(),
   output_index: Data.Integer(),
@@ -229,88 +229,105 @@ export type NativeScriptDecodingStep02SpendRedeemer = Data.Static<
 export const NativeScriptDecodingStep02SpendRedeemer =
   NativeScriptDecodingStep02SpendRedeemerSchema as unknown as NativeScriptDecodingStep02SpendRedeemer;
 
-// ## Step 03 — bind, scan (self-loop), verdict
+// ## Split step 03 — OpenSubject, BindDescriptor, AdvanceOrClose
 
-export const NativeScriptDecodingStep03DatumSchema = faultProofStepDatumSchema(
+const NativeScriptDecodingStep03DatumSchema = faultProofStepDatumSchema(
   NativeScriptDecodingScanThreadStateV1Schema,
 );
-export type NativeScriptDecodingStep03Datum = Data.Static<
-  typeof NativeScriptDecodingStep03DatumSchema
->;
-export const NativeScriptDecodingStep03Datum =
-  NativeScriptDecodingStep03DatumSchema as unknown as NativeScriptDecodingStep03Datum;
 
-/**
- * Twin of `step_03.Args`: `BindOutpoint` 0, `Scan` 1 (the self-loop),
- * `Verdict` 2, and — appended 2026-08-25 with the #633 §7.2 closing arm so
- * the three earlier tags are unmoved — `BindOutOfDomain` 3 (direction B
- * only: the accusation's pair names a subject outside the committed
- * transaction's domain).
- */
-export const NativeScriptDecodingStep03ArgsSchema = Data.Enum([
-  Data.Object({
-    BindOutpoint: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      subject_field_opening: FieldOpeningV1Schema,
-      descriptor_cbor: Data.Bytes(),
-      ledger_membership_proof: ProofSchema,
-      /** Required (chunk 0) whenever the descriptor names a tag-0 script. */
-      first_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
-    }),
-  }),
-  Data.Object({
-    Scan: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      control_cbor: Data.Bytes(),
-      chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
-      next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
-      frames: Data.Array(NativeScriptFrameV1Schema),
-      step_budget: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    Verdict: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      control_cbor: Data.Bytes(),
-      chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
-      next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
-    }),
-  }),
-  Data.Object({
-    BindOutOfDomain: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      /**
-       * Required exactly when the named field exists and the ordinal is
-       * non-negative — the count face; the negative-ordinal and
-       * unknown-source-kind faces close with `None` here.
-       */
-      subject_field_opening: Data.Nullable(FieldOpeningV1Schema),
-    }),
-  }),
-]);
-export type NativeScriptDecodingStep03Args = Data.Static<
-  typeof NativeScriptDecodingStep03ArgsSchema
+export const NativeScriptDecodingStep03OpenSubjectDatumSchema =
+  NativeScriptDecodingStep03DatumSchema;
+export type NativeScriptDecodingStep03OpenSubjectDatum = Data.Static<
+  typeof NativeScriptDecodingStep03OpenSubjectDatumSchema
 >;
-export const NativeScriptDecodingStep03Args =
-  NativeScriptDecodingStep03ArgsSchema as unknown as NativeScriptDecodingStep03Args;
+export const NativeScriptDecodingStep03OpenSubjectDatum =
+  NativeScriptDecodingStep03OpenSubjectDatumSchema as unknown as NativeScriptDecodingStep03OpenSubjectDatum;
+export const NativeScriptDecodingStep03OpenSubjectArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  subject_field_opening: Data.Nullable(FieldOpeningV1Schema),
+});
+export type NativeScriptDecodingStep03OpenSubjectArgs = Data.Static<
+  typeof NativeScriptDecodingStep03OpenSubjectArgsSchema
+>;
+export const NativeScriptDecodingStep03OpenSubjectArgs =
+  NativeScriptDecodingStep03OpenSubjectArgsSchema as unknown as NativeScriptDecodingStep03OpenSubjectArgs;
+export const NativeScriptDecodingStep03OpenSubjectSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(NativeScriptDecodingStep03OpenSubjectArgsSchema);
+export type NativeScriptDecodingStep03OpenSubjectSpendRedeemer = Data.Static<
+  typeof NativeScriptDecodingStep03OpenSubjectSpendRedeemerSchema
+>;
+export const NativeScriptDecodingStep03OpenSubjectSpendRedeemer =
+  NativeScriptDecodingStep03OpenSubjectSpendRedeemerSchema as unknown as NativeScriptDecodingStep03OpenSubjectSpendRedeemer;
 
-export const NativeScriptDecodingStep03SpendRedeemerSchema =
-  faultProofStepRedeemerSchema(NativeScriptDecodingStep03ArgsSchema);
-export type NativeScriptDecodingStep03SpendRedeemer = Data.Static<
-  typeof NativeScriptDecodingStep03SpendRedeemerSchema
+export const NativeScriptDecodingStep03BindDescriptorDatumSchema =
+  NativeScriptDecodingStep03DatumSchema;
+export type NativeScriptDecodingStep03BindDescriptorDatum = Data.Static<
+  typeof NativeScriptDecodingStep03BindDescriptorDatumSchema
 >;
-export const NativeScriptDecodingStep03SpendRedeemer =
-  NativeScriptDecodingStep03SpendRedeemerSchema as unknown as NativeScriptDecodingStep03SpendRedeemer;
+export const NativeScriptDecodingStep03BindDescriptorDatum =
+  NativeScriptDecodingStep03BindDescriptorDatumSchema as unknown as NativeScriptDecodingStep03BindDescriptorDatum;
+export const NativeScriptDecodingStep03BindDescriptorArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  outpoint_key_cbor: Data.Bytes(),
+  descriptor_cbor: Data.Bytes(),
+  ledger_membership_proof: ProofSchema,
+  first_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+});
+export type NativeScriptDecodingStep03BindDescriptorArgs = Data.Static<
+  typeof NativeScriptDecodingStep03BindDescriptorArgsSchema
+>;
+export const NativeScriptDecodingStep03BindDescriptorArgs =
+  NativeScriptDecodingStep03BindDescriptorArgsSchema as unknown as NativeScriptDecodingStep03BindDescriptorArgs;
+export const NativeScriptDecodingStep03BindDescriptorSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(
+    NativeScriptDecodingStep03BindDescriptorArgsSchema,
+  );
+export type NativeScriptDecodingStep03BindDescriptorSpendRedeemer = Data.Static<
+  typeof NativeScriptDecodingStep03BindDescriptorSpendRedeemerSchema
+>;
+export const NativeScriptDecodingStep03BindDescriptorSpendRedeemer =
+  NativeScriptDecodingStep03BindDescriptorSpendRedeemerSchema as unknown as NativeScriptDecodingStep03BindDescriptorSpendRedeemer;
+
+export const NativeScriptDecodingStep03AdvanceOrCloseDatumSchema =
+  NativeScriptDecodingStep03DatumSchema;
+export type NativeScriptDecodingStep03AdvanceOrCloseDatum = Data.Static<
+  typeof NativeScriptDecodingStep03AdvanceOrCloseDatumSchema
+>;
+export const NativeScriptDecodingStep03AdvanceOrCloseDatum =
+  NativeScriptDecodingStep03AdvanceOrCloseDatumSchema as unknown as NativeScriptDecodingStep03AdvanceOrCloseDatum;
+export const NativeScriptDecodingStep03AdvanceOrCloseArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  control_cbor: Data.Bytes(),
+  chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+  next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+  frames: Data.Array(NativeScriptFrameV1Schema),
+  step_budget: Data.Integer(),
+});
+export type NativeScriptDecodingStep03AdvanceOrCloseArgs = Data.Static<
+  typeof NativeScriptDecodingStep03AdvanceOrCloseArgsSchema
+>;
+export const NativeScriptDecodingStep03AdvanceOrCloseArgs =
+  NativeScriptDecodingStep03AdvanceOrCloseArgsSchema as unknown as NativeScriptDecodingStep03AdvanceOrCloseArgs;
+export const NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(
+    NativeScriptDecodingStep03AdvanceOrCloseArgsSchema,
+  );
+export type NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer = Data.Static<
+  typeof NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemerSchema
+>;
+export const NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer =
+  NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemerSchema as unknown as NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer;
 
 // ## Step 04 — finalize
 
 export const NativeScriptDecodingStep04DatumSchema =
   NativeScriptDecodingStep03DatumSchema;
-export type NativeScriptDecodingStep04Datum = NativeScriptDecodingStep03Datum;
+export type NativeScriptDecodingStep04Datum = Data.Static<
+  typeof NativeScriptDecodingStep04DatumSchema
+>;
 export const NativeScriptDecodingStep04Datum =
   NativeScriptDecodingStep04DatumSchema as unknown as NativeScriptDecodingStep04Datum;
 
@@ -339,7 +356,9 @@ export const NativeScriptDecodingStep04SpendRedeemer =
 export const NATIVE_SCRIPT_DECODING_STEP_NAMES_V1 = [
   "step_01",
   "step_02",
-  "step_03",
+  "step_03_open_subject",
+  "step_03_bind_descriptor",
+  "step_03_advance_or_close",
   "step_04",
 ] as const;
 export type NativeScriptDecodingStepNameV1 =
@@ -357,14 +376,18 @@ export const nativeScriptDecodingStepDatumSchemaV1 = (
       return NativeScriptDecodingStep01DatumSchema;
     case "step_02":
       return NativeScriptDecodingStep02DatumSchema;
-    case "step_03":
-      return NativeScriptDecodingStep03DatumSchema;
+    case "step_03_open_subject":
+      return NativeScriptDecodingStep03OpenSubjectDatum;
+    case "step_03_bind_descriptor":
+      return NativeScriptDecodingStep03BindDescriptorDatum;
+    case "step_03_advance_or_close":
+      return NativeScriptDecodingStep03AdvanceOrCloseDatum;
     case "step_04":
       return NativeScriptDecodingStep04DatumSchema;
   }
 };
 
-// ## Handoffs (twins of `engine.pre_bind_scan_state_v1` / `bound_scan_state_v1`)
+// ## Handoffs (twins of the split engine state constructors)
 
 /**
  * The state step-02 emits: verdict subject and accusation bound, the
@@ -407,30 +430,39 @@ export const nativeScriptDecodingPreBindScanStateV1 = ({
 });
 
 /**
- * The bind step's freeze: the accused outpoint's trie-key hash plus the bound
- * descriptor's reference-script anchor fields, copied verbatim.
+ * `OpenSubject` freezes the accused outpoint's exact trie-key hash and output
+ * index without widening the 15-field datum.
  */
-export const nativeScriptDecodingBoundScanStateV1 = ({
+export const nativeScriptDecodingOpenedSubjectStateV1 = ({
   state,
   outpointKeyBytes,
-  referenceScriptLanguage,
   outputIndex,
-  referenceScriptTotalLength,
-  referenceScriptItemCommitment,
 }: {
   readonly state: NativeScriptDecodingScanThreadStateV1;
   /** The accused outpoint's canonical trie-key bytes, as hex. */
   readonly outpointKeyBytes: string;
-  readonly referenceScriptLanguage: bigint;
   readonly outputIndex: bigint;
-  readonly referenceScriptTotalLength: bigint;
-  readonly referenceScriptItemCommitment: string;
 }): Effect.Effect<NativeScriptDecodingScanThreadStateV1, HashingError> =>
   Effect.map(hashHexWithBlake2b(outpointKeyBytes, 32), (outpoint_key_hash) => ({
     ...state,
     outpoint_key_hash,
-    reference_script_language: referenceScriptLanguage,
     output_index: outputIndex,
-    total_length: referenceScriptTotalLength,
-    item_commitment: referenceScriptItemCommitment,
   }));
+
+/** `BindDescriptor` freezes the authenticated reference-script item anchor. */
+export const nativeScriptDecodingBoundDescriptorStateV1 = ({
+  state,
+  referenceScriptLanguage,
+  referenceScriptTotalLength,
+  referenceScriptItemCommitment,
+}: {
+  readonly state: NativeScriptDecodingScanThreadStateV1;
+  readonly referenceScriptLanguage: bigint;
+  readonly referenceScriptTotalLength: bigint;
+  readonly referenceScriptItemCommitment: string;
+}): NativeScriptDecodingScanThreadStateV1 => ({
+  ...state,
+  reference_script_language: referenceScriptLanguage,
+  total_length: referenceScriptTotalLength,
+  item_commitment: referenceScriptItemCommitment,
+});

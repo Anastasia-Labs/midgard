@@ -243,9 +243,9 @@ describe("V1 deployment manifest", () => {
     expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).toEqual(
       SHARED_DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
     );
-    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(118);
-    expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES).toHaveLength(101);
-    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(102);
+    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(120);
+    expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES).toHaveLength(103);
+    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(104);
     expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toHaveLength(28);
   });
 
@@ -363,9 +363,13 @@ describe("V1 deployment manifest", () => {
   //     (4 + 2 + 5 step validators), and eleven authenticated
   //     reference-script roles/tokens. Existing positions remain unchanged.
   //     `b6dfe4d7...` -> `acc508eb...`.
+  // 12. Native-script-decoding replaced its oversized step-03 identity with
+  //     open-subject, bind-descriptor, and advance-or-close identities: two
+  //     net-new compiled contracts and authenticated reference-script roles.
+  //     `acc508eb...` -> `c598ec8e...`.
   it("accepts the sole exact authenticated V1 manifest", () => {
     expect(canonicalManifest().manifestId).toBe(
-      "acc508eb252b3558d60b0eb4f78715b658b569844c4b78aed96a493570b516e1",
+      "c598ec8ef851c31624ad8d07ac69d784a4d4d17749c81876366666a24c8abce1",
     );
     expect(parseDeploymentManifestV1Value(canonicalManifest())).toEqual(
       canonicalManifest(),
