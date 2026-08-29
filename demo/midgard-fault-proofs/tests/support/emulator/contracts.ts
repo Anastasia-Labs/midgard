@@ -85,6 +85,10 @@ import {
 import { type FabricatedDepositContractsV1 } from "../../../src/submit-fabricated-deposit-step-01.js";
 import { type FabricatedWithdrawalContractsV1 } from "../../../src/submit-fabricated-withdrawal-step-01.js";
 import {
+  VALUE_NOT_PRESERVED_BLUEPRINT_TITLES_V1,
+  type ValueNotPreservedContractsV1,
+} from "../../../src/value-not-preserved/contracts-v1.js";
+import {
   WITHDRAWAL_MISTAG_BLUEPRINT_TITLES_V1,
   type WithdrawalMistagContractsV1,
 } from "../../../src/withdrawal-mistag/contracts-v1.js";
@@ -694,6 +698,77 @@ export const buildInputSetUniquenessChainV1 = ({
   return [step01, step02];
 };
 
+/**
+ * Applies the four-step `value-not-preserved` chain in blueprint-declared
+ * parameter order (pinned on `VALUE_NOT_PRESERVED_BLUEPRINT_TITLES_V1`).
+ * Applied backwards — step 04 first — because each step is parameterized by
+ * its successor's script hash. Steps 02 and 03 both take the §8.6
+ * field-preimage certificate policy (each opens committed fields through the
+ * §8.8 door), and step 04 leads with the fraud-proof pair. All four steps
+ * deploy as reference scripts in production per the standing
+ * reference-script ruling. The family predates its catalogue registration,
+ * so like `input-set-uniqueness` above it has no SDK canonical builder yet —
+ * this test-support builder is the family's only parameterization site until
+ * the parent registers it.
+ */
+export const buildValueNotPreservedChainV1 = ({
+  realBlueprint,
+  computationThreadPolicyId,
+  fraudProofPolicyId,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+  hubOraclePolicyId,
+}: {
+  readonly realBlueprint: Blueprint;
+  readonly computationThreadPolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
+  readonly hubOraclePolicyId: string;
+}): ValueNotPreservedContractsV1["steps"] => {
+  const step04 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES_V1.step04,
+      [
+        fraudProofPolicyId,
+        fraudProofTokenAddressData,
+        computationThreadPolicyId,
+      ],
+    ),
+  );
+  const step03 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES_V1.step03,
+      [
+        step04.spendingScriptHash,
+        computationThreadPolicyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+    ),
+  );
+  const step02 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES_V1.step02,
+      [
+        step03.spendingScriptHash,
+        computationThreadPolicyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+    ),
+  );
+  const step01 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES_V1.step01,
+      [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
+    ),
+  );
+  return [step01, step02, step03, step04];
+};
+
 export const buildMinimalFaultProofContracts = async (
   realBlueprint: Blueprint,
   alwaysBlueprint: Blueprint,
@@ -724,6 +799,7 @@ export const buildMinimalFaultProofContracts = async (
     realWithdrawnInput = false,
     realWithdrawalMistag = false,
     realInputSetUniqueness = false,
+    realValueNotPreserved = false,
     alwaysFraudProofCatalogue = false,
     alwaysStateQueue = false,
   }: {
@@ -752,6 +828,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realWithdrawnInput?: boolean;
     readonly realWithdrawalMistag?: boolean;
     readonly realInputSetUniqueness?: boolean;
+    readonly realValueNotPreserved?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
     /**
      * Test-only admission bypass for faults whose malformed header is rejected
@@ -778,6 +855,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly withdrawnInput?: WithdrawnInputContractsV1;
     readonly withdrawalMistag?: WithdrawalMistagContractsV1;
     readonly inputSetUniqueness?: InputSetUniquenessContractsV1;
+    readonly valueNotPreserved?: ValueNotPreservedContractsV1;
   }
 > => {
   // This integration test proves the real active-operators slashing and
@@ -1234,6 +1312,45 @@ export const buildMinimalFaultProofContracts = async (
           };
         })()
       : undefined;
+  // Pre-registration shape for the `value-not-preserved` family, exactly the
+  // `input-set-uniqueness` wiring above: the four-step chain is applied from
+  // the double-spend family's shared computation-thread and fraud-proof
+  // policies (the same policies the catalogue, thread mints, and removal all
+  // key on), with the real §8.6 field-preimage certificate policy pinned into
+  // steps 02/03 (both open committed fields through the §8.8 door). There is
+  // no SDK canonical builder or `FaultProofContractChains` key yet — both
+  // land with parent-owned catalogue registration.
+  const valueNotPreserved: ValueNotPreservedContractsV1 | undefined =
+    realValueNotPreserved
+      ? await (async () => {
+          const fraudProofTokenAddressData = await Effect.runPromise(
+            addressDataFromBech32(
+              doubleSpendContracts.fraudProof.spendingScriptAddress,
+            ).pipe(
+              Effect.map((addressData) =>
+                Data.from(Data.to(addressData, AddressData)),
+              ),
+            ),
+          );
+          const steps = buildValueNotPreservedChainV1({
+            realBlueprint,
+            computationThreadPolicyId:
+              doubleSpendContracts.computationThread.policyId,
+            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
+            fraudProofTokenAddressData,
+            fieldPreimageCertificatePolicyId,
+            hubOraclePolicyId: hubOracle.policyId,
+          });
+          return {
+            steps,
+            computationThread: doubleSpendContracts.computationThread,
+            fraudProof: doubleSpendContracts.fraudProof,
+            hubOraclePolicyId: hubOracle.policyId,
+            stateQueuePolicyId: stateQueueMinting.policyId,
+            fieldPreimageCertificatePolicyId,
+          };
+        })()
+      : undefined;
   const fabricatedWithdrawal: FabricatedWithdrawalContractsV1 | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
@@ -1357,6 +1474,7 @@ export const buildMinimalFaultProofContracts = async (
     ...(withdrawnInput === undefined ? {} : { withdrawnInput }),
     ...(withdrawalMistag === undefined ? {} : { withdrawalMistag }),
     ...(inputSetUniqueness === undefined ? {} : { inputSetUniqueness }),
+    ...(valueNotPreserved === undefined ? {} : { valueNotPreserved }),
     cekProgramMaterial:
       validationTraceDisputeContracts?.validationTraceDispute
         .cekProgramMaterial ?? withScheduler.cekProgramMaterial,

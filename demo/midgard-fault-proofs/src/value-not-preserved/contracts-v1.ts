@@ -73,9 +73,9 @@ export type ValueNotPreservedContractsV1 = {
   /**
    * Policy id steps 02/03 were parameterized with for §8.6 field-preimage
    * certificates. In the emulator harness this is the always-succeeds
-   * stand-in; in production it is the real certificate policy. The v1
-   * submitters only ever build tier-1 (`Inline`) carriages, which never
-   * consult it.
+   * stand-in; in production it is the real certificate policy. The step-03
+   * submitter selects §8.4 tiers purely from preimage size, so a field over
+   * the tier-2 window would name its §8.6 manifest by this policy id.
    */
   readonly fieldPreimageCertificatePolicyId: string;
 };

@@ -24,6 +24,7 @@ import { type MinFeeContractsV1 } from "../../../src/min-fee-contracts-v1.js";
 import { type MissingNativeScriptTxContractsV1 } from "../../../src/missing-native-script-tx/index.js";
 import { type MissingSignatureContractsV1 } from "../../../src/missing-signature/index.js";
 import { type NativeScriptDecodingContractsV1 } from "../../../src/native-script-decoding/index.js";
+import { type ValueNotPreservedContractsV1 } from "../../../src/value-not-preserved/index.js";
 import { type WithdrawalMistagContractsV1 } from "../../../src/withdrawal-mistag/index.js";
 import { type WithdrawnInputContractsV1 } from "../../../src/withdrawn-input/index.js";
 import { type WithdrawnReferenceInputContractsV1 } from "../../../src/withdrawn-reference-input/index.js";
@@ -84,6 +85,17 @@ export const WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1 =
 export const INPUT_SET_UNIQUENESS_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofInputSetUniqueness";
 
+/**
+ * Manifest entry pinning the `value-not-preserved` step-01 script hash for
+ * removal. The name is caller-chosen because the family predates its
+ * catalogue registration (same pre-registration shape #635 introduced):
+ * `submitRemoveFraudulentBlock` checks the explicit category record's step-01
+ * hash against whatever entry the record names, and this is the name the
+ * emulator manifests use.
+ */
+export const VALUE_NOT_PRESERVED_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+  "fraudProofValueNotPreserved";
+
 const requireReferenceScriptAuthPolicy = (
   policy: MidgardValidators["referenceScriptAuth"],
 ): ReferenceScriptAuthPolicy => {
@@ -116,6 +128,7 @@ export const buildRemovalDeploymentInfo = (
     readonly withdrawnInput?: WithdrawnInputContractsV1;
     readonly withdrawalMistag?: WithdrawalMistagContractsV1;
     readonly inputSetUniqueness?: InputSetUniquenessContractsV1;
+    readonly valueNotPreserved?: ValueNotPreservedContractsV1;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -421,6 +434,14 @@ export const buildRemovalDeploymentInfo = (
             [INPUT_SET_UNIQUENESS_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
               scriptHash:
                 contracts.inputSetUniqueness.steps[0].spendingScriptHash,
+            },
+          }),
+      ...(contracts.valueNotPreserved === undefined
+        ? {}
+        : {
+            [VALUE_NOT_PRESERVED_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+              scriptHash:
+                contracts.valueNotPreserved.steps[0].spendingScriptHash,
             },
           }),
       fraudProofNonExistentInputNoIndex: {

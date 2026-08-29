@@ -4,21 +4,33 @@
  *
  * Takes the challenged transaction's STRUCTURED outputs and mint items and
  * derives the committed field preimages itself
- * (`encodeMidgardFieldPreimageForFieldV1`), so the expected `final_delta`
- * can be computed locally with the same restricted fold the validator runs:
- * every output's claimed quantity is outflow; a token claim adds the mint
- * field's claimed entries; an ADA claim subtracts the committed fee and must
- * carry NO mint carriage (ADA is structurally unmintable, plan §1.2). Both
- * carriages are v1 tier-1 (`Inline`) per plan §5.
+ * (`encodeMidgardFieldItemsV1` under the §5.1 envelope), so the expected
+ * `final_delta` can be computed locally with the same restricted fold the
+ * validator runs: every output's claimed quantity is outflow; a token claim
+ * adds the mint field's claimed entries; an ADA claim subtracts the
+ * committed fee and must carry NO mint carriage (ADA is structurally
+ * unmintable, plan §1.2).
+ *
+ * Both carriages go through the §8.8 door's planner
+ * (`planFaultProofFieldOpeningV1`), which pre-validates every check the door
+ * makes and selects the tier purely from the preimage's own length (§8.4): a
+ * small field rides tier-1 (`Inline`) in this step's own redeemer, and a
+ * preimage over the 14,336-byte tier-1 cap is published as a tier-2
+ * (`RawUtxo`) nothing-but-bytes datum first and consumed here as a reference
+ * input, with the positional index resolved against this transaction's
+ * COMPLETE reference-input set (carriage publications, any injected UTxO,
+ * and the step's own reference script).
  */
 import type {
   MidgardMintPolicyItemV1,
   MidgardTxOutput,
 } from "@al-ft/midgard-core";
-import { encodeMidgardFieldPreimageForFieldV1 } from "@al-ft/midgard-core";
+import { encodeMidgardFieldItemsV1 } from "@al-ft/midgard-core";
 import {
+  MIDGARD_FIELD_INDEX_V1,
   requireInputIndex,
   requireOwnSpendPurpose,
+  requireReferenceInputIndex,
   requireUniqueOutputIndex,
 } from "@al-ft/midgard-sdk";
 import {
@@ -29,16 +41,20 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  faultProofFieldCarriageV1,
+  type FaultProofFieldOpeningPlanV1,
+  planFaultProofFieldOpeningV1,
+  publishFaultProofFieldCarriageV1,
+} from "../field-opening-v1.js";
+import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { ValueNotPreservedContractsV1 } from "./contracts-v1.js";
-import {
-  claimedQuantityOfValueV1,
-  inlineFieldCarriageV1,
-} from "./evidence-v1.js";
+import { claimedQuantityOfValueV1 } from "./evidence-v1.js";
 import {
   type ClaimedAssetV1,
   ValueNotPreservedStep03Datum,
@@ -82,6 +98,22 @@ const mintClaimedQuantityV1 = (
   return total;
 };
 
+/** Injective out-ref key for de-duplicating a reference-input set. */
+const outRefKey = (utxo: UTxO): string =>
+  `${utxo.txHash}#${utxo.outputIndex.toString()}`;
+
+const dedupUtxos = (utxos: readonly UTxO[]): readonly UTxO[] => {
+  const seen = new Set<string>();
+  const unique: UTxO[] = [];
+  for (const utxo of utxos) {
+    const key = outRefKey(utxo);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(utxo);
+  }
+  return unique;
+};
+
 export type SubmitValueNotPreservedStep03Result = {
   readonly txHash: string;
   readonly walletSource: string;
@@ -94,6 +126,14 @@ export type SubmitValueNotPreservedStep03Result = {
   readonly fourthStepAddress: string;
   /** The completed fold the thread now carries. */
   readonly completedState: ValueNotPreservedStep04State;
+  /** §8.4 tier the planner selected for the outputs field. */
+  readonly outputsCarriageTier: "Inline" | "RawUtxo" | "Certified";
+  /** §8.4 tier of the mint field; null exactly for an ADA claim. */
+  readonly mintCarriageTier: "Inline" | "RawUtxo" | "Certified" | null;
+  /** The §8 carriage publications this step consumed as reference inputs. */
+  readonly carriageUtxos: readonly UTxO[];
+  /** The §5.1 outputs-field preimage length in bytes (tier evidence). */
+  readonly outputsPreimageBytes: number;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly awaitedConfirmation: boolean;
@@ -109,6 +149,7 @@ export const submitValueNotPreservedStep03 = async ({
   outputs,
   mintItems,
   referenceScriptUtxo,
+  unsafeSpendFieldRawUtxoForTest,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -127,6 +168,16 @@ export const submitValueNotPreservedStep03 = async ({
   readonly mintItems: readonly MidgardMintPolicyItemV1[] | null;
   /** The published step-03 reference script; inline-attached when absent. */
   readonly referenceScriptUtxo?: UTxO;
+  /**
+   * Never set outside tests. Substitutes the OUTPUTS carriage with a raw
+   * tier-2 arm naming this UTxO positionally — bypassing the honest
+   * content-addressed resolution (`resolveChunkReferenceIndicesV1` matches
+   * publications by exact §8.5 datum bytes, so a tampered publication can
+   * never resolve through it). Adversarial suites use this to prove the §8.8
+   * door's `field_commitment(preimage) == expected_hash` re-hash refuses a
+   * publication whose bytes differ from the committed field hash.
+   */
+  readonly unsafeSpendFieldRawUtxoForTest?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValueNotPreservedStep03Result> => {
   const { threadUtxo, threadToken } =
@@ -170,19 +221,91 @@ export const submitValueNotPreservedStep03 = async ({
       deltaAfterOutputs + mintClaimedQuantityV1(state.claimed_asset, mintItems);
   }
 
-  const outputsPreimage = encodeMidgardFieldPreimageForFieldV1({
-    fieldIndex: 2,
-    items: outputs,
+  // The §8.8 door: plan each field, publish whatever the tier demands, open.
+  // The tier is a pure function of the preimage's length — nothing here
+  // forces one.
+  const outputsPlan = planFaultProofFieldOpeningV1({
+    fieldIndex: MIDGARD_FIELD_INDEX_V1.outputs,
+    anchorTxId: state.bad_tx_id,
+    nativeTxCompactCbor,
+    itemCbors: encodeMidgardFieldItemsV1({ fieldIndex: 2, items: outputs }),
+    owner: signer.paymentKeyHash,
+    label: `${STEP_LABEL} outputs`,
   });
-  const mintCarriage =
+  const mintPlan: FaultProofFieldOpeningPlanV1 | null =
     mintItems === null
       ? null
-      : inlineFieldCarriageV1(
-          encodeMidgardFieldPreimageForFieldV1({
+      : planFaultProofFieldOpeningV1({
+          fieldIndex: MIDGARD_FIELD_INDEX_V1.mint,
+          anchorTxId: state.bad_tx_id,
+          nativeTxCompactCbor,
+          itemCbors: encodeMidgardFieldItemsV1({
             fieldIndex: 5,
             items: mintItems,
           }),
-        );
+          owner: signer.paymentKeyHash,
+          label: `${STEP_LABEL} mint`,
+        });
+  signer.selectWallet(lucid);
+  // With an injected raw UTxO the honest outputs publication is skipped —
+  // the whole point is that ONLY the injected bytes ride as the carriage.
+  const outputsCarriageUtxos =
+    unsafeSpendFieldRawUtxoForTest === undefined
+      ? await publishFaultProofFieldCarriageV1({
+          lucid,
+          signer,
+          planned: outputsPlan,
+          publisherAddress: signer.address,
+          label: `${STEP_LABEL} outputs`,
+        })
+      : [];
+  const mintCarriageUtxos =
+    mintPlan === null
+      ? []
+      : await publishFaultProofFieldCarriageV1({
+          lucid,
+          signer,
+          planned: mintPlan,
+          publisherAddress: signer.address,
+          label: `${STEP_LABEL} mint`,
+        });
+  const carriageUtxos = [...outputsCarriageUtxos, ...mintCarriageUtxos];
+  const referenceInputs = dedupUtxos([
+    ...carriageUtxos,
+    ...(unsafeSpendFieldRawUtxoForTest === undefined
+      ? []
+      : [unsafeSpendFieldRawUtxoForTest]),
+    ...(referenceScriptUtxo === undefined
+      ? []
+      : [
+          requireValueNotPreservedReferenceScriptV1({
+            utxo: referenceScriptUtxo,
+            expectedScriptHash: contracts.steps[2].spendingScriptHash,
+            stepIndex: 2,
+          }),
+        ]),
+  ]);
+  // §8.7 indices are into the complete reference-input set, including the
+  // step's own reference script; resolving against carriage alone is only
+  // accidentally correct for some out-ref orderings.
+  const outputsCarriage =
+    unsafeSpendFieldRawUtxoForTest === undefined
+      ? faultProofFieldCarriageV1({
+          planned: outputsPlan,
+          referenceInputs,
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+          label: `${STEP_LABEL} outputs`,
+        })
+      : null;
+  const mintCarriage =
+    mintPlan === null
+      ? null
+      : faultProofFieldCarriageV1({
+          planned: mintPlan,
+          referenceInputs,
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+          label: `${STEP_LABEL} mint`,
+        });
 
   const completedState: ValueNotPreservedStep04State = {
     bad_tx_id: state.bad_tx_id,
@@ -191,8 +314,19 @@ export const submitValueNotPreservedStep03 = async ({
     final_delta: finalDelta,
   };
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  // The publications live at the prover's own key address, so coin
+  // selection must never consume them mid-flow — nor any OTHER datum-bearing
+  // UTxO (a reusable publication from an earlier flow, or an injected test
+  // fixture): fee input and preset candidates are datum-free only.
+  const walletUtxos = await lucid.wallet().getUtxos();
+  const walletUtxosSansReferenced = referenceInputs.reduce<readonly UTxO[]>(
+    (candidates, utxo) => excludeUtxo(candidates, utxo),
+    walletUtxos,
+  );
+  const datumFreeWalletUtxos = walletUtxosSansReferenced.filter(
+    (utxo) => utxo.datum == null && utxo.datumHash == null,
+  );
+  const feeInput = selectFeeInput(datumFreeWalletUtxos);
   const step04Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: completedState },
     ValueNotPreservedStep04Datum,
@@ -205,6 +339,7 @@ export const submitValueNotPreservedStep03 = async ({
   let resolvedLayout:
     | { readonly inputIndex: bigint; readonly outputIndex: bigint }
     | undefined;
+  const injectedRawUtxo = unsafeSpendFieldRawUtxoForTest;
   const redeemer = ((ctx) => {
     requireOwnSpendPurpose(ctx, threadUtxo, STEP_LABEL);
     const layout = {
@@ -216,6 +351,23 @@ export const submitValueNotPreservedStep03 = async ({
       ),
     };
     resolvedLayout = layout;
+    if (outputsCarriage === null && injectedRawUtxo === undefined) {
+      throw valueNotPreservedSubmitError(
+        "step-03 resolved neither an honest outputs carriage nor an injected one.",
+      );
+    }
+    const outputsCarriageForLayout =
+      outputsCarriage ??
+      ({
+        RawUtxo: {
+          ref_input_index: requireReferenceInputIndex(
+            ctx,
+            // Non-null by the guard above.
+            injectedRawUtxo as UTxO,
+            `${STEP_LABEL} injected raw carriage`,
+          ),
+        },
+      } as const);
     return Data.to(
       {
         Continue: [
@@ -223,7 +375,7 @@ export const submitValueNotPreservedStep03 = async ({
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
             native_tx_compact_cbor: nativeTxCompactCbor,
-            outputs_carriage: inlineFieldCarriageV1(outputsPreimage),
+            outputs_carriage: outputsCarriageForLayout,
             mint_carriage: mintCarriage,
           },
         ],
@@ -236,11 +388,16 @@ export const submitValueNotPreservedStep03 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const base = lucid
+  const withInputs = lucid
     .newTx()
     .collectFrom([feeInput])
-    .collectFrom([threadUtxo], redeemer)
-    .pay.ToContract(
+    .collectFrom([threadUtxo], redeemer);
+  const withReferences =
+    referenceInputs.length === 0
+      ? withInputs
+      : withInputs.readFrom([...referenceInputs]);
+  const withPayment = withReferences.pay
+    .ToContract(
       contracts.steps[3].spendingScriptAddress,
       { kind: "inline", value: step04Datum },
       threadAssets,
@@ -248,16 +405,13 @@ export const submitValueNotPreservedStep03 = async ({
     .addSignerKey(signer.paymentKeyHash);
   const tx =
     referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[2].spendingScript)
-      : base.readFrom([
-          requireValueNotPreservedReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[2].spendingScriptHash,
-            stepIndex: 2,
-          }),
-        ]);
+      ? withPayment.attach.SpendingValidator(contracts.steps[2].spendingScript)
+      : withPayment;
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await tx.complete({
+    localUPLCEval: true,
+    presetWalletInputs: datumFreeWalletUtxos as UTxO[],
+  });
   if (resolvedLayout === undefined) {
     throw valueNotPreservedSubmitError(
       "BuildTxWithRedeemer did not resolve the step-03 layout.",
@@ -280,6 +434,10 @@ export const submitValueNotPreservedStep03 = async ({
     computationThreadUnit: threadToken.unit,
     fourthStepAddress: contracts.steps[3].spendingScriptAddress,
     completedState,
+    outputsCarriageTier: outputsPlan.plan.tier,
+    mintCarriageTier: mintPlan === null ? null : mintPlan.plan.tier,
+    carriageUtxos,
+    outputsPreimageBytes: outputsPlan.preimage.length,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     awaitedConfirmation: awaitConfirmation,

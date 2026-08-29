@@ -42,6 +42,7 @@ import {
 import { type FabricatedDepositContractsV1 } from "../../../src/submit-fabricated-deposit-step-01.js";
 import { type FabricatedWithdrawalContractsV1 } from "../../../src/submit-fabricated-withdrawal-step-01.js";
 import { computationThreadOutputPredicate } from "../../../src/tx-layout.js";
+import { VALUE_NOT_PRESERVED_RESERVED_CATEGORY_ID_V1 } from "../../../src/value-not-preserved/schemas-v1.js";
 import {
   alwaysSucceedsBlueprintPath,
   type Blueprint,
@@ -385,6 +386,14 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
             categoryId: INPUT_SET_UNIQUENESS_TEST_CATEGORY_ID_V1,
             scriptHash:
               contracts.inputSetUniqueness.steps[0].spendingScriptHash,
+          },
+        }),
+    ...(contracts.valueNotPreserved === undefined
+      ? {}
+      : {
+          valueNotPreserved: {
+            categoryId: VALUE_NOT_PRESERVED_RESERVED_CATEGORY_ID_V1,
+            scriptHash: contracts.valueNotPreserved.steps[0].spendingScriptHash,
           },
         }),
   });
