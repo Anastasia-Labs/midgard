@@ -12,7 +12,7 @@ describe("fault-proof emulator catalogue registration", () => {
   it("registers every appended production category from its canonical chain", async () => {
     const harness = await makeFaultProofEmulatorHarnessV1();
 
-    expect(APPENDED_CATEGORY_NAMES).toHaveLength(14);
+    expect(APPENDED_CATEGORY_NAMES).toHaveLength(17);
     for (const name of APPENDED_CATEGORY_NAMES) {
       const category = harness.catalogue.categories[name];
       const firstStep = harness.contracts.fraudProofContracts[name].firstStep;

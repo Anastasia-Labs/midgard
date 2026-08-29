@@ -235,6 +235,9 @@ export const makeAlwaysSucceedsContracts = (
     crossBlockDuplicateEvent: scaffoldChain(appendedFamilyFallback, 2),
     l2TxMistag: scaffoldChain(appendedFamilyFallback, 2),
     withdrawnInput: scaffoldChain(appendedFamilyFallback, 3),
+    valueNotPreserved: scaffoldChain(appendedFamilyFallback, 4),
+    inputSetUniqueness: scaffoldChain(appendedFamilyFallback, 2),
+    mintAuthorization: scaffoldChain(appendedFamilyFallback, 5),
   };
   const fraudProofs = fraudProofContractsToFirstSteps(fraudProofContracts);
   const fieldPreimageV1 = makeSpendingValidator(

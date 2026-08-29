@@ -1148,6 +1148,127 @@
       },
       "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
     },
+    "fraudProofValueNotPreserved": {
+      "refScriptUTxO": {
+        "txHash": "7575757575757575757575757575757575757575757575757575757575757575",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofValueNotPreservedStep02": {
+      "refScriptUTxO": {
+        "txHash": "7676767676767676767676767676767676767676767676767676767676767676",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofValueNotPreservedStep03": {
+      "refScriptUTxO": {
+        "txHash": "7777777777777777777777777777777777777777777777777777777777777777",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofValueNotPreservedStep04": {
+      "refScriptUTxO": {
+        "txHash": "7878787878787878787878787878787878787878787878787878787878787878",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofInputSetUniqueness": {
+      "refScriptUTxO": {
+        "txHash": "7979797979797979797979797979797979797979797979797979797979797979",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofInputSetUniquenessStep02": {
+      "refScriptUTxO": {
+        "txHash": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMintAuthorization": {
+      "refScriptUTxO": {
+        "txHash": "7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMintAuthorizationStep02": {
+      "refScriptUTxO": {
+        "txHash": "7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMintAuthorizationStep03": {
+      "refScriptUTxO": {
+        "txHash": "7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMintAuthorizationStep04": {
+      "refScriptUTxO": {
+        "txHash": "7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    "fraudProofMintAuthorizationStep05": {
+      "refScriptUTxO": {
+        "txHash": "7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f",
+        "outputIndex": 0
+      },
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "525101010023259800a518a4d136564004ae69"
+      },
+      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
     "fraudProofTransitionTraceControl": {
       "refScriptUTxO": {
         "txHash": "6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d",

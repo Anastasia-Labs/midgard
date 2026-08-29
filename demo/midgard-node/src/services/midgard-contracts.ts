@@ -530,6 +530,9 @@ const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
   "crossBlockDuplicateEvent",
   "l2TxMistag",
   "withdrawnInput",
+  "valueNotPreserved",
+  "inputSetUniqueness",
+  "mintAuthorization",
 ] as const satisfies readonly (keyof SDK.FaultProofContractChains)[];
 
 type RegisteredLinearFaultProofCategory =
@@ -903,6 +906,27 @@ export const midgardContractsFromDeploymentManifest = (
       sourcePath,
       baseContracts,
       "withdrawnInput",
+    ),
+    valueNotPreserved: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "valueNotPreserved",
+    ),
+    inputSetUniqueness: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "inputSetUniqueness",
+    ),
+    mintAuthorization: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "mintAuthorization",
     ),
   };
   const fraudProofs = SDK.fraudProofContractsToFirstSteps(fraudProofContracts);

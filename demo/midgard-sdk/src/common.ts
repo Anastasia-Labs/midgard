@@ -257,6 +257,21 @@ export type FraudProofs = {
   crossBlockDuplicateEvent: SpendingValidator;
   l2TxMistag: SpendingValidator;
   withdrawnInput: SpendingValidator;
+  /**
+   * `value-not-preserved`: a committed ACCEPTED transaction creates strictly
+   * more of some asset than it consumes and mints.
+   */
+  valueNotPreserved: SpendingValidator;
+  /**
+   * `input-set-uniqueness`: a committed ACCEPTED transaction's intra-tx input
+   * sets violate uniqueness/disjointness.
+   */
+  inputSetUniqueness: SpendingValidator;
+  /**
+   * `mint-authorization`: a committed ACCEPTED transaction mints or burns
+   * under a policy that never authorized it.
+   */
+  mintAuthorization: SpendingValidator;
 };
 
 export type MidgardValidators = {

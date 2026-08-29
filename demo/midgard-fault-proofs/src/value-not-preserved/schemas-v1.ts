@@ -27,14 +27,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-/**
- * Reserved pre-registration category id for the family. It appears only in
- * emulator wiring (an `extraCategories` sidecar); never in the canonical
- * catalogue order and never through the deployment manifest, whose parser
- * silently drops non-canonical keys.
- */
-export const VALUE_NOT_PRESERVED_RESERVED_CATEGORY_ID_V1 = "00000019";
-
 // ---------------------------------------------------------------------------
 // The single-asset claim (lib step-01)
 // ---------------------------------------------------------------------------

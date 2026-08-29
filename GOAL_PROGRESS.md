@@ -6406,3 +6406,113 @@ fault-proofs typecheck + lint green. Pre-existing reds unchanged
 (manifest-quality, format-registry, watcher-dependency-map, CG1,
 fault-proof-reconciliation's row-153 🟢 glyph — that gate still fails
 on the same pre-existing row, not on the new family rows).
+
+## 2026-08-28 — Registration wave: catalogue grows 25 → 28 (`00000019`–`0000001b`)
+
+The standing owner rule — register a family the moment onchain, offchain
+and both-polarity lucid-evolution emulator scenarios are all delivered —
+came due for all three tier-2-wave families at once, after the interim
+work that closed their gaps landed on the checkpoint branch:
+
+- **isu tier-2 leg** (`60f3eba1`): step-02 plans/publishes/reads §8.4
+  carriage for all three field openings; new suite drives a genuine
+  365-input, 14,603-byte preimage through size-selected `RawUtxo`
+  (per the no-forced-override rule) and refuses a byte-flipped
+  publication on-chain. isu 7/7.
+- **repo-wide size-selected T2 sweep** (`894e94fa`…`70a41d60`): every
+  door-opening family with an emulator lifecycle gained a genuine
+  >14,336-byte size-selected RawUtxo journey; helpers re-keyed on the
+  ACTUAL tier; several submitter gaps fixed along the way (min-fee
+  step-02 fee-exclusion, input-no-idx step-04 ladder plumbing and a
+  fixture paymentByte overflow, wri step-02 ladder).
+- **vnp + ma emulator suites** (`2c25a819`, `c1a692d3`): vnp 4 suites/6
+  tests (ADA and token claims, negatives, tampered-carriage adversarial),
+  ma 4 suites/9 tests (direction-A/B lifecycles with removal legs,
+  adversarial, size-selected T2 on fields 5/7). Landing the nsd tier-2
+  bind test exposed a LIVE submitter bug fixed as `fc635c8f`: step-03's
+  bind arms passed only the carriage UTxOs to `faultProofFieldOpeningV1`
+  while the tx also references the step's reference script, so
+  `resolveChunkReferenceIndicesV1`'s canonically sorted `ref_input_index`
+  was wrong whenever the publication outref sorted after the step
+  reference — a per-run coin flip under the Date.now()-seeded emulator.
+  Rule extracted: every `faultProofFieldOpeningV1` call takes the tx's
+  COMPLETE reference-input set. Full battery 612/612 before push.
+
+Registration itself (this entry's tree): `valueNotPreserved` `00000019`
+(4 steps), `inputSetUniqueness` `0000001a` (2 steps),
+`mintAuthorization` `0000001b` (5 steps), appended in reserved-id order.
+
+- **SDK**: `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`/`_IDS` 25 → 28;
+  `FraudProofs` +3; canonical chain builders + per-family
+  `build*FaultProofContracts` exports (parameterizations copied exactly
+  from the emulator-proven test-support builders);
+  `fraudProofContractsToFirstSteps` +3; reference-script token names
+  +11 (`V1FpValueNotPreservedS01..04`, `V1FpInputSetUniquenessS01..02`,
+  `V1FpMintAuthorizationS01..05`).
+- **midgard-core**: manifest identity +11 entries/roles/tokens,
+  `CATEGORY_ORDER` +3; identity suite fixture rebuilt at the 28-entry
+  root (9/9).
+- **midgard-node**: `DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES` 107 → 118,
+  role map +11, family map +3, `REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES`
+  +3 across reference-scripts/midgard-contracts/deployment-info,
+  always-succeeds stand-ins +3. The sole authenticated V1 manifest id
+  moves `b6dfe4d7…` → `acc508eb…` (append-only positions; pin-history
+  comment extended).
+- **da-committee-node**: deployment fixture +11 stub records, catalogue
+  fixture map +3 (6/6).
+- **fault-proofs**: the flip from pre-registration shape to canonical.
+  `buildMinimalFaultProofContracts` now builds the three chains through
+  the SDK builders via the shared-policy-asserting `buildFamilyContracts`
+  helper (bespoke IIFE records deleted; local chain builders kept as
+  parameter-order documentation, matching the withdrawal-mistag
+  precedent); `FaultProofContractChains` entries + always-succeeds
+  scaffold chains added; harness drops the `extraCategories` sidecar and
+  the test-only id consts (ids were the reserved values, so thread asset
+  names and door parameterizations are unchanged); support modules read
+  `catalogue.categories.<family>` and check
+  `FRAUD_PROOF_CATALOGUE_CATEGORY_IDS`; the explicit removal-category
+  records are deleted and all removal legs resolve canonically by name —
+  the fail-closed id-collision guard in `buildExplicitRemovalContracts`
+  fired on first run exactly as designed, proving the guard live;
+  runtime gains the three families in
+  `FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY`, `categoryLabel`, and
+  `buildOneCategoryFaultProofContracts` (generic `submit-init`/removal
+  CLI accepts them); `VALUE_NOT_PRESERVED_RESERVED_CATEGORY_ID_V1`
+  deleted from src. Q13 catalogue root re-pinned `6f940f0f…` →
+  `f9b9acd7…` (25 → 28 fold); catalogue-registration appended-set pin
+  14 → 17.
+
+The suites passing after the flip is the byte-identity proof: thread
+mints, catalogue membership proofs, and canonical removal all resolve
+against SDK-built chains, so the SDK parameterizations reproduce the
+emulator-proven scripts exactly.
+
+Matrices hand-edited: catalogue-status header + rows 26–28 flip to
+registered (✅/🔶 with the cancel-path emulator drive still owed for
+vnp/ma), §2 rows to REGISTERED; coverage-matrix's owed-family table
+drops the three (only `min-ada` remains on that row) and the registered
+enumeration extends to `0000001b`.
+
+Verification at the landed tree: fault-proofs typecheck/lint/prettier
+green, full battery 612 passed / 1 skipped (613 tests, 0 failures,
+237.8s); midgard-sdk 375/375-equivalent suite green with the +11 token
+pins (65 roles); midgard-core identity 9/9; midgard-node typecheck
+green, manifest 10/10 + contract-deployment-info 13/13 +
+midgard-contracts and deployment-run-state suites green;
+da-committee-node fixture suite 6/6. One PRE-EXISTING red surfaced:
+midgard-node `initialization-emulator.test.ts` fails 5/5 with
+"reference-script publication … native-script-decoding step-03 … Max
+transaction size of 16384 exceeded. Found: 26317" — nsd step-03 has
+been 25,767 B since the #635 BindOutOfDomain arm (2026-08-25), a
+singleton publication tx can never fit the default 16,384 maxTxSize the
+suite uses, and the batch-split retry bottoms out at one target. At
+HEAD `nativeScriptDecoding` is already in
+`REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES` with every step a
+publication target, and the test file is unchanged, so the red is
+target-set-independent of this wave; it went unnoticed because Node CI's
+"Test Midgard node" step has been SKIPPED behind the pre-existing
+midgard-validation digest-gate red since before step-03 grew. Owner
+call owed on the remedy (raise the suite's maxTxSize vs a chunked
+publication path); not fixed in this wave. Registration is append-only but the manifest
+identity and catalogue root move: adoption remains fresh
+genesis/redeployment, per the standing note.

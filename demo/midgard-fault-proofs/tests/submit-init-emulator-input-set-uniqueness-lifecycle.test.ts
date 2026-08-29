@@ -35,7 +35,6 @@ import {
 } from "../src/input-set-uniqueness/index.js";
 import {
   buildInputSetUniquenessFixtureV1,
-  inputSetUniquenessRemovalCategoryV1,
   isuOutRefV1,
   makeInputSetUniquenessEmulatorHarnessV1,
   publishInputSetUniquenessReferenceScriptsV1,
@@ -216,7 +215,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
       deploymentInfo: removalDeploymentInfo,
       network,
       signer: proverSigner,
-      fraudCategory: inputSetUniquenessRemovalCategoryV1(harness),
+      fraudCategory: "inputSetUniqueness",
       fraudulentHeaderHash: setup.headerHash,
       awaitConfirmation: true,
       requireReferenceScripts: true,
@@ -291,7 +290,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
         deploymentInfo: removalDeploymentInfo,
         network,
         signer: proverSigner,
-        fraudCategory: inputSetUniquenessRemovalCategoryV1(harness),
+        fraudCategory: "inputSetUniqueness",
         fraudulentHeaderHash: setup.headerHash,
         awaitConfirmation: true,
         requireReferenceScripts: true,

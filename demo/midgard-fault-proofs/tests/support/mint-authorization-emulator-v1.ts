@@ -55,7 +55,6 @@ import {
   requireMintAuthorizationStepStateV1,
   requireMintAuthorizationThreadUtxoV1,
 } from "../../src/mint-authorization/submit-common-v1.js";
-import type { RemoveFraudulentBlockExplicitCategory } from "../../src/remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import {
   excludeUtxo,
@@ -74,8 +73,6 @@ import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
   makeFaultProofEmulatorHarnessV1,
-  MINT_AUTHORIZATION_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  MINT_AUTHORIZATION_TEST_CATEGORY_ID_V1,
   network,
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
@@ -431,13 +428,16 @@ export const makeMintAuthorizationEmulatorHarnessV1 = async ({
       : {}),
   });
   const family = harness.contracts.mintAuthorization;
-  const category = harness.catalogue.extraCategories.mintAuthorization;
+  const category = harness.catalogue.categories.mintAuthorization;
   if (family === undefined || category === undefined) {
     throw new Error(
       "Harness did not build the mint-authorization contracts/category",
     );
   }
-  if (category.categoryId !== MINT_AUTHORIZATION_TEST_CATEGORY_ID_V1) {
+  if (
+    category.categoryId !==
+    SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.mintAuthorization
+  ) {
     throw new Error("Unexpected mint-authorization catalogue category id");
   }
   return { ...harness, family, category };
@@ -513,27 +513,6 @@ export const publishMintAuthorizationReferenceScriptsV1 = async ({
   }
   return published as unknown as readonly [UTxO, UTxO, UTxO, UTxO, UTxO];
 };
-
-/**
- * The explicit removal-category record: the removal submitter cannot resolve a
- * pre-registration category through the SDK's canonical builders, so the
- * harness hands it the already-resolved facts. The spend-script hash rides the
- * harness's shared `fraudProof` contracts (the family record deliberately
- * carries only the pair's policy id and address; the two are one deployment).
- */
-export const mintAuthorizationRemovalCategoryV1 = (
-  harness: MintAuthorizationHarnessV1,
-): RemoveFraudulentBlockExplicitCategory => ({
-  name: "mintAuthorization",
-  categoryId: harness.category.categoryId,
-  firstStepDeploymentEntry: MINT_AUTHORIZATION_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  firstStepScriptHash: harness.family.steps[0].spendingScriptHash,
-  fraudProof: {
-    policyId: harness.family.fraudProof.policyId,
-    spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-    spendingScriptAddress: harness.family.fraudProof.spendingScriptAddress,
-  },
-});
 
 // ---------------------------------------------------------------------------
 // The step-04 ResolveNext pre-state ledger trie (one reference input)

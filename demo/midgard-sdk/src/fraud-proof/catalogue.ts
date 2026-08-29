@@ -49,6 +49,9 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [
   "crossBlockDuplicateEvent",
   "l2TxMistag",
   "withdrawnInput",
+  "valueNotPreserved",
+  "inputSetUniqueness",
+  "mintAuthorization",
 ] as const satisfies readonly (keyof FraudProofs)[];
 
 export type FraudProofCatalogueCategoryName =
@@ -85,6 +88,9 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_IDS = {
   crossBlockDuplicateEvent: "00000016",
   l2TxMistag: "00000017",
   withdrawnInput: "00000018",
+  valueNotPreserved: "00000019",
+  inputSetUniqueness: "0000001a",
+  mintAuthorization: "0000001b",
 } as const satisfies Readonly<Record<FraudProofCatalogueCategoryName, string>>;
 
 export const NATIVE_SCRIPT_DECODING_FRAUD_CATEGORY_ID_V1 =
@@ -109,6 +115,12 @@ export const L2_TX_MISTAG_FRAUD_CATEGORY_ID_V1 =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.l2TxMistag;
 export const WITHDRAWN_INPUT_FRAUD_CATEGORY_ID_V1 =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawnInput;
+export const VALUE_NOT_PRESERVED_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.valueNotPreserved;
+export const INPUT_SET_UNIQUENESS_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.inputSetUniqueness;
+export const MINT_AUTHORIZATION_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.mintAuthorization;
 
 export type FraudProofCatalogueCategoryDeploymentInfo = {
   readonly categoryId: string;

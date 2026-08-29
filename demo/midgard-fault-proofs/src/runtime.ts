@@ -16,10 +16,12 @@ import {
   buildFabricatedDepositFaultProofContracts,
   buildFabricatedWithdrawalFaultProofContracts,
   buildInputNoIdxFaultProofContracts,
+  buildInputSetUniquenessFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
   buildInvalidSignatureFaultProofContracts,
   buildL2TxMistagFaultProofContracts,
   buildMinFeeFaultProofContracts,
+  buildMintAuthorizationFaultProofContracts,
   buildMissingNativeScriptTxFaultProofContracts,
   buildMissingSignatureFaultProofContracts,
   buildNativeScriptDecodingFaultProofContracts,
@@ -28,6 +30,7 @@ import {
   buildReferenceInputNoIdxFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
+  buildValueNotPreservedFaultProofContracts,
   buildWithdrawalMistagFaultProofContracts,
   buildWithdrawnInputFaultProofContracts,
   buildWithdrawnReferenceInputFaultProofContracts,
@@ -576,6 +579,23 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
     "fraudProofWithdrawnInputStep02",
     "fraudProofWithdrawnInputStep03",
   ],
+  valueNotPreserved: [
+    "fraudProofValueNotPreserved",
+    "fraudProofValueNotPreservedStep02",
+    "fraudProofValueNotPreservedStep03",
+    "fraudProofValueNotPreservedStep04",
+  ],
+  inputSetUniqueness: [
+    "fraudProofInputSetUniqueness",
+    "fraudProofInputSetUniquenessStep02",
+  ],
+  mintAuthorization: [
+    "fraudProofMintAuthorization",
+    "fraudProofMintAuthorizationStep02",
+    "fraudProofMintAuthorizationStep03",
+    "fraudProofMintAuthorizationStep04",
+    "fraudProofMintAuthorizationStep05",
+  ],
 } as const satisfies Record<
   SupportedFaultProofCategoryName,
   readonly [string, ...string[]]
@@ -635,6 +655,12 @@ const categoryLabel = (
       return "l2-tx-mistag";
     case "withdrawnInput":
       return "withdrawn-input";
+    case "valueNotPreserved":
+      return "value-not-preserved";
+    case "inputSetUniqueness":
+      return "input-set-uniqueness";
+    case "mintAuthorization":
+      return "mint-authorization";
   }
 };
 
@@ -761,6 +787,18 @@ const buildOneCategoryFaultProofContracts = async ({
     case "withdrawnInput":
       return await Effect.runPromise(
         buildWithdrawnInputFaultProofContracts(params),
+      );
+    case "valueNotPreserved":
+      return await Effect.runPromise(
+        buildValueNotPreservedFaultProofContracts(params),
+      );
+    case "inputSetUniqueness":
+      return await Effect.runPromise(
+        buildInputSetUniquenessFaultProofContracts(params),
+      );
+    case "mintAuthorization":
+      return await Effect.runPromise(
+        buildMintAuthorizationFaultProofContracts(params),
       );
   }
 };

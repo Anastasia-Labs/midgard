@@ -264,7 +264,8 @@ export type RemoveFraudulentBlockFraudCategory =
 
 /**
  * Explicit already-resolved category record for fault-proof families that
- * predate their catalogue registration (currently `input-set-uniqueness`).
+ * predate their catalogue registration (none at present; the mechanism stays
+ * for the next pre-registration family).
  * These families have no SDK contract-chain builder and no category id in any
  * deployment manifest yet, so removal cannot resolve them the canonical way;
  * per the families' submitter convention the caller supplies the

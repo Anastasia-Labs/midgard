@@ -41,6 +41,7 @@ import {
   encodeLinkedListNodeView,
   encodeMidgardTxInputCanonicalV1,
   fieldPreimagePublicationDatumCborV1,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
@@ -73,7 +74,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { RemoveFraudulentBlockExplicitCategory } from "../../src/remove-fraudulent-block.js";
 import {
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
@@ -98,7 +98,6 @@ import {
 import {
   type ClaimedAssetV1,
   type ClaimedImbalanceDirectionV1,
-  VALUE_NOT_PRESERVED_RESERVED_CATEGORY_ID_V1,
   ValueNotPreservedStep01SpendRedeemer,
   ValueNotPreservedStep02Datum,
   type ValueNotPreservedStep02State,
@@ -126,7 +125,6 @@ import {
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
   trieRootHex,
-  VALUE_NOT_PRESERVED_REMOVAL_DEPLOYMENT_ENTRY_V1,
 } from "./submit-init-emulator-shared.js";
 
 export { expectOnchainRefusalV1 } from "./submit-init-emulator-shared.js";
@@ -427,13 +425,15 @@ export const makeValueNotPreservedEmulatorHarnessV1 = async () => {
     },
   });
   const family = harness.contracts.valueNotPreserved;
-  const category = harness.catalogue.extraCategories.valueNotPreserved;
+  const category = harness.catalogue.categories.valueNotPreserved;
   if (family === undefined || category === undefined) {
     throw new Error(
       "Harness did not build the value-not-preserved contracts/category",
     );
   }
-  if (category.categoryId !== VALUE_NOT_PRESERVED_RESERVED_CATEGORY_ID_V1) {
+  if (
+    category.categoryId !== FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.valueNotPreserved
+  ) {
     throw new Error("Unexpected value-not-preserved catalogue category id");
   }
   return { ...harness, family, category };
@@ -706,28 +706,6 @@ export const publishValueNotPreservedReferenceScriptsV1 = async ({
   }
   return published as unknown as readonly [UTxO, UTxO, UTxO, UTxO];
 };
-
-/**
- * The explicit removal-category record for the family: the removal submitter
- * cannot resolve a pre-registration category through the SDK's canonical
- * builders, so the harness hands it the already-resolved facts. The
- * spend-script hash rides the harness's shared `fraudProof` contracts
- * because the family record deliberately carries only the pair's policy id
- * and address; the two are the same deployment (see `contracts.ts`).
- */
-export const valueNotPreservedRemovalCategoryV1 = (
-  harness: ValueNotPreservedHarnessV1,
-): RemoveFraudulentBlockExplicitCategory => ({
-  name: "valueNotPreserved",
-  categoryId: harness.category.categoryId,
-  firstStepDeploymentEntry: VALUE_NOT_PRESERVED_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  firstStepScriptHash: harness.family.steps[0].spendingScriptHash,
-  fraudProof: {
-    policyId: harness.family.fraudProof.policyId,
-    spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-    spendingScriptAddress: harness.family.fraudProof.spendingScriptAddress,
-  },
-});
 
 // ---------------------------------------------------------------------------
 // The honest thread, one call: init → bind → fold* → finish [→ 03 [→ 04]]

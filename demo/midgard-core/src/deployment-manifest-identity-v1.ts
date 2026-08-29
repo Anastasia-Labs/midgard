@@ -154,6 +154,17 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "fraudProofWithdrawnInput",
   "fraudProofWithdrawnInputStep02",
   "fraudProofWithdrawnInputStep03",
+  "fraudProofValueNotPreserved",
+  "fraudProofValueNotPreservedStep02",
+  "fraudProofValueNotPreservedStep03",
+  "fraudProofValueNotPreservedStep04",
+  "fraudProofInputSetUniqueness",
+  "fraudProofInputSetUniquenessStep02",
+  "fraudProofMintAuthorization",
+  "fraudProofMintAuthorizationStep02",
+  "fraudProofMintAuthorizationStep03",
+  "fraudProofMintAuthorizationStep04",
+  "fraudProofMintAuthorizationStep05",
   "fraudProofTransitionTraceControl",
   "fraudProofTransitionTraceSource",
   "fraudProofTransitionTraceWithdrawal",
@@ -191,6 +202,9 @@ export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
     "crossBlockDuplicateEvent",
     "l2TxMistag",
     "withdrawnInput",
+    "valueNotPreserved",
+    "inputSetUniqueness",
+    "mintAuthorization",
   ] as const);
 
 export type DeploymentManifestV1FraudProofCatalogueCategory =
@@ -333,6 +347,26 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 fraud-proof withdrawn-input step-01": "fraudProofWithdrawnInput",
     "V1 fraud-proof withdrawn-input step-02": "fraudProofWithdrawnInputStep02",
     "V1 fraud-proof withdrawn-input step-03": "fraudProofWithdrawnInputStep03",
+    "V1 fraud-proof value-not-preserved step-01": "fraudProofValueNotPreserved",
+    "V1 fraud-proof value-not-preserved step-02":
+      "fraudProofValueNotPreservedStep02",
+    "V1 fraud-proof value-not-preserved step-03":
+      "fraudProofValueNotPreservedStep03",
+    "V1 fraud-proof value-not-preserved step-04":
+      "fraudProofValueNotPreservedStep04",
+    "V1 fraud-proof input-set-uniqueness step-01":
+      "fraudProofInputSetUniqueness",
+    "V1 fraud-proof input-set-uniqueness step-02":
+      "fraudProofInputSetUniquenessStep02",
+    "V1 fraud-proof mint-authorization step-01": "fraudProofMintAuthorization",
+    "V1 fraud-proof mint-authorization step-02":
+      "fraudProofMintAuthorizationStep02",
+    "V1 fraud-proof mint-authorization step-03":
+      "fraudProofMintAuthorizationStep03",
+    "V1 fraud-proof mint-authorization step-04":
+      "fraudProofMintAuthorizationStep04",
+    "V1 fraud-proof mint-authorization step-05":
+      "fraudProofMintAuthorizationStep05",
     "V1 fraud-proof transition-trace route": "fraudProofTransitionTrace",
     "V1 fraud-proof transition-trace final-0":
       "fraudProofTransitionTraceControl",
@@ -463,6 +497,17 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES =
     "V1 fraud-proof withdrawn-input step-01": "V1FpWithdrawnInputS01",
     "V1 fraud-proof withdrawn-input step-02": "V1FpWithdrawnInputS02",
     "V1 fraud-proof withdrawn-input step-03": "V1FpWithdrawnInputS03",
+    "V1 fraud-proof value-not-preserved step-01": "V1FpValueNotPreservedS01",
+    "V1 fraud-proof value-not-preserved step-02": "V1FpValueNotPreservedS02",
+    "V1 fraud-proof value-not-preserved step-03": "V1FpValueNotPreservedS03",
+    "V1 fraud-proof value-not-preserved step-04": "V1FpValueNotPreservedS04",
+    "V1 fraud-proof input-set-uniqueness step-01": "V1FpInputSetUniquenessS01",
+    "V1 fraud-proof input-set-uniqueness step-02": "V1FpInputSetUniquenessS02",
+    "V1 fraud-proof mint-authorization step-01": "V1FpMintAuthorizationS01",
+    "V1 fraud-proof mint-authorization step-02": "V1FpMintAuthorizationS02",
+    "V1 fraud-proof mint-authorization step-03": "V1FpMintAuthorizationS03",
+    "V1 fraud-proof mint-authorization step-04": "V1FpMintAuthorizationS04",
+    "V1 fraud-proof mint-authorization step-05": "V1FpMintAuthorizationS05",
     "V1 fraud-proof transition-trace route": "V1FpTransitionTraceRoute",
     "V1 fraud-proof transition-trace final-0": "V1FpTransitionTraceFinal0",
     "V1 fraud-proof transition-trace final-1": "V1FpTransitionTraceFinal1",
@@ -1291,6 +1336,9 @@ const validateFinalizedContracts = (
     crossBlockDuplicateEvent: "fraudProofCrossBlockDuplicateEvent",
     l2TxMistag: "fraudProofL2TxMistag",
     withdrawnInput: "fraudProofWithdrawnInput",
+    valueNotPreserved: "fraudProofValueNotPreserved",
+    inputSetUniqueness: "fraudProofInputSetUniqueness",
+    mintAuthorization: "fraudProofMintAuthorization",
   } as const satisfies Record<
     DeploymentManifestV1FraudProofCatalogueCategory,
     string

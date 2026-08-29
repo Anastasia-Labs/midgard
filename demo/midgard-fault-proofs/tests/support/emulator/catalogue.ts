@@ -55,10 +55,9 @@ export const ledgerOrderedIndex = (
 
 /**
  * A catalogue category registered on top of the canonical registered set —
- * pre-registration families whose production registration is parent-owned
- * (currently the `input-set-uniqueness` reserved slot). With no extras the
- * emitted root and every base proof are byte-identical to the one-argument
- * behaviour, so no measured fixture moves.
+ * pre-registration families whose production registration is still pending.
+ * With no extras the emitted root and every base proof are byte-identical to
+ * the one-argument behaviour, so no measured fixture moves.
  */
 export type CatalogueExtraCategoryV1 = {
   readonly categoryId: string;

@@ -399,6 +399,9 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       crossBlockDuplicateEvent: repeatedFaultProofChain(doubleSpend, 2),
       l2TxMistag: repeatedFaultProofChain(invalidRange, 2),
       withdrawnInput: repeatedFaultProofChain(nonExistentInput, 3),
+      valueNotPreserved: repeatedFaultProofChain(zeroInput, 4),
+      inputSetUniqueness: repeatedFaultProofChain(doubleSpend, 2),
+      mintAuthorization: repeatedFaultProofChain(zeroInput, 5),
     };
     const fraudProofs =
       SDK.fraudProofContractsToFirstSteps(fraudProofContracts);

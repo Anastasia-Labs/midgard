@@ -42,7 +42,6 @@ import {
 import { type FabricatedDepositContractsV1 } from "../../../src/submit-fabricated-deposit-step-01.js";
 import { type FabricatedWithdrawalContractsV1 } from "../../../src/submit-fabricated-withdrawal-step-01.js";
 import { computationThreadOutputPredicate } from "../../../src/tx-layout.js";
-import { VALUE_NOT_PRESERVED_RESERVED_CATEGORY_ID_V1 } from "../../../src/value-not-preserved/schemas-v1.js";
 import {
   alwaysSucceedsBlueprintPath,
   type Blueprint,
@@ -278,23 +277,6 @@ export const submitFabricatedFamilyInitV1 = async ({
   };
 };
 
-/**
- * Test-only catalogue id for the `input-set-uniqueness` family. The
- * production id is assigned only at catalogue registration; `0000001a` is
- * the reserved-but-not-promised slot, and the emulator suites register it as
- * an extra category exactly the way the pre-registration families before it
- * did.
- */
-export const INPUT_SET_UNIQUENESS_TEST_CATEGORY_ID_V1 = "0000001a";
-
-/**
- * Test-only catalogue id for the `mint-authorization` family. The production
- * id is assigned only at catalogue registration; `0000001b` is the
- * reserved-but-not-promised slot, and the emulator suites register it as an
- * extra category exactly the way the pre-registration families before it did.
- */
-export const MINT_AUTHORIZATION_TEST_CATEGORY_ID_V1 = "0000001b";
-
 export type FaultProofEmulatorHarnessV1 = {
   readonly realBlueprint: Blueprint;
   readonly alwaysBlueprint: Blueprint;
@@ -386,33 +368,7 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
       emulator.now(),
     ),
   };
-  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs, {
-    ...(contracts.inputSetUniqueness === undefined
-      ? {}
-      : {
-          inputSetUniqueness: {
-            categoryId: INPUT_SET_UNIQUENESS_TEST_CATEGORY_ID_V1,
-            scriptHash:
-              contracts.inputSetUniqueness.steps[0].spendingScriptHash,
-          },
-        }),
-    ...(contracts.valueNotPreserved === undefined
-      ? {}
-      : {
-          valueNotPreserved: {
-            categoryId: VALUE_NOT_PRESERVED_RESERVED_CATEGORY_ID_V1,
-            scriptHash: contracts.valueNotPreserved.steps[0].spendingScriptHash,
-          },
-        }),
-    ...(contracts.mintAuthorization === undefined
-      ? {}
-      : {
-          mintAuthorization: {
-            categoryId: MINT_AUTHORIZATION_TEST_CATEGORY_ID_V1,
-            scriptHash: contracts.mintAuthorization.steps[0].spendingScriptHash,
-          },
-        }),
-  });
+  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
   return {
     realBlueprint,
     alwaysBlueprint,

@@ -189,6 +189,26 @@ export const WITHDRAWN_INPUT_FAULT_PROOF_TITLES = {
   step03: "fraud_proofs/withdrawn_input/step_03.main.spend",
 } as const;
 
+export const VALUE_NOT_PRESERVED_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/value_not_preserved/step_01.main.spend",
+  step02: "fraud_proofs/value_not_preserved/step_02.main.spend",
+  step03: "fraud_proofs/value_not_preserved/step_03.main.spend",
+  step04: "fraud_proofs/value_not_preserved/step_04.main.spend",
+} as const;
+
+export const INPUT_SET_UNIQUENESS_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/input_set_uniqueness/step_01.main.spend",
+  step02: "fraud_proofs/input_set_uniqueness/step_02.main.spend",
+} as const;
+
+export const MINT_AUTHORIZATION_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/mint_authorization/step_01.main.spend",
+  step02: "fraud_proofs/mint_authorization/step_02.main.spend",
+  step03: "fraud_proofs/mint_authorization/step_03.main.spend",
+  step04: "fraud_proofs/mint_authorization/step_04.main.spend",
+  step05: "fraud_proofs/mint_authorization/step_05.main.spend",
+} as const;
+
 export const TRANSITION_TRACE_FAULT_PROOF_TITLES = {
   route: "fraud_proofs/transition_trace/route_v1.main.spend",
   control: "fraud_proofs/transition_trace/control_v1.main.spend",
@@ -733,6 +753,41 @@ export type WithdrawnInputFaultProofContracts = {
   };
 };
 
+export type ValueNotPreservedFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly valueNotPreserved: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type InputSetUniquenessFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly inputSetUniqueness: FraudProofChain & {
+    readonly steps: readonly [SpendingValidator, SpendingValidator];
+  };
+};
+
+export type MintAuthorizationFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly mintAuthorization: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
 export type TransitionTraceFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
@@ -944,6 +999,9 @@ export type FaultProofContracts = {
   readonly crossBlockDuplicateEvent: CrossBlockDuplicateEventFaultProofContracts["crossBlockDuplicateEvent"];
   readonly l2TxMistag: L2TxMistagFaultProofContracts["l2TxMistag"];
   readonly withdrawnInput: WithdrawnInputFaultProofContracts["withdrawnInput"];
+  readonly valueNotPreserved: ValueNotPreservedFaultProofContracts["valueNotPreserved"];
+  readonly inputSetUniqueness: InputSetUniquenessFaultProofContracts["inputSetUniqueness"];
+  readonly mintAuthorization: MintAuthorizationFaultProofContracts["mintAuthorization"];
 };
 
 /**
@@ -1047,6 +1105,15 @@ export type BuildL2TxMistagFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildWithdrawnInputFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildValueNotPreservedFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildInputSetUniquenessFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildMintAuthorizationFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildTransitionTraceFaultProofContractsParams =
@@ -2816,6 +2883,172 @@ const buildWithdrawnInputChain = ({
     return { firstStep: step01, steps: [step01, step02, step03] };
   });
 
+const buildValueNotPreservedChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  ValueNotPreservedFaultProofContracts["valueNotPreserved"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      VALUE_NOT_PRESERVED_FAULT_PROOF_TITLES.step04,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build value-not-preserved step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      VALUE_NOT_PRESERVED_FAULT_PROOF_TITLES.step03,
+      [
+        step04.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build value-not-preserved step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      VALUE_NOT_PRESERVED_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build value-not-preserved step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      VALUE_NOT_PRESERVED_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build value-not-preserved step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02, step03, step04] };
+  });
+
+const buildInputSetUniquenessChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  InputSetUniquenessFaultProofContracts["inputSetUniqueness"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      INPUT_SET_UNIQUENESS_FAULT_PROOF_TITLES.step02,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build input-set-uniqueness step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      INPUT_SET_UNIQUENESS_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build input-set-uniqueness step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02] };
+  });
+
+const buildMintAuthorizationChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  MintAuthorizationFaultProofContracts["mintAuthorization"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      MINT_AUTHORIZATION_FAULT_PROOF_TITLES.step05,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build mint-authorization step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      MINT_AUTHORIZATION_FAULT_PROOF_TITLES.step04,
+      [
+        step05.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build mint-authorization step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      MINT_AUTHORIZATION_FAULT_PROOF_TITLES.step03,
+      [
+        step04.spendingScriptHash,
+        step05.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build mint-authorization step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      MINT_AUTHORIZATION_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build mint-authorization step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      MINT_AUTHORIZATION_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build mint-authorization step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04, step05],
+    };
+  });
+
 const buildTransitionTraceChain = ({
   blueprint,
   network,
@@ -3724,6 +3957,18 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
+    const valueNotPreserved = yield* buildValueNotPreservedChain({
+      ...params,
+      ...shared,
+    });
+    const inputSetUniqueness = yield* buildInputSetUniquenessChain({
+      ...params,
+      ...shared,
+    });
+    const mintAuthorization = yield* buildMintAuthorizationChain({
+      ...params,
+      ...shared,
+    });
 
     return {
       computationThread: shared.computationThread,
@@ -3753,6 +3998,9 @@ export const buildFaultProofContracts = (
       crossBlockDuplicateEvent,
       l2TxMistag,
       withdrawnInput,
+      valueNotPreserved,
+      inputSetUniqueness,
+      mintAuthorization,
     };
   });
 
@@ -3792,6 +4040,9 @@ export const fraudProofContractsToFirstSteps = (
   crossBlockDuplicateEvent: contracts.crossBlockDuplicateEvent.firstStep,
   l2TxMistag: contracts.l2TxMistag.firstStep,
   withdrawnInput: contracts.withdrawnInput.firstStep,
+  valueNotPreserved: contracts.valueNotPreserved.firstStep,
+  inputSetUniqueness: contracts.inputSetUniqueness.firstStep,
+  mintAuthorization: contracts.mintAuthorization.firstStep,
 });
 
 export const buildDoubleSpendFaultProofContracts = (
@@ -4106,6 +4357,42 @@ export const buildWithdrawnInputFaultProofContracts = (
       ...shared,
     });
     return { ...shared, withdrawnInput };
+  });
+
+export const buildValueNotPreservedFaultProofContracts = (
+  params: BuildValueNotPreservedFaultProofContractsParams,
+): Effect.Effect<ValueNotPreservedFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const valueNotPreserved = yield* buildValueNotPreservedChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, valueNotPreserved };
+  });
+
+export const buildInputSetUniquenessFaultProofContracts = (
+  params: BuildInputSetUniquenessFaultProofContractsParams,
+): Effect.Effect<InputSetUniquenessFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const inputSetUniqueness = yield* buildInputSetUniquenessChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, inputSetUniqueness };
+  });
+
+export const buildMintAuthorizationFaultProofContracts = (
+  params: BuildMintAuthorizationFaultProofContractsParams,
+): Effect.Effect<MintAuthorizationFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const mintAuthorization = yield* buildMintAuthorizationChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, mintAuthorization };
   });
 
 export const buildTransitionTraceFaultProofContracts = (

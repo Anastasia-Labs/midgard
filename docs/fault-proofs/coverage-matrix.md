@@ -345,14 +345,15 @@ The canonical registration block is now fixed: `fabricatedDeposit` `0000000b`,
 `withdrawnReferenceInput` `00000010`, `canonicalDecodability` `00000011`,
 `committedFieldShape` `00000012`, `minFee` `00000013`, `withdrawalMistag`
 `00000014`, `doubleWithdraw` `00000015`, `crossBlockDuplicateEvent`
-`00000016`, `l2TxMistag` `00000017`, and `withdrawnInput` `00000018`.
+`00000016`, `l2TxMistag` `00000017`, `withdrawnInput` `00000018`,
+`valueNotPreserved` `00000019`, `inputSetUniqueness` `0000001a`, and
+`mintAuthorization` `0000001b` (the last three registered 2026-08-28).
 The table below therefore contains only proof types that still lack a dedicated
 registered single-party family.
 
 | Identifier                                                                                                                          | Matrix row(s)                                    |
 | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `value-not-preserved` (built pre-registration, catalogue-status §1 row 26), `mint-authorization` (built pre-registration, row 28), `min-ada` | §4 (Q24/Q25 are executable structural N/A)       |
-| `input-set-uniqueness` (built and emulator-proven pre-registration, catalogue-status §1 row 27)                                    | §2 (intra-tx duplicate input), §3 (disjointness) |
+| `min-ada`                                                                                                                           | §4 (Q24/Q25 are executable structural N/A)       |
 | `req-signer-set` (beyond registered `missingSignature`), `missing-native-script-utxo`, `native-script-invalid`                      | §5                                               |
 | `network-id`, `hash-field-consistency`, `size-limits`                                                                              | §1, §11b                                         |
 | `valid-forced-transition` (extends `transition-trace`)                                                                              | §7 forced-tx row                                 |

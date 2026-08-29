@@ -77,33 +77,21 @@ export const WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1 =
 
 /**
  * Manifest entry pinning the `input-set-uniqueness` step-01 script hash for
- * removal. The name is caller-chosen because the family predates its
- * catalogue registration (same pre-registration shape #635 introduced):
- * `submitRemoveFraudulentBlock` checks the explicit category record's step-01
- * hash against whatever entry the record names, and this is the name the
- * emulator manifests use.
+ * removal.
  */
 export const INPUT_SET_UNIQUENESS_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofInputSetUniqueness";
 
 /**
  * Manifest entry pinning the `value-not-preserved` step-01 script hash for
- * removal. The name is caller-chosen because the family predates its
- * catalogue registration (same pre-registration shape #635 introduced):
- * `submitRemoveFraudulentBlock` checks the explicit category record's step-01
- * hash against whatever entry the record names, and this is the name the
- * emulator manifests use.
+ * removal.
  */
 export const VALUE_NOT_PRESERVED_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofValueNotPreserved";
 
 /**
  * Manifest entry pinning the `mint-authorization` step-01 script hash for
- * removal. Caller-chosen because the family predates its catalogue
- * registration (the pre-registration shape #635 introduced):
- * `submitRemoveFraudulentBlock` checks the explicit category record's step-01
- * hash against whatever entry the record names, and this is the name the
- * emulator manifests use.
+ * removal.
  */
 export const MINT_AUTHORIZATION_REMOVAL_DEPLOYMENT_ENTRY_V1 =
   "fraudProofMintAuthorization";

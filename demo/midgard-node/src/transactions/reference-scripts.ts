@@ -1137,6 +1137,9 @@ const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
   "crossBlockDuplicateEvent",
   "l2TxMistag",
   "withdrawnInput",
+  "valueNotPreserved",
+  "inputSetUniqueness",
+  "mintAuthorization",
 ] as const satisfies readonly (keyof SDK.FaultProofContracts)[];
 
 const TRANSITION_TRACE_FINAL_CONTRACT_NAMES = [

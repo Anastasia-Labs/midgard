@@ -135,6 +135,17 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 fraud-proof withdrawn-input step-01": "V1FpWithdrawnInputS01",
   "V1 fraud-proof withdrawn-input step-02": "V1FpWithdrawnInputS02",
   "V1 fraud-proof withdrawn-input step-03": "V1FpWithdrawnInputS03",
+  "V1 fraud-proof value-not-preserved step-01": "V1FpValueNotPreservedS01",
+  "V1 fraud-proof value-not-preserved step-02": "V1FpValueNotPreservedS02",
+  "V1 fraud-proof value-not-preserved step-03": "V1FpValueNotPreservedS03",
+  "V1 fraud-proof value-not-preserved step-04": "V1FpValueNotPreservedS04",
+  "V1 fraud-proof input-set-uniqueness step-01": "V1FpInputSetUniquenessS01",
+  "V1 fraud-proof input-set-uniqueness step-02": "V1FpInputSetUniquenessS02",
+  "V1 fraud-proof mint-authorization step-01": "V1FpMintAuthorizationS01",
+  "V1 fraud-proof mint-authorization step-02": "V1FpMintAuthorizationS02",
+  "V1 fraud-proof mint-authorization step-03": "V1FpMintAuthorizationS03",
+  "V1 fraud-proof mint-authorization step-04": "V1FpMintAuthorizationS04",
+  "V1 fraud-proof mint-authorization step-05": "V1FpMintAuthorizationS05",
 } as const;
 
 export type ReferenceScriptAuthTokenTarget =

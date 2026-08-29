@@ -33,7 +33,6 @@ import {
   buildMintAuthorizationSubjectV1,
   directionBNativeScriptV1,
   makeMintAuthorizationEmulatorHarnessV1,
-  mintAuthorizationRemovalCategoryV1,
   publishMintAuthorizationReferenceScriptsV1,
   setupMintAuthorizationScenarioV1,
 } from "./support/mint-authorization-emulator-v1.js";
@@ -187,7 +186,7 @@ describe("mint-authorization direction-B emulator lifecycle", () => {
       deploymentInfo: removalDeploymentInfo,
       network,
       signer: proverSigner,
-      fraudCategory: mintAuthorizationRemovalCategoryV1(harness),
+      fraudCategory: "mintAuthorization",
       fraudulentHeaderHash: setup.headerHash,
       awaitConfirmation: true,
       requireReferenceScripts: true,

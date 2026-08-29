@@ -227,6 +227,12 @@ export const buildDaDeploymentFixture = async (
         .scriptHash as string,
       l2TxMistag: contracts.fraudProofL2TxMistag!.scriptHash as string,
       withdrawnInput: contracts.fraudProofWithdrawnInput!.scriptHash as string,
+      valueNotPreserved: contracts.fraudProofValueNotPreserved!
+        .scriptHash as string,
+      inputSetUniqueness: contracts.fraudProofInputSetUniqueness!
+        .scriptHash as string,
+      mintAuthorization: contracts.fraudProofMintAuthorization!
+        .scriptHash as string,
     }),
   };
   const referenceScripts = Object.fromEntries(

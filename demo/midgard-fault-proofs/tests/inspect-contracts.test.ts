@@ -109,10 +109,12 @@ const Q13_APPLIED_STEP_HASHES = [
 // from 11 to 25 categories. The catalogue policy id is an applied parameter of
 // every chain, so the input-no-index hashes and the folded root move together.
 // Re-pinned again after the canonical double-withdraw terminal ABI was
-// normalized. The value agrees independently between the SDK catalogue
-// builder, the deployment fixture, and inspect-contracts' derived fold.
+// normalized, and once more when registration appended the value-not-preserved,
+// input-set-uniqueness, and mint-authorization categories (25 to 28). The value
+// agrees independently between the SDK catalogue builder, the deployment
+// fixture, and inspect-contracts' derived fold.
 const Q13_CATALOGUE_ROOT =
-  "6f940f0f79b24e579a4b6649db8f51e6a3304086eab8b566701818747cb9a8bc";
+  "f9b9acd788ae2236a6cf11d60fe6eb9996de7b5b90396459859453ab2e588217";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,

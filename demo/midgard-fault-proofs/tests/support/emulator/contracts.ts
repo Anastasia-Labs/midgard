@@ -11,10 +11,12 @@ import {
   buildFabricatedDepositFaultProofContracts,
   buildFabricatedWithdrawalFaultProofContracts,
   buildInputNoIdxFaultProofContracts,
+  buildInputSetUniquenessFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
   buildInvalidSignatureFaultProofContracts,
   buildL2TxMistagFaultProofContracts,
   buildMinFeeFaultProofContracts,
+  buildMintAuthorizationFaultProofContracts,
   buildMissingNativeScriptTxFaultProofContracts,
   buildMissingSignatureFaultProofContracts,
   buildNativeScriptDecodingFaultProofContracts,
@@ -23,6 +25,7 @@ import {
   buildReferenceInputNoIdxFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
+  buildValueNotPreservedFaultProofContracts,
   buildWithdrawalMistagFaultProofContracts,
   buildWithdrawnInputFaultProofContracts,
   buildWithdrawnReferenceInputFaultProofContracts,
@@ -660,10 +663,7 @@ export const buildWithdrawalMistagChainV1 = ({
  * `INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES_V1`). Applied backwards, step 02
  * first, because step 01 is parameterized by its successor's script hash.
  * Both steps deploy as reference scripts in production per the standing
- * reference-script ruling. The family predates its catalogue registration,
- * so unlike the chains above it has no SDK canonical builder yet — this
- * test-support builder is the family's only parameterization site until the
- * parent registers it.
+ * reference-script ruling.
  */
 export const buildInputSetUniquenessChainV1 = ({
   realBlueprint,
@@ -710,10 +710,7 @@ export const buildInputSetUniquenessChainV1 = ({
  * field-preimage certificate policy (each opens committed fields through the
  * §8.8 door), and step 04 leads with the fraud-proof pair. All four steps
  * deploy as reference scripts in production per the standing
- * reference-script ruling. The family predates its catalogue registration,
- * so like `input-set-uniqueness` above it has no SDK canonical builder yet —
- * this test-support builder is the family's only parameterization site until
- * the parent registers it.
+ * reference-script ruling.
  */
 export const buildValueNotPreservedChainV1 = ({
   realBlueprint,
@@ -780,10 +777,7 @@ export const buildValueNotPreservedChainV1 = ({
  * because every earlier step is parameterized by a successor's script hash —
  * and step 03 uniquely by TWO downstream hashes (step 04's reference-input
  * scan and step 05's direct close). Every step deploys as a reference script
- * in production per the standing reference-script ruling. The family predates
- * its catalogue registration, so like `input-set-uniqueness` it has no SDK
- * canonical builder yet — this test-support builder is the family's only
- * parameterization site until the parent registers it.
+ * in production per the standing reference-script ruling.
  */
 export const buildMintAuthorizationChainV1 = ({
   realBlueprint,
@@ -1150,6 +1144,18 @@ export const buildMinimalFaultProofContracts = async (
     realL2TxMistag,
     buildL2TxMistagFaultProofContracts,
   );
+  const valueNotPreservedContracts = await buildFamilyContracts(
+    realValueNotPreserved,
+    buildValueNotPreservedFaultProofContracts,
+  );
+  const inputSetUniquenessContracts = await buildFamilyContracts(
+    realInputSetUniqueness,
+    buildInputSetUniquenessFaultProofContracts,
+  );
+  const mintAuthorizationContracts = await buildFamilyContracts(
+    realMintAuthorization,
+    buildMintAuthorizationFaultProofContracts,
+  );
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
       withActiveOperators.activeOperators.spendingScriptAddress,
@@ -1363,120 +1369,39 @@ export const buildMinimalFaultProofContracts = async (
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueueMinting.policyId,
         };
-  // Pre-registration shape for the `input-set-uniqueness` family: the
-  // two-step chain is applied from the double-spend family's shared
-  // computation-thread and fraud-proof policies (the same policies the
-  // catalogue, thread mints, and removal all key on), with the real §8.6
-  // field-preimage certificate policy as parameter plumbing. There is no SDK
-  // canonical builder or `FaultProofContractChains` key yet — both land with
-  // parent-owned catalogue registration.
-  const inputSetUniqueness: InputSetUniquenessContractsV1 | undefined =
-    realInputSetUniqueness
-      ? await (async () => {
-          const fraudProofTokenAddressData = await Effect.runPromise(
-            addressDataFromBech32(
-              doubleSpendContracts.fraudProof.spendingScriptAddress,
-            ).pipe(
-              Effect.map((addressData) =>
-                Data.from(Data.to(addressData, AddressData)),
-              ),
-            ),
-          );
-          const steps = buildInputSetUniquenessChainV1({
-            realBlueprint,
-            computationThreadPolicyId:
-              doubleSpendContracts.computationThread.policyId,
-            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-            fraudProofTokenAddressData,
-            fieldPreimageCertificatePolicyId,
-            hubOraclePolicyId: hubOracle.policyId,
-          });
-          return {
-            steps,
-            computationThread: doubleSpendContracts.computationThread,
-            fraudProof: doubleSpendContracts.fraudProof,
-            hubOraclePolicyId: hubOracle.policyId,
-            stateQueuePolicyId: stateQueueMinting.policyId,
-            fieldPreimageCertificatePolicyId,
-          };
-        })()
-      : undefined;
-  // Pre-registration shape for the `value-not-preserved` family, exactly the
-  // `input-set-uniqueness` wiring above: the four-step chain is applied from
-  // the double-spend family's shared computation-thread and fraud-proof
-  // policies (the same policies the catalogue, thread mints, and removal all
-  // key on), with the real §8.6 field-preimage certificate policy pinned into
-  // steps 02/03 (both open committed fields through the §8.8 door). There is
-  // no SDK canonical builder or `FaultProofContractChains` key yet — both
-  // land with parent-owned catalogue registration.
   const valueNotPreserved: ValueNotPreservedContractsV1 | undefined =
-    realValueNotPreserved
-      ? await (async () => {
-          const fraudProofTokenAddressData = await Effect.runPromise(
-            addressDataFromBech32(
-              doubleSpendContracts.fraudProof.spendingScriptAddress,
-            ).pipe(
-              Effect.map((addressData) =>
-                Data.from(Data.to(addressData, AddressData)),
-              ),
-            ),
-          );
-          const steps = buildValueNotPreservedChainV1({
-            realBlueprint,
-            computationThreadPolicyId:
-              doubleSpendContracts.computationThread.policyId,
-            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-            fraudProofTokenAddressData,
-            fieldPreimageCertificatePolicyId,
-            hubOraclePolicyId: hubOracle.policyId,
-          });
-          return {
-            steps,
-            computationThread: doubleSpendContracts.computationThread,
-            fraudProof: doubleSpendContracts.fraudProof,
-            hubOraclePolicyId: hubOracle.policyId,
-            stateQueuePolicyId: stateQueueMinting.policyId,
-            fieldPreimageCertificatePolicyId,
-          };
-        })()
-      : undefined;
-  // Pre-registration shape for the `mint-authorization` family: the five-step
-  // chain is applied from the double-spend family's shared computation-thread
-  // and fraud-proof policies, with the real §8.6 field-preimage certificate
-  // policy as tier-2/3 carriage plumbing. No SDK canonical builder or
-  // `FaultProofContractChains` key yet — both land with parent-owned catalogue
-  // registration.
+    valueNotPreservedContracts === undefined
+      ? undefined
+      : {
+          steps: valueNotPreservedContracts.valueNotPreserved.steps,
+          computationThread: valueNotPreservedContracts.computationThread,
+          fraudProof: valueNotPreservedContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
+  const inputSetUniqueness: InputSetUniquenessContractsV1 | undefined =
+    inputSetUniquenessContracts === undefined
+      ? undefined
+      : {
+          steps: inputSetUniquenessContracts.inputSetUniqueness.steps,
+          computationThread: inputSetUniquenessContracts.computationThread,
+          fraudProof: inputSetUniquenessContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
   const mintAuthorization: MintAuthorizationContractsV1 | undefined =
-    realMintAuthorization
-      ? await (async () => {
-          const fraudProofTokenAddressData = await Effect.runPromise(
-            addressDataFromBech32(
-              doubleSpendContracts.fraudProof.spendingScriptAddress,
-            ).pipe(
-              Effect.map((addressData) =>
-                Data.from(Data.to(addressData, AddressData)),
-              ),
-            ),
-          );
-          const steps = buildMintAuthorizationChainV1({
-            realBlueprint,
-            computationThreadPolicyId:
-              doubleSpendContracts.computationThread.policyId,
-            fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-            fraudProofTokenAddressData,
-            fieldPreimageCertificatePolicyId,
-            hubOraclePolicyId: hubOracle.policyId,
-          });
-          return {
-            steps,
-            computationThread: doubleSpendContracts.computationThread,
-            fraudProof: doubleSpendContracts.fraudProof,
-            hubOraclePolicyId: hubOracle.policyId,
-            stateQueuePolicyId: stateQueueMinting.policyId,
-            fieldPreimageCertificatePolicyId,
-          };
-        })()
-      : undefined;
+    mintAuthorizationContracts === undefined
+      ? undefined
+      : {
+          steps: mintAuthorizationContracts.mintAuthorization.steps,
+          computationThread: mintAuthorizationContracts.computationThread,
+          fraudProof: mintAuthorizationContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
   const fabricatedWithdrawal: FabricatedWithdrawalContractsV1 | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
@@ -1577,6 +1502,18 @@ export const buildMinimalFaultProofContracts = async (
       withdrawnInput === undefined
         ? withActiveOperators.fraudProofContracts.withdrawnInput
         : chainFromSteps(withdrawnInput.steps),
+    valueNotPreserved:
+      valueNotPreserved === undefined
+        ? withActiveOperators.fraudProofContracts.valueNotPreserved
+        : chainFromSteps(valueNotPreserved.steps),
+    inputSetUniqueness:
+      inputSetUniqueness === undefined
+        ? withActiveOperators.fraudProofContracts.inputSetUniqueness
+        : chainFromSteps(inputSetUniqueness.steps),
+    mintAuthorization:
+      mintAuthorization === undefined
+        ? withActiveOperators.fraudProofContracts.mintAuthorization
+        : chainFromSteps(mintAuthorization.steps),
   };
 
   return {

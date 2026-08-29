@@ -26,6 +26,7 @@ import {
 } from "@al-ft/midgard-core";
 import {
   encodeMidgardTxInputCanonicalV1,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
@@ -56,7 +57,6 @@ import {
 
 import type { InputSetUniquenessContractsV1 } from "../../src/input-set-uniqueness/contracts-v1.js";
 import { requireInputSetUniquenessThreadUtxoV1 } from "../../src/input-set-uniqueness/submit-common-v1.js";
-import type { RemoveFraudulentBlockExplicitCategory } from "../../src/remove-fraudulent-block.js";
 import {
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
@@ -76,8 +76,6 @@ import { countedTransactionsRoot } from "./submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
-  INPUT_SET_UNIQUENESS_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  INPUT_SET_UNIQUENESS_TEST_CATEGORY_ID_V1,
   makeFaultProofEmulatorHarnessV1,
   makeHeader,
   makeNativeTx,
@@ -228,13 +226,16 @@ export const makeInputSetUniquenessEmulatorHarnessV1 = async () => {
     },
   });
   const family = harness.contracts.inputSetUniqueness;
-  const category = harness.catalogue.extraCategories.inputSetUniqueness;
+  const category = harness.catalogue.categories.inputSetUniqueness;
   if (family === undefined || category === undefined) {
     throw new Error(
       "Harness did not build the input-set-uniqueness contracts/category",
     );
   }
-  if (category.categoryId !== INPUT_SET_UNIQUENESS_TEST_CATEGORY_ID_V1) {
+  if (
+    category.categoryId !==
+    FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.inputSetUniqueness
+  ) {
     throw new Error("Unexpected input-set-uniqueness catalogue category id");
   }
   return { ...harness, family, category };
@@ -305,28 +306,6 @@ export const publishInputSetUniquenessReferenceScriptsV1 = async ({
   }
   return published as unknown as readonly [UTxO, UTxO];
 };
-
-/**
- * The explicit removal-category record for the family: the removal submitter
- * cannot resolve a pre-registration category through the SDK's canonical
- * builders, so the harness hands it the already-resolved facts. The
- * spend-script hash rides the harness's shared `fraudProof` contracts because
- * the family record deliberately carries only the pair's policy id and
- * address; the two are the same deployment (see `contracts.ts`).
- */
-export const inputSetUniquenessRemovalCategoryV1 = (
-  harness: InputSetUniquenessHarnessV1,
-): RemoveFraudulentBlockExplicitCategory => ({
-  name: "inputSetUniqueness",
-  categoryId: harness.category.categoryId,
-  firstStepDeploymentEntry: INPUT_SET_UNIQUENESS_REMOVAL_DEPLOYMENT_ENTRY_V1,
-  firstStepScriptHash: harness.family.steps[0].spendingScriptHash,
-  fraudProof: {
-    policyId: harness.family.fraudProof.policyId,
-    spendingScriptHash: harness.contracts.fraudProof.spendingScriptHash,
-    spendingScriptAddress: harness.family.fraudProof.spendingScriptAddress,
-  },
-});
 
 // ---------------------------------------------------------------------------
 // Raw builders — the honest submitters' transactions WITHOUT their local

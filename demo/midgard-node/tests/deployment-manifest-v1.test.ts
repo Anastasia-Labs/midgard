@@ -243,10 +243,10 @@ describe("V1 deployment manifest", () => {
     expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).toEqual(
       SHARED_DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
     );
-    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(107);
-    expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES).toHaveLength(90);
-    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(91);
-    expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toHaveLength(25);
+    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(118);
+    expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES).toHaveLength(101);
+    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(102);
+    expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toHaveLength(28);
   });
 
   // The golden manifest ID is `sha256` over the canonical stable JSON of the
@@ -357,9 +357,15 @@ describe("V1 deployment manifest", () => {
   //     canonical catalogue root/proofs and full manifest identity move with
   //     those append-only ABI vectors.
   //     `29a6a7e6...` -> `b6dfe4d7...`.
+  // 11. The 2026-08-28 registration wave appended three catalogue categories
+  //     (`valueNotPreserved` `00000019`, `inputSetUniqueness` `0000001a`,
+  //     `mintAuthorization` `0000001b`), eleven compiled contract entries
+  //     (4 + 2 + 5 step validators), and eleven authenticated
+  //     reference-script roles/tokens. Existing positions remain unchanged.
+  //     `b6dfe4d7...` -> `acc508eb...`.
   it("accepts the sole exact authenticated V1 manifest", () => {
     expect(canonicalManifest().manifestId).toBe(
-      "b6dfe4d7a1955fa656fd5a6822e4b5f60dfb9dda40f878e2adf374f4cfbb5eec",
+      "acc508eb252b3558d60b0eb4f78715b658b569844c4b78aed96a493570b516e1",
     );
     expect(parseDeploymentManifestV1Value(canonicalManifest())).toEqual(
       canonicalManifest(),
