@@ -32,6 +32,7 @@ import {
   encodeMidgardSpendInputItemV1,
 } from "@al-ft/midgard-core/codec";
 import {
+  fieldPreimagePublicationDatumCborV1,
   FraudProofTokenDatum,
   inputNoIdxOutputsCommitmentV1,
   inputNoIdxSpendInputsCommitmentV1,
@@ -90,6 +91,14 @@ const CHALLENGED_OUTPUT_INDEX = 7n;
  * tier-2 window `(14,336, 15,148]` — the size alone selects `RawUtxo`.
  */
 const TIER2_SPEND_INPUT_COUNT = 365;
+
+/**
+ * 340 canonical producing outputs (43-byte §5.1 stride each) make a
+ * 14,623-byte field-2 preimage: past §8.4's tier-1 bound, inside the
+ * single-publication tier-2 window `(14,336, 15,148]` — the size alone
+ * selects `RawUtxo` for step-04's outputs opening.
+ */
+const TIER2_PRODUCING_OUTPUT_COUNT = 340;
 
 // Public BIP39 vectors used only by this emulator test. They are not secrets
 // and must never fund a real wallet.
@@ -164,14 +173,13 @@ const buildInputNoIdxBlockFixture = async ({
   }
   const producingOutputs = Array.from(
     { length: producingOutputCount },
-    (_, index) => nativeOutputCbor(0x40 + index, 5_000_000n + BigInt(index)),
+    (_, index) =>
+      nativeOutputCbor((0x40 + index) % 0x100, 5_000_000n + BigInt(index)),
   );
   const producingTx = makeNativeTx({
     spendInputCbors: [inputCbor("99".repeat(32), 0n)],
     fee: 7n,
-    ...(producingOutputs[0] === undefined
-      ? {}
-      : { outputCbor: producingOutputs[0] }),
+    ...(producingOutputs.length === 0 ? {} : { outputCbors: producingOutputs }),
   });
   const producingTxId = computeMidgardNativeTxIdV1(producingTx).toString("hex");
   const challengedInput: MidgardTxInput = {
@@ -790,6 +798,107 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
         ),
       );
     }
+  }, 240_000);
+
+  it("routes an oversized field-2 outputs preimage through tier-2 published carriage to the conviction", async () => {
+    // The spender claims an output index one past a producer that really has
+    // 340 outputs — still out of range, so the violation stands, and the
+    // outputs preimage step-04 must open is now genuinely large: past §8.4's
+    // tier-1 redeemer bound, inside the single-publication window. The ladder
+    // itself routes field 2 to `RawUtxo`; nothing forces the tier. Field 0
+    // stays a one-item preimage, so the same journey pins tier-1 and tier-2
+    // selection side by side, each decided by size alone.
+    const harness = await makeEmulatorHarness();
+    const fixture = await buildInputNoIdxBlockFixture({
+      producingOutputCount: TIER2_PRODUCING_OUTPUT_COUNT,
+      challengedOutputIndex: BigInt(TIER2_PRODUCING_OUTPUT_COUNT),
+    });
+    const producingOutputItems = fixture.producingOutputsCbor.map((item) =>
+      Buffer.from(item, "hex"),
+    );
+    const preimage = encodeMidgardFieldPreimageV1(producingOutputItems);
+    expect(preimage.length).toBeGreaterThan(
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+    );
+    expect(preimage.length).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K_V1);
+    const producingOutputs = producingOutputItems.map(
+      midgardTxOutputFromCanonicalCborV1,
+    );
+    expect(inputNoIdxOutputsCommitmentV1(producingOutputs)).toBe(
+      fixture.producingTxOutputsHash,
+    );
+
+    const { deploymentInfo, initResult, secondStepUtxo, setup } =
+      await startInputNoIdxStep02Thread({ harness, fixture });
+    const step02Result = await submitInputNoIdxStep02({
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      deploymentInfo,
+      network,
+      signer: harness.proverSigner,
+      threadOutRef: outRefLabel(secondStepUtxo),
+      inputsPreimage: {
+        inputsPreimage: fixture.badInputs,
+        badInputsIndex: fixture.badInputsIndex,
+      },
+      nativeTxCompactCbor: fixture.badTxInclusion.nativeTxCompactCbor,
+      awaitConfirmation: true,
+    });
+    expect(step02Result.carriageTier).toBe("Inline");
+    const thirdStepUtxo = await expectSingleUtxoWithUnit(
+      harness.proverLucid,
+      step02Result.thirdStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step03Result = await submitInputNoIdxStep03({
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      deploymentInfo,
+      network,
+      signer: harness.proverSigner,
+      threadOutRef: outRefLabel(thirdStepUtxo),
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: fixture.producingTxInclusion,
+      awaitConfirmation: true,
+    });
+    const fourthStepUtxo = await expectSingleUtxoWithUnit(
+      harness.proverLucid,
+      step03Result.fourthStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step04Result = await submitInputNoIdxStep04({
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      deploymentInfo,
+      network,
+      signer: harness.proverSigner,
+      threadOutRef: outRefLabel(fourthStepUtxo),
+      outputsPreimage: { outputsPreimage: producingOutputs },
+      nativeTxCompactCbor: fixture.producingTxInclusion.nativeTxCompactCbor,
+      awaitConfirmation: true,
+    });
+    expect(step04Result.carriageTier).toBe("RawUtxo");
+    expect(step04Result.producingTxOutputCount).toBe(
+      TIER2_PRODUCING_OUTPUT_COUNT,
+    );
+
+    // The tier-2 publication really exists and survives its consumer: the
+    // whole §5.1 preimage sits at the prover's address as a bytes-only inline
+    // datum (§8.5), referenced rather than spent (§8.7).
+    const expectedDatum = fieldPreimagePublicationDatumCborV1(preimage);
+    const publications = (
+      await harness.proverLucid.utxosAt(harness.proverSigner.address)
+    ).filter((utxo) => utxo.datum === expectedDatum);
+    expect(publications).toHaveLength(1);
+
+    const fraudProofUtxo = await expectSingleUtxoWithUnit(
+      harness.proverLucid,
+      step04Result.fraudProofAddress,
+      step04Result.fraudProofUnit,
+    );
+    expect(Data.from(fraudProofUtxo.datum!, FraudProofTokenDatum)).toEqual({
+      fraud_prover: harness.proverSigner.paymentKeyHash,
+    });
   }, 240_000);
 
   it("opens a 20-input field in one transaction, where the fold took twenty", async () => {

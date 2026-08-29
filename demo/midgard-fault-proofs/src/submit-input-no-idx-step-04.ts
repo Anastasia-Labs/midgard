@@ -50,6 +50,7 @@ import {
   faultProofFieldOpeningV1,
   parseNativeTxCompactCborV1,
   planFaultProofFieldOpeningV1,
+  publishFaultProofFieldCarriageV1,
 } from "./field-opening-v1.js";
 import { parseHex, requireRecord } from "./json-file.js";
 import { midgardTxOutputFromCanonicalCborV1 } from "./prepare-input-no-idx.js";
@@ -65,6 +66,7 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
+import { excludeUtxo } from "./spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
@@ -144,6 +146,8 @@ export type SubmitInputNoIdxStep04Result = {
   readonly producingTxId: string;
   /** The door's authenticated item count for field 2 (§5.2). */
   readonly producingTxOutputCount: number;
+  /** The §8.4 tier the ladder picked for field 2 — decided by size alone. */
+  readonly carriageTier: string;
   readonly badInputOutputIndex: number;
   readonly inputIndex: number;
   readonly outputIndex: number;
@@ -375,8 +379,21 @@ export const submitInputNoIdxStep04 = async ({
     label: "Input-no-idx step 04 outputs",
   });
   const producingTxOutputsHash = planned.commitment;
+  signer.selectWallet(lucid);
+  // §8's ladder decides whether anything has to exist on-chain first. Tier 1
+  // publishes nothing; tiers 2–3 publish raw carriage located by content
+  // (§8.7), and a publication that already exists at this address is reused
+  // rather than republished.
+  const carriageUtxos = await publishFaultProofFieldCarriageV1({
+    lucid,
+    signer,
+    planned,
+    publisherAddress: signer.address,
+    label: "Input-no-idx step 04 outputs",
+  });
   const outputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
+    referenceInputs: carriageUtxos,
     label: "Input-no-idx step 04 outputs",
   });
   // §5.2: the count the verdict rests on is the door's authenticated one.
@@ -392,8 +409,14 @@ export const submitInputNoIdxStep04 = async ({
     );
   }
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  // A fresh tier-2 publication carries enough min-ADA to top the fee sort;
+  // never spend anything this transaction must read.
+  const feeInput = selectFeeInput(
+    carriageUtxos.reduce<readonly UTxO[]>(
+      (candidates, utxo) => excludeUtxo(candidates, utxo),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -409,9 +432,12 @@ export const submitInputNoIdxStep04 = async ({
   let spendLayout: InputNoIdxStep04SpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
 
-  const tx = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const txWithInputs = lucid.newTx().collectFrom([feeInput]);
+  const txWithReferences =
+    carriageUtxos.length === 0
+      ? txWithInputs
+      : txWithInputs.readFrom([...carriageUtxos]);
+  const tx = txWithReferences
     .collectFrom(
       [threadUtxo],
       makeInputNoIdxStep04SpendRedeemer({
@@ -492,6 +518,7 @@ export const submitInputNoIdxStep04 = async ({
     producingTxOutputsHash,
     producingTxId,
     producingTxOutputCount,
+    carriageTier: planned.plan.tier,
     badInputOutputIndex: Number(badInputOutputIndex),
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
