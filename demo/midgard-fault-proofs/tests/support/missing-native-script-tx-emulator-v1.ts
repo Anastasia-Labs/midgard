@@ -169,6 +169,8 @@ export type MissingNativeScriptTxFixtureV1 = {
   readonly badTxId: string;
   readonly producingOutputItemCbors: readonly Buffer[];
   readonly badTxSpendInputs: readonly MidgardTxInput[];
+  /** Where the accused input landed after the canonical §5.3 sort. */
+  readonly badInputIndex: number;
   readonly badTxWitnessSet: NativeTxWitnessSetCompact;
   readonly badTxScriptWitnessItemCbors: readonly Buffer[];
   readonly nativeScriptBytes: Buffer;
@@ -180,12 +182,19 @@ export const setupMissingNativeScriptTxFixtureV1 = async ({
   harness,
   scriptPresent = false,
   keyLockedProducingOutput = false,
+  decoySpendInputCount = 0,
 }: {
   readonly harness: Awaited<
     ReturnType<typeof makeMissingNativeScriptTxEmulatorHarnessV1>
   >;
   readonly scriptPresent?: boolean;
   readonly keyLockedProducingOutput?: boolean;
+  /**
+   * Extra fabricated spend inputs committed alongside the accused pair, so a
+   * test can grow the bad transaction's field-0 preimage past the §8.4
+   * tier-1 bound and let size alone select tier-2 carriage.
+   */
+  readonly decoySpendInputCount?: number;
 }): Promise<MissingNativeScriptTxFixtureV1> => {
   const versionedScript = missingVersionedScriptV1();
   const nativeScriptBytes = Buffer.from(versionedScript.scriptBytes);
@@ -213,11 +222,30 @@ export const setupMissingNativeScriptTxFixtureV1 = async ({
     tx_id: producingTxId,
     output_index: 1n,
   };
+  const decoySpendInputs: readonly MidgardTxInput[] = Array.from(
+    { length: decoySpendInputCount },
+    (_, index): MidgardTxInput => ({
+      tx_id: (index + 1).toString(16).padStart(64, "0"),
+      output_index: 0n,
+    }),
+  );
+  const badTxSpendInputs = [
+    accusedInput,
+    keyLockedControlInput,
+    ...decoySpendInputs,
+  ].sort((left, right) =>
+    Buffer.compare(
+      encodeMidgardTxInputCanonicalV1(left),
+      encodeMidgardTxInputCanonicalV1(right),
+    ),
+  );
+  const badInputIndex = badTxSpendInputs.findIndex(
+    (input) =>
+      input.tx_id === accusedInput.tx_id &&
+      input.output_index === accusedInput.output_index,
+  );
   const badTx = makeNativeTx({
-    spendInputCbors: [
-      encodeMidgardTxInputCanonicalV1(accusedInput),
-      encodeMidgardTxInputCanonicalV1(keyLockedControlInput),
-    ],
+    spendInputCbors: badTxSpendInputs.map(encodeMidgardTxInputCanonicalV1),
     fee: 2_000n,
     scriptTxWitsPreimageCbor: scriptPresent
       ? encodeCbor([versionedScriptItem])
@@ -258,7 +286,8 @@ export const setupMissingNativeScriptTxFixtureV1 = async ({
     producingTxId,
     badTxId,
     producingOutputItemCbors: [producingOutput, keyLockedControlOutput],
-    badTxSpendInputs: [accusedInput, keyLockedControlInput],
+    badTxSpendInputs,
+    badInputIndex,
     badTxWitnessSet: sdkWitnessSet(badTx),
     badTxScriptWitnessItemCbors: decodeMidgardFieldPreimageV1(
       badTx.witnessSet.scriptTxWitsPreimageCbor,

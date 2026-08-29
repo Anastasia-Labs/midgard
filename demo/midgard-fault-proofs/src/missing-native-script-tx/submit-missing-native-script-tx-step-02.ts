@@ -46,6 +46,8 @@ export type SubmitMissingNativeScriptTxStep02Result = {
   readonly txHash: string;
   readonly nextThreadOutRef: string;
   readonly inputWithMissingScript: MidgardTxInput;
+  /** The §8.4 tier the ladder picked for field 0 — decided by size alone. */
+  readonly carriageTier: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly awaitedConfirmation: boolean;
@@ -211,6 +213,7 @@ export const submitMissingNativeScriptTxStep02 = async ({
     txHash,
     nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
     inputWithMissingScript,
+    carriageTier: planned.plan.tier,
     inputIndex: Number(layout.inputIndex),
     outputIndex: Number(layout.outputIndex),
     awaitedConfirmation: awaitConfirmation,
