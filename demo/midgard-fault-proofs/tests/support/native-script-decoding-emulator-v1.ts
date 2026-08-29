@@ -843,6 +843,8 @@ export type DecodingScenarioV1 = {
   readonly block: DecodingBlockFixtureV1;
   readonly setup: Awaited<ReturnType<typeof submitSetupTx>>;
   readonly subjectFieldInputs: readonly MidgardTxInput[];
+  /** Where the accused outpoint landed after the canonical §5.3 sort. */
+  readonly accusedOrdinal: number;
   readonly accusedSourceKind: bigint;
   readonly referenceScriptItemBytes: Buffer;
 };
@@ -850,9 +852,9 @@ export type DecodingScenarioV1 = {
 /**
  * Commits the disputed block on the emulator over a pre-state ledger holding
  * the accused outpoint's descriptor. `accusedSourceKind` picks the §2.5 field
- * the accused ordinal indexes (0 = spend inputs, 1 = reference inputs); the
- * accused outpoint always sits at ordinal 0 of that field, which is the only
- * ordinal any in-domain scenario names.
+ * the accused ordinal indexes (0 = spend inputs, 1 = reference inputs). With
+ * no decoys the accused outpoint sits at ordinal 0 of that field; decoys are
+ * sorted in canonically, and `accusedOrdinal` reports where it landed.
  */
 export const setupDecodingScenarioV1 = async ({
   harness,
@@ -862,6 +864,7 @@ export const setupDecodingScenarioV1 = async ({
   accusedSourceKind = 1n,
   accusedOutputIndex = 0,
   decoyTransactionCount = 0,
+  decoySubjectInputCount = 0,
 }: {
   readonly harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarnessV1>>;
   readonly referenceScriptItemBytes: Buffer;
@@ -874,6 +877,12 @@ export const setupDecodingScenarioV1 = async ({
   readonly accusedOutputIndex?: number;
   /** Extra committed L2 transactions, so the transactions trie proves in steps. */
   readonly decoyTransactionCount?: number;
+  /**
+   * Extra fabricated outpoints committed in the subject field beside the
+   * accused one, so a test can grow the field's §5.1 preimage past the §8.4
+   * tier-1 bound and let size alone select tier-2 carriage.
+   */
+  readonly decoySubjectInputCount?: number;
 }): Promise<DecodingScenarioV1> => {
   const { emulator, funderLucid, contracts, catalogue, nonceUtxo } = harness;
   const ledger = await buildDecodingLedgerFixtureV1({
@@ -886,11 +895,33 @@ export const setupDecodingScenarioV1 = async ({
     tx_id: DECODING_ACCUSED_TX_ID_V1,
     output_index: BigInt(accusedOutputIndex),
   };
-  const accusedCbor = encodeMidgardTxInputCanonicalV1(accused);
+  const subjectFieldInputs = [
+    accused,
+    ...Array.from(
+      { length: decoySubjectInputCount },
+      (_, index): MidgardTxInput => ({
+        tx_id: (index + 1).toString(16).padStart(64, "0"),
+        output_index: 0n,
+      }),
+    ),
+  ].sort((left, right) =>
+    Buffer.compare(
+      encodeMidgardTxInputCanonicalV1(left),
+      encodeMidgardTxInputCanonicalV1(right),
+    ),
+  );
+  const accusedOrdinal = subjectFieldInputs.findIndex(
+    (input) =>
+      input.tx_id === accused.tx_id &&
+      input.output_index === accused.output_index,
+  );
+  const subjectFieldCbors = subjectFieldInputs.map(
+    encodeMidgardTxInputCanonicalV1,
+  );
   const nativeTx = decodingSubjectTransactionV1(
     accusedSourceKind === 0n
-      ? { spendInputCbors: [accusedCbor], fee: 1_000n }
-      : { referenceInputCbors: [accusedCbor], fee: 1_000n },
+      ? { spendInputCbors: subjectFieldCbors, fee: 1_000n }
+      : { referenceInputCbors: subjectFieldCbors, fee: 1_000n },
   );
   const funderKeyHash = await funderPaymentKeyHash(funderLucid);
   const startTime = BigInt(
@@ -926,7 +957,8 @@ export const setupDecodingScenarioV1 = async ({
     ledger,
     block,
     setup,
-    subjectFieldInputs: [accused],
+    subjectFieldInputs,
+    accusedOrdinal,
     accusedSourceKind,
     referenceScriptItemBytes,
   };
