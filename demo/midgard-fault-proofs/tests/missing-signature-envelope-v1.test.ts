@@ -184,6 +184,7 @@ describe("missing-signature compiled envelope", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const capture = await captureEmulatorSubmission(harness.emulator, () =>
       submitMissingSignatureStep01({
@@ -197,6 +198,7 @@ describe("missing-signature compiled envelope", () => {
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         txInclusion: parseSubmitStep01TxInclusion(fixture.tx1.inclusion),
         referenceScriptUtxo: step01,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     );
     expect(capture.measurement.completeSignedBytes).toBeLessThanOrEqual(

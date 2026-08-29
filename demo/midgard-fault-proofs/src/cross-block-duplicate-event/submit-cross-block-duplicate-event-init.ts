@@ -44,6 +44,11 @@ import {
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../witness-reference-scripts-v1.js";
+import {
   CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL,
   type CrossBlockDuplicateEventContractsV1,
 } from "./contracts-v1.js";
@@ -82,6 +87,7 @@ export const submitCrossBlockDuplicateEventInit = async ({
   signer,
   fraudulentBlockOutRef,
   fraudulentHeaderHash,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -98,6 +104,7 @@ export const submitCrossBlockDuplicateEventInit = async ({
   readonly signer: ResolvedProverSigner;
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCrossBlockDuplicateEventInitResult> => {
   if (
@@ -160,6 +167,23 @@ export const submitCrossBlockDuplicateEventInit = async ({
     network,
     phasMembershipScript,
   );
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL} init computation-thread mint`,
+  });
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasMembershipScript,
+    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+    label: `${CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL} init PHAS membership`,
+  });
+  const referenceInputs = [
+    catalogueUtxo,
+    hubOracleUtxo,
+    fraudulentBlockUtxo,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...phasMembershipCarriage.referenceInputs,
+  ];
   const firstStepDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: null },
     FraudProofComputationThreadStepDatum,
@@ -219,9 +243,9 @@ export const submitCrossBlockDuplicateEventInit = async ({
   }) satisfies BuildTxWithRedeemer;
 
   signer.selectWallet(lucid);
-  const tx = lucid
+  const chainedTx = lucid
     .newTx()
-    .readFrom([catalogueUtxo, hubOracleUtxo, fraudulentBlockUtxo])
+    .readFrom(referenceInputs)
     .withdraw(
       phasRewardAddress,
       0n,
@@ -250,9 +274,10 @@ export const submitCrossBlockDuplicateEventInit = async ({
       { kind: "inline", value: firstStepDatum },
       { [computationThreadUnit]: 1n },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.WithdrawalValidator(phasMembershipScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = phasMembershipCarriage.attach(
+    computationThreadMintCarriage.attach(chainedTx),
+  );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (firstStepOutputIndex === undefined) {

@@ -316,6 +316,7 @@ export const makeWithdrawnInputEmulatorScenarioV1 = async (
     },
     signer: harness.proverSigner,
     fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
   });
   return {
     harness,
@@ -343,6 +344,7 @@ export const advanceWithdrawnInputToStep03V1 = async (
     stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
     txInclusion: scenario.fixture.txInclusion,
     referenceScriptUtxo: scenario.references[0],
+    witnessReferenceScripts: scenario.harness.witnessReferenceScripts,
   });
   const step02 = await submitWithdrawnInputStep02({
     lucid: scenario.harness.proverLucid,

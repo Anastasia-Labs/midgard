@@ -39,6 +39,7 @@ import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScriptsV1,
   witnessMintingPolicyCarriageV1,
+  witnessSpendingValidatorCarriageV1,
 } from "../witness-reference-scripts-v1.js";
 import type { MintAuthorizationContractsV1 } from "./contracts-v1.js";
 import {
@@ -108,9 +109,9 @@ export const submitMintAuthorizationStep05 = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  /** The published step-05 reference script; inline-attached when absent. */
+  /** The mandatory published step-05 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Published witness reference scripts required by this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMintAuthorizationStep05Result> => {
@@ -222,16 +223,21 @@ export const submitMintAuthorizationStep05 = async ({
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
   });
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireMintAuthorizationReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: contracts.steps[4].spendingScriptHash,
+          stepIndex: 4,
+        });
+  const stepCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.steps[4].spendingScript,
+    referenceUtxo: stepReference,
+    label: `${STEP_LABEL} spending validator`,
+  });
   const referenceInputs = [
-    ...(referenceScriptUtxo === undefined
-      ? []
-      : [
-          requireMintAuthorizationReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[4].spendingScriptHash,
-            stepIndex: 4,
-          }),
-        ]),
+    ...stepCarriage.referenceInputs,
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
@@ -252,14 +258,8 @@ export const submitMintAuthorizationStep05 = async ({
     .addSignerKey(signer.paymentKeyHash);
   const withReferences =
     referenceInputs.length === 0 ? base : base.readFrom(referenceInputs);
-  const withStepScript =
-    referenceScriptUtxo === undefined
-      ? withReferences.attach.SpendingValidator(
-          contracts.steps[4].spendingScript,
-        )
-      : withReferences;
   const tx = fraudProofMintCarriage.attach(
-    computationThreadMintCarriage.attach(withStepScript),
+    computationThreadMintCarriage.attach(stepCarriage.attach(withReferences)),
   );
 
   const unsigned = await tx.complete({ localUPLCEval: true });

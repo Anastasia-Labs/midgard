@@ -122,6 +122,7 @@ describe("native-script-decoding aborts, refusals and resume", () => {
     );
     const shared = {
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       contracts: decoding,
       categoryId: category.categoryId,
       signer: proverSigner,
@@ -131,6 +132,7 @@ describe("native-script-decoding aborts, refusals and resume", () => {
       (
         await submitNativeScriptDecodingInit({
           lucid: proverLucid,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
           blueprint: realBlueprint,
           network,
           contracts: decoding,
@@ -239,6 +241,8 @@ describe("native-script-decoding aborts, refusals and resume", () => {
       threadUnit,
       threadAssetName: `${category.categoryId}${setup.headerHash}`,
       referenceScriptUtxo: step01Ref,
+      computationThreadReferenceUtxo:
+        harness.witnessReferenceScripts.computationThreadMint!,
     });
     for (const step of decoding.steps) {
       await expect(
@@ -283,12 +287,14 @@ describe("native-script-decoding aborts, refusals and resume", () => {
       });
     const shared = {
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       contracts: decoding,
       categoryId: category.categoryId,
       signer: proverSigner,
     };
     const init = await submitNativeScriptDecodingInit({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       network,
       contracts: decoding,
@@ -447,12 +453,14 @@ describe("native-script-decoding aborts, refusals and resume", () => {
       });
     const shared = {
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       contracts: decoding,
       categoryId: category.categoryId,
       signer: proverSigner,
     };
     const init = await submitNativeScriptDecodingInit({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       network,
       contracts: decoding,
@@ -554,12 +562,14 @@ describe("native-script-decoding aborts, refusals and resume", () => {
       });
     const shared = {
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       contracts: decoding,
       categoryId: category.categoryId,
       signer: proverSigner,
     };
     const init = await submitNativeScriptDecodingInit({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       network,
       contracts: decoding,

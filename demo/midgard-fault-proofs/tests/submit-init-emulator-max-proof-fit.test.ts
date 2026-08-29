@@ -136,20 +136,17 @@ const expectAdversarialProofShape = (
 };
 
 /**
- * From the LARGEST measured transaction of the correction path, the exact
- * branch level at which the L1 envelope is exhausted. The expected value is
- * pinned per family, in the same style as the ordered-field terminal
- * boundaries: a change in proof-carrying transaction size moves this number and
- * must be re-pinned deliberately rather than absorbed.
+ * From the largest measured transaction of the correction path, derives the
+ * branch level at which the L1 envelope is exhausted. Reference-script
+ * carriage must lift that point beyond the 32 levels reachable with 2^128
+ * prefix-grinding work.
  */
 const expectMembershipDepthCeiling = ({
   label,
   proofFit,
-  expectedCeiling,
 }: {
   readonly label: string;
   readonly proofFit: Record<string, CompleteSignedTransactionMeasurement>;
-  readonly expectedCeiling: number;
 }): number => {
   const largest = Math.max(
     ...Object.values(proofFit).map(
@@ -163,16 +160,14 @@ const expectMembershipDepthCeiling = ({
   });
   expect(
     byteCeiling,
-    `${label}: the branch level at which the L1 envelope is exhausted moved`,
-  ).toBe(expectedCeiling);
-  // Finding Q1X-F5, asserted rather than narrated: forcing branch level `i`
-  // costs ~2^(4i) digests, and this ceiling is inside a 2^128 adversary's
-  // reach. If a future change lifts the ceiling out of reach this assertion
-  // fails, which is exactly when the finding should be revisited.
+    `${label}: reference-script carriage did not lift the byte ceiling beyond the 2^128 adversarial depth`,
+  ).toBeGreaterThan(
+    membershipProofBranchLevelsReachableWithWork(ADVERSARY_LOG2_WORK),
+  );
   expect(
     4 * byteCeiling,
-    `${label}: the envelope-exhausting depth is no longer reachable by a 2^${ADVERSARY_LOG2_WORK.toString()} adversary; finding Q1X-F5 needs re-stating`,
-  ).toBeLessThan(ADVERSARY_LOG2_WORK);
+    `${label}: the envelope-exhausting depth remains reachable by a 2^${ADVERSARY_LOG2_WORK.toString()} adversary`,
+  ).toBeGreaterThan(ADVERSARY_LOG2_WORK);
   expect(
     membershipProofBranchLevelsReachableWithWork(ADVERSARY_LOG2_WORK),
   ).toBe(32);
@@ -192,6 +187,9 @@ const printProofFit = (
 
 describe("fault-proof maximum proof fit", () => {
   it("fits a maximum-depth double-spend proof inside the L1 envelope", async () => {
+    const harness = await makeFaultProofEmulatorHarnessV1({
+      contractOptions: { alwaysFraudProofCatalogue: true },
+    });
     const {
       realBlueprint,
       emulator,
@@ -201,9 +199,7 @@ describe("fault-proof maximum proof fit", () => {
       nonceUtxo,
       contracts,
       catalogue,
-    } = await makeFaultProofEmulatorHarnessV1({
-      contractOptions: { alwaysFraudProofCatalogue: true },
-    });
+    } = harness;
     const removalReferenceScriptPublications =
       await publishRemovalReferenceScripts({ lucid: proverLucid, contracts });
     const inclusion = await buildTransactionInclusionFixture({
@@ -249,6 +245,7 @@ describe("fault-proof maximum proof fit", () => {
     const initCapture = await captureEmulatorSubmission(emulator, async () =>
       submitInit({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -271,6 +268,9 @@ describe("fault-proof maximum proof fit", () => {
     const step01Capture = await captureEmulatorSubmission(emulator, async () =>
       submitStep01({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofDoubleSpend!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -293,6 +293,9 @@ describe("fault-proof maximum proof fit", () => {
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
       submitStep02({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofDoubleSpendStep02!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -315,6 +318,8 @@ describe("fault-proof maximum proof fit", () => {
     const step03Capture = await captureEmulatorSubmission(emulator, async () =>
       submitStep03({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofDoubleSpendStep03!.utxo,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -342,6 +347,9 @@ describe("fault-proof maximum proof fit", () => {
     const step04Capture = await captureEmulatorSubmission(emulator, async () =>
       submitStep04({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofDoubleSpendStep04!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -435,7 +443,6 @@ describe("fault-proof maximum proof fit", () => {
     const byteCeiling = expectMembershipDepthCeiling({
       label: "double-spend",
       proofFit,
-      expectedCeiling: 15,
     });
     printProofFit("double-spend", proofFit, {
       branchLevels: ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
@@ -447,6 +454,13 @@ describe("fault-proof maximum proof fit", () => {
   }, 300_000);
 
   it("fits a maximum-depth non-existent-input proof inside the L1 envelope", async () => {
+    const harness = await makeFaultProofEmulatorHarnessV1({
+      contractOptions: {
+        realNonExistentInput: true,
+        alwaysFraudProofCatalogue: true,
+      },
+      registerAdditionalRewardAccounts: registerPexcludesExclusionRewardAccount,
+    });
     const {
       realBlueprint,
       emulator,
@@ -456,13 +470,7 @@ describe("fault-proof maximum proof fit", () => {
       nonceUtxo,
       contracts,
       catalogue,
-    } = await makeFaultProofEmulatorHarnessV1({
-      contractOptions: {
-        realNonExistentInput: true,
-        alwaysFraudProofCatalogue: true,
-      },
-      registerAdditionalRewardAccounts: registerPexcludesExclusionRewardAccount,
-    });
+    } = harness;
     const fixture = await buildNonExistentInputFixture({
       adversarialBranchLevels: ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
     });
@@ -503,6 +511,7 @@ describe("fault-proof maximum proof fit", () => {
     const initCapture = await captureEmulatorSubmission(emulator, async () =>
       submitInit({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -523,6 +532,9 @@ describe("fault-proof maximum proof fit", () => {
     const step01Capture = await captureEmulatorSubmission(emulator, async () =>
       neSubmitStep01({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofNonExistentInput!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -545,6 +557,9 @@ describe("fault-proof maximum proof fit", () => {
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
       neSubmitStep02({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofNonExistentInputStep02!
+            .utxo,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -567,6 +582,10 @@ describe("fault-proof maximum proof fit", () => {
     const step03Capture = await captureEmulatorSubmission(emulator, async () =>
       neSubmitStep03({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofNonExistentInputStep03!
+            .utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -587,6 +606,10 @@ describe("fault-proof maximum proof fit", () => {
     const step04Capture = await captureEmulatorSubmission(emulator, async () =>
       neSubmitStep04({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofNonExistentInputStep04!
+            .utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -654,7 +677,6 @@ describe("fault-proof maximum proof fit", () => {
     const byteCeiling = expectMembershipDepthCeiling({
       label: "non-existent-input",
       proofFit,
-      expectedCeiling: 17,
     });
     printProofFit("non-existent-input", proofFit, {
       branchLevels: ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
@@ -671,6 +693,12 @@ describe("fault-proof maximum proof fit", () => {
   // bytes AND in execution units, which is what turns "it fits at depth N"
   // into a bound.
   const runInvalidRangeJourney = async (branchLevels: number) => {
+    const harness = await makeFaultProofEmulatorHarnessV1({
+      contractOptions: {
+        realInvalidRange: true,
+        alwaysFraudProofCatalogue: true,
+      },
+    });
     const {
       realBlueprint,
       emulator,
@@ -680,12 +708,7 @@ describe("fault-proof maximum proof fit", () => {
       nonceUtxo,
       contracts,
       catalogue,
-    } = await makeFaultProofEmulatorHarnessV1({
-      contractOptions: {
-        realInvalidRange: true,
-        alwaysFraudProofCatalogue: true,
-      },
-    });
+    } = harness;
     const removalReferenceScriptPublications =
       await publishRemovalReferenceScripts({ lucid: proverLucid, contracts });
     const headerStartTime =
@@ -726,6 +749,7 @@ describe("fault-proof maximum proof fit", () => {
     const initCapture = await captureEmulatorSubmission(emulator, async () =>
       submitInit({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -746,6 +770,9 @@ describe("fault-proof maximum proof fit", () => {
     const step01Capture = await captureEmulatorSubmission(emulator, async () =>
       submitInvalidRangeStep01({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofInvalidRange!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -768,6 +795,9 @@ describe("fault-proof maximum proof fit", () => {
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
       submitInvalidRangeStep02({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofInvalidRangeStep02!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -844,7 +874,6 @@ describe("fault-proof maximum proof fit", () => {
     const byteCeiling = expectMembershipDepthCeiling({
       label: "invalid-range",
       proofFit,
-      expectedCeiling: 19,
     });
     printProofFit("invalid-range", proofFit, {
       branchLevels: ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
@@ -855,6 +884,9 @@ describe("fault-proof maximum proof fit", () => {
   }, 300_000);
 
   it("fits a maximum-depth zero-input proof inside the L1 envelope", async () => {
+    const harness = await makeFaultProofEmulatorHarnessV1({
+      contractOptions: { realZeroInput: true, alwaysFraudProofCatalogue: true },
+    });
     const {
       realBlueprint,
       emulator,
@@ -864,9 +896,7 @@ describe("fault-proof maximum proof fit", () => {
       nonceUtxo,
       contracts,
       catalogue,
-    } = await makeFaultProofEmulatorHarnessV1({
-      contractOptions: { realZeroInput: true, alwaysFraudProofCatalogue: true },
-    });
+    } = harness;
     const removalReferenceScriptPublications =
       await publishRemovalReferenceScripts({ lucid: proverLucid, contracts });
     const fixture = await buildZeroInputTransactionInclusionFixture({
@@ -908,6 +938,7 @@ describe("fault-proof maximum proof fit", () => {
     const initCapture = await captureEmulatorSubmission(emulator, async () =>
       submitInit({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -928,6 +959,9 @@ describe("fault-proof maximum proof fit", () => {
     const step01Capture = await captureEmulatorSubmission(emulator, async () =>
       submitZeroInputStep01({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofZeroInput!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -951,6 +985,9 @@ describe("fault-proof maximum proof fit", () => {
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
       submitZeroInputStep02({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofZeroInputStep02!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -1027,7 +1064,6 @@ describe("fault-proof maximum proof fit", () => {
     const byteCeiling = expectMembershipDepthCeiling({
       label: "zero-input",
       proofFit,
-      expectedCeiling: 18,
     });
     printProofFit("zero-input", proofFit, {
       branchLevels: ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
@@ -1156,24 +1192,21 @@ describe("fault-proof maximum proof fit", () => {
       "byte fit must be the binding constraint on membership-proof depth, not execution steps",
     ).toBeLessThan(stepCeiling);
 
-    // Finding Q1X-F5. Forcing branch level `i` is a fixed-target search over
-    // `i` chosen nibbles, so 2^128 digest evaluations buy level 32 — MORE than
-    // the level at which the L1 envelope runs out. The membership-depth axis is
-    // therefore bounded but not out of reach: exhausting the envelope costs
-    // about 2^(4 * byteCeiling) digests, which is recorded rather than rounded
-    // up into a pass.
+    // Reference-script carriage moves the byte ceiling beyond the 32 levels a
+    // 2^128 fixed-target search can force. Record that security consequence
+    // directly so the retired inline-script Q1X-F5 bound cannot drift back in.
     const reachable =
       membershipProofBranchLevelsReachableWithWork(ADVERSARY_LOG2_WORK);
     expect(reachable).toBe(32);
     expect(
       byteCeiling,
       "the L1 envelope is no longer exhaustible by a 2^128 adversary; finding Q1X-F5 must be re-stated rather than left to drift",
-    ).toBeLessThan(reachable);
+    ).toBeGreaterThan(reachable);
     const log2WorkToExhaustEnvelope = 4 * byteCeiling;
     expect(
       log2WorkToExhaustEnvelope,
-      "exhausting the envelope must still cost at least 2^72 digest evaluations",
-    ).toBeGreaterThanOrEqual(72);
+      "exhausting the envelope must cost more than the 2^128 adversarial budget",
+    ).toBeGreaterThan(ADVERSARY_LOG2_WORK);
 
     if (process.env["MIDGARD_PRINT_PROOF_FIT"] === "1") {
       console.log(

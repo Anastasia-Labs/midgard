@@ -87,6 +87,7 @@ describe("missing-native-script-tx adversarial emulator", () => {
         },
         signer: harness.proverSigner,
         fraudulentBlockOutRef: fixture.setup.fraudulentBlockOutRef,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const bindBadAndSelect = async (badInputIndex: bigint) => {
       const opened = await init();
@@ -101,6 +102,7 @@ describe("missing-native-script-tx adversarial emulator", () => {
         stateQueueBlockOutRef: fixture.setup.fraudulentBlockOutRef,
         txInclusion: badInclusion,
         referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       });
       return await submitMissingNativeScriptTxStep02({
         lucid: harness.proverLucid,
@@ -126,6 +128,7 @@ describe("missing-native-script-tx adversarial emulator", () => {
         stateQueueBlockOutRef: fixture.setup.fraudulentBlockOutRef,
         txInclusion: producingInclusion,
         referenceScriptUtxo: refs[2],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const openScriptOutput = async (threadOutRef: string) =>
       await submitMissingNativeScriptTxStep04({
@@ -163,6 +166,7 @@ describe("missing-native-script-tx adversarial emulator", () => {
         witnessSet: fixture.badTxWitnessSet,
         scriptTxWitsItems: fixture.badTxScriptWitnessItemCbors,
         referenceScriptUtxo: refs[5],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/present/u);
     await expectOnchainRefusalV1(() =>
@@ -211,6 +215,7 @@ describe("missing-native-script-tx adversarial emulator", () => {
         signer: harness.outsiderSigner,
         threadOutRef: classified.nextThreadOutRef,
         referenceScriptUtxo: refs[5],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/cannot cancel|names prover/u);
     await expectOnchainRefusalV1(() =>
@@ -228,6 +233,7 @@ describe("missing-native-script-tx adversarial emulator", () => {
       signer: harness.proverSigner,
       threadOutRef: classified.nextThreadOutRef,
       referenceScriptUtxo: refs[5],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
 
     // Step 03 binds only the transaction that produced the accused input.
@@ -262,6 +268,7 @@ describe("missing-native-script-tx adversarial emulator", () => {
       signer: harness.proverSigner,
       threadOutRef: wrongProducing.nextThreadOutRef,
       referenceScriptUtxo: refs[2],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
 
     // Step 04 refuses the second, key-locked producing output at the exact
@@ -287,6 +294,7 @@ describe("missing-native-script-tx adversarial emulator", () => {
       signer: harness.proverSigner,
       threadOutRef: keyProduced.nextThreadOutRef,
       referenceScriptUtxo: refs[3],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
 
     // Step 05 refuses a known preimage whose tag-0 versioned hash is not the
@@ -324,6 +332,7 @@ describe("missing-native-script-tx adversarial emulator", () => {
       signer: harness.proverSigner,
       threadOutRef: mismatchOpened.nextThreadOutRef,
       referenceScriptUtxo: refs[4],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
   }, 600_000);
 });

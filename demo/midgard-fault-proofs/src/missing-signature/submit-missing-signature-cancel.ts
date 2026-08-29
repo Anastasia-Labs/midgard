@@ -116,7 +116,7 @@ export const submitMissingSignatureCancel = async ({
   readonly threadOutRef: string;
   /** §2.3: the located step's published reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingSignatureCancelResult> => {

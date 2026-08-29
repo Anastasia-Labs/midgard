@@ -33,6 +33,10 @@ import {
 } from "../runtime.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { CrossBlockDuplicateEventContractsV1 } from "./contracts-v1.js";
 import {
   crossBlockDuplicateEventSubmitError,
@@ -61,6 +65,7 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
   settledHeaderHash,
   settledEvent,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -72,6 +77,7 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
   readonly settledEvent: CommittedDuplicateEventProofV1;
   /** Mandatory published step-02 reference script. */
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCrossBlockDuplicateEventStep02Result> => {
   if (!/^[0-9a-f]{56}$/u.test(settledHeaderHash)) {
@@ -236,18 +242,31 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const tx = lucid
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "cross-block-duplicate-event computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "cross-block-duplicate-event fraud-proof mint",
+  });
+  const referenceInputs = [
+    settlementUtxo,
+    requireCrossBlockDuplicateEventReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      contracts,
+      stepIndex: 1,
+    }),
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom([
-      settlementUtxo,
-      requireCrossBlockDuplicateEventReferenceScriptV1({
-        utxo: referenceScriptUtxo,
-        contracts,
-        stepIndex: 1,
-      }),
-    ])
+    .readFrom(referenceInputs)
     .mintAssets({ [threadToken.unit]: -1n }, burnRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, mintRedeemer)
     .pay.ToContract(
@@ -255,9 +274,10 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
       { kind: "inline", value: fraudProofDatum },
       { lovelace: threadUtxo.assets.lovelace ?? 0n, [fraudProofUnit]: 1n },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(base),
+  );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (layout === undefined || threadMintRedeemerIndex === undefined) {
     throw crossBlockDuplicateEventSubmitError(

@@ -364,6 +364,7 @@ export const driveWithdrawalMistagToFraudV1 = async ({
       prepared: scenario.prepared,
       threadOutRef: step04.nextThreadOutRef,
       referenceScriptUtxo: refs[4],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     }),
   );
   return { init, step01, step02, step03, step04, fraud };
@@ -394,6 +395,7 @@ export const initWithdrawalMistagThreadV1 = async ({
     },
     signer: harness.proverSigner,
     fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
   });
 
 export const withdrawalMistagBlockUtxoV1 = async ({

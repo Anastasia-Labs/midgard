@@ -46,6 +46,10 @@ import {
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { L2TxMistagContractsV1 } from "./contracts-v1.js";
 import {
   L2TxMistagStep01SpendRedeemer,
@@ -89,6 +93,7 @@ export const submitL2TxMistagStep01 = async ({
   txInclusion,
   publishedProofChunks,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -103,6 +108,7 @@ export const submitL2TxMistagStep01 = async ({
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
   /** Mandatory published step-01 reference script. */
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitL2TxMistagStep01Result> => {
   const { threadUtxo, threadToken } = await requireL2TxMistagThreadUtxoV1({
@@ -167,12 +173,6 @@ export const submitL2TxMistagStep01 = async ({
       chunks,
     }),
   );
-  const referenceInputs = [
-    hubOracleUtxo,
-    stateQueueBlockUtxo,
-    ...chunks.map((chunk) => chunk.utxo),
-    verifiedReferenceScript,
-  ];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -186,6 +186,20 @@ export const submitL2TxMistagStep01 = async ({
     network,
     chunkedVerifyScript,
   );
+  const membershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: carriedByChunks ? chunkedVerifyScript : phasMembershipScript,
+    referenceUtxo: carriedByChunks
+      ? witnessReferenceScripts?.chunkedVerifyWithdraw
+      : witnessReferenceScripts?.phasMembershipWithdraw,
+    label: `${STEP_LABEL} ${carriedByChunks ? "chunked verify" : "PHAS membership"}`,
+  });
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    ...chunks.map((chunk) => chunk.utxo),
+    verifiedReferenceScript,
+    ...membershipCarriage.referenceInputs,
+  ];
   const resolvedChunkIndices = derivedChunkReferenceIndices({
     referenceInputs,
     chunks,
@@ -285,7 +299,7 @@ export const submitL2TxMistagStep01 = async ({
           membershipProofCbor: txInclusion.txMembershipProofCbor,
         }),
       );
-  const completedTx = withMembership.pay
+  const paid = withMembership.pay
     .ToContract(
       contracts.steps[1].spendingScriptAddress,
       { kind: "inline", value: step02Datum },
@@ -294,10 +308,8 @@ export const submitL2TxMistagStep01 = async ({
         [threadToken.unit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.WithdrawalValidator(
-      carriedByChunks ? chunkedVerifyScript : phasMembershipScript,
-    );
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = membershipCarriage.attach(paid);
   const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (layout === undefined) {
     throw l2TxMistagSubmitError("step-01 layout was not resolved.");

@@ -71,9 +71,9 @@ const EXACT_FRONTIER_OBSERVE_BYTES = 16_369;
 const SIX_STAGE_CONSTANT_ROW_BYTES_V1 = {
   prepareSelected: 1_864,
   authenticate: 2_656,
-  source: 7_895,
-  proof: 5_701,
-  settle: 5_064,
+  source: 1_911,
+  proof: 1_936,
+  settle: 679,
 } as const;
 
 const stageBytesByKind = (
@@ -269,7 +269,7 @@ describe.skipIf(!optionB)(
         semantic.measurements.map(
           (measurement) => measurement.referenceInputCount,
         ),
-      ).toEqual([1, 0, 0, 2, 0, 0]);
+      ).toEqual([1, 1, 0, 2, 1, 1]);
       // The reference-route observe door does not carry the preimage; the
       // recorded projection lives on the refusal, not the stage record.
       const observeStage = stageTransactions.find(

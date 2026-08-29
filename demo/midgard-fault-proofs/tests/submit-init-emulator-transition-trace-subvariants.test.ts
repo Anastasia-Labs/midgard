@@ -204,6 +204,7 @@ const setupChallenge = async ({
     signer: harness.proverSigner,
     fraudCategory: "transitionTrace",
     fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
     awaitConfirmation: true,
   });
   expect(init.fraudCategoryId).toBe(
@@ -362,6 +363,10 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
               transitionTraceReferenceScripts[
                 "fraudProofTransitionTraceL1Event"
               ]!.utxo,
+              ...[
+                harness.witnessReferenceScripts.computationThreadMint,
+                harness.witnessReferenceScripts.fraudProofMint,
+              ].filter((utxo): utxo is UTxO => utxo !== undefined),
               event.utxo,
             ],
             event.utxo,
@@ -383,6 +388,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
       ),
       proof,
       additionalReferenceInputs: [event.utxo],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       awaitConfirmation: true,
     });
     await removeAndAssertPermanentProof({
@@ -503,6 +509,10 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
               transitionTraceReferenceScripts[
                 "fraudProofTransitionTraceL1Event"
               ]!.utxo,
+              ...[
+                harness.witnessReferenceScripts.computationThreadMint,
+                harness.witnessReferenceScripts.fraudProofMint,
+              ].filter((utxo): utxo is UTxO => utxo !== undefined),
               event.utxo,
             ],
             event.utxo,
@@ -525,6 +535,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
       ),
       proof,
       additionalReferenceInputs: [event.utxo],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       awaitConfirmation: true,
     });
     await removeAndAssertPermanentProof({
@@ -572,6 +583,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
         await firstThreadUtxo({ harness, init: lifecycle.init }),
       ),
       proof,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       awaitConfirmation: true,
     });
     await removeAndAssertPermanentProof({
@@ -617,6 +629,10 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
               transitionTraceReferenceScripts[
                 "fraudProofTransitionTraceL1Event"
               ]!.utxo,
+              ...[
+                harness.witnessReferenceScripts.computationThreadMint,
+                harness.witnessReferenceScripts.fraudProofMint,
+              ].filter((utxo): utxo is UTxO => utxo !== undefined),
               event.utxo,
             ],
             event.utxo,
@@ -645,6 +661,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
         ),
         proof,
         additionalReferenceInputs: [event.utxo],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         awaitConfirmation: true,
       }),
     ).rejects.toThrow();

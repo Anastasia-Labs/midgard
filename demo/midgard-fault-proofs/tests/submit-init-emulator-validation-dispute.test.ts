@@ -61,8 +61,8 @@ import {
   expectSingleUtxoWithUnit,
   network,
   publishAuthenticatedValidationDisputeControl,
+  publishFaultProofWitnessReferenceScriptsV1,
   publishPlainReferenceScriptUtxo,
-  publishValidationDisputeReferenceScript,
   readBlueprint,
   realBlueprintPath,
   registerPhasMembershipRewardAccount,
@@ -420,6 +420,14 @@ describe("fault-proof emulator integration", () => {
           alwaysFraudProofCatalogue: true,
         },
       );
+      const witnessReferenceScripts =
+        await publishFaultProofWitnessReferenceScriptsV1({
+          lucid: challengerLucid,
+          realBlueprint,
+          computationThreadMintingScript:
+            contracts.computationThread.mintingScript,
+          fraudProofMintingScript: contracts.fraudProof.mintingScript,
+        });
       // Re-derive the applied canonical-decode item-semantic validator (the
       // same deterministic build the submit path performs) so its reference
       // script can be published and its body pinned as absent from the proof
@@ -501,20 +509,39 @@ describe("fault-proof emulator integration", () => {
         slotConfig: publicationSlotConfig,
       });
       referenceScriptPublisherLucid.selectWallet.fromSeed(operator.seedPhrase);
-      const validationDisputePublication = await runEmulatorLifecycleStage(
-        "reference-script.publish-authenticated",
-        async () => {
-          try {
-            return await publishValidationDisputeReferenceScript({
-              lucid: referenceScriptPublisherLucid,
-              contracts,
-              now: emulator.now(),
-            });
-          } finally {
-            emulator.protocolParameters = setupProtocolParameters;
-          }
-        },
-      );
+      const validationDisputeControlPublications =
+        await runEmulatorLifecycleStage(
+          "reference-script.publish-authenticated",
+          async () => {
+            const authPolicy = createReferenceScriptAuthPolicy(
+              referenceScriptPublisherLucid,
+              emulator.now(),
+            );
+            const publications = {} as Record<
+              ValidationDisputeControlPublicationTarget["control"],
+              Awaited<
+                ReturnType<typeof publishAuthenticatedValidationDisputeControl>
+              >
+            >;
+            try {
+              for (const target of validationDisputeControlPublicationTargets(
+                contracts,
+              )) {
+                publications[target.control] =
+                  await publishAuthenticatedValidationDisputeControl({
+                    lucid: referenceScriptPublisherLucid,
+                    target,
+                    authPolicy,
+                  });
+              }
+              return publications;
+            } finally {
+              emulator.protocolParameters = setupProtocolParameters;
+            }
+          },
+        );
+      const validationDisputePublication =
+        validationDisputeControlPublications.dispute;
       const itemSemanticPublication = await runEmulatorLifecycleStage(
         "reference-script.publish-item-semantic",
         async () => {
@@ -569,6 +596,43 @@ describe("fault-proof emulator integration", () => {
           }
         },
       );
+      const canonicalDecodeStageReferenceScriptUtxos =
+        await runEmulatorLifecycleStage(
+          "reference-script.publish-canonical-decode-stages",
+          async () => {
+            emulator.protocolParameters = {
+              ...setupProtocolParameters,
+              maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+            };
+            const stages =
+              validationDisputeSdkContracts.validationTraceDispute
+                .canonicalDecodeItemStages;
+            try {
+              const source = await publishPlainReferenceScriptUtxo({
+                lucid: referenceScriptPublisherLucid,
+                script: stages.source.spendingScript,
+                label: "validation canonical-decode item source",
+              });
+              const proof = await publishPlainReferenceScriptUtxo({
+                lucid: referenceScriptPublisherLucid,
+                script: stages.proof.spendingScript,
+                label: "validation canonical-decode item proof",
+              });
+              const settlement = await publishPlainReferenceScriptUtxo({
+                lucid: referenceScriptPublisherLucid,
+                script: stages.settlement.spendingScript,
+                label: "validation canonical-decode item settlement",
+              });
+              return {
+                canonicalDecodeItemSource: source.utxo,
+                canonicalDecodeItemProof: proof.utxo,
+                canonicalDecodeItemSettlement: settlement.utxo,
+              };
+            } finally {
+              emulator.protocolParameters = setupProtocolParameters;
+            }
+          },
+        );
       const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
         validationDisputePublication,
         validationItemSemanticReference: {
@@ -593,6 +657,7 @@ describe("fault-proof emulator integration", () => {
           signer: challengerSigner,
           fraudCategory: "validationTraceDispute",
           fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+          witnessReferenceScripts,
           awaitConfirmation: true,
         }),
       );
@@ -647,6 +712,8 @@ describe("fault-proof emulator integration", () => {
           network,
           signer: challengerSigner,
           threadOutRef: openResult.nextThreadOutRef,
+          sourceReferenceScriptUtxo:
+            validationDisputeControlPublications.source.utxo,
           validityRange: validityRange(),
           awaitConfirmation: true,
         }),
@@ -670,6 +737,8 @@ describe("fault-proof emulator integration", () => {
               threadOutRef,
               role: move.role,
               proof: move.proof,
+              gameReferenceScriptUtxo:
+                validationDisputeControlPublications.game.utxo,
               validityRange: validityRange(),
               awaitConfirmation: true,
             }),
@@ -687,6 +756,8 @@ describe("fault-proof emulator integration", () => {
             network,
             signer: challengerSigner,
             threadOutRef,
+            gameReferenceScriptUtxo:
+              validationDisputeControlPublications.game.utxo,
             validityRange: validityRange(),
             awaitConfirmation: true,
           }),
@@ -711,6 +782,8 @@ describe("fault-proof emulator integration", () => {
             challengerPost: validationTraceProofDataFromCore(
               fixture.challengerTrace.tree.proofs[highIndex]!,
             ),
+            boundaryReferenceScriptUtxo:
+              validationDisputeControlPublications.boundary.utxo,
             validityRange: validityRange(),
             awaitConfirmation: true,
           }),
@@ -745,6 +818,8 @@ describe("fault-proof emulator integration", () => {
               signer: challengerSigner,
               threadOutRef: selectedResult.nextThreadOutRef,
               oneStepArgument: fixture.evidence.oneStepArgument,
+              stageReferenceScriptUtxos:
+                canonicalDecodeStageReferenceScriptUtxos,
               validityRange: validityRange(),
               awaitConfirmation: true,
             }),
@@ -760,6 +835,9 @@ describe("fault-proof emulator integration", () => {
             network,
             signer: challengerSigner,
             threadOutRef: semanticResult.nextThreadOutRef,
+            awardReferenceScriptUtxo:
+              validationDisputeControlPublications.award.utxo,
+            witnessReferenceScripts,
             validityRange: validityRange(),
             awaitConfirmation: true,
           }),
@@ -829,21 +907,17 @@ describe("fault-proof emulator integration", () => {
       // The semantic-resolution (authentication) proof transaction sources
       // the item-semantic validator from the published reference script, and
       // the observation transaction sources the item-observe validator from
-      // its published reference script (#597 ruling a / #617). Since Option B
-      // (#620/#621) the published proof item is dereferenced exactly once, at
-      // the observe stage's §8.8 door: authenticate re-checks the
-      // transition-only commitment and carries only its own script reference
-      // on either route, and observe carries one reference input on the
-      // direct route (two on the reference route, beside the proof item).
-      // The pre-#620 pin expected the proof item beside authenticate too —
-      // that value was recorded while the row was red-before-this-point and
-      // #620 retired the forwarding it described.
+      // its published reference script (#597 ruling a / #617). Every later
+      // stage likewise carries its spending validator by reference. Since
+      // Option B (#620/#621), the published proof item is dereferenced exactly
+      // once, at the observe stage's §8.8 door, so observe has one additional
+      // reference input only on the publication route.
       expect(
         semanticSubmission.measurements.map(
           (measurement) => measurement.referenceInputCount,
         ),
       ).toEqual(
-        expectedCarriage === "reference" ? [0, 1, 0, 2, 0, 0] : [1, 0, 1, 0, 0],
+        expectedCarriage === "reference" ? [0, 1, 1, 2, 1, 1] : [1, 1, 1, 1, 1],
       );
       expect(
         semanticSubmission.measurements.every(

@@ -97,7 +97,7 @@ describe.skipIf(!optionB)(
         semantic.measurements.map(
           (measurement) => measurement.referenceInputCount,
         ),
-      ).toEqual([0, 1, 0, 2, 0, 0]);
+      ).toEqual([0, 1, 1, 2, 1, 1]);
       for (const measurement of semantic.measurements) {
         expect(measurement.completeSignedBytes).toBeLessThanOrEqual(
           MAX_L1_TX_BYTES,
@@ -161,7 +161,7 @@ describe.skipIf(!optionB)(
         semantic.measurements.map(
           (measurement) => measurement.referenceInputCount,
         ),
-      ).toEqual([1, 0, 1, 0, 0]);
+      ).toEqual([1, 1, 1, 1, 1]);
       // Projection exactness: the CML dummy-witness projection the pre-sign
       // gate ran is byte-identical to what signing actually produced — the
       // gate measures the true envelope, not an estimate.

@@ -73,6 +73,7 @@ describe("canonical-decodability real-fault lifecycle", () => {
       },
       signer: proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(init.fraudCategoryId).toBe("00000011");
     expect(init.fraudulentHeaderHash).toBe(setup.headerHash);
@@ -95,6 +96,7 @@ describe("canonical-decodability real-fault lifecycle", () => {
       fieldIndex: fixture.fieldIndex,
       committedPreimage: fixture.committedPreimage,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(step01.verdict).toBe(fixture.prepared.evidence.verdict);
     await expect(
@@ -128,6 +130,7 @@ describe("canonical-decodability real-fault lifecycle", () => {
       signer: proverSigner,
       threadOutRef: outRefLabel(secondStep),
       referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(step02.fraudProofUnit).toBe(
       toUnit(

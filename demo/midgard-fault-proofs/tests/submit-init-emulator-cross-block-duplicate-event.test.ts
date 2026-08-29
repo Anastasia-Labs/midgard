@@ -196,6 +196,7 @@ const init = async (scenario: Awaited<ReturnType<typeof setupLifecycle>>) =>
     },
     signer: scenario.proverSigner,
     fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+    witnessReferenceScripts: scenario.witnessReferenceScripts,
   });
 
 describe.each(["deposit", "withdrawal"] as const)(
@@ -216,6 +217,7 @@ describe.each(["deposit", "withdrawal"] as const)(
         settledHeaderHash: scenario.settledHeaderHash,
         settledEvent: scenario.committedEvent,
         referenceScriptUtxos: scenario.references,
+        witnessReferenceScripts: scenario.witnessReferenceScripts,
       });
       expect(resumedStep01.resumedStep).toBe("step-01");
       if (resumedStep01.resumedStep !== "step-01") {
@@ -233,6 +235,7 @@ describe.each(["deposit", "withdrawal"] as const)(
         settledHeaderHash: scenario.settledHeaderHash,
         settledEvent: scenario.committedEvent,
         referenceScriptUtxos: scenario.references,
+        witnessReferenceScripts: scenario.witnessReferenceScripts,
       });
       expect(resumedStep02.resumedStep).toBe("step-02");
       if (resumedStep02.resumedStep !== "step-02") {
@@ -295,6 +298,7 @@ describe("cross-block duplicate cancellation/resume", () => {
       signer: scenario.proverSigner,
       threadOutRef: first.nextThreadOutRef,
       referenceScriptUtxo: scenario.references[0],
+      witnessReferenceScripts: scenario.witnessReferenceScripts,
     });
     expect(cancelled.cancelledStepIndex).toBe(0);
     const resumed = await init(scenario);
@@ -315,6 +319,7 @@ describe("cross-block duplicate cancellation/resume", () => {
       signer: scenario.proverSigner,
       threadOutRef: advanced.nextThreadOutRef,
       referenceScriptUtxo: scenario.references[1],
+      witnessReferenceScripts: scenario.witnessReferenceScripts,
     });
     expect(cancelledAfterHandoff.cancelledStepIndex).toBe(1);
     const resumedAgain = await init(scenario);

@@ -128,6 +128,7 @@ const driveNormalThreadToStep03 = async ({
     harness;
   const init = await submitNativeScriptDecodingInit({
     lucid: proverLucid,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: realBlueprint,
     network,
     contracts: decoding,
@@ -146,6 +147,7 @@ const driveNormalThreadToStep03 = async ({
   }
   const step01 = await submitNativeScriptDecodingStep01BindNormal({
     lucid: proverLucid,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: realBlueprint,
     contracts: decoding,
     categoryId: category.categoryId,
@@ -185,6 +187,7 @@ const driveForcedThreadToStep02 = async ({
     harness;
   const init = await submitNativeScriptDecodingInit({
     lucid: proverLucid,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: realBlueprint,
     network,
     contracts: decoding,
@@ -869,6 +872,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
     // the block never committed — holds under either.
     await submitNativeScriptDecodingCancel({
       lucid: harness.proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       contracts: harness.decoding,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
@@ -954,6 +958,7 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
     await expect(
       submitNativeScriptDecodingCancel({
         lucid: outsiderLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         contracts: harness.decoding,
         categoryId: harness.category.categoryId,
         signer: outsider,
@@ -1033,6 +1038,8 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
         threadUnit,
         threadAssetName: `${harness.category.categoryId}${scenario.setup.headerHash}`,
         referenceScriptUtxo: refs[2],
+        computationThreadReferenceUtxo:
+          harness.witnessReferenceScripts.computationThreadMint!,
       }),
     );
     expect(cancelMessage.length).toBeGreaterThan(0);

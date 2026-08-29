@@ -122,7 +122,7 @@ export const submitCanonicalDecodabilityStep01 = async ({
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
   /** Published step-01 reference script. Inline attachment is forbidden. */
   readonly referenceScriptUtxo: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCanonicalDecodabilityStep01Result> => {

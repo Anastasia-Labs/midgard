@@ -40,6 +40,10 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../witness-reference-scripts-v1.js";
+import {
   WITHDRAWN_REFERENCE_INPUT_CATEGORY_LABEL,
   type WithdrawnReferenceInputContractsV1,
 } from "./contracts-v1.js";
@@ -102,6 +106,7 @@ export const submitWithdrawnReferenceInputCancel = async ({
   signer,
   threadOutRef,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -111,6 +116,7 @@ export const submitWithdrawnReferenceInputCancel = async ({
   readonly threadOutRef: string;
   /** The located step's mandatory published reference script. */
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnReferenceInputCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -190,20 +196,27 @@ export const submitWithdrawnReferenceInputCancel = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
+  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${stepLabel} cancel computation-thread mint`,
+  });
+
   const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript);
-  const tx = base.readFrom([
+    .addSignerKey(signer.paymentKeyHash);
+  const withReferences = base.readFrom([
     requireWithdrawnReferenceInputReferenceScriptV1({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
       stepIndex,
     }),
+    ...computationThreadCarriage.referenceInputs,
   ]);
+  const tx = computationThreadCarriage.attach(withReferences);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (inputIndex === undefined || mintRedeemerIndex === undefined) {

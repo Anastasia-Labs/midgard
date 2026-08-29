@@ -53,6 +53,7 @@ describe("l2-tx-mistag adversarial refusal", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const firstStep = await expectSingleUtxoWithUnit(
       harness.proverLucid,
@@ -73,6 +74,7 @@ describe("l2-tx-mistag adversarial refusal", () => {
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         txInclusion: honest.inclusion,
         referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(
       /code-0 leaf is an honest acceptance; a valid block cannot be challenged/u,
@@ -92,6 +94,7 @@ describe("l2-tx-mistag adversarial refusal", () => {
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         txInclusion: honest.inclusion,
         referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/failed script execution/u);
 
@@ -114,6 +117,7 @@ describe("l2-tx-mistag adversarial refusal", () => {
           txMembershipProofCbor: honest.inclusion.txMembershipProofCbor,
         },
         referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/failed script execution Withdraw/u);
 

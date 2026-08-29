@@ -254,6 +254,9 @@ const runDoubleSpendCardinalityJourney = async (
   readonly stages: Record<string, CompleteSignedTransactionMeasurement>;
   readonly carriageTiers: Record<string, string>;
 }> => {
+  const harness = await makeFaultProofEmulatorHarnessV1({
+    contractOptions: { alwaysFraudProofCatalogue: true },
+  });
   const {
     realBlueprint,
     emulator,
@@ -263,9 +266,7 @@ const runDoubleSpendCardinalityJourney = async (
     nonceUtxo,
     contracts,
     catalogue,
-  } = await makeFaultProofEmulatorHarnessV1({
-    contractOptions: { alwaysFraudProofCatalogue: true },
-  });
+  } = harness;
   const fixture = await buildTransactionInclusionFixture({
     spendInputCardinality: cardinality,
   });
@@ -295,6 +296,7 @@ const runDoubleSpendCardinalityJourney = async (
 
   const initResult = await submitInit({
     lucid: proverLucid,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: realBlueprint,
     deploymentInfo,
     network,
@@ -309,6 +311,9 @@ const runDoubleSpendCardinalityJourney = async (
   );
   const step01Result = await submitStep01({
     lucid: proverLucid,
+    referenceScriptUtxo:
+      harness.faultProofReferenceScripts.fraudProofDoubleSpend!.utxo,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: realBlueprint,
     deploymentInfo,
     network,
@@ -325,6 +330,9 @@ const runDoubleSpendCardinalityJourney = async (
   );
   const step02Result = await submitStep02({
     lucid: proverLucid,
+    referenceScriptUtxo:
+      harness.faultProofReferenceScripts.fraudProofDoubleSpendStep02!.utxo,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: realBlueprint,
     deploymentInfo,
     network,
@@ -344,6 +352,8 @@ const runDoubleSpendCardinalityJourney = async (
   const step03Capture = await captureEmulatorSubmission(emulator, async () =>
     submitStep03({
       lucid: proverLucid,
+      referenceScriptUtxo:
+        harness.faultProofReferenceScripts.fraudProofDoubleSpendStep03!.utxo,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -380,6 +390,9 @@ const runDoubleSpendCardinalityJourney = async (
   const step04Capture = await captureEmulatorSubmission(emulator, async () =>
     submitStep04({
       lucid: proverLucid,
+      referenceScriptUtxo:
+        harness.faultProofReferenceScripts.fraudProofDoubleSpendStep04!.utxo,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -436,6 +449,12 @@ const runNoInputCardinalityJourney = async (
   readonly stages: Record<string, CompleteSignedTransactionMeasurement>;
   readonly carriageTiers: Record<string, string>;
 }> => {
+  const harness = await makeFaultProofEmulatorHarnessV1({
+    contractOptions: {
+      realNonExistentInput: true,
+      alwaysFraudProofCatalogue: true,
+    },
+  });
   const {
     realBlueprint,
     emulator,
@@ -445,12 +464,7 @@ const runNoInputCardinalityJourney = async (
     nonceUtxo,
     contracts,
     catalogue,
-  } = await makeFaultProofEmulatorHarnessV1({
-    contractOptions: {
-      realNonExistentInput: true,
-      alwaysFraudProofCatalogue: true,
-    },
-  });
+  } = harness;
   const fixture = await buildNonExistentInputFixture({
     spendInputCardinality: cardinality,
   });
@@ -480,6 +494,7 @@ const runNoInputCardinalityJourney = async (
 
   const initResult = await submitInit({
     lucid: proverLucid,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: realBlueprint,
     deploymentInfo,
     network,
@@ -496,6 +511,9 @@ const runNoInputCardinalityJourney = async (
   const step01Capture = await captureEmulatorSubmission(emulator, async () =>
     neSubmitStep01({
       lucid: proverLucid,
+      referenceScriptUtxo:
+        harness.faultProofReferenceScripts.fraudProofNonExistentInput!.utxo,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -514,6 +532,9 @@ const runNoInputCardinalityJourney = async (
   const step02Capture = await captureEmulatorSubmission(emulator, async () =>
     neSubmitStep02({
       lucid: proverLucid,
+      referenceScriptUtxo:
+        harness.faultProofReferenceScripts.fraudProofNonExistentInputStep02!
+          .utxo,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -598,7 +619,7 @@ describe("fault-proof spend-input preimage cardinality", () => {
     }
   });
 
-  it("fits the largest double-spend spend-input preimage and measures the first that does not", async () => {
+  it("adds reference-script headroom at the former double-spend byte boundary", async () => {
     const ceilings = executionCeilings();
     const { stages: fitting } = await runDoubleSpendCardinalityJourney(
       DOUBLE_SPEND_LARGEST_FITTING_CARDINALITY,
@@ -617,14 +638,11 @@ describe("fault-proof spend-input preimage cardinality", () => {
       fitting,
     );
 
-    // **#580 re-take.** The claim this block used to make — that the witness
-    // publication transaction is not the constraint — is retired with the
-    // publication itself. What replaces it is the claim that matters now:
-    // step-04 is the binding step and it binds on BYTES, with execution memory
-    // an order of magnitude clear of the reserve at the boundary.
+    // The former inline-witness boundary now has substantial byte headroom;
+    // execution remains far below its reserve.
     const boundaryStep04 = fitting["step-04"]!;
     expect(boundaryStep04.l1ByteMargin).toBeGreaterThanOrEqual(0);
-    expect(boundaryStep04.l1ByteMargin).toBeLessThan(64);
+    expect(boundaryStep04.l1ByteMargin).toBeGreaterThan(1_000);
     expect(boundaryStep04.executionMemory < ceilings.memory / 10n).toBe(true);
     // step-03 carries tx1's preimage and is the smaller of the two, which is
     // why the pair above is a step-04 boundary.
@@ -641,13 +659,11 @@ describe("fault-proof spend-input preimage cardinality", () => {
       overBytes,
     );
     const step04 = overBytes["step-04"]!;
-    // Deliberately a SUCCESSFUL evaluation that fails the byte policy: one more
-    // input pushes the step past `maxTxSize` while execution stays trivial.
-    expect(step04.l1ByteMargin).toBeLessThan(0);
+    expect(step04.l1ByteMargin).toBeGreaterThan(0);
     expect(step04.executionMemory < ceilings.memory / 10n).toBe(true);
   }, 900_000);
 
-  it("fits the largest no-input spend-input preimage and measures the first that does not", async () => {
+  it("adds reference-script headroom at the former no-input byte boundary", async () => {
     const ceilings = executionCeilings();
     const { stages: fitting } = await runNoInputCardinalityJourney(
       NO_INPUT_LARGEST_FITTING_CARDINALITY,
@@ -666,15 +682,11 @@ describe("fault-proof spend-input preimage cardinality", () => {
       fitting,
     );
 
-    // **#580 re-take.** This family carries the preimage in the step redeemer,
-    // so the axis reaches the step transaction's bytes — and under flat that is
-    // now the ONLY axis it reaches. The old assertion here was that ten
-    // kilobytes of margin remained at the boundary, which was true when the
-    // boundary was an execution boundary at 40 inputs; at the byte boundary the
-    // margin is by definition small.
+    // Reference-script carriage removes the large inline validator witness;
+    // both sides of the former byte boundary now fit.
     const step02 = fitting["step-02"]!;
     expect(step02.l1ByteMargin).toBeGreaterThanOrEqual(0);
-    expect(step02.l1ByteMargin).toBeLessThan(64);
+    expect(step02.l1ByteMargin).toBeGreaterThan(1_000);
     expect(step02.executionMemory < ceilings.memory / 10n).toBe(true);
 
     const { stages: overBytes } = await runNoInputCardinalityJourney(
@@ -686,11 +698,11 @@ describe("fault-proof spend-input preimage cardinality", () => {
       overBytes,
     );
     const overStep02 = overBytes["step-02"]!;
-    expect(overStep02.l1ByteMargin).toBeLessThan(0);
+    expect(overStep02.l1ByteMargin).toBeGreaterThan(0);
     expect(overStep02.executionMemory < ceilings.memory / 10n).toBe(true);
   }, 900_000);
 
-  it("reaches the admissible Cardano spend shape on execution and misses it on bytes alone", async () => {
+  it("reaches the admissible Cardano spend shape on execution and bytes", async () => {
     // **#580 re-take, and the row that carries the Q1X-F6 verdict.**
     //
     // This test used to assert that both journeys REJECT with `/over budget/`
@@ -700,9 +712,8 @@ describe("fault-proof spend-input preimage cardinality", () => {
     // thing wrong with either step at 296 inputs is its size.
     //
     // Both halves are asserted, because the finding is the pair. Q1X-F6 is
-    // resolved on the axis it named; what is left is a byte-carriage gap that
-    // §8's ladder is built to close and the legacy inline builders do not yet
-    // take.
+    // resolved on the axis it named; reference-script carriage also removes
+    // the former byte gap at this admissible shape.
     const { stages: noInput } = await runNoInputCardinalityJourney(
       CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY,
     );
@@ -729,9 +740,7 @@ describe("fault-proof spend-input preimage cardinality", () => {
       // per-item cost ever came back.
       expect(measurement.executionMemory < ceilings.memory / 10n).toBe(true);
       expect(measurement.executionSteps < ceilings.steps / 10n).toBe(true);
-      // Bytes: and this is what still misses — at tier-1 inline carriage. The
-      // routed row below is the same shape carried the way §8 routes it.
-      expect(measurement.l1ByteMargin).toBeLessThan(0);
+      expect(measurement.l1ByteMargin).toBeGreaterThan(0);
     }
   }, 900_000);
 

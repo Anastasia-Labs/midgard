@@ -57,6 +57,7 @@ import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import { witnessSpendingValidatorCarriageV1 } from "../witness-reference-scripts-v1.js";
 import type { MintAuthorizationContractsV1 } from "./contracts-v1.js";
 import { buildMintAuthorizationStep02EvidenceV1 } from "./evidence-v1.js";
 import {
@@ -123,7 +124,7 @@ export const submitMintAuthorizationStep02 = async ({
   readonly mintItemCbors: readonly string[];
   /** Pre-minted §8.6 certificate when the planner selects tier 3. */
   readonly certificateUtxo?: UTxO;
-  /** The published step-02 reference script; inline-attached when absent. */
+  /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMintAuthorizationStep02Result> => {
@@ -209,18 +210,23 @@ export const submitMintAuthorizationStep02 = async ({
     publisherAddress: signer.address,
     label: `${STEP_LABEL} mint`,
   });
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireMintAuthorizationReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: contracts.steps[1].spendingScriptHash,
+          stepIndex: 1,
+        });
+  const stepCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.steps[1].spendingScript,
+    referenceUtxo: stepReference,
+    label: `${STEP_LABEL} spending validator`,
+  });
   const referenceInputs = [
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...carriageUtxos,
-    ...(referenceScriptUtxo === undefined
-      ? []
-      : [
-          requireMintAuthorizationReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[1].spendingScriptHash,
-            stepIndex: 1,
-          }),
-        ]),
+    ...stepCarriage.referenceInputs,
   ];
   const mintOpening = faultProofFieldOpeningV1({
     planned,
@@ -295,12 +301,7 @@ export const submitMintAuthorizationStep02 = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
-  // The reference script rides `referenceInputs` when supplied; only the
-  // CLI's no-reference path inline-attaches the spending validator.
-  const tx =
-    referenceScriptUtxo === undefined
-      ? paid.attach.SpendingValidator(contracts.steps[1].spendingScript)
-      : paid;
+  const tx = stepCarriage.attach(paid);
 
   const unsigned = await tx.complete({
     localUPLCEval: true,

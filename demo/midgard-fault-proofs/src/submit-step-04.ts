@@ -321,9 +321,9 @@ export const submitStep04 = async ({
    * the preimage inline in this step's redeemer (#612).
    */
   readonly publishCarriage?: boolean;
-  /** The published step-04 reference script; inline-attached when absent. */
+  /** The mandatory published step-04 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep04Result> => {

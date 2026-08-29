@@ -212,6 +212,15 @@ const submitRawTerminal = async ({
   readonly referenceScript: UTxO;
 }): Promise<string> => {
   const { doubleWithdraw: contracts, category, proverLucid: lucid } = harness;
+  const computationThreadReference =
+    harness.witnessReferenceScripts.computationThreadMint;
+  const fraudProofReference = harness.witnessReferenceScripts.fraudProofMint;
+  if (
+    computationThreadReference === undefined ||
+    fraudProofReference === undefined
+  ) {
+    throw new Error("double-withdraw witness reference scripts missing");
+  }
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "raw terminal thread"),
@@ -336,7 +345,13 @@ const submitRawTerminal = async ({
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom([hubOracleUtxo, blockUtxo, referenceScript])
+    .readFrom([
+      hubOracleUtxo,
+      blockUtxo,
+      referenceScript,
+      computationThreadReference,
+      fraudProofReference,
+    ])
     .mintAssets({ [threadToken.unit]: -1n }, threadBurn)
     .mintAssets({ [fraudProofUnit]: 1n }, proofMint)
     .pay.ToContract(
@@ -348,8 +363,6 @@ const submitRawTerminal = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript)
     .complete({ localUPLCEval: true });
   if (outputIndex === undefined) throw new Error("raw terminal layout missing");
   const signed = await unsigned.sign.withWallet().complete();
@@ -365,6 +378,7 @@ const submitRawCancel = async ({
   threadUtxo,
   categoryId,
   referenceScript,
+  computationThreadReference,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: DoubleWithdrawContractsV1;
@@ -372,6 +386,7 @@ const submitRawCancel = async ({
   readonly threadUtxo: UTxO;
   readonly categoryId: string;
   readonly referenceScript: UTxO;
+  readonly computationThreadReference: UTxO;
 }): Promise<string> => {
   const rawCancelSchema = SDK.faultProofStepRedeemerSchema(Data.Any());
   type RawCancelRedeemer = Data.Static<typeof rawCancelSchema>;
@@ -413,10 +428,9 @@ const submitRawCancel = async ({
     .newTx()
     .collectFrom([fee])
     .collectFrom([threadUtxo], spend)
-    .readFrom([referenceScript])
+    .readFrom([referenceScript, computationThreadReference])
     .mintAssets({ [token.unit]: -1n }, burn)
     .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -455,6 +469,7 @@ describe("double-withdraw emulator lifecycle", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: block.setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const step01 = await submitDoubleWithdrawStep01({
       lucid: harness.proverLucid,
@@ -485,6 +500,7 @@ describe("double-withdraw emulator lifecycle", () => {
       stateQueueBlockOutRef: block.setup.fraudulentBlockOutRef,
       inclusion: parseSubmitDoubleWithdrawInclusionV1(plan.secondInclusion),
       referenceScriptUtxo: refs[1],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     await expect(
       harness.proverLucid.utxosAtWithUnit(
@@ -589,6 +605,7 @@ describe("double-withdraw emulator lifecycle", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: block.setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const step01 = await submitDoubleWithdrawStep01({
       lucid: harness.proverLucid,
@@ -625,6 +642,7 @@ describe("double-withdraw emulator lifecycle", () => {
         stateQueueBlockOutRef: block.setup.fraudulentBlockOutRef,
         inclusion: secondInclusion,
         referenceScriptUtxo: refs[1],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/second leaf is identical.*not payable/su);
     expect(
@@ -650,6 +668,7 @@ describe("double-withdraw emulator lifecycle", () => {
         stateQueueBlockOutRef: block.setup.fraudulentBlockOutRef,
         inclusion: firstInclusion,
         referenceScriptUtxo: refs[1],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/second leaf is identical/u);
     expect(
@@ -691,6 +710,7 @@ describe("double-withdraw emulator lifecycle", () => {
         signer: outsiderSigner,
         threadOutRef: step01.nextThreadOutRef,
         referenceScriptUtxo: refs[1],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/only the prover can cancel/u);
     await expect(
@@ -704,6 +724,7 @@ describe("double-withdraw emulator lifecycle", () => {
         stateQueueBlockOutRef: block.setup.fraudulentBlockOutRef,
         inclusion: secondInclusion,
         referenceScriptUtxo: refs[1],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/not the signing wallet/u);
     const threadUtxo = await fetchUtxoByOutRef({
@@ -720,6 +741,8 @@ describe("double-withdraw emulator lifecycle", () => {
           threadUtxo,
           categoryId: harness.category.categoryId,
           referenceScript: refs[1],
+          computationThreadReference:
+            harness.witnessReferenceScripts.computationThreadMint!,
         }),
       ),
     ).not.toBe("");
@@ -730,6 +753,7 @@ describe("double-withdraw emulator lifecycle", () => {
       signer: harness.proverSigner,
       threadOutRef: step01.nextThreadOutRef,
       referenceScriptUtxo: refs[1],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(cancelled.cancelledStepIndex).toBe(1);
     await expect(
@@ -754,6 +778,7 @@ describe("double-withdraw emulator lifecycle", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: block.setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const cancelledAtEntry = await submitDoubleWithdrawCancel({
       lucid: harness.proverLucid,
@@ -762,6 +787,7 @@ describe("double-withdraw emulator lifecycle", () => {
       signer: harness.proverSigner,
       threadOutRef: retry.nextThreadOutRef,
       referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(cancelledAtEntry.cancelledStepIndex).toBe(0);
   }, 600_000);

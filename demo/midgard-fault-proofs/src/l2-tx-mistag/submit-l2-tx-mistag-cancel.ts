@@ -26,6 +26,10 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../witness-reference-scripts-v1.js";
+import {
   L2_TX_MISTAG_CATEGORY_LABEL,
   type L2TxMistagContractsV1,
 } from "./contracts-v1.js";
@@ -78,6 +82,7 @@ export const submitL2TxMistagCancel = async ({
   signer,
   threadOutRef,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -87,6 +92,7 @@ export const submitL2TxMistagCancel = async ({
   readonly threadOutRef: string;
   /** Mandatory reference script for the located step. */
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitL2TxMistagCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -158,14 +164,24 @@ export const submitL2TxMistagCancel = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const unsigned = await lucid
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${stepLabel} cancel computation-thread mint`,
+  });
+  const referenceInputs = [
+    reference,
+    ...computationThreadMintCarriage.referenceInputs,
+  ];
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom([reference])
+    .readFrom(referenceInputs)
     .mintAssets({ [threadToken.unit]: -1n }, burnRedeemer)
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
+    .addSignerKey(signer.paymentKeyHash);
+  const unsigned = await computationThreadMintCarriage
+    .attach(base)
     .complete({ localUPLCEval: true });
   if (inputIndex === undefined || mintRedeemerIndex === undefined) {
     throw l2TxMistagSubmitError("cancel layout was not resolved.");

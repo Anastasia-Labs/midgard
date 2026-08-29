@@ -73,6 +73,10 @@ import {
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { WithdrawnReferenceInputContractsV1 } from "./contracts-v1.js";
 import {
   requireWithdrawnReferenceInputReferenceScriptV1,
@@ -136,6 +140,7 @@ export const submitWithdrawnReferenceInputStep01 = async ({
   stateQueueBlockOutRef,
   txInclusion,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -148,6 +153,7 @@ export const submitWithdrawnReferenceInputStep01 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: WithdrawnReferenceInputStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnReferenceInputStep01Result> => {
   const steps = contracts.steps;
@@ -224,6 +230,11 @@ export const submitWithdrawnReferenceInputStep01 = async ({
     network,
     phasMembershipScript,
   );
+  const membershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasMembershipScript,
+    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+    label: "withdrawn-reference-input step 01 PHAS membership",
+  });
   const step02Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -305,11 +316,15 @@ export const submitWithdrawnReferenceInputStep01 = async ({
     expectedScriptHash: steps[0].spendingScriptHash,
     stepIndex: 0,
   });
-  const tx = lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom([...referenceInputs, stepReference])
+    .readFrom([
+      ...referenceInputs,
+      stepReference,
+      ...membershipCarriage.referenceInputs,
+    ])
     .withdraw(
       phasRewardAddress,
       0n,
@@ -325,8 +340,8 @@ export const submitWithdrawnReferenceInputStep01 = async ({
       { kind: "inline", value: step02Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.WithdrawalValidator(phasMembershipScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = membershipCarriage.attach(base);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {

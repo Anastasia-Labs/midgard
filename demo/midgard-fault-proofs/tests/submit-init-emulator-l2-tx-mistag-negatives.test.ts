@@ -55,6 +55,7 @@ describe("l2-tx-mistag cancellation and resume controls", () => {
         },
         signer: harness.proverSigner,
         fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const step01 = (threadOutRef: string) =>
       submitL2TxMistagStep01({
@@ -68,6 +69,7 @@ describe("l2-tx-mistag cancellation and resume controls", () => {
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         txInclusion: fixture.inclusion,
         referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       });
 
     const first = await init();
@@ -78,6 +80,7 @@ describe("l2-tx-mistag cancellation and resume controls", () => {
       signer: harness.proverSigner,
       threadOutRef: first.nextThreadOutRef,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(cancel01.cancelledStepIndex).toBe(0);
     await expect(
@@ -96,6 +99,7 @@ describe("l2-tx-mistag cancellation and resume controls", () => {
       signer: harness.proverSigner,
       threadOutRef: advanced.nextThreadOutRef,
       referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(cancel02.cancelledStepIndex).toBe(1);
     await expect(
@@ -123,6 +127,7 @@ describe("l2-tx-mistag cancellation and resume controls", () => {
       signer: harness.proverSigner,
       threadOutRef: resumed01.nextThreadOutRef,
       referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(completed.fraudProofUnit).toContain(
       third.computationThreadAssetName,

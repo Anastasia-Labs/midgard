@@ -26,6 +26,10 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../witness-reference-scripts-v1.js";
+import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
   type WithdrawnInputContractsV1,
 } from "./contracts-v1.js";
@@ -54,6 +58,7 @@ export const submitWithdrawnInputCancel = async ({
   signer,
   threadOutRef,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -62,6 +67,7 @@ export const submitWithdrawnInputCancel = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnInputCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -146,14 +152,23 @@ export const submitWithdrawnInputCancel = async ({
       FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const tx = lucid
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "withdrawn-input cancel computation-thread mint",
+  });
+  const referenceInputs = [
+    stepReference,
+    ...computationThreadMintCarriage.referenceInputs,
+  ];
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom([stepReference])
+    .readFrom(referenceInputs)
     .mintAssets({ [threadToken.unit]: -1n }, burnRedeemer)
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = computationThreadMintCarriage.attach(base);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (inputIndex === undefined || mintIndex === undefined) {
     throw withdrawnInputSubmitError("cancel layout was not resolved.");

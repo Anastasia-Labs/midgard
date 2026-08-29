@@ -6,13 +6,10 @@
  *
  * Fault proofs and their supporting scripts deploy as published reference
  * scripts, never inline-attached (owner ruling 2026-08-26). Submitters take
- * an optional bundle of published reference-script UTxOs: a present entry is
- * hash-checked against the exact script the submitter would otherwise
- * inline-attach, joins the transaction's reference inputs, and the inline
- * attachment is skipped. An absent entry falls back to the historical inline
- * attachment, mirroring the per-step `referenceScriptUtxo` parameter the
- * chain submitters already expose, so deployments that have not published a
- * given witness keep working unchanged.
+ * a bundle of published reference-script UTxOs. Every required entry is
+ * hash-checked against the exact script the transaction executes and joins
+ * the transaction's reference inputs. Missing entries fail closed: there is
+ * no inline fallback for undeployed witness scripts.
  */
 import {
   type Script,
@@ -73,76 +70,60 @@ export const requireWitnessReferenceScriptUtxoV1 = ({
 
 /**
  * How one witness script reaches its transaction: through the published
- * reference UTxO in `referenceInputs`, or through `attach` falling back to
- * the inline witness when nothing is published.
+ * reference UTxO in `referenceInputs`.
  */
 export type WitnessScriptCarriageV1 = {
   /**
-   * Empty for the inline fallback; the hash-checked published UTxO
-   * otherwise. Callers MUST splice this into the transaction's reference
+   * The hash-checked published UTxO. Callers MUST splice this into the transaction's reference
    * inputs BEFORE deriving any chunk/field-opening reference indices, so the
    * canonical sorted set those derivations see is the complete built set.
    */
   readonly referenceInputs: readonly UTxO[];
-  /** Applies the inline attachment unless the published reference stands in. */
+  /** Retained as an identity composition seam for existing submitter chains. */
   readonly attach: (tx: TxBuilder) => TxBuilder;
 };
 
-const witnessScriptCarriageV1 = (
-  attachInline: (tx: TxBuilder, script: Script) => TxBuilder,
-  {
-    script,
-    referenceUtxo,
-    label,
-  }: {
-    readonly script: Script;
-    readonly referenceUtxo: UTxO | undefined;
-    readonly label: string;
-  },
-): WitnessScriptCarriageV1 =>
-  referenceUtxo === undefined
-    ? {
-        referenceInputs: [],
-        attach: (tx) => attachInline(tx, script),
-      }
-    : {
-        referenceInputs: [
-          requireWitnessReferenceScriptUtxoV1({
-            utxo: referenceUtxo,
-            script,
-            label,
-          }),
-        ],
-        attach: (tx) => tx,
-      };
+const witnessScriptCarriageV1 = ({
+  script,
+  referenceUtxo,
+  label,
+}: {
+  readonly script: Script;
+  readonly referenceUtxo: UTxO | undefined;
+  readonly label: string;
+}): WitnessScriptCarriageV1 => {
+  if (referenceUtxo === undefined) {
+    throw new Error(`${label} requires a published reference script UTxO.`);
+  }
+  return {
+    referenceInputs: [
+      requireWitnessReferenceScriptUtxoV1({
+        utxo: referenceUtxo,
+        script,
+        label,
+      }),
+    ],
+    attach: (tx) => tx,
+  };
+};
 
 /** Carriage for a minting-policy witness. */
 export const witnessMintingPolicyCarriageV1 = (options: {
   readonly script: Script;
   readonly referenceUtxo: UTxO | undefined;
   readonly label: string;
-}): WitnessScriptCarriageV1 =>
-  witnessScriptCarriageV1((tx, script) => tx.attach.MintingPolicy(script), {
-    ...options,
-  });
+}): WitnessScriptCarriageV1 => witnessScriptCarriageV1({ ...options });
 
 /** Carriage for a withdrawal-validator witness. */
 export const witnessWithdrawalValidatorCarriageV1 = (options: {
   readonly script: Script;
   readonly referenceUtxo: UTxO | undefined;
   readonly label: string;
-}): WitnessScriptCarriageV1 =>
-  witnessScriptCarriageV1(
-    (tx, script) => tx.attach.WithdrawalValidator(script),
-    { ...options },
-  );
+}): WitnessScriptCarriageV1 => witnessScriptCarriageV1({ ...options });
 
 /** Carriage for a spending-validator witness. */
 export const witnessSpendingValidatorCarriageV1 = (options: {
   readonly script: Script;
   readonly referenceUtxo: UTxO | undefined;
   readonly label: string;
-}): WitnessScriptCarriageV1 =>
-  witnessScriptCarriageV1((tx, script) => tx.attach.SpendingValidator(script), {
-    ...options,
-  });
+}): WitnessScriptCarriageV1 => witnessScriptCarriageV1({ ...options });

@@ -30,6 +30,7 @@ describe("canonical-decodability witness-field lifecycle", () => {
       catalogue,
       canonicalDecodability,
       category,
+      witnessReferenceScripts,
     } = harness;
     const [step01Ref, step02Ref] =
       await publishCanonicalDecodabilityReferenceScriptsV1({
@@ -62,6 +63,7 @@ describe("canonical-decodability witness-field lifecycle", () => {
       },
       signer: proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts,
     });
     const firstStep = await expectSingleUtxoWithUnit(
       proverLucid,
@@ -88,6 +90,7 @@ describe("canonical-decodability witness-field lifecycle", () => {
         },
         step02State: prepared.step02State,
         referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts,
       }),
     );
     expect(
@@ -113,6 +116,7 @@ describe("canonical-decodability witness-field lifecycle", () => {
       committedPreimage: fixture.committedPreimage,
       witnessSet: fixture.witnessSet,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts,
     });
     const secondStep = await expectSingleUtxoWithUnit(
       proverLucid,
@@ -126,6 +130,7 @@ describe("canonical-decodability witness-field lifecycle", () => {
       signer: proverSigner,
       threadOutRef: outRefLabel(secondStep),
       referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts,
     });
     expect(step02.state).toEqual(prepared.step02State);
     await expectSingleUtxoWithUnit(

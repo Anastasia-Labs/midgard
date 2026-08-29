@@ -82,9 +82,9 @@ const RESERVE_FRONTIER_PAYLOAD_BYTES = 13_062;
 const SIX_STAGE_CONSTANT_ROW_BYTES_V1 = {
   prepareSelected: 1_864,
   authenticate: 2_656,
-  source: 7_895,
-  proof: 5_701,
-  settle: 5_064,
+  source: 1_911,
+  proof: 1_936,
+  settle: 679,
 } as const;
 
 const stageBytesByKind = (

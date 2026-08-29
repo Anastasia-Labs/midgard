@@ -53,6 +53,7 @@ import {
 import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import { witnessSpendingValidatorCarriageV1 } from "../witness-reference-scripts-v1.js";
 import type { ValueNotPreservedContractsV1 } from "./contracts-v1.js";
 import { claimedQuantityOfValueV1 } from "./evidence-v1.js";
 import {
@@ -166,7 +167,7 @@ export const submitValueNotPreservedStep03 = async ({
    * token claim. MUST be null for an ADA claim (no mint carriage).
    */
   readonly mintItems: readonly MidgardMintPolicyItemV1[] | null;
-  /** The published step-03 reference script; inline-attached when absent. */
+  /** The mandatory published step-03 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /**
    * Never set outside tests. Substitutes the OUTPUTS carriage with a raw
@@ -270,20 +271,25 @@ export const submitValueNotPreservedStep03 = async ({
           label: `${STEP_LABEL} mint`,
         });
   const carriageUtxos = [...outputsCarriageUtxos, ...mintCarriageUtxos];
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireValueNotPreservedReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: contracts.steps[2].spendingScriptHash,
+          stepIndex: 2,
+        });
+  const stepCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.steps[2].spendingScript,
+    referenceUtxo: stepReference,
+    label: `${STEP_LABEL} spending validator`,
+  });
   const referenceInputs = dedupUtxos([
     ...carriageUtxos,
     ...(unsafeSpendFieldRawUtxoForTest === undefined
       ? []
       : [unsafeSpendFieldRawUtxoForTest]),
-    ...(referenceScriptUtxo === undefined
-      ? []
-      : [
-          requireValueNotPreservedReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[2].spendingScriptHash,
-            stepIndex: 2,
-          }),
-        ]),
+    ...stepCarriage.referenceInputs,
   ]);
   // §8.7 indices are into the complete reference-input set, including the
   // step's own reference script; resolving against carriage alone is only
@@ -403,10 +409,7 @@ export const submitValueNotPreservedStep03 = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
-  const tx =
-    referenceScriptUtxo === undefined
-      ? withPayment.attach.SpendingValidator(contracts.steps[2].spendingScript)
-      : withPayment;
+  const tx = stepCarriage.attach(withPayment);
 
   const unsigned = await tx.complete({
     localUPLCEval: true,

@@ -45,6 +45,10 @@ import {
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../witness-reference-scripts-v1.js";
+import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
   type WithdrawnInputContractsV1,
 } from "./contracts-v1.js";
@@ -76,6 +80,7 @@ export const submitWithdrawnInputStep01 = async ({
   stateQueueBlockOutRef,
   txInclusion,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -88,6 +93,7 @@ export const submitWithdrawnInputStep01 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnInputStep01Result> => {
   const { threadUtxo, threadToken } = await requireWithdrawnInputThreadUtxoV1({
@@ -170,6 +176,11 @@ export const submitWithdrawnInputStep01 = async ({
     network,
     membershipScript,
   );
+  const membershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: membershipScript,
+    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+    label: `${WITHDRAWN_INPUT_CATEGORY_LABEL} step 01 PHAS membership`,
+  });
   let layout:
     | { readonly inputIndex: bigint; readonly outputIndex: bigint }
     | undefined;
@@ -226,11 +237,16 @@ export const submitWithdrawnInputStep01 = async ({
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const tx = lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom([hubOracleUtxo, stateQueueBlockUtxo, stepReference])
+    .readFrom([
+      hubOracleUtxo,
+      stateQueueBlockUtxo,
+      stepReference,
+      ...membershipCarriage.referenceInputs,
+    ])
     .withdraw(
       membershipAddress,
       0n,
@@ -249,8 +265,8 @@ export const submitWithdrawnInputStep01 = async ({
         [threadToken.unit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.WithdrawalValidator(membershipScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = membershipCarriage.attach(base);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (layout === undefined) {
     throw withdrawnInputSubmitError("step-01 layout was not resolved.");

@@ -36,6 +36,7 @@ import {
 } from "../runtime.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import { witnessSpendingValidatorCarriageV1 } from "../witness-reference-scripts-v1.js";
 import type { ValueNotPreservedContractsV1 } from "./contracts-v1.js";
 import { witnessClaimedQuantityV1 } from "./evidence-v1.js";
 import {
@@ -94,7 +95,7 @@ export const submitValueNotPreservedStep02Fold = async ({
   readonly spendInputsOpening: FieldOpeningV1;
   /** The pre-state value witness for the input at the thread's cursor. */
   readonly valueWitness: SpentInputValueWitnessV1;
-  /** The published step-02 reference script; inline-attached when absent. */
+  /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValueNotPreservedStep02FoldResult> => {
@@ -175,6 +176,19 @@ export const submitValueNotPreservedStep02Fold = async ({
     lovelace: threadUtxo.assets.lovelace ?? 0n,
     [threadToken.unit]: 1n,
   };
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireValueNotPreservedReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: contracts.steps[1].spendingScriptHash,
+          stepIndex: 1,
+        });
+  const stepCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.steps[1].spendingScript,
+    referenceUtxo: stepReference,
+    label: `${STEP_LABEL} fold spending validator`,
+  });
 
   const base = lucid
     .newTx()
@@ -185,17 +199,9 @@ export const submitValueNotPreservedStep02Fold = async ({
       { kind: "inline", value: nextDatum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash);
-  const tx =
-    referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[1].spendingScript)
-      : base.readFrom([
-          requireValueNotPreservedReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[1].spendingScriptHash,
-            stepIndex: 1,
-          }),
-        ]);
+    .addSignerKey(signer.paymentKeyHash)
+    .readFrom([...stepCarriage.referenceInputs]);
+  const tx = stepCarriage.attach(base);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
@@ -263,7 +269,7 @@ export const submitValueNotPreservedStep02Finish = async ({
   readonly spendInputsOpening: FieldOpeningV1;
   /** The transaction's spend-input count, for the local cursor check. */
   readonly spendInputCount: bigint;
-  /** The published step-02 reference script; inline-attached when absent. */
+  /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValueNotPreservedStep02FinishResult> => {
@@ -342,6 +348,19 @@ export const submitValueNotPreservedStep02Finish = async ({
     lovelace: threadUtxo.assets.lovelace ?? 0n,
     [threadToken.unit]: 1n,
   };
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireValueNotPreservedReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: contracts.steps[1].spendingScriptHash,
+          stepIndex: 1,
+        });
+  const stepCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.steps[1].spendingScript,
+    referenceUtxo: stepReference,
+    label: `${STEP_LABEL} finish spending validator`,
+  });
 
   const base = lucid
     .newTx()
@@ -352,17 +371,9 @@ export const submitValueNotPreservedStep02Finish = async ({
       { kind: "inline", value: step03Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash);
-  const tx =
-    referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[1].spendingScript)
-      : base.readFrom([
-          requireValueNotPreservedReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[1].spendingScriptHash,
-            stepIndex: 1,
-          }),
-        ]);
+    .addSignerKey(signer.paymentKeyHash)
+    .readFrom([...stepCarriage.referenceInputs]);
+  const tx = stepCarriage.attach(base);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {

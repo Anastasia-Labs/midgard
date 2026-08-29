@@ -25,6 +25,7 @@ import { Effect } from "effect";
 
 import { outRefLabel, type ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
+import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
 import type { MissingSignatureContractsV1 } from "./contracts-v1.js";
 import {
   assertMissingSignatureFindingProvableV1,
@@ -132,6 +133,8 @@ export type MissingSignatureProverDepsV1 = {
   readonly policy: MissingSignatureProverPolicyV1;
   /** Owner ruling: all four steps are sourced by reference, never inline. */
   readonly referenceScriptUtxos: MissingSignatureReferenceScriptsV1;
+  /** Published shared minting and PHAS witnesses used across the journey. */
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   /** Externally minted §8.6 manifests; certification is deployment-owned. */
   readonly fieldCertificates?: MissingSignatureFieldCertificatesV1;
   /** Force carriage publication in tests; tier selection remains planner-owned. */
@@ -426,6 +429,7 @@ export const runMissingSignatureProverV1 = async (
             signer,
             fraudulentBlockOutRef: finding.fraudulentBlockOutRef,
             fraudulentHeaderHash: finding.headerHash,
+            witnessReferenceScripts: deps.witnessReferenceScripts,
           });
           txHashes.push(result.txHash);
           currentOutRef = result.nextThreadOutRef;
@@ -450,6 +454,7 @@ export const runMissingSignatureProverV1 = async (
             stateQueueBlockOutRef: finding.fraudulentBlockOutRef,
             txInclusion,
             referenceScriptUtxo: deps.referenceScriptUtxos.step01,
+            witnessReferenceScripts: deps.witnessReferenceScripts,
           });
           txHashes.push(result.txHash);
           currentOutRef = result.nextThreadOutRef;
@@ -527,6 +532,7 @@ export const runMissingSignatureProverV1 = async (
             publishCarriage: deps.publishCarriage,
             certificateUtxo: deps.fieldCertificates?.step04,
             referenceScriptUtxo: deps.referenceScriptUtxos.step04,
+            witnessReferenceScripts: deps.witnessReferenceScripts,
           });
           txHashes.push(result.txHash);
           if (result.kind === "advanced") {

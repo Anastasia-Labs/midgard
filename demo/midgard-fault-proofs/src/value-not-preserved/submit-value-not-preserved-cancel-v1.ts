@@ -42,6 +42,7 @@ import {
 import {
   type FaultProofWitnessReferenceScriptsV1,
   witnessMintingPolicyCarriageV1,
+  witnessSpendingValidatorCarriageV1,
 } from "../witness-reference-scripts-v1.js";
 import {
   VALUE_NOT_PRESERVED_CATEGORY_LABEL,
@@ -114,9 +115,9 @@ export const submitValueNotPreservedCancel = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  /** The located step's published reference script; inline-attached when absent. */
+  /** The located step.s mandatory published reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Published witness reference scripts required by this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValueNotPreservedCancelResult> => {
@@ -202,16 +203,21 @@ export const submitValueNotPreservedCancel = async ({
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${stepLabel} cancel computation-thread mint`,
   });
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireValueNotPreservedReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
+          stepIndex,
+        });
+  const stepCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.steps[stepIndex].spendingScript,
+    referenceUtxo: stepReference,
+    label: `${stepLabel} cancel spending validator`,
+  });
   const referenceInputs = [
-    ...(referenceScriptUtxo === undefined
-      ? []
-      : [
-          requireValueNotPreservedReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
-            stepIndex,
-          }),
-        ]),
+    ...stepCarriage.referenceInputs,
     ...computationThreadMintCarriage.referenceInputs,
   ];
   const base = lucid
@@ -222,13 +228,9 @@ export const submitValueNotPreservedCancel = async ({
     .addSignerKey(signer.paymentKeyHash);
   const withReferences =
     referenceInputs.length === 0 ? base : base.readFrom(referenceInputs);
-  const withStepScript =
-    referenceScriptUtxo === undefined
-      ? withReferences.attach.SpendingValidator(
-          contracts.steps[stepIndex].spendingScript,
-        )
-      : withReferences;
-  const tx = computationThreadMintCarriage.attach(withStepScript);
+  const tx = computationThreadMintCarriage.attach(
+    stepCarriage.attach(withReferences),
+  );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (inputIndex === undefined || mintRedeemerIndex === undefined) {

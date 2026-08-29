@@ -2403,7 +2403,7 @@ export const submitValidationDisputeVerifySource = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  /** Published V1 validation-trace source script; inline-attached when absent. */
+  /** The mandatory published V1 validation-trace source script. */
   readonly sourceReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
@@ -2690,7 +2690,7 @@ export const submitValidationDisputeReveal = async ({
   readonly threadOutRef: string;
   readonly role: "operator" | "challenger";
   readonly proof: MidgardValidationTraceProofV1;
-  /** Published V1 validation-trace game script; inline-attached when absent. */
+  /** The mandatory published V1 validation-trace game script. */
   readonly gameReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
@@ -2847,7 +2847,7 @@ export const submitValidationDisputeEnterTimeout = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  /** Published V1 validation-trace game script; inline-attached when absent. */
+  /** The mandatory published V1 validation-trace game script. */
   readonly gameReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly now?: number;
@@ -2989,9 +2989,9 @@ export const submitValidationDisputeTimeout = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  /** Published V1 validation-trace timeout script; inline-attached when absent. */
+  /** The mandatory published V1 validation-trace timeout script. */
   readonly timeoutReferenceScriptUtxo?: UTxO;
-  /** Published shared minting witnesses; each absent entry inline-attaches. */
+  /** Required published shared minting witnesses for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly now?: number;
@@ -3242,7 +3242,7 @@ export const submitValidationDisputeEnterResolution = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  /** Published V1 validation-trace game script; inline-attached when absent. */
+  /** The mandatory published V1 validation-trace game script. */
   readonly gameReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
@@ -3428,7 +3428,7 @@ export const submitValidationDisputePrepareResolution = async ({
   readonly preState: ValidationMachineStateV1;
   readonly operatorPost: ValidationTraceProofV1;
   readonly challengerPost: ValidationTraceProofV1;
-  /** Published V1 validation-trace boundary script; inline-attached when absent. */
+  /** The mandatory published V1 validation-trace boundary script. */
   readonly boundaryReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
@@ -4530,7 +4530,7 @@ type ValidationFinalizationTransactionParams = {
    * envelope.
    */
   readonly spendingScriptReferenceUtxo?: UTxO;
-  /** Published shared minting witnesses; each absent entry inline-attaches. */
+  /** Required published shared minting witnesses for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly spendLabel: string;
   readonly encodeSpendRedeemer: (
@@ -4751,7 +4751,7 @@ export const submitValidationDisputePrepareSelected = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly oneStepArgument: ValidationOneStepSubmissionArgumentV1;
-  /** Published current prepare-resolver script; inline-attached when absent. */
+  /** Explicit prepare-resolver reference; otherwise resolved from deployment info. */
   readonly referenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
@@ -4919,8 +4919,8 @@ export type ValidationCekProgramMaterialReferenceOutRefsV1 = {
 
 /**
  * Published spending-validator references for the multi-transaction semantic
- * routes. Keys mirror the deployed validation-dispute stage names; omitted
- * entries preserve the inline fallback.
+ * routes. Keys mirror the deployed validation-dispute stage names; every
+ * stage selected by a route must have a published entry.
  */
 export type ValidationDisputeStageReferenceScriptUtxosV1 = {
   readonly scriptSourcesEnvelope?: UTxO;
@@ -5993,7 +5993,7 @@ export const submitValidationDisputeSemanticResolution = async ({
   readonly proofItemDelivery?: ValidationProofItemDeliveryV1;
   /** Required when the staged carriage is tier 2 or tier 3 (#600). */
   readonly carriageMaterial?: ValidationFieldCarriageMaterialV1;
-  /** Published current semantic-resolver script; inline-attached when absent. */
+  /** Explicit semantic-resolver reference; otherwise resolved from deployment info. */
   readonly referenceScriptUtxo?: UTxO;
   /** Published scripts for any multi-stage semantic route selected. */
   readonly stageReferenceScriptUtxos?: ValidationDisputeStageReferenceScriptUtxosV1;
@@ -7421,9 +7421,9 @@ export const submitValidationDisputeAward = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  /** Published V1 validation-trace award script; inline-attached when absent. */
+  /** The mandatory published V1 validation-trace award script. */
   readonly awardReferenceScriptUtxo?: UTxO;
-  /** Published shared minting witnesses; each absent entry inline-attaches. */
+  /** Required published shared minting witnesses for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;

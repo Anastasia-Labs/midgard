@@ -161,7 +161,7 @@ export const submitMinFeeStep02 = async ({
   readonly fieldItemCbors: MinFeeFieldItemCborsV1;
   /** Mandatory: min-fee validators are reference-script-only. */
   readonly referenceScriptUtxo: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   /** Existing §8.6 certificates, needed only when a field selects tier 3. */
   readonly certificateUtxos?: readonly UTxO[];

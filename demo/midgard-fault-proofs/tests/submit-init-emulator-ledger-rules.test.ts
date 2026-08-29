@@ -55,6 +55,12 @@ import {
 
 describe("fault-proof emulator integration", () => {
   it("proves and removes a tail invalid-range block end to end", async () => {
+    const harness = await makeFaultProofEmulatorHarnessV1({
+      contractOptions: {
+        realInvalidRange: true,
+        alwaysFraudProofCatalogue: true,
+      },
+    });
     const {
       realBlueprint,
       emulator,
@@ -64,12 +70,7 @@ describe("fault-proof emulator integration", () => {
       nonceUtxo,
       contracts,
       catalogue,
-    } = await makeFaultProofEmulatorHarnessV1({
-      contractOptions: {
-        realInvalidRange: true,
-        alwaysFraudProofCatalogue: true,
-      },
-    });
+    } = harness;
     // See `publishRemovalReferenceScripts`: removal must source these seven
     // validators from reference inputs to stay inside the 16,384-byte L1
     // envelope. Published before the header clock is sampled so the whole
@@ -125,6 +126,7 @@ describe("fault-proof emulator integration", () => {
       async () =>
         submitInit({
           lucid: proverLucid,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
           blueprint: realBlueprint,
           deploymentInfo,
           network,
@@ -163,6 +165,9 @@ describe("fault-proof emulator integration", () => {
       async () =>
         submitInvalidRangeStep01({
           lucid: proverLucid,
+          referenceScriptUtxo:
+            harness.faultProofReferenceScripts.fraudProofInvalidRange!.utxo,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
           blueprint: realBlueprint,
           deploymentInfo,
           network,
@@ -220,6 +225,10 @@ describe("fault-proof emulator integration", () => {
       async () =>
         submitInvalidRangeStep02({
           lucid: proverLucid,
+          referenceScriptUtxo:
+            harness.faultProofReferenceScripts.fraudProofInvalidRangeStep02!
+              .utxo,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
           blueprint: realBlueprint,
           deploymentInfo,
           network,
@@ -360,6 +369,9 @@ describe("fault-proof emulator integration", () => {
   }, 180_000);
 
   it("proves and removes a tail zero-input block end to end", async () => {
+    const harness = await makeFaultProofEmulatorHarnessV1({
+      contractOptions: { realZeroInput: true, alwaysFraudProofCatalogue: true },
+    });
     const {
       realBlueprint,
       emulator,
@@ -369,9 +381,7 @@ describe("fault-proof emulator integration", () => {
       nonceUtxo,
       contracts,
       catalogue,
-    } = await makeFaultProofEmulatorHarnessV1({
-      contractOptions: { realZeroInput: true, alwaysFraudProofCatalogue: true },
-    });
+    } = harness;
     // See `publishRemovalReferenceScripts`: removal must source these seven
     // validators from reference inputs to stay inside the 16,384-byte L1
     // envelope. Published before the header clock is sampled so the whole
@@ -421,6 +431,7 @@ describe("fault-proof emulator integration", () => {
     const initCapture = await captureEmulatorSubmission(emulator, async () =>
       submitInit({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -457,6 +468,9 @@ describe("fault-proof emulator integration", () => {
     const step01Capture = await captureEmulatorSubmission(emulator, async () =>
       submitZeroInputStep01({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofZeroInput!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -509,6 +523,9 @@ describe("fault-proof emulator integration", () => {
     await expect(
       submitZeroInputStep02({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofZeroInputStep02!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -530,6 +547,9 @@ describe("fault-proof emulator integration", () => {
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
       submitZeroInputStep02({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofZeroInputStep02!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -663,6 +683,9 @@ describe("fault-proof emulator integration", () => {
   }, 180_000);
 
   it("rejects a spending transaction before a zero-input thread can advance", async () => {
+    const harness = await makeFaultProofEmulatorHarnessV1({
+      contractOptions: { realZeroInput: true, alwaysFraudProofCatalogue: true },
+    });
     const {
       realBlueprint,
       emulator,
@@ -672,9 +695,7 @@ describe("fault-proof emulator integration", () => {
       nonceUtxo,
       contracts,
       catalogue,
-    } = await makeFaultProofEmulatorHarnessV1({
-      contractOptions: { realZeroInput: true, alwaysFraudProofCatalogue: true },
-    });
+    } = harness;
     const transactionInclusion = await buildTransactionInclusionFixture();
 
     const funderKeyHash = await funderPaymentKeyHash(funderLucid);
@@ -702,6 +723,7 @@ describe("fault-proof emulator integration", () => {
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
     const initResult = await submitInit({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -719,6 +741,9 @@ describe("fault-proof emulator integration", () => {
     await expect(
       submitZeroInputStep01({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofZeroInput!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -752,6 +777,13 @@ describe("fault-proof emulator integration", () => {
   }, 180_000);
 
   it("proves and removes a tail non-existent-input block end to end", async () => {
+    const harness = await makeFaultProofEmulatorHarnessV1({
+      contractOptions: {
+        realNonExistentInput: true,
+        alwaysFraudProofCatalogue: true,
+      },
+      registerAdditionalRewardAccounts: registerPexcludesExclusionRewardAccount,
+    });
     const {
       realBlueprint,
       emulator,
@@ -761,13 +793,7 @@ describe("fault-proof emulator integration", () => {
       nonceUtxo,
       contracts,
       catalogue,
-    } = await makeFaultProofEmulatorHarnessV1({
-      contractOptions: {
-        realNonExistentInput: true,
-        alwaysFraudProofCatalogue: true,
-      },
-      registerAdditionalRewardAccounts: registerPexcludesExclusionRewardAccount,
-    });
+    } = harness;
     const fixture = await buildNonExistentInputFixture();
     // See `publishRemovalReferenceScripts`: removal must source these seven
     // validators from reference inputs to stay inside the 16,384-byte L1
@@ -812,6 +838,7 @@ describe("fault-proof emulator integration", () => {
       async () =>
         submitInit({
           lucid: proverLucid,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
           blueprint: realBlueprint,
           deploymentInfo,
           network,
@@ -838,6 +865,9 @@ describe("fault-proof emulator integration", () => {
       async () =>
         neSubmitStep01({
           lucid: proverLucid,
+          referenceScriptUtxo:
+            harness.faultProofReferenceScripts.fraudProofNonExistentInput!.utxo,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
           blueprint: realBlueprint,
           deploymentInfo,
           network,
@@ -873,6 +903,9 @@ describe("fault-proof emulator integration", () => {
     await expect(
       neSubmitStep02({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofNonExistentInputStep02!
+            .utxo,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -897,6 +930,9 @@ describe("fault-proof emulator integration", () => {
       async () =>
         neSubmitStep02({
           lucid: proverLucid,
+          referenceScriptUtxo:
+            harness.faultProofReferenceScripts.fraudProofNonExistentInputStep02!
+              .utxo,
           blueprint: realBlueprint,
           deploymentInfo,
           network,
@@ -922,6 +958,10 @@ describe("fault-proof emulator integration", () => {
       async () =>
         neSubmitStep03({
           lucid: proverLucid,
+          referenceScriptUtxo:
+            harness.faultProofReferenceScripts.fraudProofNonExistentInputStep03!
+              .utxo,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
           blueprint: realBlueprint,
           deploymentInfo,
           network,
@@ -945,6 +985,10 @@ describe("fault-proof emulator integration", () => {
       async () =>
         neSubmitStep04({
           lucid: proverLucid,
+          referenceScriptUtxo:
+            harness.faultProofReferenceScripts.fraudProofNonExistentInputStep04!
+              .utxo,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
           blueprint: realBlueprint,
           deploymentInfo,
           network,

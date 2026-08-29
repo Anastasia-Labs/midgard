@@ -26,6 +26,10 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../witness-reference-scripts-v1.js";
+import {
   COMMITTED_FIELD_SHAPE_CATEGORY_LABEL,
   type CommittedFieldShapeContractsV1,
 } from "./contracts-v1.js";
@@ -82,6 +86,7 @@ export const submitCommittedFieldShapeCancel = async ({
   signer,
   threadOutRef,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -90,6 +95,7 @@ export const submitCommittedFieldShapeCancel = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCommittedFieldShapeCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -156,20 +162,27 @@ export const submitCommittedFieldShapeCancel = async ({
       FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${stepLabel} cancel computation-thread mint`,
+  });
+  const referenceInputs = [
+    requireCommittedFieldShapeReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
+      stepIndex,
+    }),
+    ...computationThreadMintCarriage.referenceInputs,
+  ];
   const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
     .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript);
-  const tx = base.readFrom([
-    requireCommittedFieldShapeReferenceScriptV1({
-      utxo: referenceScriptUtxo,
-      expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
-      stepIndex,
-    }),
-  ]);
+    .readFrom(referenceInputs);
+  const tx = computationThreadMintCarriage.attach(base);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (inputIndex === undefined || mintRedeemerIndex === undefined) {
     throw committedFieldShapeSubmitError(

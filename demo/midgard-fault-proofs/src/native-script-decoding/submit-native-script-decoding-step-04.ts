@@ -148,7 +148,7 @@ export const submitNativeScriptDecodingStep04 = async ({
   readonly threadOutRef: string;
   /** Q3: the mandatory published step-04 reference script. */
   readonly referenceScriptUtxo: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep04Result> => {

@@ -176,6 +176,7 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
       signer: proverSigner,
       fraudCategory: "daHashPreimage",
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       awaitConfirmation: true,
     });
 
@@ -210,6 +211,9 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
       threadOutRef: outRefLabel(firstStepUtxo),
       stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
       txInclusion: fixture.inclusion,
+      referenceScriptUtxo:
+        harness.faultProofReferenceScripts.fraudProofDaHashPreimage.utxo,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       awaitConfirmation: true,
     });
 
@@ -258,6 +262,9 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
       network,
       signer: proverSigner,
       threadOutRef: outRefLabel(secondStepUtxo),
+      referenceScriptUtxo:
+        harness.faultProofReferenceScripts.fraudProofDaHashPreimageStep02.utxo,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       awaitConfirmation: true,
     });
 
@@ -373,6 +380,7 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
       signer: proverSigner,
       fraudCategory: "daHashPreimage",
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       awaitConfirmation: true,
     });
     const firstStepUtxo = await expectSingleUtxoWithUnit(
@@ -393,6 +401,9 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
         threadOutRef: outRefLabel(firstStepUtxo),
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         txInclusion: honestFixture.inclusion,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofDaHashPreimage.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         awaitConfirmation: true,
       }),
     ).rejects.toThrow(
@@ -415,6 +426,9 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
           ...honestFixture.inclusion,
           committedTxId: FOREIGN_COMMITTED_KEY,
         },
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofDaHashPreimage.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         awaitConfirmation: true,
       }),
       // The delegated PHAS membership withdrawal is the script that fails:

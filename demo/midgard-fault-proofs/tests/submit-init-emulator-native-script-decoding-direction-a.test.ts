@@ -170,6 +170,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
         step03: step03Ref,
         step04: step04Ref,
       },
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     };
 
     const outcome = await Effect.runPromise(
@@ -361,6 +362,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
 
     const initResult = await submitNativeScriptDecodingInit({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       network,
       contracts: decoding,
@@ -390,6 +392,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
 
     const step01 = await submitNativeScriptDecodingStep01BindNormal({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       contracts: decoding,
       categoryId: category.categoryId,
@@ -469,6 +472,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
 
     const step04 = await submitNativeScriptDecodingStep04({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       contracts: decoding,
       categoryId: category.categoryId,
       signer: proverSigner,

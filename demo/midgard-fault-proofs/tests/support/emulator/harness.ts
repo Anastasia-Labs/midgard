@@ -63,6 +63,10 @@ import {
 import { buildMinimalFaultProofContracts } from "./contracts.js";
 import { registerPhasMembershipRewardAccount } from "./emulator-context.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
+import {
+  publishFaultProofWitnessReferenceScriptsV1,
+  publishHarnessFaultProofReferenceScriptsV1,
+} from "./reference-scripts.js";
 
 const encodeCatalogueMembershipRedeemer = ({
   root,
@@ -121,7 +125,7 @@ export const submitFabricatedFamilyInitV1 = async ({
   readonly familyLabel: string;
   readonly signer: ReturnType<typeof resolveProverSigner>;
   readonly fraudulentBlockOutRef: string;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
 }): Promise<{
   readonly txHash: string;
@@ -244,7 +248,7 @@ export const submitFabricatedFamilyInitV1 = async ({
 
   signer.selectWallet(lucid);
   // Owner ruling 2026-08-26: witness scripts resolve from published reference
-  // scripts wherever the scenario provides them; absent entries inline-attach.
+  // scripts wherever the scenario requires them; missing entries fail closed.
   const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
     script: family.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
@@ -315,6 +319,10 @@ export type FaultProofEmulatorHarnessV1 = {
     ReturnType<typeof buildMinimalFaultProofContracts>
   >;
   readonly catalogue: Awaited<ReturnType<typeof buildCatalogueDeploymentInfo>>;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly faultProofReferenceScripts: Awaited<
+    ReturnType<typeof publishHarnessFaultProofReferenceScriptsV1>
+  >;
 };
 
 /**
@@ -326,9 +334,8 @@ export type FaultProofEmulatorHarnessV1 = {
  * minimal contract set for the family under test, then derive the catalogue
  * deployment info.
  *
- * Reference-script publication is deliberately NOT part of this helper: the
- * suites publish at different points in the timeline, and the emulator clock
- * they sample afterwards is what their measured byte counts are anchored to.
+ * Shared witness scripts are published here exactly once per scenario harness
+ * so every downstream submitter sees the same immutable reference UTxOs.
  */
 export const makeFaultProofEmulatorHarnessV1 = async ({
   contractOptions = {},
@@ -395,6 +402,20 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
     ),
   };
   const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+  const witnessReferenceScripts =
+    await publishFaultProofWitnessReferenceScriptsV1({
+      lucid: proverLucid,
+      realBlueprint,
+      computationThreadMintingScript: contracts.computationThread.mintingScript,
+      fraudProofMintingScript: contracts.fraudProof.mintingScript,
+      includeChunkedVerify: true,
+      includePexcludes: true,
+    });
+  const faultProofReferenceScripts =
+    await publishHarnessFaultProofReferenceScriptsV1({
+      lucid: proverLucid,
+      contracts,
+    });
   return {
     realBlueprint,
     alwaysBlueprint,
@@ -405,5 +426,7 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
     nonceUtxo,
     contracts,
     catalogue,
+    witnessReferenceScripts,
+    faultProofReferenceScripts,
   };
 };

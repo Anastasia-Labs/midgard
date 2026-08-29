@@ -41,6 +41,10 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../witness-reference-scripts-v1.js";
+import {
   CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL,
   type CrossBlockDuplicateEventContractsV1,
 } from "./contracts-v1.js";
@@ -102,6 +106,7 @@ export const submitCrossBlockDuplicateEventCancel = async ({
   signer,
   threadOutRef,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -110,6 +115,7 @@ export const submitCrossBlockDuplicateEventCancel = async ({
   readonly threadOutRef: string;
   /** Mandatory published reference script for the step being cancelled. */
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCrossBlockDuplicateEventCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -189,20 +195,27 @@ export const submitCrossBlockDuplicateEventCancel = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${stepLabel} cancel computation-thread mint`,
+  });
+  const referenceInputs = [
+    requireCrossBlockDuplicateEventReferenceScriptV1({
+      utxo: referenceScriptUtxo,
+      contracts,
+      stepIndex,
+    }),
+    ...computationThreadMintCarriage.referenceInputs,
+  ];
   const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
     .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript);
-  const tx = base.readFrom([
-    requireCrossBlockDuplicateEventReferenceScriptV1({
-      utxo: referenceScriptUtxo,
-      contracts,
-      stepIndex,
-    }),
-  ]);
+    .readFrom(referenceInputs);
+  const tx = computationThreadMintCarriage.attach(base);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (inputIndex === undefined || mintRedeemerIndex === undefined) {

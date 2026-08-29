@@ -69,6 +69,7 @@ describe("missing-native-script-tx emulator lifecycle", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: fixture.setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const step01 = await submitMissingNativeScriptTxStep01({
       lucid: harness.proverLucid,
@@ -81,6 +82,7 @@ describe("missing-native-script-tx emulator lifecycle", () => {
       stateQueueBlockOutRef: fixture.setup.fraudulentBlockOutRef,
       txInclusion: badInclusion,
       referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(step01.badTxWitnessSetHash).toBe(
       badInclusion.nativeTx.witness_set_hash,
@@ -108,6 +110,7 @@ describe("missing-native-script-tx emulator lifecycle", () => {
       stateQueueBlockOutRef: fixture.setup.fraudulentBlockOutRef,
       txInclusion: producingInclusion,
       referenceScriptUtxo: refs[2],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const step04 = await submitMissingNativeScriptTxStep04({
       lucid: harness.proverLucid,
@@ -139,6 +142,7 @@ describe("missing-native-script-tx emulator lifecycle", () => {
       witnessSet: fixture.badTxWitnessSet,
       scriptTxWitsItems: fixture.badTxScriptWitnessItemCbors,
       referenceScriptUtxo: refs[5],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
 
     const threadUnit = toUnit(
@@ -178,6 +182,7 @@ describe("missing-native-script-tx emulator lifecycle", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: fixture.setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const cancelStep01 = await submitMissingNativeScriptTxStep01({
       lucid: harness.proverLucid,
@@ -190,6 +195,7 @@ describe("missing-native-script-tx emulator lifecycle", () => {
       stateQueueBlockOutRef: fixture.setup.fraudulentBlockOutRef,
       txInclusion: badInclusion,
       referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const cancellation = await submitMissingNativeScriptTxCancel({
       lucid: harness.proverLucid,
@@ -198,6 +204,7 @@ describe("missing-native-script-tx emulator lifecycle", () => {
       signer: harness.proverSigner,
       threadOutRef: cancelStep01.nextThreadOutRef,
       referenceScriptUtxo: refs[1],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(cancellation.cancelledStepIndex).toBe(1);
     await expect(

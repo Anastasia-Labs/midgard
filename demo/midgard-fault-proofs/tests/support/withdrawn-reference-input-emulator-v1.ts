@@ -36,6 +36,10 @@ import {
   requireWithdrawnReferenceInputReferenceScriptV1,
   requireWithdrawnReferenceInputThreadUtxoV1,
 } from "../../src/withdrawn-reference-input/submit-common-v1.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../../src/witness-reference-scripts-v1.js";
 import { decodingSubjectTransactionV1 } from "./native-script-decoding-emulator-v1.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -436,6 +440,7 @@ export const submitRawWithdrawnReferenceInputStep03V1 = async ({
   threadOutRef,
   withdrawalMembership,
   referenceScriptUtxo,
+  witnessReferenceScripts,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: WithdrawnReferenceInputContractsV1;
@@ -444,6 +449,7 @@ export const submitRawWithdrawnReferenceInputStep03V1 = async ({
   readonly threadOutRef: string;
   readonly withdrawalMembership: SDK.WithdrawalSourceMembershipProof;
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
 }): Promise<string> => {
   const { threadUtxo, threadToken } =
     await requireWithdrawnReferenceInputThreadUtxoV1({
@@ -524,11 +530,25 @@ export const submitRawWithdrawnReferenceInputStep03V1 = async ({
     expectedScriptHash: contracts.steps[2].spendingScriptHash,
     stepIndex: 2,
   });
-  const unsigned = await lucid
+  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts.computationThreadMint,
+    label: "raw withdrawn-reference-input step-03 computation-thread mint",
+  });
+  const fraudProofCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts.fraudProofMint,
+    label: "raw withdrawn-reference-input step-03 fraud-proof mint",
+  });
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom([reference])
+    .readFrom([
+      reference,
+      ...computationThreadCarriage.referenceInputs,
+      ...fraudProofCarriage.referenceInputs,
+    ])
     .mintAssets({ [threadToken.unit]: -1n }, threadBurn)
     .mintAssets({ [fraudProofUnit]: 1n }, fraudMint)
     .pay.ToContract(
@@ -539,9 +559,9 @@ export const submitRawWithdrawnReferenceInputStep03V1 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript)
+    .addSignerKey(signer.paymentKeyHash);
+  const unsigned = await fraudProofCarriage
+    .attach(computationThreadCarriage.attach(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -558,6 +578,7 @@ export const submitRawWithdrawnReferenceInputCancelV1 = async ({
   stepIndex,
   threadOutRef,
   referenceScriptUtxo,
+  witnessReferenceScripts,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: WithdrawnReferenceInputContractsV1;
@@ -566,6 +587,7 @@ export const submitRawWithdrawnReferenceInputCancelV1 = async ({
   readonly stepIndex: 0 | 1 | 2;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
 }): Promise<string> => {
   const { threadUtxo, threadToken } =
     await requireWithdrawnReferenceInputThreadUtxoV1({
@@ -617,14 +639,20 @@ export const submitRawWithdrawnReferenceInputCancelV1 = async ({
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     stepIndex,
   });
-  const unsigned = await lucid
+  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts.computationThreadMint,
+    label: "raw withdrawn-reference-input cancel computation-thread mint",
+  });
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom([reference])
+    .readFrom([reference, ...computationThreadCarriage.referenceInputs])
     .mintAssets({ [threadToken.unit]: -1n }, threadBurn)
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
+    .addSignerKey(signer.paymentKeyHash);
+  const unsigned = await computationThreadCarriage
+    .attach(base)
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

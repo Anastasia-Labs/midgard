@@ -62,7 +62,7 @@ export type SubmitTransitionTraceProofConfig = {
   readonly threadOutRef: string;
   readonly proof: TransitionFaultProof;
   readonly additionalReferenceInputs?: readonly UTxO[];
-  /** Published shared minting witnesses; each absent entry inline-attaches. */
+  /** Required published shared minting witnesses for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 };
