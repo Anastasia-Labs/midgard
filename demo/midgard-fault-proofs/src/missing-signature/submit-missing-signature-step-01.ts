@@ -134,7 +134,7 @@ export const submitMissingSignatureStep01 = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   /** §2.3: the published step-01 reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingSignatureStep01Result> => {

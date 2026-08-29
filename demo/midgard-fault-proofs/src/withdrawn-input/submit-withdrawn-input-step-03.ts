@@ -27,6 +27,10 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../witness-reference-scripts-v1.js";
+import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
   type WithdrawnInputContractsV1,
 } from "./contracts-v1.js";
@@ -53,6 +57,7 @@ export const submitWithdrawnInputStep03 = async ({
   threadOutRef,
   withdrawalMembership,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -62,6 +67,7 @@ export const submitWithdrawnInputStep03 = async ({
   readonly threadOutRef: string;
   readonly withdrawalMembership: WithdrawalSourceMembershipProof;
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnInputStep03Result> => {
   const { threadUtxo, threadToken } = await requireWithdrawnInputThreadUtxoV1({
@@ -184,11 +190,26 @@ export const submitWithdrawnInputStep03 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const tx = lucid
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "withdrawn-input step-03 computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "withdrawn-input step-03 fraud-proof mint",
+  });
+  const referenceInputs = [
+    stepReference,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom([stepReference])
+    .readFrom(referenceInputs)
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
     .pay.ToContract(
@@ -199,9 +220,10 @@ export const submitWithdrawnInputStep03 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(base),
+  );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (
     layout === undefined ||

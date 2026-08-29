@@ -141,6 +141,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     // ## init
     const initResult = await submitInit({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -165,6 +166,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     // ## step-01: bind the BAD transaction to the committed header
     const step01Result = await submitReferenceInputNoIdxStep01({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -241,6 +243,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     // ## step-03: bind the PRODUCING transaction from the same block
     const step03Result = await submitReferenceInputNoIdxStep03({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -271,6 +274,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     // ## step-04: open §2.5 field 2 and mint the permanent token
     const step04Result = await submitReferenceInputNoIdxStep04({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -439,6 +443,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
     const initResult = await submitInit({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -454,6 +459,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     );
     const step01Result = await submitReferenceInputNoIdxStep01({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -518,6 +524,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     );
     const step03Result = await submitReferenceInputNoIdxStep03({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -535,6 +542,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     );
     const step04Result = await submitReferenceInputNoIdxStep04({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -619,6 +627,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
     const initResult = await submitInit({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -634,6 +643,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     );
     const step01Result = await submitReferenceInputNoIdxStep01({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -671,6 +681,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     );
     const step03Result = await submitReferenceInputNoIdxStep03({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -692,6 +703,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
       async () =>
         await submitReferenceInputNoIdxStep04({
           lucid: proverLucid,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
           blueprint: realBlueprint,
           deploymentInfo,
           network,
@@ -772,6 +784,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
     const initResult = await submitInit({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -787,6 +800,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     );
     const step01Result = await submitReferenceInputNoIdxStep01({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -878,6 +892,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     );
     const step03Result = await submitReferenceInputNoIdxStep03({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -900,6 +915,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     await expect(
       submitReferenceInputNoIdxStep04({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -923,6 +939,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
       async () =>
         await submitRawReferenceInputNoIdxStep04V1({
           lucid: proverLucid,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
           blueprint: realBlueprint,
           deploymentInfo,
           signer: proverSigner,
@@ -940,6 +957,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     await expect(
       submitReferenceInputNoIdxStep04({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,

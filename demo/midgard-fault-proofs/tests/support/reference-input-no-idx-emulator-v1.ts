@@ -91,6 +91,10 @@ import {
   outputWithDatumAndUnitPredicate,
 } from "../../src/tx-layout.js";
 import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../../src/witness-reference-scripts-v1.js";
+import {
   makeFaultProofEmulatorHarnessV1,
   network,
   publishPlainReferenceScriptUtxo,
@@ -609,9 +613,11 @@ export const submitRawReferenceInputNoIdxStep04V1 = async ({
   outputsPreimage,
   nativeTxCompactCbor,
   referenceScriptUtxo,
+  witnessReferenceScripts,
 }: RawStepConfigV1 & {
   readonly outputsPreimage: readonly MidgardTxOutput[];
   readonly nativeTxCompactCbor: string;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
 }): Promise<string> => {
   const { referenceInputNoIdxCategory, contracts } =
     await resolveReferenceInputNoIdxDeploymentContracts({
@@ -751,11 +757,26 @@ export const submitRawReferenceInputNoIdxStep04V1 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const unsigned = await lucid
+  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts.computationThreadMint,
+    label: "raw reference-input-no-idx step 04 computation-thread mint",
+  });
+  const fraudProofCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts.fraudProofMint,
+    label: "raw reference-input-no-idx step 04 fraud-proof mint",
+  });
+
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom([...referenceInputs])
+    .readFrom([
+      ...referenceInputs,
+      ...computationThreadCarriage.referenceInputs,
+      ...fraudProofCarriage.referenceInputs,
+    ])
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
     .pay.ToContract(
@@ -766,9 +787,9 @@ export const submitRawReferenceInputNoIdxStep04V1 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript)
+    .addSignerKey(signer.paymentKeyHash);
+  const unsigned = await fraudProofCarriage
+    .attach(computationThreadCarriage.attach(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

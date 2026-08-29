@@ -89,7 +89,7 @@ export const submitMissingNativeScriptTxStep06 = async ({
   readonly scriptTxWitsItems: readonly Uint8Array[];
   readonly publishCarriage?: boolean;
   readonly referenceScriptUtxo: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingNativeScriptTxStep06Result> => {

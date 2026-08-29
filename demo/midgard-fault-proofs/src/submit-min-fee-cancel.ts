@@ -84,7 +84,7 @@ export const submitMinFeeCancel = async ({
   readonly threadOutRef: string;
   /** Mandatory: min-fee validators are reference-script-only. */
   readonly referenceScriptUtxo: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMinFeeCancelResult> => {

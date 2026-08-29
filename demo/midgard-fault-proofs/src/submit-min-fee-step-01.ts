@@ -96,7 +96,7 @@ export const submitMinFeeStep01 = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   /** Mandatory: min-fee validators are reference-script-only. */
   readonly referenceScriptUtxo: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMinFeeStep01Result> => {

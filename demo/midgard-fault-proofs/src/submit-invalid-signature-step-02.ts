@@ -362,9 +362,9 @@ export const submitInvalidSignatureStep02 = async ({
   /** That transaction's compact witness set — §2.5's other half. */
   readonly witnessSetCompact: NativeTxWitnessSetCompact;
   readonly badAddrTxWitIndex: bigint;
-  /** The published step-02 reference script; inline-attached when absent. */
+  /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInvalidSignatureStep02Result> => {

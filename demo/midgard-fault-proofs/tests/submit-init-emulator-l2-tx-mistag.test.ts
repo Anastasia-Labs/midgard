@@ -69,6 +69,7 @@ describe("l2-tx-mistag emulator lifecycle", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const step01 = await submitL2TxMistagStep01({
       lucid: harness.proverLucid,
@@ -81,6 +82,7 @@ describe("l2-tx-mistag emulator lifecycle", () => {
       stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
       txInclusion: fixture.inclusion,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(step01.state).toStrictEqual({
       bad_tx_id: fixture.nativeTxId,
@@ -106,6 +108,7 @@ describe("l2-tx-mistag emulator lifecycle", () => {
       signer: harness.proverSigner,
       threadOutRef: step01.nextThreadOutRef,
       referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const evidence = await expectSingleUtxoWithUnit(
       harness.proverLucid,

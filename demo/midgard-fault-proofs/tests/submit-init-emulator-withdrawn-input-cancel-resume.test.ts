@@ -23,6 +23,7 @@ describe("withdrawn-input resume and cancellation", () => {
         stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
         txInclusion: scenario.fixture.txInclusion,
         referenceScriptUtxo: scenario.references[1],
+        witnessReferenceScripts: scenario.harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/reference script/u);
 
@@ -37,6 +38,7 @@ describe("withdrawn-input resume and cancellation", () => {
       stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
       txInclusion: scenario.fixture.txInclusion,
       referenceScriptUtxo: scenario.references[0],
+      witnessReferenceScripts: scenario.harness.witnessReferenceScripts,
     });
     const step02 = await submitWithdrawnInputStep02({
       lucid: scenario.harness.proverLucid,
@@ -58,6 +60,7 @@ describe("withdrawn-input resume and cancellation", () => {
       signer: scenario.harness.proverSigner,
       threadOutRef: step02.nextThreadOutRef,
       referenceScriptUtxo: scenario.references[2],
+      witnessReferenceScripts: scenario.harness.witnessReferenceScripts,
     });
     expect(cancelled.cancelledStepIndex).toBe(2);
     await expect(

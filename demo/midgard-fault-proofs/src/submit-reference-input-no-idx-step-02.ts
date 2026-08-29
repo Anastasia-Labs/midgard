@@ -234,7 +234,7 @@ export const submitReferenceInputNoIdxStep02 = async ({
   readonly referenceInputsPreimage: SubmitReferenceInputNoIdxReferenceInputsPreimage;
   /** The disputed transaction's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
-  /** The published step-02 reference script; inline-attached when absent. */
+  /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitReferenceInputNoIdxStep02Result> => {

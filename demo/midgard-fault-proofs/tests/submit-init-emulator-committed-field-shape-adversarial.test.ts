@@ -64,6 +64,7 @@ const initThread = async (
     },
     signer: harness.proverSigner,
     fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
   });
 
 describe("committed-field-shape constraint space", () => {
@@ -246,6 +247,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
         txInclusion: scenario.inclusion,
         prepared: honestPrepared,
         referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/non-convicting verdict admissible/u);
 
@@ -335,6 +337,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
         signer: harness.proverSigner,
         threadOutRef: step01.nextThreadOutRef,
         referenceScriptUtxo: refs[1],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/is not a committed-field-shape violation/u);
     const refusal = await expectCommittedFieldShapeOnchainRefusalV1(() =>
@@ -379,6 +382,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
       signer: harness.proverSigner,
       threadOutRef: first.nextThreadOutRef,
       referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(cancelledAt01.cancelledStepIndex).toBe(0);
     await expect(
@@ -394,6 +398,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
         txInclusion: scenario.inclusion,
         prepared,
         referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow();
 
@@ -410,6 +415,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
       txInclusion: scenario.inclusion,
       prepared,
       referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const cancelledAt02 = await submitCommittedFieldShapeCancel({
       lucid: harness.proverLucid,
@@ -418,6 +424,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
       signer: harness.proverSigner,
       threadOutRef: step01.nextThreadOutRef,
       referenceScriptUtxo: refs[1],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(cancelledAt02.cancelledStepIndex).toBe(1);
 
@@ -431,6 +438,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
         signer: harness.outsiderSigner,
         threadOutRef: outsiderTarget.nextThreadOutRef,
         referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/only the prover can cancel/u);
     const { threadUtxo, threadToken } = await import(
@@ -455,6 +463,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
           threadUnit: threadToken.unit,
           threadAssetName: threadToken.assetName,
           referenceScriptUtxo: refs[0],
+          witnessReferenceScripts: harness.witnessReferenceScripts,
         }),
     );
     expect(outsiderRefusal.length).toBeGreaterThan(0);
@@ -465,6 +474,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
       signer: harness.proverSigner,
       threadOutRef: outsiderTarget.nextThreadOutRef,
       referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
   }, 600_000);
 });

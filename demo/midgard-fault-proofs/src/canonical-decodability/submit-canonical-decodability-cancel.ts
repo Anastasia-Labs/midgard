@@ -96,7 +96,7 @@ export const submitCanonicalDecodabilityCancel = async ({
   readonly threadOutRef: string;
   /** Published reference script for the located step; mandatory. */
   readonly referenceScriptUtxo: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCanonicalDecodabilityCancelResult> => {

@@ -86,7 +86,7 @@ export const submitCanonicalDecodabilityStep02 = async ({
   readonly threadOutRef: string;
   /** Published step-02 reference script. Inline attachment is forbidden. */
   readonly referenceScriptUtxo: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCanonicalDecodabilityStep02Result> => {

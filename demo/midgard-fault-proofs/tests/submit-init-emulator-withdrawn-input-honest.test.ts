@@ -21,6 +21,7 @@ describe("withdrawn-input honest-block refusal", () => {
         threadOutRef: step02.nextThreadOutRef,
         withdrawalMembership: scenario.fixture.withdrawalMembership,
         referenceScriptUtxo: scenario.references[2],
+        witnessReferenceScripts: scenario.harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/failed script execution.*Spend/su);
     await expect(

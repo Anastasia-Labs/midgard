@@ -175,6 +175,7 @@ describe("native-script-decoding emulator tier-2 carriage", () => {
         step03AdvanceOrClose: step03AdvanceOrCloseRef,
         step04: step04Ref,
       },
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     };
 
     const outcome = await Effect.runPromise(

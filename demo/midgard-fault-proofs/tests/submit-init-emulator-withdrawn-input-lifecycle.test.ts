@@ -30,6 +30,7 @@ describe("withdrawn-input emulator lifecycle", () => {
       threadOutRef: step02.nextThreadOutRef,
       withdrawalMembership: scenario.fixture.withdrawalMembership,
       referenceScriptUtxo: scenario.references[2],
+      witnessReferenceScripts: scenario.harness.witnessReferenceScripts,
     });
     const [faultToken] = await scenario.harness.proverLucid.utxosAtWithUnit(
       final.fraudProofAddress,

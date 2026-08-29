@@ -47,6 +47,7 @@ describe("withdrawn-reference-input emulator lifecycle", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(init.computationThreadAssetName).toBe(
       `${harness.category.categoryId}${scenario.setup.headerHash}`,
@@ -63,6 +64,7 @@ describe("withdrawn-reference-input emulator lifecycle", () => {
       stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
       txInclusion: scenario.prepared.txInclusion,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(step01.blocksWithdrawalsRoot).toBe(scenario.header.withdrawalsRoot);
     expect(step01.blocksWithdrawalCount).toBe(1n);
@@ -90,6 +92,7 @@ describe("withdrawn-reference-input emulator lifecycle", () => {
       threadOutRef: step02.nextThreadOutRef,
       withdrawalMembership: scenario.prepared.withdrawalMembership,
       referenceScriptUtxo: step03Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
 
     for (const step of harness.family.steps) {

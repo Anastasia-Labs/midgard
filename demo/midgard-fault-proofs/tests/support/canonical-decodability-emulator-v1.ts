@@ -67,6 +67,11 @@ import {
   computationThreadOutputPredicate,
   outputWithDatumAndUnitPredicate,
 } from "../../src/tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../../src/witness-reference-scripts-v1.js";
 import { setupFraudulentBlockV1 } from "./submit-init-emulator-fixtures.js";
 import {
   makeFaultProofEmulatorHarnessV1,
@@ -289,6 +294,7 @@ export const submitCanonicalDecodabilityStep01RawV1 = async ({
   claim,
   step02State,
   referenceScriptUtxo,
+  witnessReferenceScripts,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -301,6 +307,7 @@ export const submitCanonicalDecodabilityStep01RawV1 = async ({
   readonly claim: CommittedFieldClaimV1;
   readonly step02State: CanonicalDecodabilityStep02State;
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
 }): Promise<{ readonly txHash: string; readonly nextThreadOutRef: string }> => {
   const { threadUtxo, threadToken } =
     await requireCanonicalDecodabilityThreadUtxoV1({
@@ -339,6 +346,11 @@ export const submitCanonicalDecodabilityStep01RawV1 = async ({
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
   const phasRewardAddress = phasMembershipRewardAddress(network, phasScript);
+  const phasCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasScript,
+    referenceUtxo: witnessReferenceScripts.phasMembershipWithdraw,
+    label: "raw canonical step-01 PHAS membership",
+  });
   const datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: step02State },
     CanonicalDecodabilityStep02Datum,
@@ -400,11 +412,16 @@ export const submitCanonicalDecodabilityStep01RawV1 = async ({
       CanonicalDecodabilityStep01SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const unsigned = await lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom([hubOracleUtxo, stateQueueUtxo, stepReference])
+    .readFrom([
+      hubOracleUtxo,
+      stateQueueUtxo,
+      stepReference,
+      ...phasCarriage.referenceInputs,
+    ])
     .withdraw(
       phasRewardAddress,
       0n,
@@ -423,8 +440,9 @@ export const submitCanonicalDecodabilityStep01RawV1 = async ({
         [threadToken.unit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.WithdrawalValidator(phasScript)
+    .addSignerKey(signer.paymentKeyHash);
+  const unsigned = await phasCarriage
+    .attach(base)
     .complete({ localUPLCEval: true });
   if (outputIndex === undefined)
     throw new Error("Raw step-01 layout unresolved");
@@ -442,6 +460,7 @@ export const submitCanonicalDecodabilityStep02RawV1 = async ({
   signer,
   threadOutRef,
   referenceScriptUtxo,
+  witnessReferenceScripts,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: CanonicalDecodabilityContractsV1;
@@ -449,6 +468,7 @@ export const submitCanonicalDecodabilityStep02RawV1 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
 }): Promise<string> => {
   const { threadUtxo, threadToken } =
     await requireCanonicalDecodabilityThreadUtxoV1({
@@ -534,11 +554,25 @@ export const submitCanonicalDecodabilityStep02RawV1 = async ({
       FraudProofTokenMintRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const unsigned = await lucid
+  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts.computationThreadMint,
+    label: "raw canonical step-02 computation-thread mint",
+  });
+  const fraudProofCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts.fraudProofMint,
+    label: "raw canonical step-02 fraud-proof mint",
+  });
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom([stepReference])
+    .readFrom([
+      stepReference,
+      ...computationThreadCarriage.referenceInputs,
+      ...fraudProofCarriage.referenceInputs,
+    ])
     .mintAssets({ [threadToken.unit]: -1n }, burnRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, mintRedeemer)
     .pay.ToContract(
@@ -549,9 +583,9 @@ export const submitCanonicalDecodabilityStep02RawV1 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript)
+    .addSignerKey(signer.paymentKeyHash);
+  const unsigned = await fraudProofCarriage
+    .attach(computationThreadCarriage.attach(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

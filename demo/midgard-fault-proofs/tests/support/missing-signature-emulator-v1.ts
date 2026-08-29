@@ -45,6 +45,7 @@ import {
 import { excludeUtxo } from "../../src/spend-input-witness.js";
 import { selectFeeInput } from "../../src/submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
+import { witnessMintingPolicyCarriageV1 } from "../../src/witness-reference-scripts-v1.js";
 import {
   buildDecodingBlockFixtureV1,
   type DecodingBlockFixtureV1,
@@ -334,6 +335,7 @@ export const missingSignatureProverDepsV1 = ({
   journal: journal ?? (() => undefined),
   policy: MISSING_SIGNATURE_EMULATOR_PROVER_POLICY_V1,
   referenceScriptUtxos,
+  witnessReferenceScripts: harness.witnessReferenceScripts,
 });
 
 /** Publish and mint the §8.6 material for a genuinely tier-3 field-7 proof. */
@@ -456,9 +458,25 @@ export const submitRawMissingSignatureStep04V1 = async ({
     publisherAddress: harness.proverSigner.address,
     label: "raw missing-signature step-04",
   });
+  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+    script: harness.missingSignature.computationThread.mintingScript,
+    referenceUtxo: harness.witnessReferenceScripts.computationThreadMint,
+    label: "raw missing-signature step-04 computation-thread mint",
+  });
+  const fraudProofCarriage = witnessMintingPolicyCarriageV1({
+    script: harness.missingSignature.fraudProof.mintingScript,
+    referenceUtxo: harness.witnessReferenceScripts.fraudProofMint,
+    label: "raw missing-signature step-04 fraud-proof mint",
+  });
+  const referenceInputs = [
+    referenceScriptUtxo,
+    ...computationThreadCarriage.referenceInputs,
+    ...fraudProofCarriage.referenceInputs,
+    ...carriageUtxos,
+  ];
   const opening = faultProofFieldOpeningV1({
     planned,
-    referenceInputs: carriageUtxos,
+    referenceInputs,
     certificatePolicyId:
       harness.missingSignature.fieldPreimageCertificatePolicyId,
     label: "raw missing-signature step-04",
@@ -535,11 +553,11 @@ export const submitRawMissingSignatureStep04V1 = async ({
       },
       SDK.FraudProofTokenMintRedeemer,
     )) satisfies BuildTxWithRedeemer;
-  const unsigned = await harness.proverLucid
+  const base = harness.proverLucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spend)
-    .readFrom([referenceScriptUtxo, ...carriageUtxos])
+    .readFrom(referenceInputs)
     .mintAssets({ [threadToken.unit]: -1n }, burn)
     .mintAssets({ [proofUnit]: 1n }, mint)
     .pay.ToContract(
@@ -550,11 +568,9 @@ export const submitRawMissingSignatureStep04V1 = async ({
         [proofUnit]: 1n,
       },
     )
-    .addSignerKey(harness.proverSigner.paymentKeyHash)
-    .attach.MintingPolicy(
-      harness.missingSignature.computationThread.mintingScript,
-    )
-    .attach.MintingPolicy(harness.missingSignature.fraudProof.mintingScript)
+    .addSignerKey(harness.proverSigner.paymentKeyHash);
+  const unsigned = await fraudProofCarriage
+    .attach(computationThreadCarriage.attach(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

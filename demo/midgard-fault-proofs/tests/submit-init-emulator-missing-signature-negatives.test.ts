@@ -43,6 +43,7 @@ const init = async (harness: Harness, scenario: Scenario) =>
     },
     signer: harness.proverSigner,
     fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
   });
 
 const advanceTo = async (
@@ -66,6 +67,7 @@ const advanceTo = async (
       stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
       txInclusion: scenario.block.txInclusion,
       referenceScriptUtxo: references[0],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     })
   ).nextThreadOutRef;
   if (stepIndex === 1) return outRef;
@@ -122,6 +124,7 @@ describe("missing-signature negatives and resume", () => {
         signer: harness.proverSigner,
         threadOutRef,
         referenceScriptUtxo: references[stepIndex],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       });
       expect(cancelled.cancelledStepIndex).toBe(stepIndex);
       for (const step of harness.missingSignature.steps) {
@@ -185,6 +188,7 @@ describe("missing-signature negatives and resume", () => {
         nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
         witnessSetCompact: scenario.subject.witnessSetCompact,
         referenceScriptUtxo: references[3],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       });
       if (scan.kind !== "advanced") {
         throw new Error("64-witness subject did not produce an interior scan");
@@ -220,6 +224,7 @@ describe("missing-signature negatives and resume", () => {
       signer: cancellable.harness.proverSigner,
       threadOutRef: cancellable.scan.nextThreadOutRef,
       referenceScriptUtxo: cancellable.references[3],
+      witnessReferenceScripts: cancellable.harness.witnessReferenceScripts,
     });
     expect(cancelled.cancelledStepIndex).toBe(3);
     const unit = toUnit(
@@ -314,6 +319,7 @@ describe("missing-signature negatives and resume", () => {
           addr_tx_wits_hash: "ff".repeat(32),
         },
         referenceScriptUtxo: references[3],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/compact witness set hashes|not the/u);
   }, 600_000);

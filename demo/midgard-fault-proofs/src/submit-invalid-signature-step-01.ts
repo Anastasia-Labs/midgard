@@ -196,9 +196,9 @@ export const submitInvalidSignatureStep01 = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   /** Preimage of the committed `witness_set_hash`, opened by this step. */
   readonly badTxWitnessSetCompact: NativeTxWitnessSetCompact;
-  /** The published step-01 reference script; inline-attached when absent. */
+  /** The mandatory published step-01 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInvalidSignatureStep01Result> => {

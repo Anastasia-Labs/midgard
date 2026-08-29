@@ -75,6 +75,7 @@ import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import {
   type FaultProofWitnessReferenceScriptsV1,
   witnessMintingPolicyCarriageV1,
+  witnessSpendingValidatorCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "../../src/witness-reference-scripts-v1.js";
 import { publishFaultProofWitnessReferenceScriptsV1 } from "./emulator/reference-scripts.js";
@@ -353,7 +354,7 @@ export const submitRawInputSetUniquenessBindV1 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
-  readonly referenceScriptUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
 }): Promise<string> => {
   const lucid = harness.proverLucid;
@@ -396,6 +397,11 @@ export const submitRawInputSetUniquenessBindV1 = async ({
     script: phasMembershipScript,
     referenceUtxo: witnessReferenceScripts.phasMembershipWithdraw,
     label: "raw input-set-uniqueness PHAS membership",
+  });
+  const stepCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.steps[0].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "raw input-set-uniqueness step-01",
   });
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -465,7 +471,7 @@ export const submitRawInputSetUniquenessBindV1 = async ({
     .readFrom([
       hubOracleUtxo,
       stateQueueBlockUtxo,
-      ...(referenceScriptUtxo === undefined ? [] : [referenceScriptUtxo]),
+      ...stepCarriage.referenceInputs,
       ...phasMembershipCarriage.referenceInputs,
     ])
     .withdraw(
@@ -487,11 +493,7 @@ export const submitRawInputSetUniquenessBindV1 = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const withStepScript =
-    referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[0].spendingScript)
-      : base;
-  const tx = phasMembershipCarriage.attach(withStepScript);
+  const tx = phasMembershipCarriage.attach(stepCarriage.attach(base));
   const unsigned = await tx.complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -524,7 +526,7 @@ export const submitRawInputSetUniquenessFinalizeV1 = async ({
   readonly buildArgs: (
     layout: RawInputSetUniquenessFinalizeLayoutV1,
   ) => InputSetUniquenessStep02Args;
-  readonly referenceScriptUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
 }): Promise<string> => {
   const lucid = harness.proverLucid;
@@ -621,8 +623,13 @@ export const submitRawInputSetUniquenessFinalizeV1 = async ({
     referenceUtxo: witnessReferenceScripts.fraudProofMint,
     label: "raw input-set-uniqueness fraud-proof mint",
   });
+  const stepCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.steps[1].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "raw input-set-uniqueness step-02",
+  });
   const referenceInputs = [
-    ...(referenceScriptUtxo === undefined ? [] : [referenceScriptUtxo]),
+    ...stepCarriage.referenceInputs,
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
@@ -643,14 +650,8 @@ export const submitRawInputSetUniquenessFinalizeV1 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const withReferences = base.readFrom(referenceInputs);
-  const withStepScript =
-    referenceScriptUtxo === undefined
-      ? withReferences.attach.SpendingValidator(
-          contracts.steps[1].spendingScript,
-        )
-      : withReferences;
   const tx = fraudProofMintCarriage.attach(
-    computationThreadMintCarriage.attach(withStepScript),
+    computationThreadMintCarriage.attach(stepCarriage.attach(withReferences)),
   );
   const unsigned = await tx.complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();

@@ -70,6 +70,7 @@ describe("committed-field-shape emulator lifecycle", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(init.fraudCategoryId).toBe("00000012");
     expect(init.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
@@ -89,6 +90,7 @@ describe("committed-field-shape emulator lifecycle", () => {
           txInclusion: scenario.inclusion,
           prepared,
           referenceScriptUtxo: step01Reference,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
         }),
     );
     const step01 = step01Capture.result;
@@ -141,6 +143,7 @@ describe("committed-field-shape emulator lifecycle", () => {
         txInclusion: scenario.inclusion,
         prepared,
         referenceScriptUtxo: step01Reference,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/No live UTxO|not found|Expected exactly one/u);
 
@@ -154,6 +157,7 @@ describe("committed-field-shape emulator lifecycle", () => {
           signer: harness.proverSigner,
           threadOutRef: step01.nextThreadOutRef,
           referenceScriptUtxo: step02Reference,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
         }),
     );
     const step02 = step02Capture.result;

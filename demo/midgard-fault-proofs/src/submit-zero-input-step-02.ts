@@ -294,9 +294,9 @@ export const submitZeroInputStep02 = async ({
   readonly threadOutRef: string;
   /** The disputed transaction's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
-  /** The published step-02 reference script; inline-attached when absent. */
+  /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitZeroInputStep02Result> => {

@@ -75,6 +75,7 @@ describe("withdrawal-mistag cancel and resume", () => {
         signer: harness.proverSigner,
         threadOutRef: await advanceTo(targetStep),
         referenceScriptUtxo: refs[targetStep],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       });
       expect(cancelled.cancelledStepIndex).toBe(targetStep);
       for (const step of harness.withdrawalMistag.steps) {
@@ -149,6 +150,7 @@ describe("withdrawal-mistag cancel and resume", () => {
       prepared: scenario.prepared,
       threadOutRef: step04.nextThreadOutRef,
       referenceScriptUtxo: refs[4],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     await expect(
       harness.proverLucid.utxosAtWithUnit(

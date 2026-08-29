@@ -108,6 +108,7 @@ describe("missing-native-script-tx emulator tier-2 carriage", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: fixture.setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const step01 = await submitMissingNativeScriptTxStep01({
       lucid: harness.proverLucid,
@@ -120,6 +121,7 @@ describe("missing-native-script-tx emulator tier-2 carriage", () => {
       stateQueueBlockOutRef: fixture.setup.fraudulentBlockOutRef,
       txInclusion: badInclusion,
       referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const step02 = await submitMissingNativeScriptTxStep02({
       lucid: harness.proverLucid,
@@ -155,6 +157,7 @@ describe("missing-native-script-tx emulator tier-2 carriage", () => {
       stateQueueBlockOutRef: fixture.setup.fraudulentBlockOutRef,
       txInclusion: producingInclusion,
       referenceScriptUtxo: refs[2],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const step04 = await submitMissingNativeScriptTxStep04({
       lucid: harness.proverLucid,
@@ -186,6 +189,7 @@ describe("missing-native-script-tx emulator tier-2 carriage", () => {
       witnessSet: fixture.badTxWitnessSet,
       scriptTxWitsItems: fixture.badTxScriptWitnessItemCbors,
       referenceScriptUtxo: refs[5],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     await expectSingleUtxoWithUnit(
       harness.proverLucid,

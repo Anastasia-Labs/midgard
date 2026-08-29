@@ -112,9 +112,10 @@ const Q13_APPLIED_STEP_HASHES = [
 // normalized, and once more when registration appended the value-not-preserved,
 // input-set-uniqueness, and mint-authorization categories (25 to 28). The value
 // agrees independently between the SDK catalogue builder, the deployment
-// fixture, and inspect-contracts' derived fold.
+// fixture, and inspect-contracts' derived fold. Re-pinned after merging the
+// six-stage lifecycle with mandatory published reference-script witnesses.
 const Q13_CATALOGUE_ROOT =
-  "f9b9acd788ae2236a6cf11d60fe6eb9996de7b5b90396459859453ab2e588217";
+  "0355d6f59476627a28a45d43dfe404d8ed66e3c6751435a9015bd2114f5f1305";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -613,6 +614,11 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
     ).toBe(true);
     expect(output.fraudProofCatalogue.transitionTrace.ready).toBe(true);
     expect(output.fraudProofCatalogue.validationTraceDispute.ready).toBe(true);
+    expect(
+      Object.entries(output.fraudProofCatalogue.categories)
+        .filter(([, category]) => !category.ready)
+        .map(([name]) => name),
+    ).toEqual([]);
     expect(output.fraudProofCatalogue.initReady).toBe(true);
   });
 

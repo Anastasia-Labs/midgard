@@ -501,7 +501,7 @@ export const makePhaseBCandidate = (
 ): PhaseAValidatedTx => {
   const spent = opts.spent ?? [outRefFromByte(0x11)];
   const referenceInputs = opts.referenceInputs ?? [];
-  const outputLovelace = opts.outputLovelace ?? 10n;
+  const outputLovelace = opts.outputLovelace ?? FUNDED_OUTPUT_LOVELACE_V1;
   const outputs = opts.outputs ?? [makeOutput(outputLovelace)];
   const fixture = makeNativeTx({
     ...opts,

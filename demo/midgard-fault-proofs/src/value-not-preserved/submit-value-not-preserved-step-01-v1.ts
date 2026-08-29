@@ -60,6 +60,7 @@ import {
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScriptsV1,
+  witnessSpendingValidatorCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "../witness-reference-scripts-v1.js";
 import type { ValueNotPreservedContractsV1 } from "./contracts-v1.js";
@@ -133,9 +134,9 @@ export const submitValueNotPreservedStep01 = async ({
    * challenged header.
    */
   readonly prevUtxosRoot: string;
-  /** The published step-01 reference script; inline-attached when absent. */
+  /** The mandatory published step-01 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Published witness reference scripts required by this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValueNotPreservedStep01Result> => {
@@ -212,18 +213,23 @@ export const submitValueNotPreservedStep01 = async ({
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${STEP_LABEL} PHAS membership`,
   });
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireValueNotPreservedReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: contracts.steps[0].spendingScriptHash,
+          stepIndex: 0,
+        });
+  const stepCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.steps[0].spendingScript,
+    referenceUtxo: stepReference,
+    label: `${STEP_LABEL} spending validator`,
+  });
   const referenceInputs = [
     hubOracleUtxo,
     stateQueueBlockUtxo,
-    ...(referenceScriptUtxo === undefined
-      ? []
-      : [
-          requireValueNotPreservedReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[0].spendingScriptHash,
-            stepIndex: 0,
-          }),
-        ]),
+    ...stepCarriage.referenceInputs,
     ...phasMembershipCarriage.referenceInputs,
   ];
   const step02Datum = Data.to(
@@ -311,11 +317,7 @@ export const submitValueNotPreservedStep01 = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
-  const withStepScript =
-    referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[0].spendingScript)
-      : base;
-  const tx = phasMembershipCarriage.attach(withStepScript);
+  const tx = phasMembershipCarriage.attach(stepCarriage.attach(base));
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {

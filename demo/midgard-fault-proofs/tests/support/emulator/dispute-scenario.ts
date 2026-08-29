@@ -51,6 +51,7 @@ import {
   midgardScriptHashNames,
 } from "./measurement.js";
 import {
+  publishFaultProofWitnessReferenceScriptsV1,
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
 } from "./reference-scripts.js";
@@ -122,6 +123,13 @@ export const runForcedValidationDisputeScenario = async (
     },
   );
   const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+  const witnessReferenceScripts =
+    await publishFaultProofWitnessReferenceScriptsV1({
+      lucid: challengerLucid,
+      realBlueprint,
+      computationThreadMintingScript: contracts.computationThread.mintingScript,
+      fraudProofMintingScript: contracts.fraudProof.mintingScript,
+    });
   const operatorPaymentCredential = getAddressDetails(
     await operatorLucid.wallet().address(),
   ).paymentCredential;
@@ -149,14 +157,35 @@ export const runForcedValidationDisputeScenario = async (
       header: fixture.header,
     }),
   );
-  const { referenceScriptPublisherLucid, validationDisputePublication } =
-    await stageAuthenticatedValidationDisputePublication({
-      emulator,
-      operatorLucid,
-      operatorSeedPhrase: operator.seedPhrase,
-      contracts,
-      runStage: runEmulatorLifecycleStage,
-    });
+  const {
+    referenceScriptPublisherLucid,
+    validationDisputePublication,
+    validationDisputeControlPublications,
+  } = await stageAuthenticatedValidationDisputePublication({
+    emulator,
+    operatorLucid,
+    operatorSeedPhrase: operator.seedPhrase,
+    contracts,
+    runStage: runEmulatorLifecycleStage,
+  });
+  const prepareResolverContract =
+    contracts.fraudProofContracts.validationTraceDispute.prepareResolvers[
+      fixture.evidence.oneStepArgument.resolverIndex
+    ];
+  if (prepareResolverContract === undefined) {
+    throw new Error("Selected validation prepare resolver is not deployed");
+  }
+  const prepareResolverPublication = await runEmulatorLifecycleStage(
+    "reference-script.publish-prepare-resolver",
+    () =>
+      withRealL1MaxTxSize(emulator, () =>
+        publishPlainReferenceScriptUtxo({
+          lucid: referenceScriptPublisherLucid,
+          script: prepareResolverContract.spendingScript,
+          label: "validation prepare resolver",
+        }),
+      ),
+  );
   const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
     validationDisputePublication,
   });
@@ -169,6 +198,7 @@ export const runForcedValidationDisputeScenario = async (
       signer: challengerSigner,
       fraudCategory: "validationTraceDispute",
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts,
       awaitConfirmation: true,
     }),
   );
@@ -211,6 +241,8 @@ export const runForcedValidationDisputeScenario = async (
       network,
       signer: challengerSigner,
       threadOutRef: openResult.nextThreadOutRef,
+      sourceReferenceScriptUtxo:
+        validationDisputeControlPublications.source.utxo,
       validityRange: validityRange(),
       awaitConfirmation: true,
     }),
@@ -233,6 +265,8 @@ export const runForcedValidationDisputeScenario = async (
           threadOutRef,
           role: move.role,
           proof: move.proof,
+          gameReferenceScriptUtxo:
+            validationDisputeControlPublications.game.utxo,
           validityRange: validityRange(),
           awaitConfirmation: true,
         }),
@@ -250,6 +284,7 @@ export const runForcedValidationDisputeScenario = async (
         network,
         signer: challengerSigner,
         threadOutRef,
+        gameReferenceScriptUtxo: validationDisputeControlPublications.game.utxo,
         validityRange: validityRange(),
         awaitConfirmation: true,
       }),
@@ -274,6 +309,8 @@ export const runForcedValidationDisputeScenario = async (
         challengerPost: validationTraceProofDataFromCore(
           fixture.challengerTrace.tree.proofs[highIndex]!,
         ),
+        boundaryReferenceScriptUtxo:
+          validationDisputeControlPublications.boundary.utxo,
         validityRange: validityRange(),
         awaitConfirmation: true,
       }),
@@ -292,6 +329,7 @@ export const runForcedValidationDisputeScenario = async (
         signer: challengerSigner,
         threadOutRef: prepareResult.nextThreadOutRef,
         oneStepArgument: fixture.evidence.oneStepArgument,
+        referenceScriptUtxo: prepareResolverPublication.utxo,
         validityRange: validityRange(),
         awaitConfirmation: true,
       }),
@@ -299,35 +337,32 @@ export const runForcedValidationDisputeScenario = async (
   if (stopAfter === "prepare-selected") {
     return { fixture, contracts, initResult, lowIndex, highIndex };
   }
-  // #634. The ValueAndMint semantic resolvers now hold the same
-  // reference-script deployment role the CEK ones do. Publish exactly the
-  // resolver this fixture's one-step argument routes to, and only when its
-  // applied body cannot ride inside the literal 16,384-byte L1 proof envelope
-  // — eight of the eleven cannot, so without this the resolution transaction
-  // overflows (#634 measured 21,576 bytes for the output-descriptor journey).
-  // The publication itself is necessarily oversized, exactly as the CEK ones
-  // are, so it runs under the emulator's raised deployment-time maxTxSize on
-  // its own publisher Lucid; the consuming resolution stays on
-  // `targetChallengerLucid`, which is pinned to the real L1 limit.
+  // Publish the exact selected semantic resolver once. Oversized ValueAndMint
+  // bodies use the deployment-time host limit; all other semantic bodies are
+  // published inside the real L1 envelope.
   const stagedResolverIndex = fixture.evidence.oneStepArgument.resolverIndex;
   const stagedSemanticIndex =
     fixture.evidence.oneStepArgument.semanticResolverIndex;
   // Resolved through the very helper the submit path uses, so the published
   // body is byte-identical to the one the resolution will hash-check.
+  const semanticContract = (
+    await resolveValidationTraceDisputeDeploymentContracts({
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+    })
+  ).contracts.validationTraceDispute.semanticResolvers[
+    validationSemanticResolverGlobalIndexV1(
+      stagedResolverIndex,
+      stagedSemanticIndex,
+    )
+  ];
+  if (semanticContract === undefined) {
+    throw new Error("Selected validation semantic resolver is not deployed");
+  }
   const valueAndMintSemanticContract =
     stagedResolverIndex === VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX_V1
-      ? (
-          await resolveValidationTraceDisputeDeploymentContracts({
-            blueprint: realBlueprint,
-            deploymentInfo,
-            network,
-          })
-        ).contracts.validationTraceDispute.semanticResolvers[
-          validationSemanticResolverGlobalIndexV1(
-            stagedResolverIndex,
-            stagedSemanticIndex,
-          )
-        ]
+      ? semanticContract
       : undefined;
   const valueAndMintSemanticEntryName =
     valueAndMintSemanticContract === undefined
@@ -335,35 +370,50 @@ export const runForcedValidationDisputeScenario = async (
       : validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(
           stagedSemanticIndex,
         );
+  const semanticIsOversized =
+    semanticContract.spendingScript.script.length / 2 >
+    PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
+  const semanticPublication = await runEmulatorLifecycleStage(
+    `reference-script.publish.${
+      valueAndMintSemanticEntryName ??
+      `validationSemanticResolver${validationSemanticResolverGlobalIndexV1(
+        stagedResolverIndex,
+        stagedSemanticIndex,
+      ).toString()}`
+    }`,
+    async () => {
+      if (semanticIsOversized) {
+        const prePublicationProtocolParameters = emulator.protocolParameters;
+        emulator.protocolParameters = functionalProtocolParameters;
+        try {
+          const oversizedPublisherLucid = await Lucid(emulator, "Custom", {
+            slotConfig: functionalSlotConfig,
+          });
+          oversizedPublisherLucid.selectWallet.fromSeed(operator.seedPhrase);
+          return await publishPlainReferenceScriptUtxo({
+            lucid: oversizedPublisherLucid,
+            script: semanticContract.spendingScript,
+            label:
+              valueAndMintSemanticEntryName ?? "validation semantic resolver",
+            oversized: true,
+          });
+        } finally {
+          emulator.protocolParameters = prePublicationProtocolParameters;
+        }
+      }
+      return await withRealL1MaxTxSize(emulator, () =>
+        publishPlainReferenceScriptUtxo({
+          lucid: referenceScriptPublisherLucid,
+          script: semanticContract.spendingScript,
+          label:
+            valueAndMintSemanticEntryName ?? "validation semantic resolver",
+        }),
+      );
+    },
+  );
   const valueAndMintSemanticPublication =
-    valueAndMintSemanticContract !== undefined &&
-    valueAndMintSemanticEntryName !== undefined &&
-    valueAndMintSemanticContract.spendingScript.script.length / 2 >
-      PROTOCOL_PARAMETERS_DEFAULT.maxTxSize
-      ? await runEmulatorLifecycleStage(
-          `reference-script.publish.${valueAndMintSemanticEntryName}`,
-          async () => {
-            const prePublicationProtocolParameters =
-              emulator.protocolParameters;
-            emulator.protocolParameters = functionalProtocolParameters;
-            try {
-              const oversizedPublisherLucid = await Lucid(emulator, "Custom", {
-                slotConfig: functionalSlotConfig,
-              });
-              oversizedPublisherLucid.selectWallet.fromSeed(
-                operator.seedPhrase,
-              );
-              return await publishPlainReferenceScriptUtxo({
-                lucid: oversizedPublisherLucid,
-                script: valueAndMintSemanticContract.spendingScript,
-                label: valueAndMintSemanticEntryName,
-                oversized: true,
-              });
-            } finally {
-              emulator.protocolParameters = prePublicationProtocolParameters;
-            }
-          },
-        )
+    valueAndMintSemanticContract !== undefined && semanticIsOversized
+      ? semanticPublication
       : undefined;
   const semanticDeploymentInfo =
     valueAndMintSemanticPublication === undefined
@@ -388,6 +438,7 @@ export const runForcedValidationDisputeScenario = async (
         signer: challengerSigner,
         threadOutRef: selectedResult.nextThreadOutRef,
         oneStepArgument: fixture.evidence.oneStepArgument,
+        referenceScriptUtxo: semanticPublication.utxo,
         validityRange: validityRange(),
         awaitConfirmation: true,
       }),
@@ -428,6 +479,8 @@ export const runForcedValidationDisputeScenario = async (
       network,
       signer: challengerSigner,
       threadOutRef: semanticResult.nextThreadOutRef,
+      awardReferenceScriptUtxo: validationDisputeControlPublications.award.utxo,
+      witnessReferenceScripts,
       validityRange: validityRange(),
       awaitConfirmation: true,
     }),

@@ -60,6 +60,9 @@ const CATALOGUE_CATEGORY_TO_CONTRACT = Object.freeze({
   crossBlockDuplicateEvent: "fraudProofCrossBlockDuplicateEvent",
   l2TxMistag: "fraudProofL2TxMistag",
   withdrawnInput: "fraudProofWithdrawnInput",
+  valueNotPreserved: "fraudProofValueNotPreserved",
+  inputSetUniqueness: "fraudProofInputSetUniqueness",
+  mintAuthorization: "fraudProofMintAuthorization",
 } as const);
 
 const REFERENCE_SCRIPT_ROLES = Object.freeze(

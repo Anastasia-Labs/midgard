@@ -169,7 +169,7 @@ export const submitNoReferenceInputStep02 = async ({
   /** The disputed transaction's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
   readonly badReferenceInputIndex: bigint;
-  /** The published step-02 reference script; inline-attached when absent. */
+  /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNoReferenceInputStep02Result> => {

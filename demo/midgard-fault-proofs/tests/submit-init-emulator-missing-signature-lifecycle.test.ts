@@ -191,6 +191,7 @@ describe("missing-signature positive emulator lifecycle", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const one = await submitMissingSignatureStep01({
       lucid: harness.proverLucid,
@@ -203,6 +204,7 @@ describe("missing-signature positive emulator lifecycle", () => {
       stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
       txInclusion: scenario.block.txInclusion,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const two = await submitMissingSignatureStep02({
       lucid: harness.proverLucid,
@@ -234,6 +236,7 @@ describe("missing-signature positive emulator lifecycle", () => {
       nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
       witnessSetCompact: scenario.subject.witnessSetCompact,
       referenceScriptUtxo: step04Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(four.kind).toBe("proven");
     if (four.kind !== "proven") {

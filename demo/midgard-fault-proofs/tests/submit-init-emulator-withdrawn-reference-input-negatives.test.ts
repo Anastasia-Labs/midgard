@@ -53,6 +53,7 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
         },
         signer: harness.proverSigner,
         fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const step01 = async (threadOutRef: string) =>
       await submitWithdrawnReferenceInputStep01({
@@ -66,6 +67,7 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
         stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
         txInclusion: scenario.prepared.txInclusion,
         referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const step02 = async (threadOutRef: string) =>
       await submitWithdrawnReferenceInputStep02({
@@ -97,6 +99,7 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
         signer: harness.proverSigner,
         threadOutRef,
         referenceScriptUtxo: refs[cancelAt],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       });
       expect(cancelled.cancelledStepIndex).toBe(cancelAt);
       for (const step of harness.family.steps) {
@@ -123,6 +126,7 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
       threadOutRef: opened.nextThreadOutRef,
       withdrawalMembership: scenario.prepared.withdrawalMembership,
       referenceScriptUtxo: refs[2],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(finalized.fraudProofUnit).toContain(
       `${harness.category.categoryId}${scenario.setup.headerHash}`,
@@ -150,6 +154,7 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const bound = await submitWithdrawnReferenceInputStep01({
       lucid: harness.proverLucid,
@@ -162,6 +167,7 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
       stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
       txInclusion: scenario.prepared.txInclusion,
       referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
 
     const outsiderAccount = generateEmulatorAccount({ lovelace: 0n });
@@ -201,6 +207,7 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
         signer: outsider,
         threadOutRef: bound.nextThreadOutRef,
         referenceScriptUtxo: refs[1],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/only the prover can cancel/);
 
@@ -264,6 +271,7 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
         stepIndex: 1,
         threadOutRef: bound.nextThreadOutRef,
         referenceScriptUtxo: refs[1],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     );
 

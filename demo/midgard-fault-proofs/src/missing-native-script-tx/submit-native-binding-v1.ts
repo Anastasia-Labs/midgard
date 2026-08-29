@@ -91,7 +91,7 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
   readonly nextDatum: string;
   readonly spendRedeemerSchema: Parameters<typeof Data.to>[1];
   readonly referenceScriptUtxo: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation: boolean;
 }): Promise<MissingNativeScriptTxBindingResultV1> => {

@@ -68,6 +68,11 @@ import {
   computationThreadOutputPredicate,
   outputWithDatumAndUnitPredicate,
 } from "../../src/tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../../src/witness-reference-scripts-v1.js";
 import { setupFraudulentBlockV1 } from "./submit-init-emulator-fixtures.js";
 import {
   makeFaultProofEmulatorHarnessV1,
@@ -356,6 +361,11 @@ export const submitRawCommittedFieldShapeStep01V1 = async ({
     ),
   };
   const phasAddress = phasMembershipRewardAddress(network, phasScript);
+  const phasCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasScript,
+    referenceUtxo: harness.witnessReferenceScripts.phasMembershipWithdraw,
+    label: "raw committed-field-shape PHAS membership",
+  });
   const step02Datum = Data.to(
     {
       fraud_prover: harness.proverSigner.paymentKeyHash,
@@ -426,11 +436,16 @@ export const submitRawCommittedFieldShapeStep01V1 = async ({
       CommittedFieldShapeStep01SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const unsigned = await harness.proverLucid
+  const base = harness.proverLucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom([hubOracleUtxo, stateQueueBlockUtxo, referenceScriptUtxo])
+    .readFrom([
+      hubOracleUtxo,
+      stateQueueBlockUtxo,
+      referenceScriptUtxo,
+      ...phasCarriage.referenceInputs,
+    ])
     .withdraw(
       phasAddress,
       0n,
@@ -449,8 +464,9 @@ export const submitRawCommittedFieldShapeStep01V1 = async ({
         [threadToken.unit]: 1n,
       },
     )
-    .addSignerKey(harness.proverSigner.paymentKeyHash)
-    .attach.WithdrawalValidator(phasScript)
+    .addSignerKey(harness.proverSigner.paymentKeyHash);
+  const unsigned = await phasCarriage
+    .attach(base)
     .complete({ localUPLCEval: true });
   if (outputIndex === undefined) {
     throw new Error("raw step-01 layout did not resolve");
@@ -556,11 +572,25 @@ export const submitRawCommittedFieldShapeStep02V1 = async ({
       FraudProofTokenMintRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const unsigned = await harness.proverLucid
+  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+    script: harness.committedFieldShape.computationThread.mintingScript,
+    referenceUtxo: harness.witnessReferenceScripts.computationThreadMint,
+    label: "raw committed-field-shape step-02 computation-thread mint",
+  });
+  const fraudProofCarriage = witnessMintingPolicyCarriageV1({
+    script: harness.committedFieldShape.fraudProof.mintingScript,
+    referenceUtxo: harness.witnessReferenceScripts.fraudProofMint,
+    label: "raw committed-field-shape step-02 fraud-proof mint",
+  });
+  const base = harness.proverLucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom([referenceScriptUtxo])
+    .readFrom([
+      referenceScriptUtxo,
+      ...computationThreadCarriage.referenceInputs,
+      ...fraudProofCarriage.referenceInputs,
+    ])
     .mintAssets({ [threadToken.unit]: -1n }, burnRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, fraudMintRedeemer)
     .pay.ToContract(
@@ -571,11 +601,9 @@ export const submitRawCommittedFieldShapeStep02V1 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(harness.proverSigner.paymentKeyHash)
-    .attach.MintingPolicy(
-      harness.committedFieldShape.computationThread.mintingScript,
-    )
-    .attach.MintingPolicy(harness.committedFieldShape.fraudProof.mintingScript)
+    .addSignerKey(harness.proverSigner.paymentKeyHash);
+  const unsigned = await fraudProofCarriage
+    .attach(computationThreadCarriage.attach(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -597,6 +625,7 @@ export const submitRawCommittedFieldShapeCancelV1 = async ({
   threadUnit,
   threadAssetName,
   referenceScriptUtxo,
+  witnessReferenceScripts,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: CommittedFieldShapeContractsV1;
@@ -606,6 +635,7 @@ export const submitRawCommittedFieldShapeCancelV1 = async ({
   readonly threadUnit: string;
   readonly threadAssetName: string;
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
 }): Promise<string> => {
   if (threadUtxo.address !== contracts.steps[stepIndex].spendingScriptAddress) {
     throw new Error("raw cancel thread is not at the named family step");
@@ -643,14 +673,23 @@ export const submitRawCommittedFieldShapeCancelV1 = async ({
       FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const unsigned = await lucid
+  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts.computationThreadMint,
+    label: "raw committed-field-shape cancel computation-thread mint",
+  });
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom([referenceScriptUtxo])
+    .readFrom([
+      referenceScriptUtxo,
+      ...computationThreadCarriage.referenceInputs,
+    ])
     .mintAssets({ [threadUnit]: -1n }, burnRedeemer)
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
+    .addSignerKey(signer.paymentKeyHash);
+  const unsigned = await computationThreadCarriage
+    .attach(base)
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

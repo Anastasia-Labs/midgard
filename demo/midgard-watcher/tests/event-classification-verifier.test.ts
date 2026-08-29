@@ -8,6 +8,7 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  FUNDED_OUTPUT_LOVELACE_V1,
   makeNativeTx,
   makeOutput,
   nativeScriptWitness,
@@ -215,7 +216,7 @@ const FIXED_ADDRESS = Buffer.from(
     .to_address()
     .to_raw_bytes(),
 );
-const FLOW_OUTPUT = makeOutput(10n, FIXED_ADDRESS);
+const FLOW_OUTPUT = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, FIXED_ADDRESS);
 const FORCED_VALID_INPUT = outRefFromByte(0x71);
 const FORCED_VALID_NATIVE = makeNativeTx({
   spendInputs: [FORCED_VALID_INPUT],
@@ -242,7 +243,7 @@ const FORCED_INVALID_CASES = Object.freeze({
     }),
     operatorValidity: "AddressWitnessSignatureInvalid" as const,
   }),
-  PlutusExecutionFailed: Object.freeze({
+  WitnessNativeScriptFalse: Object.freeze({
     input: outRefFromByte(0x74),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x74)],
@@ -255,7 +256,7 @@ const FORCED_INVALID_CASES = Object.freeze({
         }),
       ],
     }),
-    operatorValidity: "PlutusExecutionFailed" as const,
+    operatorValidity: "WitnessNativeScriptFalse" as const,
   }),
   FeeBelowMinimum: Object.freeze({
     input: outRefFromByte(0x75),
@@ -271,7 +272,7 @@ const FORCED_INVALID_CASES = Object.freeze({
     input: outRefFromByte(0x76),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x76)],
-      outputs: [makeOutput(9n, FIXED_ADDRESS)],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1 - 1n, FIXED_ADDRESS)],
       privateKey: FIXED_KEY,
     }),
     operatorValidity: "ValueNotPreserved" as const,
@@ -877,7 +878,7 @@ describe("W26 canonical event classification rules", () => {
     expect(exercisedCategories).toStrictEqual([
       "InputNotFound",
       "AddressWitnessSignatureInvalid",
-      "PlutusExecutionFailed",
+      "WitnessNativeScriptFalse",
       "FeeBelowMinimum",
       "ValueNotPreserved",
     ]);

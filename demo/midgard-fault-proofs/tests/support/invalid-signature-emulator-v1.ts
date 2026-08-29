@@ -50,6 +50,7 @@ import {
   selectFeeInput,
 } from "../../src/submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
+import { witnessMintingPolicyCarriageV1 } from "../../src/witness-reference-scripts-v1.js";
 import { setupFraudulentBlockV1 } from "./submit-init-emulator-fixtures.js";
 import {
   makeFaultProofEmulatorHarnessV1,
@@ -509,11 +510,26 @@ export const submitRawInvalidSignatureStep02V1 = async ({
       SDK.FraudProofTokenMintRedeemer,
     )) satisfies BuildTxWithRedeemer;
 
-  const unsigned = await lucid
+  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: harness.witnessReferenceScripts.computationThreadMint,
+    label: "raw invalid-signature step 02 computation-thread mint",
+  });
+  const fraudProofCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: harness.witnessReferenceScripts.fraudProofMint,
+    label: "raw invalid-signature step 02 fraud-proof mint",
+  });
+
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spend)
-    .readFrom(referenceInputs)
+    .readFrom([
+      ...referenceInputs,
+      ...computationThreadCarriage.referenceInputs,
+      ...fraudProofCarriage.referenceInputs,
+    ])
     .mintAssets({ [threadToken.unit]: -1n }, burn)
     .mintAssets({ [fraudProofUnit]: 1n }, mint)
     .pay.ToContract(
@@ -524,9 +540,9 @@ export const submitRawInvalidSignatureStep02V1 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript)
+    .addSignerKey(signer.paymentKeyHash);
+  const unsigned = await fraudProofCarriage
+    .attach(computationThreadCarriage.attach(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

@@ -153,6 +153,7 @@ const driveNoReferenceInputToStep04V1 = async ({
 
   const init = await submitInit({
     lucid: proverLucid,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: realBlueprint,
     deploymentInfo,
     network,
@@ -173,6 +174,7 @@ const driveNoReferenceInputToStep04V1 = async ({
 
   const step01 = await submitNoReferenceInputStep01({
     lucid: proverLucid,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: realBlueprint,
     deploymentInfo,
     network,
@@ -210,6 +212,7 @@ const driveNoReferenceInputToStep04V1 = async ({
 
   const step03 = await submitNoReferenceInputStep03({
     lucid: proverLucid,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: realBlueprint,
     deploymentInfo,
     network,
@@ -307,6 +310,7 @@ describe("no-reference-input emulator lifecycle", () => {
 
     const step04 = await submitNoReferenceInputStep04({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -495,6 +499,7 @@ describe("no-reference-input emulator lifecycle", () => {
 
     const step04 = await submitNoReferenceInputStep04({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -551,6 +556,7 @@ describe("no-reference-input emulator lifecycle", () => {
     const forgeStep04 = async (txsNonMembershipProofCbor: string) =>
       await submitNoReferenceInputStep04({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,

@@ -6,7 +6,10 @@
  * emulator itself runs at the raised deployment-time limit.
  */
 
-import { type MidgardValidators } from "@al-ft/midgard-sdk";
+import {
+  createReferenceScriptAuthPolicy,
+  type MidgardValidators,
+} from "@al-ft/midgard-sdk";
 import {
   Emulator,
   generateEmulatorAccount,
@@ -21,7 +24,12 @@ import {
 } from "../../../src/index.js";
 import { network } from "./blueprints.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
-import { publishValidationDisputeReferenceScript } from "./reference-scripts.js";
+import {
+  publishAuthenticatedValidationDisputeControl,
+  publishValidationDisputeReferenceScript,
+  type ValidationDisputeControlPublicationTarget,
+  validationDisputeControlPublicationTargets,
+} from "./reference-scripts.js";
 
 /**
  * The emulator ledger every dispute journey starts from: an operator and a
@@ -112,6 +120,10 @@ export const withRealL1MaxTxSize = async <T>(
 type ValidationDisputePublication = Awaited<
   ReturnType<typeof publishValidationDisputeReferenceScript>
 >;
+type ValidationDisputeControlPublications = Record<
+  ValidationDisputeControlPublicationTarget["control"],
+  ValidationDisputePublication
+>;
 
 /**
  * Publishes the authenticated validation-dispute reference script on a
@@ -131,13 +143,14 @@ export const stageAuthenticatedValidationDisputePublication = async ({
   readonly operatorLucid: LucidEvolution;
   readonly operatorSeedPhrase: string;
   readonly contracts: MidgardValidators;
-  readonly runStage: (
+  readonly runStage: <T>(
     label: string,
-    operation: () => Promise<ValidationDisputePublication>,
-  ) => Promise<ValidationDisputePublication>;
+    operation: () => Promise<T>,
+  ) => Promise<T>;
 }): Promise<{
   readonly referenceScriptPublisherLucid: LucidEvolution;
   readonly validationDisputePublication: ValidationDisputePublication;
+  readonly validationDisputeControlPublications: ValidationDisputeControlPublications;
 }> => {
   const publicationSlotConfig = operatorLucid.config().slotConfig;
   if (publicationSlotConfig === undefined) {
@@ -150,16 +163,33 @@ export const stageAuthenticatedValidationDisputePublication = async ({
       slotConfig: publicationSlotConfig,
     });
     referenceScriptPublisherLucid.selectWallet.fromSeed(operatorSeedPhrase);
-    const validationDisputePublication = await runStage(
+    const validationDisputeControlPublications = await runStage(
       "reference-script.publish-authenticated",
-      () =>
-        publishValidationDisputeReferenceScript({
-          lucid: referenceScriptPublisherLucid,
+      async () => {
+        const authPolicy = createReferenceScriptAuthPolicy(
+          referenceScriptPublisherLucid,
+          emulator.now(),
+        );
+        const publications = {} as ValidationDisputeControlPublications;
+        for (const target of validationDisputeControlPublicationTargets(
           contracts,
-          now: emulator.now(),
-        }),
+        )) {
+          publications[target.control] =
+            await publishAuthenticatedValidationDisputeControl({
+              lucid: referenceScriptPublisherLucid,
+              target,
+              authPolicy,
+            });
+        }
+        return publications;
+      },
     );
-    return { referenceScriptPublisherLucid, validationDisputePublication };
+    return {
+      referenceScriptPublisherLucid,
+      validationDisputePublication:
+        validationDisputeControlPublications.dispute,
+      validationDisputeControlPublications,
+    };
   });
 };
 

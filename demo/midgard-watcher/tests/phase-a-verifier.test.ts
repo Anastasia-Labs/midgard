@@ -709,17 +709,17 @@ const evaluateBlock = async (
 // ---------------------------------------------------------------------------
 
 describe("published rejection vocabulary", () => {
-  it("mirrors the canonical 49-member RejectCodes vocabulary", () => {
-    expect(WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1).toHaveLength(49);
-    expect(new Set(WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1).size).toBe(49);
+  it("mirrors the canonical 50-member RejectCodes vocabulary", () => {
+    expect(WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1).toHaveLength(50);
+    expect(new Set(WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1).size).toBe(50);
     expect(WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1).toStrictEqual(
       Object.values(RejectCodes),
     );
   });
 
-  it("partitions the vocabulary into 32 reachable and 17 excluded codes", () => {
+  it("partitions the vocabulary into 32 reachable and 18 excluded codes", () => {
     expect(WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1).toHaveLength(32);
-    expect(WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1).toHaveLength(17);
+    expect(WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1).toHaveLength(18);
     expect(
       [
         ...WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1,

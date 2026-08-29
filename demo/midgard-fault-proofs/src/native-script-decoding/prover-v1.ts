@@ -53,6 +53,7 @@ import type { PublishedProofChunkV1 } from "../proof-chunk-carriage.js";
 import { outRefLabel, type ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
+import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
 import type { NativeScriptDecodingContractsV1 } from "./contracts-v1.js";
 import type { NativeScriptDecodingLedgerTrieHandleV1 } from "./evidence-v1.js";
 import {
@@ -218,6 +219,8 @@ export type NativeScriptDecodingProverDepsV1 = {
     readonly step03AdvanceOrClose?: UTxO;
     readonly step04?: UTxO;
   };
+  /** Mandatory published shared witnesses used by init, step-01, and step-04. */
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   /** Force §8 tier-2 carriage publication on the bind transaction. */
   readonly publishCarriage?: boolean;
 };
@@ -702,6 +705,7 @@ export const runNativeScriptDecodingProverV1 = async (
             signer,
             fraudulentBlockOutRef: finding.fraudulentBlockOutRef,
             fraudulentHeaderHash: headerHash,
+            witnessReferenceScripts: deps.witnessReferenceScripts,
           });
           txHashes.push(result.txHash);
           currentOutRef = result.nextThreadOutRef;
@@ -722,6 +726,7 @@ export const runNativeScriptDecodingProverV1 = async (
             signer,
             threadOutRef: cursor.threadOutRef,
             referenceScriptUtxo: referenceScriptUtxos.step01,
+            witnessReferenceScripts: deps.witnessReferenceScripts,
           };
           const result =
             finding.sourceKind === NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1
@@ -966,6 +971,7 @@ export const runNativeScriptDecodingProverV1 = async (
             signer,
             threadOutRef: cursor.threadOutRef,
             referenceScriptUtxo: referenceScriptUtxos.step04,
+            witnessReferenceScripts: deps.witnessReferenceScripts,
           });
           txHashes.push(result.txHash);
           await journal({

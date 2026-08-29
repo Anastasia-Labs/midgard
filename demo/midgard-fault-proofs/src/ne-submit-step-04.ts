@@ -165,9 +165,9 @@ export const neSubmitStep04 = async ({
    * transaction (issue #545).
    */
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
-  /** The published step-04 reference script; inline-attached when absent. */
+  /** The mandatory published step-04 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<NeSubmitStep04Result> => {

@@ -63,6 +63,7 @@ const initAndBind = async ({
     },
     signer: harness.proverSigner,
     fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
   });
   const step01 = await submitWithdrawnReferenceInputStep01({
     lucid: harness.proverLucid,
@@ -75,6 +76,7 @@ const initAndBind = async ({
     stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
     txInclusion: scenario.txInclusion,
     referenceScriptUtxo: refs[0],
+    witnessReferenceScripts: harness.witnessReferenceScripts,
   });
   return { init, step01 };
 };
@@ -133,6 +135,7 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
         threadOutRef: step02.nextThreadOutRef,
         withdrawalMembership: scenario.withdrawalMembership,
         referenceScriptUtxo: refs[2],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/l2_outref does not equal/);
     await expectOnchainRefusalV1(() =>
@@ -144,6 +147,7 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
         threadOutRef: step02.nextThreadOutRef,
         withdrawalMembership: scenario.withdrawalMembership,
         referenceScriptUtxo: refs[2],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     );
 
@@ -170,6 +174,7 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
         threadOutRef: step02.nextThreadOutRef,
         withdrawalMembership: forgedClaim,
         referenceScriptUtxo: refs[2],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/membership-proof-mismatch/);
     await expectOnchainRefusalV1(() =>
@@ -181,6 +186,7 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
         threadOutRef: step02.nextThreadOutRef,
         withdrawalMembership: forgedClaim,
         referenceScriptUtxo: refs[2],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     );
   }, 600_000);
@@ -214,6 +220,7 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
         threadOutRef: step02.nextThreadOutRef,
         withdrawalMembership: scenario.withdrawalMembership,
         referenceScriptUtxo: refs[2],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/withdrawal-not-valid/);
     await expectOnchainRefusalV1(() =>
@@ -225,6 +232,7 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
         threadOutRef: step02.nextThreadOutRef,
         withdrawalMembership: scenario.withdrawalMembership,
         referenceScriptUtxo: refs[2],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     );
   }, 600_000);

@@ -60,6 +60,10 @@ import {
   selectFeeInput,
 } from "../../src/submit-step-01.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../../src/witness-reference-scripts-v1.js";
 import { trieRootHex } from "./emulator/catalogue.js";
 import type { FaultProofEmulatorHarnessV1 } from "./emulator/harness.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
@@ -180,6 +184,7 @@ export const forceL2TxMistagStep01ForAdversarialTestV1 = async ({
   stateQueueBlockOutRef,
   txInclusion,
   referenceScriptUtxo,
+  witnessReferenceScripts,
 }: {
   readonly lucid: FaultProofEmulatorHarnessV1["proverLucid"];
   readonly blueprint: unknown;
@@ -191,6 +196,7 @@ export const forceL2TxMistagStep01ForAdversarialTestV1 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
 }): Promise<string> => {
   const { threadUtxo, threadToken } = await requireL2TxMistagThreadUtxoV1({
     lucid,
@@ -235,6 +241,11 @@ export const forceL2TxMistagStep01ForAdversarialTestV1 = async ({
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
   const rewardAddress = phasMembershipRewardAddress(network, phasScript);
+  const phasCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasScript,
+    referenceUtxo: witnessReferenceScripts.phasMembershipWithdraw,
+    label: "forced l2-tx-mistag PHAS membership",
+  });
   const state = {
     bad_tx_id: txInclusion.nativeTxId,
     committed_validity_code: txInclusion.nativeTx.validity_code,
@@ -283,11 +294,16 @@ export const forceL2TxMistagStep01ForAdversarialTestV1 = async ({
     };
     return Data.to({ Continue: [carriage] }, L2TxMistagStep01SpendRedeemer);
   }) satisfies BuildTxWithRedeemer;
-  const unsigned = await lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom([hubOracleUtxo, stateQueueBlockUtxo, reference])
+    .readFrom([
+      hubOracleUtxo,
+      stateQueueBlockUtxo,
+      reference,
+      ...phasCarriage.referenceInputs,
+    ])
     .withdraw(
       rewardAddress,
       0n,
@@ -306,8 +322,9 @@ export const forceL2TxMistagStep01ForAdversarialTestV1 = async ({
         [threadToken.unit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.WithdrawalValidator(phasScript)
+    .addSignerKey(signer.paymentKeyHash);
+  const unsigned = await phasCarriage
+    .attach(base)
     .complete({ localUPLCEval: true });
   const txHash = await (await unsigned.sign.withWallet().complete()).submit();
   await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);

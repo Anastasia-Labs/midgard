@@ -92,6 +92,10 @@ import {
   type NativeScriptDecodingProverPolicyV1,
 } from "../../src/native-script-decoding/prover-v1.js";
 import {
+  type NativeScriptDecodingStepIndexV1,
+  requireNativeScriptDecodingReferenceScriptV1,
+} from "../../src/native-script-decoding/submit-common-v1.js";
+import {
   type ResolvedProverSigner,
   resolveProverSigner,
 } from "../../src/runtime.js";
@@ -112,6 +116,7 @@ import {
   type TransitionTraceReconstruction,
 } from "../../src/transition-trace/reconstruct.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
+import { witnessMintingPolicyCarriageV1 } from "../../src/witness-reference-scripts-v1.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
@@ -1018,6 +1023,7 @@ export const decodingProverDepsV1 = ({
   journal: journal ?? (() => undefined),
   policy: DECODING_EMULATOR_PROVER_POLICY_V1,
   referenceScriptUtxos,
+  witnessReferenceScripts: harness.witnessReferenceScripts,
 });
 
 /**
@@ -1071,7 +1077,7 @@ export const submitRawDecodingStepV1 = async ({
   readonly nextDatumCbor: string;
   readonly buildRedeemer: (layout: RawDecodingStepLayoutV1) => string;
   readonly carriageUtxos?: readonly UTxO[];
-  readonly referenceScriptUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
 }): Promise<string> => {
   signer.selectWallet(lucid);
   const walletUtxos = await lucid.wallet().getUtxos();
@@ -1096,16 +1102,24 @@ export const submitRawDecodingStepV1 = async ({
       ),
     });
   }) satisfies BuildTxWithRedeemer;
+  const stepContract = contracts.steps[stepIndex];
+  if (stepContract === undefined || stepIndex < 0 || stepIndex > 5) {
+    throw new Error(
+      `raw decoding step index ${stepIndex.toString()} is invalid`,
+    );
+  }
+  const stepReference = requireNativeScriptDecodingReferenceScriptV1({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: stepContract.spendingScriptHash,
+    stepIndex: stepIndex as NativeScriptDecodingStepIndexV1,
+  });
 
   const withReferences = (() => {
     const base = lucid
       .newTx()
       .collectFrom([feeInput])
       .collectFrom([threadUtxo], redeemer);
-    const referenceInputs = [
-      ...carriageUtxos,
-      ...(referenceScriptUtxo === undefined ? [] : [referenceScriptUtxo]),
-    ];
+    const referenceInputs = [...carriageUtxos, stepReference];
     return referenceInputs.length === 0 ? base : base.readFrom(referenceInputs);
   })();
   const paid = withReferences.pay
@@ -1115,10 +1129,7 @@ export const submitRawDecodingStepV1 = async ({
       { lovelace: threadUtxo.assets.lovelace ?? 0n, [threadUnit]: 1n },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const tx =
-    referenceScriptUtxo === undefined
-      ? paid.attach.SpendingValidator(contracts.steps[stepIndex].spendingScript)
-      : paid;
+  const tx = paid;
 
   const unsigned = await tx.complete({
     localUPLCEval: true,
@@ -1146,6 +1157,7 @@ export const submitRawDecodingCancelV1 = async ({
   threadUnit,
   threadAssetName,
   referenceScriptUtxo,
+  computationThreadReferenceUtxo,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptDecodingContractsV1;
@@ -1154,7 +1166,8 @@ export const submitRawDecodingCancelV1 = async ({
   readonly threadUtxo: UTxO;
   readonly threadUnit: string;
   readonly threadAssetName: string;
-  readonly referenceScriptUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
+  readonly computationThreadReferenceUtxo: UTxO;
 }): Promise<string> => {
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -1189,6 +1202,22 @@ export const submitRawDecodingCancelV1 = async ({
       FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
+  const stepContract = contracts.steps[stepIndex];
+  if (stepContract === undefined || stepIndex < 0 || stepIndex > 5) {
+    throw new Error(
+      `raw decoding cancel step index ${stepIndex.toString()} is invalid`,
+    );
+  }
+  const stepReference = requireNativeScriptDecodingReferenceScriptV1({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: stepContract.spendingScriptHash,
+    stepIndex: stepIndex as NativeScriptDecodingStepIndexV1,
+  });
+  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: computationThreadReferenceUtxo,
+    label: "raw decoding cancel computation-thread mint",
+  });
 
   const base = lucid
     .newTx()
@@ -1196,11 +1225,8 @@ export const submitRawDecodingCancelV1 = async ({
     .collectFrom([threadUtxo], spendRedeemer)
     .mintAssets({ [threadUnit]: -1n }, burnRedeemer)
     .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript);
-  const tx =
-    referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[stepIndex].spendingScript)
-      : base.readFrom([referenceScriptUtxo]);
+    .readFrom([stepReference, ...computationThreadCarriage.referenceInputs]);
+  const tx = computationThreadCarriage.attach(base);
   const unsigned = await tx.complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

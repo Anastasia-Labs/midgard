@@ -174,6 +174,7 @@ const initThread = async (
     catalogue: catalogueOf(harness),
     signer: harness.proverSigner,
     fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
   });
 
 const advanceStep01 = async (
@@ -192,6 +193,7 @@ const advanceStep01 = async (
     stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
     txInclusion: scenario.txInclusion,
     referenceScriptUtxo: scenario.refs[0],
+    witnessReferenceScripts: harness.witnessReferenceScripts,
   });
 
 describe("min-fee emulator lifecycle", () => {
@@ -207,6 +209,7 @@ describe("min-fee emulator lifecycle", () => {
       contracts: harness.minFee,
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     };
 
     const atStep01 = await initThread(harness, scenario);
@@ -243,6 +246,7 @@ describe("min-fee emulator lifecycle", () => {
         stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
         txInclusion: scenario.txInclusion,
         referenceScriptUtxo: scenario.refs[1],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/reference script .* hashes to/u);
     await submitMinFeeCancel({
@@ -271,6 +275,7 @@ describe("min-fee emulator lifecycle", () => {
         witnessSet: scenario.prepared.tx.witnessSet,
         fieldItemCbors: missing as unknown as MinFeeFieldItemCborsV1,
         referenceScriptUtxo: scenario.refs[1],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/exactly nine/u);
 
@@ -287,6 +292,7 @@ describe("min-fee emulator lifecycle", () => {
         witnessSet: scenario.prepared.tx.witnessSet,
         fieldItemCbors: permuted as unknown as MinFeeFieldItemCborsV1,
         referenceScriptUtxo: scenario.refs[1],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/field 0|field 1/u);
 
@@ -304,6 +310,7 @@ describe("min-fee emulator lifecycle", () => {
         },
         fieldItemCbors: scenario.fieldItemCbors,
         referenceScriptUtxo: scenario.refs[1],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/compact transaction commits/u);
 
@@ -330,6 +337,7 @@ describe("min-fee emulator lifecycle", () => {
       witnessSet: scenario.prepared.tx.witnessSet,
       fieldItemCbors: scenario.fieldItemCbors,
       referenceScriptUtxo: scenario.refs[1],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(finalized.fee).toBe(999n);
     expect(finalized.minimumFee).toBe(1_000n);
@@ -428,6 +436,7 @@ describe("min-fee emulator lifecycle", () => {
       witnessSet: scenario.prepared.tx.witnessSet,
       fieldItemCbors: scenario.fieldItemCbors,
       referenceScriptUtxo: scenario.refs[1],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(finalized.fee).toBe(999n);
     expect(finalized.minimumFee).toBe(1_000n);
@@ -475,6 +484,7 @@ describe("min-fee emulator lifecycle", () => {
         witnessSet: scenario.prepared.tx.witnessSet,
         fieldItemCbors: scenario.fieldItemCbors,
         referenceScriptUtxo: scenario.refs[1],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         unsafeSkipLocalViolationCheckForTest: true,
       }),
     ).rejects.toThrow();
@@ -501,6 +511,7 @@ describe("min-fee emulator lifecycle", () => {
       signer: harness.proverSigner,
       threadOutRef: bound.nextThreadOutRef,
       referenceScriptUtxo: scenario.refs[1],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(cancelled.cancelledStepIndex).toBe(1);
   }, 600_000);

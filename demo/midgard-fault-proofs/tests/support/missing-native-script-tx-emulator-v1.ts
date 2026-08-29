@@ -62,6 +62,7 @@ import {
   computationThreadOutputPredicate,
   outputWithDatumAndUnitPredicate,
 } from "../../src/tx-layout.js";
+import { witnessMintingPolicyCarriageV1 } from "../../src/witness-reference-scripts-v1.js";
 import {
   buildDecodingBlockFixtureV1,
   type DecodingBlockFixtureV1,
@@ -469,6 +470,7 @@ export const submitRawMissingNativeScriptTxStep03V1 = async ({
     nextDatum,
     spendRedeemerSchema: MissingNativeScriptTxStep03SpendRedeemer,
     referenceScriptUtxo,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
     awaitConfirmation: true,
   });
   return result.txHash;
@@ -703,11 +705,25 @@ export const submitRawMissingNativeScriptTxStep06V1 = async ({
       FraudProofTokenMintRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const unsigned = await harness.proverLucid
+  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+    script: harness.family.computationThread.mintingScript,
+    referenceUtxo: harness.witnessReferenceScripts.computationThreadMint,
+    label: "raw missing-native-script-tx step-06 computation-thread mint",
+  });
+  const fraudProofCarriage = witnessMintingPolicyCarriageV1({
+    script: harness.family.fraudProof.mintingScript,
+    referenceUtxo: harness.witnessReferenceScripts.fraudProofMint,
+    label: "raw missing-native-script-tx step-06 fraud-proof mint",
+  });
+  const base = harness.proverLucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom([referenceScriptUtxo])
+    .readFrom([
+      referenceScriptUtxo,
+      ...computationThreadCarriage.referenceInputs,
+      ...fraudProofCarriage.referenceInputs,
+    ])
     .mintAssets({ [threadToken.unit]: -1n }, burnRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, mintRedeemer)
     .pay.ToContract(
@@ -718,9 +734,9 @@ export const submitRawMissingNativeScriptTxStep06V1 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(harness.proverSigner.paymentKeyHash)
-    .attach.MintingPolicy(harness.family.computationThread.mintingScript)
-    .attach.MintingPolicy(harness.family.fraudProof.mintingScript)
+    .addSignerKey(harness.proverSigner.paymentKeyHash);
+  const unsigned = await fraudProofCarriage
+    .attach(computationThreadCarriage.attach(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -793,14 +809,23 @@ export const submitRawMissingNativeScriptTxOutsiderCancelV1 = async ({
       FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const unsigned = await harness.outsiderLucid
+  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+    script: harness.family.computationThread.mintingScript,
+    referenceUtxo: harness.witnessReferenceScripts.computationThreadMint,
+    label: "raw missing-native-script-tx cancel computation-thread mint",
+  });
+  const base = harness.outsiderLucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom([referenceScriptUtxo])
+    .readFrom([
+      referenceScriptUtxo,
+      ...computationThreadCarriage.referenceInputs,
+    ])
     .mintAssets({ [threadToken.unit]: -1n }, burnRedeemer)
-    .addSignerKey(harness.outsiderSigner.paymentKeyHash)
-    .attach.MintingPolicy(harness.family.computationThread.mintingScript)
+    .addSignerKey(harness.outsiderSigner.paymentKeyHash);
+  const unsigned = await computationThreadCarriage
+    .attach(base)
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

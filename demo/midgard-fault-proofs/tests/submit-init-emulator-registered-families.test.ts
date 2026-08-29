@@ -161,6 +161,7 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         signer: proverSigner,
         fraudCategory: "noReferenceInput",
         fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         awaitConfirmation: true,
       });
       expect(initResult.txHash).toHaveLength(64);
@@ -190,6 +191,9 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         threadOutRef: outRefLabel(firstStepUtxo),
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         txInclusion: fixture.inclusion,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofNoReferenceInput.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         awaitConfirmation: true,
       });
       expect(step01Result.txHash).toHaveLength(64);
@@ -249,6 +253,7 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         signer: proverSigner,
         fraudCategory: "referenceInputNoIdx",
         fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         awaitConfirmation: true,
       });
       expect(initResult.fraudCategoryName).toBe("referenceInputNoIdx");
@@ -274,6 +279,9 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         threadOutRef: outRefLabel(firstStepUtxo),
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         txInclusion: fixture.inclusion,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofReferenceInputNoIdx.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         awaitConfirmation: true,
       });
       expect(step01Result.txHash).toHaveLength(64);
@@ -337,6 +345,7 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         signer: proverSigner,
         fraudCategory: "invalidSignature",
         fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         awaitConfirmation: true,
       });
       expect(initResult.fraudCategoryName).toBe("invalidSignature");
@@ -363,6 +372,9 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         txInclusion: fixture.inclusion,
         badTxWitnessSetCompact,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofInvalidSignature.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         awaitConfirmation: true,
       });
       expect(step01Result.txHash).toHaveLength(64);

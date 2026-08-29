@@ -42,6 +42,7 @@ const initializedScenario = async () => {
     },
     signer: harness.proverSigner,
     fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
   });
   return { harness, fixture, references, setup, init };
 };
@@ -62,6 +63,7 @@ describe("canonical-decodability cancellation and resume", () => {
       signer: harness.proverSigner,
       threadOutRef: outRefLabel(thread),
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(cancelled.cancelledStepIndex).toBe(0);
     await expect(
@@ -94,6 +96,7 @@ describe("canonical-decodability cancellation and resume", () => {
       fieldIndex: fixture.fieldIndex,
       committedPreimage: fixture.committedPreimage,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     // Simulated restart: ignore the submitter result and locate the NFT by
     // its next-step address and unit.
@@ -109,6 +112,7 @@ describe("canonical-decodability cancellation and resume", () => {
       signer: harness.proverSigner,
       threadOutRef: outRefLabel(resumed),
       referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
@@ -139,6 +143,7 @@ describe("canonical-decodability cancellation and resume", () => {
       fieldIndex: fixture.fieldIndex,
       committedPreimage: fixture.committedPreimage,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const cancelled = await submitCanonicalDecodabilityCancel({
       lucid: harness.proverLucid,
@@ -147,6 +152,7 @@ describe("canonical-decodability cancellation and resume", () => {
       signer: harness.proverSigner,
       threadOutRef: bound.nextThreadOutRef,
       referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(cancelled.cancelledStepIndex).toBe(1);
     await expect(

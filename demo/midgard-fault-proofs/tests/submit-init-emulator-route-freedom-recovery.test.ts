@@ -100,7 +100,7 @@ describe.skipIf(!optionB)(
         semantic.measurements.map(
           (measurement) => measurement.referenceInputCount,
         ),
-      ).toEqual([1, 0, 0, 2, 0, 0]);
+      ).toEqual([1, 1, 0, 2, 1, 1]);
       // Every transaction that actually reached the emulator fits the L1
       // envelope — the oversized build was refused pre-sign and never
       // submitted, which is the only reason this list can be all-green.
@@ -162,7 +162,7 @@ describe.skipIf(!optionB)(
         semantic.measurements.map(
           (measurement) => measurement.referenceInputCount,
         ),
-      ).toEqual([0, 1, 0, 2, 0, 0]);
+      ).toEqual([0, 1, 1, 2, 1, 1]);
       for (const measurement of semantic.measurements) {
         expect(measurement.completeSignedBytes).toBeLessThanOrEqual(
           MAX_L1_TX_BYTES,

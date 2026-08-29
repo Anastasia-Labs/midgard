@@ -6,6 +6,7 @@ import {
   parseOutRef,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
 import type { CrossBlockDuplicateEventContractsV1 } from "./contracts-v1.js";
 import { crossBlockDuplicateEventSubmitError } from "./submit-common-v1.js";
 import {
@@ -40,6 +41,7 @@ export const resumeCrossBlockDuplicateEventV1 = async ({
   settledHeaderHash,
   settledEvent,
   referenceScriptUtxos,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -53,6 +55,7 @@ export const resumeCrossBlockDuplicateEventV1 = async ({
   readonly settledHeaderHash: string;
   readonly settledEvent: CommittedDuplicateEventProofV1;
   readonly referenceScriptUtxos: readonly [UTxO, UTxO];
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<ResumeCrossBlockDuplicateEventResultV1> => {
   const thread = await fetchUtxoByOutRef({
@@ -88,6 +91,7 @@ export const resumeCrossBlockDuplicateEventV1 = async ({
         settledHeaderHash,
         settledEvent,
         referenceScriptUtxo: referenceScriptUtxos[1],
+        witnessReferenceScripts,
         awaitConfirmation,
       }),
     };

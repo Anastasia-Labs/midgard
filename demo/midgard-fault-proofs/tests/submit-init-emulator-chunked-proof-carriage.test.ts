@@ -227,6 +227,10 @@ describe("fault-proof published-chunk proof carriage", () => {
     readonly chunkCount: number;
     readonly proofCborBytes: number;
   }> => {
+    const harness = await makeFaultProofEmulatorHarnessV1({
+      contractOptions: { realZeroInput: true, alwaysFraudProofCatalogue: true },
+      registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
+    });
     const {
       realBlueprint,
       emulator,
@@ -236,10 +240,7 @@ describe("fault-proof published-chunk proof carriage", () => {
       nonceUtxo,
       contracts,
       catalogue,
-    } = await makeFaultProofEmulatorHarnessV1({
-      contractOptions: { realZeroInput: true, alwaysFraudProofCatalogue: true },
-      registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
-    });
+    } = harness;
     const removalReferenceScriptPublications =
       await publishRemovalReferenceScripts({ lucid: proverLucid, contracts });
     const fixture = await buildZeroInputTransactionInclusionFixture();
@@ -301,6 +302,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     const initCapture = await captureEmulatorSubmission(emulator, async () =>
       submitInit({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -321,6 +323,9 @@ describe("fault-proof published-chunk proof carriage", () => {
     const step01Capture = await captureEmulatorSubmission(emulator, async () =>
       submitZeroInputStep01({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofZeroInput!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -340,9 +345,10 @@ describe("fault-proof published-chunk proof carriage", () => {
     expect(step01Result.publishedChunkOutRefs.length).toBe(
       EXPECTED_CHUNK_COUNT,
     );
-    // Hub oracle, state-queue node and the two chunks — and nothing else.
+    // Hub oracle, state-queue node, the two chunks, the step script, and the
+    // chunked verifier script.
     expect(step01Capture.measurement.referenceInputCount).toBe(
-      2 + EXPECTED_CHUNK_COUNT,
+      4 + EXPECTED_CHUNK_COUNT,
     );
     // The publication UTxOs survive the step that referenced them.
     const survivors = await proverLucid.utxosByOutRef(
@@ -361,6 +367,9 @@ describe("fault-proof published-chunk proof carriage", () => {
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
       submitZeroInputStep02({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofZeroInputStep02!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -489,6 +498,13 @@ describe("fault-proof published-chunk proof carriage", () => {
   }, 900_000);
 
   it("carries an invalid-range membership proof past the direct route's envelope ceiling", async () => {
+    const harness = await makeFaultProofEmulatorHarnessV1({
+      contractOptions: {
+        realInvalidRange: true,
+        alwaysFraudProofCatalogue: true,
+      },
+      registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
+    });
     const {
       realBlueprint,
       emulator,
@@ -498,13 +514,7 @@ describe("fault-proof published-chunk proof carriage", () => {
       nonceUtxo,
       contracts,
       catalogue,
-    } = await makeFaultProofEmulatorHarnessV1({
-      contractOptions: {
-        realInvalidRange: true,
-        alwaysFraudProofCatalogue: true,
-      },
-      registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
-    });
+    } = harness;
     const removalReferenceScriptPublications =
       await publishRemovalReferenceScripts({ lucid: proverLucid, contracts });
 
@@ -564,6 +574,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     const initCapture = await captureEmulatorSubmission(emulator, async () =>
       submitInit({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -584,6 +595,9 @@ describe("fault-proof published-chunk proof carriage", () => {
     const step01Capture = await captureEmulatorSubmission(emulator, async () =>
       submitInvalidRangeStep01({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofInvalidRange!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -599,7 +613,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     const step01Result = step01Capture.result;
     expect(step01Result.proofCarriage).toBe("published-chunks");
     expect(step01Capture.measurement.referenceInputCount).toBe(
-      2 + EXPECTED_CHUNK_COUNT,
+      4 + EXPECTED_CHUNK_COUNT,
     );
 
     const secondStepUtxo = await expectSingleUtxoWithUnit(
@@ -610,6 +624,9 @@ describe("fault-proof published-chunk proof carriage", () => {
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
       submitInvalidRangeStep02({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofInvalidRangeStep02!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -680,6 +697,10 @@ describe("fault-proof published-chunk proof carriage", () => {
    * carriage; they are measured because the claim is about the complete path.
    */
   it("carries both double-spend membership proofs past the direct route's envelope ceiling", async () => {
+    const harness = await makeFaultProofEmulatorHarnessV1({
+      contractOptions: { alwaysFraudProofCatalogue: true },
+      registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
+    });
     const {
       realBlueprint,
       emulator,
@@ -689,10 +710,7 @@ describe("fault-proof published-chunk proof carriage", () => {
       nonceUtxo,
       contracts,
       catalogue,
-    } = await makeFaultProofEmulatorHarnessV1({
-      contractOptions: { alwaysFraudProofCatalogue: true },
-      registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
-    });
+    } = harness;
     const removalReferenceScriptPublications =
       await publishRemovalReferenceScripts({ lucid: proverLucid, contracts });
     const fixture = await buildTransactionInclusionFixture();
@@ -759,6 +777,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     const initCapture = await captureEmulatorSubmission(emulator, async () =>
       submitInit({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -781,6 +800,9 @@ describe("fault-proof published-chunk proof carriage", () => {
     const step01Capture = await captureEmulatorSubmission(emulator, async () =>
       submitStep01({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofDoubleSpend!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -796,9 +818,9 @@ describe("fault-proof published-chunk proof carriage", () => {
     const step01Result = step01Capture.result;
     expect(step01Result.nativeTxId).toBe(fixture.tx1.nativeTxId);
     expect(step01Result.proofCarriage).toBe("published-chunks");
-    // Hub oracle, state-queue node and the two chunks — and nothing else.
+    // Hub oracle, state-queue node, chunks, step script, and chunked verifier.
     expect(step01Capture.measurement.referenceInputCount).toBe(
-      2 + EXPECTED_CHUNK_COUNT,
+      4 + EXPECTED_CHUNK_COUNT,
     );
 
     // The second opening's chunks are published when the step that consumes
@@ -827,6 +849,9 @@ describe("fault-proof published-chunk proof carriage", () => {
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
       submitStep02({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofDoubleSpendStep02!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -843,7 +868,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     expect(step02Result.nativeTx2Id).toBe(fixture.tx2.nativeTxId);
     expect(step02Result.proofCarriage).toBe("published-chunks");
     expect(step02Capture.measurement.referenceInputCount).toBe(
-      2 + EXPECTED_CHUNK_COUNT,
+      4 + EXPECTED_CHUNK_COUNT,
     );
     // Both publications survive the steps that referenced them.
     const survivors = await proverLucid.utxosByOutRef(
@@ -862,6 +887,8 @@ describe("fault-proof published-chunk proof carriage", () => {
     const step03Capture = await captureEmulatorSubmission(emulator, async () =>
       submitStep03({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofDoubleSpendStep03!.utxo,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -888,6 +915,9 @@ describe("fault-proof published-chunk proof carriage", () => {
     const step04Capture = await captureEmulatorSubmission(emulator, async () =>
       submitStep04({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofDoubleSpendStep04!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -976,16 +1006,7 @@ describe("fault-proof published-chunk proof carriage", () => {
    * route: its proof is a constant with nothing for depth to grow.
    */
   it("carries a no-input membership and absence proof past the direct route's envelope ceiling", async () => {
-    const {
-      realBlueprint,
-      emulator,
-      funderLucid,
-      proverLucid,
-      proverSigner,
-      nonceUtxo,
-      contracts,
-      catalogue,
-    } = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarnessV1({
       contractOptions: {
         realNonExistentInput: true,
         alwaysFraudProofCatalogue: true,
@@ -995,6 +1016,16 @@ describe("fault-proof published-chunk proof carriage", () => {
         await registerChunkedVerifyRewardAccount(lucid, blueprint);
       },
     });
+    const {
+      realBlueprint,
+      emulator,
+      funderLucid,
+      proverLucid,
+      proverSigner,
+      nonceUtxo,
+      contracts,
+      catalogue,
+    } = harness;
     const removalReferenceScriptPublications =
       await publishRemovalReferenceScripts({ lucid: proverLucid, contracts });
     const fixture = await buildNonExistentInputFixture();
@@ -1061,6 +1092,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     const initCapture = await captureEmulatorSubmission(emulator, async () =>
       submitInit({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -1081,6 +1113,9 @@ describe("fault-proof published-chunk proof carriage", () => {
     const step01Capture = await captureEmulatorSubmission(emulator, async () =>
       neSubmitStep01({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofNonExistentInput!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -1097,7 +1132,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     expect(step01Result.nativeTxId).toBe(fixture.nativeTxId);
     expect(step01Result.proofCarriage).toBe("published-chunks");
     expect(step01Capture.measurement.referenceInputCount).toBe(
-      2 + EXPECTED_CHUNK_COUNT,
+      4 + EXPECTED_CHUNK_COUNT,
     );
 
     const secondStepUtxo = await expectSingleUtxoWithUnit(
@@ -1108,6 +1143,9 @@ describe("fault-proof published-chunk proof carriage", () => {
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
       neSubmitStep02({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofNonExistentInputStep02!
+            .utxo,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -1130,6 +1168,10 @@ describe("fault-proof published-chunk proof carriage", () => {
     const step03Capture = await captureEmulatorSubmission(emulator, async () =>
       neSubmitStep03({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofNonExistentInputStep03!
+            .utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -1165,6 +1207,10 @@ describe("fault-proof published-chunk proof carriage", () => {
     const step04Capture = await captureEmulatorSubmission(emulator, async () =>
       neSubmitStep04({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofNonExistentInputStep04!
+            .utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -1181,9 +1227,10 @@ describe("fault-proof published-chunk proof carriage", () => {
       initResult.computationThreadAssetName,
     );
     expect(step04Result.proofCarriage).toBe("published-chunks");
-    // Only the chunks: this step reads no oracle and no state-queue node.
+    // Chunks plus the step, pexcludes, computation-thread, and fraud-proof
+    // scripts: this step reads no oracle or state-queue node.
     expect(step04Capture.measurement.referenceInputCount).toBe(
-      EXPECTED_CHUNK_COUNT,
+      4 + EXPECTED_CHUNK_COUNT,
     );
 
     const removeNow = BigInt(emulator.now());

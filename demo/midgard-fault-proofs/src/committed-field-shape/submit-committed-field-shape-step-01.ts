@@ -59,6 +59,10 @@ import {
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { CommittedFieldShapeContractsV1 } from "./contracts-v1.js";
 import type { PreparedCommittedFieldShapeV1 } from "./prepare-committed-field-shape-v1.js";
 import {
@@ -198,6 +202,7 @@ export const submitCommittedFieldShapeStep01 = async ({
   prepared,
   publishedProofChunks,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -215,6 +220,7 @@ export const submitCommittedFieldShapeStep01 = async ({
   >;
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCommittedFieldShapeStep01Result> => {
   const { threadUtxo, threadToken } =
@@ -312,12 +318,6 @@ export const submitCommittedFieldShapeStep01 = async ({
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     stepIndex: 0,
   });
-  const referenceInputs = [
-    hubOracleUtxo,
-    stateQueueBlockUtxo,
-    ...chunks.map((chunk) => chunk.utxo),
-    validatedStepReference,
-  ];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -331,6 +331,20 @@ export const submitCommittedFieldShapeStep01 = async ({
     network,
     chunkedVerifyScript,
   );
+  const membershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: carriedByChunks ? chunkedVerifyScript : phasMembershipScript,
+    referenceUtxo: carriedByChunks
+      ? witnessReferenceScripts?.chunkedVerifyWithdraw
+      : witnessReferenceScripts?.phasMembershipWithdraw,
+    label: `${STEP_LABEL} ${carriedByChunks ? "chunked verify" : "PHAS membership"}`,
+  });
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    ...chunks.map((chunk) => chunk.utxo),
+    validatedStepReference,
+    ...membershipCarriage.referenceInputs,
+  ];
   const resolvedChunkIndices = derivedChunkReferenceIndices({
     referenceInputs,
     chunks,
@@ -444,9 +458,7 @@ export const submitCommittedFieldShapeStep01 = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
-  const tx = carriedByChunks
-    ? paid.attach.WithdrawalValidator(chunkedVerifyScript)
-    : paid.attach.WithdrawalValidator(phasMembershipScript);
+  const tx = membershipCarriage.attach(paid);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
     throw committedFieldShapeSubmitError(

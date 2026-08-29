@@ -55,7 +55,7 @@ export const submitWithdrawalMistagStep05 = async ({
   readonly prepared: WithdrawalMistagPreparedEvidenceV1;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }) => {

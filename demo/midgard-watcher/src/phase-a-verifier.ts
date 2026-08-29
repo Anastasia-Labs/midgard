@@ -25,10 +25,10 @@
  *    point is the same canonical function with the same arguments, so nothing
  *    about the semantics differs.
  *
- * 2. PUBLISHED REJECTION VOCABULARY. The canonical 49-member `RejectCodes`
+ * 2. PUBLISHED REJECTION VOCABULARY. The canonical 50-member `RejectCodes`
  *    vocabulary (`@al-ft/midgard-validation/types`) is partitioned below into
  *    `WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1` (32) and
- *    `WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1` (17), each excluded code
+ *    `WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1` (18), each excluded code
  *    carrying a one-line justification in
  *    `WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS_V1`. The partition is
  *    derived from the canonical source, not invented: the reachable set is
@@ -188,7 +188,7 @@ export const WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1 = Object.freeze(
   ),
 );
 
-/** The 17 canonical codes Phase A cannot produce. */
+/** The 18 canonical codes Phase A cannot produce. */
 export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1 = Object.freeze(
   WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1.filter(
     (code) => !REACHABLE_SET.has(code),
@@ -295,6 +295,8 @@ export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS_V1 =
       "Phase B (W25): depends on which sibling transactions were already rejected.",
     [RejectCodes.ValidityIntervalMismatch]:
       "Phase B (W25): comparing the interval against the block's time bounds needs the header time context Phase A does not apply.",
+    [RejectCodes.MinAda]:
+      "Phase B (W25): the minimum-Ada predicate runs over resolved output descriptors in value accounting after Phase A has committed the output bytes.",
     [RejectCodes.ValueNotPreserved]:
       "Phase B (W25): value preservation needs resolved input values.",
     [RejectCodes.PlutusScriptInvalid]:

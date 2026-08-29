@@ -295,6 +295,35 @@ export const WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1 = Object.freeze({
       "fraudProofWithdrawnInputStep03",
     ],
   },
+  valueNotPreserved: {
+    familyId: "value-not-preserved",
+    stepCount: 4,
+    deployedStepContractNames: [
+      "fraudProofValueNotPreserved",
+      "fraudProofValueNotPreservedStep02",
+      "fraudProofValueNotPreservedStep03",
+      "fraudProofValueNotPreservedStep04",
+    ],
+  },
+  inputSetUniqueness: {
+    familyId: "input-set-uniqueness",
+    stepCount: 2,
+    deployedStepContractNames: [
+      "fraudProofInputSetUniqueness",
+      "fraudProofInputSetUniquenessStep02",
+    ],
+  },
+  mintAuthorization: {
+    familyId: "mint-authorization",
+    stepCount: 5,
+    deployedStepContractNames: [
+      "fraudProofMintAuthorization",
+      "fraudProofMintAuthorizationStep02",
+      "fraudProofMintAuthorizationStep03",
+      "fraudProofMintAuthorizationStep04",
+      "fraudProofMintAuthorizationStep05",
+    ],
+  },
 } as const satisfies Readonly<
   Record<
     DeploymentManifestV1FraudProofCatalogueCategory,

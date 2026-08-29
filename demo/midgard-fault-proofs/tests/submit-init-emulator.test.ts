@@ -86,6 +86,8 @@ describe("fault-proof emulator integration", () => {
       nonceUtxo,
       contracts,
       catalogue,
+      witnessReferenceScripts,
+      faultProofReferenceScripts,
     } = await makeFaultProofEmulatorHarnessV1();
     const transactionInclusion = await buildTransactionInclusionFixture();
     // See `publishRemovalReferenceScripts`: removal must source these seven
@@ -238,6 +240,7 @@ describe("fault-proof emulator integration", () => {
         network,
         signer: proverSigner,
         fraudulentBlockOutRef,
+        witnessReferenceScripts,
         awaitConfirmation: true,
       }),
     );
@@ -286,6 +289,9 @@ describe("fault-proof emulator integration", () => {
           txInclusion: parseSubmitStep01TxInclusion(
             transactionInclusion.tx1.inclusion,
           ),
+          referenceScriptUtxo:
+            faultProofReferenceScripts.fraudProofDoubleSpend!.utxo,
+          witnessReferenceScripts,
           awaitConfirmation: true,
         }),
     );
@@ -331,6 +337,9 @@ describe("fault-proof emulator integration", () => {
           txInclusion: parseSubmitStep01TxInclusion(
             transactionInclusion.tx2.inclusion,
           ),
+          referenceScriptUtxo:
+            faultProofReferenceScripts.fraudProofDoubleSpendStep02!.utxo,
+          witnessReferenceScripts,
           awaitConfirmation: true,
         }),
     );
@@ -386,6 +395,8 @@ describe("fault-proof emulator integration", () => {
             transactionInclusion.tx1.inclusion,
           ).nativeTxCompactCbor,
           doubleSpentInputIndex: 1n,
+          referenceScriptUtxo:
+            faultProofReferenceScripts.fraudProofDoubleSpendStep03!.utxo,
           awaitConfirmation: true,
         }),
     );
@@ -446,6 +457,9 @@ describe("fault-proof emulator integration", () => {
             transactionInclusion.tx2.inclusion,
           ).nativeTxCompactCbor,
           doubleSpentInputIndex: 1n,
+          referenceScriptUtxo:
+            faultProofReferenceScripts.fraudProofDoubleSpendStep04!.utxo,
+          witnessReferenceScripts,
           awaitConfirmation: true,
         }),
     );

@@ -34,6 +34,7 @@ import { blake2b } from "../../midgard-core/node_modules/@noble/hashes/blake2.js
 import { wrapDaPayloadV1 } from "../../midgard-core/src/da-payload-envelope.js";
 import { MidgardRedeemerTag } from "../../midgard-validation/src/midgard-redeemers.js";
 import {
+  FUNDED_OUTPUT_LOVELACE_V1,
   hashScriptWitness,
   makeNativeTx,
   makeOutput,
@@ -124,7 +125,7 @@ const FIXED_ADDRESS_DATA: SDK.AddressData = {
   stakeCredential: null,
 };
 
-const FLOW_OUTPUT = makeOutput(10n, FIXED_ADDRESS);
+const FLOW_OUTPUT = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, FIXED_ADDRESS);
 const WITHDRAWAL_FLOW_INPUT = outRefFromByte(0x51);
 const WITHDRAWAL_FLOW_NATIVE = makeNativeTx({
   spendInputs: [WITHDRAWAL_FLOW_INPUT],
@@ -157,7 +158,7 @@ const FORCED_INVALID_CASES = Object.freeze({
     }),
     operatorValidity: "AddressWitnessSignatureInvalid" as const,
   }),
-  PlutusExecutionFailed: Object.freeze({
+  WitnessNativeScriptFalse: Object.freeze({
     input: outRefFromByte(0x74),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x74)],
@@ -170,7 +171,7 @@ const FORCED_INVALID_CASES = Object.freeze({
         }),
       ],
     }),
-    operatorValidity: "PlutusExecutionFailed" as const,
+    operatorValidity: "WitnessNativeScriptFalse" as const,
   }),
   FeeBelowMinimum: Object.freeze({
     input: outRefFromByte(0x75),
@@ -186,7 +187,7 @@ const FORCED_INVALID_CASES = Object.freeze({
     input: outRefFromByte(0x76),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x76)],
-      outputs: [makeOutput(9n, FIXED_ADDRESS)],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1 - 1n, FIXED_ADDRESS)],
       privateKey: FIXED_KEY,
     }),
     operatorValidity: "ValueNotPreserved" as const,
@@ -504,54 +505,54 @@ const FIXED_TWO_TX_ROOTS = [
   {
     sequence: 0,
     txIndex: 0,
-    txId: "ee9730caae51284ef70dd1b3a7a0a1313852d8f36075083599111353bfb40b9c",
+    txId: "5aa36d0b6f5cc700f18f54386542bd937ba7b96625eff82e81c1f451686e94dd",
     stepIndex: null,
     phase: null,
     operation: "delete",
     outRef:
       "8258201111111111111111111111111111111111111111111111111111111111111111190000",
-    preRoot: "6071699881edb2da51a74749345fb8a480e583e4e8be13cc0430aedf7820ccd1",
+    preRoot: "49476a071f7393279ca22a35d4ebe3b3316190c47890e5af7f3f12fded51c915",
     postRoot:
-      "c8bea0751d681c13447ebb4ac742762a7ee15619195d10f65e18eda3d11f0e32",
+      "82fc6f18dd68ee99bc196356f2464631186bac1391508525f5e6267bd860bfce",
   },
   {
     sequence: 1,
     txIndex: 0,
-    txId: "ee9730caae51284ef70dd1b3a7a0a1313852d8f36075083599111353bfb40b9c",
+    txId: "5aa36d0b6f5cc700f18f54386542bd937ba7b96625eff82e81c1f451686e94dd",
     stepIndex: null,
     phase: null,
     operation: "insert",
     outRef:
-      "825820ee9730caae51284ef70dd1b3a7a0a1313852d8f36075083599111353bfb40b9c190000",
-    preRoot: "c8bea0751d681c13447ebb4ac742762a7ee15619195d10f65e18eda3d11f0e32",
+      "8258205aa36d0b6f5cc700f18f54386542bd937ba7b96625eff82e81c1f451686e94dd190000",
+    preRoot: "82fc6f18dd68ee99bc196356f2464631186bac1391508525f5e6267bd860bfce",
     postRoot:
-      "84295a9f46479fe5a55bcce7d10a04cb828c49861e429e141c68d814bb863a5d",
+      "6bb3c6e322f6cf64aacde28c9d4e489dd5173a92ba76e270771c2e7226fc1fad",
   },
   {
     sequence: 2,
     txIndex: 1,
-    txId: "076e9d45051350d9f378e269535104f515d3b502944fa475173348364e8d496b",
+    txId: "72e8307b8f82e2e380eed82386cf0d480304166cedb40011147e65fb110ab9ff",
     stepIndex: null,
     phase: null,
     operation: "delete",
     outRef:
       "8258201212121212121212121212121212121212121212121212121212121212121212190000",
-    preRoot: "84295a9f46479fe5a55bcce7d10a04cb828c49861e429e141c68d814bb863a5d",
+    preRoot: "6bb3c6e322f6cf64aacde28c9d4e489dd5173a92ba76e270771c2e7226fc1fad",
     postRoot:
-      "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
+      "52b9c88cd96dfa08f6f35d7c484b3a89059f2ee485ca8a58efeaa2c52171ebbd",
   },
   {
     sequence: 3,
     txIndex: 1,
-    txId: "076e9d45051350d9f378e269535104f515d3b502944fa475173348364e8d496b",
+    txId: "72e8307b8f82e2e380eed82386cf0d480304166cedb40011147e65fb110ab9ff",
     stepIndex: null,
     phase: null,
     operation: "insert",
     outRef:
-      "825820076e9d45051350d9f378e269535104f515d3b502944fa475173348364e8d496b190000",
-    preRoot: "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
+      "82582072e8307b8f82e2e380eed82386cf0d480304166cedb40011147e65fb110ab9ff190000",
+    preRoot: "52b9c88cd96dfa08f6f35d7c484b3a89059f2ee485ca8a58efeaa2c52171ebbd",
     postRoot:
-      "620c86c27d41f3d1c87166f12fb2ef69f78e4419ab0aa77a5a60be52f734298c",
+      "6d4a5867c105f9c81fa71dfea9c531063c1b3d88d28539b77941eab4ec6c58ac",
   },
 ] as const;
 
@@ -1242,12 +1243,12 @@ const buildPublicReplayFixture = async (input: {
 };
 
 describe("W25 published rejection-code partition", () => {
-  it("is a disjoint total 12/27/10 partition of the canonical 49-code vocabulary", () => {
+  it("is a disjoint total 13/27/10 partition of the canonical 50-code vocabulary", () => {
     expect(WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1).toStrictEqual(
       Object.values(RejectCodes),
     );
-    expect(WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1).toHaveLength(49);
-    expect(WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1).toHaveLength(12);
+    expect(WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1).toHaveLength(50);
+    expect(WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1).toHaveLength(13);
     expect(WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES_V1).toHaveLength(27);
     expect(WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES_V1).toHaveLength(10);
     const claimed = [
@@ -1255,11 +1256,11 @@ describe("W25 published rejection-code partition", () => {
       ...WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES_V1,
       ...WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES_V1,
     ];
-    expect(new Set(claimed).size).toBe(49);
+    expect(new Set(claimed).size).toBe(50);
     expect([...claimed].sort()).toStrictEqual(
       [...WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1].sort(),
     );
-    expect(WATCHER_BLOCK_REPLAY_PROTOCOL_MINUS_UNCLAIMED_V1).toHaveLength(39);
+    expect(WATCHER_BLOCK_REPLAY_PROTOCOL_MINUS_UNCLAIMED_V1).toHaveLength(40);
     const expectedForcedValidity = (
       code: (typeof RejectCodes)[keyof typeof RejectCodes],
       phase: "phaseA" | "phaseB",
@@ -1568,7 +1569,7 @@ describe("W25 roots and deterministic replay", () => {
         stepIndex: 1,
         mutationCount: 1,
         preRoot:
-          "4d43ea241d0fe8435a64403db204e56022cfb3c38bccce53e88a302165667202",
+          "4021f48461d5b6cbb121823b22084b1712f52dce0c85dc110ddfa0255dbc9a95",
         postRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
       },
@@ -1587,7 +1588,7 @@ describe("W25 roots and deterministic replay", () => {
         operation: "delete",
         outRef: WITHDRAWAL_FLOW_INPUT.toString("hex"),
         preRoot:
-          "0fd6ec8b2035120924320cea7434a7896060eb2e8de9b2686e94362fae2a093a",
+          "5644ea026e5cd1d8e5b39c0818e365cb272723b9fe1f68f6a757b751a1538725",
         postRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
       },
@@ -1597,13 +1598,13 @@ describe("W25 roots and deterministic replay", () => {
         preRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
         postRoot:
-          "4d43ea241d0fe8435a64403db204e56022cfb3c38bccce53e88a302165667202",
+          "4021f48461d5b6cbb121823b22084b1712f52dce0c85dc110ddfa0255dbc9a95",
       },
       {
         operation: "delete",
         outRef: outRefFromTxId(WITHDRAWAL_FLOW_NATIVE.txId).toString("hex"),
         preRoot:
-          "4d43ea241d0fe8435a64403db204e56022cfb3c38bccce53e88a302165667202",
+          "4021f48461d5b6cbb121823b22084b1712f52dce0c85dc110ddfa0255dbc9a95",
         postRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
       },
@@ -1643,9 +1644,9 @@ describe("W25 roots and deterministic replay", () => {
         stepIndex: 1,
         mutationCount: 0,
         preRoot:
-          "4d43ea241d0fe8435a64403db204e56022cfb3c38bccce53e88a302165667202",
+          "4021f48461d5b6cbb121823b22084b1712f52dce0c85dc110ddfa0255dbc9a95",
         postRoot:
-          "4d43ea241d0fe8435a64403db204e56022cfb3c38bccce53e88a302165667202",
+          "4021f48461d5b6cbb121823b22084b1712f52dce0c85dc110ddfa0255dbc9a95",
       },
     ]);
     expect(
@@ -1658,7 +1659,7 @@ describe("W25 roots and deterministic replay", () => {
       {
         operation: "delete",
         preRoot:
-          "0fd6ec8b2035120924320cea7434a7896060eb2e8de9b2686e94362fae2a093a",
+          "5644ea026e5cd1d8e5b39c0818e365cb272723b9fe1f68f6a757b751a1538725",
         postRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
       },
@@ -1667,7 +1668,7 @@ describe("W25 roots and deterministic replay", () => {
         preRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
         postRoot:
-          "4d43ea241d0fe8435a64403db204e56022cfb3c38bccce53e88a302165667202",
+          "4021f48461d5b6cbb121823b22084b1712f52dce0c85dc110ddfa0255dbc9a95",
       },
     ]);
     expect(refund.downstreamPrerequisite.inputDigest).not.toBe(
@@ -1771,9 +1772,9 @@ describe("W25 roots and deterministic replay", () => {
         stepIndex: 0,
         mutationCount: 2,
         preRoot:
-          "05dc73de3852d2589fb03411a7416d0b9fa025bf4c2711a78e858cdf0f0883c5",
+          "0731b86274a38588a437eaafb5288833d274eb69b244f22017b3b1dd8001d78a",
         postRoot:
-          "7e092294a8526e84929a35162645c3a4a173ba11aec044b9fe0fed3ee84e0f9b",
+          "5953343c3f81ddf5c326ba94abdf4f6b2f862d2055d8f8425e01ad23aaac7dfd",
       },
     ]);
     expect(
@@ -1790,7 +1791,7 @@ describe("W25 roots and deterministic replay", () => {
         operation: "delete",
         outRef: FORCED_FLOW_INPUT.toString("hex"),
         preRoot:
-          "05dc73de3852d2589fb03411a7416d0b9fa025bf4c2711a78e858cdf0f0883c5",
+          "0731b86274a38588a437eaafb5288833d274eb69b244f22017b3b1dd8001d78a",
         postRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
       },
@@ -1800,13 +1801,13 @@ describe("W25 roots and deterministic replay", () => {
         preRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
         postRoot:
-          "7e092294a8526e84929a35162645c3a4a173ba11aec044b9fe0fed3ee84e0f9b",
+          "5953343c3f81ddf5c326ba94abdf4f6b2f862d2055d8f8425e01ad23aaac7dfd",
       },
       {
         operation: "delete",
         outRef: forcedProduced.toString("hex"),
         preRoot:
-          "7e092294a8526e84929a35162645c3a4a173ba11aec044b9fe0fed3ee84e0f9b",
+          "5953343c3f81ddf5c326ba94abdf4f6b2f862d2055d8f8425e01ad23aaac7dfd",
         postRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
       },
@@ -1816,7 +1817,7 @@ describe("W25 roots and deterministic replay", () => {
         preRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
         postRoot:
-          "e0641c156fd19361df84ab5d6969ef7dd61608b23a44a067906db75d9046cdd6",
+          "904811f9e63105745563c76031dd888b345a1ac96b0bb1a1acb0fb6122ef836a",
       },
     ]);
 
@@ -1848,7 +1849,7 @@ describe("W25 roots and deterministic replay", () => {
         phaseBStatus: "not_run",
         phaseBRejectCode: null,
       },
-      PlutusExecutionFailed: {
+      WitnessNativeScriptFalse: {
         phaseAStatus: "rejected",
         phaseARejectCode: RejectCodes.NativeScriptInvalid,
         phaseBStatus: "not_run",
@@ -2077,7 +2078,7 @@ describe("W25 roots and deterministic replay", () => {
 
   it("binds accepted W21/W22/W23/W24 evidence through the public replay entry point", async () => {
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(10n, FIXED_ADDRESS);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, FIXED_ADDRESS);
     const native = makeNativeTx({
       spendInputs: [spent],
       outputs: [output],
@@ -2096,9 +2097,9 @@ describe("W25 roots and deterministic replay", () => {
           event_key: { L2TransactionEventKey: { tx_id: txId } },
           phase: "L2Transaction",
           pre_utxos_root:
-            "2d06ad9076acc163a729c04a3a78bc2c4ecb00a1e4b95f1296b129ee5030141a",
+            "427ba76822e773ce7ad8392ff4758785dade1722a30219e54070b20b1c9159b7",
           post_utxos_root:
-            "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
+            "52b9c88cd96dfa08f6f35d7c484b3a89059f2ee485ca8a58efeaa2c52171ebbd",
         },
       ],
       priorState,
@@ -2115,9 +2116,9 @@ describe("W25 roots and deterministic replay", () => {
       phaseAResultDigest: fixture.phaseA.resultDigest,
       ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
       priorStateRoot:
-        "2d06ad9076acc163a729c04a3a78bc2c4ecb00a1e4b95f1296b129ee5030141a",
+        "427ba76822e773ce7ad8392ff4758785dade1722a30219e54070b20b1c9159b7",
       postStateRoot:
-        "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
+        "52b9c88cd96dfa08f6f35d7c484b3a89059f2ee485ca8a58efeaa2c52171ebbd",
       acceptedTxIds: [txId],
     });
     expect(result.intermediateRoots).toStrictEqual([
@@ -2130,7 +2131,7 @@ describe("W25 roots and deterministic replay", () => {
         operation: "delete",
         outRef: spent.toString("hex"),
         preRoot:
-          "2d06ad9076acc163a729c04a3a78bc2c4ecb00a1e4b95f1296b129ee5030141a",
+          "427ba76822e773ce7ad8392ff4758785dade1722a30219e54070b20b1c9159b7",
         postRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
       },
@@ -2145,7 +2146,7 @@ describe("W25 roots and deterministic replay", () => {
         preRoot:
           "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
         postRoot:
-          "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
+          "52b9c88cd96dfa08f6f35d7c484b3a89059f2ee485ca8a58efeaa2c52171ebbd",
       },
     ]);
     expect(result.transactionRoots).toStrictEqual([
@@ -2153,15 +2154,15 @@ describe("W25 roots and deterministic replay", () => {
         txIndex: 0,
         txId,
         preRoot:
-          "2d06ad9076acc163a729c04a3a78bc2c4ecb00a1e4b95f1296b129ee5030141a",
+          "427ba76822e773ce7ad8392ff4758785dade1722a30219e54070b20b1c9159b7",
         postRoot:
-          "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
+          "52b9c88cd96dfa08f6f35d7c484b3a89059f2ee485ca8a58efeaa2c52171ebbd",
         mutationCount: 2,
         committedStepIndex: 0,
         committedPreRoot:
-          "2d06ad9076acc163a729c04a3a78bc2c4ecb00a1e4b95f1296b129ee5030141a",
+          "427ba76822e773ce7ad8392ff4758785dade1722a30219e54070b20b1c9159b7",
         committedPostRoot:
-          "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
+          "52b9c88cd96dfa08f6f35d7c484b3a89059f2ee485ca8a58efeaa2c52171ebbd",
       },
     ]);
     expect(result.resultDigest).toBe(
@@ -2256,7 +2257,7 @@ describe("W25 roots and deterministic replay", () => {
   it("reproduces every canonical intermediate mutation root and its exact post root", async () => {
     const firstInput = outRefFromByte(0x11);
     const secondInput = outRefFromByte(0x12);
-    const output = makeOutput(10n, FIXED_ADDRESS);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, FIXED_ADDRESS);
     const first = makePhaseBCandidate({
       spent: [firstInput],
       outputs: [output],
@@ -2280,10 +2281,10 @@ describe("W25 roots and deterministic replay", () => {
     const unbound = await replay([first, second], priorState);
     expect(unbound.action).toBe("reject");
     expect(unbound.priorStateRoot).toBe(
-      "6071699881edb2da51a74749345fb8a480e583e4e8be13cc0430aedf7820ccd1",
+      "49476a071f7393279ca22a35d4ebe3b3316190c47890e5af7f3f12fded51c915",
     );
     expect(unbound.postStateRoot).toBe(
-      "620c86c27d41f3d1c87166f12fb2ef69f78e4419ab0aa77a5a60be52f734298c",
+      "6d4a5867c105f9c81fa71dfea9c531063c1b3d88d28539b77941eab4ec6c58ac",
     );
     expect(unbound.intermediateRoots).toStrictEqual(FIXED_TWO_TX_ROOTS);
     expect(unbound.transactionRoots).toHaveLength(2);
@@ -2322,7 +2323,7 @@ describe("W25 roots and deterministic replay", () => {
     // header `utxosRoot` - were skipped whenever the caller supplied neither.
     // A replayed block was therefore accepted with nothing compared at all.
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(10n, FIXED_ADDRESS);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, FIXED_ADDRESS);
     const native = makeNativeTx({
       spendInputs: [spent],
       outputs: [output],
@@ -2330,9 +2331,9 @@ describe("W25 roots and deterministic replay", () => {
     });
     const txId = native.txId.toString("hex");
     const committedPriorRoot =
-      "2d06ad9076acc163a729c04a3a78bc2c4ecb00a1e4b95f1296b129ee5030141a";
+      "427ba76822e773ce7ad8392ff4758785dade1722a30219e54070b20b1c9159b7";
     const committedPostRoot =
-      "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4";
+      "52b9c88cd96dfa08f6f35d7c484b3a89059f2ee485ca8a58efeaa2c52171ebbd";
     const priorState = entries([[spent, output]]);
     const postState = entries([[outRefFromTxId(native.txId), output]]);
 
@@ -2403,7 +2404,7 @@ describe("W25 roots and deterministic replay", () => {
 
   it("fails closed on trace substitution, omission, duplication/reorder, trailing steps, wrong roots, and event_to_step drift", async () => {
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(10n, FIXED_ADDRESS);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, FIXED_ADDRESS);
     const native = makeNativeTx({
       spendInputs: [spent],
       outputs: [output],
@@ -2421,9 +2422,9 @@ describe("W25 roots and deterministic replay", () => {
       event_key: eventKey,
       phase: "L2Transaction",
       pre_utxos_root:
-        "2d06ad9076acc163a729c04a3a78bc2c4ecb00a1e4b95f1296b129ee5030141a",
+        "427ba76822e773ce7ad8392ff4758785dade1722a30219e54070b20b1c9159b7",
       post_utxos_root:
-        "bed29b517f501c443f8971b50bd0c2eb7d90344aca2391c0d32822d53863e0d4",
+        "52b9c88cd96dfa08f6f35d7c484b3a89059f2ee485ca8a58efeaa2c52171ebbd",
     };
 
     const wrongRoots = await buildPublicReplayFixture({
@@ -2535,8 +2536,8 @@ describe("W25 roots and deterministic replay", () => {
       arrivalSeq: 1n,
     });
     const priorState = entries([
-      [firstInput, makeOutput(10n)],
-      [secondInput, makeOutput(10n)],
+      [firstInput, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+      [secondInput, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
     ]);
     const initial = await replay([first, second], priorState);
     const restarted = await replay([second, first], priorState);
@@ -2550,7 +2551,9 @@ describe("W25 roots and deterministic replay", () => {
   it("fails closed before replay for an uncommitted prior root and after replay for a bad post root", async () => {
     const input = outRefFromByte(0x15);
     const candidate = makePhaseBCandidate({ spent: [input] });
-    const priorState = entries([[input, makeOutput(10n)]]);
+    const priorState = entries([
+      [input, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+    ]);
     const prior = await watcherBlockReplayPriorStateV1(priorState);
     const priorMismatch = await evaluateWatcherBlockReplayCandidatesV1({
       candidates: [candidate],
@@ -2602,7 +2605,7 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
       ],
       [
         makePhaseBCandidate({ spent: [spend], referenceInputs: [reference] }),
-        [[spend, makeOutput(10n)]],
+        [[spend, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]],
         "references",
         RejectCodes.InputNotFound,
       ],
@@ -2611,13 +2614,16 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
           spent: [spend],
           scriptWitnesses: [nativeScriptWitness({ type: "after", slot: 1n })],
         }),
-        [[spend, makeOutput(10n)]],
+        [[spend, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]],
         "scripts",
         RejectCodes.InvalidFieldType,
       ],
       [
-        makePhaseBCandidate({ spent: [spend], outputLovelace: 11n }),
-        [[spend, makeOutput(10n)]],
+        makePhaseBCandidate({
+          spent: [spend],
+          outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 + 1n,
+        }),
+        [[spend, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]],
         "value",
         RejectCodes.ValueNotPreserved,
       ],
@@ -2633,17 +2639,17 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
     const input = outRefFromByte(0x31);
     const parent = makePhaseBCandidate({
       spent: [input],
-      outputLovelace: 9n,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 - 1n,
       arrivalSeq: 0n,
     });
     const child = makePhaseBCandidate({
       spent: [parent.graph.produced[0]![LedgerColumns.OUTREF]],
-      outputLovelace: 9n,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 - 1n,
       arrivalSeq: 1n,
     });
     const cascade = await replay(
       [parent, child],
-      entries([[input, makeOutput(10n)]]),
+      entries([[input, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
     );
     expect(cascade.rejections.map((rejection) => rejection.code)).toStrictEqual(
       [RejectCodes.ValueNotPreserved, RejectCodes.DependsOnRejectedTx],
@@ -2701,19 +2707,35 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
           scriptWitnesses: [nativeScriptWitness({ type: "after", slot: 1n })],
         }),
       ],
-      entries([[invalidField, makeOutput(10n)]]),
+      entries([[invalidField, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+    );
+
+    const minAda = outRefFromByte(0x8c);
+    await collect(
+      [
+        makePhaseBCandidate({
+          spent: [minAda],
+          outputs: [makeOutput(1n)],
+        }),
+      ],
+      entries([[minAda, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
     );
 
     const value = outRefFromByte(0x83);
     await collect(
-      [makePhaseBCandidate({ spent: [value], outputLovelace: 9n })],
-      entries([[value, makeOutput(10n)]]),
+      [
+        makePhaseBCandidate({
+          spent: [value],
+          outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 - 1n,
+        }),
+      ],
+      entries([[value, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
     );
 
     const witness = outRefFromByte(0x84);
     await collect(
       [makePhaseBCandidate({ spent: [witness], omitVkeyWitness: true })],
-      entries([[witness, makeOutput(10n)]]),
+      entries([[witness, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
     );
 
     const validity = outRefFromByte(0x85);
@@ -2725,7 +2747,7 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
           validityIntervalEnd: 10n,
         }),
       ],
-      entries([[validity, makeOutput(10n)]]),
+      entries([[validity, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
     );
 
     const doubleSpend = outRefFromByte(0x86);
@@ -2740,7 +2762,7 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
         }),
       ],
       entries([
-        [doubleSpend, makeOutput(10n)],
+        [doubleSpend, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
         [reference, makeOutput(1n)],
       ]),
     );
@@ -2748,16 +2770,16 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
     const cascadeInput = outRefFromByte(0x88);
     const cascadeParent = makePhaseBCandidate({
       spent: [cascadeInput],
-      outputLovelace: 9n,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 - 1n,
     });
     const cascadeChild = makePhaseBCandidate({
       arrivalSeq: 1n,
       spent: [cascadeParent.graph.produced[0]![LedgerColumns.OUTREF]],
-      outputLovelace: 9n,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 - 1n,
     });
     await collect(
       [cascadeParent, cascadeChild],
-      entries([[cascadeInput, makeOutput(10n)]]),
+      entries([[cascadeInput, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
     );
 
     const cycleFirst = makePhaseBCandidate({
@@ -2791,7 +2813,12 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
       [
         makePhaseBCandidate({
           spent: [plutusInput],
-          outputs: [makeProtectedScriptOutput(hashScriptWitness(plutus), 10n)],
+          outputs: [
+            makeProtectedScriptOutput(
+              hashScriptWitness(plutus),
+              FUNDED_OUTPUT_LOVELACE_V1,
+            ),
+          ],
           scriptWitnesses: [plutus],
           redeemerTxWitsPreimageCbor: makeRedeemersCbor([
             { tag: MidgardRedeemerTag.Receiving, index: 0n },
@@ -2799,7 +2826,7 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
           scriptLanguages: ["PlutusV3"],
         }),
       ],
-      entries([[plutusInput, makeOutput(10n)]]),
+      entries([[plutusInput, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
     );
 
     const nativeInput = outRefFromByte(0x8b);
@@ -2808,14 +2835,19 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
       [
         makePhaseBCandidate({
           spent: [nativeInput],
-          outputs: [makeProtectedScriptOutput(hashScriptWitness(native), 10n)],
+          outputs: [
+            makeProtectedScriptOutput(
+              hashScriptWitness(native),
+              FUNDED_OUTPUT_LOVELACE_V1,
+            ),
+          ],
           scriptWitnesses: [native],
           redeemerTxWitsPreimageCbor: makeRedeemersCbor([
             { tag: MidgardRedeemerTag.Receiving, index: 0n },
           ]),
         }),
       ],
-      entries([[nativeInput, makeOutput(10n)]]),
+      entries([[nativeInput, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
     );
 
     expect([...observed].sort()).toStrictEqual(

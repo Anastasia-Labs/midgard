@@ -38,6 +38,10 @@ import {
 } from "../runtime.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { WithdrawnReferenceInputContractsV1 } from "./contracts-v1.js";
 import { verifyWithdrawnReferenceInputMembershipV1 } from "./prepare-withdrawn-reference-input-v1.js";
 import {
@@ -87,6 +91,7 @@ export const submitWithdrawnReferenceInputStep03 = async ({
   threadOutRef,
   withdrawalMembership,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -96,6 +101,7 @@ export const submitWithdrawnReferenceInputStep03 = async ({
   readonly threadOutRef: string;
   readonly withdrawalMembership: WithdrawalSourceMembershipProof;
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnReferenceInputStep03Result> => {
   const { threadUtxo, threadToken } =
@@ -151,6 +157,17 @@ export const submitWithdrawnReferenceInputStep03 = async ({
     );
   }
   verifyWithdrawnReferenceInputMembershipV1(withdrawalMembership);
+
+  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${STEP_LABEL} computation-thread mint`,
+  });
+  const fraudProofCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: `${STEP_LABEL} fraud-proof mint`,
+  });
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -248,15 +265,20 @@ export const submitWithdrawnReferenceInputStep03 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+    .addSignerKey(signer.paymentKeyHash);
   const stepReference = requireWithdrawnReferenceInputReferenceScriptV1({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[2].spendingScriptHash,
     stepIndex: 2,
   });
-  const tx = base.readFrom([stepReference]);
+  const withReferences = base.readFrom([
+    stepReference,
+    ...computationThreadCarriage.referenceInputs,
+    ...fraudProofCarriage.referenceInputs,
+  ]);
+  const tx = fraudProofCarriage.attach(
+    computationThreadCarriage.attach(withReferences),
+  );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (

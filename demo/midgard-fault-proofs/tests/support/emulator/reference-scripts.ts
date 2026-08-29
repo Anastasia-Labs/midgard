@@ -19,7 +19,10 @@ import { Effect } from "effect";
 import type { CrossBlockDuplicateEventContractsV1 } from "../../../src/cross-block-duplicate-event/index.js";
 import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../../../src/ne-submit-step-03.js";
 import { chunkedVerifyWithdrawalScript } from "../../../src/proof-chunk-carriage.js";
-import { getCompiledScript } from "../../../src/runtime.js";
+import {
+  FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
+  getCompiledScript,
+} from "../../../src/runtime.js";
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../../../src/submit-step-01.js";
 import { type FaultProofWitnessReferenceScriptsV1 } from "../../../src/witness-reference-scripts-v1.js";
 import { network } from "./blueprints.js";
@@ -272,6 +275,58 @@ export const publishFraudProofChainReferenceScripts = async ({
       scriptHash: steps[index]!.spendingScriptHash,
       utxo: publication.utxo,
     };
+  }
+  return publications;
+};
+
+/**
+ * Publishes every distinct fault-proof step script in a harness once, then
+ * maps all production deployment-entry names sharing that hash to the same
+ * immutable UTxO. Most non-focused chains use the same tiny emulator script,
+ * so hash de-duplication keeps the scenario preamble bounded.
+ */
+export const publishHarnessFaultProofReferenceScriptsV1 = async ({
+  lucid,
+  contracts,
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly contracts: MidgardValidators;
+}): Promise<
+  Readonly<Record<string, { readonly scriptHash: string; readonly utxo: UTxO }>>
+> => {
+  const publicationByHash = new Map<string, UTxO>();
+  const publications: Record<
+    string,
+    { readonly scriptHash: string; readonly utxo: UTxO }
+  > = {};
+  for (const [category, entryNames] of Object.entries(
+    FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
+  )) {
+    const steps =
+      contracts.fraudProofContracts[
+        category as keyof MidgardValidators["fraudProofContracts"]
+      ].steps;
+    for (const [stepIndex, step] of steps.entries()) {
+      const entryName =
+        entryNames[stepIndex] ??
+        `${entryNames[0]}Step${(stepIndex + 1).toString().padStart(2, "0")}`;
+      let utxo = publicationByHash.get(step.spendingScriptHash);
+      if (utxo === undefined) {
+        utxo = (
+          await publishPlainReferenceScriptUtxo({
+            lucid,
+            script: step.spendingScript,
+            label: `fault-proof step ${entryName}`,
+            oversized: step.spendingScript.script.length / 2 > 14_000,
+          })
+        ).utxo;
+        publicationByHash.set(step.spendingScriptHash, utxo);
+      }
+      publications[entryName] = {
+        scriptHash: step.spendingScriptHash,
+        utxo,
+      };
+    }
   }
   return publications;
 };

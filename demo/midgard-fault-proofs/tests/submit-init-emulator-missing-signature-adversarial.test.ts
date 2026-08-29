@@ -50,6 +50,7 @@ describe("missing-signature adversarial emulator polarity", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const one = await submitMissingSignatureStep01({
       lucid: harness.proverLucid,
@@ -62,6 +63,7 @@ describe("missing-signature adversarial emulator polarity", () => {
       stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
       txInclusion: scenario.block.txInclusion,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
 
     await expect(
@@ -135,6 +137,7 @@ describe("missing-signature adversarial emulator polarity", () => {
         nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
         witnessSetCompact: scenario.subject.witnessSetCompact,
         referenceScriptUtxo: step04Ref,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/appears in the address-witness preimage/u);
 

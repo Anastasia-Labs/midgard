@@ -33,14 +33,14 @@
  *    here is to supply the canonical runtime. No watcher-side interpreter, no
  *    dynamic module resolution, and no change to any package manifest.
  *
- * 2. PUBLISHED REJECTION VOCABULARY. The canonical 49-member `RejectCodes`
- *    vocabulary is partitioned below into the 12 codes the canonical Phase B
+ * 2. PUBLISHED REJECTION VOCABULARY. The canonical 50-member `RejectCodes`
+ *    vocabulary is partitioned below into the 13 codes the canonical Phase B
  *    pipeline can emit (`WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1`), the
  *    27 codes W24's Phase A verifier owns
  *    (`WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES_V1`), and the 10 codes
  *    neither lane claims (`WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES_V1`),
  *    each of the latter carrying a one-line justification. The three groups are
- *    a partition of the 49, so the W24 + W25 union is provably total: every
+ *    a partition of the 50, so the W24 + W25 union is provably total: every
  *    canonical code is claimed by exactly one lane or explicitly and
  *    individually disclaimed by both.
  *
@@ -285,7 +285,7 @@ export const WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1 = Object.freeze(
 );
 
 /**
- * The 12 canonical codes the Phase B pipeline can emit, in `RejectCodes`
+ * The 13 canonical codes the Phase B pipeline can emit, in `RejectCodes`
  * declaration order.
  *
  * Provenance, one entry per `reject(...)`/`fail(...)` call site in phase-b.ts:
@@ -294,7 +294,8 @@ export const WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1 = Object.freeze(
  * :1139), `E_NATIVE_SCRIPT_INVALID` (:590), `E_INPUT_NOT_FOUND` (:193, :397,
  * :998, :1128), `E_DOUBLE_SPEND` (:993, :1124), `E_DEPENDENCY_CYCLE` (:1255),
  * `E_DEPENDS_ON_REJECTED_TX` (:1215, :1396), `E_VALIDITY_INTERVAL_MISMATCH`
- * (:915, :925, :1097, :1106), `E_VALUE_NOT_PRESERVED` (:1061, :1160),
+ * (:915, :925, :1097, :1106), `E_MIN_ADA` (the output-descriptor scan),
+ * `E_VALUE_NOT_PRESERVED` (:1061, :1160),
  * `E_PLUTUS_SCRIPT_INVALID` (:629, :717, :729), `E_CEK_PROGRAM_MATERIAL`
  * (:247, :551).
  */
@@ -308,6 +309,7 @@ export const WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1 = Object.freeze([
   RejectCodes.DependencyCycle,
   RejectCodes.DependsOnRejectedTx,
   RejectCodes.ValidityIntervalMismatch,
+  RejectCodes.MinAda,
   RejectCodes.ValueNotPreserved,
   RejectCodes.PlutusScriptInvalid,
   RejectCodes.CekProgramMaterial,
@@ -318,7 +320,7 @@ const REACHABLE_SET: ReadonlySet<string> = new Set<string>(
 );
 
 /**
- * The 10 reachable codes the W25 suite pins with a deterministic
+ * The 11 reachable codes the W25 suite pins with a deterministic
  * rejection-evidence case produced by the canonical Phase B entry point, in
  * `RejectCodes` declaration order.
  *
@@ -334,6 +336,7 @@ export const WATCHER_BLOCK_REPLAY_EVIDENCED_REJECT_CODES_V1 = Object.freeze([
   RejectCodes.DependencyCycle,
   RejectCodes.DependsOnRejectedTx,
   RejectCodes.ValidityIntervalMismatch,
+  RejectCodes.MinAda,
   RejectCodes.ValueNotPreserved,
   RejectCodes.PlutusScriptInvalid,
 ] as const);
@@ -408,7 +411,7 @@ export const WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_JUSTIFICATION_V1 =
 /**
  * The 10 canonical codes neither W24 nor W25 claims, each with the reason no
  * canonical call site in either pipeline can emit it. Together with the two
- * reachable sets and the Phase-A-owned set these exhaust the 49-member
+ * reachable sets and the Phase-A-owned set these exhaust the 50-member
  * vocabulary, which is what makes the W24 + W25 union total.
  */
 export const WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODE_JUSTIFICATIONS_V1 =

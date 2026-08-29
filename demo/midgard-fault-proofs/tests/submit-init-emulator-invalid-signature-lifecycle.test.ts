@@ -121,6 +121,7 @@ describe("invalid-signature emulator lifecycle", () => {
     const initCapture = await captureEmulatorSubmission(emulator, async () =>
       submitInit({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -145,6 +146,7 @@ describe("invalid-signature emulator lifecycle", () => {
     const step01Capture = await captureEmulatorSubmission(emulator, async () =>
       submitInvalidSignatureStep01({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -174,6 +176,7 @@ describe("invalid-signature emulator lifecycle", () => {
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
       submitInvalidSignatureStep02({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -394,6 +397,7 @@ describe("invalid-signature emulator lifecycle", () => {
 
     const initResult = await submitInit({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -410,6 +414,7 @@ describe("invalid-signature emulator lifecycle", () => {
     );
     const step01 = await submitInvalidSignatureStep01({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -431,6 +436,7 @@ describe("invalid-signature emulator lifecycle", () => {
       async () =>
         submitInvalidSignatureStep02({
           lucid: proverLucid,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
           blueprint: realBlueprint,
           deploymentInfo,
           network,
@@ -527,6 +533,7 @@ describe("invalid-signature emulator lifecycle", () => {
 
     const initResult = await submitInit({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -544,6 +551,7 @@ describe("invalid-signature emulator lifecycle", () => {
     // is about the witness set's contents, which nothing has read yet.
     const step01 = await submitInvalidSignatureStep01({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -567,6 +575,7 @@ describe("invalid-signature emulator lifecycle", () => {
     await expect(
       submitInvalidSignatureStep02({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -583,6 +592,7 @@ describe("invalid-signature emulator lifecycle", () => {
     await expect(
       submitInvalidSignatureStep02({
         lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -666,6 +676,7 @@ describe("invalid-signature emulator lifecycle", () => {
     );
     const initResult = await submitInit({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -681,6 +692,7 @@ describe("invalid-signature emulator lifecycle", () => {
     );
     const step01 = await submitInvalidSignatureStep01({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,

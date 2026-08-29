@@ -393,6 +393,9 @@ export const selectFeeInput = (walletUtxos: readonly UTxO[]): UTxO => {
         ([unit, amount]) => unit !== "lovelace" && amount > 0n,
       );
       return (
+        utxo.datum == null &&
+        utxo.datumHash == null &&
+        utxo.scriptRef == null &&
         nonAdaAssets.length === 0 &&
         (utxo.assets.lovelace ?? 0n) >= MIN_FEE_INPUT_LOVELACE
       );
@@ -445,9 +448,9 @@ export const submitStep01 = async ({
    * transaction (issue #545).
    */
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
-  /** The published step-01 reference script; inline-attached when absent. */
+  /** The mandatory published step-01 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep01Result> => {

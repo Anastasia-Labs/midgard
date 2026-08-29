@@ -68,6 +68,7 @@ import {
 import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import { witnessSpendingValidatorCarriageV1 } from "../witness-reference-scripts-v1.js";
 import type { MintAuthorizationContractsV1 } from "./contracts-v1.js";
 import {
   mintAuthorizationStepLabelV1,
@@ -106,7 +107,7 @@ type Step03Shared = {
   readonly witnessSet: NativeTxWitnessSetCompact;
   /** Pre-minted §8.6 certificate when the planner selects tier 3. */
   readonly certificateUtxo?: UTxO;
-  /** The published step-03 reference script; inline-attached when absent. */
+  /** The mandatory published step-03 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 };
@@ -171,19 +172,24 @@ const submitPreparedStep03 = async ({
   const { lucid, contracts, signer, referenceScriptUtxo } = shared;
   const awaitConfirmation = shared.awaitConfirmation ?? true;
   signer.selectWallet(lucid);
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireMintAuthorizationReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: contracts.steps[2].spendingScriptHash,
+          stepIndex: 2,
+        });
+  const stepCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.steps[2].spendingScript,
+    referenceUtxo: stepReference,
+    label: `${STEP_LABEL} spending validator`,
+  });
   // §8.7 indices count into the transaction's COMPLETE reference-input set:
   // the field carriage plus the step's own reference script.
   const referenceInputs = [
     ...fieldReferenceInputs,
-    ...(referenceScriptUtxo === undefined
-      ? []
-      : [
-          requireMintAuthorizationReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[2].spendingScriptHash,
-            stepIndex: 2,
-          }),
-        ]),
+    ...stepCarriage.referenceInputs,
   ];
   const fieldOpening = faultProofFieldOpeningV1({
     planned,
@@ -241,10 +247,7 @@ const submitPreparedStep03 = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
-  const tx =
-    referenceScriptUtxo === undefined
-      ? paid.attach.SpendingValidator(contracts.steps[2].spendingScript)
-      : paid;
+  const tx = stepCarriage.attach(paid);
 
   const unsigned = await tx.complete({
     localUPLCEval: true,

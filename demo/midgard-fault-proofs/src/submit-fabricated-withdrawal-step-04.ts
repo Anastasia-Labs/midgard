@@ -169,7 +169,7 @@ export const submitFabricatedWithdrawalStep04 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedWithdrawalStep04Result> => {

@@ -63,6 +63,7 @@ import {
   createValidationDisputeParties,
   expectSingleUtxoWithUnit,
   network,
+  publishFaultProofWitnessReferenceScriptsV1,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
@@ -324,6 +325,13 @@ export const prepareRouteFreedomJourneyV1 = async ({
       alwaysFraudProofCatalogue: true,
     },
   );
+  const witnessReferenceScripts =
+    await publishFaultProofWitnessReferenceScriptsV1({
+      lucid: challengerLucid,
+      realBlueprint,
+      computationThreadMintingScript: contracts.computationThread.mintingScript,
+      fraudProofMintingScript: contracts.fraudProof.mintingScript,
+    });
   const validationDisputeSdkContracts = await Effect.runPromise(
     buildValidationTraceDisputeFaultProofContracts({
       blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
@@ -369,14 +377,17 @@ export const prepareRouteFreedomJourneyV1 = async ({
       header: fixture.header,
     }),
   );
-  const { referenceScriptPublisherLucid, validationDisputePublication } =
-    await stageAuthenticatedValidationDisputePublication({
-      emulator,
-      operatorLucid,
-      operatorSeedPhrase: operator.seedPhrase,
-      contracts,
-      runStage: runCapturedLifecycleStage,
-    });
+  const {
+    referenceScriptPublisherLucid,
+    validationDisputePublication,
+    validationDisputeControlPublications,
+  } = await stageAuthenticatedValidationDisputePublication({
+    emulator,
+    operatorLucid,
+    operatorSeedPhrase: operator.seedPhrase,
+    contracts,
+    runStage: runCapturedLifecycleStage,
+  });
   const publishPlain = (label: string, script: Script) =>
     withRealL1MaxTxSize(emulator, () =>
       publishPlainReferenceScriptUtxo({
@@ -409,6 +420,41 @@ export const prepareRouteFreedomJourneyV1 = async ({
         canonicalDecodePrepareContract.spendingScript,
       ),
   );
+  const canonicalDecodeItemStages =
+    validationDisputeSdkContracts.validationTraceDispute
+      .canonicalDecodeItemStages;
+  const canonicalDecodeStageReferenceScriptUtxos = {
+    canonicalDecodeItemSource: (
+      await runCapturedLifecycleStage(
+        "reference-script.publish-canonical-decode-item-source",
+        () =>
+          publishPlain(
+            "validation canonical-decode item source",
+            canonicalDecodeItemStages.source.spendingScript,
+          ),
+      )
+    ).utxo,
+    canonicalDecodeItemProof: (
+      await runCapturedLifecycleStage(
+        "reference-script.publish-canonical-decode-item-proof",
+        () =>
+          publishPlain(
+            "validation canonical-decode item proof",
+            canonicalDecodeItemStages.proof.spendingScript,
+          ),
+      )
+    ).utxo,
+    canonicalDecodeItemSettlement: (
+      await runCapturedLifecycleStage(
+        "reference-script.publish-canonical-decode-item-settlement",
+        () =>
+          publishPlain(
+            "validation canonical-decode item settlement",
+            canonicalDecodeItemStages.settlement.spendingScript,
+          ),
+      )
+    ).utxo,
+  };
   const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
     validationDisputePublication,
     validationItemSemanticReference: {
@@ -433,6 +479,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
       signer: challengerSigner,
       fraudCategory: "validationTraceDispute",
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts,
       awaitConfirmation: true,
     }),
   );
@@ -471,6 +518,8 @@ export const prepareRouteFreedomJourneyV1 = async ({
       network,
       signer: challengerSigner,
       threadOutRef: openResult.nextThreadOutRef,
+      sourceReferenceScriptUtxo:
+        validationDisputeControlPublications.source.utxo,
       validityRange: validityRange(),
       awaitConfirmation: true,
     }),
@@ -493,6 +542,8 @@ export const prepareRouteFreedomJourneyV1 = async ({
           threadOutRef,
           role: move.role,
           proof: move.proof,
+          gameReferenceScriptUtxo:
+            validationDisputeControlPublications.game.utxo,
           validityRange: validityRange(),
           awaitConfirmation: true,
         }),
@@ -510,6 +561,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
         network,
         signer: challengerSigner,
         threadOutRef,
+        gameReferenceScriptUtxo: validationDisputeControlPublications.game.utxo,
         validityRange: validityRange(),
         awaitConfirmation: true,
       }),
@@ -534,6 +586,8 @@ export const prepareRouteFreedomJourneyV1 = async ({
         challengerPost: validationTraceProofDataFromCore(
           fixture.challengerTrace.tree.proofs[highIndex]!,
         ),
+        boundaryReferenceScriptUtxo:
+          validationDisputeControlPublications.boundary.utxo,
         validityRange: validityRange(),
         awaitConfirmation: true,
       }),
@@ -582,6 +636,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
             signer: challengerSigner,
             threadOutRef: stagedThreadOutRef,
             oneStepArgument: fixture.evidence.oneStepArgument,
+            stageReferenceScriptUtxos: canonicalDecodeStageReferenceScriptUtxos,
             validityRange: validityRange(),
             awaitConfirmation: true,
             ...routing,
@@ -598,6 +653,9 @@ export const prepareRouteFreedomJourneyV1 = async ({
             network,
             signer: challengerSigner,
             threadOutRef: awardThreadOutRef,
+            awardReferenceScriptUtxo:
+              validationDisputeControlPublications.award.utxo,
+            witnessReferenceScripts,
             validityRange: validityRange(),
             awaitConfirmation: true,
           }),

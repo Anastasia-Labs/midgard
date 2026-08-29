@@ -395,6 +395,7 @@ const startInputNoIdxStep02Thread = async ({
   );
   const initResult = await submitInit({
     lucid: harness.proverLucid,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: harness.realBlueprint,
     deploymentInfo,
     network,
@@ -410,6 +411,10 @@ const startInputNoIdxStep02Thread = async ({
   );
   const step01Result = await submitInputNoIdxStep01({
     lucid: harness.proverLucid,
+    referenceScriptUtxo:
+      harness.faultProofReferenceScripts.fraudProofNonExistentInputNoIndex!
+        .utxo,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: harness.realBlueprint,
     deploymentInfo,
     network,
@@ -485,6 +490,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     // ## init
     const initResult = await submitInit({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -516,6 +522,10 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     // ## step-01: bind the bad transaction to the committed header
     const step01Result = await submitInputNoIdxStep01({
       lucid: proverLucid,
+      referenceScriptUtxo:
+        harness.faultProofReferenceScripts.fraudProofNonExistentInputNoIndex!
+          .utxo,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -546,6 +556,9 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
       async () =>
         await submitInputNoIdxStep02({
           lucid: proverLucid,
+          referenceScriptUtxo:
+            harness.faultProofReferenceScripts
+              .fraudProofNonExistentInputNoIndexStep02!.utxo,
           blueprint: realBlueprint,
           deploymentInfo,
           network,
@@ -567,7 +580,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
       elapsedMs: directElapsedMs,
     });
     expectStep02ProofFit(directProofMeasurement);
-    expect(directProofMeasurement.referenceInputCount).toBe(0);
+    expect(directProofMeasurement.referenceInputCount).toBe(1);
     if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
       console.info(
         JSON.stringify(
@@ -598,6 +611,10 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     // ## step-03: bind the producing transaction from the same block
     const step03Result = await submitInputNoIdxStep03({
       lucid: proverLucid,
+      referenceScriptUtxo:
+        harness.faultProofReferenceScripts
+          .fraudProofNonExistentInputNoIndexStep03!.utxo,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -625,6 +642,10 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     // ## step-04: open the outputs commitment and mint the permanent token
     const step04Result = await submitInputNoIdxStep04({
       lucid: proverLucid,
+      referenceScriptUtxo:
+        harness.faultProofReferenceScripts
+          .fraudProofNonExistentInputNoIndexStep04!.utxo,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -731,6 +752,9 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
       async () =>
         await submitInputNoIdxStep02({
           lucid: harness.proverLucid,
+          referenceScriptUtxo:
+            harness.faultProofReferenceScripts
+              .fraudProofNonExistentInputNoIndexStep02!.utxo,
           blueprint: harness.realBlueprint,
           deploymentInfo,
           network,
@@ -760,23 +784,26 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
 
     expect(proofResult.carriageTier).toBe("RawUtxo");
     expect(proofResult.carriageOutRefs).toHaveLength(1);
-    // The consuming transaction reads exactly the carriage it published, and
-    // reads it as a reference input rather than spending it.
-    expect(proofMeasurement.referenceInputCount).toBe(1);
+    // The consuming transaction reads the carriage it published plus its
+    // mandatory step reference script, without spending either one.
+    expect(proofMeasurement.referenceInputCount).toBe(2);
     const signedProofTransaction =
       CML.Transaction.from_cbor_hex(proofTransactionCbor);
     const proofReferenceInputs = signedProofTransaction
       .body()
       .reference_inputs();
-    expect(proofReferenceInputs?.len()).toBe(1);
+    expect(proofReferenceInputs?.len()).toBe(2);
     const [carriageTxHash, carriageOutputIndex] =
       proofResult.carriageOutRefs[0]!.split("#");
-    expect(proofReferenceInputs?.get(0).transaction_id().to_hex()).toBe(
-      carriageTxHash,
-    );
-    expect(proofReferenceInputs?.get(0).index()).toBe(
-      BigInt(carriageOutputIndex!),
-    );
+    expect(
+      Array.from({ length: proofReferenceInputs?.len() ?? 0 }, (_, index) =>
+        proofReferenceInputs!.get(index),
+      ).some(
+        (input) =>
+          input.transaction_id().to_hex() === carriageTxHash &&
+          input.index() === BigInt(carriageOutputIndex!),
+      ),
+    ).toBe(true);
     expectStep02ProofFit(proofMeasurement);
     // The publication survives its consumer: §8.7 carriage is referenced, never
     // spent, so a second dispute over the same field reuses it.
@@ -832,6 +859,9 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
       await startInputNoIdxStep02Thread({ harness, fixture });
     const step02Result = await submitInputNoIdxStep02({
       lucid: harness.proverLucid,
+      referenceScriptUtxo:
+        harness.faultProofReferenceScripts
+          .fraudProofNonExistentInputNoIndexStep02!.utxo,
       blueprint: harness.realBlueprint,
       deploymentInfo,
       network,
@@ -852,6 +882,10 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     );
     const step03Result = await submitInputNoIdxStep03({
       lucid: harness.proverLucid,
+      referenceScriptUtxo:
+        harness.faultProofReferenceScripts
+          .fraudProofNonExistentInputNoIndexStep03!.utxo,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: harness.realBlueprint,
       deploymentInfo,
       network,
@@ -868,6 +902,10 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     );
     const step04Result = await submitInputNoIdxStep04({
       lucid: harness.proverLucid,
+      referenceScriptUtxo:
+        harness.faultProofReferenceScripts
+          .fraudProofNonExistentInputNoIndexStep04!.utxo,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: harness.realBlueprint,
       deploymentInfo,
       network,
@@ -922,6 +960,9 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
       async () =>
         await submitInputNoIdxStep02({
           lucid: harness.proverLucid,
+          referenceScriptUtxo:
+            harness.faultProofReferenceScripts
+              .fraudProofNonExistentInputNoIndexStep02!.utxo,
           blueprint: harness.realBlueprint,
           deploymentInfo,
           network,
@@ -1014,6 +1055,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
 
     const initResult = await submitInit({
       lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -1032,6 +1074,10 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     // is why the family's adjudication lives in step 04.
     const step01Result = await submitInputNoIdxStep01({
       lucid: proverLucid,
+      referenceScriptUtxo:
+        harness.faultProofReferenceScripts.fraudProofNonExistentInputNoIndex!
+          .utxo,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -1053,6 +1099,9 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     await expect(
       submitInputNoIdxStep02({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts
+            .fraudProofNonExistentInputNoIndexStep02!.utxo,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -1069,6 +1118,9 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
 
     const step02Result = await submitInputNoIdxStep02({
       lucid: proverLucid,
+      referenceScriptUtxo:
+        harness.faultProofReferenceScripts
+          .fraudProofNonExistentInputNoIndexStep02!.utxo,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -1088,6 +1140,10 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     );
     const step03Result = await submitInputNoIdxStep03({
       lucid: proverLucid,
+      referenceScriptUtxo:
+        harness.faultProofReferenceScripts
+          .fraudProofNonExistentInputNoIndexStep03!.utxo,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
@@ -1108,6 +1164,10 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     await expect(
       submitInputNoIdxStep04({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts
+            .fraudProofNonExistentInputNoIndexStep04!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
@@ -1126,6 +1186,10 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     await expect(
       submitInputNoIdxStep04({
         lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts
+            .fraudProofNonExistentInputNoIndexStep04!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
         deploymentInfo,
         network,

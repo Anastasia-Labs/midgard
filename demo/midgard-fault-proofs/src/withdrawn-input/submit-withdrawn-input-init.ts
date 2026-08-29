@@ -34,6 +34,11 @@ import {
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../witness-reference-scripts-v1.js";
+import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
   type WithdrawnInputContractsV1,
 } from "./contracts-v1.js";
@@ -64,6 +69,7 @@ export const submitWithdrawnInputInit = async ({
   signer,
   fraudulentBlockOutRef,
   fraudulentHeaderHash,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -79,6 +85,7 @@ export const submitWithdrawnInputInit = async ({
   readonly signer: ResolvedProverSigner;
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnInputInitResult> => {
   if (category.scriptHash !== contracts.steps[0].spendingScriptHash) {
@@ -131,6 +138,23 @@ export const submitWithdrawnInputInit = async ({
     network,
     membershipScript,
   );
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${WITHDRAWN_INPUT_CATEGORY_LABEL} init computation-thread mint`,
+  });
+  const membershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: membershipScript,
+    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+    label: `${WITHDRAWN_INPUT_CATEGORY_LABEL} init PHAS membership`,
+  });
+  const referenceInputs = [
+    catalogueUtxo,
+    hubOracleUtxo,
+    fraudulentBlockUtxo,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...membershipCarriage.referenceInputs,
+  ];
   const firstStepDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: null },
     FraudProofComputationThreadStepDatum,
@@ -189,9 +213,9 @@ export const submitWithdrawnInputInit = async ({
   }) satisfies BuildTxWithRedeemer;
 
   signer.selectWallet(lucid);
-  const tx = lucid
+  const base = lucid
     .newTx()
-    .readFrom([catalogueUtxo, hubOracleUtxo, fraudulentBlockUtxo])
+    .readFrom(referenceInputs)
     .withdraw(
       membershipAddress,
       0n,
@@ -220,9 +244,10 @@ export const submitWithdrawnInputInit = async ({
       { kind: "inline", value: firstStepDatum },
       { [computationThreadUnit]: 1n },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.WithdrawalValidator(membershipScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = membershipCarriage.attach(
+    computationThreadMintCarriage.attach(base),
+  );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (outputIndex === undefined) {
     throw withdrawnInputSubmitError("init output index was not resolved.");

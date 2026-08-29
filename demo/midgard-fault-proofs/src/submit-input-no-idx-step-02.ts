@@ -257,7 +257,7 @@ export const submitInputNoIdxStep02 = async ({
   readonly nativeTxCompactCbor: string;
   /** Force §8 tier 2; see {@link SubmitInputNoIdxStep02CliConfig.publishCarriage}. */
   readonly publishCarriage?: boolean;
-  /** The published step-02 reference script; inline-attached when absent. */
+  /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInputNoIdxStep02Result> => {

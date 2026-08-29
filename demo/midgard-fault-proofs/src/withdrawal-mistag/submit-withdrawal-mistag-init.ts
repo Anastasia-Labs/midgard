@@ -49,7 +49,7 @@ export const submitWithdrawalMistagInit = async ({
   readonly fraudulentHeaderHash?: string;
   /**
    * Published witness reference scripts, forwarded to the generic init;
-   * each absent entry inline-attaches.
+   * every role used by this transaction must be published.
    */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;

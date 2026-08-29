@@ -375,7 +375,7 @@ describe("watcher deployment identity", () => {
     });
   });
 
-  it("binds the complete registered catalogue through category 18 to deployed contracts", () => {
+  it("binds the complete registered catalogue through category 1b to deployed contracts", () => {
     const fixture = makeFixture();
     const categories = fixture.policy.fraudProofCatalogue.categories;
 
@@ -395,7 +395,22 @@ describe("watcher deployment identity", () => {
       categoryId: "00000018",
       scriptHash: fixture.policy.appliedScriptHashes.fraudProofWithdrawnInput,
     });
-    expect(Object.keys(categories)).toHaveLength(25);
+    expect(categories.valueNotPreserved).toEqual({
+      categoryId: "00000019",
+      scriptHash:
+        fixture.policy.appliedScriptHashes.fraudProofValueNotPreserved,
+    });
+    expect(categories.inputSetUniqueness).toEqual({
+      categoryId: "0000001a",
+      scriptHash:
+        fixture.policy.appliedScriptHashes.fraudProofInputSetUniqueness,
+    });
+    expect(categories.mintAuthorization).toEqual({
+      categoryId: "0000001b",
+      scriptHash:
+        fixture.policy.appliedScriptHashes.fraudProofMintAuthorization,
+    });
+    expect(Object.keys(categories)).toHaveLength(28);
 
     fixture.policy = {
       ...fixture.policy,

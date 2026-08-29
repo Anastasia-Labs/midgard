@@ -65,6 +65,7 @@ import {
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScriptsV1,
+  witnessSpendingValidatorCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "../witness-reference-scripts-v1.js";
 import type { InputSetUniquenessContractsV1 } from "./contracts-v1.js";
@@ -120,9 +121,9 @@ export const submitInputSetUniquenessStep01 = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   /** Present → the #545 published-chunk carriage; absent → redeemer-carried. */
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
-  /** The published step-01 reference script; inline-attached when absent. */
+  /** The mandatory published step-01 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  /** Published witness reference scripts; each absent entry inline-attaches. */
+  /** Published witness reference scripts required by this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInputSetUniquenessStep01Result> => {
@@ -203,19 +204,24 @@ export const submitInputSetUniquenessStep01 = async ({
         referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
         label: `${STEP_LABEL} PHAS membership`,
       });
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireInputSetUniquenessReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: contracts.steps[0].spendingScriptHash,
+          stepIndex: 0,
+        });
+  const stepCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.steps[0].spendingScript,
+    referenceUtxo: stepReference,
+    label: `${STEP_LABEL} spending validator`,
+  });
   const referenceInputs = [
     hubOracleUtxo,
     stateQueueBlockUtxo,
     ...chunks.map((chunk) => chunk.utxo),
-    ...(referenceScriptUtxo === undefined
-      ? []
-      : [
-          requireInputSetUniquenessReferenceScriptV1({
-            utxo: referenceScriptUtxo,
-            expectedScriptHash: contracts.steps[0].spendingScriptHash,
-            stepIndex: 0,
-          }),
-        ]),
+    ...stepCarriage.referenceInputs,
     ...inclusionCarriage.referenceInputs,
   ];
   const resolvedChunkIndices = derivedChunkReferenceIndices({
@@ -332,11 +338,7 @@ export const submitInputSetUniquenessStep01 = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
-  const withStepScript =
-    referenceScriptUtxo === undefined
-      ? paid.attach.SpendingValidator(contracts.steps[0].spendingScript)
-      : paid;
-  const completedTx = inclusionCarriage.attach(withStepScript);
+  const completedTx = inclusionCarriage.attach(stepCarriage.attach(paid));
 
   const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {

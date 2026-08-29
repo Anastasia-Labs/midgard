@@ -518,6 +518,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       familyLabel: "fabricated-withdrawal",
       signer: proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     expect(initResult.txHash).toHaveLength(64);
     expect(initResult.fraudulentHeaderHash).toBe(headerHash);
@@ -661,6 +662,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       signer: proverSigner,
       threadOutRef: step03Result.nextThreadOutRef,
       referenceScriptUtxo: referenceScriptUtxos[3],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
       awaitConfirmation: true,
     });
     expect(step04Result.fault).toEqual(plan.classification.fault);
@@ -721,6 +723,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       familyLabel: "fabricated-withdrawal",
       signer: proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const firstStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,

@@ -28,6 +28,7 @@ import {
   submitRemoveFraudulentBlock,
   submitTransitionTraceProof,
 } from "../src/index.js";
+import { publishFaultProofWitnessReferenceScriptsV1 } from "./support/emulator/reference-scripts.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
   buildInvalidForcedTransitionTraceFixture,
@@ -89,6 +90,14 @@ describe("fault-proof emulator integration", () => {
       ),
     };
     const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    const witnessReferenceScripts =
+      await publishFaultProofWitnessReferenceScriptsV1({
+        lucid: proverLucid,
+        realBlueprint,
+        computationThreadMintingScript:
+          contracts.computationThread.mintingScript,
+        fraudProofMintingScript: contracts.fraudProof.mintingScript,
+      });
     // See `publishRemovalReferenceScripts`: removal must source these seven
     // validators from reference inputs to stay inside the 16,384-byte L1
     // envelope. Published before the header clock is sampled so the whole
@@ -151,6 +160,7 @@ describe("fault-proof emulator integration", () => {
       signer: proverSigner,
       fraudCategory: "transitionTrace",
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts,
       awaitConfirmation: true,
     });
 
@@ -183,6 +193,7 @@ describe("fault-proof emulator integration", () => {
       signer: proverSigner,
       threadOutRef: outRefLabel(firstStepUtxo),
       proof: traceFixture.proof,
+      witnessReferenceScripts,
       awaitConfirmation: true,
     });
 

@@ -34,6 +34,7 @@ describe("canonical-decodability honest-commitment adversary", () => {
       catalogue,
       canonicalDecodability,
       category,
+      witnessReferenceScripts,
     } = harness;
     const [step01Ref, step02Ref] =
       await publishCanonicalDecodabilityReferenceScriptsV1({
@@ -62,6 +63,7 @@ describe("canonical-decodability honest-commitment adversary", () => {
       },
       signer: proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts,
     });
     const firstStep = await expectSingleUtxoWithUnit(
       proverLucid,
@@ -83,6 +85,7 @@ describe("canonical-decodability honest-commitment adversary", () => {
         fieldIndex: fixture.fieldIndex,
         committedPreimage: fixture.committedPreimage,
         referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts,
       }),
     ).rejects.toThrow(/verdict 0.*valid block cannot be challenged/u);
 
@@ -113,6 +116,7 @@ describe("canonical-decodability honest-commitment adversary", () => {
         claim: truthfulClaim,
         step02State: { ...truthfulState, verdict: 10n },
         referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts,
       }),
     );
     await expectOnchainRefusalV1(() =>
@@ -133,6 +137,7 @@ describe("canonical-decodability honest-commitment adversary", () => {
         },
         step02State: truthfulState,
         referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts,
       }),
     );
     await expectOnchainRefusalV1(() =>
@@ -151,6 +156,7 @@ describe("canonical-decodability honest-commitment adversary", () => {
         claim: truthfulClaim,
         step02State: truthfulState,
         referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts,
       }),
     );
     const untouchedFirst = await expectSingleUtxoWithUnit(
@@ -172,6 +178,7 @@ describe("canonical-decodability honest-commitment adversary", () => {
       claim: truthfulClaim,
       step02State: truthfulState,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts,
     });
     const secondStep = await expectSingleUtxoWithUnit(
       proverLucid,
@@ -187,6 +194,7 @@ describe("canonical-decodability honest-commitment adversary", () => {
         signer: proverSigner,
         threadOutRef: bind.nextThreadOutRef,
         referenceScriptUtxo: step02Ref,
+        witnessReferenceScripts,
       }),
     ).rejects.toThrow(/does not describe a violation/u);
     await expectOnchainRefusalV1(() =>
@@ -197,6 +205,7 @@ describe("canonical-decodability honest-commitment adversary", () => {
         signer: proverSigner,
         threadOutRef: bind.nextThreadOutRef,
         referenceScriptUtxo: step02Ref,
+        witnessReferenceScripts,
       }),
     );
     const untouchedSecond = await expectSingleUtxoWithUnit(

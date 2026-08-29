@@ -82,9 +82,9 @@ const PRE_CHANGE_SWEEP_ROWS = {
 const SIX_STAGE_CONSTANT_ROW_BYTES_V1 = {
   prepareSelected: 1_864,
   authenticate: 2_656,
-  source: 7_895,
-  proof: 5_701,
-  settle: 5_064,
+  source: 1_911,
+  proof: 1_936,
+  settle: 679,
 } as const;
 
 const stageBytesByKind = (
@@ -258,7 +258,7 @@ describe.skipIf(!optionB)(
         semantic.measurements.map(
           (measurement) => measurement.referenceInputCount,
         ),
-      ).toEqual([0, 1, 0, 2, 0, 0]);
+      ).toEqual([0, 1, 1, 2, 1, 1]);
 
       // The reference route's two size-bound transactions at the frontier:
       // the up-front §8 publication (the item rides its inline datum) and
@@ -298,17 +298,11 @@ describe.skipIf(!optionB)(
       const award = await journey.submitAward(result.nextThreadOutRef);
       // End-to-end: every transaction this dispute cost L1, from the four
       // reference-script publications through init, open, the bisection, the
-      // semantic leg (publication included), and the award — 166,403 bytes
-      // total at the largest item the reference route can carry.
-      //
-      // Moved by #640: +3,746 bytes over the pre-format 162,657. The growth is
-      // the 47-arm RejectionReasonV1 enlarging the compiled validators, carried
-      // by the four reference-script publications; the item, the stage rows and
-      // the award are byte-identical across the change.
-      expect(award.measurement.completeSignedBytes).toBe(7_238);
+      // semantic leg (publication included), and the by-reference award.
+      expect(award.measurement.completeSignedBytes).toBe(945);
       expect(
         totalJourneyBytes(journey, semantic.measurements, award.measurement),
-      ).toBe(166_535);
+      ).toBe(126_929);
       expectWholeJourneyProofFit(
         "#622 reference-frontier item 14,336",
         journey,
@@ -345,20 +339,29 @@ describe.skipIf(!optionB)(
         semantic.measurements.map(
           (measurement) => measurement.referenceInputCount,
         ),
-      ).toEqual([1, 0, 1, 0, 0]);
+      ).toEqual([1, 1, 1, 1, 1]);
 
-      // Byte identity where Option B touched nothing: the observe wire is
-      // unchanged too — #620 changed the door's BILL, not its redeemer.
+      // The observe wire is unchanged; the source, proof, and settlement
+      // rows shrink because their validators now arrive by reference.
       expect(stageBytesByKind(stageTransactions, "observe")).toBe(
         PRE_CHANGE_SWEEP_ROWS.observe.bytes,
       );
       expect(stageBytesByKind(stageTransactions, "source")).toBe(
-        PRE_CHANGE_SWEEP_ROWS.source.bytes,
+        SIX_STAGE_CONSTANT_ROW_BYTES_V1.source,
       );
       expect(stageBytesByKind(stageTransactions, "proof")).toBe(
-        PRE_CHANGE_SWEEP_ROWS.proof.bytes,
+        SIX_STAGE_CONSTANT_ROW_BYTES_V1.proof,
       );
       expect(stageBytesByKind(stageTransactions, "settle")).toBe(
+        SIX_STAGE_CONSTANT_ROW_BYTES_V1.settle,
+      );
+      expect(SIX_STAGE_CONSTANT_ROW_BYTES_V1.source).toBeLessThan(
+        PRE_CHANGE_SWEEP_ROWS.source.bytes,
+      );
+      expect(SIX_STAGE_CONSTANT_ROW_BYTES_V1.proof).toBeLessThan(
+        PRE_CHANGE_SWEEP_ROWS.proof.bytes,
+      );
+      expect(SIX_STAGE_CONSTANT_ROW_BYTES_V1.settle).toBeLessThan(
         PRE_CHANGE_SWEEP_ROWS.settle.bytes,
       );
       // ... and the two collapsed stages against their pre-change rows.

@@ -702,6 +702,16 @@ const deploymentEntriesForCategory = (
       "fraudProofTransitionTraceDuplicate",
     ];
   }
+  if (category === "nativeScriptDecoding") {
+    return [
+      "fraudProofNativeScriptDecoding",
+      "fraudProofNativeScriptDecodingStep02",
+      "fraudProofNativeScriptDecodingStep03OpenSubject",
+      "fraudProofNativeScriptDecodingStep03BindDescriptor",
+      "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
+      "fraudProofNativeScriptDecodingStep04",
+    ];
+  }
   const base = deploymentEntryBaseForCategory(category);
   if (!FULL_CHAIN_REFERENCE_CATEGORIES.has(category)) {
     return [base];

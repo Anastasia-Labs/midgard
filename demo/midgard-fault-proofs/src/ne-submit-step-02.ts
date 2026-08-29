@@ -171,7 +171,7 @@ export const neSubmitStep02 = async ({
    * spend-input cardinality at the L1 byte frontier (#612).
    */
   readonly publishCarriage?: boolean;
-  /** The published step-02 reference script; inline-attached when absent. */
+  /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<NeSubmitStep02Result> => {

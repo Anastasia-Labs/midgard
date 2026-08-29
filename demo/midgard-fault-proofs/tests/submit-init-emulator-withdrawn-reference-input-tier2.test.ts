@@ -87,6 +87,7 @@ describe("withdrawn-reference-input emulator tier-2 carriage", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const step01 = await submitWithdrawnReferenceInputStep01({
       lucid: harness.proverLucid,
@@ -99,6 +100,7 @@ describe("withdrawn-reference-input emulator tier-2 carriage", () => {
       stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
       txInclusion: scenario.prepared.txInclusion,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const step02 = await submitWithdrawnReferenceInputStep02({
       lucid: harness.proverLucid,
@@ -136,6 +138,7 @@ describe("withdrawn-reference-input emulator tier-2 carriage", () => {
       threadOutRef: step02.nextThreadOutRef,
       withdrawalMembership: scenario.prepared.withdrawalMembership,
       referenceScriptUtxo: step03Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
