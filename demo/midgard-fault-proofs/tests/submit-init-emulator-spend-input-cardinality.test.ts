@@ -181,6 +181,14 @@ const SPEND_INPUT_PREIMAGE_ARRAY_HEADER_BYTES = 3;
 const CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY = 296;
 
 /**
+ * 365 spend inputs (constant §5.3 stride of 40 bytes each) make a 14,603-byte
+ * field-0 preimage: past §8.4's 14,336-byte tier-1 bound, inside the
+ * single-publication tier-2 window `(14,336, 15,148]` — the ladder picks
+ * `RawUtxo` on size alone, no demotion asked for.
+ */
+const TIER2_SIZE_SELECTED_CARDINALITY = 365;
+
+/**
  * Measured boundaries. Each is a PAIR — the largest cardinality whose complete
  * correction path fits, and the first that does not — and both members of each
  * pair are driven through the real pipeline below.
@@ -354,13 +362,16 @@ const runDoubleSpendCardinalityJourney = async (
   );
   // **#580 re-take, 2 -> 1.** Under the counted scheme this step published the
   // spend-inputs witness in its own transaction and then spent the thread, so
-  // the capture held two submissions. Under flat there is nothing to publish
-  // unless the caller forces the §8 tier-2 demotion (#612): inline, the
-  // preimage rides the step redeemer and the capture holds exactly one;
-  // routed, the §8.7 publication precedes the step and it holds exactly two.
-  // Asserted rather than relaxed to `>= 1`, because an unexpected extra
-  // submission would mean the builder had started publishing on its own.
-  expect(step03Capture.measurements.length).toBe(publishCarriage ? 2 : 1);
+  // the capture held two submissions. Under flat, publication follows the §8
+  // tier the ladder records — by size, or by the #612 demotion when a caller
+  // asks: inline, the preimage rides the step redeemer and the capture holds
+  // exactly one; routed, the §8.7 publication precedes the step and it holds
+  // exactly two. Asserted rather than relaxed to `>= 1`, because an
+  // unexpected extra submission would mean the builder had started
+  // publishing beyond its recorded tier.
+  const step03Routed =
+    step03Capture.result.tx1SpendInputsCarriageTier !== "Inline";
+  expect(step03Capture.measurements.length).toBe(step03Routed ? 2 : 1);
   const fourthStepUtxo = await expectSingleUtxoWithUnit(
     proverLucid,
     step03Capture.result.fourthStepAddress,
@@ -386,7 +397,9 @@ const runDoubleSpendCardinalityJourney = async (
     }),
   );
   // Same shape as step-03's: one submission inline, two when routed.
-  expect(step04Capture.measurements.length).toBe(publishCarriage ? 2 : 1);
+  const step04Routed =
+    step04Capture.result.tx2SpendInputsCarriageTier !== "Inline";
+  expect(step04Capture.measurements.length).toBe(step04Routed ? 2 : 1);
   expect(step04Capture.result.fraudProofAssetName).toBe(
     initResult.computationThreadAssetName,
   );
@@ -395,11 +408,11 @@ const runDoubleSpendCardinalityJourney = async (
   // own, because it is a transaction the envelope must also admit.
   return {
     stages: {
-      ...(publishCarriage
-        ? {
-            "step-03-carriage": step03Capture.measurements[0]!,
-            "step-04-carriage": step04Capture.measurements[0]!,
-          }
+      ...(step03Routed
+        ? { "step-03-carriage": step03Capture.measurements[0]! }
+        : {}),
+      ...(step04Routed
+        ? { "step-04-carriage": step04Capture.measurements[0]! }
         : {}),
       "step-03": step03Capture.measurement,
       "step-04": step04Capture.measurement,
@@ -513,13 +526,16 @@ const runNoInputCardinalityJourney = async (
       awaitConfirmation: true,
     }),
   );
-  // Inline, step-02 is one submission; routed, its §8.7 carriage publication
-  // precedes it and is a stage of its own (#612).
-  expect(step02Capture.measurements.length).toBe(publishCarriage ? 2 : 1);
+  // Inline, step-02 is one submission; routed — by size or by the #612
+  // demotion — its §8.7 carriage publication precedes it and is a stage of
+  // its own.
+  const step02Routed =
+    step02Capture.result.spendInputsCarriageTier !== "Inline";
+  expect(step02Capture.measurements.length).toBe(step02Routed ? 2 : 1);
   return {
     stages: {
       "step-01": step01Capture.measurement,
-      ...(publishCarriage
+      ...(step02Routed
         ? { "step-02-carriage": step02Capture.measurements[0]! }
         : {}),
       "step-02": step02Capture.measurement,
@@ -766,6 +782,54 @@ describe("fault-proof spend-input preimage cardinality", () => {
 
     // Execution stays an order of magnitude clear on the binding steps, same
     // as the inline rows — routing moved bytes, not computation.
+    for (const measurement of [
+      noInput.stages["step-02"]!,
+      doubleSpend.stages["step-04"]!,
+    ]) {
+      expect(measurement.executionMemory < ceilings.memory / 10n).toBe(true);
+      expect(measurement.executionSteps < ceilings.steps / 10n).toBe(true);
+    }
+  }, 900_000);
+
+  it("selects tier-2 carriage on size alone past the tier-1 bound", async () => {
+    // The routed row above demotes deliberately — at 296 inputs the preimage
+    // is under §8.4's 14,336-byte tier-1 bound and only the L1 envelope
+    // forces publication. This row commits 365 inputs (a 14,603-byte field-0
+    // preimage, inside the single-publication window) so the ladder itself
+    // picks `RawUtxo` with no caller involvement: both families' full
+    // journeys — publications included — must fit the envelope with the tier
+    // chosen by the committed data's size and nothing else.
+    const ceilings = executionCeilings();
+    const noInput = await runNoInputCardinalityJourney(
+      TIER2_SIZE_SELECTED_CARDINALITY,
+    );
+    const doubleSpend = await runDoubleSpendCardinalityJourney(
+      TIER2_SIZE_SELECTED_CARDINALITY,
+    );
+
+    expect(noInput.carriageTiers["step-02"]).toBe("RawUtxo");
+    expect(doubleSpend.carriageTiers["step-03"]).toBe("RawUtxo");
+    expect(doubleSpend.carriageTiers["step-04"]).toBe("RawUtxo");
+
+    for (const [family, journey] of [
+      ["no-input", noInput],
+      ["double-spend", doubleSpend],
+    ] as const) {
+      printProofFitV1({
+        headline: `${family} size-selected spend-input cardinality ${String(TIER2_SIZE_SELECTED_CARDINALITY)}`,
+        stages: journey.stages,
+        extra: { carriageTiers: journey.carriageTiers },
+      });
+      for (const [stage, measurement] of Object.entries(journey.stages)) {
+        expectProofFitV1({
+          stage: `${family} size-selected cardinality ${String(TIER2_SIZE_SELECTED_CARDINALITY)} ${stage}`,
+          measurement,
+          maxTxExMem: EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem,
+          maxTxExSteps: EMULATOR_PROTOCOL_PARAMETERS.maxTxExSteps,
+        });
+      }
+    }
+
     for (const measurement of [
       noInput.stages["step-02"]!,
       doubleSpend.stages["step-04"]!,
