@@ -378,6 +378,39 @@ export const requireMatchingScriptHash = ({
   }
 };
 
+/**
+ * Validates a published step reference-script UTxO fail-closed and returns it
+ * for use as a transaction reference input.
+ *
+ * A registered fraud-proof family sources its step spending validators from
+ * reference scripts (owner ruling: always reference scripts, never inline
+ * attach), so every step submitter accepts an optional `referenceScriptUtxo`.
+ * The UTxO must carry a reference script, and that script must hash to the
+ * step's own deployed spending-script hash — a divergence would read a witness
+ * that does not authorize the spend.
+ */
+export const requireFaultProofStepReferenceScriptV1 = ({
+  utxo,
+  expectedScriptHash,
+  label,
+}: {
+  readonly utxo: UTxO;
+  readonly expectedScriptHash: string;
+  readonly label: string;
+}): UTxO => {
+  if (utxo.scriptRef == null) {
+    throw new Error(
+      `${label} reference UTxO ${outRefLabel(utxo)} carries no reference script.`,
+    );
+  }
+  requireMatchingScriptHash({
+    label: `${label} reference script`,
+    deployed: expectedScriptHash,
+    derived: validatorToScriptHash(utxo.scriptRef),
+  });
+  return utxo;
+};
+
 export type ResolvedDoubleSpendDeploymentContracts = {
   readonly deploymentInfo: ContractDeploymentInfo;
   readonly doubleSpendCategory: FraudProofCatalogueCategoryDeploymentInfo;

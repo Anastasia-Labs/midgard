@@ -54,6 +54,7 @@ import {
   faultProofFieldOpeningV1,
   parseNativeTxCompactCborV1,
   planFaultProofFieldOpeningV1,
+  publishFaultProofFieldCarriageV1,
 } from "./field-opening-v1.js";
 import {
   parseHex,
@@ -414,6 +415,17 @@ export const submitInvalidSignatureStep02 = async ({
     label: "Invalid-signature step 02 address-witnesses",
   });
   const badAddrTxWitsHash = planned.commitment;
+
+  signer.selectWallet(lucid);
+  // §8.4: publish tier-2 field carriage before the final transaction selects
+  // fee inputs or resolves indices into the complete reference-input set.
+  const published = await publishFaultProofFieldCarriageV1({
+    lucid,
+    signer,
+    planned,
+    publisherAddress: signer.address,
+    label: "Invalid-signature step 02 address-witnesses field",
+  });
   const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
     script: contracts.invalidSignature.steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
@@ -432,6 +444,7 @@ export const submitInvalidSignatureStep02 = async ({
   // The complete reference-input set, built before the field opening derives
   // any carriage indices from it.
   const referenceInputs = [
+    ...published,
     ...stepScriptCarriage.referenceInputs,
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
@@ -453,8 +466,14 @@ export const submitInvalidSignatureStep02 = async ({
     );
   }
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  // A tier-2 publication sits at the prover address under a large inline datum
+  // (and its min-ADA), so it tops the fee selector's descending-lovelace sort;
+  // exclude datum-carrying UTxOs so the referenced publication is never spent.
+  const feeInput = selectFeeInput(
+    (await lucid.wallet().getUtxos()).filter(
+      (utxo) => utxo.datum == null && utxo.datumHash == null,
+    ),
+  );
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,

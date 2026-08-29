@@ -353,7 +353,7 @@ export const submitNoReferenceInputStep01 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const tx = lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
@@ -374,7 +374,7 @@ export const submitNoReferenceInputStep01 = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
-  const completedTx = phasCarriage.attach(stepScriptCarriage.attach(tx));
+  const completedTx = phasCarriage.attach(stepScriptCarriage.attach(base));
 
   const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {

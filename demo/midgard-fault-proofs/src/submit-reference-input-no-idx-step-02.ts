@@ -48,6 +48,7 @@ import {
   faultProofFieldOpeningV1,
   parseNativeTxCompactCborV1,
   planFaultProofFieldOpeningV1,
+  publishFaultProofFieldCarriageV1,
 } from "./field-opening-v1.js";
 import {
   parseHex,
@@ -278,6 +279,17 @@ export const submitReferenceInputNoIdxStep02 = async ({
     label: "Reference-input-no-idx step 02 reference-inputs",
   });
   const verifiedTxReferenceInputsHash = planned.commitment;
+
+  signer.selectWallet(lucid);
+  // Publish tier-2 field carriage before selecting the final fee input and
+  // resolving indices into the complete reference-input set.
+  const published = await publishFaultProofFieldCarriageV1({
+    lucid,
+    signer,
+    planned,
+    publisherAddress: signer.address,
+    label: "Reference-input-no-idx step 02 reference-inputs field",
+  });
   const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
     script: chain.steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
@@ -285,7 +297,7 @@ export const submitReferenceInputNoIdxStep02 = async ({
   });
   // The complete reference-input set the built transaction will declare, in
   // build order — the opening derivation must see all of it (bug fc635c8f).
-  const referenceInputs = [...stepScriptCarriage.referenceInputs];
+  const referenceInputs = [...published, ...stepScriptCarriage.referenceInputs];
   const referenceInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
@@ -301,8 +313,14 @@ export const submitReferenceInputNoIdxStep02 = async ({
     );
   }
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  // A tier-2 publication sits at the prover address under a large inline datum
+  // (and its min-ADA), so it tops the fee selector's descending-lovelace sort;
+  // exclude datum-carrying UTxOs so the referenced publication is never spent.
+  const feeInput = selectFeeInput(
+    (await lucid.wallet().getUtxos()).filter(
+      (utxo) => utxo.datum == null && utxo.datumHash == null,
+    ),
+  );
   const step03Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
