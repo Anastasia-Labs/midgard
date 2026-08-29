@@ -59,6 +59,10 @@ import {
   computationThreadOutputPredicate,
   outputWithDatumAndUnitPredicate,
 } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { MissingSignatureContractsV1 } from "./contracts-v1.js";
 import { planMissingSignatureAddressWitnessesOpeningV1 } from "./evidence-v1.js";
 import {
@@ -120,6 +124,7 @@ export const submitMissingSignatureStep04 = async ({
   publishCarriage = false,
   certificateUtxo,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -139,6 +144,8 @@ export const submitMissingSignatureStep04 = async ({
   readonly certificateUtxo?: UTxO;
   /** §2.3: the published step-04 reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingSignatureStep04Result> => {
   const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxoV1(
@@ -214,6 +221,18 @@ export const submitMissingSignatureStep04 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...carriageUtxos,
   ];
+  const computationThreadBurnCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${STEP_LABEL} computation-thread burn`,
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: `${STEP_LABEL} fraud-proof mint`,
+  });
+  // The mint witnesses execute on the finalize branch alone; a scan batch
+  // must not reference them, or the §8.7 opening indices would drift.
   const referenceInputs = [
     ...fieldReferenceInputs,
     requireMissingSignatureReferenceScriptV1({
@@ -221,6 +240,12 @@ export const submitMissingSignatureStep04 = async ({
       expectedScriptHash: contracts.steps[3].spendingScriptHash,
       stepIndex: 3,
     }),
+    ...(willFinalize
+      ? [
+          ...computationThreadBurnCarriage.referenceInputs,
+          ...fraudProofMintCarriage.referenceInputs,
+        ]
+      : []),
   ];
   const addrTxWitsOpening = faultProofFieldOpeningV1({
     planned,
@@ -374,17 +399,22 @@ export const submitMissingSignatureStep04 = async ({
       ? withInputs
       : withInputs.readFrom(referenceInputs);
   const completed = willFinalize
-    ? withReferences
-        .mintAssets({ [threadToken.unit]: -1n }, computationThreadBurnRedeemer)
-        .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
-        .pay.ToContract(
-          contracts.fraudProof.spendingScriptAddress,
-          { kind: "inline", value: fraudProofDatum },
-          fraudProofAssets,
-        )
-        .addSignerKey(signer.paymentKeyHash)
-        .attach.MintingPolicy(contracts.computationThread.mintingScript)
-        .attach.MintingPolicy(contracts.fraudProof.mintingScript)
+    ? fraudProofMintCarriage.attach(
+        computationThreadBurnCarriage.attach(
+          withReferences
+            .mintAssets(
+              { [threadToken.unit]: -1n },
+              computationThreadBurnRedeemer,
+            )
+            .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
+            .pay.ToContract(
+              contracts.fraudProof.spendingScriptAddress,
+              { kind: "inline", value: fraudProofDatum },
+              fraudProofAssets,
+            )
+            .addSignerKey(signer.paymentKeyHash),
+        ),
+      )
     : withReferences.pay
         .ToContract(
           contracts.steps[3].spendingScriptAddress,

@@ -67,6 +67,11 @@ import {
   type SubmitStep01TxInclusion,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessSpendingValidatorCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 export type SubmitInputNoIdxStep03CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -154,6 +159,8 @@ export const submitInputNoIdxStep03 = async ({
   threadOutRef,
   stateQueueBlockOutRef,
   txInclusion,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -164,6 +171,10 @@ export const submitInputNoIdxStep03 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
+  /** The published step-03 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInputNoIdxStep03Result> => {
   const resolvedDeployment = await resolveInputNoIdxDeploymentContracts({
@@ -252,7 +263,6 @@ export const submitInputNoIdxStep03 = async ({
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const referenceInputs = [hubOracleUtxo, stateQueueBlockUtxo];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -261,6 +271,22 @@ export const submitInputNoIdxStep03 = async ({
     network,
     phasMembershipScript,
   );
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: chain.steps[2].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "input-no-idx step 03 validator",
+  });
+  const phasCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasMembershipScript,
+    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+    label: "input-no-idx step 03 PHAS membership",
+  });
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    ...stepScriptCarriage.referenceInputs,
+    ...phasCarriage.referenceInputs,
+  ];
   const step04Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -348,11 +374,10 @@ export const submitInputNoIdxStep03 = async ({
       { kind: "inline", value: step04Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(chain.steps[2].spendingScript)
-    .attach.WithdrawalValidator(phasMembershipScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = phasCarriage.attach(stepScriptCarriage.attach(tx));
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve input-no-idx step 03 layout.",

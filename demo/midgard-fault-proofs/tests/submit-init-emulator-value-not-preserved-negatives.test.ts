@@ -34,6 +34,7 @@ import {
 import { submitValueNotPreservedInit } from "../src/value-not-preserved/submit-value-not-preserved-init-v1.js";
 import { submitValueNotPreservedStep01 } from "../src/value-not-preserved/submit-value-not-preserved-step-01-v1.js";
 import { submitValueNotPreservedStep02Fold } from "../src/value-not-preserved/submit-value-not-preserved-step-02-v1.js";
+import type { FaultProofWitnessReferenceScriptsV1 } from "../src/witness-reference-scripts-v1.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 import {
   buildValueNotPreservedFixtureV1,
@@ -55,6 +56,7 @@ const ASSET_NAME_HEX = "746f6b33"; // "tok3"
 const initThread = async (
   harness: ValueNotPreservedHarnessV1,
   fraudulentBlockOutRef: string,
+  witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1,
 ) =>
   submitValueNotPreservedInit({
     lucid: harness.proverLucid,
@@ -70,6 +72,7 @@ const initThread = async (
     },
     signer: harness.proverSigner,
     fraudulentBlockOutRef,
+    witnessReferenceScripts,
   });
 
 describe("value-not-preserved negative scenarios", () => {
@@ -104,7 +107,11 @@ describe("value-not-preserved negative scenarios", () => {
       lucid: harness.funderLucid,
       contracts: family,
     });
-    const init = await initThread(harness, setup.fraudulentBlockOutRef);
+    const init = await initThread(
+      harness,
+      setup.fraudulentBlockOutRef,
+      setup.witnessReferenceScripts,
+    );
 
     const claimedAsset = {
       TokenAsset: { policy_id: POLICY_ID_HEX, asset_name: ASSET_NAME_HEX },
@@ -125,6 +132,7 @@ describe("value-not-preserved negative scenarios", () => {
         claimedDirection: "ClaimedAssetInflated",
         prevUtxosRoot: fixture.ledger.rootHex,
         referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: setup.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/validity code/u);
 
@@ -140,6 +148,7 @@ describe("value-not-preserved negative scenarios", () => {
         claimedDirection: "ClaimedAssetInflated",
         prevUtxosRoot: fixture.ledger.rootHex,
         referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: setup.witnessReferenceScripts,
       }),
     );
 
@@ -190,7 +199,11 @@ describe("value-not-preserved negative scenarios", () => {
       lucid: harness.funderLucid,
       contracts: family,
     });
-    const init = await initThread(harness, setup.fraudulentBlockOutRef);
+    const init = await initThread(
+      harness,
+      setup.fraudulentBlockOutRef,
+      setup.witnessReferenceScripts,
+    );
 
     const claimedAsset = {
       TokenAsset: { policy_id: POLICY_ID_HEX, asset_name: ASSET_NAME_HEX },
@@ -209,6 +222,7 @@ describe("value-not-preserved negative scenarios", () => {
       claimedDirection: "ClaimedAssetInflated",
       prevUtxosRoot: fixture.ledger.rootHex,
       referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const spendInputsOpening = spendInputsOpeningV1({
       nativeTxCompactCbor: fixture.nativeTxCompactCbor,

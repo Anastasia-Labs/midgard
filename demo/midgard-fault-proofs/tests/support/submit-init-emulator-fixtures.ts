@@ -136,6 +136,8 @@ import {
   buildForcedValidationDisputeCommitments,
   buildMinimalFaultProofContracts,
   buildRemovalDeploymentInfo,
+  captureEmulatorSubmission,
+  type CompleteSignedTransactionMeasurement,
   EMULATOR_PROTOCOL_PARAMETERS,
   expectSingleUtxoWithUnit,
   firstWalletUtxo,
@@ -145,6 +147,8 @@ import {
   makeHeader,
   makeNativeTx,
   network,
+  publishFaultProofWitnessReferenceScriptsV1,
+  publishFraudProofChainReferenceScripts,
   publishRemovalReferenceScripts,
   readBlueprint,
   realBlueprintPath,
@@ -1552,6 +1556,19 @@ export type SuccessorBlockFixture = Awaited<
   readonly header: HeaderV1;
 };
 
+/**
+ * Publication labels for the four double-spend step validators, following the
+ * `fraudProof<Family>StepNN` deployment-entry naming style. Local to the
+ * emulator fixtures: the step references reach the submitters as explicit
+ * `referenceScriptUtxo` parameters, not through the deployment manifest.
+ */
+export const DOUBLE_SPEND_STEP_REFERENCE_NAMES_V1 = [
+  "fraudProofDoubleSpend",
+  "fraudProofDoubleSpendStep02",
+  "fraudProofDoubleSpendStep03",
+  "fraudProofDoubleSpendStep04",
+] as const;
+
 export type ProvedDoubleSpendFixture = {
   readonly emulator: Emulator;
   readonly realBlueprint: Blueprint;
@@ -1570,7 +1587,15 @@ export type ProvedDoubleSpendFixture = {
   readonly deploymentInfo: ReturnType<typeof buildRemovalDeploymentInfo>;
   readonly fraudulentBlockOutRef: string;
   readonly submitInitResult: Awaited<ReturnType<typeof submitInit>>;
+  readonly submitInitMeasurement: CompleteSignedTransactionMeasurement;
   readonly step04Result: Awaited<ReturnType<typeof submitStep04>>;
+  readonly step04Measurement: CompleteSignedTransactionMeasurement;
+  readonly doubleSpendStepReferenceScripts: Awaited<
+    ReturnType<typeof publishFraudProofChainReferenceScripts>
+  >;
+  readonly witnessReferenceScripts: Awaited<
+    ReturnType<typeof publishFaultProofWitnessReferenceScriptsV1>
+  >;
   readonly fraudProofUtxo: UTxO;
   readonly proverPaymentKeyHash: string;
 };
@@ -1733,6 +1758,24 @@ export const buildProvedDoubleSpendFixture = async ({
       lucid: proverLucid,
       contracts,
     });
+  // Owner ruling 2026-08-26: every script a fault-proof transaction executes
+  // is consumed from a published reference script, never inline-attached. The
+  // four double-spend step validators and the shared witness scripts are
+  // published from the prover wallet alongside the removal roster above.
+  const doubleSpendStepReferenceScripts =
+    await publishFraudProofChainReferenceScripts({
+      lucid: proverLucid,
+      steps: contracts.fraudProofContracts.doubleSpend.steps,
+      entryNames: DOUBLE_SPEND_STEP_REFERENCE_NAMES_V1,
+      familyLabel: "double-spend",
+    });
+  const witnessReferenceScripts =
+    await publishFaultProofWitnessReferenceScriptsV1({
+      lucid: proverLucid,
+      realBlueprint,
+      computationThreadMintingScript: contracts.computationThread.mintingScript,
+      fraudProofMintingScript: contracts.fraudProof.mintingScript,
+    });
   const headerStartTime =
     alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
     1;
@@ -1809,15 +1852,20 @@ export const buildProvedDoubleSpendFixture = async ({
   const fraudulentBlockOutRef =
     successors[0]?.continuedAnchorOutRef ?? setup.fraudulentBlockOutRef;
 
-  const submitInitResult = await submitInit({
-    lucid: proverLucid,
-    blueprint: realBlueprint,
-    deploymentInfo,
-    network,
-    signer: proverSigner,
-    fraudulentBlockOutRef,
-    awaitConfirmation: true,
-  });
+  const submitInitCapture = await captureEmulatorSubmission(emulator, () =>
+    submitInit({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudulentBlockOutRef,
+      witnessReferenceScripts,
+      awaitConfirmation: true,
+    }),
+  );
+  const submitInitResult = submitInitCapture.result;
+  const submitInitMeasurement = submitInitCapture.measurement;
 
   expect(submitInitResult.txHash).toHaveLength(64);
   expect(submitInitResult.fraudulentHeaderHash).toBe(headerHash);
@@ -1859,6 +1907,9 @@ export const buildProvedDoubleSpendFixture = async ({
     txInclusion: parseSubmitStep01TxInclusion(
       transactionInclusion.tx1.inclusion,
     ),
+    referenceScriptUtxo:
+      doubleSpendStepReferenceScripts["fraudProofDoubleSpend"]!.utxo,
+    witnessReferenceScripts,
     awaitConfirmation: true,
   });
 
@@ -1897,6 +1948,9 @@ export const buildProvedDoubleSpendFixture = async ({
     txInclusion: parseSubmitStep01TxInclusion(
       transactionInclusion.tx2.inclusion,
     ),
+    referenceScriptUtxo:
+      doubleSpendStepReferenceScripts["fraudProofDoubleSpendStep02"]!.utxo,
+    witnessReferenceScripts,
     awaitConfirmation: true,
   });
 
@@ -1942,6 +1996,8 @@ export const buildProvedDoubleSpendFixture = async ({
       transactionInclusion.tx1.inclusion,
     ).nativeTxCompactCbor,
     doubleSpentInputIndex: 1n,
+    referenceScriptUtxo:
+      doubleSpendStepReferenceScripts["fraudProofDoubleSpendStep03"]!.utxo,
     awaitConfirmation: true,
   });
 
@@ -1980,23 +2036,30 @@ export const buildProvedDoubleSpendFixture = async ({
     1n,
   );
 
-  const step04Result = await submitStep04({
-    lucid: proverLucid,
-    blueprint: realBlueprint,
-    deploymentInfo,
-    network,
-    signer: proverSigner,
-    threadOutRef: outRefLabel(fourthStepUtxo),
-    tx2SpendInputCbors: parseSpendInputCbors(
-      transactionInclusion.tx2SpendInputCbors,
-      "--tx2-inputs",
-    ),
-    nativeTxCompactCbor: parseSubmitStep01TxInclusion(
-      transactionInclusion.tx2.inclusion,
-    ).nativeTxCompactCbor,
-    doubleSpentInputIndex: 1n,
-    awaitConfirmation: true,
-  });
+  const step04Capture = await captureEmulatorSubmission(emulator, () =>
+    submitStep04({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(fourthStepUtxo),
+      tx2SpendInputCbors: parseSpendInputCbors(
+        transactionInclusion.tx2SpendInputCbors,
+        "--tx2-inputs",
+      ),
+      nativeTxCompactCbor: parseSubmitStep01TxInclusion(
+        transactionInclusion.tx2.inclusion,
+      ).nativeTxCompactCbor,
+      doubleSpentInputIndex: 1n,
+      referenceScriptUtxo:
+        doubleSpendStepReferenceScripts["fraudProofDoubleSpendStep04"]!.utxo,
+      witnessReferenceScripts,
+      awaitConfirmation: true,
+    }),
+  );
+  const step04Result = step04Capture.result;
+  const step04Measurement = step04Capture.measurement;
 
   expect(step04Result.txHash).toHaveLength(64);
   expect(step04Result.doubleSpentInputIndex).toBe(1);
@@ -2057,7 +2120,11 @@ export const buildProvedDoubleSpendFixture = async ({
     deploymentInfo,
     fraudulentBlockOutRef,
     submitInitResult,
+    submitInitMeasurement,
     step04Result,
+    step04Measurement,
+    doubleSpendStepReferenceScripts,
+    witnessReferenceScripts,
     fraudProofUtxo,
     proverPaymentKeyHash,
   };

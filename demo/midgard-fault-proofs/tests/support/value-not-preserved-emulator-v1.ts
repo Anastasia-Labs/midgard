@@ -112,6 +112,12 @@ import {
 } from "../../src/value-not-preserved/submit-value-not-preserved-step-02-v1.js";
 import { submitValueNotPreservedStep03 } from "../../src/value-not-preserved/submit-value-not-preserved-step-03-v1.js";
 import { submitValueNotPreservedStep04 } from "../../src/value-not-preserved/submit-value-not-preserved-step-04-v1.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../../src/witness-reference-scripts-v1.js";
+import { publishFaultProofWitnessReferenceScriptsV1 } from "./emulator/reference-scripts.js";
 import { countedTransactionsRoot } from "./submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -467,7 +473,23 @@ export const setupValueNotPreservedScenarioV1 = async ({
   readonly harness: ValueNotPreservedHarnessV1;
   readonly fixture: ValueNotPreservedFixtureV1;
 }) => {
-  const { emulator, funderLucid, contracts, catalogue, nonceUtxo } = harness;
+  const {
+    emulator,
+    funderLucid,
+    proverLucid,
+    realBlueprint,
+    contracts,
+    family,
+    catalogue,
+    nonceUtxo,
+  } = harness;
+  const witnessReferenceScripts =
+    await publishFaultProofWitnessReferenceScriptsV1({
+      lucid: proverLucid,
+      realBlueprint,
+      computationThreadMintingScript: family.computationThread.mintingScript,
+      fraudProofMintingScript: family.fraudProof.mintingScript,
+    });
   const headerStartTime =
     alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
     1;
@@ -509,6 +531,7 @@ export const setupValueNotPreservedScenarioV1 = async ({
     anchorHeaderHash: anchorSetup.headerHash,
     anchorBlockOutRef: anchorSetup.fraudulentBlockOutRef,
     anchorBlockUnit: anchorSetup.stateQueueBlockUnit,
+    witnessReferenceScripts,
   };
   return { header, anchorHeader, setup };
 };
@@ -731,7 +754,10 @@ export const runValueNotPreservedThreadV1 = async ({
 }: {
   readonly harness: ValueNotPreservedHarnessV1;
   readonly fixture: ValueNotPreservedFixtureV1;
-  readonly setup: { readonly fraudulentBlockOutRef: string };
+  readonly setup: {
+    readonly fraudulentBlockOutRef: string;
+    readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  };
   readonly refs: readonly [UTxO, UTxO, UTxO, UTxO];
   readonly claimedAsset: ClaimedAssetV1;
   readonly claimedDirection: ClaimedImbalanceDirectionV1;
@@ -756,6 +782,7 @@ export const runValueNotPreservedThreadV1 = async ({
       catalogue,
       signer: proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     }),
   );
   measurements["init"] = initCapture.measurement;
@@ -776,6 +803,7 @@ export const runValueNotPreservedThreadV1 = async ({
       claimedDirection,
       prevUtxosRoot: fixture.ledger.rootHex,
       referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     }),
   );
   measurements["step-01"] = step01Capture.measurement;
@@ -856,6 +884,7 @@ export const runValueNotPreservedThreadV1 = async ({
       signer: proverSigner,
       threadOutRef: step03.nextThreadOutRef,
       referenceScriptUtxo: refs[3],
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     }),
   );
   measurements["step-04"] = step04Capture.measurement;
@@ -938,6 +967,7 @@ export const submitRawValueNotPreservedBindV1 = async ({
   claimedDirection,
   prevUtxosRoot,
   referenceScriptUtxo,
+  witnessReferenceScripts,
 }: {
   readonly harness: ValueNotPreservedHarnessV1;
   readonly threadOutRef: string;
@@ -947,6 +977,7 @@ export const submitRawValueNotPreservedBindV1 = async ({
   readonly claimedDirection: ClaimedImbalanceDirectionV1;
   readonly prevUtxosRoot: string;
   readonly referenceScriptUtxo?: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
 }): Promise<string> => {
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
@@ -984,6 +1015,11 @@ export const submitRawValueNotPreservedBindV1 = async ({
     emulatorNetworkV1,
     phasMembershipScript,
   );
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasMembershipScript,
+    referenceUtxo: witnessReferenceScripts.phasMembershipWithdraw,
+    label: "raw value-not-preserved PHAS membership",
+  });
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const foldState: ValueNotPreservedStep02State = {
@@ -1059,6 +1095,7 @@ export const submitRawValueNotPreservedBindV1 = async ({
       hubOracleUtxo,
       stateQueueBlockUtxo,
       ...(referenceScriptUtxo === undefined ? [] : [referenceScriptUtxo]),
+      ...phasMembershipCarriage.referenceInputs,
     ])
     .withdraw(
       phasRewardAddress,
@@ -1078,12 +1115,12 @@ export const submitRawValueNotPreservedBindV1 = async ({
         [threadToken.unit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.WithdrawalValidator(phasMembershipScript);
-  const tx =
+    .addSignerKey(signer.paymentKeyHash);
+  const withStepScript =
     referenceScriptUtxo === undefined
       ? base.attach.SpendingValidator(contracts.steps[0].spendingScript)
       : base;
+  const tx = phasMembershipCarriage.attach(withStepScript);
   const unsigned = await tx.complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -1102,10 +1139,12 @@ export const submitRawValueNotPreservedFinalizeV1 = async ({
   harness,
   threadOutRef,
   referenceScriptUtxo,
+  witnessReferenceScripts,
 }: {
   readonly harness: ValueNotPreservedHarnessV1;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo?: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
 }): Promise<string> => {
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
@@ -1187,6 +1226,22 @@ export const submitRawValueNotPreservedFinalizeV1 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts.computationThreadMint,
+    label: "raw value-not-preserved computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts.fraudProofMint,
+    label: "raw value-not-preserved fraud-proof mint",
+  });
+  const referenceInputs = [
+    ...(referenceScriptUtxo === undefined ? [] : [referenceScriptUtxo]),
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
+
   const base = lucid
     .newTx()
     .collectFrom([feeInput])
@@ -1201,13 +1256,17 @@ export const submitRawValueNotPreservedFinalizeV1 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
-  const tx =
+    .addSignerKey(signer.paymentKeyHash);
+  const withReferences = base.readFrom(referenceInputs);
+  const withStepScript =
     referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[3].spendingScript)
-      : base.readFrom([referenceScriptUtxo]);
+      ? withReferences.attach.SpendingValidator(
+          contracts.steps[3].spendingScript,
+        )
+      : withReferences;
+  const tx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(withStepScript),
+  );
   const unsigned = await tx.complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

@@ -50,6 +50,10 @@ import {
 import { excludeUtxo } from "./spend-input-witness.js";
 import { selectFeeInput } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 const STEP_LABEL = minFeeStepLabelV1(1);
 const FIELD_COUNT = 9;
@@ -141,6 +145,7 @@ export const submitMinFeeStep02 = async ({
   witnessSet,
   fieldItemCbors,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   certificateUtxos = [],
   publishCarriages = false,
   unsafeSkipLocalViolationCheckForTest = false,
@@ -156,6 +161,8 @@ export const submitMinFeeStep02 = async ({
   readonly fieldItemCbors: MinFeeFieldItemCborsV1;
   /** Mandatory: min-fee validators are reference-script-only. */
   readonly referenceScriptUtxo: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   /** Existing §8.6 certificates, needed only when a field selects tier 3. */
   readonly certificateUtxos?: readonly UTxO[];
   /** Force publication of otherwise-inline fields to reduce redeemer size. */
@@ -238,10 +245,24 @@ export const submitMinFeeStep02 = async ({
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     stepIndex: 1,
   });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${STEP_LABEL} computation-thread mint`,
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: `${STEP_LABEL} fraud-proof mint`,
+  });
+  // The complete reference-input set, built before the field carriages derive
+  // any reference indices from it.
   const referenceInputs = uniqueUtxos([
     ...published,
     ...certificateUtxos,
     stepReference,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
   ]);
   const fieldCarriages = plans.map(
     (planned, fieldIndex): FieldCarriageV1 =>
@@ -345,7 +366,7 @@ export const submitMinFeeStep02 = async ({
       FraudProofTokenMintRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const tx = lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
@@ -360,9 +381,10 @@ export const submitMinFeeStep02 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(base),
+  );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (
     spendLayout === undefined ||

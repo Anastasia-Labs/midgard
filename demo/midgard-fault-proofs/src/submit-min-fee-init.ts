@@ -42,6 +42,11 @@ import {
 } from "./runtime.js";
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 type LucidDataSchema = Parameters<typeof Data.to>[1];
 
@@ -65,6 +70,7 @@ export const submitMinFeeInit = async ({
   signer,
   fraudulentBlockOutRef,
   fraudulentHeaderHash,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -80,6 +86,8 @@ export const submitMinFeeInit = async ({
   readonly signer: ResolvedProverSigner;
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMinFeeInitResult> => {
   if (category.scriptHash !== contracts.steps[0].spendingScriptHash) {
@@ -126,6 +134,23 @@ export const submitMinFeeInit = async ({
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
   const phasRewardAddress = phasMembershipRewardAddress(network, phasScript);
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${MIN_FEE_CATEGORY_LABEL} init computation-thread mint`,
+  });
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasScript,
+    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+    label: `${MIN_FEE_CATEGORY_LABEL} init PHAS membership`,
+  });
+  const referenceInputs = [
+    catalogueUtxo,
+    hubOracleUtxo,
+    fraudulentBlockUtxo,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...phasMembershipCarriage.referenceInputs,
+  ];
   const firstDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: null },
     FraudProofComputationThreadStepDatum,
@@ -185,9 +210,9 @@ export const submitMinFeeInit = async ({
   }) satisfies BuildTxWithRedeemer;
 
   signer.selectWallet(lucid);
-  const tx = lucid
+  const base = lucid
     .newTx()
-    .readFrom([catalogueUtxo, hubOracleUtxo, fraudulentBlockUtxo])
+    .readFrom(referenceInputs)
     .withdraw(
       phasRewardAddress,
       0n,
@@ -216,9 +241,10 @@ export const submitMinFeeInit = async ({
       { kind: "inline", value: firstDatum },
       { [threadUnit]: 1n },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.WithdrawalValidator(phasScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = phasMembershipCarriage.attach(
+    computationThreadMintCarriage.attach(base),
+  );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (firstOutputIndex === undefined) {
     throw minFeeSubmitError("init output index was not resolved.");

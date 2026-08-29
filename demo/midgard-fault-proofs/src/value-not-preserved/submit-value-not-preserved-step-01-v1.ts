@@ -58,6 +58,10 @@ import {
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { ValueNotPreservedContractsV1 } from "./contracts-v1.js";
 import {
   claimedAssetIsWellFormedV1,
@@ -107,6 +111,7 @@ export const submitValueNotPreservedStep01 = async ({
   claimedDirection,
   prevUtxosRoot,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -130,6 +135,8 @@ export const submitValueNotPreservedStep01 = async ({
   readonly prevUtxosRoot: string;
   /** The published step-01 reference script; inline-attached when absent. */
   readonly referenceScriptUtxo?: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValueNotPreservedStep01Result> => {
   const { threadUtxo, threadToken } =
@@ -192,6 +199,19 @@ export const submitValueNotPreservedStep01 = async ({
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const phasMembershipScript: Script = {
+    type: "PlutusV3",
+    script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
+  };
+  const phasRewardAddress = phasMembershipRewardAddress(
+    network,
+    phasMembershipScript,
+  );
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasMembershipScript,
+    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+    label: `${STEP_LABEL} PHAS membership`,
+  });
   const referenceInputs = [
     hubOracleUtxo,
     stateQueueBlockUtxo,
@@ -204,15 +224,8 @@ export const submitValueNotPreservedStep01 = async ({
             stepIndex: 0,
           }),
         ]),
+    ...phasMembershipCarriage.referenceInputs,
   ];
-  const phasMembershipScript: Script = {
-    type: "PlutusV3",
-    script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
-  };
-  const phasRewardAddress = phasMembershipRewardAddress(
-    network,
-    phasMembershipScript,
-  );
   const step02Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: foldState },
     ValueNotPreservedStep02Datum,
@@ -297,12 +310,12 @@ export const submitValueNotPreservedStep01 = async ({
       { kind: "inline", value: step02Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.WithdrawalValidator(phasMembershipScript);
-  const tx =
+    .addSignerKey(signer.paymentKeyHash);
+  const withStepScript =
     referenceScriptUtxo === undefined
       ? base.attach.SpendingValidator(contracts.steps[0].spendingScript)
       : base;
+  const tx = phasMembershipCarriage.attach(withStepScript);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {

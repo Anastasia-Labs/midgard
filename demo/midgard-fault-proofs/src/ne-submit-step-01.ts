@@ -31,6 +31,7 @@ import {
   type Script,
   scriptHashToCredential,
   toUnit,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -70,6 +71,11 @@ import {
   type SubmitStep01TxInclusion,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessSpendingValidatorCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 // The non-existent-input proof commits the bad transaction by the node's native
 // transaction root (the same inclusion path as double-spend), so the
@@ -140,6 +146,8 @@ export const neSubmitStep01 = async ({
   stateQueueBlockOutRef,
   txInclusion,
   publishedProofChunks,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -156,6 +164,10 @@ export const neSubmitStep01 = async ({
    * transaction (issue #545).
    */
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  /** The published step-01 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<NeSubmitStep01Result> => {
   requireNativeTxMatchesCompactCbor(txInclusion);
@@ -229,11 +241,6 @@ export const neSubmitStep01 = async ({
       chunks,
     }),
   );
-  const referenceInputs = [
-    hubOracleUtxo,
-    stateQueueBlockUtxo,
-    ...chunks.map((chunk) => chunk.utxo),
-  ];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -249,6 +256,29 @@ export const neSubmitStep01 = async ({
     network,
     chunkedVerifyScript,
   );
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: steps[0].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "non-existent-input step 01 validator",
+  });
+  const inclusionCarriage = carriedByChunks
+    ? witnessWithdrawalValidatorCarriageV1({
+        script: chunkedVerifyScript,
+        referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        label: "non-existent-input step 01 chunked verify",
+      })
+    : witnessWithdrawalValidatorCarriageV1({
+        script: phasMembershipScript,
+        referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        label: "non-existent-input step 01 PHAS membership",
+      });
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    ...chunks.map((chunk) => chunk.utxo),
+    ...stepScriptCarriage.referenceInputs,
+    ...inclusionCarriage.referenceInputs,
+  ];
   const resolvedChunkIndices = derivedChunkReferenceIndices({
     referenceInputs,
     chunks,
@@ -377,11 +407,8 @@ export const neSubmitStep01 = async ({
       { kind: "inline", value: step02Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(steps[0].spendingScript);
-  const completedTx = carriedByChunks
-    ? tx.attach.WithdrawalValidator(chunkedVerifyScript)
-    : tx.attach.WithdrawalValidator(phasMembershipScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = inclusionCarriage.attach(stepScriptCarriage.attach(tx));
 
   const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {

@@ -17,6 +17,11 @@ import {
 import { Effect } from "effect";
 
 import type { CrossBlockDuplicateEventContractsV1 } from "../../../src/cross-block-duplicate-event/index.js";
+import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../../../src/ne-submit-step-03.js";
+import { chunkedVerifyWithdrawalScript } from "../../../src/proof-chunk-carriage.js";
+import { getCompiledScript } from "../../../src/runtime.js";
+import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../../../src/submit-step-01.js";
+import { type FaultProofWitnessReferenceScriptsV1 } from "../../../src/witness-reference-scripts-v1.js";
 import { network } from "./blueprints.js";
 import {
   type CompleteSignedTransactionMeasurement,
@@ -269,6 +274,79 @@ export const publishFraudProofChainReferenceScripts = async ({
     };
   }
   return publications;
+};
+
+/**
+ * Publishes the shared witness scripts (owner ruling 2026-08-26: fault proofs
+ * and their supporting scripts deploy as reference scripts) once per emulator
+ * scenario: the computation-thread and fraud-proof minting policies plus the
+ * `phas.membership.withdraw` verifier always, and the chunked-verify /
+ * `pexcludes.exclusion.withdraw` verifiers when the scenario's transactions
+ * execute them. Submitters hash-check every returned UTxO against the exact
+ * script they would otherwise inline-attach.
+ */
+export const publishFaultProofWitnessReferenceScriptsV1 = async ({
+  lucid,
+  realBlueprint,
+  computationThreadMintingScript,
+  fraudProofMintingScript,
+  includeChunkedVerify = false,
+  includePexcludes = false,
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly realBlueprint: unknown;
+  readonly computationThreadMintingScript?: Script;
+  readonly fraudProofMintingScript?: Script;
+  readonly includeChunkedVerify?: boolean;
+  readonly includePexcludes?: boolean;
+}): Promise<FaultProofWitnessReferenceScriptsV1> => {
+  const phasMembershipScript: Script = {
+    type: "PlutusV3",
+    script: getCompiledScript(realBlueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
+  };
+  const roster: readonly (readonly [
+    keyof FaultProofWitnessReferenceScriptsV1,
+    Script | undefined,
+  ])[] = [
+    ["computationThreadMint", computationThreadMintingScript],
+    ["fraudProofMint", fraudProofMintingScript],
+    ["phasMembershipWithdraw", phasMembershipScript],
+    [
+      "chunkedVerifyWithdraw",
+      includeChunkedVerify
+        ? chunkedVerifyWithdrawalScript(realBlueprint)
+        : undefined,
+    ],
+    [
+      "pexcludesWithdraw",
+      includePexcludes
+        ? {
+            type: "PlutusV3",
+            script: getCompiledScript(
+              realBlueprint,
+              PEXCLUDES_EXCLUSION_WITHDRAW_TITLE,
+            ),
+          }
+        : undefined,
+    ],
+  ];
+  const published: Partial<
+    Record<keyof FaultProofWitnessReferenceScriptsV1, UTxO>
+  > = {};
+  // Sequential: each publication consumes wallet UTxOs the next one selects
+  // from.
+  for (const [name, script] of roster) {
+    if (script === undefined) {
+      continue;
+    }
+    const publication = await publishPlainReferenceScriptUtxo({
+      lucid,
+      script,
+      label: `fault-proof witness ${name}`,
+    });
+    published[name] = publication.utxo;
+  }
+  return published;
 };
 
 export const TRANSITION_TRACE_OVERSIZED_REFERENCE_SCRIPT_ENTRIES = new Set([

@@ -127,6 +127,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
         },
         signer: proverSigner,
         fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
       }),
     );
     proofFit["init"] = initCapture.measurement;
@@ -147,6 +148,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         txInclusion: fixture.txInclusion,
         referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
       }),
     );
     proofFit["step-01"] = step01Capture.measurement;
@@ -165,6 +167,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
         spendInputItemCbors: fixture.spendInputItemCbors,
         referenceInputItemCbors: fixture.referenceInputItemCbors,
         referenceScriptUtxo: step02Ref,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
       }),
     );
     proofFit["step-02"] = step02Capture.measurement;
@@ -348,6 +351,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
       },
       signer: proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const step01 = await submitInputSetUniquenessStep01({
       lucid: proverLucid,
@@ -360,6 +364,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
       stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
       txInclusion: fixture.txInclusion,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const step02 = await submitInputSetUniquenessStep02({
       lucid: proverLucid,
@@ -372,6 +377,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
       spendInputItemCbors: fixture.spendInputItemCbors,
       referenceInputItemCbors: fixture.referenceInputItemCbors,
       referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     for (const step of family.steps) {
       await expect(
@@ -441,6 +447,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
       },
       signer: proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const step01 = await submitInputSetUniquenessStep01({
       lucid: proverLucid,
@@ -453,6 +460,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
       stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
       txInclusion: fixture.txInclusion,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const step02 = await submitInputSetUniquenessStep02({
       lucid: proverLucid,
@@ -465,6 +473,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
       spendInputItemCbors: fixture.spendInputItemCbors,
       referenceInputItemCbors: fixture.referenceInputItemCbors,
       referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     for (const step of family.steps) {
       await expect(

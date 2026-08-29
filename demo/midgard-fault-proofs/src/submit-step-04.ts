@@ -65,6 +65,11 @@ import {
 } from "./submit-step-01.js";
 import { parseSpendInputCbors } from "./submit-step-03.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessSpendingValidatorCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 export type SubmitStep04CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -295,6 +300,8 @@ export const submitStep04 = async ({
   nativeTxCompactCbor,
   doubleSpentInputIndex,
   publishCarriage = false,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -314,6 +321,10 @@ export const submitStep04 = async ({
    * the preimage inline in this step's redeemer (#612).
    */
   readonly publishCarriage?: boolean;
+  /** The published step-04 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep04Result> => {
   const { doubleSpendCategory, contracts } =
@@ -389,7 +400,27 @@ export const submitStep04 = async ({
     publisherAddress: signer.address,
     label: "Double-spend step 04 tx2 spend-inputs",
   });
-  const referenceInputs = [...carriageUtxos];
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.doubleSpend.steps[3].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "double-spend step 04 validator",
+  });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "double-spend step 04 computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "double-spend step 04 fraud-proof mint",
+  });
+  const referenceInputs = [
+    ...carriageUtxos,
+    ...stepScriptCarriage.referenceInputs,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
   const walletUtxos = await lucid.wallet().getUtxos();
   const feeInput = selectFeeInput(
     carriageUtxos.reduce<readonly UTxO[]>(
@@ -444,7 +475,7 @@ export const submitStep04 = async ({
       );
     // Tier 1 references nothing, and `readFrom([])` is an error rather than a
     // no-op, so the branch is on whether §8 produced carriage at all.
-    return (
+    const chained = (
       referenceInputs.length === 0
         ? withInputs
         : withInputs.readFrom([...referenceInputs])
@@ -466,10 +497,10 @@ export const submitStep04 = async ({
         { kind: "inline", value: fraudProofDatum },
         fraudProofAssets,
       )
-      .addSignerKey(signer.paymentKeyHash)
-      .attach.SpendingValidator(contracts.doubleSpend.steps[3].spendingScript)
-      .attach.MintingPolicy(contracts.computationThread.mintingScript)
-      .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+      .addSignerKey(signer.paymentKeyHash);
+    return fraudProofMintCarriage.attach(
+      computationThreadMintCarriage.attach(stepScriptCarriage.attach(chained)),
+    );
   };
 
   const unsigned = await makeStep04Tx().complete({

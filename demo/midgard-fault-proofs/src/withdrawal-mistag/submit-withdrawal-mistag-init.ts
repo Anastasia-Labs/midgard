@@ -6,6 +6,7 @@ import {
   submitNativeScriptDecodingInit,
 } from "../native-script-decoding/submit-native-script-decoding-init.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
 import {
   type WithdrawalMistagCatalogueCategoryV1,
   type WithdrawalMistagContractsV1,
@@ -46,6 +47,11 @@ export const submitWithdrawalMistagInit = async ({
   readonly signer: ResolvedProverSigner;
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
+  /**
+   * Published witness reference scripts, forwarded to the generic init;
+   * each absent entry inline-attaches.
+   */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }) =>
   await submitNativeScriptDecodingInit({

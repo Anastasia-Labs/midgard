@@ -140,6 +140,11 @@ import {
   computationThreadOutputPredicate,
   outputWithDatumAndUnitPredicate,
 } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessSpendingValidatorCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 
 export const VALIDATION_DISPUTE_VALIDITY_BACKOFF_MS = 60_000;
 export const VALIDATION_DISPUTE_VALIDITY_LEEWAY_MS = 60_000;
@@ -2388,6 +2393,7 @@ export const submitValidationDisputeVerifySource = async ({
   network,
   signer,
   threadOutRef,
+  sourceReferenceScriptUtxo,
   validityRange = validationDisputeValidityRange(Date.now()),
   awaitConfirmation = true,
 }: {
@@ -2397,6 +2403,8 @@ export const submitValidationDisputeVerifySource = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
+  /** Published V1 validation-trace source script; inline-attached when absent. */
+  readonly sourceReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValidationDisputeVerifySourceResult> => {
@@ -2457,7 +2465,12 @@ export const submitValidationDisputeVerifySource = async ({
   let layout: ContinueLayout | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const tx = lucid
+  const sourceScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: sourceContract.spendingScript,
+    referenceUtxo: sourceReferenceScriptUtxo,
+    label: "validation-dispute source validator",
+  });
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom(
@@ -2480,8 +2493,12 @@ export const submitValidationDisputeVerifySource = async ({
     )
     .validFrom(range.validFrom)
     .validTo(range.validTo)
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(sourceContract.spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const withReferenceScript =
+    sourceScriptCarriage.referenceInputs.length === 0
+      ? base
+      : base.readFrom([...sourceScriptCarriage.referenceInputs]);
+  const tx = sourceScriptCarriage.attach(withReferenceScript);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (layout === undefined) {
     throw new Error(
@@ -2661,6 +2678,7 @@ export const submitValidationDisputeReveal = async ({
   threadOutRef,
   role,
   proof,
+  gameReferenceScriptUtxo,
   validityRange = validationDisputeValidityRange(Date.now()),
   awaitConfirmation = true,
 }: {
@@ -2672,6 +2690,8 @@ export const submitValidationDisputeReveal = async ({
   readonly threadOutRef: string;
   readonly role: "operator" | "challenger";
   readonly proof: MidgardValidationTraceProofV1;
+  /** Published V1 validation-trace game script; inline-attached when absent. */
+  readonly gameReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValidationDisputeRevealResult> => {
@@ -2741,7 +2761,12 @@ export const submitValidationDisputeReveal = async ({
   let layout: ContinueLayout | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const tx = lucid
+  const gameScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: disputeContract.spendingScript,
+    referenceUtxo: gameReferenceScriptUtxo,
+    label: "validation-dispute game validator",
+  });
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom(
@@ -2765,8 +2790,12 @@ export const submitValidationDisputeReveal = async ({
     )
     .validFrom(range.validFrom)
     .validTo(range.validTo)
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(disputeContract.spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const withReferenceScript =
+    gameScriptCarriage.referenceInputs.length === 0
+      ? base
+      : base.readFrom([...gameScriptCarriage.referenceInputs]);
+  const tx = gameScriptCarriage.attach(withReferenceScript);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (layout === undefined) {
     throw new Error(
@@ -2807,6 +2836,7 @@ export const submitValidationDisputeEnterTimeout = async ({
   network,
   signer,
   threadOutRef,
+  gameReferenceScriptUtxo,
   validityRange,
   now = Date.now(),
   awaitConfirmation = true,
@@ -2817,6 +2847,8 @@ export const submitValidationDisputeEnterTimeout = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
+  /** Published V1 validation-trace game script; inline-attached when absent. */
+  readonly gameReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly now?: number;
   readonly awaitConfirmation?: boolean;
@@ -2869,7 +2901,12 @@ export const submitValidationDisputeEnterTimeout = async ({
   let layout: ContinueLayout | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const tx = lucid
+  const gameScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: gameContract.spendingScript,
+    referenceUtxo: gameReferenceScriptUtxo,
+    label: "validation-dispute game validator",
+  });
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom(
@@ -2893,8 +2930,12 @@ export const submitValidationDisputeEnterTimeout = async ({
     )
     .validFrom(range.validFrom)
     .validTo(range.validTo)
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(gameContract.spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const withReferenceScript =
+    gameScriptCarriage.referenceInputs.length === 0
+      ? base
+      : base.readFrom([...gameScriptCarriage.referenceInputs]);
+  const tx = gameScriptCarriage.attach(withReferenceScript);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (layout === undefined) {
     throw new Error(
@@ -2936,6 +2977,8 @@ export const submitValidationDisputeTimeout = async ({
   network,
   signer,
   threadOutRef,
+  timeoutReferenceScriptUtxo,
+  witnessReferenceScripts,
   validityRange,
   now = Date.now(),
   awaitConfirmation = true,
@@ -2946,6 +2989,10 @@ export const submitValidationDisputeTimeout = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
+  /** Published V1 validation-trace timeout script; inline-attached when absent. */
+  readonly timeoutReferenceScriptUtxo?: UTxO;
+  /** Published shared minting witnesses; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly now?: number;
   readonly awaitConfirmation?: boolean;
@@ -3001,7 +3048,27 @@ export const submitValidationDisputeTimeout = async ({
   let computationThreadMintRedeemerIndex: bigint | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const tx = lucid
+  const timeoutScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: disputeContract.spendingScript,
+    referenceUtxo: timeoutReferenceScriptUtxo,
+    label: "validation-dispute timeout validator",
+  });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "validation-dispute timeout computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "validation-dispute timeout fraud-proof mint",
+  });
+  const referenceInputs = [
+    ...timeoutScriptCarriage.referenceInputs,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom(
@@ -3044,10 +3111,14 @@ export const submitValidationDisputeTimeout = async ({
       },
     )
     .validFrom(range.validFrom)
-    .validTo(range.validTo)
-    .attach.SpendingValidator(disputeContract.spendingScript)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+    .validTo(range.validTo);
+  const withReferenceScripts =
+    referenceInputs.length === 0 ? base : base.readFrom(referenceInputs);
+  const tx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(
+      timeoutScriptCarriage.attach(withReferenceScripts),
+    ),
+  );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (
     partialLayout === undefined ||
@@ -3161,6 +3232,7 @@ export const submitValidationDisputeEnterResolution = async ({
   network,
   signer,
   threadOutRef,
+  gameReferenceScriptUtxo,
   validityRange = validationDisputeValidityRange(Date.now()),
   awaitConfirmation = true,
 }: {
@@ -3170,6 +3242,8 @@ export const submitValidationDisputeEnterResolution = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
+  /** Published V1 validation-trace game script; inline-attached when absent. */
+  readonly gameReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValidationDisputeEnterResolutionResult> => {
@@ -3213,7 +3287,12 @@ export const submitValidationDisputeEnterResolution = async ({
   let layout: ContinueLayout | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const tx = lucid
+  const gameScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: gameContract.spendingScript,
+    referenceUtxo: gameReferenceScriptUtxo,
+    label: "validation-dispute game validator",
+  });
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom(
@@ -3237,8 +3316,12 @@ export const submitValidationDisputeEnterResolution = async ({
     )
     .validFrom(range.validFrom)
     .validTo(range.validTo)
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(gameContract.spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const withReferenceScript =
+    gameScriptCarriage.referenceInputs.length === 0
+      ? base
+      : base.readFrom([...gameScriptCarriage.referenceInputs]);
+  const tx = gameScriptCarriage.attach(withReferenceScript);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (layout === undefined) {
     throw new Error(
@@ -3332,6 +3415,7 @@ export const submitValidationDisputePrepareResolution = async ({
   preState,
   operatorPost,
   challengerPost,
+  boundaryReferenceScriptUtxo,
   validityRange = validationDisputeValidityRange(Date.now()),
   awaitConfirmation = true,
 }: {
@@ -3344,6 +3428,8 @@ export const submitValidationDisputePrepareResolution = async ({
   readonly preState: ValidationMachineStateV1;
   readonly operatorPost: ValidationTraceProofV1;
   readonly challengerPost: ValidationTraceProofV1;
+  /** Published V1 validation-trace boundary script; inline-attached when absent. */
+  readonly boundaryReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValidationDisputePrepareResolutionResult> => {
@@ -3414,7 +3500,12 @@ export const submitValidationDisputePrepareResolution = async ({
   let layout: ContinueLayout | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const tx = lucid
+  const boundaryScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: boundaryContract.spendingScript,
+    referenceUtxo: boundaryReferenceScriptUtxo,
+    label: "validation-dispute boundary validator",
+  });
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom(
@@ -3440,8 +3531,12 @@ export const submitValidationDisputePrepareResolution = async ({
     )
     .validFrom(range.validFrom)
     .validTo(range.validTo)
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(boundaryContract.spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const withReferenceScript =
+    boundaryScriptCarriage.referenceInputs.length === 0
+      ? base
+      : base.readFrom([...boundaryScriptCarriage.referenceInputs]);
+  const tx = boundaryScriptCarriage.attach(withReferenceScript);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (layout === undefined) {
     throw new Error(
@@ -4435,6 +4530,8 @@ type ValidationFinalizationTransactionParams = {
    * envelope.
    */
   readonly spendingScriptReferenceUtxo?: UTxO;
+  /** Published shared minting witnesses; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly spendLabel: string;
   readonly encodeSpendRedeemer: (
     layout: ValidationFinalizingSpendLayout,
@@ -4462,6 +4559,7 @@ const prepareValidationFinalizationTransaction = async ({
   token,
   spendingScript,
   spendingScriptReferenceUtxo,
+  witnessReferenceScripts,
   spendLabel,
   encodeSpendRedeemer,
   materialReferenceUtxos = [],
@@ -4480,23 +4578,36 @@ const prepareValidationFinalizationTransaction = async ({
   if (new Set(materialOutRefs).size !== materialOutRefs.length) {
     throw new Error(`${spendLabel} CEK material references must be unique`);
   }
-  let tx = lucid.newTx().collectFrom([feeInput]);
-  if (spendingScriptReferenceUtxo !== undefined) {
-    if (
-      spendingScriptReferenceUtxo.scriptRef == null ||
-      validatorToScriptHash(spendingScriptReferenceUtxo.scriptRef) !==
-        validatorToScriptHash(spendingScript.spendingScript)
-    ) {
-      throw new Error(
-        `${spendLabel} spending-script reference UTxO ${outRefLabel(spendingScriptReferenceUtxo)} does not carry the exact spending validator`,
-      );
-    }
-    tx = tx.readFrom([spendingScriptReferenceUtxo]);
+  const spendingScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: spendingScript.spendingScript,
+    referenceUtxo: spendingScriptReferenceUtxo,
+    label: `${spendLabel} spending validator`,
+  });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${spendLabel} computation-thread mint`,
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: `${spendLabel} fraud-proof mint`,
+  });
+  const referenceInputs = [
+    ...materialReferenceUtxos,
+    ...spendingScriptCarriage.referenceInputs,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
+  const referenceOutRefs = referenceInputs.map(outRefLabel);
+  if (new Set(referenceOutRefs).size !== referenceOutRefs.length) {
+    throw new Error(`${spendLabel} reference inputs must be unique`);
   }
-  if (materialReferenceUtxos.length > 0) {
-    tx = tx.readFrom([...materialReferenceUtxos]);
+  let withReferenceInputs = lucid.newTx().collectFrom([feeInput]);
+  if (referenceInputs.length > 0) {
+    withReferenceInputs = withReferenceInputs.readFrom(referenceInputs);
   }
-  tx = tx
+  const base = withReferenceInputs
     .collectFrom(
       [threadUtxo],
       makeValidationFinalizingSpendRedeemer({
@@ -4540,15 +4651,10 @@ const prepareValidationFinalizationTransaction = async ({
       },
     )
     .validFrom(validityRange.validFrom)
-    .validTo(validityRange.validTo)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
-  // The published reference script supplies the spending validator; the
-  // proof transaction must not embed the validator body inside the
-  // 16,384-byte L1 envelope.
-  if (spendingScriptReferenceUtxo === undefined) {
-    tx = tx.attach.SpendingValidator(spendingScript.spendingScript);
-  }
+    .validTo(validityRange.validTo);
+  const tx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(spendingScriptCarriage.attach(base)),
+  );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (
     partialLayout === undefined ||
@@ -4634,6 +4740,7 @@ export const submitValidationDisputePrepareSelected = async ({
   signer,
   threadOutRef,
   oneStepArgument,
+  referenceScriptUtxo,
   validityRange = validationDisputeValidityRange(Date.now()),
   awaitConfirmation = true,
 }: {
@@ -4644,6 +4751,8 @@ export const submitValidationDisputePrepareSelected = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly oneStepArgument: ValidationOneStepSubmissionArgumentV1;
+  /** Published current prepare-resolver script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValidationDisputePrepareSelectedResult> => {
@@ -4716,13 +4825,15 @@ export const submitValidationDisputePrepareSelected = async ({
   // ruling a). Option B removed the tier-1 preimage from this redeemer, but
   // the ~5.6 KiB applied validator body still must not ride inside the
   // 16,384-byte L1 envelope.
-  const prepareReferenceScriptUtxo = isPrepareCompleteCanonicalItem
-    ? await requireValidationCanonicalDecodePrepareReferenceScriptUtxo({
-        lucid,
-        deploymentInfo: parsedDeploymentInfo,
-        expectedScriptHash: prepareContract.spendingScriptHash,
-      })
-    : undefined;
+  const prepareReferenceScriptUtxo =
+    referenceScriptUtxo ??
+    (isPrepareCompleteCanonicalItem
+      ? await requireValidationCanonicalDecodePrepareReferenceScriptUtxo({
+          lucid,
+          deploymentInfo: parsedDeploymentInfo,
+          expectedScriptHash: prepareContract.spendingScriptHash,
+        })
+      : undefined);
   const outputDatum = Data.to(
     {
       fraud_prover: inputDatum.fraud_prover,
@@ -4737,7 +4848,12 @@ export const submitValidationDisputePrepareSelected = async ({
   let layout: ContinueLayout | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const tx = lucid
+  const prepareScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: prepareContract.spendingScript,
+    referenceUtxo: prepareReferenceScriptUtxo,
+    label: "validation-dispute prepare-resolver validator",
+  });
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom(
@@ -4764,14 +4880,12 @@ export const submitValidationDisputePrepareSelected = async ({
     .validFrom(range.validFrom)
     .validTo(range.validTo)
     .addSignerKey(signer.paymentKeyHash);
-  // The published reference script supplies the prepare-resolver validator;
-  // the step transaction must not embed the validator body inside the
-  // 16,384-byte L1 envelope.
-  const readiedTx =
-    prepareReferenceScriptUtxo === undefined
-      ? tx.attach.SpendingValidator(prepareContract.spendingScript)
-      : tx.readFrom([prepareReferenceScriptUtxo]);
-  const unsigned = await readiedTx.complete({ localUPLCEval: true });
+  const withReferenceScript =
+    prepareScriptCarriage.referenceInputs.length === 0
+      ? base
+      : base.readFrom([...prepareScriptCarriage.referenceInputs]);
+  const tx = prepareScriptCarriage.attach(withReferenceScript);
+  const unsigned = await tx.complete({ localUPLCEval: true });
   if (layout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve validation semantic preparation layout",
@@ -4801,6 +4915,23 @@ export type ValidationCekProgramMaterialReferenceOutRefsV1 = {
   readonly singlePublication?: string;
   /** Exact entry datums in strict material-root order. */
   readonly minimumMultiOutput?: readonly string[];
+};
+
+/**
+ * Published spending-validator references for the multi-transaction semantic
+ * routes. Keys mirror the deployed validation-dispute stage names; omitted
+ * entries preserve the inline fallback.
+ */
+export type ValidationDisputeStageReferenceScriptUtxosV1 = {
+  readonly scriptSourcesEnvelope?: UTxO;
+  readonly scriptSourcesTraversalNormalizer?: UTxO;
+  readonly scriptSourcesOuterNormalizer?: UTxO;
+  readonly scriptSourcesFoldMapExecutor?: UTxO;
+  readonly scriptSourcesFinalizeFrameExecutor?: UTxO;
+  readonly scriptSourcesSettlement?: UTxO;
+  readonly canonicalDecodeItemSource?: UTxO;
+  readonly canonicalDecodeItemProof?: UTxO;
+  readonly canonicalDecodeItemSettlement?: UTxO;
 };
 
 export type ValidationCekRejectedLocalRouteAttemptV1 = {
@@ -5831,6 +5962,8 @@ export const submitValidationDisputeSemanticResolution = async ({
   proofItemDelivery,
   carriageMaterial,
   cekProgramMaterialReferenceOutRefs,
+  referenceScriptUtxo,
+  stageReferenceScriptUtxos,
   validityRange,
   awaitConfirmation = true,
 }: {
@@ -5860,6 +5993,10 @@ export const submitValidationDisputeSemanticResolution = async ({
   readonly proofItemDelivery?: ValidationProofItemDeliveryV1;
   /** Required when the staged carriage is tier 2 or tier 3 (#600). */
   readonly carriageMaterial?: ValidationFieldCarriageMaterialV1;
+  /** Published current semantic-resolver script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Published scripts for any multi-stage semantic route selected. */
+  readonly stageReferenceScriptUtxos?: ValidationDisputeStageReferenceScriptUtxosV1;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValidationDisputeSemanticResolutionResult> => {
@@ -5921,6 +6058,7 @@ export const submitValidationDisputeSemanticResolution = async ({
   // published reference script instead of attaching the validator. Resolved
   // up front so a missing deployment entry fails fast.
   const cekSemanticReferenceScriptUtxo =
+    referenceScriptUtxo === undefined &&
     resolverIndex === 11 &&
     validationCekSemanticReferenceScriptDeploymentEntryV1(
       staged.semanticResolverIndex,
@@ -5948,6 +6086,7 @@ export const submitValidationDisputeSemanticResolution = async ({
         )
       : undefined;
   if (
+    referenceScriptUtxo === undefined &&
     valueAndMintSemanticReferenceEntryName !== undefined &&
     parsedDeploymentInfo[valueAndMintSemanticReferenceEntryName] ===
       undefined &&
@@ -5961,6 +6100,7 @@ export const submitValidationDisputeSemanticResolution = async ({
     );
   }
   const valueAndMintSemanticReferenceScriptUtxo =
+    referenceScriptUtxo === undefined &&
     valueAndMintSemanticReferenceEntryName !== undefined &&
     parsedDeploymentInfo[valueAndMintSemanticReferenceEntryName] !== undefined
       ? await requireValidationValueAndMintSemanticReferenceScriptUtxo({
@@ -5973,7 +6113,9 @@ export const submitValidationDisputeSemanticResolution = async ({
   // At most one of the two can be set: the two rosters are keyed by disjoint
   // resolver indices (CEK 11, ValueAndMint 12).
   const semanticValidatorReferenceScriptUtxo =
-    cekSemanticReferenceScriptUtxo ?? valueAndMintSemanticReferenceScriptUtxo;
+    referenceScriptUtxo ??
+    cekSemanticReferenceScriptUtxo ??
+    valueAndMintSemanticReferenceScriptUtxo;
   const isCekExecutionSelection =
     resolverIndex === 11 && staged.semanticResolverIndex === 1;
   if (
@@ -6058,11 +6200,12 @@ export const submitValidationDisputeSemanticResolution = async ({
   // needs. Resolve it before publishing anything so a missing deployment
   // entry fails fast.
   const semanticReferenceScriptUtxo = isCompleteCanonicalItem
-    ? await requireValidationItemSemanticReferenceScriptUtxo({
+    ? (referenceScriptUtxo ??
+      (await requireValidationItemSemanticReferenceScriptUtxo({
         lucid,
         deploymentInfo: parsedDeploymentInfo,
         expectedScriptHash: semanticContract.spendingScriptHash,
-      })
+      })))
     : undefined;
   // The observe stage — the §8.8 door — must source its validator from the
   // published reference script the same way: embedding the applied observe
@@ -6296,6 +6439,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       outputContract,
       stageOutputDatum,
       label,
+      scriptReference,
       awaitStage,
       encode,
     }: {
@@ -6304,6 +6448,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       readonly outputContract: SplitStageContract;
       readonly stageOutputDatum: string;
       readonly label: string;
+      readonly scriptReference?: UTxO;
       readonly awaitStage: boolean;
       readonly encode: (layout: {
         readonly inputIndex: bigint;
@@ -6323,7 +6468,12 @@ export const submitValidationDisputeSemanticResolution = async ({
               range,
               currentLedgerTime,
             });
-      const stageTx = lucid
+      const scriptCarriage = witnessSpendingValidatorCarriageV1({
+        script: inputContract.spendingScript,
+        referenceUtxo: scriptReference,
+        label: `${label} spending validator`,
+      });
+      const base = lucid
         .newTx()
         .collectFrom([feeInput])
         .collectFrom(
@@ -6347,8 +6497,12 @@ export const submitValidationDisputeSemanticResolution = async ({
         )
         .validFrom(stageRange.validFrom)
         .validTo(stageRange.validTo)
-        .addSignerKey(signer.paymentKeyHash)
-        .attach.SpendingValidator(inputContract.spendingScript);
+        .addSignerKey(signer.paymentKeyHash);
+      const withReferenceScript =
+        scriptCarriage.referenceInputs.length === 0
+          ? base
+          : base.readFrom([...scriptCarriage.referenceInputs]);
+      const stageTx = scriptCarriage.attach(withReferenceScript);
       let unsigned: Awaited<ReturnType<typeof stageTx.complete>>;
       try {
         unsigned = await stageTx.complete({ localUPLCEval: true });
@@ -6391,6 +6545,8 @@ export const submitValidationDisputeSemanticResolution = async ({
       outputContract: stages.traversalNormalizer,
       stageOutputDatum: route.traversalDatum,
       label: "Validation ScriptSources redeemer envelope binding",
+      scriptReference:
+        referenceScriptUtxo ?? stageReferenceScriptUtxos?.scriptSourcesEnvelope,
       awaitStage: true,
       encode: ({ inputIndex, outputIndex }) =>
         encodeScriptSourcesStageOneSpendRedeemerV1({
@@ -6409,6 +6565,8 @@ export const submitValidationDisputeSemanticResolution = async ({
       outputContract: stages.outerNormalizer,
       stageOutputDatum: route.outerDatum,
       label: "Validation ScriptSources redeemer traversal normalization",
+      scriptReference:
+        stageReferenceScriptUtxos?.scriptSourcesTraversalNormalizer,
       awaitStage: true,
       encode: ({ inputIndex, outputIndex }) =>
         encodeScriptSourcesStageOneSpendRedeemerV1({
@@ -6429,6 +6587,7 @@ export const submitValidationDisputeSemanticResolution = async ({
           : stages.finalizeFrameExecutor,
       stageOutputDatum: route.executorDatum,
       label: "Validation ScriptSources redeemer outer normalization",
+      scriptReference: stageReferenceScriptUtxos?.scriptSourcesOuterNormalizer,
       awaitStage: true,
       encode: ({ inputIndex, outputIndex }) =>
         encodeScriptSourcesStageOneSpendRedeemerV1({
@@ -6449,6 +6608,10 @@ export const submitValidationDisputeSemanticResolution = async ({
         route.family === 0
           ? "Validation ScriptSources FoldMap execution"
           : "Validation ScriptSources FinalizeFrame execution",
+      scriptReference:
+        route.family === 0
+          ? stageReferenceScriptUtxos?.scriptSourcesFoldMapExecutor
+          : stageReferenceScriptUtxos?.scriptSourcesFinalizeFrameExecutor,
       awaitStage: true,
       encode: ({ inputIndex, outputIndex }) =>
         encodeScriptSourcesStageOneSpendRedeemerV1({
@@ -6464,6 +6627,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       outputContract: contracts.validationTraceDispute.award,
       stageOutputDatum: outputDatum,
       label: "Validation ScriptSources redeemer execution settlement",
+      scriptReference: stageReferenceScriptUtxos?.scriptSourcesSettlement,
       awaitStage: awaitConfirmation,
       encode: ({ inputIndex, outputIndex }) =>
         encodeScriptSourcesStageOneSpendRedeemerV1({
@@ -6591,6 +6755,16 @@ export const submitValidationDisputeSemanticResolution = async ({
       let stageLayout: ContinueLayout | undefined;
       signer.selectWallet(lucid);
       const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+      const scriptCarriage = witnessSpendingValidatorCarriageV1({
+        script: inputContract.spendingScript,
+        referenceUtxo: scriptReference,
+        label: `${label} spending validator`,
+      });
+      const referenceInputs = [
+        ...(proofReference === undefined ? [] : [proofReference]),
+        ...scriptCarriage.referenceInputs,
+        ...(carriageReferences ?? []),
+      ];
       let stageTx = lucid
         .newTx()
         .collectFrom([feeInput])
@@ -6609,14 +6783,8 @@ export const submitValidationDisputeSemanticResolution = async ({
             },
           }),
         );
-      if (proofReference !== undefined) {
-        stageTx = stageTx.readFrom([proofReference]);
-      }
-      if (scriptReference !== undefined) {
-        stageTx = stageTx.readFrom([scriptReference]);
-      }
-      if (carriageReferences !== undefined && carriageReferences.length > 0) {
-        stageTx = stageTx.readFrom([...carriageReferences]);
+      if (referenceInputs.length > 0) {
+        stageTx = stageTx.readFrom(referenceInputs);
       }
       const currentLedgerTime = lucid.slotToUnixTime(lucid.currentSlot());
       const stageRange =
@@ -6637,14 +6805,7 @@ export const submitValidationDisputeSemanticResolution = async ({
         .validFrom(stageRange.validFrom)
         .validTo(stageRange.validTo)
         .addSignerKey(signer.paymentKeyHash);
-      // The published reference script supplies the spending validator; the
-      // proof transaction must not embed the validator body inside the
-      // 16,384-byte L1 envelope.
-      if (scriptReference === undefined) {
-        stageTx = stageTx.attach.SpendingValidator(
-          inputContract.spendingScript,
-        );
-      }
+      stageTx = scriptCarriage.attach(stageTx);
       let unsigned: Awaited<ReturnType<typeof stageTx.complete>>;
       try {
         unsigned = await stageTx.complete({ localUPLCEval: true });
@@ -6776,6 +6937,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       outputContract: stages.observe,
       stageOutputDatum: preparedDatum,
       label: "Validation canonical item source binding",
+      scriptReference: stageReferenceScriptUtxos?.canonicalDecodeItemSource,
       awaitStage: true,
       encode: ({ inputIndex, outputIndex }) =>
         Data.to(new Constr(1, [new Constr(0, [inputIndex, outputIndex])])),
@@ -6860,6 +7022,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       outputContract: stages.settlement,
       stageOutputDatum: verifiedDatum,
       label: "Validation canonical item proof verification",
+      scriptReference: stageReferenceScriptUtxos?.canonicalDecodeItemProof,
       awaitStage: true,
       encode: ({ inputIndex, outputIndex }) =>
         Data.to(new Constr(1, [new Constr(0, [inputIndex, outputIndex])])),
@@ -6870,6 +7033,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       outputContract: contracts.validationTraceDispute.award,
       stageOutputDatum: outputDatum,
       label: "Validation canonical item successor settlement",
+      scriptReference: stageReferenceScriptUtxos?.canonicalDecodeItemSettlement,
       awaitStage: awaitConfirmation,
       encode: ({ inputIndex, outputIndex }) =>
         Data.to(new Constr(1, [new Constr(0, [inputIndex, outputIndex])])),
@@ -6939,6 +7103,16 @@ export const submitValidationDisputeSemanticResolution = async ({
     let layout: SemanticResolutionLayout | undefined;
     signer.selectWallet(lucid);
     const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+    const semanticScriptCarriage = witnessSpendingValidatorCarriageV1({
+      script: semanticContract.spendingScript,
+      referenceUtxo: semanticValidatorReferenceScriptUtxo,
+      label: "validation-dispute semantic-resolver validator",
+    });
+    const referenceInputs = [
+      ...(proofItemReferenceUtxo === undefined ? [] : [proofItemReferenceUtxo]),
+      ...materialReferenceUtxos,
+      ...semanticScriptCarriage.referenceInputs,
+    ];
     let tx = lucid
       .newTx()
       .collectFrom([feeInput])
@@ -6961,11 +7135,8 @@ export const submitValidationDisputeSemanticResolution = async ({
           },
         }),
       );
-    if (proofItemReferenceUtxo !== undefined) {
-      tx = tx.readFrom([proofItemReferenceUtxo]);
-    }
-    if (materialReferenceUtxos.length > 0) {
-      tx = tx.readFrom([...materialReferenceUtxos]);
+    if (referenceInputs.length > 0) {
+      tx = tx.readFrom(referenceInputs);
     }
     tx = tx.pay
       .ToContract(
@@ -6976,13 +7147,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       .validFrom(range.validFrom)
       .validTo(range.validTo)
       .addSignerKey(signer.paymentKeyHash);
-    // The published reference script supplies the oversized CEK (#617 R5) and
-    // ValueAndMint (#634) semantic validators; every other semantic validator
-    // rides inline.
-    const readiedTx =
-      semanticValidatorReferenceScriptUtxo === undefined
-        ? tx.attach.SpendingValidator(semanticContract.spendingScript)
-        : tx.readFrom([semanticValidatorReferenceScriptUtxo]);
+    const readiedTx = semanticScriptCarriage.attach(tx);
     const unsigned = await readiedTx.complete({ localUPLCEval: true });
     if (layout === undefined) {
       throw new Error(
@@ -7245,6 +7410,8 @@ export const submitValidationDisputeAward = async ({
   network,
   signer,
   threadOutRef,
+  awardReferenceScriptUtxo,
+  witnessReferenceScripts,
   validityRange = validationDisputeValidityRange(Date.now()),
   awaitConfirmation = true,
 }: {
@@ -7254,6 +7421,10 @@ export const submitValidationDisputeAward = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
+  /** Published V1 validation-trace award script; inline-attached when absent. */
+  readonly awardReferenceScriptUtxo?: UTxO;
+  /** Published shared minting witnesses; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValidationDisputeAwardResult> => {
@@ -7296,6 +7467,8 @@ export const submitValidationDisputeAward = async ({
     threadOutRef,
     token,
     spendingScript: awardContract,
+    spendingScriptReferenceUtxo: awardReferenceScriptUtxo,
+    witnessReferenceScripts,
     spendLabel: "Validation-dispute award",
     encodeSpendRedeemer: (layout) =>
       Data.to(

@@ -100,6 +100,7 @@ describe("mint-authorization direction-B emulator lifecycle", () => {
       },
       signer: proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const step01 = await submitMintAuthorizationStep01({
       lucid: proverLucid,
@@ -112,6 +113,7 @@ describe("mint-authorization direction-B emulator lifecycle", () => {
       stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
       txInclusion: block.txInclusion,
       referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const step02 = await submitMintAuthorizationStep02({
       lucid: proverLucid,
@@ -150,6 +152,7 @@ describe("mint-authorization direction-B emulator lifecycle", () => {
       signer: proverSigner,
       threadOutRef: step03.nextThreadOutRef,
       referenceScriptUtxo: step05Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     expect(step05.verdictState.direction).toBe(DIRECTION_SCRIPT_UNSATISFIED);
 

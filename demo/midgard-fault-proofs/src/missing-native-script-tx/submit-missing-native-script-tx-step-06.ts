@@ -35,6 +35,10 @@ import {
 import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
 import {
   missingNativeScriptTxStepLabelV1,
@@ -71,6 +75,7 @@ export const submitMissingNativeScriptTxStep06 = async ({
   scriptTxWitsItems,
   publishCarriage = false,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -84,6 +89,8 @@ export const submitMissingNativeScriptTxStep06 = async ({
   readonly scriptTxWitsItems: readonly Uint8Array[];
   readonly publishCarriage?: boolean;
   readonly referenceScriptUtxo: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingNativeScriptTxStep06Result> => {
   const { threadUtxo, threadToken } =
@@ -140,7 +147,24 @@ export const submitMissingNativeScriptTxStep06 = async ({
     expectedScriptHash: contracts.steps[5].spendingScriptHash,
     stepIndex: 5,
   });
-  const referenceInputs = [...carriageUtxos, stepReference];
+  const computationThreadBurnCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${STEP_LABEL} computation-thread burn`,
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: `${STEP_LABEL} fraud-proof mint`,
+  });
+  // The complete final reference-input set MUST stand before the field
+  // opening derives its §8.7 indices (bug fc635c8f).
+  const referenceInputs = [
+    ...carriageUtxos,
+    stepReference,
+    ...computationThreadBurnCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
   const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
@@ -252,10 +276,11 @@ export const submitMissingNativeScriptTxStep06 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
-  const unsigned = await paid.complete({
+    .addSignerKey(signer.paymentKeyHash);
+  const completed = fraudProofMintCarriage.attach(
+    computationThreadBurnCarriage.attach(paid),
+  );
+  const unsigned = await completed.complete({
     localUPLCEval: true,
     ...(carriageUtxos.length === 0
       ? {}

@@ -130,6 +130,7 @@ const driveToStep01 = async () => {
     },
     signer: harness.proverSigner,
     fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+    witnessReferenceScripts: setup.witnessReferenceScripts,
   });
   const step01 = await submitInputSetUniquenessStep01({
     lucid: harness.proverLucid,
@@ -142,16 +143,30 @@ const driveToStep01 = async () => {
     stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
     txInclusion: fixture.txInclusion,
     referenceScriptUtxo: step01Ref,
+    witnessReferenceScripts: setup.witnessReferenceScripts,
   });
   expect(step01.stepState).toStrictEqual({ bad_tx_id: fixture.nativeTxId });
 
-  return { harness, fixture, claim, step01, step02Ref };
+  return {
+    harness,
+    fixture,
+    claim,
+    step01,
+    step02Ref,
+    witnessReferenceScripts: setup.witnessReferenceScripts,
+  };
 };
 
 describe("input-set-uniqueness emulator tier-2 carriage", () => {
   it("convicts a duplicate buried in a 14,603-byte spend-input field through a size-forced RawUtxo publication", async () => {
-    const { harness, fixture, claim, step01, step02Ref } =
-      await driveToStep01();
+    const {
+      harness,
+      fixture,
+      claim,
+      step01,
+      step02Ref,
+      witnessReferenceScripts,
+    } = await driveToStep01();
 
     const step02 = await submitInputSetUniquenessStep02({
       lucid: harness.proverLucid,
@@ -164,6 +179,7 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
       spendInputItemCbors: fixture.spendInputItemCbors,
       referenceInputItemCbors: fixture.referenceInputItemCbors,
       referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts,
     });
     expect(step02.badTxId).toBe(fixture.nativeTxId);
 
@@ -196,8 +212,14 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
   });
 
   it("refuses a tampered predeployed preimage at the door's field_commitment re-hash, then convicts through the honest publication", async () => {
-    const { harness, fixture, claim, step01, step02Ref } =
-      await driveToStep01();
+    const {
+      harness,
+      fixture,
+      claim,
+      step01,
+      step02Ref,
+      witnessReferenceScripts,
+    } = await driveToStep01();
 
     // Publish a byte-flipped twin of the honest preimage at the prover's own
     // address — same length, same shape, wrong content.
@@ -237,6 +259,7 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
         spendInputItemCbors: fixture.spendInputItemCbors,
         referenceInputItemCbors: fixture.referenceInputItemCbors,
         referenceScriptUtxo: step02Ref,
+        witnessReferenceScripts,
         unsafeSpendFieldRawUtxoForTest: tamperedUtxo,
       }),
     );
@@ -255,6 +278,7 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
       spendInputItemCbors: fixture.spendInputItemCbors,
       referenceInputItemCbors: fixture.referenceInputItemCbors,
       referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts,
     });
     expect(step02.badTxId).toBe(fixture.nativeTxId);
   });

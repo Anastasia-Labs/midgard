@@ -62,6 +62,11 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessSpendingValidatorCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 export type SubmitZeroInputStep02CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -277,6 +282,8 @@ export const submitZeroInputStep02 = async ({
   signer,
   threadOutRef,
   nativeTxCompactCbor,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -287,6 +294,10 @@ export const submitZeroInputStep02 = async ({
   readonly threadOutRef: string;
   /** The disputed transaction's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
+  /** The published step-02 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitZeroInputStep02Result> => {
   const { zeroInputCategory, contracts } =
@@ -342,8 +353,29 @@ export const submitZeroInputStep02 = async ({
       `Zero-input step 02 opens field 0 to ${planned.itemCount.toString()} items, so the challenged transaction does spend inputs.`,
     );
   }
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.zeroInput.steps[1].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "zero-input step 02 validator",
+  });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "zero-input step 02 computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "zero-input step 02 fraud-proof mint",
+  });
+  const referenceInputs = [
+    ...stepScriptCarriage.referenceInputs,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
   const spendInputsOpening = faultProofFieldOpeningV1({
     planned,
+    referenceInputs,
     label: "Zero-input step 02 spend-inputs",
   });
 
@@ -364,7 +396,7 @@ export const submitZeroInputStep02 = async ({
   let spendLayout: ZeroInputStep02SpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
 
-  const tx = lucid
+  const withInputs = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom(
@@ -404,10 +436,16 @@ export const submitZeroInputStep02 = async ({
       { kind: "inline", value: fraudProofDatum },
       fraudProofAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.zeroInput.steps[1].spendingScript)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  // `readFrom([])` is an error rather than a no-op, so the branch is on
+  // whether any witness published a reference script at all.
+  const chained =
+    referenceInputs.length === 0
+      ? withInputs
+      : withInputs.readFrom(referenceInputs);
+  const tx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(stepScriptCarriage.attach(chained)),
+  );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (

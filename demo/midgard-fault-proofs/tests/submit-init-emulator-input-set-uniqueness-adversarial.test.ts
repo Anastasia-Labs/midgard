@@ -37,6 +37,7 @@ import {
   submitInputSetUniquenessStep01,
   submitInputSetUniquenessStep02,
 } from "../src/input-set-uniqueness/index.js";
+import type { FaultProofWitnessReferenceScriptsV1 } from "../src/witness-reference-scripts-v1.js";
 import {
   buildInputSetUniquenessFixtureV1,
   expectOnchainRefusalV1,
@@ -55,7 +56,10 @@ import { network } from "./support/submit-init-emulator-shared.js";
 const bindHonestly = async (
   harness: InputSetUniquenessHarnessV1,
   fixture: InputSetUniquenessFixtureV1,
-  setup: { readonly fraudulentBlockOutRef: string },
+  setup: {
+    readonly fraudulentBlockOutRef: string;
+    readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  },
   step01Ref: UTxO,
 ) => {
   const initResult = await submitInputSetUniquenessInit({
@@ -72,6 +76,7 @@ const bindHonestly = async (
     },
     signer: harness.proverSigner,
     fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+    witnessReferenceScripts: setup.witnessReferenceScripts,
   });
   const step01 = await submitInputSetUniquenessStep01({
     lucid: harness.proverLucid,
@@ -84,6 +89,7 @@ const bindHonestly = async (
     stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
     txInclusion: fixture.txInclusion,
     referenceScriptUtxo: step01Ref,
+    witnessReferenceScripts: setup.witnessReferenceScripts,
   });
   return { initResult, step01 };
 };
@@ -139,6 +145,7 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
       spendInputItemCbors: fixture.spendInputItemCbors,
       referenceInputItemCbors: fixture.referenceInputItemCbors,
       referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     } as const;
     await expect(
       submitInputSetUniquenessStep02({
@@ -181,8 +188,16 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
       MIDGARD_FIELD_INDEX_V1.referenceInputs,
       fixture.referenceInputItemCbors,
     );
+    const finalizationReferenceInputs = [
+      step02Ref,
+      ...[
+        setup.witnessReferenceScripts.computationThreadMint,
+        setup.witnessReferenceScripts.fraudProofMint,
+      ].filter((utxo): utxo is UTxO => utxo !== undefined),
+    ];
     const spendOpening = faultProofFieldOpeningV1({
       planned: plannedSpend,
+      referenceInputs: finalizationReferenceInputs,
       label: "adversarial spend-inputs opening",
     });
 
@@ -193,6 +208,7 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
         harness,
         threadOutRef,
         referenceScriptUtxo: step02Ref,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
         buildArgs: (layout) => ({
           DuplicateSpendInputs: {
             input_index: layout.inputIndex,
@@ -213,6 +229,7 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
         harness,
         threadOutRef,
         referenceScriptUtxo: step02Ref,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
         buildArgs: (layout) => ({
           DuplicateSpendInputs: {
             input_index: layout.inputIndex,
@@ -233,6 +250,7 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
         harness,
         threadOutRef,
         referenceScriptUtxo: step02Ref,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
         buildArgs: (layout) => ({
           DuplicateSpendInputs: {
             input_index: layout.inputIndex,
@@ -253,6 +271,7 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
         harness,
         threadOutRef,
         referenceScriptUtxo: step02Ref,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
         buildArgs: (layout) => ({
           SpendReferenceOverlap: {
             input_index: layout.inputIndex,
@@ -263,10 +282,12 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
             native_tx_compact_cbor: plannedSpend.nativeTxCompactCbor,
             spend_inputs_carriage: faultProofFieldCarriageV1({
               planned: plannedSpend,
+              referenceInputs: finalizationReferenceInputs,
               label: "adversarial spend-inputs carriage",
             }),
             reference_inputs_carriage: faultProofFieldCarriageV1({
               planned: plannedReference,
+              referenceInputs: finalizationReferenceInputs,
               label: "adversarial reference-inputs carriage",
             }),
           },
@@ -317,6 +338,7 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
       },
       signer: harness.proverSigner,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
 
     // The honest submitter refuses locally,
@@ -332,6 +354,7 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         txInclusion: fixture.txInclusion,
         referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/validity code/u);
 
@@ -344,6 +367,7 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
         txInclusion: fixture.txInclusion,
         referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
       }),
     );
 

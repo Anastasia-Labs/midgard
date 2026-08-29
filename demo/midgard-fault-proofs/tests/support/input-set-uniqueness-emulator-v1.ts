@@ -72,6 +72,12 @@ import {
   type SubmitStep01TxInclusion,
 } from "../../src/submit-step-01.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "../../src/witness-reference-scripts-v1.js";
+import { publishFaultProofWitnessReferenceScriptsV1 } from "./emulator/reference-scripts.js";
 import { countedTransactionsRoot } from "./submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -256,7 +262,23 @@ export const setupInputSetUniquenessScenarioV1 = async ({
   readonly harness: InputSetUniquenessHarnessV1;
   readonly fixture: InputSetUniquenessFixtureV1;
 }) => {
-  const { emulator, funderLucid, contracts, catalogue, nonceUtxo } = harness;
+  const {
+    emulator,
+    funderLucid,
+    proverLucid,
+    realBlueprint,
+    contracts,
+    family,
+    catalogue,
+    nonceUtxo,
+  } = harness;
+  const witnessReferenceScripts =
+    await publishFaultProofWitnessReferenceScriptsV1({
+      lucid: proverLucid,
+      realBlueprint,
+      computationThreadMintingScript: family.computationThread.mintingScript,
+      fraudProofMintingScript: family.fraudProof.mintingScript,
+    });
   const headerStartTime =
     alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
     1;
@@ -277,7 +299,7 @@ export const setupInputSetUniquenessScenarioV1 = async ({
     catalogue,
     header,
   });
-  return { header, setup };
+  return { header, setup: { ...setup, witnessReferenceScripts } };
 };
 
 /**
@@ -325,12 +347,14 @@ export const submitRawInputSetUniquenessBindV1 = async ({
   stateQueueBlockOutRef,
   txInclusion,
   referenceScriptUtxo,
+  witnessReferenceScripts,
 }: {
   readonly harness: InputSetUniquenessHarnessV1;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo?: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
 }): Promise<string> => {
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
@@ -368,6 +392,11 @@ export const submitRawInputSetUniquenessBindV1 = async ({
     emulatorNetworkV1,
     phasMembershipScript,
   );
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasMembershipScript,
+    referenceUtxo: witnessReferenceScripts.phasMembershipWithdraw,
+    label: "raw input-set-uniqueness PHAS membership",
+  });
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const step02Datum = Data.to(
@@ -437,6 +466,7 @@ export const submitRawInputSetUniquenessBindV1 = async ({
       hubOracleUtxo,
       stateQueueBlockUtxo,
       ...(referenceScriptUtxo === undefined ? [] : [referenceScriptUtxo]),
+      ...phasMembershipCarriage.referenceInputs,
     ])
     .withdraw(
       phasRewardAddress,
@@ -456,12 +486,12 @@ export const submitRawInputSetUniquenessBindV1 = async ({
         [threadToken.unit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.WithdrawalValidator(phasMembershipScript);
-  const tx =
+    .addSignerKey(signer.paymentKeyHash);
+  const withStepScript =
     referenceScriptUtxo === undefined
       ? base.attach.SpendingValidator(contracts.steps[0].spendingScript)
       : base;
+  const tx = phasMembershipCarriage.attach(withStepScript);
   const unsigned = await tx.complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -487,6 +517,7 @@ export const submitRawInputSetUniquenessFinalizeV1 = async ({
   threadOutRef,
   buildArgs,
   referenceScriptUtxo,
+  witnessReferenceScripts,
 }: {
   readonly harness: InputSetUniquenessHarnessV1;
   readonly threadOutRef: string;
@@ -494,6 +525,7 @@ export const submitRawInputSetUniquenessFinalizeV1 = async ({
     layout: RawInputSetUniquenessFinalizeLayoutV1,
   ) => InputSetUniquenessStep02Args;
   readonly referenceScriptUtxo?: UTxO;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
 }): Promise<string> => {
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
@@ -579,6 +611,22 @@ export const submitRawInputSetUniquenessFinalizeV1 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts.computationThreadMint,
+    label: "raw input-set-uniqueness computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts.fraudProofMint,
+    label: "raw input-set-uniqueness fraud-proof mint",
+  });
+  const referenceInputs = [
+    ...(referenceScriptUtxo === undefined ? [] : [referenceScriptUtxo]),
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
+
   const base = lucid
     .newTx()
     .collectFrom([feeInput])
@@ -593,13 +641,17 @@ export const submitRawInputSetUniquenessFinalizeV1 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
-  const tx =
+    .addSignerKey(signer.paymentKeyHash);
+  const withReferences = base.readFrom(referenceInputs);
+  const withStepScript =
     referenceScriptUtxo === undefined
-      ? base.attach.SpendingValidator(contracts.steps[1].spendingScript)
-      : base.readFrom([referenceScriptUtxo]);
+      ? withReferences.attach.SpendingValidator(
+          contracts.steps[1].spendingScript,
+        )
+      : withReferences;
+  const tx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(withStepScript),
+  );
   const unsigned = await tx.complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

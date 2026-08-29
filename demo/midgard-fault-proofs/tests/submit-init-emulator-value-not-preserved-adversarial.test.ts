@@ -115,6 +115,7 @@ describe("value-not-preserved adversarial scenarios", () => {
         signer: proverSigner,
         threadOutRef: run.step03.nextThreadOutRef,
         referenceScriptUtxo: refs[3],
+        witnessReferenceScripts: setup.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/never finalizes/u);
 
@@ -126,6 +127,7 @@ describe("value-not-preserved adversarial scenarios", () => {
         harness,
         threadOutRef: run.step03!.nextThreadOutRef,
         referenceScriptUtxo: refs[3],
+        witnessReferenceScripts: setup.witnessReferenceScripts,
       }),
     );
 
@@ -245,6 +247,7 @@ describe("value-not-preserved adversarial scenarios", () => {
       signer: proverSigner,
       threadOutRef: honestStep03.nextThreadOutRef,
       referenceScriptUtxo: refs[3],
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     });
     const fraudProofUtxo = await expectSingleUtxoWithUnit(
       proverLucid,

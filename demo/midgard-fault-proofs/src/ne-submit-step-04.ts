@@ -64,6 +64,12 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessSpendingValidatorCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 export type NeSubmitStep04CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -142,6 +148,8 @@ export const neSubmitStep04 = async ({
   threadOutRef,
   txsNonMembershipProofCbor,
   publishedProofChunks,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -157,6 +165,10 @@ export const neSubmitStep04 = async ({
    * transaction (issue #545).
    */
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  /** The published step-04 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<NeSubmitStep04Result> => {
   const { nonExistentInputCategory, contracts } =
@@ -196,7 +208,6 @@ export const neSubmitStep04 = async ({
       chunks,
     }),
   );
-  const referenceInputs = chunks.map((chunk) => chunk.utxo);
   const pexcludesScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PEXCLUDES_EXCLUSION_WITHDRAW_TITLE),
@@ -212,6 +223,39 @@ export const neSubmitStep04 = async ({
     network,
     chunkedVerifyScript,
   );
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: steps[3].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "non-existent-input step 04 validator",
+  });
+  const nonMembershipCarriage = carriedByChunks
+    ? witnessWithdrawalValidatorCarriageV1({
+        script: chunkedVerifyScript,
+        referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        label: "non-existent-input step 04 chunked verify",
+      })
+    : witnessWithdrawalValidatorCarriageV1({
+        script: pexcludesScript,
+        referenceUtxo: witnessReferenceScripts?.pexcludesWithdraw,
+        label: "non-existent-input step 04 pexcludes exclusion",
+      });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "non-existent-input step 04 computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "non-existent-input step 04 fraud-proof mint",
+  });
+  const referenceInputs = [
+    ...chunks.map((chunk) => chunk.utxo),
+    ...stepScriptCarriage.referenceInputs,
+    ...nonMembershipCarriage.referenceInputs,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
   const resolvedChunkIndices = derivedChunkReferenceIndices({
     referenceInputs,
     chunks,
@@ -341,15 +385,17 @@ export const neSubmitStep04 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  // This step reads no oracle and no state-queue node, so on the direct route
-  // it has no reference inputs at all and must not declare an empty set.
+  // This step reads no oracle and no state-queue node, so with neither chunks
+  // nor published witnesses it has no reference inputs at all and must not
+  // declare an empty set.
   const collected = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer);
-  const base = carriedByChunks
-    ? collected.readFrom(referenceInputs)
-    : collected;
+  const base =
+    referenceInputs.length === 0
+      ? collected
+      : collected.readFrom(referenceInputs);
   const withCarriage = carriedByChunks
     ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
         chunkedNonMembershipClaimRedeemer({
@@ -366,7 +412,7 @@ export const neSubmitStep04 = async ({
           nonMembershipProofCbor: txsNonMembershipProofCbor,
         }),
       );
-  const unsigned = await withCarriage
+  const chained = withCarriage
     .mintAssets({ [threadToken.unit]: -1n }, computationThreadSuccessRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
     .pay.ToContract(
@@ -374,14 +420,13 @@ export const neSubmitStep04 = async ({
       { kind: "inline", value: fraudProofDatum },
       fraudProofAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(steps[3].spendingScript)
-    .attach.WithdrawalValidator(
-      carriedByChunks ? chunkedVerifyScript : pexcludesScript,
-    )
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript)
-    .complete({ localUPLCEval: true });
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(
+      nonMembershipCarriage.attach(stepScriptCarriage.attach(chained)),
+    ),
+  );
+  const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined

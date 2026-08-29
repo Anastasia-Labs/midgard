@@ -14,6 +14,7 @@ import {
 
 import { type ResolvedProverSigner } from "../runtime.js";
 import { type SubmitStep01TxInclusion } from "../submit-step-01.js";
+import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
 import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
 import {
   missingNativeScriptTxSubmitError,
@@ -42,6 +43,7 @@ export const submitMissingNativeScriptTxStep03 = async ({
   stateQueueBlockOutRef,
   txInclusion,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -54,6 +56,8 @@ export const submitMissingNativeScriptTxStep03 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingNativeScriptTxStep03Result> => {
   const { threadUtxo, threadToken } =
@@ -102,6 +106,7 @@ export const submitMissingNativeScriptTxStep03 = async ({
     nextDatum,
     spendRedeemerSchema: MissingNativeScriptTxStep03SpendRedeemer,
     referenceScriptUtxo,
+    witnessReferenceScripts,
     awaitConfirmation,
   });
   return {

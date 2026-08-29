@@ -47,6 +47,10 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import { transitionTraceError } from "./errors.js";
 
 export type SubmitTransitionTraceProofConfig = {
@@ -58,6 +62,8 @@ export type SubmitTransitionTraceProofConfig = {
   readonly threadOutRef: string;
   readonly proof: TransitionFaultProof;
   readonly additionalReferenceInputs?: readonly UTxO[];
+  /** Published shared minting witnesses; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 };
 
@@ -366,6 +372,7 @@ export const submitTransitionTraceProof = async ({
   threadOutRef,
   proof,
   additionalReferenceInputs = [],
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: SubmitTransitionTraceProofConfig): Promise<SubmitTransitionTraceProofResult> => {
   const {
@@ -525,8 +532,25 @@ export const submitTransitionTraceProof = async ({
   };
   let spendLayout: TransitionTraceFinalSpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "transition-trace computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "transition-trace fraud-proof mint",
+  });
+  const referenceInputs = [
+    hubOracleUtxo,
+    finalReferenceScript,
+    ...additionalReferenceInputs,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
 
-  const tx = lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom(
@@ -543,11 +567,7 @@ export const submitTransitionTraceProof = async ({
         },
       }),
     )
-    .readFrom([
-      hubOracleUtxo,
-      finalReferenceScript,
-      ...additionalReferenceInputs,
-    ])
+    .readFrom(referenceInputs)
     .mintAssets(
       { [threadToken.unit]: -1n },
       makeComputationThreadSuccessRedeemer({
@@ -571,9 +591,10 @@ export const submitTransitionTraceProof = async ({
       { kind: "inline", value: fraudProofDatum },
       fraudProofAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(base),
+  );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (

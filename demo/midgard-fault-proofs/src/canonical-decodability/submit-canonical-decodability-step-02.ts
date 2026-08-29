@@ -27,6 +27,10 @@ import {
 } from "../runtime.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+} from "../witness-reference-scripts-v1.js";
 import type { CanonicalDecodabilityContractsV1 } from "./contracts-v1.js";
 import {
   canonicalDecodabilityStepLabelV1,
@@ -72,6 +76,7 @@ export const submitCanonicalDecodabilityStep02 = async ({
   signer,
   threadOutRef,
   referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -81,6 +86,8 @@ export const submitCanonicalDecodabilityStep02 = async ({
   readonly threadOutRef: string;
   /** Published step-02 reference script. Inline attachment is forbidden. */
   readonly referenceScriptUtxo: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCanonicalDecodabilityStep02Result> => {
   const { threadUtxo, threadToken } =
@@ -112,6 +119,21 @@ export const submitCanonicalDecodabilityStep02 = async ({
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     stepIndex: 1,
   });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${STEP_LABEL} computation-thread mint`,
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: `${STEP_LABEL} fraud-proof mint`,
+  });
+  const referenceInputs = [
+    stepReference,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -192,11 +214,11 @@ export const submitCanonicalDecodabilityStep02 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const unsigned = await lucid
+  const chainedTx = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
-    .readFrom([stepReference])
+    .readFrom(referenceInputs)
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
     .pay.ToContract(
@@ -207,9 +229,9 @@ export const submitCanonicalDecodabilityStep02 = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript)
+    .addSignerKey(signer.paymentKeyHash);
+  const unsigned = await fraudProofMintCarriage
+    .attach(computationThreadMintCarriage.attach(chainedTx))
     .complete({ localUPLCEval: true });
   if (
     spendLayout === undefined ||

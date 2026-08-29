@@ -78,6 +78,11 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessSpendingValidatorCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 /**
  * Complete positional address-witness list, as `prepare-invalid-signature`
@@ -339,6 +344,8 @@ export const submitInvalidSignatureStep02 = async ({
   nativeTxCompactCbor,
   witnessSetCompact,
   badAddrTxWitIndex,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -354,6 +361,10 @@ export const submitInvalidSignatureStep02 = async ({
   /** That transaction's compact witness set — §2.5's other half. */
   readonly witnessSetCompact: NativeTxWitnessSetCompact;
   readonly badAddrTxWitIndex: bigint;
+  /** The published step-02 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInvalidSignatureStep02Result> => {
   const { invalidSignatureCategory, contracts } =
@@ -403,8 +414,31 @@ export const submitInvalidSignatureStep02 = async ({
     label: "Invalid-signature step 02 address-witnesses",
   });
   const badAddrTxWitsHash = planned.commitment;
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.invalidSignature.steps[1].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "invalid-signature step 02 validator",
+  });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "invalid-signature step 02 computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "invalid-signature step 02 fraud-proof mint",
+  });
+  // The complete reference-input set, built before the field opening derives
+  // any carriage indices from it.
+  const referenceInputs = [
+    ...stepScriptCarriage.referenceInputs,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
   const addrTxWitsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
+    referenceInputs,
     label: "Invalid-signature step 02 address-witnesses",
   });
   const badAddrTxWit = addrTxWitsPreimage[Number(badAddrTxWitIndex)];
@@ -436,7 +470,7 @@ export const submitInvalidSignatureStep02 = async ({
   let spendLayout: InvalidSignatureStep02SpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
 
-  const tx = lucid
+  const withInputs = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom(
@@ -477,12 +511,16 @@ export const submitInvalidSignatureStep02 = async ({
       { kind: "inline", value: fraudProofDatum },
       fraudProofAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(
-      contracts.invalidSignature.steps[1].spendingScript,
-    )
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  // `readFrom([])` is an error rather than a no-op, so the branch is on
+  // whether any witness published a reference script at all.
+  const chained =
+    referenceInputs.length === 0
+      ? withInputs
+      : withInputs.readFrom(referenceInputs);
+  const tx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(stepScriptCarriage.attach(chained)),
+  );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (
