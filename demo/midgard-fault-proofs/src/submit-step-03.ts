@@ -65,6 +65,7 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import { witnessSpendingValidatorCarriageV1 } from "./witness-reference-scripts-v1.js";
 
 export type SubmitStep03CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -170,6 +171,7 @@ export const submitStep03 = async ({
   nativeTxCompactCbor,
   doubleSpentInputIndex,
   publishCarriage = false,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -192,6 +194,8 @@ export const submitStep03 = async ({
    * spend-input cardinality at the L1 byte frontier (#612).
    */
   readonly publishCarriage?: boolean;
+  /** The published step-03 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep03Result> => {
   const { doubleSpendCategory, contracts } =
@@ -263,7 +267,15 @@ export const submitStep03 = async ({
     publisherAddress: signer.address,
     label: "Double-spend step 03 tx1 spend-inputs",
   });
-  const referenceInputs = [...carriageUtxos];
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.doubleSpend.steps[2].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "double-spend step 03 validator",
+  });
+  const referenceInputs = [
+    ...carriageUtxos,
+    ...stepScriptCarriage.referenceInputs,
+  ];
   const walletUtxos = await lucid.wallet().getUtxos();
   const feeInput = selectFeeInput(
     carriageUtxos.reduce<readonly UTxO[]>(
@@ -341,10 +353,10 @@ export const submitStep03 = async ({
       },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.doubleSpend.steps[2].spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = stepScriptCarriage.attach(tx);
 
-  const unsigned = await tx.complete({
+  const unsigned = await completedTx.complete({
     localUPLCEval: true,
     // With carriage published at the prover's own address, balancing must not
     // pick those UTxOs back up as wallet inputs while the redeemer references

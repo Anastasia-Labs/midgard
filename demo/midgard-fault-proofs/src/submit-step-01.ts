@@ -81,6 +81,11 @@ import {
   type SubmitProviderConfig,
 } from "./runtime.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessSpendingValidatorCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 export const PHAS_MEMBERSHIP_WITHDRAW_TITLE = "phas.membership.withdraw";
 export const MIN_FEE_INPUT_LOVELACE = 10_000_000n;
@@ -422,6 +427,8 @@ export const submitStep01 = async ({
   stateQueueBlockOutRef,
   txInclusion,
   publishedProofChunks,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -438,6 +445,10 @@ export const submitStep01 = async ({
    * transaction (issue #545).
    */
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  /** The published step-01 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep01Result> => {
   const resolvedDeployment = await resolveDoubleSpendDeploymentContracts({
@@ -511,11 +522,6 @@ export const submitStep01 = async ({
       chunks,
     }),
   );
-  const referenceInputs = [
-    hubOracleUtxo,
-    stateQueueBlockUtxo,
-    ...chunks.map((chunk) => chunk.utxo),
-  ];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -531,6 +537,29 @@ export const submitStep01 = async ({
     network,
     chunkedVerifyScript,
   );
+  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+    script: contracts.doubleSpend.steps[0].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "double-spend step 01 validator",
+  });
+  const inclusionCarriage = carriedByChunks
+    ? witnessWithdrawalValidatorCarriageV1({
+        script: chunkedVerifyScript,
+        referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        label: "double-spend step 01 chunked verify",
+      })
+    : witnessWithdrawalValidatorCarriageV1({
+        script: phasMembershipScript,
+        referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        label: "double-spend step 01 PHAS membership",
+      });
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    ...chunks.map((chunk) => chunk.utxo),
+    ...stepScriptCarriage.referenceInputs,
+    ...inclusionCarriage.referenceInputs,
+  ];
   const resolvedChunkIndices = derivedChunkReferenceIndices({
     referenceInputs,
     chunks,
@@ -657,11 +686,8 @@ export const submitStep01 = async ({
       },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.doubleSpend.steps[0].spendingScript);
-  const completedTx = carriedByChunks
-    ? tx.attach.WithdrawalValidator(chunkedVerifyScript)
-    : tx.attach.WithdrawalValidator(phasMembershipScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const completedTx = inclusionCarriage.attach(stepScriptCarriage.attach(tx));
 
   const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {

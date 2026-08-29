@@ -49,6 +49,11 @@ import {
   type SupportedFaultProofCategoryName,
 } from "./runtime.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScriptsV1,
+  witnessMintingPolicyCarriageV1,
+  witnessWithdrawalValidatorCarriageV1,
+} from "./witness-reference-scripts-v1.js";
 
 const PHAS_MEMBERSHIP_WITHDRAW_TITLE = "phas.membership.withdraw";
 
@@ -209,6 +214,7 @@ export const submitInit = async ({
   fraudCategory = "doubleSpend",
   fraudulentBlockOutRef,
   fraudulentHeaderHash,
+  witnessReferenceScripts,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -219,6 +225,8 @@ export const submitInit = async ({
   readonly fraudCategory?: SubmitInitFraudCategory;
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
+  /** Published witness reference scripts; each absent entry inline-attaches. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInitResult> => {
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
@@ -318,11 +326,27 @@ export const submitInit = async ({
     computationThreadPolicyId,
     computationThreadAssetName,
   );
-  const referenceInputs = [catalogueUtxo, hubOracleUtxo, fraudulentBlockUtxo];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
+  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+    script: computationThreadMintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: `${fraudCategoryLabel(fraudCategory)} init computation-thread mint`,
+  });
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    script: phasMembershipScript,
+    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
+    label: `${fraudCategoryLabel(fraudCategory)} init PHAS membership`,
+  });
+  const referenceInputs = [
+    catalogueUtxo,
+    hubOracleUtxo,
+    fraudulentBlockUtxo,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...phasMembershipCarriage.referenceInputs,
+  ];
   const phasRewardAddress = phasMembershipRewardAddress(
     network,
     phasMembershipScript,
@@ -389,7 +413,7 @@ export const submitInit = async ({
   }) satisfies BuildTxWithRedeemer;
 
   signer.selectWallet(lucid);
-  const tx = lucid
+  const chainedTx = lucid
     .newTx()
     .readFrom(referenceInputs)
     .withdraw(
@@ -411,9 +435,10 @@ export const submitInit = async ({
       },
       { [computationThreadUnit]: 1n },
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(computationThreadMintingScript)
-    .attach.WithdrawalValidator(phasMembershipScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const tx = phasMembershipCarriage.attach(
+    computationThreadMintCarriage.attach(chainedTx),
+  );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (firstStepOutputIndex === undefined) {

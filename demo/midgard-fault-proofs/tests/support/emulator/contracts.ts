@@ -37,6 +37,7 @@ import {
   fraudProofContractsToFirstSteps,
   HUB_ORACLE_ASSET_NAME,
   type MidgardValidators,
+  type MintingValidator as SdkMintingValidator,
   parseFaultProofBlueprint,
   type SpendingValidator as SdkSpendingValidator,
 } from "@al-ft/midgard-sdk";
@@ -922,6 +923,7 @@ export const buildMinimalFaultProofContracts = async (
   } = {},
 ): Promise<
   MidgardValidators & {
+    readonly computationThread: SdkMintingValidator;
     readonly fabricatedDeposit?: FabricatedDepositContractsV1;
     readonly fabricatedWithdrawal?: FabricatedWithdrawalContractsV1;
     readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
@@ -1551,6 +1553,9 @@ export const buildMinimalFaultProofContracts = async (
       ),
     },
     stateQueue,
+    // Canonical computation-thread minting validator shared by every family
+    // (each family chain is parameterized with the same dual-purpose script).
+    computationThread: doubleSpendContracts.computationThread,
     fraudProof: {
       ...doubleSpendContracts.fraudProof,
       policyId: doubleSpendContracts.fraudProof.policyId,

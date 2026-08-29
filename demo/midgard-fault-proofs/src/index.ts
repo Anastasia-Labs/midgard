@@ -58,3 +58,4 @@ export * from "./value-not-preserved/index.js";
 export * from "./withdrawal-mistag/index.js";
 export * from "./withdrawn-input/index.js";
 export * from "./withdrawn-reference-input/index.js";
+export * from "./witness-reference-scripts-v1.js";
