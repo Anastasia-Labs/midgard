@@ -55,6 +55,7 @@ import {
   type Script,
   scriptHashToCredential,
   toUnit,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -68,6 +69,7 @@ import {
   parseOutRef,
   phasMembershipRewardAddress,
   readJsonFile,
+  requireFaultProofStepReferenceScriptV1,
   requireSingletonUtxo,
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
@@ -153,6 +155,7 @@ export const submitNoReferenceInputStep01 = async ({
   threadOutRef,
   stateQueueBlockOutRef,
   txInclusion,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -163,6 +166,8 @@ export const submitNoReferenceInputStep01 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: NoReferenceInputStep01TxInclusion;
+  /** The published step-01 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNoReferenceInputStep01Result> => {
   const resolvedDeployment = await resolveNoReferenceInputDeploymentContracts({
@@ -245,7 +250,19 @@ export const submitNoReferenceInputStep01 = async ({
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const referenceInputs = [hubOracleUtxo, stateQueueBlockUtxo];
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireFaultProofStepReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: steps[0].spendingScriptHash,
+          label: "no-reference-input step 01",
+        });
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    ...(stepReference === undefined ? [] : [stepReference]),
+  ];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -326,7 +343,7 @@ export const submitNoReferenceInputStep01 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const tx = lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
@@ -347,8 +364,11 @@ export const submitNoReferenceInputStep01 = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(steps[0].spendingScript)
     .attach.WithdrawalValidator(phasMembershipScript);
+  const tx =
+    stepReference === undefined
+      ? base.attach.SpendingValidator(steps[0].spendingScript)
+      : base;
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {

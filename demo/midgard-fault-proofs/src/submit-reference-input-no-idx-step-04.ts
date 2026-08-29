@@ -50,6 +50,7 @@ import {
   faultProofFieldOpeningV1,
   parseNativeTxCompactCborV1,
   planFaultProofFieldOpeningV1,
+  publishFaultProofFieldCarriageV1,
 } from "./field-opening-v1.js";
 import { parseHex, requireRecord } from "./json-file.js";
 import { midgardTxOutputFromCanonicalCborV1 } from "./prepare-input-no-idx.js";
@@ -60,6 +61,7 @@ import {
   outRefLabel,
   parseOutRef,
   readJsonFile,
+  requireFaultProofStepReferenceScriptV1,
   type ResolvedProverSigner,
   resolveProverSigner,
   resolveReferenceInputNoIdxDeploymentContracts,
@@ -331,6 +333,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
   threadOutRef,
   outputsPreimage,
   nativeTxCompactCbor,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -342,6 +345,8 @@ export const submitReferenceInputNoIdxStep04 = async ({
   readonly outputsPreimage: SubmitReferenceInputNoIdxOutputsPreimage;
   /** The **producing** transaction's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
+  /** The published step-04 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitReferenceInputNoIdxStep04Result> => {
   const { referenceInputNoIdxCategory, contracts } =
@@ -385,8 +390,36 @@ export const submitReferenceInputNoIdxStep04 = async ({
     label: "Reference-input-no-idx step 04 outputs",
   });
   const producingTxOutputsHash = planned.commitment;
+
+  signer.selectWallet(lucid);
+  // §8.4: an outputs preimage over the ~14,336-byte tier-1 bound (roughly 333
+  // forty-three-byte outputs) plans a tier-2 `RawUtxo` publication, which must
+  // exist before the step references it; a tier-1 plan publishes nothing.
+  const published = await publishFaultProofFieldCarriageV1({
+    lucid,
+    signer,
+    planned,
+    publisherAddress: signer.address,
+    label: "Reference-input-no-idx step 04 outputs field",
+  });
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireFaultProofStepReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: chain.steps[3].spendingScriptHash,
+          label: "reference-input-no-idx step 04",
+        });
+  // §8.7: positional carriage indices count into the transaction's COMPLETE
+  // canonically-sorted reference-input set — the step reference script included
+  // (the nsd fc635c8f bug) — so the opening resolves against the whole set.
+  const referenceInputs = [
+    ...published,
+    ...(stepReference === undefined ? [] : [stepReference]),
+  ];
   const outputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
+    referenceInputs,
     label: "Reference-input-no-idx step 04 outputs",
   });
   // §5.2: the count the verdict rests on is the door's authenticated one, which
@@ -403,8 +436,14 @@ export const submitReferenceInputNoIdxStep04 = async ({
     );
   }
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  // A tier-2 publication sits at the prover address under a large inline datum
+  // (and its min-ADA), so it tops the fee selector's descending-lovelace sort;
+  // exclude datum-carrying UTxOs so the referenced publication is never spent.
+  const feeInput = selectFeeInput(
+    (await lucid.wallet().getUtxos()).filter(
+      (utxo) => utxo.datum == null && utxo.datumHash == null,
+    ),
+  );
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -461,11 +500,18 @@ export const submitReferenceInputNoIdxStep04 = async ({
       fraudProofAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(chain.steps[3].spendingScript)
     .attach.MintingPolicy(contracts.computationThread.mintingScript)
     .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+  const withStepScript =
+    stepReference === undefined
+      ? tx.attach.SpendingValidator(chain.steps[3].spendingScript)
+      : tx;
+  const withRefs =
+    referenceInputs.length === 0
+      ? withStepScript
+      : withStepScript.readFrom([...referenceInputs]);
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await withRefs.complete({ localUPLCEval: true });
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined

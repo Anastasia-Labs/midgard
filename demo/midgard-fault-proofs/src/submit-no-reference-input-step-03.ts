@@ -62,6 +62,7 @@ import {
   parseOutRef,
   phasMembershipRewardAddress,
   readJsonFile,
+  requireFaultProofStepReferenceScriptV1,
   type ResolvedProverSigner,
   resolveNoReferenceInputDeploymentContracts,
   resolveProverSigner,
@@ -140,6 +141,7 @@ export const submitNoReferenceInputStep03 = async ({
   signer,
   threadOutRef,
   ledgerNonMembershipProofCbor,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -149,6 +151,8 @@ export const submitNoReferenceInputStep03 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly ledgerNonMembershipProofCbor: string;
+  /** The published step-03 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNoReferenceInputStep03Result> => {
   const { noReferenceInputCategory, contracts } =
@@ -179,6 +183,14 @@ export const submitNoReferenceInputStep03 = async ({
   const missingReferenceInput = inputDatum.data.missing_reference_input;
   const keyBytes = ledgerKeyBytesHex(missingReferenceInput);
   const proof = Data.from(ledgerNonMembershipProofCbor, Proof);
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireFaultProofStepReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: steps[2].spendingScriptHash,
+          label: "no-reference-input step 03",
+        });
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -252,7 +264,7 @@ export const submitNoReferenceInputStep03 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const unsigned = await lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
@@ -271,9 +283,12 @@ export const submitNoReferenceInputStep03 = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(steps[2].spendingScript)
-    .attach.WithdrawalValidator(pexcludesScript)
-    .complete({ localUPLCEval: true });
+    .attach.WithdrawalValidator(pexcludesScript);
+  const withStepScript =
+    stepReference === undefined
+      ? base.attach.SpendingValidator(steps[2].spendingScript)
+      : base.readFrom([stepReference]);
+  const unsigned = await withStepScript.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve no-reference-input step 03 layout.",

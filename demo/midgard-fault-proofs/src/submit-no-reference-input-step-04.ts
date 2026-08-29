@@ -62,6 +62,7 @@ import {
   parseOutRef,
   phasMembershipRewardAddress,
   readJsonFile,
+  requireFaultProofStepReferenceScriptV1,
   type ResolvedProverSigner,
   resolveNoReferenceInputDeploymentContracts,
   resolveProverSigner,
@@ -146,6 +147,7 @@ export const submitNoReferenceInputStep04 = async ({
   signer,
   threadOutRef,
   txsNonMembershipProofCbor,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -155,6 +157,7 @@ export const submitNoReferenceInputStep04 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly txsNonMembershipProofCbor: string;
+  readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNoReferenceInputStep04Result> => {
   const { noReferenceInputCategory, contracts } =
@@ -184,6 +187,14 @@ export const submitNoReferenceInputStep04 = async ({
   });
   const inputDatum = requireStep04Datum({ threadUtxo, signer });
   const proof = Data.from(txsNonMembershipProofCbor, Proof);
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireFaultProofStepReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: steps[3].spendingScriptHash,
+          label: "no-reference-input step 04",
+        });
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -298,7 +309,7 @@ export const submitNoReferenceInputStep04 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const unsigned = await lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
@@ -319,11 +330,14 @@ export const submitNoReferenceInputStep04 = async ({
       fraudProofAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(steps[3].spendingScript)
     .attach.WithdrawalValidator(pexcludesScript)
     .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript)
-    .complete({ localUPLCEval: true });
+    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+  const withStepScript =
+    stepReference === undefined
+      ? base.attach.SpendingValidator(steps[3].spendingScript)
+      : base.readFrom([stepReference]);
+  const unsigned = await withStepScript.complete({ localUPLCEval: true });
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined

@@ -48,6 +48,7 @@ import {
   parseOutRef,
   phasMembershipRewardAddress,
   readJsonFile,
+  requireFaultProofStepReferenceScriptV1,
   requireSingletonUtxo,
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
@@ -152,6 +153,7 @@ export const submitReferenceInputNoIdxStep03 = async ({
   threadOutRef,
   stateQueueBlockOutRef,
   txInclusion,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -162,6 +164,7 @@ export const submitReferenceInputNoIdxStep03 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
+  readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitReferenceInputNoIdxStep03Result> => {
   const resolvedDeployment =
@@ -247,9 +250,21 @@ export const submitReferenceInputNoIdxStep03 = async ({
   const badReferenceInputOutputIndex =
     inputDatum.data.bad_reference_input_output_index;
 
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireFaultProofStepReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: chain.steps[2].spendingScriptHash,
+          label: "reference-input-no-idx step 03",
+        });
+
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const referenceInputs = [hubOracleUtxo, stateQueueBlockUtxo];
+  const referenceInputs =
+    stepReference === undefined
+      ? [hubOracleUtxo, stateQueueBlockUtxo]
+      : [hubOracleUtxo, stateQueueBlockUtxo, stepReference];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -353,10 +368,13 @@ export const submitReferenceInputNoIdxStep03 = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(chain.steps[2].spendingScript)
     .attach.WithdrawalValidator(phasMembershipScript);
+  const txWithStepScript =
+    stepReference === undefined
+      ? tx.attach.SpendingValidator(chain.steps[2].spendingScript)
+      : tx;
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await txWithStepScript.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve reference-input-no-idx step 03 layout.",

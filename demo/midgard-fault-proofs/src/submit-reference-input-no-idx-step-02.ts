@@ -48,6 +48,7 @@ import {
   faultProofFieldOpeningV1,
   parseNativeTxCompactCborV1,
   planFaultProofFieldOpeningV1,
+  publishFaultProofFieldCarriageV1,
 } from "./field-opening-v1.js";
 import {
   parseHex,
@@ -61,6 +62,7 @@ import {
   outRefLabel,
   parseOutRef,
   readJsonFile,
+  requireFaultProofStepReferenceScriptV1,
   type ResolvedProverSigner,
   resolveProverSigner,
   resolveReferenceInputNoIdxDeploymentContracts,
@@ -220,6 +222,7 @@ export const submitReferenceInputNoIdxStep02 = async ({
   threadOutRef,
   referenceInputsPreimage,
   nativeTxCompactCbor,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -231,6 +234,8 @@ export const submitReferenceInputNoIdxStep02 = async ({
   readonly referenceInputsPreimage: SubmitReferenceInputNoIdxReferenceInputsPreimage;
   /** The disputed transaction's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
+  /** The published step-02 reference script; inline-attached when absent. */
+  readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitReferenceInputNoIdxStep02Result> => {
   const { referenceInputNoIdxCategory, contracts } =
@@ -274,8 +279,36 @@ export const submitReferenceInputNoIdxStep02 = async ({
     label: "Reference-input-no-idx step 02 reference-inputs",
   });
   const verifiedTxReferenceInputsHash = planned.commitment;
+
+  signer.selectWallet(lucid);
+  // §8.4: a field-1 preimage over the ~14,336-byte tier-1 bound (roughly 358
+  // forty-byte out-ref items) plans a tier-2 `RawUtxo` publication, which must
+  // exist before the step references it; a tier-1 plan publishes nothing.
+  const published = await publishFaultProofFieldCarriageV1({
+    lucid,
+    signer,
+    planned,
+    publisherAddress: signer.address,
+    label: "Reference-input-no-idx step 02 reference-inputs field",
+  });
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireFaultProofStepReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash: chain.steps[1].spendingScriptHash,
+          label: "reference-input-no-idx step 02",
+        });
+  // §8.7: positional carriage indices count into the transaction's COMPLETE
+  // canonically-sorted reference-input set — the step reference script included
+  // (the nsd fc635c8f bug) — so the opening resolves against the whole set.
+  const referenceInputs = [
+    ...published,
+    ...(stepReference === undefined ? [] : [stepReference]),
+  ];
   const referenceInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
+    referenceInputs,
     label: "Reference-input-no-idx step 02 reference-inputs",
   });
   const badReferenceInput =
@@ -288,8 +321,14 @@ export const submitReferenceInputNoIdxStep02 = async ({
     );
   }
 
-  signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  // A tier-2 publication sits at the prover address under a large inline datum
+  // (and its min-ADA), so it tops the fee selector's descending-lovelace sort;
+  // exclude datum-carrying UTxOs so the referenced publication is never spent.
+  const feeInput = selectFeeInput(
+    (await lucid.wallet().getUtxos()).filter(
+      (utxo) => utxo.datum == null && utxo.datumHash == null,
+    ),
+  );
   const step03Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -339,7 +378,7 @@ export const submitReferenceInputNoIdxStep02 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const tx = lucid
+  const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
@@ -348,10 +387,17 @@ export const submitReferenceInputNoIdxStep02 = async ({
       { kind: "inline", value: step03Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(chain.steps[1].spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  const withStepScript =
+    stepReference === undefined
+      ? base.attach.SpendingValidator(chain.steps[1].spendingScript)
+      : base;
+  const withRefs =
+    referenceInputs.length === 0
+      ? withStepScript
+      : withStepScript.readFrom([...referenceInputs]);
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await withRefs.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve reference-input-no-idx step 02 layout.",

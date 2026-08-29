@@ -56,6 +56,7 @@ import {
   type Script,
   scriptHashToCredential,
   toUnit,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 
 import { parseHex, requireRecord } from "./json-file.js";
@@ -69,6 +70,7 @@ import {
   parseOutRef,
   phasMembershipRewardAddress,
   readJsonFile,
+  requireFaultProofStepReferenceScriptV1,
   requireSingletonUtxo,
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
@@ -176,6 +178,7 @@ export const submitInvalidSignatureStep01 = async ({
   stateQueueBlockOutRef,
   txInclusion,
   badTxWitnessSetCompact,
+  referenceScriptUtxo,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -188,6 +191,7 @@ export const submitInvalidSignatureStep01 = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   /** Preimage of the committed `witness_set_hash`, opened by this step. */
   readonly badTxWitnessSetCompact: NativeTxWitnessSetCompact;
+  readonly referenceScriptUtxo?: UTxO;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInvalidSignatureStep01Result> => {
   const resolvedDeployment = await resolveInvalidSignatureDeploymentContracts({
@@ -270,9 +274,22 @@ export const submitInvalidSignatureStep01 = async ({
     );
   }
 
+  const stepReference =
+    referenceScriptUtxo === undefined
+      ? undefined
+      : requireFaultProofStepReferenceScriptV1({
+          utxo: referenceScriptUtxo,
+          expectedScriptHash:
+            contracts.invalidSignature.steps[0].spendingScriptHash,
+          label: "invalid-signature step 01",
+        });
+
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const referenceInputs = [hubOracleUtxo, stateQueueBlockUtxo];
+  const referenceInputs =
+    stepReference === undefined
+      ? [hubOracleUtxo, stateQueueBlockUtxo]
+      : [hubOracleUtxo, stateQueueBlockUtxo, stepReference];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -382,12 +399,15 @@ export const submitInvalidSignatureStep01 = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(
-      contracts.invalidSignature.steps[0].spendingScript,
-    )
     .attach.WithdrawalValidator(phasMembershipScript);
+  const txWithStepScript =
+    stepReference === undefined
+      ? tx.attach.SpendingValidator(
+          contracts.invalidSignature.steps[0].spendingScript,
+        )
+      : tx;
 
-  const unsigned = await tx.complete({ localUPLCEval: true });
+  const unsigned = await txWithStepScript.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve invalid-signature step 01 layout.",
