@@ -1,7 +1,6 @@
 # Fault-Proof System Architecture
 
-> Audited 2026-07-10 against branch `tx-validation` (HEAD `269bf6b3`) plus its
-> contemporaneous working tree; reconstructed on clean base `55afdc54`. Companion docs: [`catalogue-status.md`](catalogue-status.md),
+> Reconciled 2026-08-29 against the current working tree. Companion docs: [`catalogue-status.md`](catalogue-status.md),
 > [`coverage-matrix.md`](coverage-matrix.md), [`onchain-reference.md`](onchain-reference.md),
 > [`offchain-reference.md`](offchain-reference.md), [`testing-status.md`](testing-status.md),
 > [`execution-plan.md`](execution-plan.md).
@@ -27,21 +26,21 @@ the implementation** — see [`coverage-matrix.md`](coverage-matrix.md) for the 
 
 ## 2. Terminology
 
-| Term                                     | Meaning                                                                                                                                                                                                                                                             | Anchor                                                                                                                              |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **Fault proof**                          | Permanent L1 token proving a ledger-rule violation in a committed block. Historically called "fraud proof"; clean-base source paths retain that older name pending roadmap item W-O8.                                                                               | `technical-spec/4-proof-protocol/2-fraud-proof-tokens.tex:8,31`                                                                     |
-| **Fault-proof catalogue**                | Init-time MPF root committing `{4-byte category id → first-step script hash}`; immutable after genesis (spend validator always fails). Legitimacy of a proof category = MPF membership against this root.                                                           | `technical-spec/4-proof-protocol/1-fraud-proof-catalogue.tex:10-20,38-39`; `onchain/aiken/validators/fraud-proof-catalogue.ak:7-27` |
-| **Computation thread**                   | CPS-style state machine splitting a proof into sequential spend-validator steps; a thread NFT named `category_id ‖ header_hash(28B)` traverses them. Redeemers: `Init` / `Success` / `BurnForCancellation`.                                                         | `technical-spec/4-proof-protocol/3-computation-thread.tex:8-9,44-46`; `onchain/aiken/validators/computation-thread.ak:20-149`       |
-| **State queue**                          | L1 linked list of committed block headers awaiting confirmation; FIFO merge after maturity. `RemoveFaultyBlockHeader` is the correction path.                                                                                                                       | `technical-spec/3-consensus-protocol/4-state-queue.tex:8,106-153`; `onchain/aiken/validators/state-queue.ak:524-712`                |
-| **Maturity period**                      | Canonical V1 fixes the challenge, merge, and operator bond-hold window at seven days (`604,800,000` ms); it is not environment-selectable.                                                                                                                          | `onchain/aiken/lib/midgard/ledger-state.ak`; canonical consensus profile                                                            |
-| **Operator bond / slashing**             | Bond forfeited when a block is proven faulty; split historical source identifier `fraud_prover_reward` + `slashing_penalty` = `required_bond`. **All four economics params are `0` in both envs.**                                                                  | `technical-spec/3-consensus-protocol/2-operator-directory.tex:19-24`; `onchain/aiken/env/default.ak:21-35`                          |
-| **Transition trace**                     | Per-block dense map `step_index → TransitionStep{event_key, phase, pre/post_utxos_root}` committed via `transition_trace_root` + `event_to_step_root`; enables one-step re-execution disputes.                                                                      | `technical-spec/1-ledger-state/1-block.tex:186-234`                                                                                 |
-| **Counted / domain-tagged root**         | `blake2b_256(tag ‖ cbor(domain) ‖ raw_root ‖ cbor(count))` — commits member count and domain alongside an MPF root, so proofs can open membership, non-membership, and count.                                                                                       | `onchain/aiken/lib/midgard/transition-trace.ak:9-16,64-80`                                                                          |
-| **phas / pexcludes**                     | Withdraw-zero "merkelized validator" scripts performing MPF membership (`mpf.has`) and non-membership (`mpf.insert` must succeed) checks, invoked by proof steps via reference scripts.                                                                             | `onchain/aiken/validators/phas.ak:15`, `pexcludes.ak:22`; `lib/midgard/common/utils.ak:597-719`                                     |
-| **DA attestation**                       | Committee threshold-signs `"MidgardDAAttestationV1" ‖ header_hash`; at threshold the `DAAT` token is burned and the state-queue node's `da_attestation` field set, gating maturation. The validator never inspects payload bytes.                                   | `onchain/aiken/validators/da-attestation.ak:29-32,336-376`                                                                          |
-| **Inclusion time / event interval**      | L1 user events (deposits, withdrawal orders, tx orders) get inclusion times; each block's non-overlapping, gapless event interval obligates inclusion — the censorship-protection invariant.                                                                        | `technical-spec/2-user-event-protocol/1-deposit.tex:27-33`; `C-considerations/1-protocol-invariants.tex:56-62`                      |
-| **Witness staking script**               | Per-event registered staking credential whose (non-)registration lets a Plutus script disprove the existence of an L1 event UTxO; the registered fabricated-deposit/withdrawal families use this hook for existence and content-fidelity proofs.                         | `technical-spec/2-user-event-protocol/1-deposit.tex:12`; `4-withdrawal-order.tex:106-120`                                           |
-| **Phase A / Phase B (local validation)** | The node's two-phase mempool admission: Phase A stateless per-tx checks; Phase B stateful UTxO/graph/script-execution checks. Reject codes are "operational evidence, not L1 fault proofs" (`technical-spec/7-phase-two-validation/3-fraud-proofs-involved.tex:9`). | `demo/midgard-validation/src/phase-a.ts:338`, `phase-b.ts:1072`                                                                     |
+| Term                                     | Meaning                                                                                                                                                                                                                                                                                                  | Anchor                                                                                                                                                |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Fault proof**                          | Permanent L1 token proving a ledger-rule violation in a committed block. Source paths still use `fraud-proof` naming pending roadmap item W-O8.                                                                                                                                                          | `technical-spec/4-proof-protocol/2-fraud-proof-tokens.tex:8,31`                                                                                       |
+| **Fault-proof catalogue**                | Init-time MPF root committing `{4-byte category id → first-step script hash}`; immutable after genesis (spend validator always fails). Legitimacy of a proof category = MPF membership against this root.                                                                                                | `technical-spec/4-proof-protocol/1-fraud-proof-catalogue.tex:10-20,38-39`; `onchain/aiken/validators/fraud-proof-catalogue.ak:7-27`                   |
+| **Computation thread**                   | CPS-style state machine splitting a proof into sequential spend-validator steps; a thread NFT named `category_id ‖ header_hash(28B)` traverses them. Redeemers: `Init` / `Success` / `BurnForCancellation`.                                                                                              | `technical-spec/4-proof-protocol/3-computation-thread.tex:8-9,44-46`; `onchain/aiken/validators/computation-thread.ak:20-149`                         |
+| **State queue**                          | L1 linked list of committed block headers awaiting confirmation; FIFO merge after maturity. `RemoveFraudulentBlockHeader` is the correction path.                                                                                                                                                        | `technical-spec/3-consensus-protocol/4-state-queue.tex:8,106-153`; `onchain/aiken/validators/state-queue.ak`                                          |
+| **Maturity period**                      | Canonical V1 fixes the challenge, merge, and operator bond-hold window at seven days (`604,800,000` ms); it is not environment-selectable.                                                                                                                                                               | `onchain/aiken/lib/midgard/ledger-state.ak`; canonical consensus profile                                                                              |
+| **Operator bond / slashing**             | Bond forfeited when a block is proven faulty; source identifiers satisfy `fraud_prover_reward` + `slashing_penalty` = `required_bond`. Exact prover/reward routing exists, but **all four economics params are `0` in both envs**, so the deployed profiles still realize no economic penalty or reward. | `technical-spec/3-consensus-protocol/2-operator-directory.tex:19-24`; `onchain/aiken/validators/state-queue.ak`; `onchain/aiken/env/default.ak:19-33` |
+| **Transition trace**                     | Per-block dense map `step_index → TransitionStep{event_key, phase, pre/post_utxos_root}` committed via `transition_trace_root` + `event_to_step_root`; enables one-step re-execution disputes.                                                                                                           | `technical-spec/1-ledger-state/1-block.tex:186-234`                                                                                                   |
+| **Counted / domain-tagged root**         | `blake2b_256(tag ‖ cbor(domain) ‖ raw_root ‖ cbor(count))` — commits member count and domain alongside an MPF root, so proofs can open membership, non-membership, and count.                                                                                                                            | `onchain/aiken/lib/midgard/transition-trace.ak:9-16,64-80`                                                                                            |
+| **phas / pexcludes**                     | Withdraw-zero "merkelized validator" scripts performing MPF membership (`mpf.has`) and non-membership (`mpf.insert` must succeed) checks, invoked by proof steps via reference scripts.                                                                                                                  | `onchain/aiken/validators/phas.ak:15`, `pexcludes.ak:22`; `lib/midgard/common/utils.ak:597-719`                                                       |
+| **DA attestation**                       | Committee threshold-signs `"MidgardDAAttestationV1" ‖ header_hash`; at threshold the `DAAT` token is burned and the state-queue node's `da_attestation` field set, gating maturation. The validator never inspects payload bytes.                                                                        | `onchain/aiken/validators/da-attestation.ak:29-32,336-376`                                                                                            |
+| **Inclusion time / event interval**      | L1 user events (deposits, withdrawal orders, tx orders) get inclusion times; each block's non-overlapping, gapless event interval obligates inclusion — the censorship-protection invariant.                                                                                                             | `technical-spec/2-user-event-protocol/1-deposit.tex:27-33`; `C-considerations/1-protocol-invariants.tex:56-62`                                        |
+| **Witness staking script**               | Per-event registered staking credential whose (non-)registration lets a Plutus script disprove the existence of an L1 event UTxO; the registered fabricated-deposit/withdrawal families use this hook for existence and content-fidelity proofs.                                                         | `technical-spec/2-user-event-protocol/1-deposit.tex:12`; `4-withdrawal-order.tex:106-120`                                                             |
+| **Phase A / Phase B (local validation)** | The node's two-phase mempool admission: Phase A stateless per-tx checks; Phase B stateful UTxO/graph/script-execution checks. Reject codes are "operational evidence, not L1 fault proofs" (`technical-spec/7-phase-two-validation/3-fraud-proofs-involved.tex:9`).                                      | `demo/midgard-validation/src/phase-a.ts:338`, `phase-b.ts:1072`                                                                                       |
 
 ### Proof interaction classification
 
@@ -59,66 +58,15 @@ implementation reuse are not sufficient reasons. Each interactive proof family
 must carry executable evidence demonstrating why a single-party construction is
 insufficient.
 
-#### Application: native-script structural canonicity (#633, recorded 2026-08-24)
+#### Application: native-script structural canonicity
 
-The deciding question the rule reduces to: **does establishing the statement
-intrinsically need an opposing claim?** For tag-0 native-script structural
-canonicity it does not. The payload is committed content (bytes of a resolved
-output's reference-script field), and canonicity is a deterministic predicate
-over those bytes — the same evidentiary class as the already-spent-input and
-non-existent-input proofs, which are single-party computation threads for
-exactly this reason. By the classification above, the scan belongs in a
-single-party construction.
-
-Where it actually lives today is inside the **interactive** validation-trace
-dispute: output canonicity was folded into the ResolveInputs transition
-semantics so the one-step machine would be total (any disagreement, wherever
-it lands in a trace, resolves through the same protocol; no cross-proof
-composition). Concretely, `resolve_inputs_membership_step_semantic_v1` drives
-`ledger_output_proof_v1.step_v1`, whose `stage_native_script` consumes one
-scan token or frame per L1 transaction
-(`onchain/aiken/validators/fraud-proofs/validation-trace/resolve-inputs-membership-step-semantic-v1.ak`;
-`onchain/aiken/lib/midgard/ledger-output-proof-v1.ak:983`).
-
-The 2026-08-24 emulator baseline (branch `wave/lane-o`,
-`demo/midgard-validation/tests/native-script-scan-fault-proof-exunits-emulator-v1.test.ts`)
-measured what that placement costs: every native-stage step transaction runs
-15.3–16.2M memory units — above the 13,200,000-unit GOAL_SPEC §3.3 basis and
-above the current L1 per-transaction execution-memory maximum (14,000,000) at
-every payload size, from 9 nodes to the 16,384-byte whole-output cap. Of that,
-only ~1.9M is the scan itself; the remaining ~13–14M is the machine's
-stateless control open/close, re-paid identically by every step
-(`resolve_inputs_control_is_bound`: full compact-transaction re-hash, context
-re-hash, double control re-encode —
-`onchain/aiken/lib/midgard/validation-machine-v1.ak:6661-6693`). The embedded
-step is therefore not merely expensive but unexecutable within L1 limits —
-the executable evidence, in the sense this section requires, that the current
-interactive placement is unsound as the *driver* of the scan.
-
-Derived direction (tracked on #633, direction (d)): scan-borne faults are
-covered by a standalone single-party computation thread, without touching the
-machine. Every input the verdict depends on is committed public data — the
-block commits the transaction, the prior ledger root commits the spent
-output's bytes, and the scan is deterministic over them — so the thread
-proves the memberships, drives the scan itself across as many transactions as
-it needs (cross-transaction state: a cursor-plus-stack-root commitment, the
-shape `native-tx-script-pushdown-v1.ak` already implements), reaches the true
-verdict, and faults the header directly. Wrongful acceptance and wrongful
-rejection are both contradicted from commitments this way; nearly the full
-basis buys scan work — many nodes per transaction instead of one token that
-does not fit.
-
-The residual obligation on the interactive family is only that it must not be
-a trap: no dispute may be steerable onto a per-token scan transition, since
-that transition is unexecutable on L1 and would decide the dispute by stall
-rather than by truth. Primary discharge: excise — exclude scan-borne faults
-from the interactive family and treat the canonicity check as opaque at the
-trace's transition granularity (a v2 protocol definition; the granularity is
-derived, not committed per block). Fallback: coarsen the trace to a single
-scan-verdict transition adjudicated by reading a completed scan-thread
-output, mirroring how double-spend results are consumed. Until one of these
-lands, the scan's node/depth bounds (16,384/16,384) remain STAGED-machine
-bounds with no executable per-step path on L1.
+Native-script structural canonicity is deterministic over authenticated public
+bytes and therefore uses the registered standalone single-party
+`nativeScriptDecoding` family (`0000000d`). Its multi-transaction scan carries
+the cursor/stack commitment between steps and has both-polarity emulator
+coverage. The validation-dispute machine still models related script semantics,
+but it is not the driver for this standalone scan. Family-specific CLI,
+autonomous watcher actuation, and live/preprod evidence remain open.
 
 ## 3. End-to-end proof lifecycle
 
@@ -127,22 +75,22 @@ bounds with no executable per-step path on L1.
 ┌─────────────┐   ┌─────────────────────┐   ┌─────────────────────────┐   ┌──────────────────────────┐
 │ (manual /   │   │ prepare-* CLI or    │   │ submit-init: mint thread │   │ remove-fraudulent-block:     │
 │ library     │──▶│ transition-trace    │──▶│ NFT (catalogue member-   │──▶│ per descendant link, one │
-│ detect.ts;  │   │ reconstruct+witness │   │ ship proof) → step-01..N │   │ RemoveFaultyBlocksLink tx│
-│ no watcher) │   │ from node API / DA  │   │ → final step finalize()  │   │ … then RemoveLastFaulty- │
-└─────────────┘   │ payload / fixtures  │   │ burns thread, mints      │   │ Block + SlashOperator in │
-                  └─────────────────────┘   │ permanent fault_proof    │   │ the same tx              │
+│ detect.ts;  │   │ reconstruct+witness │   │ ship proof) → step-01..N │   │ descendant-link txs;     │
+│ no watcher) │   │ from node API / DA  │   │ → final step finalize()  │   │ then tail removal +      │
+└─────────────┘   │ payload / fixtures  │   │ burns thread, mints      │   │ operator slash in the    │
+                  └─────────────────────┘   │ permanent fault_proof    │   │ same transaction         │
                                             └─────────────────────────┘   └──────────────────────────┘
 ```
 
-1. **Detection** — watcher code now exists for ingestion, indexing, finality, rollback,
-   and durable-state foundations, but it has not closed the autonomous
-   detect→prove→remove acceptance gap. `demo/midgard-node` never imports
-   `@al-ft/midgard-fault-proofs`. The closest challenger logic is
-   `demo/midgard-fault-proofs/src/transition-trace/detect.ts`, a pure function library with
-   no polling loop. Mempool rejections (`RejectCodes`) are deliberately **not** mapped to
-   fault categories: admission handles rejected transactions, while fault proofs target
-   committed blocks. The resulting committed-block classifier gap is tracked in
-   [`coverage-matrix.md`](coverage-matrix.md) §11.
+1. **Detection and classification** — watcher code provides ingestion,
+   indexing, finality, rollback, and durable-state foundations. The fault-proof
+   package now contains a versioned committed-block classifier and resumable
+   workflow under `src/workflow/`; it selects by earliest violation position,
+   then canonical family order, and reports unmapped violations as
+   `unprovable_gap`. Mempool `RejectCodes` remain admission-only and are not the
+   classifier authority. The autonomous watcher still does not mount the
+   detector/classifier/prover/removal loop, so detect→prove→remove acceptance
+   remains open.
 2. **Evidence construction** — MPF tries and proofs built off-chain with
    `@aiken-lang/merkle-patricia-forestry` (`prepare-*.ts`, `ne-proofs.ts`,
    `transition-trace/phas.ts`). Data sources: live midgard-node REST (`GET /block`, `/tx`),
@@ -162,10 +110,10 @@ bounds with no executable per-step path on L1.
    permanent). Uniqueness relies on deterministic naming + 1:1 burn-on-mint, not a
    one-shot UTxO — a duplicate `Init` for the same header can mint a second unit of the
    same asset name (benign for removal, relevant for reward accounting).
-6. **State correction** — `state-queue.ak` `RemoveFaultyBlockHeader` (`:524-712`)
+6. **State correction** — `state-queue.ak` `RemoveFraudulentBlockHeader`
    references (not spends) the fault-proof token whose last 28 bytes match the faulty
-   header hash, then either splices out one descendant (`RemoveFaultyBlocksLink`) or
-   removes the now-tail faulty block (`RemoveLastFaultyBlock`). Every removal tx must
+   header hash, then either splices out one descendant (`RemoveFraudulentBlocksLink`) or
+   removes the now-tail faulty block (`RemoveLastFraudulentBlock`). Every removal tx must
    co-execute a `slashing_approach` (`SlashActiveOperator` / `SlashRetiredOperator` /
    `OperatorAlreadySlashed`) cross-validated against the operator directory
    (`lib/midgard/operator-directory.ak:220-356`).
@@ -178,25 +126,36 @@ bounds with no executable per-step path on L1.
 
 ### Known architectural seams (see coverage matrix for severity)
 
-- **Cross-operator descendant removal deadlock.** `RemoveFaultyBlocksLink` checks the
-  _descendant's_ `operator_vkey == faulty_operator`
-  (`onchain/aiken/validators/state-queue.ak:661`), while the adjacent comment (`:633-636`)
-  says a descendant needs no fault proof of its own. With scheduler shift rotation, a
-  descendant committed by a different operator fails this check and the cascade cannot
-  proceed on-chain.
-- **Slashing economics are inert.** `slashing_penalty`, `fraud_prover_reward`,
+- **Descendant correction is structurally authorized in the current working
+  tree.** `RemoveFraudulentBlocksLink` authenticates the removed node as the current
+  linked-list successor of the fault-proved anchor; it no longer requires the
+  descendant's operator to equal the faulty operator. Rotated-operator unit
+  regressions, exact correction-transition derivation, and transactional
+  node-side payload/event re-inclusion are present. Real-node concurrent
+  execution and preprod acceptance remain open.
+- **Slashing parameters are inert, while reward routing is implemented.** `slashing_penalty`, `fraud_prover_reward`,
   `required_bond`, `inactivity_slashing_penalty` are all `0`
-  (`onchain/aiken/env/default.ak:21-35`, `env/testnet.ak:20-26`); the penalty is enforced
-  only as `fee >= env.slashing_penalty`, and nothing on-chain routes the bond remainder to
-  the prover.
-- **Catalogue registration ≠ autonomous actuation.** The deployment layer now
-  registers 25 positional categories (`00000000`–`00000018`), and generic
-  `submit-init`, inspection, node/core manifest identity, and watcher
-  proof-thread authority enforce the same inventory. Every step is a mandatory
-  authenticated reference script; `transitionTrace` (`00000004`) is one route
-  plus eight finals. The immutable identity change requires fresh
+  (`onchain/aiken/env/default.ak:19-33`, `env/testnet.ak:18-24`). The
+  state-queue path authenticates the prover from the permanent proof datum and
+  enforces the exact ADA-only reward output, amount, and reward-bearing signer;
+  with the compiled zero profile that obligation correctly admits no reward
+  output. Non-zero deployment values and claim-lock/idempotency remain open.
+- **Catalogue registration ≠ autonomous actuation.** The source catalogue and
+  runtime deployment table, inspection, and node/core manifest schemas declare
+  29 positional categories (`00000000`–`0000001c`), ending with `networkId`.
+  Every step is a mandatory authenticated reference script; `transitionTrace`
+  (`00000004`) is one route plus eight finals. The immutable identity change requires fresh
   genesis/redeployment, with no migration/compatibility path. It does not mount
   family detectors/provers or close preprod/live acceptance.
+- **Unattested-head timeout correction is implemented locally.** An
+  unattested queue head becomes permissionlessly removable one hour after its
+  commit-bound `end_time`, without slashing. Descendants are pruned first; the
+  terminal head is removed only after its link is empty. Attestation, append,
+  and timeout correction share queue inputs so races resolve by eUTxO
+  contention. SDK builders, a resumable CLI journal, and the operator-node
+  correction fiber exist. The watcher derives digest-bound waiting,
+  near-timeout, timed-out, and attested observations without transaction or
+  signing authority. Real-node/preprod acceptance remains open.
 - **`Success` trusts the terminal step.** `computation-thread.ak`'s `Success` branch only
   checks its own burn (`validators/computation-thread.ak:130-139`); thread/step-sequence
   integrity is each category's responsibility.
@@ -270,12 +229,13 @@ it is not evidence that Q54's retention-enforcement task is open.
    is withheld (see [`coverage-matrix.md`](coverage-matrix.md) §DA). The committee
    pre-signing checklist (`technical-spec/5-ledger-rules/3-da-rules.tex:13-28`) is part of
    the soundness argument but is off-chain and unslashable.
-2. **An active challenger exists** — no autonomous watcher exists; detection and the
-   multi-step submission chains are manual. Challengers are independent and
-   self-selecting: a watcher that identifies a fault opens its own fault-proof thread
-   and drives that thread to completion, and it carries no obligation to threads opened
-   by other parties. Soundness per fault requires exactly one honest active challenger,
-   not coordination among watchers (owner clarification, 2026-08-06).
+2. **An active challenger exists** — watcher indexing and the shared
+   authenticated replay/classification/journal workflow exist, but no production
+   family adapter is readiness-complete and no autonomous detect→prove→remove
+   loop is mounted. Challengers are independent and self-selecting: a watcher
+   that identifies a fault opens and drives its own thread, with no obligation
+   to threads opened by other parties. Soundness per fault requires one honest
+   active challenger, not watcher coordination.
 3. **Economics parameters will be set** — with zeroed bond/penalty/reward, a successful
    proof currently neither deters nor compensates. The canonical maturity window is seven
    days (`604,800,000` ms), not 30 ms. Threshold interpretation: a correction path's
@@ -284,7 +244,10 @@ it is not evidence that Q54's retention-enforcement task is open.
    its 75,000-ADA `fraud_prover_reward`, which dwarfs per-step L1 fees even on
    thousand-step threads — never against the scaled §2.2 drill profile; likewise the
    `GOAL_SPEC.md` §3.3 maturity fit binds against half the production seven-day
-   maturity, never a scaled acceptance or test window (owner clarification,
-   2026-08-06).
-4. **Operator monotonicity for cascades** — descendant removal currently assumes the
-   descendant shares the faulty block's operator (see §3 seams).
+   maturity, never a scaled acceptance or test window.
+4. **Correction coordination succeeds** — descendant authority follows the
+   authenticated linked-list relation, including operator rotation. The node
+   derives an exact digest-bound transition record, performs
+   corrected-payload/event re-inclusion transactionally, and refuses conflicting
+   assignments. Real-node lease/concurrency execution and preprod acceptance
+   remain release obligations.

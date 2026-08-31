@@ -1,244 +1,53 @@
-# Min-fee standalone fault proof: offchain implementation plan (v1)
+# Min-fee fault — implementation reference
 
-Plan date: 2026-08-26. Task: Q20 (`min-fee`). This plan covers the
-single-party standalone family only. The follow-on registration now assigns
-`minFee` to `00000013` and wires generic Init, catalogue/inspection, node/core
-deployment identity, watcher proof-thread topology, and both mandatory
-authenticated reference scripts. Family-specific CLI, autonomous watcher
-detector/prover mounting, preprod, and live evidence remain open. The identity
-change requires fresh genesis/redeployment; there is no migration or
-compatibility path. The interactive validation dispute and fee parameters are
-unchanged.
+Current status: implemented, registered, and emulator-proven. The canonical
+category is `minFee` (`00000013`). Generic Init, deployment
+inspection/identity, and both mandatory reference scripts are wired. The
+family has prepare/submit/cancel modules; autonomous watcher actuation and
+live/preprod evidence remain open.
 
-## 1. Rule and exact on-chain evidence
+## Fault statement
 
-The disputed block header supplies the non-negative schedule
-`min_fee_a`/`min_fee_b`. For the committed native-V1 transaction, let
-`canonical_tx_size` be the byte length of the exact canonical full transaction
-derived from the compact scalar fields and all nine authenticated §5.1 field
-preimage lengths. The ledger rule is:
-
-```text
-fee >= min_fee_a * canonical_tx_size + min_fee_b
-```
-
-The standalone fault is the strict complement:
+For the exact canonical native-V1 transaction size and the challenged header's
+non-negative fee schedule, the family proves:
 
 ```text
 fee < min_fee_a * canonical_tx_size + min_fee_b
 ```
 
-`onchain/aiken/lib/midgard/fraud-proofs/native-tx/compact.ak` is the sole
-formula authority. `min_fee_lovelace_v1` computes the minimum and
-`native_tx_canonical_size_v1` computes the exact CBOR size. Both
-`validation-machine-v1.ak`'s `reject_min_fee` branch and standalone min-fee
-step-02 call that helper, so the two adjudication paths cannot drift.
+`onchain/aiken/lib/midgard/fraud-proofs/native-tx/compact.ak` is the formula
+authority shared by the standalone family and validation machine. Equality is
+honest and cannot convict.
 
-The evidence chain is:
+## On-chain chain
 
-1. Init mints the category-id-plus-header-hash computation-thread token from
-   the immutable catalogue proof and binds the prover.
-2. Step-01 uses the shared `pass_native_tx_to_next_step` path. It authenticates
-   the state-queue header, re-derives its counted `transactions_root`, proves
-   membership of the raw compact transaction CBOR, and writes only values read
-   from that authenticated evidence into step-02 state: the compact
-   transaction, inline fee, transaction id, and the header's `min_fee_a` and
-   `min_fee_b`.
-3. Step-02 re-derives the body opening against the thread-carried transaction
-   id and the witness opening against both that id and the thread-carried
-   `witness_set_hash`. It opens every field through the §8.8 door using exactly
-   nine carriages in §2.5 wire order: spend inputs, reference inputs, outputs,
-   required observers, required signers, mint, script witnesses, address
-   witnesses, redeemers. Each length comes from `field_total_length` after
-   authentication, then feeds `native_tx_canonical_size_v1`.
-4. Step-02 finalizes only for the strict `<` predicate, burns the computation
-   thread, and mints the permanent fraud-proof token. A fee exactly equal to
-   the minimum is honest and must be refused at this comparison on-chain.
+The two-step chain lives under:
 
-This shape prevents both size-inflation attacks. A padded body-field preimage
-does not match the compact body commitment. A forged witness set and internally
-matching witness-field preimages do not match the `witness_set_hash` anchored
-by step-01.
+- `onchain/aiken/validators/fraud-proofs/min-fee/`
+- `onchain/aiken/lib/midgard/fraud-proofs/min-fee/`
 
-## 2. Offchain design
+Step 01 authenticates the transaction and carries its compact form, fee, id,
+and header fee parameters. Step 02 opens all nine authenticated fields,
+recomputes the canonical transaction size and minimum fee, and finalizes only
+for the strict violation. Cancellation is explicit.
 
-### 2.1 SDK wire twin and rule helpers
+## Off-chain surfaces
 
-`demo/midgard-sdk/src/fraud-proof/min-fee.ts` mirrors all four on-chain data
-surfaces positionally:
+- SDK schema and arithmetic twin: `demo/midgard-sdk/src/fraud-proof/min-fee.ts`
+- preparation: `demo/midgard-fault-proofs/src/prepare-min-fee.ts`
+- contract/submit modules: `demo/midgard-fault-proofs/src/min-fee-contracts-v1.ts`
+  and `demo/midgard-fault-proofs/src/submit-min-fee-*.ts`
+- catalogue: `demo/midgard-sdk/src/fraud-proof/catalogue.ts`
 
-- step-01 datum/redeemer using the shared native inclusion schema;
-- step-02 state `{ bad_tx, bad_tx_body_fee, bad_tx_id, min_fee_a, min_fee_b }`;
-- step-02 args `{ input_index, output_index,
-fraud_proof_mint_redeemer_index, native_tx_compact_cbor, witness_set,
-field_carriages }` with exactly nine `FieldCarriageV1` values; and
-- the shared cancellation constructor.
+## Verification status
 
-The SDK exposes strict helpers for the canonical minimum and the violation
-predicate. They reject negative parameters and non-exact sizes, use bigint
-arithmetic, and delegate canonical-size derivation to
-`@al-ft/midgard-core`'s
-`computeMidgardNativeTxCanonicalSizeFromProofSourceV1` rather than rebuilding
-CBOR-size arithmetic.
+Focused tests cover preparation and exact arithmetic. The emulator suite covers
+an under-fee conviction through removal, equality/overpayment refusal,
+authenticated size inputs, and adversarial field carriage.
 
-### 2.2 Preparation
+## Remaining work
 
-`demo/midgard-fault-proofs/src/prepare-min-fee.ts` takes security-grade
-canonical block evidence, the disputed transaction proof source and all nine
-field preimages. It must:
-
-- pass `assertSecurityGradeEvidenceV1` and
-  `assertNativeInclusionRootAuthenticatedV1`;
-- prove the compact transaction/proof-source/transaction-id agreement;
-- require every preimage to match the committed field at its literal index;
-- compute the exact canonical size and minimum locally;
-- refuse honest transactions (`fee >= minimum`) before any submission;
-- preserve the header's fee parameters without caller overrides; and
-- plan each of the nine field carriages through the existing §8 tier planner.
-
-The result contains the inclusion plan, exact fee evidence, witness compact,
-ordered field-opening plans, and the category-id-parameterized thread token
-asset name. No automatic cancellation or registration lookup is permitted.
-
-### 2.3 Submission chain
-
-The family adds explicit modules:
-
-- `submit-min-fee-init.ts` — generic init semantics with explicit contracts
-  and category proof;
-- `submit-min-fee-step-01.ts` — native inclusion binding and exact step-02
-  datum;
-- `submit-min-fee-step-02.ts` — publish/reference the planned field carriage,
-  resolve all input/output/redeemer indices from the built transaction,
-  finalize and mint the permanent proof token;
-- `submit-min-fee-cancel.ts` — prover-signed explicit cancellation from either
-  step, burning the thread NFT; and
-- barrels in the fault-proof package and SDK.
-
-Every step validator is published as a reference script and consumed by
-reference. Inline validator attachment is forbidden. A submitter must compare
-the reference UTxO's script hash with the exact applied validator hash before
-building. Transaction completion keeps `localUPLCEval: true`.
-
-The two-step core is resumable: callers inspect the thread NFT and decode the
-datum to resume at step-01 or step-02. An absent thread after a submitted
-transaction is reconciled as either permanent proof-token success or explicit
-cancellation; it is never silently restarted.
-
-## 3. Registered category and deployment posture
-
-`minFee` is canonically registered at **`00000013`** (index 19). The SDK
-catalogue, generic Init, deployment manifests/inspection, and watcher
-proof-thread topology bind that id to step 01. Both steps are mandatory
-authenticated reference scripts. Family-specific CLI and watcher
-detector/prover mounting remain open. The immutable catalogue/identity change
-is adopted only through fresh genesis/redeployment; no migration or
-compatibility path exists.
-
-## 4. Emulator acceptance
-
-The harness publishes both applied min-fee validators as authenticated
-reference scripts, builds explicit contracts, and uses the canonical
-`00000013` category.
-
-The lifecycle suites must prove:
-
-1. **Fault polarity:** init → step-01 → step-02 → permanent proof-token mint →
-   fraudulent state-queue commitment removal. The node NFT burns, the proof
-   token remains at the same out-ref, and a second removal claim is refused.
-2. **Honest polarity:** the same authentic transaction with a schedule whose
-   exact minimum equals its fee reaches step-02, then local guards are bypassed
-   deliberately and the submitted transaction is refused by the compiled
-   validator at the exact `<` comparison. No proof token is minted and the
-   commitment remains.
-3. **Adversarial negatives:** forged step-01 fee schedule, padded body field,
-   forged witness set plus matching witness preimages, wrong reference script,
-   permuted/missing field carriage, and non-prover cancellation all fail
-   closed.
-4. **Cancel/resume:** explicit cancel succeeds from both step states; a journey
-   interrupted after step-01 resumes the same NFT at step-02 without reminting
-   init or changing the header/category identity.
-
-Single-party semantics are preserved throughout: the evidence is public block
-and transaction material; there is no operator turn or interactive fallback in
-the standalone path.
-
-## 5. Verification gates
-
-All counts must be non-zero and reported, not inferred from exit status.
-
-```bash
-cd onchain/aiken
-node scripts/run-focused-check.mjs \
-  fraud_proofs/min_fee/step_01 \
-  min_fee_step_01_binds_native_v1_block_fixture \
-  min_fee_step_01_forwards_the_header_fee_schedule \
-  min_fee_step_01_rejects_forged_transactions_root \
-  min_fee_step_01_rejects_a_forged_fee_schedule_in_state
-node scripts/run-focused-check.mjs \
-  fraud_proofs/min_fee/step_02 \
-  min_fee_step_02_accepts_a_fee_below_the_flat_minimum \
-  min_fee_step_02_accepts_a_fee_below_the_sized_minimum \
-  min_fee_step_02_rejects_a_fee_exactly_at_the_minimum \
-  min_fee_step_02_rejects_a_fee_exactly_at_the_sized_minimum \
-  min_fee_step_02_rejects_a_fee_above_the_minimum \
-  min_fee_step_02_rejects_an_inflated_body_field_preimage \
-  min_fee_step_02_rejects_a_forged_witness_set_inflation
-aiken check -m 'midgard/validation_machine_v1.{..}'
-node scripts/verify-normalized-format.mjs \
-  validators/fraud-proofs/min-fee/step-01.ak \
-  validators/fraud-proofs/min-fee/step-02.ak \
-  lib/midgard/fraud-proofs/min-fee/step-01.ak \
-  lib/midgard/fraud-proofs/min-fee/step-02.ak \
-  lib/midgard/fraud-proofs/native-binding-fixture-v1.ak \
-  lib/midgard/fraud-proofs/native-tx/compact.ak \
-  lib/midgard/validation-machine-v1.ak
-aiken check --skip-tests
-```
-
-```bash
-pnpm --dir demo/midgard-fault-proofs exec vitest run \
-  tests/canonical-evidence-source-v1.test.ts \
-  tests/prepare-min-fee.test.ts \
-  tests/submit-init-emulator-min-fee-v1.test.ts
-pnpm --dir demo/midgard-core exec vitest run \
-  tests/capability-parity-v1.test.ts
-pnpm --dir demo/midgard-fault-proofs run typecheck
-pnpm --dir demo exec prettier --check \
-  midgard-sdk/src/fraud-proof/min-fee.ts \
-  midgard-fault-proofs/src/prepare-min-fee.ts \
-  midgard-fault-proofs/src/submit-min-fee-init.ts \
-  midgard-fault-proofs/src/submit-min-fee-step-01.ts \
-  midgard-fault-proofs/src/submit-min-fee-step-02.ts \
-  midgard-fault-proofs/src/submit-min-fee-cancel.ts \
-  midgard-fault-proofs/tests/prepare-min-fee.test.ts \
-  midgard-fault-proofs/tests/submit-init-emulator-min-fee-v1.test.ts \
-  midgard-fault-proofs/tests/canonical-evidence-source-v1.test.ts \
-  midgard-fault-proofs/tests/helpers/canonical-block-evidence-fixture-v1.ts \
-  midgard-fault-proofs/tests/support/emulator/contracts.ts \
-  midgard-fault-proofs/tests/support/emulator/harness.ts \
-  midgard-fault-proofs/tests/support/emulator/removal-deployment.ts \
-  ../docs/fault-proofs/min-fee-offchain-plan-v1.md
-pnpm --dir demo exec eslint \
-  midgard-sdk/src/fraud-proof/min-fee.ts \
-  midgard-fault-proofs/src/prepare-min-fee.ts \
-  midgard-fault-proofs/src/submit-min-fee-init.ts \
-  midgard-fault-proofs/src/submit-min-fee-step-01.ts \
-  midgard-fault-proofs/src/submit-min-fee-step-02.ts \
-  midgard-fault-proofs/src/submit-min-fee-cancel.ts \
-  midgard-fault-proofs/tests/prepare-min-fee.test.ts \
-  midgard-fault-proofs/tests/submit-init-emulator-min-fee-v1.test.ts \
-  midgard-fault-proofs/tests/canonical-evidence-source-v1.test.ts \
-  midgard-fault-proofs/tests/helpers/canonical-block-evidence-fixture-v1.ts \
-  midgard-fault-proofs/tests/support/emulator/contracts.ts \
-  midgard-fault-proofs/tests/support/emulator/harness.ts \
-  midgard-fault-proofs/tests/support/emulator/removal-deployment.ts
-```
-
-The TypeScript envelope suite must also assert the exact Data CBOR for
-step-02 state and args, the applied parameter order, distinct reference-script
-hashes, exactly nine ordered carriages, and the adjacent fee boundary. The
-target closure is 11/11 family Aiken selectors, the full non-zero
-`validation_machine_v1` suite, at least four prepare/envelope cases, both
-emulator polarities through the decisive on-chain result, removal, negatives,
-cancel and resume, with zero failures.
+- mount watcher detection and proving;
+- publish live/preprod proof-through-removal evidence;
+- refresh proof-fit evidence if field limits, compiler output, or protocol
+  transaction limits change.

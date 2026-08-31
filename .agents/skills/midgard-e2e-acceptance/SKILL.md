@@ -1,6 +1,6 @@
 ---
 name: midgard-e2e-acceptance
-description: Run, resume, diagnose, or assess merge and release readiness for the Midgard demo-node live end-to-end acceptance flow. Use for fresh or interrupted Preprod deployments, local Kupmios, reference scripts, operator lifecycle, libp2p DA publication and attestation, deposits, L2 transfers, automatic merge/finality, structured evidence, and bounded opt-in throughput checks.
+description: Run, resume, diagnose, or assess merge and release readiness for the Midgard demo-node live end-to-end acceptance flow. Use for fresh or interrupted Preprod deployments, local Kupmios, reference scripts, operator lifecycle, libp2p DA publication and attestation, deposits, L2 transfers, automatic merge/finality, launch-scope state correction, recovery drills, structured evidence, and bounded opt-in throughput checks.
 ---
 
 # Midgard E2E Acceptance
@@ -134,6 +134,33 @@ Acceptance is complete only when:
 - `nextSafeAction` is `none_run_complete`;
 - `required_fresh_steps`, `required_transaction_evidence`, and
   `required_fresh_step_attempt_quality` are satisfied for mode `fresh`;
+- the `--state-correction-evidence` aggregate is bound to the same run and used
+  only as an index; the finalizer independently loads and reconciles immutable
+  workflow journals, authenticated L1 terminal observations, raw recovery
+  outputs, digest-checked raw Kupo and Ogmios responses, a raw node-database
+  export, the Preprod manifest, blueprint, catalogue root, parameters, release
+  identity, economics, and final chain/queue state, and the local-only Kupmios
+  authority re-reads canonical transaction bodies, exact fees and outputs,
+  queue/proof-token/reserve UTxOs, tip, and database drain state before any gate
+  becomes satisfied;
+- every launch-scope family has public L1+DA watcher detection, route, proof
+  init/steps/token, state-queue removal/correction, exact slash and prover
+  reward, a final chain point, and resumed verification;
+- `state_correction_acceptance`, `state_correction_exact_economics`,
+  `withdrawal_reserve_payout`, `forced_classification_directions`,
+  `watcher_crash_rollback_matrix`, and
+  `state_correction_final_reconciliation` are satisfied;
+- `state_correction_local_workflow_readiness` is satisfied by the compiled
+  production adapter registry, and `availability_challenge_readiness` is
+  satisfied by the authenticated deployment capability; the finalizer blocks
+  while any family adapter or Q58 capability is missing;
+- withdrawal order, reserve, payout init/add/conclude, exact destination/value,
+  both forced-classification directions, and every named crash/rollback,
+  inconsistency, DA, withholding, stale-manifest, and rewind drill are present;
+- no aggregate-supplied boolean or transaction hash is promoted to confirmed
+  evidence; the state-correction gates remain blocked until each claim is
+  derived from those independent inputs, and a bundle of mutually consistent
+  files remains blocked when the live authority is absent or disagrees;
 - both baseline L2 transactions are committed;
 - every transaction observation is reconciled, with no submitted, unknown,
   timed-out, or signaled attempt left ambiguous;

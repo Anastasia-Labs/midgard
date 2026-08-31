@@ -1,12 +1,9 @@
 # Off-Chain Reference (TypeScript)
 
-> Audited 2026-07-10 against branch `tx-validation` (HEAD `269bf6b3`) plus its
-> contemporaneous working tree; reconstructed on clean base `55afdc54`. Code map for the
-> TypeScript side: evidence construction, submission CLI, state correction, DA retrieval,
-> and local validation. Historical `fraud-proof` source paths are preserved literally.
-> Catalogue/deployment and transition-trace CLI status were reconciled on
-> 2026-08-26 against the current working tree; the broader audit provenance is
-> unchanged.
+> Reconciled 2026-08-29 against the current working tree. Code map for the
+> TypeScript side: evidence construction, submission CLI, state correction, DA
+> retrieval, and local validation. Literal source paths retain the existing
+> `fraud-proof`/`fraud-proofs` names.
 
 ## 1. Package roles
 
@@ -17,28 +14,28 @@
 | `demo/midgard-core`         | Frozen DA wire contract (`da-transport.ts`), payload envelope/compression/sizing, canonical plutus-data CBOR.                                                                                                                                                |
 | `demo/da-committee-node`    | DA payload verification, attestation signing, retention store, libp2p payload + proof-artifact serving.                                                                                                                                                      |
 | `demo/midgard-validation`   | Phase A/B local tx validation (mempool admission) — _not_ part of the L1 dispute path.                                                                                                                                                                       |
-| `demo/midgard-node`         | Operator node; consumes validation; deploys contracts; hosts `/stateQueueMutationLease`; persists evidence-relevant data. Never imports `@al-ft/midgard-fault-proofs`.                                                                                       |
+| `demo/midgard-node`         | Operator node; consumes validation; deploys contracts; hosts `/stateQueueMutationLease`; persists evidence-relevant data; imports the fault-proof package for the operator-owned attestation-timeout correction fiber.                                       |
 | `demo/midgard-watcher`      | Implemented ingestion, indexing, finality, rollback, and durable-state foundations; autonomous detection/proof/removal remains an acceptance gap.                                                                                                            |
 
 ## 2. CLI surface (`demo/midgard-fault-proofs/src/bin.ts`)
 
-`prepare-double-spend` · `prepare-invalid-range` · `prepare-non-existent-input` · `prepare-zero-input` ·
-`prepare-transition-trace` ·
-`inspect-contracts` · `submit-init` · `submit-step-01..04` ·
-`submit-invalid-range-step-01..02` · `submit-non-existent-input-step-01..04` ·
-`submit-zero-input-step-01..02` · `submit-da-hash-preimage-step-01..02` ·
-`submit-input-no-idx-step-01..04` (and `submit-input-no-idx-fold`) ·
-`submit-transition-trace-proof` ·
-`remove-fraudulent-block`.
+Run `bin.ts --help` for the authoritative command list. The current CLI has
+prepare/submit paths for the legacy explicit families, input/reference-index
+families, invalid-signature, fabricated deposit/withdrawal, DA hash/preimage,
+transition-trace, validation-dispute, generic catalogue Init, inspection, and
+faulty-block removal. It also exposes `remove-unattested-block`, the resumable
+Q61 timeout-correction command. Many newer registered families expose typed library
+submitters but still lack family-specific CLI verbs.
 
-`submit-init --fraud-category` is derived from the canonical 25-entry catalogue
-order (`00000000`–`00000018`). The appended registrations are
+`submit-init --fraud-category` is derived from the canonical 29-entry source
+catalogue order (`00000000`–`0000001c`). The appended registrations are
 `fabricatedDeposit | fabricatedWithdrawal | nativeScriptDecoding |
 missingSignature | missingNativeScriptTx | withdrawnReferenceInput |
 canonicalDecodability | committedFieldShape | minFee | withdrawalMistag |
-doubleWithdraw | crossBlockDuplicateEvent | l2TxMistag | withdrawnInput`.
-The same order is required by inspection and node/core/watcher deployment
-identity. This gives every family a generic Init route; it does not create
+doubleWithdraw | crossBlockDuplicateEvent | l2TxMistag | withdrawnInput |
+valueNotPreserved | inputSetUniqueness | mintAuthorization | networkId`.
+Runtime deployment resolution, inspection, and node/core manifest schemas use
+the same order. This gives every family a generic Init parser route; it does not create
 family-specific step CLI verbs. Transition-trace preparation accepts only a retained-DA envelope
 pinned to the committed header hash. Submission strictly decodes canonical
 `TransitionFaultProof` Data CBOR and resolves each repeatable
@@ -56,7 +53,7 @@ commands are offline.
 
 ## 3. Workflows per family
 
-### double-spend (5 manual steps)
+### double-spend (6 commands including preparation)
 
 `prepare-double-spend` (`src/prepare-double-spend.ts` — 3 modes: live node
 `GET /block`+`/tx` (`:180-247`), local JSON file (`:236,759`), hardcoded sample
@@ -95,8 +92,8 @@ writing submit-ready artifacts if it differs from the authoritative header root.
 
 `prepare-input-no-idx` consumes canonical block evidence and emits the exact
 inclusion/output artifacts → `submit-init --fraud-category
-nonExistentInputNoIndex` → `submit-input-no-idx-step-01` → `-02` or resumable
-`submit-input-no-idx-fold` → `-03` → `-04`, which concludes the thread and
+nonExistentInputNoIndex` → `submit-input-no-idx-step-01` → `-02` → `-03` →
+`-04`, which concludes the thread and
 mints the fault-proof token. The emulator lifecycle reaches faulty-block
 removal. Family closure status is tracked individually in
 [`catalogue-status.md`](catalogue-status.md).
@@ -125,6 +122,45 @@ automatic tier-2 case (140 witnesses) and the maximum admissible field-7 vector
 submits the worst-depth step-01 binding transaction under those limits. No
 smaller off-chain evidence claim is used.
 
+### network-id (registered and locally proven)
+
+`src/network-id/` provides strict DA-first evidence, contracts, preparation,
+two-step submission, cancellation, and workflow adaptation. The SDK wire twin
+is `demo/midgard-sdk/src/fraud-proof/network-id-v1.ts`. Focused SDK/evidence
+tests and the emulator lifecycle pass through permanent mint, faulty-header
+removal, honest-output refusal, and cancellation. The source catalogue,
+generic Init parser, and node/core manifest schemas assign it `0000001c`, but
+the runtime deployment table also maps both validator steps. The inspection
+logic derives the 29-category root; only its static expected-root assertion is
+stale. Watcher actuation and live evidence remain open.
+
+### committed-block workflow
+
+`src/workflow/` provides authenticated retained-DA intake, complete-replay
+boundaries, a deterministic violation→family classifier, durable journals,
+reference-script/local-evaluation preflight, resumable submission, and terminal
+correction/economics verification. Unknown violations report
+`unprovable_gap`; an empty partial detector result is never promoted to a
+verified block. The constrained double-spend and network-id adapters also
+journal tier-3 publication, healing, and certification actions before the proof
+step. Every production adapter registration still reports an exact missing
+closure requirement, and autonomous watcher mounting remains incomplete. The
+focused core workflow suite passes 28/28; the tier-3 action suite passes 2/2.
+
+### Q61 unattested-head correction
+
+`src/remove-unattested-block.ts` plans descendant-first pruning and terminal
+head removal after the one-hour deadline, with durable recovery and mutation
+lease coordination. `demo/midgard-node/src/fibers/attestation-timeout-correction.ts`
+mounts the operator-owned scheduler and transactionally restores journaled
+transactions and L1 events after confirmed removal. Watcher processes remain
+observe-only: `attestation-timeout-observation-v1.ts` derives digest-bound
+waiting, near-timeout, timed-out, and attested states and exposes no builder,
+signer, or submitter. The SDK derives a strict digest-bound correction record
+only from the exact timeout mint arm and before/after queue topology. The
+focused watcher observation, transition, recovery, and re-inclusion suites
+pass; real-node/preprod acceptance remains open.
+
 ### transition-trace (3 manual commands; route→final is internal)
 
 `transition-trace/detect.ts` (fault detection over reconstructed payloads),
@@ -142,14 +178,14 @@ witnesses.
 
 ### Faulty-block removal (all families)
 
-`src/remove-fraudulent-block.ts` (2483 lines; replaces the deleted
-`remove-fraudulent-block.ts`): loops `RemoveFaultyBlocksLink` successor removals until the
-faulty block is the queue tail, then `RemoveLastFaultyBlock` (`:2373-2422`), one L1 tx per
-link; resolves the slashing plan (`resolveOperatorSlashingPlan`/`buildSlashingInputs`,
-`:1397-1749`; active/retired/already-slashed) and updates operator lists + scheduler
-datum in the same txs; non-tail removals require the node's admin-gated
-`/stateQueueMutationLease` HTTP coordinator (`:2200-2223`). Underlying tx programs:
-`demo/midgard-sdk/src/state-queue.ts:899-1009`.
+`src/remove-fraudulent-block.ts` loops
+`RemoveFraudulentBlocksLink` successor removals until the proven-fraudulent
+block is the queue tail, then removes that block, one L1 transaction per link.
+It resolves active/retired/already-slashed operator plans and updates operator
+lists plus the scheduler datum in the same workflow. Non-tail removals require
+the node's admin-gated `/stateQueueMutationLease` coordinator. The underlying
+production-shaped transaction programs live in
+`demo/midgard-sdk/src/state-queue.ts`.
 
 ## 4. Evidence construction internals
 
@@ -170,9 +206,10 @@ datum in the same txs; non-tail removals require the node's admin-gated
 - **Blueprint consistency**: `inspect-contracts.ts` rebuilds all contract families from
   `onchain/aiken/plutus.json` via `buildFaultProofContracts` and cross-checks hashes +
   catalogue root/membership proofs against deployment-info JSON.
-- **Data sources**: the three CLI families use live node REST or local files — none fetch
-  from the DA layer at evidence-construction time; only `transition-trace/fetch.ts` does
-  real libp2p retrieval.
+- **Data sources**: family support varies between retained-DA envelopes, live
+  node REST, and local canonical files. `transition-trace/fetch.ts` is the
+  package's direct libp2p retained-DA source; operational DA-first adoption is
+  tracked per family.
 
 ## 5. DA retrieval & retention (evidence availability)
 
@@ -210,34 +247,38 @@ datum in the same txs; non-tail removals require the node's admin-gated
   script-integrity-hash recomputation, value preservation
   (`value-accounting.ts:111-133`), slot-interval enforcement; cascade rejection; UTxO
   state patch output.
-- **Classification**: 25-code `RejectCodes` (`src/types.ts:17-42`); four codes defined but
-  never raised (`UnsupportedFieldNonEmpty`, `PlutusEvaluationUnavailable`,
-  `CertificatesForbidden`, `NonZeroWithdrawal`). Rejections persist verbatim to
+- **Classification**: `RejectCodes` currently defines 50 stable local
+  validation codes. Codes that are structurally unrepresentable or unreachable
+  must remain reconciled with executable evidence rather than being counted as
+  active proof families. Rejections persist verbatim to
   `tx_admissions`/`tx_rejections`
   (`demo/midgard-node/src/database/txAdmissions.ts:1054-1153`).
-- **Deliberately unmapped to fault categories**: admission rejects concern pre-block
-  transactions; fault proofs concern committed blocks. Zero references to
-  `RejectCode` in `demo/midgard-fault-proofs`. Consequence: nothing today classifies a
-  _committed_ block's violation into a proof family — that selection is fully manual.
-- **Watcher**: signed deployment authority now authenticates all 25 family ids,
+- **Committed-block classification is separate from admission rejection.**
+  Admission `RejectCodes` concern pre-block transactions and are not used as
+  fault-category identifiers. The authenticated complete-replay workflow emits
+  versioned committed-block violations and deterministically maps every
+  catalogue category; unmapped violations fail as `unprovable_gap`.
+- **Watcher**: signed deployment authority now authenticates all 29 family ids,
   first-step hashes, complete step graphs, and reference scripts. This is
-  proof-thread indexing/verification topology only. There is still no autonomous
-  detect→prove→remove loop
-  (`demo/midgard-watcher/midgard-watcher-architecture.md:11-25` admits it; roadmap item 5
-  `:414-431`; adversarial review verdict "No-go as a production-ready plan in its first
-  draft", `watcher-plan-adversarial-review.md:22`).
+  proof-thread indexing/verification topology only. The shared workflow has
+  authenticated replay, deterministic classification, and durable orchestration,
+  but every production family adapter currently fails its explicit readiness
+  registration. No autonomous detect→prove→remove loop is mounted.
 
 ## 7. Manual-effort summary
 
-| Family             | Commands to conclude a proof                                                    | Then removal                    |
-| ------------------ | ------------------------------------------------------------------------------- | ------------------------------- |
-| double-spend       | 6 (prepare + init + 4 steps)                                                    | +1 per descendant link +1 final |
-| invalid-range      | 4                                                                               | same                            |
-| non-existent-input | 6                                                                               | same                            |
-| zero-input         | 4 (prepare + init + 2 steps)                                                    | same                            |
-| min-fee            | library prepare + generic registered init + 2 library step calls; no family-specific CLI verbs | registered-category removal       |
-| transition-trace   | 3 (prepare + init + authenticated route→selected-final submit)                  | same                            |
-| Remaining families | atomic closure remains task-specific                                            | —                               |
+| Family             | Commands to conclude a proof                                                                   | Then removal                    |
+| ------------------ | ---------------------------------------------------------------------------------------------- | ------------------------------- |
+| double-spend       | 6 (prepare + init + 4 steps)                                                                   | +1 per descendant link +1 final |
+| invalid-range      | 4                                                                                              | same                            |
+| non-existent-input | 6                                                                                              | same                            |
+| zero-input         | 4 (prepare + init + 2 steps)                                                                   | same                            |
+| min-fee            | library prepare + generic registered init + 2 library step calls; no family-specific CLI verbs | registered-category removal     |
+| transition-trace   | 3 (prepare + init + authenticated route→selected-final submit)                                 | same                            |
+| Remaining families | atomic closure remains task-specific                                                           | —                               |
 
-Each command needs env/config (Blockfrost or Kupmios keys, deployment-info JSON, out-ref
-plumbing between steps via JSON files). There is no single-command orchestration.
+Each direct command needs env/config (Blockfrost or Kupmios keys,
+deployment-info JSON, and out-ref plumbing between steps via JSON files).
+`run-workflow` / `resume-workflow` are fail-closed front doors: all 29
+production adapter registrations currently remain `missing`, so they report
+the exact closure requirement instead of falling back to these manual chains.

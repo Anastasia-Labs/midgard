@@ -6,6 +6,6 @@ does not activate a consensus change by itself. Consensus-affecting decisions
 still require an exact profile/version update, implementation, generated
 evidence, and the normal release gate.
 
-| Decision | Status |
-| --- | --- |
-| [0001 — Publish field evidence once and reference it from proof transactions](0001-reference-input-field-evidence.md) | Accepted |
+| Decision                                                                               | Status                      |
+| -------------------------------------------------------------------------------------- | --------------------------- |
+| [0001 — Authenticated field-preimage carriage](0001-reference-input-field-evidence.md) | Implemented in canonical V1 |

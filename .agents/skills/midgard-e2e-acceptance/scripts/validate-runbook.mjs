@@ -19,6 +19,22 @@ const paths = {
     repoRoot,
     "demo/midgard-node/src/commands/e2e-finalize-summary.ts",
   ),
+  stateCorrection: join(
+    repoRoot,
+    "demo/midgard-node/src/commands/e2e-state-correction-acceptance.ts",
+  ),
+  stateCorrectionTest: join(
+    repoRoot,
+    "demo/midgard-node/tests/e2e-state-correction-acceptance.test.ts",
+  ),
+  stateCorrectionAuthority: join(
+    repoRoot,
+    "demo/midgard-node/src/commands/e2e-state-correction-local-authority.ts",
+  ),
+  stateCorrectionAuthorityTest: join(
+    repoRoot,
+    "demo/midgard-node/tests/e2e-state-correction-local-authority.test.ts",
+  ),
 };
 
 const failures = [];
@@ -40,6 +56,12 @@ const documents = Object.fromEntries(
 );
 const cliSource = read(paths.cli);
 const finalizerSource = read(paths.finalizer);
+const stateCorrectionSource = read(paths.stateCorrection);
+const stateCorrectionTestSource = read(paths.stateCorrectionTest);
+const stateCorrectionAuthoritySource = read(paths.stateCorrectionAuthority);
+const stateCorrectionAuthorityTestSource = read(
+  paths.stateCorrectionAuthorityTest,
+);
 const allDocs = Object.values(documents).join("\n");
 
 const requireText = (text, needle, label) => {
@@ -100,12 +122,12 @@ for (const command of referencedCommands) {
   }
 }
 
-const parseConstStringArray = (source, name) => {
+const parseConstStringArray = (source, name, sourceLabel) => {
   const match = source.match(
     new RegExp(`export const ${name} = \\[([\\s\\S]*?)\\] as const`),
   );
   if (!match) {
-    fail(`cannot parse ${name} from e2e-finalize-summary.ts`);
+    fail(`cannot parse ${name} from ${sourceLabel}`);
     return [];
   }
   return [...match[1].matchAll(/"([^"]+)"/g)].map((entry) => entry[1]);
@@ -114,11 +136,127 @@ const parseConstStringArray = (source, name) => {
 const requiredStepIds = parseConstStringArray(
   finalizerSource,
   "REQUIRED_FRESH_E2E_STEP_IDS",
+  "e2e-finalize-summary.ts",
 );
 const requiredTransactionLabels = parseConstStringArray(
   finalizerSource,
   "REQUIRED_FRESH_TRANSACTION_LABELS",
+  "e2e-finalize-summary.ts",
 );
+const stateCorrectionGateLabels = parseConstStringArray(
+  stateCorrectionSource,
+  "REQUIRED_STATE_CORRECTION_GATE_LABELS",
+  "e2e-state-correction-acceptance.ts",
+);
+const stateCorrectionRecoveryDrills = parseConstStringArray(
+  stateCorrectionSource,
+  "REQUIRED_STATE_CORRECTION_RECOVERY_DRILL_IDS",
+  "e2e-state-correction-acceptance.ts",
+);
+
+for (const [text, needle, label] of [
+  [
+    cliSource,
+    "--state-correction-evidence <path>",
+    "state-correction CLI option",
+  ],
+  ...[
+    "--state-correction-deployment-manifest <path>",
+    "--state-correction-blueprint <path>",
+    "--state-correction-catalogue <path>",
+    "--state-correction-parameters <path>",
+    "--state-correction-release-evidence <path>",
+    "--state-correction-workflow-journal <directory>",
+    "--state-correction-l1-observation <path>",
+    "--state-correction-recovery-observation <path>",
+    "--state-correction-final-snapshot <path>",
+  ].map((flag) => [cliSource, flag, `independent source CLI option ${flag}`]),
+  [
+    finalizerSource,
+    "stateCorrectionAcceptanceEvidence",
+    "state-correction finalizer gate",
+  ],
+  [
+    stateCorrectionSource,
+    "FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER",
+    "canonical launch-scope source",
+  ],
+  [
+    documents.live,
+    '--state-correction-evidence "$STATE_CORRECTION_EVIDENCE"',
+    "state-correction dashboard argument",
+  ],
+  [
+    documents.live,
+    "tests/e2e-state-correction-acceptance.test.ts",
+    "non-state-changing state-correction rehearsal",
+  ],
+  [
+    documents.live,
+    "tests/e2e-state-correction-reconciliation.test.ts",
+    "non-state-changing independent reconciliation rehearsal",
+  ],
+  [
+    documents.live,
+    "tests/e2e-state-correction-local-authority.test.ts",
+    "non-state-changing local Kupmios authority rehearsal",
+  ],
+  [
+    stateCorrectionAuthoritySource,
+    "stateCorrectionValueDigestV1",
+    "canonical live Q57 value digest",
+  ],
+  [
+    stateCorrectionAuthoritySource,
+    "live Kupo/Ogmios output disagreement",
+    "live Q57 cross-source economic comparison",
+  ],
+  [
+    documents.live,
+    "REQUIRED_STATE_CORRECTION_RECOVERY_DRILL_IDS",
+    "recovery matrix source",
+  ],
+]) {
+  requireText(text, needle, label);
+}
+
+for (const gate of stateCorrectionGateLabels) {
+  requireText(
+    documents.skill,
+    gate,
+    `state-correction acceptance gate ${gate}`,
+  );
+}
+for (const marker of [
+  "omitted family",
+  "inexact slash",
+  "incomplete recovery",
+  "without public autonomous correction",
+  "payout destination",
+]) {
+  requireText(
+    stateCorrectionTestSource,
+    marker,
+    `state-correction negative rehearsal ${marker}`,
+  );
+}
+if (stateCorrectionRecoveryDrills.length !== 22) {
+  fail(
+    `state-correction recovery matrix must have 22 cases; found ${stateCorrectionRecoveryDrills.length}`,
+  );
+}
+
+for (const marker of [
+  "live Kupo/Ogmios output disagreement",
+  "fee does not equal the exact removal fee",
+  "reserve value does not match",
+]) {
+  requireText(
+    stateCorrectionAuthorityTestSource,
+    marker,
+    `local Q57 authority negative rehearsal ${marker}`,
+  );
+}
 
 const summaryStart = documents.live.indexOf("STEP_SUMMARY_ARGS=()");
 const summaryEnd = documents.live.indexOf("TX_ARGS=()", summaryStart);
@@ -218,6 +356,8 @@ process.stdout.write(
       referencedCommandCount: referencedCommands.size,
       requiredStepIds,
       requiredTransactionLabels,
+      stateCorrectionGateLabels,
+      stateCorrectionRecoveryDrillCount: stateCorrectionRecoveryDrills.length,
       bashBlockCount: bashBlocks.length,
     },
     null,
